@@ -15,9 +15,9 @@ type Config struct {
 }
 
 func LoadFromEnvironment() (*Config, error) {
-	env := os.Getenv("CONFIG_FILE")
+	env := os.Getenv("CONFIG_PATH")
 	if env == "" {
-		return nil, errors.New("No value was found for the environment variable CONFIG_FILE")
+		return nil, errors.New("No value was found for the environment variable CONFIG_PATH")
 	}
 	return LoadConfigFile(env)
 }

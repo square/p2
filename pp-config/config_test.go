@@ -28,9 +28,9 @@ func TestConfigFileCanReadStringKeys(t *testing.T) {
 }
 
 func TestConfigCanBeReadFromEnvironment(t *testing.T) {
-	prev := os.Getenv("CONFIG_FILE")
-	os.Setenv("CONFIG_FILE", testFilePath())
-	defer os.Setenv("CONFIG_FILE", prev)
+	prev := os.Getenv("CONFIG_PATH")
+	os.Setenv("CONFIG_PATH", testFilePath())
+	defer os.Setenv("CONFIG_PATH", prev)
 
 	cfg, err := LoadFromEnvironment()
 	if err != nil {
