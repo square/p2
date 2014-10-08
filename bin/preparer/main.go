@@ -10,8 +10,8 @@ import (
 	"os"
 	"path"
 
-	. "github.com/platypus-platform/pp-logging"
-	"github.com/platypus-platform/pp-store"
+	. "github.com/platypus-platform/pp/pkg/logging"
+	"github.com/platypus-platform/pp/pkg/store"
 )
 
 type PreparerConfig struct {

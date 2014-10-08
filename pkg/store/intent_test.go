@@ -2,8 +2,8 @@ package pp
 
 import (
 	"bytes"
-	"github.com/platypus-platform/pp-kv-consul"
-	"github.com/platypus-platform/pp-logging"
+	"github.com/platypus-platform/pp/pkg/kv-consul"
+	"github.com/platypus-platform/pp/pkg/logging"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
