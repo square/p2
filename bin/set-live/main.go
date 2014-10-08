@@ -2,8 +2,8 @@ package main
 
 import (
 	"flag"
-	. "github.com/platypus-platform/pp-logging"
-	"github.com/platypus-platform/pp/pp-store"
+	. "github.com/platypus-platform/pp/pkg/logging"
+	"github.com/platypus-platform/pp/pkg/store"
 	"gopkg.in/yaml.v1"
 	"io/ioutil"
 	"os"

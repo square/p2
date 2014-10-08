@@ -3,7 +3,7 @@ package pp
 import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/platypus-platform/pp-logging"
+	"github.com/platypus-platform/pp/pkg/logging"
 
 	"testing"
 )
