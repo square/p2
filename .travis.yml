@@ -4,9 +4,9 @@ go:
   - 1.3
 
 install:
-  - sudo apt-get install ruby
   - gem install rake
   - go get github.com/tools/godep
+  - export PATH=$GOPATH/bin
   - rake build
 
 script: rake test
