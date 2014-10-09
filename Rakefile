@@ -29,5 +29,10 @@ task :update => :godep_check do
   e "godep update .../..."
 end
 
+desc 'Install all built binaries'
+task :install => :godep_check do
+  e "godep go install ./..."
+end
+
 desc 'By default, gather dependencies, build and test'
-task :default => [:deps, :test]
+task :default => [:deps, :test, :install]
