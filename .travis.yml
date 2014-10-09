@@ -1,0 +1,12 @@
+language: go
+
+go:
+  - 1.3
+
+install:
+  - apt-get install ruby
+  - gem install rake
+  - go get github.com/tools/godep
+  - rake build
+
+script: rake test
