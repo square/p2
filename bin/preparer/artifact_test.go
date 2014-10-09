@@ -21,7 +21,7 @@ var _ = Describe("Handling artifacts", func() {
 		defer os.RemoveAll(repo)
 
 		preparerConfig := PreparerConfig{
-			ArtifactRepo: url.URL{Scheme: "file", Path: repo},
+			ArtifactRepo: ArtifactUrl(url.URL{Scheme: "file", Path: repo}),
 		}
 		artifactSourcePath := path.Join(repo, "testapp", "testapp_abc123.tar.gz")
 
