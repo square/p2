@@ -6,7 +6,7 @@ go:
 install:
   - gem install rake
   - go get github.com/tools/godep
-  - export PATH=$GOPATH/bin
+  - export PATH=$PATH:$GOPATH/bin
   - rake build
 
 script: rake test
