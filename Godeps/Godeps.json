@@ -6,8 +6,16 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "github.com/anthonybishopric/gotcha",
+			"Rev": "96bbd5d8dcba351bd4c40abfc65cb3066346e061"
+		},
+		{
 			"ImportPath": "github.com/armon/consul-api",
 			"Rev": "045662de1042be0662fe4a1e21b57c8f7669261a"
+		},
+		{
+			"ImportPath": "github.com/go-yaml/yaml",
+			"Rev": "bec87e4332aede01fb63a4ab299d8af28480cd96"
 		},
 		{
 			"ImportPath": "github.com/onsi/ginkgo",
