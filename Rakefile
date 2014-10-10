@@ -9,23 +9,23 @@ end
 
 desc 'Get deps for all projects.'
 task :deps => :godep_check do
-  e "go get -d -v ./..."
+  e "go get -v -t ./..."
   e "godep save ./..."
 end
 
 desc 'Build all projects'
-task :build do
+task :build => :godep_check do
   e "godep go build -v ./..."
 end
 
 desc 'Test all projects'
-task :test => :build do
+task :test => [:godep_check, :build] do
   e "godep go test -v ./..."
 end
 
 desc 'Update all dependencies'
 task :update => :godep_check do
-  e "go get -u ./..."
+  e "go get -u -t -v ./..."
   e "godep update .../..."
 end
 

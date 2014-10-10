@@ -6,6 +6,10 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "github.com/anthonybishopric/gotcha",
+			"Rev": "96bbd5d8dcba351bd4c40abfc65cb3066346e061"
+		},
+		{
 			"ImportPath": "github.com/armon/consul-api",
 			"Rev": "045662de1042be0662fe4a1e21b57c8f7669261a"
 		},
@@ -22,6 +26,10 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v1",
 			"Rev": "9f9df34309c04878acc86042b16630b0f696e1de"
+		},
+		{
+			"ImportPath": "gopkg.in/yaml.v2",
+			"Rev": "eca94c41d994ae2215d455ce578ae6e2dc6ee516"
 		}
 	]
 }
