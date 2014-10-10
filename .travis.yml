@@ -6,7 +6,8 @@ go:
 install:
   - gem install rake
   - go get github.com/tools/godep
-  - export PATH=$PATH:$GOPATH/bin
+  - GOBINS=`ruby -e "puts ENV['GOPATH'].split(':').map{ |p| sprintf('%s/bin', p) }.join(':')"`
+  - export PATH=$PATH:$GOBINS
   - rake build
 
 script: rake test
