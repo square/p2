@@ -1,10 +1,11 @@
 package artifact
 
 import (
-	. "github.com/anthonybishopric/gotcha"
 	"path"
 	"runtime"
 	"testing"
+
+	. "github.com/anthonybishopric/gotcha"
 )
 
 func getTestArtifact(t *testing.T) *Artifact {

@@ -1,8 +1,9 @@
 package artifact
 
 import (
-	. "github.com/anthonybishopric/gotcha"
 	"testing"
+
+	. "github.com/anthonybishopric/gotcha"
 )
 
 func TestAppManifestHasPorts(t *testing.T) {

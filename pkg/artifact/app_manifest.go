@@ -1,9 +1,10 @@
 package artifact
 
 import (
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
+
+	"gopkg.in/yaml.v2"
 )
 
 type AppManifest struct {

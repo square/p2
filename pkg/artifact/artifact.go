@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	tarAppNameParse = regexp.MustCompile("([a-zA-Z\\d]+)\\_([a-f0-9]+)\\.tar(\\.gz)?")
+	tarAppNameParse = regexp.MustCompile("([a-zA-Z\\d\\-\\_]+)\\_([a-f0-9]+)\\.tar(\\.gz)?")
 )
 
 type Artifact struct {
