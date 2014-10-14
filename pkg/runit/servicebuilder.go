@@ -1,6 +1,20 @@
 // Package runit provides a programmatic way to interact with runit and
 // servicebuilder (https://github.com/square/prodeng/blob/master/servicebuilder/README.md).
 // You can use this package to make it easy to write new sb configs and exec sb.
+//
+// Example usage:
+//
+// import "github.com/platypus-platform/pp/pkg/runit"
+//
+// template := runit.NewSBTemplate("exampleapp")
+// template.AddEntry("exampleapp_web", []string{"python", "-m", "SimpleHTTPServer"})
+// template.AddEntry("exampleapp_redis", []string{"redis", "-p", "6603"})
+// outPath, err := runit.DefaultBuilder.Write(template) // write the new config
+// if err != nil {
+//    return nil, err
+// }
+// err = runit.DefaultBuilder.Rebuild() // rebuild
+//
 package runit
 
 import (
