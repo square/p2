@@ -73,6 +73,23 @@ func TestServiceBuilderCanTakeSBTemplates(t *testing.T) {
 	Assert(t).IsNil(err, "there should not have been an error when writing the template")
 	Assert(t).AreEqual(path.Join(confDir, "exemplar.yaml"), outPath, "the written servicebuilder path was not what we expected")
 
+	f, err := os.Open(outPath)
+	defer f.Close()
+	Assert(t).IsNil(err, "Could not open out path for exemplar")
+	content, err := ioutil.ReadAll(f)
+	Assert(t).IsNil(err, "Could not read file")
+
+	expected := `exemplar:
+  run:
+  - ls
+  - -lah
+  - /foo/bar
+`
+	Assert(t).AreEqual(expected, string(content), "The generated YAML was not what was expected")
+
+	// attempt to write the file a second time. This verifies that we are actually able to do it without erring
+	_, err = builder.Write(template)
+	Assert(t).IsNil(err, "Was not able to write the servicebuilder file a second time")
 }
 
 func TestServiceBuilderWillExecuteRebuild(t *testing.T) {
