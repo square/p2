@@ -46,7 +46,7 @@ func (template *SBTemplate) AddEntry(app string, run []string) {
 func (template *SBTemplate) Write(out io.Writer) error {
 	b, err := yaml.Marshal(template.runClauses)
 	if err != nil {
-		return err
+		return fmt.Errorf("Could not marshal servicebuilder template %s as YAML: %s", template.name, err)
 	}
 	out.Write(b)
 	return nil
@@ -76,7 +76,7 @@ func (b *ServiceBuilder) Write(template *SBTemplate) (string, error) {
 	f, err := os.OpenFile(yamlPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer f.Close()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Could not write servicebuilder template %s: %s", template.name, err)
 	}
 
 	return yamlPath, template.Write(f)
