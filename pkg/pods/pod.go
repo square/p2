@@ -8,8 +8,12 @@ import (
 	curl "github.com/andelf/go-curl"
 )
 
-func (podManifest *PodManifest) Launch() error {
-	launchables, err := getLaunchablesFromPodManifest(podManifest)
+type Pod struct {
+	podManifest *PodManifest
+}
+
+func (pod *Pod) Launch() error {
+	launchables, err := getLaunchablesFromPodManifest(pod.podManifest)
 	if err != nil {
 		return err
 	}
@@ -50,15 +54,15 @@ func HoistLaunchableHomeDir(podId string) string {
 }
 
 // This assumes all launchables are Hoist artifacts, we will generalize this at a later point
-func (podManifest *PodManifest) Install() error {
+func (pod *Pod) Install() error {
 
-	launchables, err := getLaunchablesFromPodManifest(podManifest)
+	launchables, err := getLaunchablesFromPodManifest(pod.podManifest)
 	if err != nil {
 		return err
 	}
 
 	for _, launchable := range launchables {
-		err := launchable.Install(HoistLaunchableHomeDir(podManifest.Id))
+		err := launchable.Install(HoistLaunchableHomeDir(pod.podManifest.Id))
 		if err != nil {
 			return err
 		}
