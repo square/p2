@@ -19,16 +19,23 @@ type PodManifest struct {
 	LaunchableStanzas map[string]LaunchableStanza `yaml:"launchables"`
 }
 
-func ManifestFromPath(path string) (*PodManifest, error) {
+func PodFromManifestPath(path string) (*Pod, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
+
 	bytes, err := ioutil.ReadAll(f)
 	if err != nil {
 		return nil, err
 	}
-	return PodManifestFromBytes(bytes)
+
+	podManifest, err := PodManifestFromBytes(bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Pod{podManifest}, nil
 }
 
 func PodManifestFromBytes(bytes []byte) (*PodManifest, error) {
