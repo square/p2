@@ -78,6 +78,9 @@ type Config struct {
 	// Address is the address of the Consul server
 	Address string
 
+	// Scheme is the URI scheme for the Consul server
+	Scheme string
+
 	// Datacenter to use. If not provided, the default agent datacenter is used.
 	Datacenter string
 
@@ -98,6 +101,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Address:    "127.0.0.1:8500",
+		Scheme:     "http",
 		HttpClient: http.DefaultClient,
 	}
 }
@@ -109,6 +113,21 @@ type Client struct {
 
 // NewClient returns a new client
 func NewClient(config *Config) (*Client, error) {
+	// bootstrap the config
+	defConfig := DefaultConfig()
+
+	if len(config.Address) == 0 {
+		config.Address = defConfig.Address
+	}
+
+	if len(config.Scheme) == 0 {
+		config.Scheme = defConfig.Scheme
+	}
+
+	if config.HttpClient == nil {
+		config.HttpClient = defConfig.HttpClient
+	}
+
 	client := &Client{
 		config: *config,
 	}
@@ -197,7 +216,7 @@ func (c *Client) newRequest(method, path string) *request {
 		config: &c.config,
 		method: method,
 		url: &url.URL{
-			Scheme: "http",
+			Scheme: c.config.Scheme,
 			Host:   c.config.Address,
 			Path:   path,
 		},

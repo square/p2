@@ -2,9 +2,10 @@ package pp
 
 import (
 	"fmt"
-	"github.com/armon/consul-api" // TODO: Lock to branch
 	"os"
 	"time"
+
+	"github.com/armon/consul-api"
 )
 
 type RealityClient struct {
