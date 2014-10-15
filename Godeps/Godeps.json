@@ -6,6 +6,11 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "github.com/andelf/go-curl",
+			"Comment": "compatible-with-go-release.r60-56-g8ff69d4",
+			"Rev": "8ff69d4be61e417cc432604ad991fa5664d38384"
+		},
+		{
 			"ImportPath": "github.com/anthonybishopric/gotcha",
 			"Rev": "96bbd5d8dcba351bd4c40abfc65cb3066346e061"
 		},
