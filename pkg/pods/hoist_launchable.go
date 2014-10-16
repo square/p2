@@ -2,6 +2,7 @@ package pods
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"io"
 	"io/ioutil"
@@ -33,7 +34,8 @@ type HoistLaunchable struct {
 
 func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilder) error {
 
-	err := hoistLaunchable.Disable()
+	// probably want to do something with output at some point
+	_, err := hoistLaunchable.Disable()
 	if err != nil {
 		return err
 	}
@@ -50,13 +52,25 @@ func (hoistLaunchable *HoistLaunchable) Launch() error {
 	return util.Errorf("Not implemented")
 }
 
-func (hoistLaunchable *HoistLaunchable) Disable() error {
-	cmd := exec.Command(path.Join(hoistLaunchable.InstallDir(), "bin", "disable"))
-	if err := cmd.Run(); err != nil {
-		return err
+func (hoistLaunchable *HoistLaunchable) Disable() (string, error) {
+	output, err := hoistLaunchable.invokeBinScript("disable")
+	if err != nil {
+		return output, err
 	}
 
-	return nil
+	return output, nil
+}
+
+func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, error) {
+	cmd := exec.Command(path.Join(hoistLaunchable.InstallDir(), "bin", script))
+	buffer := bytes.Buffer{}
+	cmd.Stdout = &buffer
+	err := cmd.Run()
+	if err != nil {
+		return buffer.String(), err
+	}
+
+	return buffer.String(), nil
 }
 
 func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilder) error {
