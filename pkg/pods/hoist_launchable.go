@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/square/p2/pkg/runit"
-	"github.com/square/p2/pkg/util"
 
 	curl "github.com/andelf/go-curl"
 )
@@ -49,12 +48,33 @@ func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilde
 	return nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Launch() error {
-	return util.Errorf("Not implemented")
+func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+	// Should probably do something with output at some point
+	// probably want to do something with output at some point
+	_, err := hoistLaunchable.Start(serviceBuilder, sv)
+	if err != nil {
+		return err
+	}
+
+	_, err = hoistLaunchable.Enable()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (hoistLaunchable *HoistLaunchable) Disable() (string, error) {
 	output, err := hoistLaunchable.invokeBinScript("disable")
+	if err != nil {
+		return output, err
+	}
+
+	return output, nil
+}
+
+func (hoistLaunchable *HoistLaunchable) Enable() (string, error) {
+	output, err := hoistLaunchable.invokeBinScript("enable")
 	if err != nil {
 		return output, err
 	}
@@ -92,6 +112,24 @@ func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilde
 		}
 	}
 	return stopOutputs, nil
+}
+
+func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) ([]string, error) {
+	runitServices, err := hoistLaunchable.RunitServices(serviceBuilder)
+	if err != nil {
+		return nil, err
+	}
+
+	startOutputs := make([]string, len(runitServices))
+	for i, runitService := range runitServices {
+		startOutput, err := sv.Start(&runitService)
+		startOutputs[i] = startOutput
+		if err != nil {
+			return startOutputs, err
+		}
+	}
+
+	return startOutputs, nil
 }
 
 func (hoistLaunchable *HoistLaunchable) RunitServices(serviceBuilder *runit.ServiceBuilder) ([]runit.Service, error) {

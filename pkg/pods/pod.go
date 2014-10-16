@@ -6,6 +6,7 @@ import (
 	"path"
 
 	curl "github.com/andelf/go-curl"
+	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -22,6 +23,21 @@ func PodFromManifestPath(path string) (*Pod, error) {
 	return &Pod{podManifest}, nil
 }
 
+func (pod *Pod) Halt() error {
+	launchables, err := getLaunchablesFromPodManifest(pod.podManifest)
+	if err != nil {
+		return err
+	}
+
+	for _, launchable := range launchables {
+		err = launchable.Halt(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (pod *Pod) Launch() error {
 	launchables, err := getLaunchablesFromPodManifest(pod.podManifest)
 	if err != nil {
@@ -29,7 +45,7 @@ func (pod *Pod) Launch() error {
 	}
 
 	for _, launchable := range launchables {
-		err = launchable.Launch()
+		err = launchable.Launch(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
 		if err != nil {
 			return err
 		}
