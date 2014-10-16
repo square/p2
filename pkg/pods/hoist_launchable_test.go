@@ -74,20 +74,16 @@ func TestInstallDir(t *testing.T) {
 	Assert(t).AreEqual(expectedDir, installDir, "Install dir did not have expected value")
 }
 
-func RunitServicesForFakeHoistLaunchableForDir(dirName string, serviceBuilder *runit.ServiceBuilder) ([]runit.Service, error) {
+func FakeHoistLaunchableForDir(dirName string) *HoistLaunchable {
 	_, filename, _, _ := runtime.Caller(0)
 	launchableInstallDir := path.Join(path.Dir(filename), dirName)
 	launchable := &HoistLaunchable{"testLaunchable.tar.gz", "testLaunchable", "testPod", new(fakeCurlEasyInit), launchableInstallDir}
 
-	runitServices, err := launchable.RunitServices(serviceBuilder)
-	if err != nil {
-		return nil, err
-	}
-	return runitServices, nil
+	return launchable
 }
 
 func TestMultipleRunitServices(t *testing.T) {
-	runitServices, err := RunitServicesForFakeHoistLaunchableForDir("multiple_script_test_hoist_launchable", runit.DefaultBuilder)
+	runitServices, err := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable").RunitServices(runit.DefaultBuilder)
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
 
 	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__script1", "/var/service/testPod__testLaunchable__script2"}
@@ -97,10 +93,32 @@ func TestMultipleRunitServices(t *testing.T) {
 }
 
 func TestSingleRunitService(t *testing.T) {
-	runitServices, err := RunitServicesForFakeHoistLaunchableForDir("single_script_test_hoist_launchable", runit.DefaultBuilder)
+	runitServices, err := FakeHoistLaunchableForDir("single_script_test_hoist_launchable").RunitServices(runit.DefaultBuilder)
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
 
 	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__script1"}
 	Assert(t).AreEqual(1, len(runitServices), "Found an unexpected number of runit services")
 	Assert(t).AreEqual(expectedServicePaths[0], runitServices[0].Path, "Runit service paths from launchable did not match expected")
+}
+
+func TestDisable(t *testing.T) {
+	hoistLaunchable := FakeHoistLaunchableForDir("successful_disable_test_hoist_launchable")
+
+	disableOutput, err := hoistLaunchable.Disable()
+	Assert(t).IsNil(err, "Got an unexpected error when calling disable on the test hoist launchable")
+
+	expectedDisableOutput := "disable invoked\n"
+
+	Assert(t).AreEqual(expectedDisableOutput, disableOutput, "Did not get expected output from test disable script")
+}
+
+func TestFailingDisable(t *testing.T) {
+	hoistLaunchable := FakeHoistLaunchableForDir("failing_disable_test_hoist_launchable")
+
+	disableOutput, err := hoistLaunchable.Disable()
+	Assert(t).IsNotNil(err, "Got an unexpected error when calling disable on the test hoist launchable")
+
+	expectedDisableOutput := "Error: this script failed\n"
+
+	Assert(t).AreEqual(expectedDisableOutput, disableOutput, "Did not get expected output from test disable script")
 }
