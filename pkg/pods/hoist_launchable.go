@@ -2,6 +2,7 @@ package pods
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"io"
 	"io/ioutil"
@@ -31,14 +32,16 @@ type HoistLaunchable struct {
 	rootDir  string
 }
 
-func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilder) error {
+func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 
-	err := hoistLaunchable.Disable()
+	// probably want to do something with output at some point
+	_, err := hoistLaunchable.Disable()
 	if err != nil {
 		return err
 	}
 
-	err = hoistLaunchable.Stop(serviceBuilder)
+	// probably want to do something with output at some point
+	_, err = hoistLaunchable.Stop(serviceBuilder, sv)
 	if err != nil {
 		return err
 	}
@@ -50,17 +53,45 @@ func (hoistLaunchable *HoistLaunchable) Launch() error {
 	return util.Errorf("Not implemented")
 }
 
-func (hoistLaunchable *HoistLaunchable) Disable() error {
-	cmd := exec.Command(path.Join(hoistLaunchable.InstallDir(), "bin", "disable"))
-	if err := cmd.Run(); err != nil {
-		return err
+func (hoistLaunchable *HoistLaunchable) Disable() (string, error) {
+	output, err := hoistLaunchable.invokeBinScript("disable")
+	if err != nil {
+		return output, err
 	}
 
-	return nil
+	return output, nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilder) error {
-	return util.Errorf("Not implemented")
+func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, error) {
+	cmd := exec.Command(path.Join(hoistLaunchable.InstallDir(), "bin", script))
+	buffer := bytes.Buffer{}
+	cmd.Stdout = &buffer
+	err := cmd.Run()
+	if err != nil {
+		return buffer.String(), err
+	}
+
+	return buffer.String(), nil
+}
+
+func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) ([]string, error) {
+	runitServices, err := hoistLaunchable.RunitServices(serviceBuilder)
+	if err != nil {
+		return nil, err
+	}
+
+	stopOutputs := make([]string, len(runitServices))
+	for i, runitService := range runitServices {
+		stopOutput, err := sv.Stop(&runitService)
+		stopOutputs[i] = stopOutput
+		if err != nil {
+			// TODO: FAILURE SCENARIO (what should we do here?)
+			// 1) does `sv stop` ever exit nonzero?
+			// 2) should we keep stopping them all anyway?
+			return stopOutputs, err
+		}
+	}
+	return stopOutputs, nil
 }
 
 func (hoistLaunchable *HoistLaunchable) RunitServices(serviceBuilder *runit.ServiceBuilder) ([]runit.Service, error) {
