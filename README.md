@@ -8,7 +8,7 @@ This is a collection of tools intended to allow huge fleets of machines to parti
 
 # Playing Around
 
-To build the tools in `pp`, run `rake build`. The `bin` subdirectory contains agents and executables, the `pkg` directory contains usefl libraries for Go. We strongly believe in small things that do one thing well.
+To build the tools in `pp`, run `rake build`. The `bin` subdirectory contains agents and executables, the `pkg` directory contains useful libraries for Go. We strongly believe in small things that do one thing well.
 
 # License
 
