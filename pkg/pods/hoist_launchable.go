@@ -32,7 +32,7 @@ type HoistLaunchable struct {
 	rootDir  string
 }
 
-func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilder) error {
+func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 
 	// probably want to do something with output at some point
 	_, err := hoistLaunchable.Disable()
@@ -40,7 +40,8 @@ func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilde
 		return err
 	}
 
-	err = hoistLaunchable.Stop(serviceBuilder)
+	// probably want to do something with output at some point
+	_, err = hoistLaunchable.Stop(serviceBuilder, sv)
 	if err != nil {
 		return err
 	}
@@ -73,8 +74,24 @@ func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, 
 	return buffer.String(), nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilder) error {
-	return util.Errorf("Not implemented")
+func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) ([]string, error) {
+	runitServices, err := hoistLaunchable.RunitServices(serviceBuilder)
+	if err != nil {
+		return nil, err
+	}
+
+	stopOutputs := make([]string, len(runitServices))
+	for i, runitService := range runitServices {
+		stopOutput, err := sv.Stop(&runitService)
+		stopOutputs[i] = stopOutput
+		if err != nil {
+			// TODO: FAILURE SCENARIO (what should we do here?)
+			// 1) does `sv stop` ever exit nonzero?
+			// 2) should we keep stopping them all anyway?
+			return stopOutputs, err
+		}
+	}
+	return stopOutputs, nil
 }
 
 func (hoistLaunchable *HoistLaunchable) RunitServices(serviceBuilder *runit.ServiceBuilder) ([]runit.Service, error) {
