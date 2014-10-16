@@ -1,12 +1,12 @@
 package pods
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path"
 
 	curl "github.com/andelf/go-curl"
+	"github.com/square/p2/pkg/util"
 )
 
 type Pod struct {
@@ -31,7 +31,7 @@ func (pod *Pod) Launch() error {
 func getLaunchablesFromPodManifest(podManifest *PodManifest) ([]HoistLaunchable, error) {
 	launchableStanzas := podManifest.LaunchableStanzas
 	if len(launchableStanzas) == 0 {
-		return nil, errors.New("Pod must provide at least one launchable, none found")
+		return nil, util.Errorf("Pod must provide at least one launchable, none found")
 	}
 
 	launchables := make([]HoistLaunchable, len(launchableStanzas))
@@ -50,6 +50,10 @@ func getLaunchablesFromPodManifest(podManifest *PodManifest) ([]HoistLaunchable,
 
 }
 
+func PodHomeDir(podId string) string {
+	return path.Join("/data", "pods", podId)
+}
+
 // This assumes all launchables are Hoist artifacts, we will generalize this at a later point
 func (pod *Pod) Install() error {
 	// if we don't want this to run as root, need another way to create pods directory
@@ -65,7 +69,7 @@ func (pod *Pod) Install() error {
 	}
 
 	for _, launchable := range launchables {
-		err := launchable.Install(podHome)
+		err := launchable.Install()
 		if err != nil {
 			return err
 		}
@@ -76,7 +80,8 @@ func (pod *Pod) Install() error {
 
 func getLaunchable(launchableStanza LaunchableStanza, podId string) (*HoistLaunchable, error) {
 	if launchableStanza.LaunchableType == "hoist" {
-		return &HoistLaunchable{launchableStanza.Location, launchableStanza.LaunchableId, podId, curl.EasyInit()}, nil
+		launchableRootDir := path.Join(PodHomeDir(podId), launchableStanza.LaunchableId)
+		return &HoistLaunchable{launchableStanza.Location, launchableStanza.LaunchableId, podId, curl.EasyInit(), launchableRootDir}, nil
 	} else {
 		return nil, fmt.Errorf("%s is not supported yet", launchableStanza.LaunchableType)
 	}
