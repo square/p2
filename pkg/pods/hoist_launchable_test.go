@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/util"
 
 	curl "github.com/andelf/go-curl"
 
@@ -55,11 +56,11 @@ func TestInstall(t *testing.T) {
 
 		launchable.Install()
 
-		Assert(t).AreEqual(testLocation, fcei.url, "The correct url wasn't set for the curl library")
+		Assert(t).AreEqual(fcei.url, testLocation, "The correct url wasn't set for the curl library")
 		fileContents, err := ioutil.ReadFile(testPath)
 		Assert(t).IsNil(err, "Didn't expect an error when reading the test file")
-		Assert(t).AreEqual("test worked!", string(fileContents), "Test file didn't have the expected contents")
-		Assert(t).AreEqual(testLocation, fcei.url, "Curl wasn't set to fetch the correct url")
+		Assert(t).AreEqual(string(fileContents), "test worked!", "Test file didn't have the expected contents")
+		Assert(t).AreEqual(fcei.url, testLocation, "Curl wasn't set to fetch the correct url")
 	}
 }
 
@@ -71,7 +72,7 @@ func TestInstallDir(t *testing.T) {
 	installDir := launchable.InstallDir()
 
 	expectedDir := path.Join(tempDir, "installs", "test_launchable_abc123")
-	Assert(t).AreEqual(expectedDir, installDir, "Install dir did not have expected value")
+	Assert(t).AreEqual(installDir, expectedDir, "Install dir did not have expected value")
 }
 
 func FakeHoistLaunchableForDir(dirName string) *HoistLaunchable {
@@ -88,8 +89,8 @@ func TestMultipleRunitServices(t *testing.T) {
 
 	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__script1", "/var/service/testPod__testLaunchable__script2"}
 	Assert(t).AreEqual(2, len(runitServices), "Found an unexpected number of runit services")
-	Assert(t).AreEqual(expectedServicePaths[0], runitServices[0].Path, "Runit service paths from launchable did not match expected")
-	Assert(t).AreEqual(expectedServicePaths[1], runitServices[1].Path, "Runit service paths from launchable did not match expected")
+	Assert(t).AreEqual(runitServices[0].Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
+	Assert(t).AreEqual(runitServices[1].Path, expectedServicePaths[1], "Runit service paths from launchable did not match expected")
 }
 
 func TestSingleRunitService(t *testing.T) {
@@ -97,8 +98,8 @@ func TestSingleRunitService(t *testing.T) {
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
 
 	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__script1"}
-	Assert(t).AreEqual(1, len(runitServices), "Found an unexpected number of runit services")
-	Assert(t).AreEqual(expectedServicePaths[0], runitServices[0].Path, "Runit service paths from launchable did not match expected")
+	Assert(t).AreEqual(len(runitServices), 1, "Found an unexpected number of runit services")
+	Assert(t).AreEqual(runitServices[0].Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
 }
 
 func TestDisable(t *testing.T) {
@@ -109,16 +110,44 @@ func TestDisable(t *testing.T) {
 
 	expectedDisableOutput := "disable invoked\n"
 
-	Assert(t).AreEqual(expectedDisableOutput, disableOutput, "Did not get expected output from test disable script")
+	Assert(t).AreEqual(disableOutput, expectedDisableOutput, "Did not get expected output from test disable script")
 }
 
 func TestFailingDisable(t *testing.T) {
 	hoistLaunchable := FakeHoistLaunchableForDir("failing_disable_test_hoist_launchable")
 
 	disableOutput, err := hoistLaunchable.Disable()
-	Assert(t).IsNotNil(err, "Got an unexpected error when calling disable on the test hoist launchable")
+	Assert(t).IsNotNil(err, "Expected disable to fail for this test, but it didn't")
 
 	expectedDisableOutput := "Error: this script failed\n"
 
-	Assert(t).AreEqual(expectedDisableOutput, disableOutput, "Did not get expected output from test disable script")
+	Assert(t).AreEqual(disableOutput, expectedDisableOutput, "Did not get expected output from test disable script")
+}
+
+func TestStop(t *testing.T) {
+	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+
+	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("../runit/fake_sv")}
+	stopOutputs, err := hoistLaunchable.Stop(runit.DefaultBuilder, &sv)
+
+	Assert(t).IsNil(err, "Got an unexpected error when attempting to stop runit services")
+	Assert(t).AreEqual(stopOutputs[0], "stop /var/service/testPod__testLaunchable__script1\n", "sv invoked with incorrect arguments")
+	Assert(t).AreEqual(stopOutputs[1], "stop /var/service/testPod__testLaunchable__script2\n", "sv invoked with incorrect arguments")
+}
+
+func TestFailingStop(t *testing.T) {
+	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+
+	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("../runit/erring_sv")}
+	stopOutputs, err := hoistLaunchable.Stop(runit.DefaultBuilder, &sv)
+
+	Assert(t).AreEqual(len(stopOutputs), 2, "Got an unexpected number of outputs from sv stop")
+	Assert(t).IsNotNil(err, "Expected sv stop to fail for this test, but it didn't")
+
+	// erring script gives nothing on stdout, so we expect empty strings
+	Assert(t).AreEqual(stopOutputs[0], "", "sv invoked with incorrect arguments")
+
+	// we didn't even attempt to stop script2 because script1 fails, but output is
+	// initialized to a length equaling number of services
+	Assert(t).AreEqual(stopOutputs[1], "", "sv invoked with incorrect arguments")
 }
