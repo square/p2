@@ -8,19 +8,19 @@ import (
 	. "github.com/anthonybishopric/gotcha"
 )
 
-func getTestManifest() *PodManifest {
+func getTestPod() *Pod {
 	_, filename, _, _ := runtime.Caller(0)
 	testPath := path.Join(path.Dir(filename), "test_manifest.yaml")
 	pod, _ := PodFromManifestPath(testPath)
-	return pod.podManifest
+	return pod
 }
 
 func getLaunchableStanzasFromTestManifest() map[string]LaunchableStanza {
-	return getTestManifest().LaunchableStanzas
+	return getTestPod().podManifest.LaunchableStanzas
 }
 
 func getPodIdFromTestManifest() string {
-	return getTestManifest().Id
+	return getTestPod().podManifest.Id
 }
 
 func TestGetLaunchable(t *testing.T) {

@@ -3,6 +3,7 @@ package pods
 import (
 	"os"
 	"path"
+	"runtime"
 
 	curl "github.com/andelf/go-curl"
 
@@ -48,9 +49,9 @@ func TestInstall(t *testing.T) {
 	podId := getPodIdFromTestManifest()
 	for _, stanza := range launchableStanzas {
 		fcei := new(fakeCurlEasyInit)
-		launchable := &HoistLaunchable{testLocation, stanza.LaunchableId, podId, fcei}
+		launchable := &HoistLaunchable{testLocation, stanza.LaunchableId, podId, fcei, tempDir}
 
-		launchable.Install(tempDir)
+		launchable.Install()
 
 		Assert(t).AreEqual(testLocation, fcei.url, "The correct url wasn't set for the curl library")
 		fileContents, err := ioutil.ReadFile(testPath)
@@ -66,10 +67,39 @@ func TestInstall(t *testing.T) {
 func TestInstallDir(t *testing.T) {
 	tempDir := os.TempDir()
 	testLocation := "http://someserver/test_launchable_abc123.tar.gz"
-	launchable := &HoistLaunchable{testLocation, "testLaunchable", "testPod", new(fakeCurlEasyInit)}
+	launchable := &HoistLaunchable{testLocation, "testLaunchable", "testPod", new(fakeCurlEasyInit), tempDir}
 
-	installDir := launchable.InstallDir(path.Join(tempDir, "testPod"))
+	installDir := launchable.InstallDir()
 
-	expectedDir := path.Join(tempDir, "testPod", "testLaunchable", "installs", "test_launchable_abc123")
+	expectedDir := path.Join(tempDir, "installs", "test_launchable_abc123")
 	Assert(t).AreEqual(expectedDir, installDir, "Install dir did not have expected value")
+}
+
+func RunitServicesForFakeHoistLaunchableForDir(dirName string) []string {
+	_, filename, _, _ := runtime.Caller(0)
+	launchableInstallDir := path.Join(path.Dir(filename), dirName)
+	launchable := &HoistLaunchable{"testLaunchable.tar.gz", "testLaunchable", "testPod", new(fakeCurlEasyInit), launchableInstallDir}
+
+	runitServices, err := launchable.RunitServices()
+	if err != nil {
+		panic(err)
+	}
+	return runitServices
+}
+
+func TestMultipleRunitServices(t *testing.T) {
+	runitServices := RunitServicesForFakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+
+	expectedServices := []string{"/var/service/testPod__testLaunchable__script1", "/var/service/testPod__testLaunchable__script2"}
+	Assert(t).AreEqual(2, len(runitServices), "Found an unexpected number of runit services")
+	Assert(t).AreEqual(expectedServices[0], runitServices[0], "Runit service paths from launchable did not match expected")
+	Assert(t).AreEqual(expectedServices[1], runitServices[1], "Runit service paths from launchable did not match expected")
+}
+
+func TestSingleRunitService(t *testing.T) {
+	runitServices := RunitServicesForFakeHoistLaunchableForDir("single_script_test_hoist_launchable")
+
+	expectedServices := []string{"/var/service/testPod__testLaunchable__script1"}
+	Assert(t).AreEqual(1, len(runitServices), "Found an unexpected number of runit services")
+	Assert(t).AreEqual(expectedServices[0], runitServices[0], "Runit service paths from launchable did not match expected")
 }
