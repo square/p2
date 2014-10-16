@@ -11,8 +11,8 @@ import (
 func getTestManifest() *PodManifest {
 	_, filename, _, _ := runtime.Caller(0)
 	testPath := path.Join(path.Dir(filename), "test_manifest.yaml")
-	manifest, _ := ManifestFromPath(testPath)
-	return manifest
+	pod, _ := PodFromManifestPath(testPath)
+	return pod.podManifest
 }
 
 func getLaunchableStanzasFromTestManifest() map[string]LaunchableStanza {
