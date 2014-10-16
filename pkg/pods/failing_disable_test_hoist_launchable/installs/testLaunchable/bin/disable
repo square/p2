@@ -1,0 +1,3 @@
+#!/bin/bash
+echo "Error: this script failed"
+exit 1
