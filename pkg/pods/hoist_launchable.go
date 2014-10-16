@@ -3,13 +3,15 @@ package pods
 import (
 	"archive/tar"
 	"compress/gzip"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
 	"strings"
+
+	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/util"
 
 	curl "github.com/andelf/go-curl"
 )
@@ -29,14 +31,14 @@ type HoistLaunchable struct {
 	rootDir  string
 }
 
-func (hoistLaunchable *HoistLaunchable) Halt() error {
+func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilder) error {
 
 	err := hoistLaunchable.Disable()
 	if err != nil {
 		return err
 	}
 
-	err = hoistLaunchable.Stop()
+	err = hoistLaunchable.Stop(serviceBuilder)
 	if err != nil {
 		return err
 	}
@@ -45,7 +47,7 @@ func (hoistLaunchable *HoistLaunchable) Halt() error {
 }
 
 func (hoistLaunchable *HoistLaunchable) Launch() error {
-	return nil
+	return util.Errorf("Not implemented")
 }
 
 func (hoistLaunchable *HoistLaunchable) Disable() error {
@@ -57,23 +59,15 @@ func (hoistLaunchable *HoistLaunchable) Disable() error {
 	return nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Stop() error {
-	// runitServices, err := hoistLaunchable.RunitServices()
-	// if err != nil {
-	// 	return err
-	// }
-	// for _, runitService := range runitServices {
-	// 	cmd := exec.Command("sv", "stop", runitService)
-	// }
-	return nil
+func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilder) error {
+	return util.Errorf("Not implemented")
 }
 
-func (hoistLaunchable *HoistLaunchable) RunitServices() ([]string, error) {
+func (hoistLaunchable *HoistLaunchable) RunitServices(serviceBuilder *runit.ServiceBuilder) ([]runit.Service, error) {
 	binLaunchPath := path.Join(hoistLaunchable.InstallDir(), "bin", "launch")
 
 	binLaunchInfo, err := os.Stat(binLaunchPath)
 	if err != nil {
-		fmt.Println("error0")
 		return nil, err
 	}
 
@@ -83,24 +77,25 @@ func (hoistLaunchable *HoistLaunchable) RunitServices() ([]string, error) {
 	if !(binLaunchInfo.IsDir()) {
 		serviceNameComponents := []string{hoistLaunchable.podId, "__", hoistLaunchable.id}
 		serviceName := strings.Join(serviceNameComponents, "")
-		runitServicePath := path.Join("/var", "service", serviceName)
+		servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
+		runitService := &runit.Service{servicePath, serviceName}
 
-		return []string{runitServicePath}, nil
+		return []runit.Service{*runitService}, nil
 	} else {
 		services, err := ioutil.ReadDir(binLaunchPath)
 		if err != nil {
-			fmt.Println("error1")
 			return nil, err
 		}
 
-		servicePaths := make([]string, len(services))
+		runitServices := make([]runit.Service, len(services))
 		for i, service := range services {
 			serviceNameComponents := []string{hoistLaunchable.podId, "__", hoistLaunchable.id, "__", service.Name()}
 			serviceName := strings.Join(serviceNameComponents, "")
-			runitServicePath := path.Join("/var", "service", serviceName)
-			servicePaths[i] = runitServicePath
+			servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
+			runitService := &runit.Service{servicePath, serviceName}
+			runitServices[i] = *runitService
 		}
-		return servicePaths, nil
+		return runitServices, nil
 	}
 }
 

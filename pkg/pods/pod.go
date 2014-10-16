@@ -1,12 +1,12 @@
 package pods
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path"
 
 	curl "github.com/andelf/go-curl"
+	"github.com/square/p2/pkg/util"
 )
 
 type Pod struct {
@@ -31,7 +31,7 @@ func (pod *Pod) Launch() error {
 func getLaunchablesFromPodManifest(podManifest *PodManifest) ([]HoistLaunchable, error) {
 	launchableStanzas := podManifest.LaunchableStanzas
 	if len(launchableStanzas) == 0 {
-		return nil, errors.New("Pod must provide at least one launchable, none found")
+		return nil, util.Errorf("Pod must provide at least one launchable, none found")
 	}
 
 	launchables := make([]HoistLaunchable, len(launchableStanzas))
