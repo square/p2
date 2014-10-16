@@ -2,13 +2,14 @@ package main
 
 import (
 	"flag"
-	. "github.com/platypus-platform/pp/pkg/logging"
-	"github.com/platypus-platform/pp/pkg/store"
-	"gopkg.in/yaml.v1"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
+
+	. "github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/store"
+	"gopkg.in/yaml.v1"
 )
 
 type SetliveConfig struct {

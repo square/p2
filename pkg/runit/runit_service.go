@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"os/exec"
 
-	"github.com/platypus-platform/pp/pkg/util"
+	"github.com/square/p2/pkg/util"
 )
 
 type SV struct {

@@ -1,9 +1,10 @@
 package pp
 
 import (
-	"github.com/platypus-platform/pp/pkg/kv-consul"
-	. "github.com/platypus-platform/pp/pkg/logging"
 	"path"
+
+	"github.com/square/p2/pkg/kv-consul"
+	. "github.com/square/p2/pkg/logging"
 )
 
 type DeployConfig struct {

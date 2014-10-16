@@ -1,6 +1,6 @@
 # Platypus Platform: Tools for Scalable Software Deployment
 
-[![Build Status](https://travis-ci.org/platypus-platform/pp.svg?branch=master)](https://travis-ci.org/platypus-platform/pp)
+[![Build Status](https://travis-ci.org/square/p2.svg?branch=master)](https://travis-ci.org/square/p2)
 
 This is a collection of tools intended to allow huge fleets of machines to participate in safe, flexible and scalable deployment models.
 

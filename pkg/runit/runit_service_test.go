@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
-	"github.com/platypus-platform/pp/pkg/util"
+	"github.com/square/p2/pkg/util"
 )
 
 func TestRunitServicesCanBeStarted(t *testing.T) {

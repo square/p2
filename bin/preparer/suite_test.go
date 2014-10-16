@@ -3,7 +3,7 @@ package main
 import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/platypus-platform/pp/pkg/logging"
+	"github.com/square/p2/pkg/logging"
 
 	"testing"
 )

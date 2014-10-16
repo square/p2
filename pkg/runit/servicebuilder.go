@@ -4,7 +4,7 @@
 //
 // Example usage:
 //
-// import "github.com/platypus-platform/pp/pkg/runit"
+// import "github.com/square/p2/pkg/runit"
 //
 // template := runit.NewSBTemplate("exampleapp")
 // template.AddEntry("exampleapp_web", []string{"python", "-m", "SimpleHTTPServer"})

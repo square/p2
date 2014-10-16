@@ -1,5 +1,5 @@
 {
-	"ImportPath": "github.com/platypus-platform/pp",
+	"ImportPath": "github.com/square/p2",
 	"GoVersion": "go1.3",
 	"Packages": [
 		"./..."
