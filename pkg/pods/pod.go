@@ -3,6 +3,7 @@ package pods
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path"
 
 	curl "github.com/andelf/go-curl"
@@ -49,12 +50,14 @@ func getLaunchablesFromPodManifest(podManifest *PodManifest) ([]HoistLaunchable,
 
 }
 
-func HoistLaunchableHomeDir(podId string) string {
-	return path.Join("/data", "app", podId)
-}
-
 // This assumes all launchables are Hoist artifacts, we will generalize this at a later point
 func (pod *Pod) Install() error {
+	// if we don't want this to run as root, need another way to create pods directory
+	podsHome := path.Join("/data", "pods")
+	os.MkdirAll(podsHome, 0755)
+
+	podHome := path.Join(podsHome, pod.podManifest.Id)
+	os.Mkdir(podHome, 0755) // this dir needs to be owned by different user at some point
 
 	launchables, err := getLaunchablesFromPodManifest(pod.podManifest)
 	if err != nil {
@@ -62,7 +65,7 @@ func (pod *Pod) Install() error {
 	}
 
 	for _, launchable := range launchables {
-		err := launchable.Install(HoistLaunchableHomeDir(pod.podManifest.Id))
+		err := launchable.Install(podHome)
 		if err != nil {
 			return err
 		}
