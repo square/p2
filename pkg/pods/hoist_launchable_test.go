@@ -8,38 +8,28 @@ import (
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
 
-	curl "github.com/andelf/go-curl"
-
 	"io/ioutil"
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
 )
 
-type fakeCurlEasyInit struct {
-	callback func([]byte, interface{}) bool
-	url      string
-	fp       *os.File
+type fakeCurl struct {
+	url     string
+	outPath string
 }
 
-func (fcei *fakeCurlEasyInit) Setopt(opt int, arg interface{}) error {
-	if opt == curl.OPT_WRITEFUNCTION {
-		fcei.callback = arg.(func([]byte, interface{}) bool)
-	} else if opt == curl.OPT_URL {
-		fcei.url = arg.(string)
-	} else if opt == curl.OPT_WRITEDATA {
-		fcei.fp = arg.(*os.File)
+func (fc *fakeCurl) File(url string, outPath string, args ...interface{}) error {
+	fc.url = url
+	fc.outPath = outPath
+
+	f, err := os.OpenFile(outPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	defer f.Close()
+	if err != nil {
+		return err
 	}
-	return nil
-}
+	f.Write([]byte("test worked!"))
 
-func (*fakeCurlEasyInit) Cleanup() {
-}
-
-func (fcei *fakeCurlEasyInit) Perform() error {
-	fp := fcei.fp
-
-	fcei.callback([]byte("test worked!"), fp)
 	return nil
 }
 
@@ -51,23 +41,23 @@ func TestInstall(t *testing.T) {
 	launchableStanzas := getLaunchableStanzasFromTestManifest()
 	podId := getPodIdFromTestManifest()
 	for _, stanza := range launchableStanzas {
-		fcei := new(fakeCurlEasyInit)
-		launchable := &HoistLaunchable{testLocation, stanza.LaunchableId, podId, fcei, tempDir}
+		fc := new(fakeCurl)
+		launchable := &HoistLaunchable{testLocation, stanza.LaunchableId, podId, fc.File, tempDir}
 
 		launchable.Install()
 
-		Assert(t).AreEqual(fcei.url, testLocation, "The correct url wasn't set for the curl library")
+		Assert(t).AreEqual(fc.url, testLocation, "The correct url wasn't set for the curl library")
+		Assert(t).AreEqual(fc.outPath, testPath, "The correct url wasn't set for the curl library")
 		fileContents, err := ioutil.ReadFile(testPath)
 		Assert(t).IsNil(err, "Didn't expect an error when reading the test file")
 		Assert(t).AreEqual(string(fileContents), "test worked!", "Test file didn't have the expected contents")
-		Assert(t).AreEqual(fcei.url, testLocation, "Curl wasn't set to fetch the correct url")
 	}
 }
 
 func TestInstallDir(t *testing.T) {
 	tempDir := os.TempDir()
 	testLocation := "http://someserver/test_launchable_abc123.tar.gz"
-	launchable := &HoistLaunchable{testLocation, "testLaunchable", "testPod", new(fakeCurlEasyInit), tempDir}
+	launchable := &HoistLaunchable{testLocation, "testLaunchable", "testPod", new(fakeCurl).File, tempDir}
 
 	installDir := launchable.InstallDir()
 
@@ -78,7 +68,7 @@ func TestInstallDir(t *testing.T) {
 func FakeHoistLaunchableForDir(dirName string) *HoistLaunchable {
 	_, filename, _, _ := runtime.Caller(0)
 	launchableInstallDir := path.Join(path.Dir(filename), dirName)
-	launchable := &HoistLaunchable{"testLaunchable.tar.gz", "testLaunchable", "testPod", new(fakeCurlEasyInit), launchableInstallDir}
+	launchable := &HoistLaunchable{"testLaunchable.tar.gz", "testLaunchable", "testPod", new(fakeCurl).File, launchableInstallDir}
 
 	return launchable
 }

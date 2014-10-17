@@ -5,7 +5,7 @@ import (
 	"os"
 	"path"
 
-	curl "github.com/andelf/go-curl"
+	"github.com/nareix/curl"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
 )
@@ -106,7 +106,7 @@ func (pod *Pod) Install() error {
 func getLaunchable(launchableStanza LaunchableStanza, podId string) (*HoistLaunchable, error) {
 	if launchableStanza.LaunchableType == "hoist" {
 		launchableRootDir := path.Join(PodHomeDir(podId), launchableStanza.LaunchableId)
-		return &HoistLaunchable{launchableStanza.Location, launchableStanza.LaunchableId, podId, curl.EasyInit(), launchableRootDir}, nil
+		return &HoistLaunchable{launchableStanza.Location, launchableStanza.LaunchableId, podId, curl.File, launchableRootDir}, nil
 	} else {
 		return nil, fmt.Errorf("%s is not supported yet", launchableStanza.LaunchableType)
 	}

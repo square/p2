@@ -12,23 +12,15 @@ import (
 	"strings"
 
 	"github.com/square/p2/pkg/runit"
-
-	curl "github.com/andelf/go-curl"
 )
-
-type easy interface {
-	Cleanup()
-	Perform() error
-	Setopt(int, interface{}) error
-}
 
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type HoistLaunchable struct {
-	location string
-	id       string
-	podId    string
-	fetcher  easy
-	rootDir  string
+	location    string
+	id          string
+	podId       string
+	fetchToFile func(string, string, ...interface{}) error
+	rootDir     string
 }
 
 func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
@@ -174,38 +166,20 @@ func (hoistLaunchable *HoistLaunchable) Install() error {
 		return nil
 	}
 
-	easy := hoistLaunchable.fetcher
-	defer easy.Cleanup()
+	outPath := path.Join(os.TempDir(), hoistLaunchable.Name())
 
-	// follow redirects
-	easy.Setopt(curl.OPT_FOLLOWLOCATION, true)
-
-	// fail on HTTP 4xx errors
-	easy.Setopt(curl.OPT_FAILONERROR, true)
-	easy.Setopt(curl.OPT_URL, hoistLaunchable.location)
-
-	easy.Setopt(curl.OPT_WRITEFUNCTION, func(ptr []byte, userdata interface{}) bool {
-		file := userdata.(*os.File)
-		if _, err := file.Write(ptr); err != nil {
-			return false
-		}
-		return true
-	})
-
-	fp, err := os.Create(path.Join(os.TempDir(), hoistLaunchable.Name()))
+	err := hoistLaunchable.fetchToFile(hoistLaunchable.location, outPath)
 	if err != nil {
 		return err
 	}
-	defer fp.Close()
 
-	easy.Setopt(curl.OPT_WRITEDATA, fp)
-
-	if err := easy.Perform(); err != nil {
+	fd, err := os.Open(outPath)
+	if err != nil {
 		return err
 	}
-	fp.Seek(0, 0)
+	defer fd.Close()
 
-	err = extractTarGz(fp, installDir)
+	err = extractTarGz(fd, installDir)
 	if err != nil {
 		return err
 	}
