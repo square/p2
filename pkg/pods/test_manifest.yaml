@@ -11,7 +11,7 @@ launchables:
   app:
     launchable_type: hoist
     launchable_id: hello
-    location: http://localhost:8000/foo/bar/baz/hello_abc123.tar.gz
+    location: http://localhost:8000/foo/bar/baz/hello_abc123_vagrant.tar.gz
 
 config:
   # is written to a file and passed as CONFIG_FILE to the process

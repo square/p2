@@ -41,9 +41,10 @@ func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilde
 }
 
 func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+
 	// Should probably do something with output at some point
 	// probably want to do something with output at some point
-	_, err := hoistLaunchable.Start(serviceBuilder, sv)
+	err := hoistLaunchable.Start(serviceBuilder)
 	if err != nil {
 		return err
 	}
@@ -58,7 +59,9 @@ func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuil
 
 func (hoistLaunchable *HoistLaunchable) Disable() (string, error) {
 	output, err := hoistLaunchable.invokeBinScript("disable")
-	if err != nil {
+
+	// providing a disable script is optional, ignore those errors
+	if err != nil && !os.IsNotExist(err) {
 		return output, err
 	}
 
@@ -67,7 +70,9 @@ func (hoistLaunchable *HoistLaunchable) Disable() (string, error) {
 
 func (hoistLaunchable *HoistLaunchable) Enable() (string, error) {
 	output, err := hoistLaunchable.invokeBinScript("enable")
-	if err != nil {
+
+	// providing an enable script is optional, ignore those errors
+	if err != nil && !os.IsNotExist(err) {
 		return output, err
 	}
 
@@ -75,10 +80,16 @@ func (hoistLaunchable *HoistLaunchable) Enable() (string, error) {
 }
 
 func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, error) {
-	cmd := exec.Command(path.Join(hoistLaunchable.InstallDir(), "bin", script))
+	cmdPath := path.Join(hoistLaunchable.InstallDir(), "bin", script)
+	_, err := os.Stat(cmdPath)
+	if err != nil {
+		return "", err
+	}
+
+	cmd := exec.Command(cmdPath)
 	buffer := bytes.Buffer{}
 	cmd.Stdout = &buffer
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		return buffer.String(), err
 	}
@@ -87,14 +98,14 @@ func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, 
 }
 
 func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) ([]string, error) {
-	runitServices, err := hoistLaunchable.RunitServices(serviceBuilder)
+	executables, err := hoistLaunchable.Executables(serviceBuilder)
 	if err != nil {
 		return nil, err
 	}
 
-	stopOutputs := make([]string, len(runitServices))
-	for i, runitService := range runitServices {
-		stopOutput, err := sv.Stop(&runitService)
+	stopOutputs := make([]string, len(executables))
+	for i, executable := range executables {
+		stopOutput, err := sv.Stop(&executable.Service)
 		stopOutputs[i] = stopOutput
 		if err != nil {
 			// TODO: FAILURE SCENARIO (what should we do here?)
@@ -106,25 +117,40 @@ func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilde
 	return stopOutputs, nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) ([]string, error) {
-	runitServices, err := hoistLaunchable.RunitServices(serviceBuilder)
+func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuilder) error {
+	err := hoistLaunchable.BuildRunitServices(serviceBuilder)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	startOutputs := make([]string, len(runitServices))
-	for i, runitService := range runitServices {
-		startOutput, err := sv.Start(&runitService)
-		startOutputs[i] = startOutput
-		if err != nil {
-			return startOutputs, err
-		}
-	}
-
-	return startOutputs, nil
+	return nil
 }
 
-func (hoistLaunchable *HoistLaunchable) RunitServices(serviceBuilder *runit.ServiceBuilder) ([]runit.Service, error) {
+func (hoistLaunchable *HoistLaunchable) BuildRunitServices(serviceBuilder *runit.ServiceBuilder) error {
+	sbName := strings.Join([]string{hoistLaunchable.podId, "__", hoistLaunchable.id}, "")
+	sbTemplate := runit.NewSBTemplate(sbName)
+	executables, err := hoistLaunchable.Executables(serviceBuilder)
+	if err != nil {
+		return err
+	}
+
+	for _, executable := range executables {
+		sbTemplate.AddEntry(executable.Name, []string{executable.execPath})
+	}
+	_, err = serviceBuilder.Write(sbTemplate)
+	if err != nil {
+		return err
+	}
+
+	_, err = serviceBuilder.Rebuild()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (hoistLaunchable *HoistLaunchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]HoistExecutable, error) {
 	binLaunchPath := path.Join(hoistLaunchable.InstallDir(), "bin", "launch")
 
 	binLaunchInfo, err := os.Stat(binLaunchPath)
@@ -140,23 +166,26 @@ func (hoistLaunchable *HoistLaunchable) RunitServices(serviceBuilder *runit.Serv
 		serviceName := strings.Join(serviceNameComponents, "")
 		servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
 		runitService := &runit.Service{servicePath, serviceName}
+		executable := &HoistExecutable{*runitService, binLaunchPath}
 
-		return []runit.Service{*runitService}, nil
+		return []HoistExecutable{*executable}, nil
 	} else {
 		services, err := ioutil.ReadDir(binLaunchPath)
 		if err != nil {
 			return nil, err
 		}
 
-		runitServices := make([]runit.Service, len(services))
+		executables := make([]HoistExecutable, len(services))
 		for i, service := range services {
 			serviceNameComponents := []string{hoistLaunchable.podId, "__", hoistLaunchable.id, "__", service.Name()}
 			serviceName := strings.Join(serviceNameComponents, "")
 			servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
+			execPath := path.Join(binLaunchPath, service.Name())
 			runitService := &runit.Service{servicePath, serviceName}
-			runitServices[i] = *runitService
+			executable := &HoistExecutable{*runitService, execPath}
+			executables[i] = *executable
 		}
-		return runitServices, nil
+		return executables, nil
 	}
 }
 

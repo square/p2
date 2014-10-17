@@ -83,7 +83,10 @@ func PodHomeDir(podId string) string {
 func (pod *Pod) Install() error {
 	// if we don't want this to run as root, need another way to create pods directory
 	podsHome := path.Join("/data", "pods")
-	os.MkdirAll(podsHome, 0755)
+	err := os.MkdirAll(podsHome, 0755)
+	if err != nil {
+		return err
+	}
 
 	podHome := path.Join(podsHome, pod.podManifest.Id)
 	os.Mkdir(podHome, 0755) // this dir needs to be owned by different user at some point
