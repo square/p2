@@ -5,28 +5,19 @@ id: hello
 # label: "%{PA & EXTERNAL}" # aspirational
 # we could alternatively give each host its own label and
 # manually schedule them this way in an initial phase.
-# label: %{aam18.sjc1.square | aam19.sjc1.square}
+# label: %{foo.bar.square | bam.biz.square}
 # instances: 3 # asiprational
 launchables:
   app:
     launchable_type: hoist
     launchable_id: hello
-    location: http://localhost:8000/sjc1/deployable/hello/hello_303ab3cc6f0692acba97126d99ac021a6f4134fe.tar.gz
+    location: http://localhost:8000/foo/bar/baz/hello_abc123.tar.gz
 
-# aspirational
-# config:
-#   # is written to a file and passed as CONFIG_FILE to the process
-#   ENVIRONMENT: staging
-#   DATACENTER: sjc1b
-#   TMPDIR: /data/app/ocrcard/current/tmp
-#   hoptoad:
-#     url: https://hoptoad.stage.vip.sjc1.square/notifier_api/v2/notices/
-#     api_key: 52d75371bdfcb4411492ef7c547f4b16
-#     api_key_warn: aceb90f44b950bf4ac58c03726711293
-#   datasources:
-#     ocrcard:
-#       username: ocrcard
-#       password: !secret ['/data/app/ocrcard/secrets/ocrcard-database.yaml', 'datasources.ocrcard.password']
-#       url: jdbc:mysql://pd-mysql-shared-rw.prod.srv.sjc1b.square/ocrcard_production?useUnicode=true&zeroDateTimeBehavior=convertToNull
-#       type: sql:mysql
-#   gns: gns.vip.sjc1b.square
+config:
+  # is written to a file and passed as CONFIG_FILE to the process
+  ENVIRONMENT: staging
+  TMPDIR: /data/app/ocrcard/current/tmp
+  hoptoad:
+    url: https://hoptoad.com/notifier_api/v2/notices/
+    api_key: aabbccddeeffgghhiiijjjkkklll
+    api_key_warn: aabbccddeeffgghhiiijjjkkklll
