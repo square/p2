@@ -6,17 +6,16 @@
 	],
 	"Deps": [
 		{
-			"ImportPath": "github.com/andelf/go-curl",
-			"Comment": "compatible-with-go-release.r60-56-g8ff69d4",
-			"Rev": "8ff69d4be61e417cc432604ad991fa5664d38384"
-		},
-		{
 			"ImportPath": "github.com/anthonybishopric/gotcha",
 			"Rev": "96bbd5d8dcba351bd4c40abfc65cb3066346e061"
 		},
 		{
 			"ImportPath": "github.com/armon/consul-api",
 			"Rev": "115162c46303047d9cefb2a953eeb643d4624a3e"
+		},
+		{
+			"ImportPath": "github.com/nareix/curl",
+			"Rev": "2a24f92ae126cce9a0ae1c97d955b0d06590448f"
 		},
 		{
 			"ImportPath": "github.com/onsi/ginkgo",
