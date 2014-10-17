@@ -2,9 +2,11 @@ package pods
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 
+	"github.com/square/p2/pkg/util"
 	"gopkg.in/yaml.v2"
 )
 
@@ -17,9 +19,10 @@ type LaunchableStanza struct {
 type PodManifest struct {
 	Id                string                      `yaml:"id"`
 	LaunchableStanzas map[string]LaunchableStanza `yaml:"launchables"`
+	Config            map[string]interface{}      `yaml:"config"`
 }
 
-func PodFromManifestPath(path string) (*Pod, error) {
+func PodManifestFromPath(path string) (*PodManifest, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -30,12 +33,7 @@ func PodFromManifestPath(path string) (*Pod, error) {
 		return nil, err
 	}
 
-	podManifest, err := PodManifestFromBytes(bytes)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Pod{podManifest}, nil
+	return PodManifestFromBytes(bytes)
 }
 
 func PodManifestFromBytes(bytes []byte) (*PodManifest, error) {
@@ -44,4 +42,16 @@ func PodManifestFromBytes(bytes []byte) (*PodManifest, error) {
 		return nil, fmt.Errorf("Could not read pod manifest: %s", err)
 	}
 	return podManifest, nil
+}
+
+func (manifest *PodManifest) Write(out io.Writer) error {
+	bytes, err := yaml.Marshal(manifest)
+	if err != nil {
+		return util.Errorf("Could not write manifest for %s: %s", manifest.Id, err)
+	}
+	_, err = out.Write(bytes)
+	if err != nil {
+		return util.Errorf("Could not write manifest for %s: %s", manifest.Id, err)
+	}
+	return nil
 }

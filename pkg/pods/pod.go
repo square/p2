@@ -13,6 +13,15 @@ type Pod struct {
 	podManifest *PodManifest
 }
 
+func PodFromManifestPath(path string) (*Pod, error) {
+	podManifest, err := PodManifestFromPath(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Pod{podManifest}, nil
+}
+
 func (pod *Pod) Launch() error {
 	launchables, err := getLaunchablesFromPodManifest(pod.podManifest)
 	if err != nil {
