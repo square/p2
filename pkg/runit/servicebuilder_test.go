@@ -98,10 +98,8 @@ func TestServiceBuilderWillExecuteRebuild(t *testing.T) {
 	defer os.RemoveAll(builder.StagingRoot)
 	defer os.RemoveAll(builder.RunitRoot)
 
-	b := bytes.Buffer{}
-	err := builder.RebuildWithStreams(os.Stdin, &b)
+	output, err := builder.RebuildWithStreams(os.Stdin)
 	Assert(t).IsNil(err, "Could not execute fake servicebuilder")
-	result := b.String()
 
-	Assert(t).IsTrue(strings.Contains(result, builder.ConfigRoot), fmt.Sprintf("the config root should have been passed in cmd: %s", result))
+	Assert(t).IsTrue(strings.Contains(output, builder.ConfigRoot), fmt.Sprintf("the config root should have been passed in cmd: %s", output))
 }

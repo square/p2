@@ -16,7 +16,7 @@ func TestPodManifestCanBeRead(t *testing.T) {
 	manifest, err := PodManifestFromPath(testPath)
 	Assert(t).IsNil(err, "Should not have failed to get pod manifest.")
 	Assert(t).AreEqual("hello", manifest.Id, "Id read from manifest didn't have expected value")
-	Assert(t).AreEqual("http://localhost:8000/foo/bar/baz/hello_abc123.tar.gz", manifest.LaunchableStanzas["app"].Location, "Location read from manifest didn't have expected value")
+	Assert(t).AreEqual(manifest.LaunchableStanzas["app"].Location, "http://localhost:8000/foo/bar/baz/hello_abc123_vagrant.tar.gz", "Location read from manifest didn't have expected value")
 	Assert(t).AreEqual("hoist", manifest.LaunchableStanzas["app"].LaunchableType, "LaunchableType read from manifest didn't have expected value")
 	Assert(t).AreEqual("hello", manifest.LaunchableStanzas["app"].LaunchableId, "LaunchableId read from manifest didn't have expected value")
 

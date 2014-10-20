@@ -30,6 +30,6 @@ func TestGetLaunchable(t *testing.T) {
 	for _, stanza := range launchableStanzas {
 		launchable, _ := getLaunchable(stanza, podId)
 		Assert(t).AreEqual("hello", launchable.id, "LaunchableId did not have expected value")
-		Assert(t).AreEqual("http://localhost:8000/foo/bar/baz/hello_abc123.tar.gz", launchable.location, "Launchable location did not have expected value")
+		Assert(t).AreEqual("http://localhost:8000/foo/bar/baz/hello_abc123_vagrant.tar.gz", launchable.location, "Launchable location did not have expected value")
 	}
 }

@@ -18,6 +18,7 @@
 package runit
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -84,17 +85,18 @@ func (b *ServiceBuilder) Write(template *SBTemplate) (string, error) {
 	return yamlPath, template.Write(f)
 }
 
-func (b *ServiceBuilder) Rebuild() error {
-	return b.RebuildWithStreams(os.Stdin, os.Stdout)
+func (b *ServiceBuilder) Rebuild() (string, error) {
+	return b.RebuildWithStreams(os.Stdin)
 }
 
-func (b *ServiceBuilder) RebuildWithStreams(stdin io.Reader, stdout io.Writer) error {
+func (b *ServiceBuilder) RebuildWithStreams(stdin io.Reader) (string, error) {
 	cmd := exec.Command(b.Bin, "-c", b.ConfigRoot, "-s", b.StagingRoot, "-d", b.RunitRoot)
 	cmd.Stdin = stdin
-	cmd.Stdout = stdout
+	buffer := bytes.Buffer{}
+	cmd.Stdout = &buffer
 	err := cmd.Run()
 	if err != nil {
-		return util.Errorf("Could not run servicebuilder rebuild: %s", err)
+		return "", util.Errorf("Could not run servicebuilder rebuild: %s", err)
 	}
-	return nil
+	return buffer.String(), nil
 }
