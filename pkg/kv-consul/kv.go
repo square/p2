@@ -3,8 +3,9 @@ package ppkv
 import (
 	"encoding/json"
 	"errors"
-	"github.com/armon/consul-api" // TODO: Lock to branch
 	"path"
+
+	"github.com/armon/consul-api" // TODO: Lock to branch
 )
 
 type Client struct {
@@ -67,12 +68,15 @@ func (c *Client) DeleteTree(query string) error {
 }
 
 func (c *Client) Put(key string, value interface{}) error {
-	body, _ := json.Marshal(value)
+	body, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
 
 	node := &consulapi.KVPair{
 		Key:   key,
 		Value: body,
 	}
-	_, err := c.kv.Put(node, nil)
+	_, err = c.kv.Put(node, nil)
 	return err
 }
