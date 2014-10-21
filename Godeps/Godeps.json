@@ -6,6 +6,11 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "github.com/Sirupsen/logrus",
+			"Comment": "v0.5.1-33-g3d46664",
+			"Rev": "3d46664b062c3a468b50e367f115179e26a9462c"
+		},
+		{
 			"ImportPath": "github.com/anthonybishopric/gotcha",
 			"Rev": "584121597f0f6ea20dbd6b63ddf7440b86e379ed"
 		},
@@ -16,16 +21,6 @@
 		{
 			"ImportPath": "github.com/nareix/curl",
 			"Rev": "2a24f92ae126cce9a0ae1c97d955b0d06590448f"
-		},
-		{
-			"ImportPath": "github.com/onsi/ginkgo",
-			"Comment": "v1.1.0-20-g75d0cd9",
-			"Rev": "75d0cd9c7ee52e99b13e6ccfd9e58b4f92b7795e"
-		},
-		{
-			"ImportPath": "github.com/onsi/gomega",
-			"Comment": "v1.0-19-g835b5e4",
-			"Rev": "835b5e4242c715976b98ed6bc6ece1d9c7879f66"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v1",
