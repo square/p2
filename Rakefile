@@ -20,7 +20,7 @@ end
 
 desc 'Test all projects'
 task :test => [:godep_check, :build] do
-  e "godep go test -v ./..."
+  e "godep go test -timeout 10s -v ./..."
 end
 
 desc 'Update all dependencies'

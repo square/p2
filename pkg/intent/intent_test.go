@@ -77,14 +77,13 @@ func TestHappyPathPodWatch(t *testing.T) {
 	quit := make(chan struct{})
 	defer close(quit)
 	errChan := make(chan error)
-	podCh := make(chan []pods.PodManifest)
+	podCh := make(chan pods.PodManifest)
 	go i.WatchPods(path, quit, errChan, podCh)
 	select {
 	case err := <-errChan:
 		t.Fatalf("Should not have resulted in an error: %s", err)
-	case manifests := <-podCh:
-		Assert(t).AreEqual(1, len(manifests), "should have received one manifest")
-		Assert(t).AreEqual("thepod", manifests[0].Id, "The ID of the manifest should have matched the document")
+	case manifest := <-podCh:
+		Assert(t).AreEqual("thepod", manifest.Id, "The ID of the manifest should have matched the document")
 	}
 }
 
@@ -95,7 +94,7 @@ func TestErrorPath(t *testing.T) {
 	quit := make(chan struct{})
 	defer close(quit)
 	errChan := make(chan error)
-	podCh := make(chan []pods.PodManifest)
+	podCh := make(chan pods.PodManifest)
 	go i.WatchPods(path, quit, errChan, podCh)
 	select {
 	case err := <-errChan:
@@ -113,7 +112,7 @@ func TestErrorsAndPodsReturned(t *testing.T) {
 	quit := make(chan struct{})
 	defer close(quit)
 	errChan := make(chan error)
-	podCh := make(chan []pods.PodManifest)
+	podCh := make(chan pods.PodManifest)
 	go i.WatchPods(path, quit, errChan, podCh)
 	var foundErr, foundManifests bool
 	x := 0
@@ -123,9 +122,8 @@ func TestErrorsAndPodsReturned(t *testing.T) {
 			Assert(t).IsNotNil(err, "The error should have been returned")
 			foundErr = true
 			x += 1
-		case manifests := <-podCh:
-			Assert(t).AreEqual(1, len(manifests), "should have received one manifest")
-			Assert(t).AreEqual("thepod", manifests[0].Id, "The ID of the manifest should have matched the document")
+		case manifest := <-podCh:
+			Assert(t).AreEqual("thepod", manifest.Id, "The ID of the manifest should have matched the document")
 			Assert(t).IsFalse(foundManifests, "should not have found more than one manifest")
 			foundManifests = true
 			x += 1

@@ -28,11 +28,12 @@ func NewWatcher(opts WatchOptions) *IntentWatcher {
 }
 
 // Watch the kv-store for changes to any pod under the given path. All pods will be returned
-// if any of them change. Clients that respond to changes to pod manifests should be capable
+// if any of them change; it is up to the client to ignore unchanged pods sent via this channel.
+// Clients that respond to changes to pod manifests should be capable
 // of acting on multiple changes at once. The quit channel is used to terminate watching on the
 // spawned goroutine. The error channel should be observed for errors from the underlying watcher.
 // If an error occurs during watch, it is the caller's responsibility to quit the watcher.
-func (i *IntentWatcher) WatchPods(path string, quit <-chan struct{}, errChan chan<- error, podCh chan<- []pods.PodManifest) error {
+func (i *IntentWatcher) WatchPods(path string, quit <-chan struct{}, errChan chan<- error, podCh chan<- pods.PodManifest) error {
 	client, err := consulapi.NewClient(i.ConsulOpts)
 	if err != nil {
 		return util.Errorf("Could not initialize consul client: %s", err)
@@ -56,23 +57,13 @@ func (i *IntentWatcher) WatchPods(path string, quit <-chan struct{}, errChan cha
 		case err := <-kvErrCh:
 			errChan <- err
 		case rawManifests := <-kvPairCh:
-			manifests := []pods.PodManifest{}
 			for _, pair := range rawManifests {
 				manifest, err := pods.PodManifestFromBytes(pair.Value)
 				if err != nil {
-					select {
-					case errChan <- util.Errorf("Could not parse pod manifest at %s: %s", pair.Key, err):
-					case <-quit:
-						return nil
-					}
+					errChan <- util.Errorf("Could not parse pod manifest at %s: %s", pair.Key, err)
 				} else {
-					manifests = append(manifests, *manifest)
+					podCh <- *manifest
 				}
-			}
-			select {
-			case podCh <- manifests:
-			case <-quit:
-				return nil
 			}
 		}
 	}
