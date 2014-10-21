@@ -48,11 +48,11 @@ func Watch(
 
 		if err != nil {
 			errCh <- err
-			continue
-		}
+		} else {
 
-		pairCh <- pairs
-		curIndex = meta.LastIndex
+			pairCh <- pairs
+			curIndex = meta.LastIndex
+		}
 	}
 }
 

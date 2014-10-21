@@ -213,6 +213,7 @@ func (hoistLaunchable *HoistLaunchable) Executables(serviceBuilder *runit.Servic
 func (hoistLaunchable *HoistLaunchable) Install() error {
 	installDir := hoistLaunchable.InstallDir()
 	if _, err := os.Stat(installDir); err == nil {
+		// install is idempotent, no-op if already installed
 		return nil
 	}
 

@@ -36,6 +36,10 @@ func PodManifestFromPath(path string) (*PodManifest, error) {
 	return PodManifestFromBytes(bytes)
 }
 
+func PodFromPodManifest(podManifest *PodManifest) *Pod {
+	return &Pod{podManifest}
+}
+
 func PodManifestFromBytes(bytes []byte) (*PodManifest, error) {
 	podManifest := &PodManifest{}
 	if err := yaml.Unmarshal(bytes, podManifest); err != nil {

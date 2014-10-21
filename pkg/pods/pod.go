@@ -14,6 +14,15 @@ type Pod struct {
 	podManifest *PodManifest
 }
 
+func CurrentPodFromManifestId(manifestId string) (*Pod, error) {
+	podManifest, err := PodManifestFromPath(CurrentPodManifestPath(manifestId))
+	if err != nil {
+		return nil, err
+	}
+
+	return &Pod{podManifest}, nil
+}
+
 func PodFromManifestPath(path string) (*Pod, error) {
 	podManifest, err := PodManifestFromPath(path)
 	if err != nil {
@@ -50,7 +59,21 @@ func (pod *Pod) Launch() error {
 			return err
 		}
 	}
+
+	f, err := os.OpenFile(CurrentPodManifestPath(pod.podManifest.Id), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+
+	err = pod.podManifest.Write(f)
+	if err != nil {
+		return err
+	}
 	return nil
+}
+
+func CurrentPodManifestPath(manifestId string) string {
+	return path.Join(PodHomeDir(manifestId), "current_manifest.yaml")
 }
 
 func getLaunchablesFromPodManifest(podManifest *PodManifest) ([]HoistLaunchable, error) {
