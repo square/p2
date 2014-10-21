@@ -7,7 +7,7 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/anthonybishopric/gotcha",
-			"Rev": "96bbd5d8dcba351bd4c40abfc65cb3066346e061"
+			"Rev": "584121597f0f6ea20dbd6b63ddf7440b86e379ed"
 		},
 		{
 			"ImportPath": "github.com/armon/consul-api",

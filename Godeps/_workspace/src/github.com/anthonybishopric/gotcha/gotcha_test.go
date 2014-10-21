@@ -2,6 +2,7 @@ package gotcha
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -27,7 +28,7 @@ func TestIsTrueFailsOnFalse(t *testing.T) {
 	fake := FakeTest{}
 	Assert(&fake).IsTrue(false, "the message")
 
-	if fake.receivedMessage != "the message. Was unexpectedly false." {
+	if !strings.HasSuffix(fake.receivedMessage, "the message. Was unexpectedly false.") {
 		t.Fatal("Expected Assert to fail")
 	}
 }
@@ -43,7 +44,7 @@ func TestAssertEqualsFailsOnInequality(t *testing.T) {
 	fake := FakeTest{}
 	Assert(&fake).AreEqual(1, 2, "the message")
 
-	Assert(t).IsTrue(fake.receivedMessage == "the message. Expected 1 to equal 2.", "the message should not have been empty. "+fake.receivedMessage)
+	Assert(t).IsTrue(strings.HasSuffix(fake.receivedMessage, "the message. Expected 1 to equal 2."), "the message should not have been empty. "+fake.receivedMessage)
 }
 
 func TestMatcherWillPassOnTrue(t *testing.T) {
@@ -61,7 +62,7 @@ func TestMatcherWillFailOnFalse(t *testing.T) {
 		return v == 2
 	}, "the message")
 
-	Assert(t).AreEqual("the message", fake.receivedMessage, "Expected the message to not be empty")
+	Assert(t).IsTrue(strings.HasSuffix(fake.receivedMessage, "the message"), "Expected the message to not be empty")
 }
 
 func TestComparatorPassesOnTrue(t *testing.T) {
@@ -79,7 +80,7 @@ func TestComparatorFailsOnFalse(t *testing.T) {
 		return i*5 == j
 	}, "the message")
 
-	Assert(t).AreEqual("the message", fake.receivedMessage, "Expected the comparator to return false and be a failure")
+	Assert(t).IsTrue(strings.HasSuffix(fake.receivedMessage, "the message"), "Expected the comparator to return false and be a failure")
 }
 
 func TestComparatorFailsWhenMismatchedElementCount(t *testing.T) {
@@ -89,5 +90,5 @@ func TestComparatorFailsWhenMismatchedElementCount(t *testing.T) {
 		return i*2 == j
 	}, "the message")
 
-	Assert(t).AreEqual("the message. Left and right don't match in length. (3, 4)", fake.receivedMessage, "Expected the comparator to return false and be a failure")
+	Assert(t).IsTrue(strings.HasSuffix(fake.receivedMessage, "the message. Left and right don't match in length. (3, 4)"), "Expected the comparator to return false and be a failure")
 }
