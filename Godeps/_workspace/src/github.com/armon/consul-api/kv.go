@@ -56,7 +56,7 @@ func (k *KV) Get(key string, q *QueryOptions) (*KVPair, *QueryMeta, error) {
 
 // List is used to lookup all keys under a prefix
 func (k *KV) List(prefix string, q *QueryOptions) (KVPairs, *QueryMeta, error) {
-	resp, qm, err := k.getInternal(prefix, []string{"recurse"}, q)
+	resp, qm, err := k.getInternal(prefix, map[string]string{"recurse": ""}, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -75,9 +75,9 @@ func (k *KV) List(prefix string, q *QueryOptions) (KVPairs, *QueryMeta, error) {
 // Keys is used to list all the keys under a prefix. Optionally,
 // a separator can be used to limit the responses.
 func (k *KV) Keys(prefix, separator string, q *QueryOptions) ([]string, *QueryMeta, error) {
-	params := []string{"keys"}
+	params := map[string]string{"keys": ""}
 	if separator != "" {
-		params = append(params, separator)
+		params["separator"] = separator
 	}
 	resp, qm, err := k.getInternal(prefix, params, q)
 	if err != nil {
@@ -95,11 +95,11 @@ func (k *KV) Keys(prefix, separator string, q *QueryOptions) ([]string, *QueryMe
 	return entries, qm, nil
 }
 
-func (k *KV) getInternal(key string, params []string, q *QueryOptions) (*http.Response, *QueryMeta, error) {
+func (k *KV) getInternal(key string, params map[string]string, q *QueryOptions) (*http.Response, *QueryMeta, error) {
 	r := k.c.newRequest("GET", "/v1/kv/"+key)
 	r.setQueryOptions(q)
-	for _, param := range params {
-		r.params.Set(param, "")
+	for param, val := range params {
+		r.params.Set(param, val)
 	}
 	rtt, resp, err := k.c.doRequest(r)
 	if err != nil {

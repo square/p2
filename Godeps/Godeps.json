@@ -11,7 +11,7 @@
 		},
 		{
 			"ImportPath": "github.com/armon/consul-api",
-			"Rev": "115162c46303047d9cefb2a953eeb643d4624a3e"
+			"Rev": "1b81c8e0c4cbf1d382310e4c0dc11221632e79d1"
 		},
 		{
 			"ImportPath": "github.com/nareix/curl",
@@ -19,13 +19,13 @@
 		},
 		{
 			"ImportPath": "github.com/onsi/ginkgo",
-			"Comment": "v1.1.0-19-g9064f16",
-			"Rev": "9064f1684d498eba1ec104747a766ee0f9222f44"
+			"Comment": "v1.1.0-20-g75d0cd9",
+			"Rev": "75d0cd9c7ee52e99b13e6ccfd9e58b4f92b7795e"
 		},
 		{
 			"ImportPath": "github.com/onsi/gomega",
-			"Comment": "v1.0-18-g0251f51",
-			"Rev": "0251f51e656d4db8980bdd6b15596abb27fdfe87"
+			"Comment": "v1.0-19-g835b5e4",
+			"Rev": "835b5e4242c715976b98ed6bc6ece1d9c7879f66"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v1",
