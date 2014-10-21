@@ -5,7 +5,7 @@ import (
 	"errors"
 	"path"
 
-	"github.com/armon/consul-api" // TODO: Lock to branch
+	"github.com/armon/consul-api"
 )
 
 type Client struct {
