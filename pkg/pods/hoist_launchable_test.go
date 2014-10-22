@@ -164,34 +164,24 @@ func TestNonexistentEnable(t *testing.T) {
 func TestStop(t *testing.T) {
 	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 
-	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("../runit/fake_sv")}
-	stopOutputs, err := hoistLaunchable.Stop(runit.DefaultBuilder, &sv)
+	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("fake_sv")}
+	err := hoistLaunchable.Stop(runit.DefaultBuilder, &sv)
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to stop runit services")
-	Assert(t).AreEqual(stopOutputs[0], "stop /var/service/testPod__testLaunchable__script1\n", "sv invoked with incorrect arguments")
-	Assert(t).AreEqual(stopOutputs[1], "stop /var/service/testPod__testLaunchable__script2\n", "sv invoked with incorrect arguments")
 }
 
 func TestFailingStop(t *testing.T) {
 	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 
-	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("../runit/erring_sv")}
-	stopOutputs, err := hoistLaunchable.Stop(runit.DefaultBuilder, &sv)
+	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("erring_sv")}
+	err := hoistLaunchable.Stop(runit.DefaultBuilder, &sv)
 
-	Assert(t).AreEqual(len(stopOutputs), 2, "Got an unexpected number of outputs from sv stop")
 	Assert(t).IsNotNil(err, "Expected sv stop to fail for this test, but it didn't")
-
-	// erring script gives nothing on stdout, so we expect empty strings
-	Assert(t).AreEqual(stopOutputs[0], "", "sv invoked with incorrect arguments")
-
-	// we didn't even attempt to stop script2 because script1 fails, but output is
-	// initialized to a length equaling number of services
-	Assert(t).AreEqual(stopOutputs[1], "", "sv invoked with incorrect arguments")
 }
 
 func FakeServiceBuilder() *runit.ServiceBuilder {
 	testDir := os.TempDir()
-	fakeSBBinPath := util.From(runtime.Caller(0)).ExpandPath("../runit/fake_servicebuilder")
+	fakeSBBinPath := util.From(runtime.Caller(0)).ExpandPath("fake_servicebuilder")
 	configRoot := path.Join(testDir, "/etc/servicebuilder.d")
 	os.MkdirAll(configRoot, 0755)
 	_, err := os.Stat(configRoot)
@@ -214,11 +204,39 @@ func FakeServiceBuilder() *runit.ServiceBuilder {
 func TestStart(t *testing.T) {
 	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	serviceBuilder := FakeServiceBuilder()
+	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("fake_sv")}
 	executables, err := hoistLaunchable.Executables(serviceBuilder)
-	err = hoistLaunchable.Start(serviceBuilder)
+	err = hoistLaunchable.Start(serviceBuilder, &sv)
 	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod__testLaunchable.yaml")
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
+	expectedLines := []string{
+		fmt.Sprintf("%s:", executables[0].Name),
+		"  run:",
+		fmt.Sprintf("  - %s", executables[0].execPath),
+		fmt.Sprintf("%s:", executables[1].Name),
+		"  run:",
+		fmt.Sprintf("  - %s", executables[1].execPath),
+		"",
+	}
+	expected := strings.Join(expectedLines, "\n")
+
+	f, err := os.Open(outFilePath)
+	defer f.Close()
+	bytes, err := ioutil.ReadAll(f)
+	Assert(t).IsNil(err, "Got an unexpected error reading the servicebuilder yaml file")
+	Assert(t).AreEqual(string(bytes), expected, "Servicebuilder yaml file didn't have expected contents")
+}
+
+func TestFailingStart(t *testing.T) {
+	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	serviceBuilder := FakeServiceBuilder()
+	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("erring_sv")}
+	executables, _ := hoistLaunchable.Executables(serviceBuilder)
+	err := hoistLaunchable.Start(serviceBuilder, &sv)
+	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod__testLaunchable.yaml")
+
+	Assert(t).IsNotNil(err, "Expected an error starting runit services")
 	expectedLines := []string{
 		fmt.Sprintf("%s:", executables[0].Name),
 		"  run:",

@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+
+echo $@ >&2
+exit 1
