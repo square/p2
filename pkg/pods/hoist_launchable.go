@@ -10,20 +10,29 @@ import (
 	"os/exec"
 	"path"
 	"strings"
-	"time"
+
+	"github.com/nareix/curl"
 
 	"github.com/square/p2/pkg/runit"
 )
 
+type Fetcher func(string, string, ...interface{}) error
+
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type HoistLaunchable struct {
-	location    string
-	id          string
-	podId       string
-	fetchToFile func(string, string, ...interface{}) error
-	rootDir     string
+	Location    string                                     // A URL where we can download the artifact from.
+	Id          string                                     // A unique identifier for this launchable, used when creating runit services
+	RunAs       string                                     // The user to assume when launching the executable
+	ConfigDir   string                                     // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
+	FetchToFile func(string, string, ...interface{}) error // Callback that downloads the file from the remote location.
+	RootDir     string                                     // The root directory of the launchable, containing N:N>=1 installs.
 }
 
+func DefaultFetcher() Fetcher {
+	return curl.File
+}
+
+// Stops all services
 func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 
 	// probably want to do something with output at some point
@@ -33,7 +42,7 @@ func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilde
 	}
 
 	// probably want to do something with output at some point
-	err = hoistLaunchable.Stop(serviceBuilder, sv)
+	_, err = hoistLaunchable.Stop(serviceBuilder, sv)
 	if err != nil {
 		return err
 	}
@@ -45,7 +54,7 @@ func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuil
 
 	// Should probably do something with output at some point
 	// probably want to do something with output at some point
-	err := hoistLaunchable.Start(serviceBuilder, sv)
+	err := hoistLaunchable.Start(serviceBuilder)
 	if err != nil {
 		return err
 	}
@@ -98,65 +107,52 @@ func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, 
 	return buffer.String(), nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) ([]string, error) {
 	executables, err := hoistLaunchable.Executables(serviceBuilder)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	for _, executable := range executables {
-		_, err := sv.Stop(&executable.Service)
+	stopOutputs := make([]string, len(executables))
+	for i, executable := range executables {
+		stopOutput, err := sv.Stop(&executable.Service)
+		stopOutputs[i] = stopOutput
 		if err != nil {
 			// TODO: FAILURE SCENARIO (what should we do here?)
 			// 1) does `sv stop` ever exit nonzero?
 			// 2) should we keep stopping them all anyway?
-			return err
+			return stopOutputs, err
 		}
 	}
-	return nil
+	return stopOutputs, nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-
-	// if the service is new, building the runit services also starts them, making the sv start superfluous but harmless
+func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuilder) error {
 	err := hoistLaunchable.BuildRunitServices(serviceBuilder)
 	if err != nil {
 		return err
-	}
-
-	executables, err := hoistLaunchable.Executables(serviceBuilder)
-	if err != nil {
-		return err
-	}
-
-	for _, executable := range executables {
-		maxRetries := 3
-		var err error
-		for i := 0; i < maxRetries; i++ {
-			_, err = sv.Start(&executable.Service)
-			if err == nil {
-				break
-			}
-			<-time.After(1)
-		}
-		if err != nil {
-			return err
-		}
 	}
 
 	return nil
 }
 
 func (hoistLaunchable *HoistLaunchable) BuildRunitServices(serviceBuilder *runit.ServiceBuilder) error {
-	sbName := strings.Join([]string{hoistLaunchable.podId, "__", hoistLaunchable.id}, "")
-	sbTemplate := runit.NewSBTemplate(sbName)
+	sbTemplate := runit.NewSBTemplate(hoistLaunchable.Id)
 	executables, err := hoistLaunchable.Executables(serviceBuilder)
 	if err != nil {
 		return err
 	}
 
 	for _, executable := range executables {
-		sbTemplate.AddEntry(executable.Name, []string{executable.execPath})
+		sbTemplate.AddEntry(executable.Name, []string{
+			"/usr/bin/nolimit",
+			"/usr/bin/chpst",
+			"-u",
+			hoistLaunchable.RunAs,
+			"-C",
+			hoistLaunchable.ConfigDir,
+			executable.execPath,
+		})
 	}
 	_, err = serviceBuilder.Write(sbTemplate)
 	if err != nil {
@@ -183,8 +179,7 @@ func (hoistLaunchable *HoistLaunchable) Executables(serviceBuilder *runit.Servic
 	// ideally a launchable will have just one launch script someday (can't be
 	// a dir)
 	if !(binLaunchInfo.IsDir()) {
-		serviceNameComponents := []string{hoistLaunchable.podId, "__", hoistLaunchable.id}
-		serviceName := strings.Join(serviceNameComponents, "")
+		serviceName := hoistLaunchable.Id // use the ID of the launchable as its unique Runit service name
 		servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
 		runitService := &runit.Service{servicePath, serviceName}
 		executable := &HoistExecutable{*runitService, binLaunchPath}
@@ -198,8 +193,8 @@ func (hoistLaunchable *HoistLaunchable) Executables(serviceBuilder *runit.Servic
 
 		executables := make([]HoistExecutable, len(services))
 		for i, service := range services {
-			serviceNameComponents := []string{hoistLaunchable.podId, "__", hoistLaunchable.id, "__", service.Name()}
-			serviceName := strings.Join(serviceNameComponents, "")
+			// use the ID of the hoist launchable plus "__" plus the name of the script inside the launch/ directory
+			serviceName := strings.Join([]string{hoistLaunchable.Id, "__", service.Name()}, "")
 			servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
 			execPath := path.Join(binLaunchPath, service.Name())
 			runitService := &runit.Service{servicePath, serviceName}
@@ -216,9 +211,9 @@ func (hoistLaunchable *HoistLaunchable) Install() error {
 		return nil
 	}
 
-	outPath := path.Join(os.TempDir(), hoistLaunchable.Name())
+	outPath := path.Join(os.TempDir(), hoistLaunchable.Version())
 
-	err := hoistLaunchable.fetchToFile(hoistLaunchable.location, outPath)
+	err := hoistLaunchable.FetchToFile(hoistLaunchable.Location, outPath)
 	if err != nil {
 		return err
 	}
@@ -236,9 +231,11 @@ func (hoistLaunchable *HoistLaunchable) Install() error {
 	return nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Name() string {
-	_, fileName := path.Split(hoistLaunchable.location)
-	return fileName
+// The version of the artifact is currently derived from the location, using
+// the naming scheme <the-app>_<unique-version-string>.tar.gz
+func (hoistLaunchable *HoistLaunchable) Version() string {
+	_, fileName := path.Split(hoistLaunchable.Location)
+	return fileName[:len(fileName)-len(".tar.gz")]
 }
 
 func (*HoistLaunchable) Type() string {
@@ -246,9 +243,8 @@ func (*HoistLaunchable) Type() string {
 }
 
 func (hoistLaunchable *HoistLaunchable) InstallDir() string {
-	launchableFileName := hoistLaunchable.Name()
-	launchableName := launchableFileName[:len(launchableFileName)-len(".tar.gz")]
-	return path.Join(hoistLaunchable.rootDir, "installs", launchableName) // need to generalize this (no /data/pods assumption)
+	launchableName := hoistLaunchable.Version()
+	return path.Join(hoistLaunchable.RootDir, "installs", launchableName) // need to generalize this (no /data/pods assumption)
 }
 
 func extractTarGz(fp *os.File, dest string) (err error) {

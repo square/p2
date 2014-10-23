@@ -35,6 +35,10 @@ type SBTemplate struct {
 	runClauses map[string]map[string][]string
 }
 
+type SBTemplateEntry struct {
+	baseCmd []string
+}
+
 func NewSBTemplate(name string) *SBTemplate {
 	return &SBTemplate{
 		name:       name,
