@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/nareix/curl"
 	"github.com/square/p2/pkg/runit"
@@ -31,7 +32,6 @@ func DefaultFetcher() Fetcher {
 	return curl.File
 }
 
-// Stops all services
 func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 
 	// probably want to do something with output at some point
@@ -41,7 +41,7 @@ func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilde
 	}
 
 	// probably want to do something with output at some point
-	_, err = hoistLaunchable.Stop(serviceBuilder, sv)
+	err = hoistLaunchable.Stop(serviceBuilder, sv)
 	if err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuil
 
 	// Should probably do something with output at some point
 	// probably want to do something with output at some point
-	err := hoistLaunchable.Start(serviceBuilder)
+	err := hoistLaunchable.Start(serviceBuilder, sv)
 	if err != nil {
 		return err
 	}
@@ -106,30 +106,50 @@ func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, 
 	return buffer.String(), nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) ([]string, error) {
+func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 	executables, err := hoistLaunchable.Executables(serviceBuilder)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	stopOutputs := make([]string, len(executables))
-	for i, executable := range executables {
-		stopOutput, err := sv.Stop(&executable.Service)
-		stopOutputs[i] = stopOutput
+	for _, executable := range executables {
+		_, err := sv.Stop(&executable.Service)
 		if err != nil {
 			// TODO: FAILURE SCENARIO (what should we do here?)
 			// 1) does `sv stop` ever exit nonzero?
 			// 2) should we keep stopping them all anyway?
-			return stopOutputs, err
+			return err
 		}
 	}
-	return stopOutputs, nil
+	return nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuilder) error {
+func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+
+	// if the service is new, building the runit services also starts them, making the sv start superfluous but harmless
 	err := hoistLaunchable.BuildRunitServices(serviceBuilder)
 	if err != nil {
 		return err
+	}
+
+	executables, err := hoistLaunchable.Executables(serviceBuilder)
+	if err != nil {
+		return err
+	}
+
+	for _, executable := range executables {
+		maxRetries := 3
+		var err error
+		for i := 0; i < maxRetries; i++ {
+			_, err = sv.Start(&executable.Service)
+			if err == nil {
+				break
+			}
+			<-time.After(1)
+		}
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
