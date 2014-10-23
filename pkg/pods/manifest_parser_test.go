@@ -25,6 +25,18 @@ func TestPodManifestCanBeRead(t *testing.T) {
 	Assert(t).IsTrue(len(hoptoad) == 3, "Should have read the hoptoad value from the config stanza")
 }
 
+func testPod() string {
+	return `id: thepod
+launchables:
+  my-app:
+    launchable_type: hoist
+    launchable_id: web
+    location: https://localhost:4444/foo/bar/baz.tar.gz
+config:
+  ENVIRONMENT: staging
+`
+}
+
 func TestPodManifestCanBeWritten(t *testing.T) {
 	manifest := PodManifest{
 		Id:                "thepod",
@@ -42,28 +54,12 @@ func TestPodManifestCanBeWritten(t *testing.T) {
 	buff := bytes.Buffer{}
 	manifest.Write(&buff)
 
-	expected := `id: thepod
-launchables:
-  my-app:
-    launchable_type: hoist
-    launchable_id: web
-    location: https://localhost:4444/foo/bar/baz.tar.gz
-config:
-  ENVIRONMENT: staging
-`
+	expected := testPod()
 	Assert(t).AreEqual(expected, buff.String(), "Expected the manifest to marshal to the given yaml")
 }
 
 func TestPodManifestCanWriteItsConfigStanzaSeparately(t *testing.T) {
-	config := `id: thepod
-launchables:
-  my-app:
-    launchable_type: hoist
-    launchable_id: web
-    location: https://localhost:4444/foo/bar/baz.tar.gz
-config:
-  ENVIRONMENT: staging
-`
+	config := testPod()
 	manifest, err := PodManifestFromBytes(bytes.NewBufferString(config).Bytes())
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 
@@ -72,4 +68,13 @@ config:
 	Assert(t).IsNil(err, "should not have erred when writing the config")
 	expected := "ENVIRONMENT: staging\n"
 	Assert(t).AreEqual(expected, buff.String(), "config should have been written")
+}
+
+func TestPodManifestCanReportItsSHA(t *testing.T) {
+	config := testPod()
+	manifest, err := PodManifestFromBytes(bytes.NewBufferString(config).Bytes())
+	Assert(t).IsNil(err, "should not have erred when building manifest")
+	val, err := manifest.SHA()
+	Assert(t).IsNil(err, "should not have erred when getting SHA")
+	Assert(t).AreEqual("f176d13fd3ec91e21bc163ec8b2e937df3625ea5", val, "SHA mismatched expectations")
 }

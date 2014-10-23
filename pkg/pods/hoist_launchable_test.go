@@ -219,16 +219,7 @@ func TestStart(t *testing.T) {
 	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod__testLaunchable.yaml")
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
-	// expectedLines := []string{
-	// 	fmt.Sprintf("%s:", executables[0].Name),
-	// 	"  run:",
-	// 	fmt.Sprintf("  - %s", executables[0].execPath),
-	// 	fmt.Sprintf("%s:", executables[1].Name),
-	// 	"  run:",
-	// 	fmt.Sprintf("  - %s", executables[1].execPath),
-	// 	"",
-	// }
-	// expected := strings.Join(expectedLines, "\n")
+
 	expected := fmt.Sprintf(`%s:
   run:
   - /usr/bin/nolimit
