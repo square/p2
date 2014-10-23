@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 
-	"github.com/nareix/curl"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
 )
@@ -102,6 +102,10 @@ func PodHomeDir(podId string) string {
 	return path.Join("/data", "pods", podId)
 }
 
+func ConfigDir(podId string) string {
+	return path.Join(PodHomeDir(podId), "config")
+}
+
 // This assumes all launchables are Hoist artifacts, we will generalize this at a later point
 func (pod *Pod) Install() error {
 	// if we don't want this to run as root, need another way to create pods directory
@@ -132,7 +136,8 @@ func (pod *Pod) Install() error {
 func getLaunchable(launchableStanza LaunchableStanza, podId string) (*HoistLaunchable, error) {
 	if launchableStanza.LaunchableType == "hoist" {
 		launchableRootDir := path.Join(PodHomeDir(podId), launchableStanza.LaunchableId)
-		return &HoistLaunchable{launchableStanza.Location, launchableStanza.LaunchableId, podId, curl.File, launchableRootDir}, nil
+		launchableId := strings.Join([]string{podId, "__", launchableStanza.LaunchableId}, "")
+		return &HoistLaunchable{launchableStanza.Location, launchableId, launchableId, ConfigDir(podId), DefaultFetcher(), launchableRootDir}, nil
 	} else {
 		return nil, fmt.Errorf("%s is not supported yet", launchableStanza.LaunchableType)
 	}

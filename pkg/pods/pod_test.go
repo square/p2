@@ -29,7 +29,7 @@ func TestGetLaunchable(t *testing.T) {
 	Assert(t).AreNotEqual(0, len(launchableStanzas), "Expected there to be at least one launchable stanza in the test manifest")
 	for _, stanza := range launchableStanzas {
 		launchable, _ := getLaunchable(stanza, podId)
-		Assert(t).AreEqual("hello", launchable.id, "LaunchableId did not have expected value")
-		Assert(t).AreEqual("http://localhost:8000/foo/bar/baz/hello_abc123_vagrant.tar.gz", launchable.location, "Launchable location did not have expected value")
+		Assert(t).AreEqual("hello__hello", launchable.Id, "LaunchableId did not have expected value")
+		Assert(t).AreEqual("http://localhost:8000/foo/bar/baz/hello_abc123_vagrant.tar.gz", launchable.Location, "Launchable location did not have expected value")
 	}
 }

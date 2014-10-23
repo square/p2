@@ -1,3 +1,7 @@
+// Package pods borrows heavily from the Kubernetes definition of pods to provide
+// p2 with a convenient way to colocate several related launchable artifacts, as well
+// as basic shared runtime configuration. Pod manifests are written as YAML files
+// that describe what to launch.
 package pods
 
 import (
@@ -56,6 +60,18 @@ func (manifest *PodManifest) Write(out io.Writer) error {
 	_, err = out.Write(bytes)
 	if err != nil {
 		return util.Errorf("Could not write manifest for %s: %s", manifest.Id, err)
+	}
+	return nil
+}
+
+func (manifest *PodManifest) WriteConfig(out io.Writer) error {
+	bytes, err := yaml.Marshal(manifest.Config)
+	if err != nil {
+		return util.Errorf("Could not write config for %s: %s", manifest.Id, err)
+	}
+	_, err = out.Write(bytes)
+	if err != nil {
+		return util.Errorf("Could not write config for %s: %s", manifest.Id, err)
 	}
 	return nil
 }

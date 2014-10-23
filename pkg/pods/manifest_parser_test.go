@@ -53,3 +53,23 @@ config:
 `
 	Assert(t).AreEqual(expected, buff.String(), "Expected the manifest to marshal to the given yaml")
 }
+
+func TestPodManifestCanWriteItsConfigStanzaSeparately(t *testing.T) {
+	config := `id: thepod
+launchables:
+  my-app:
+    launchable_type: hoist
+    launchable_id: web
+    location: https://localhost:4444/foo/bar/baz.tar.gz
+config:
+  ENVIRONMENT: staging
+`
+	manifest, err := PodManifestFromBytes(bytes.NewBufferString(config).Bytes())
+	Assert(t).IsNil(err, "should not have erred when building manifest")
+
+	buff := bytes.Buffer{}
+	err = manifest.WriteConfig(&buff)
+	Assert(t).IsNil(err, "should not have erred when writing the config")
+	expected := "ENVIRONMENT: staging\n"
+	Assert(t).AreEqual(expected, buff.String(), "config should have been written")
+}
