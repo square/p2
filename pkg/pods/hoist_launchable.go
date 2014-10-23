@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/nareix/curl"
-
 	"github.com/square/p2/pkg/runit"
 )
 

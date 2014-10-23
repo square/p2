@@ -5,6 +5,9 @@
 package pods
 
 import (
+	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -70,4 +73,17 @@ func (manifest *PodManifest) WriteConfig(out io.Writer) error {
 		return util.Errorf("Could not write config for %s: %s", manifest.Id, err)
 	}
 	return nil
+}
+
+// SHA() returns a string containing a hex encoded SHA-1
+// checksum of the manifest's contents
+func (manifest *PodManifest) SHA() (string, error) {
+	valueBuf := bytes.Buffer{}
+	err := manifest.Write(&valueBuf)
+	if err != nil {
+		return "", err
+	}
+	hasher := sha1.New()
+	hasher.Write(valueBuf.Bytes())
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
