@@ -77,7 +77,7 @@ func (pod *Pod) Install() error {
 	}
 
 	podHome := path.Join(podsHome, pod.podManifest.Id)
-	os.Mkdir(podHome, 0755) // this dir needs to be owned by different user at some point
+	os.MkdirAll(podHome, 0755) // this dir needs to be owned by different user at some point
 
 	// we may need to write config files to a unique directory per pod version, depending on restart semantics. Need
 	// to think about this more.
