@@ -38,10 +38,11 @@ func TestGetLaunchable(t *testing.T) {
 }
 
 func TestPodCanWriteEnvFile(t *testing.T) {
-	envDir := os.TempDir()
+	envDir, err := ioutil.TempDir("", "envdir")
+	Assert(t).IsNil(err, "Should not have been an error writing the env dir")
 	defer os.RemoveAll(envDir)
 
-	err := writeEnvFile(envDir, "ENVIRONMENT", "staging")
+	err = writeEnvFile(envDir, "ENVIRONMENT", "staging")
 	Assert(t).IsNil(err, "There should not have been an error writing the config file")
 
 	expectedWritten := path.Join(envDir, "ENVIRONMENT")
@@ -54,8 +55,10 @@ func TestPodCanWriteEnvFile(t *testing.T) {
 }
 
 func TestPodSetupConfigWritesFiles(t *testing.T) {
-	envDir := os.TempDir()
-	configDir := os.TempDir()
+	envDir, err := ioutil.TempDir("", "envdir")
+	Assert(t).IsNil(err, "Should not have been an error writing the env dir")
+	configDir, err := ioutil.TempDir("", "confdir")
+	Assert(t).IsNil(err, "Should not have been an error writing the env dir")
 	defer os.RemoveAll(envDir)
 	defer os.RemoveAll(configDir)
 	manifestStr := `id: thepod
