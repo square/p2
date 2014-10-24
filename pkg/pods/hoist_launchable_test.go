@@ -6,7 +6,6 @@ import (
 	"os"
 	"path"
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/square/p2/pkg/runit"
@@ -36,14 +35,13 @@ func (fc *fakeCurl) File(url string, outPath string, args ...interface{}) error 
 
 func TestInstall(t *testing.T) {
 	tempDir := os.TempDir()
-	testPath := path.Join(tempDir, "test_launchable.tar.gz")
+	testPath := path.Join(tempDir, "test_launchable")
 	testLocation := "http://someserver/test_launchable.tar.gz"
 	os.Remove(testPath)
 	launchableStanzas := getLaunchableStanzasFromTestManifest()
-	podId := getPodIdFromTestManifest()
 	for _, stanza := range launchableStanzas {
 		fc := new(fakeCurl)
-		launchable := &HoistLaunchable{testLocation, stanza.LaunchableId, podId, fc.File, tempDir}
+		launchable := &HoistLaunchable{testLocation, stanza.LaunchableId, "testuser", tempDir, fc.File, tempDir}
 
 		launchable.Install()
 
@@ -58,7 +56,7 @@ func TestInstall(t *testing.T) {
 func TestInstallDir(t *testing.T) {
 	tempDir := os.TempDir()
 	testLocation := "http://someserver/test_launchable_abc123.tar.gz"
-	launchable := &HoistLaunchable{testLocation, "testLaunchable", "testPod", new(fakeCurl).File, tempDir}
+	launchable := &HoistLaunchable{testLocation, "testLaunchable", "testuser", tempDir, new(fakeCurl).File, tempDir}
 
 	installDir := launchable.InstallDir()
 
@@ -67,9 +65,10 @@ func TestInstallDir(t *testing.T) {
 }
 
 func FakeHoistLaunchableForDir(dirName string) *HoistLaunchable {
+	tempDir := os.TempDir()
 	_, filename, _, _ := runtime.Caller(0)
 	launchableInstallDir := path.Join(path.Dir(filename), dirName)
-	launchable := &HoistLaunchable{"testLaunchable.tar.gz", "testLaunchable", "testPod", new(fakeCurl).File, launchableInstallDir}
+	launchable := &HoistLaunchable{"testLaunchable.tar.gz", "testPod__testLaunchable", "testLaunchable", tempDir, new(fakeCurl).File, launchableInstallDir}
 
 	return launchable
 }
@@ -161,15 +160,6 @@ func TestNonexistentEnable(t *testing.T) {
 	Assert(t).AreEqual(enableOutput, expectedEnableOutput, "Did not get expected output from test enable script")
 }
 
-func TestStop(t *testing.T) {
-	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
-
-	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("fake_sv")}
-	err := hoistLaunchable.Stop(runit.DefaultBuilder, &sv)
-
-	Assert(t).IsNil(err, "Got an unexpected error when attempting to stop runit services")
-}
-
 func TestFailingStop(t *testing.T) {
 	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 
@@ -177,6 +167,98 @@ func TestFailingStop(t *testing.T) {
 	err := hoistLaunchable.Stop(runit.DefaultBuilder, &sv)
 
 	Assert(t).IsNotNil(err, "Expected sv stop to fail for this test, but it didn't")
+}
+
+func TestStart(t *testing.T) {
+	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	serviceBuilder := FakeServiceBuilder()
+	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("fake_sv")}
+	executables, err := hoistLaunchable.Executables(serviceBuilder)
+	err = hoistLaunchable.Start(serviceBuilder, &sv)
+	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod__testLaunchable.yaml")
+
+	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
+
+	expected := fmt.Sprintf(`%s:
+  run:
+  - /usr/bin/nolimit
+  - /usr/bin/chpst
+  - -u
+  - testLaunchable
+  - -C
+  - %s
+  - %s
+%s:
+  run:
+  - /usr/bin/nolimit
+  - /usr/bin/chpst
+  - -u
+  - testLaunchable
+  - -C
+  - %s
+  - %s
+`, executables[0].Name,
+		hoistLaunchable.ConfigDir,
+		executables[0].execPath,
+		executables[1].Name,
+		hoistLaunchable.ConfigDir,
+		executables[1].execPath)
+
+	f, err := os.Open(outFilePath)
+	defer f.Close()
+	bytes, err := ioutil.ReadAll(f)
+	Assert(t).IsNil(err, "Got an unexpected error reading the servicebuilder yaml file")
+	Assert(t).AreEqual(string(bytes), expected, "Servicebuilder yaml file didn't have expected contents")
+}
+
+func TestFailingStart(t *testing.T) {
+	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	serviceBuilder := FakeServiceBuilder()
+	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("erring_sv")}
+	executables, _ := hoistLaunchable.Executables(serviceBuilder)
+	err := hoistLaunchable.Start(serviceBuilder, &sv)
+	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod__testLaunchable.yaml")
+
+	Assert(t).IsNotNil(err, "Expected an error starting runit services")
+	expected := fmt.Sprintf(`%s:
+  run:
+  - /usr/bin/nolimit
+  - /usr/bin/chpst
+  - -u
+  - testLaunchable
+  - -C
+  - %s
+  - %s
+%s:
+  run:
+  - /usr/bin/nolimit
+  - /usr/bin/chpst
+  - -u
+  - testLaunchable
+  - -C
+  - %s
+  - %s
+`, executables[0].Name,
+		hoistLaunchable.ConfigDir,
+		executables[0].execPath,
+		executables[1].Name,
+		hoistLaunchable.ConfigDir,
+		executables[1].execPath)
+
+	f, err := os.Open(outFilePath)
+	defer f.Close()
+	bytes, err := ioutil.ReadAll(f)
+	Assert(t).IsNil(err, "Got an unexpected error reading the servicebuilder yaml file")
+	Assert(t).AreEqual(string(bytes), expected, "Servicebuilder yaml file didn't have expected contents")
+}
+
+func TestStop(t *testing.T) {
+	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+
+	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("fake_sv")}
+	err := hoistLaunchable.Stop(runit.DefaultBuilder, &sv)
+
+	Assert(t).IsNil(err, "Got an unexpected error when attempting to stop runit services")
 }
 
 func FakeServiceBuilder() *runit.ServiceBuilder {
@@ -199,58 +281,4 @@ func FakeServiceBuilder() *runit.ServiceBuilder {
 		RunitRoot:   runitRoot,
 		Bin:         fakeSBBinPath,
 	}
-}
-
-func TestStart(t *testing.T) {
-	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
-	serviceBuilder := FakeServiceBuilder()
-	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("fake_sv")}
-	executables, err := hoistLaunchable.Executables(serviceBuilder)
-	err = hoistLaunchable.Start(serviceBuilder, &sv)
-	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod__testLaunchable.yaml")
-
-	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
-	expectedLines := []string{
-		fmt.Sprintf("%s:", executables[0].Name),
-		"  run:",
-		fmt.Sprintf("  - %s", executables[0].execPath),
-		fmt.Sprintf("%s:", executables[1].Name),
-		"  run:",
-		fmt.Sprintf("  - %s", executables[1].execPath),
-		"",
-	}
-	expected := strings.Join(expectedLines, "\n")
-
-	f, err := os.Open(outFilePath)
-	defer f.Close()
-	bytes, err := ioutil.ReadAll(f)
-	Assert(t).IsNil(err, "Got an unexpected error reading the servicebuilder yaml file")
-	Assert(t).AreEqual(string(bytes), expected, "Servicebuilder yaml file didn't have expected contents")
-}
-
-func TestFailingStart(t *testing.T) {
-	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
-	serviceBuilder := FakeServiceBuilder()
-	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("erring_sv")}
-	executables, _ := hoistLaunchable.Executables(serviceBuilder)
-	err := hoistLaunchable.Start(serviceBuilder, &sv)
-	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod__testLaunchable.yaml")
-
-	Assert(t).IsNotNil(err, "Expected an error starting runit services")
-	expectedLines := []string{
-		fmt.Sprintf("%s:", executables[0].Name),
-		"  run:",
-		fmt.Sprintf("  - %s", executables[0].execPath),
-		fmt.Sprintf("%s:", executables[1].Name),
-		"  run:",
-		fmt.Sprintf("  - %s", executables[1].execPath),
-		"",
-	}
-	expected := strings.Join(expectedLines, "\n")
-
-	f, err := os.Open(outFilePath)
-	defer f.Close()
-	bytes, err := ioutil.ReadAll(f)
-	Assert(t).IsNil(err, "Got an unexpected error reading the servicebuilder yaml file")
-	Assert(t).AreEqual(string(bytes), expected, "Servicebuilder yaml file didn't have expected contents")
 }

@@ -1,6 +1,13 @@
+// Package pods borrows heavily from the Kubernetes definition of pods to provide
+// p2 with a convenient way to colocate several related launchable artifacts, as well
+// as basic shared runtime configuration. Pod manifests are written as YAML files
+// that describe what to launch.
 package pods
 
 import (
+	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -54,4 +61,29 @@ func (manifest *PodManifest) Write(out io.Writer) error {
 		return util.Errorf("Could not write manifest for %s: %s", manifest.Id, err)
 	}
 	return nil
+}
+
+func (manifest *PodManifest) WriteConfig(out io.Writer) error {
+	bytes, err := yaml.Marshal(manifest.Config)
+	if err != nil {
+		return util.Errorf("Could not write config for %s: %s", manifest.Id, err)
+	}
+	_, err = out.Write(bytes)
+	if err != nil {
+		return util.Errorf("Could not write config for %s: %s", manifest.Id, err)
+	}
+	return nil
+}
+
+// SHA() returns a string containing a hex encoded SHA-1
+// checksum of the manifest's contents
+func (manifest *PodManifest) SHA() (string, error) {
+	valueBuf := bytes.Buffer{}
+	err := manifest.Write(&valueBuf)
+	if err != nil {
+		return "", err
+	}
+	hasher := sha1.New()
+	hasher.Write(valueBuf.Bytes())
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
