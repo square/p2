@@ -1,119 +1,45 @@
 package main
 
 import (
-	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 
-	"github.com/square/p2/pkg/intent"
-	"github.com/square/p2/pkg/pods"
+	"gopkg.in/yaml.v2"
 )
 
+type PreparerConfig struct {
+	NodeName      string `yaml:"node_name"`
+	ConsulAddress string `yaml:"consul_address"`
+}
+
 func main() {
-	nodeName := flag.String("node", "", "Node name to monitor in kv store")
-	consulAddress := flag.String("consul-address", "127.0.0.1:8500", "Optionally, set the consul agent to listen to.")
-	flag.Parse()
-
-	if *nodeName == "" || *consulAddress == "" {
-		fmt.Println("Usage: preparer [-consul-address ADDRESS] -node HOSTNAME")
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		fmt.Println("No CONFIG_PATH variable was given")
 		os.Exit(1)
+		return
 	}
-	watchForPodManifestsForNode(*nodeName, *consulAddress)
-}
-
-func watchForPodManifestsForNode(nodeName string, consulAddress string) {
-	watchOpts := intent.WatchOptions{
-		Token:   nodeName,
-		Address: consulAddress,
-	} // placeholder for now
-	watcher := intent.NewWatcher(watchOpts)
-
-	path := fmt.Sprintf("nodes/%s", nodeName)
-
-	// This allows us to signal the goroutine watching consul to quit
-	watcherQuit := make(<-chan struct{})
-	errChan := make(chan error)
-	podChan := make(chan pods.PodManifest)
-
-	go watcher.WatchPods(path, watcherQuit, errChan, podChan)
-
-	// we will have one long running goroutine for each app installed on this
-	// host. We keep a map of podId => podChan so we can send the new manifests
-	// that come in to the appropriate goroutine
-	podChanMap := make(map[string]chan *pods.PodManifest)
-	quitChanMap := make(map[string]chan struct{})
-
-	for {
-		select {
-		case err := <-errChan:
-			// do something, probably log somewhere? alert "deployer"?
-			fmt.Println(err)
-		case manifest := <-podChan:
-			podId := manifest.Id
-
-			if podChanMap[podId] == nil {
-				fmt.Println(fmt.Sprintf("starting a new goroutine for %s because one doesn't exist", podId))
-				// No goroutine is servicing this app currently, let's start one
-				podChanMap[podId] = make(chan *pods.PodManifest)
-				quitChanMap[podId] = make(chan struct{})
-				go installAndLaunchPod(podChanMap[podId], quitChanMap[podId])
-			}
-
-			podChanMap[podId] <- &manifest
-		}
+	configBytes, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		fmt.Println(fmt.Sprintf("Could not read the config file at %s", err))
+		os.Exit(1)
+		return
 	}
-}
-
-// no return value, no output channels. This should do everything it needs to do
-// without outside intervention (other than being signalled to quit)
-func installAndLaunchPod(podChan <-chan *pods.PodManifest, quit <-chan struct{}) {
-	// install new launchables
-	var manifestToLaunch *pods.PodManifest
-	manifestToLaunch = nil
-	for {
-		select {
-		case <-quit:
-			return
-		case manifestToLaunch = <-podChan:
-		default:
-			if manifestToLaunch != nil {
-				newPod := pods.PodFromPodManifest(manifestToLaunch)
-				err := newPod.Install()
-				if err != nil {
-					fmt.Println(err)
-					// log this
-					// probably retry
-					// should this be in its own go routine that we kill if a new manifest is pushed?
-					break
-				}
-
-				// get currently running pod to compare with the new pod
-				currentPod, err := pods.CurrentPodFromManifestId(manifestToLaunch.Id)
-				if err != nil {
-					if os.IsNotExist(err) {
-						// we can ignore this, just means it's a first time deploy
-					} else {
-						fmt.Println(err)
-						// log this
-					}
-				} else {
-					if currentPod != newPod {
-						err = currentPod.Halt()
-						if err != nil {
-							fmt.Println(err)
-							// log this
-						}
-					}
-
-				}
-				err = newPod.Launch()
-				if err != nil {
-					fmt.Println(err)
-					// log this
-				}
-				manifestToLaunch = nil
-
-			}
-		}
+	preparerConfig := PreparerConfig{}
+	err = yaml.Unmarshal(configBytes, &preparerConfig)
+	if err != nil {
+		fmt.Println(fmt.Sprintf("The config file was malformatted: %s", err))
+		os.Exit(1)
+		return
 	}
+	if preparerConfig.NodeName == "" {
+		fmt.Println("`node_name` was not set in the file at CONFIG_PATH")
+		os.Exit(1)
+		return
+	}
+	if preparerConfig.ConsulAddress == "" {
+		preparerConfig.ConsulAddress = "127.0.0.1:8500"
+	}
+	watchForPodManifestsForNode(preparerConfig.NodeName, preparerConfig.ConsulAddress)
 }

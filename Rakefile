@@ -3,6 +3,11 @@ def e(cmd)
   system(cmd) || abort("Error running `#{cmd}`")
 end
 
+def target(expand="")
+  root = File.dirname(__FILE__)
+  File.expand_path(expand, File.join(root, 'target'))
+end
+
 task :godep_check do
   system("which godep") || abort("You do not have godep installed. Run `go get github.com/tools/godep` and ensure that it's on your PATH")
 end
@@ -16,6 +21,26 @@ end
 desc 'Build all projects'
 task :build => :godep_check do
   e "godep go build -v ./..."
+end
+
+namespace :artifact do
+
+  desc 'Build the hoist artifact for the preparer'
+  task :preparer => :godep_check do
+    e "godep go build ./bin/preparer" # this will put a copy of preparer in the root
+    preparer_bin = target('preparer/bin')
+    preparer_launch = target('preparer/bin/launch')
+    preparer_enable = target('preparer/bin/enable')
+    preparer_disable = target('preparer/bin/disable')
+    e "mkdir -p #{preparer_bin}"
+    e "mv preparer #{preparer_launch}"
+    e "touch #{preparer_enable}"
+    e "chmod 744 #{preparer_enable}"
+    e "touch #{preparer_disable}"
+    e "chmod 744 #{preparer_disable}"
+    e "tar -cvzf #{target('preparer.tar.gz')} -C #{target('preparer')} ."
+  end
+
 end
 
 desc 'Test all projects'
