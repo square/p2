@@ -3,6 +3,7 @@ package pods
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -11,7 +12,20 @@ import (
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
+
+	"github.com/Sirupsen/logrus"
 )
+
+var log *logrus.Logger = logrus.New()
+
+func SetLogger(logger *logrus.Logger) {
+	log = logger
+}
+
+func SetLogOut(out io.Writer) {
+	log.Formatter = new(logrus.JSONFormatter)
+	log.Out = out
+}
 
 type Pod struct {
 	podManifest *PodManifest
@@ -39,44 +53,63 @@ func PodFromManifestPath(path string) (*Pod, error) {
 	return &Pod{podManifest}, nil
 }
 
-func (pod *Pod) Halt() error {
+func (pod *Pod) Halt() (bool, error) {
 	launchables, err := getLaunchablesFromPodManifest(pod.podManifest)
 	if err != nil {
-		return err
+		return false, err
 	}
 
+	success := true
 	for _, launchable := range launchables {
 		err = launchable.Halt(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
 		if err != nil {
-			return err
+			// Log the failure but continue
+			logLaunchableError(pod.podManifest.Id, launchable.Id, err, "Unable to halt launchable")
+			success = false
 		}
 	}
-	return nil
+	if success {
+		logPodInfo(pod.podManifest.Id, "Successfully halted")
+	} else {
+		logPodInfo(pod.podManifest.Id, "Attempted halt, but one or more services did not stop successfully")
+	}
+	return success, nil
 }
 
-func (pod *Pod) Launch() error {
+func (pod *Pod) Launch() (bool, error) {
 	launchables, err := getLaunchablesFromPodManifest(pod.podManifest)
 	if err != nil {
-		return err
+		return false, err
 	}
 
+	success := true
 	for _, launchable := range launchables {
 		err = launchable.Launch(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
 		if err != nil {
-			return err
+			// Log the failure but continue
+			logLaunchableError(pod.podManifest.Id, launchable.Id, err, "Unable to launch launchable")
+			success = false
 		}
 	}
 
 	f, err := os.OpenFile(CurrentPodManifestPath(pod.podManifest.Id), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		return err
+		logPodError(pod.podManifest.Id, err, "Unable to open current manifest file")
+		return false, err
 	}
 
 	err = pod.podManifest.Write(f)
 	if err != nil {
-		return err
+		logPodError(pod.podManifest.Id, err, "Unable to write current manifest file")
+		return false, err
 	}
-	return nil
+
+	if success {
+		logPodInfo(pod.podManifest.Id, "Successfully launched")
+	} else {
+		logPodInfo(pod.podManifest.Id, "Launched pod but one or more services failed to start")
+	}
+	return success, nil
 }
 
 func PodHomeDir(podId string) string {
@@ -129,6 +162,7 @@ func (pod *Pod) Install() error {
 	podsHome := path.Join("/data", "pods")
 	err := os.MkdirAll(podsHome, 0755)
 	if err != nil {
+		logPodError(pod.podManifest.Id, err, "Unable to create /data/pods directory")
 		return err
 	}
 
@@ -146,6 +180,7 @@ func (pod *Pod) Install() error {
 	// to think about this more.
 	err = setupConfig(EnvDir(pod.podManifest.Id), ConfigDir(pod.podManifest.Id), pod.podManifest)
 	if err != nil {
+		logPodError(pod.podManifest.Id, err, "Could not setup config")
 		return util.Errorf("Could not setup config: %s", err)
 	}
 
@@ -157,9 +192,12 @@ func (pod *Pod) Install() error {
 	for _, launchable := range launchables {
 		err := launchable.Install()
 		if err != nil {
+			logLaunchableError(pod.podManifest.Id, launchable.Id, err, "Unable to install launchable")
 			return err
 		}
 	}
+
+	logPodInfo(pod.podManifest.Id, "Successfully installed")
 
 	return nil
 }
@@ -255,6 +293,29 @@ func getLaunchable(launchableStanza LaunchableStanza, podId string) (*HoistLaunc
 		}
 		return &HoistLaunchable{launchableStanza.Location, launchableId, runAs, EnvDir(podId), DefaultFetcher(), launchableRootDir}, nil
 	} else {
-		return nil, fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)
+		err := fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)
+		logLaunchableError(podId, launchableStanza.LaunchableId, err, "Unknown launchable type")
+		return nil, err
 	}
+}
+
+func logPodError(podId string, err error, message string) {
+	log.WithFields(logrus.Fields{
+		"pod":   podId,
+		"error": err,
+	}).Error(message)
+}
+
+func logLaunchableError(podId string, launchableId string, err error, message string) {
+	log.WithFields(logrus.Fields{
+		"pod":        podId,
+		"launchable": launchableId,
+		"error":      err,
+	}).Error(message)
+}
+
+func logPodInfo(podId string, message string) {
+	log.WithFields(logrus.Fields{
+		"pod": podId,
+	}).Info(message)
 }
