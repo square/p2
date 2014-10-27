@@ -10,19 +10,23 @@ import (
 )
 
 func main() {
-	nodeName := flag.String("nodeName", "", "Node name to monitor in kv store")
+	nodeName := flag.String("node", "", "Node name to monitor in kv store")
+	consulAddress := flag.String("consul-address", "127.0.0.1:8500", "Optionally, set the consul agent to listen to.")
 	flag.Parse()
 
-	if *nodeName == "" {
-		fmt.Println("Usage: preparer -nodeName HOSTNAME")
+	if *nodeName == "" || *consulAddress == "" {
+		fmt.Println("Usage: preparer [-consul-address ADDRESS] -node HOSTNAME")
 		os.Exit(1)
 	}
-	watchForPodManifestsForNode(*nodeName)
+	watchForPodManifestsForNode(*nodeName, *consulAddress)
 }
 
-func watchForPodManifestsForNode(nodeName string) {
-	watchOpts := &intent.WatchOptions{nodeName} // placeholder for now
-	watcher := intent.NewWatcher(*watchOpts)
+func watchForPodManifestsForNode(nodeName string, consulAddress string) {
+	watchOpts := intent.WatchOptions{
+		Token:   nodeName,
+		Address: consulAddress,
+	} // placeholder for now
+	watcher := intent.NewWatcher(watchOpts)
 
 	path := fmt.Sprintf("nodes/%s", nodeName)
 
