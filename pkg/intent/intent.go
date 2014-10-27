@@ -10,7 +10,8 @@ import (
 )
 
 type WatchOptions struct {
-	Token string
+	Token   string
+	Address string
 }
 
 type IntentWatcher struct {
@@ -20,11 +21,13 @@ type IntentWatcher struct {
 }
 
 func NewWatcher(opts WatchOptions) *IntentWatcher {
-	return &IntentWatcher{
+	watcher := &IntentWatcher{
 		Opts:       opts,
 		ConsulOpts: consulapi.DefaultConfig(),
 		WatchFn:    ppkv.Watch,
 	}
+	watcher.ConsulOpts.Address = opts.Address
+	return watcher
 }
 
 // Watch the kv-store for changes to any pod under the given path. All pods will be returned
