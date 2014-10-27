@@ -261,6 +261,27 @@ func TestStop(t *testing.T) {
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to stop runit services")
 }
 
+func TestUninstall(t *testing.T) {
+	serviceBuilder := FakeServiceBuilder()
+	defer os.RemoveAll(serviceBuilder.ConfigRoot)
+	defer os.RemoveAll(serviceBuilder.StagingRoot)
+	defer os.RemoveAll(serviceBuilder.RunitRoot)
+	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("fake_sv")}
+	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	hoistLaunchable.Install()
+	hoistLaunchable.Launch(serviceBuilder, &sv)
+
+	_, err := os.Stat(serviceBuilder.ConfigRoot)
+	Assert(t).IsNil(err, "Servicebuilder directory not created as expected")
+
+	service, err := ioutil.ReadDir(serviceBuilder.ConfigRoot)
+	Assert(t).AreEqual(len(service), 1, "Expected one service yaml file")
+
+	hoistLaunchable.Uninstall(serviceBuilder)
+	service, err = ioutil.ReadDir(serviceBuilder.ConfigRoot)
+	Assert(t).AreEqual(len(service), 0, "Expected no service yaml file after uninstall")
+}
+
 func FakeServiceBuilder() *runit.ServiceBuilder {
 	testDir := os.TempDir()
 	fakeSBBinPath := util.From(runtime.Caller(0)).ExpandPath("fake_servicebuilder")

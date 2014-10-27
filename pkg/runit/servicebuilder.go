@@ -73,8 +73,12 @@ var DefaultBuilder = &ServiceBuilder{
 	Bin:         "/usr/bin/servicebuilder",
 }
 
+func (b *ServiceBuilder) serviceYamlPath(name string) string {
+	return path.Join(b.ConfigRoot, fmt.Sprintf("%s.yaml", name))
+}
+
 func (b *ServiceBuilder) Write(template *SBTemplate) (string, error) {
-	yamlPath := path.Join(b.ConfigRoot, fmt.Sprintf("%s.yaml", template.name))
+	yamlPath := b.serviceYamlPath(template.name)
 	fileinfo, _ := os.Stat(yamlPath)
 	if fileinfo != nil && fileinfo.IsDir() {
 		return "", util.Errorf("%s is a directory, but should be empty or a file", yamlPath)
@@ -87,6 +91,17 @@ func (b *ServiceBuilder) Write(template *SBTemplate) (string, error) {
 	}
 
 	return yamlPath, template.Write(f)
+}
+
+func (b *ServiceBuilder) Remove(template *SBTemplate) error {
+	yamlPath := b.serviceYamlPath(template.name)
+
+	err := os.Remove(yamlPath)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (b *ServiceBuilder) Rebuild() (string, error) {
