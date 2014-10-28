@@ -23,10 +23,6 @@
 			"Rev": "2a24f92ae126cce9a0ae1c97d955b0d06590448f"
 		},
 		{
-			"ImportPath": "gopkg.in/yaml.v1",
-			"Rev": "9f9df34309c04878acc86042b16630b0f696e1de"
-		},
-		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "eca94c41d994ae2215d455ce578ae6e2dc6ee516"
 		}
