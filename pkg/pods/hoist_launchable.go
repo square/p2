@@ -168,7 +168,7 @@ func (hoistLaunchable *HoistLaunchable) BuildRunitServices(serviceBuilder *runit
 			"/usr/bin/chpst",
 			"-u",
 			hoistLaunchable.RunAs,
-			"-C",
+			"-e",
 			hoistLaunchable.ConfigDir,
 			executable.execPath,
 		})
