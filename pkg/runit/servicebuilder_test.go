@@ -103,3 +103,25 @@ func TestServiceBuilderWillExecuteRebuild(t *testing.T) {
 
 	Assert(t).IsTrue(strings.Contains(output, builder.ConfigRoot), fmt.Sprintf("the config root should have been passed in cmd: %s", output))
 }
+
+func TestServiceBuilderCanRemoveServiceFiles(t *testing.T) {
+	builder := fakeServiceBuilder(t)
+	defer os.RemoveAll(builder.ConfigRoot)
+	defer os.RemoveAll(builder.StagingRoot)
+	defer os.RemoveAll(builder.RunitRoot)
+	template := NewSBTemplate("exemplar")
+	filePath := path.Join(builder.ConfigRoot, "exemplar.yaml")
+
+	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	Assert(t).IsNil(err, "unable to open fake servicebuilder file for writing")
+
+	_, err = f.WriteString("foo")
+	Assert(t).IsNil(err, "unable to write fake servicebuilder file")
+
+	_, err = os.Stat(filePath)
+	Assert(t).IsNil(err, "Unable to stat the fake servicebuilder file")
+	builder.Remove(template)
+	_, err = os.Stat(filePath)
+	Assert(t).IsNotNil(err, "File still exists after it was supposed to be removed")
+
+}

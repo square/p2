@@ -155,6 +155,7 @@ func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuild
 	return nil
 }
 
+// Write servicebuilder *.yaml file and run servicebuilder, which will register runit service
 func (hoistLaunchable *HoistLaunchable) BuildRunitServices(serviceBuilder *runit.ServiceBuilder) error {
 	sbTemplate := runit.NewSBTemplate(hoistLaunchable.Id)
 	executables, err := hoistLaunchable.Executables(serviceBuilder)
@@ -174,6 +175,22 @@ func (hoistLaunchable *HoistLaunchable) BuildRunitServices(serviceBuilder *runit
 		})
 	}
 	_, err = serviceBuilder.Write(sbTemplate)
+	if err != nil {
+		return err
+	}
+
+	_, err = serviceBuilder.Rebuild()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Remove servicebuilder *.yaml file and run servicebuilder, which will deregister service
+func (hoistLaunchable *HoistLaunchable) RemoveRunitServices(serviceBuilder *runit.ServiceBuilder) error {
+	sbTemplate := runit.NewSBTemplate(hoistLaunchable.Id)
+	err := serviceBuilder.Remove(sbTemplate)
 	if err != nil {
 		return err
 	}
@@ -248,6 +265,15 @@ func (hoistLaunchable *HoistLaunchable) Install() error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (hoistLaunchable *HoistLaunchable) Uninstall(builder *runit.ServiceBuilder) error {
+	err := hoistLaunchable.RemoveRunitServices(builder)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 

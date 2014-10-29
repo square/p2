@@ -90,6 +90,34 @@ func EnvDir(podId string) string {
 	return path.Join(PodHomeDir(podId), "env")
 }
 
+func (pod *Pod) Uninstall() error {
+	launchables, err := getLaunchablesFromPodManifest(pod.podManifest)
+	if err != nil {
+		return err
+	}
+
+	// halt launchables
+	for _, launchable := range launchables {
+		err = launchable.Halt(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
+		if err != nil {
+			// log and continue
+		}
+	}
+
+	// uninstall launchables
+	for _, launchable := range launchables {
+		err := launchable.Uninstall(runit.DefaultBuilder)
+		if err != nil {
+			// log and continue
+		}
+	}
+
+	// remove pod home dir
+	os.RemoveAll(PodHomeDir(pod.podManifest.Id))
+
+	return nil
+}
+
 // This assumes all launchables are Hoist artifacts, we will generalize this at a later point
 func (pod *Pod) Install() error {
 	// if we don't want this to run as root, need another way to create pods directory
