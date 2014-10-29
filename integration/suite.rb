@@ -56,8 +56,8 @@ Dir.glob(File.join(path, '*/')).each do |test_dir|
     end
     begin
       to_execute = sprintf(options[:test_command], sprintf("%s/%s", "$GOPATH/src/github.com/square/p2", test_dir))
-      puts "Starting test #{test_name}: #{Shellwords.escape(to_execute)}".yellow
-      unless system("vagrant ssh -c '#{to_execute}'")
+      puts "Starting test #{test_name}: #{to_execute}".yellow
+      unless system("vagrant ssh -c #{Shellwords.escape(to_execute)}")
         puts "#{test_name} #{'FAILED'.red}"
         next
       end
