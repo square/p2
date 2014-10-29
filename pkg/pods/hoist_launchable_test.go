@@ -68,7 +68,7 @@ func FakeHoistLaunchableForDir(dirName string) *HoistLaunchable {
 	tempDir := os.TempDir()
 	_, filename, _, _ := runtime.Caller(0)
 	launchableInstallDir := path.Join(path.Dir(filename), dirName)
-	launchable := &HoistLaunchable{"testLaunchable.tar.gz", "testPod__testLaunchable", "testLaunchable", tempDir, new(fakeCurl).File, launchableInstallDir}
+	launchable := &HoistLaunchable{"testLaunchable.tar.gz", "testPod__testLaunchable", "testPod:testPod", tempDir, new(fakeCurl).File, launchableInstallDir}
 
 	return launchable
 }
@@ -184,8 +184,8 @@ func TestStart(t *testing.T) {
   - /usr/bin/nolimit
   - /usr/bin/chpst
   - -u
-  - testLaunchable
-  - -C
+  - testPod:testPod
+  - -e
   - %s
   - %s
 %s:
@@ -193,8 +193,8 @@ func TestStart(t *testing.T) {
   - /usr/bin/nolimit
   - /usr/bin/chpst
   - -u
-  - testLaunchable
-  - -C
+  - testPod:testPod
+  - -e
   - %s
   - %s
 `, executables[0].Name,
@@ -225,8 +225,8 @@ func TestFailingStart(t *testing.T) {
   - /usr/bin/nolimit
   - /usr/bin/chpst
   - -u
-  - testLaunchable
-  - -C
+  - testPod:testPod
+  - -e
   - %s
   - %s
 %s:
@@ -234,8 +234,8 @@ func TestFailingStart(t *testing.T) {
   - /usr/bin/nolimit
   - /usr/bin/chpst
   - -u
-  - testLaunchable
-  - -C
+  - testPod:testPod
+  - -e
   - %s
   - %s
 `, executables[0].Name,
