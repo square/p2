@@ -84,7 +84,9 @@ func installAndLaunchPod(podChan <-chan *pods.PodManifest, quit <-chan struct{})
 						// log this
 					}
 				} else {
-					if currentPod != newPod {
+					currentSHA, _ := currentPod.ManifestSHA()
+					newSHA, _ := newPod.ManifestSHA()
+					if currentSHA != newSHA {
 						err = currentPod.Halt()
 						if err != nil {
 							fmt.Println(err)

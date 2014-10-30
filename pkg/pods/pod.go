@@ -152,6 +152,10 @@ func (pod *Pod) Install() error {
 	return nil
 }
 
+func (pod *Pod) ManifestSHA() (string, error) {
+	return pod.podManifest.SHA()
+}
+
 // setupConfig creates two directories in the pod's home directory, called "env" and "config."
 // the "config" directory contains the pod's config file, named with pod's ID and the
 // SHA of its manifest's content. The "env" directory contains environment files
