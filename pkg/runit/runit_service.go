@@ -22,6 +22,7 @@ func (sv *SV) execOnService(service *Service, toRun string) (string, error) {
 	cmd := exec.Command(sv.Bin, toRun, service.Path)
 	buffer := bytes.Buffer{}
 	cmd.Stdout = &buffer
+	cmd.Stderr = &buffer
 	err := cmd.Run()
 	if err != nil {
 		return buffer.String(), util.Errorf("Could not %s service %s: %s", toRun, service.Name, err)

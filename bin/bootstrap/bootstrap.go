@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"os"
+	"time"
 
 	"github.com/square/p2/pkg/kv-consul"
 	"github.com/square/p2/pkg/pods"
@@ -13,7 +15,7 @@ import (
 
 var (
 	consulManifestPath      = kingpin.Flag("consul-pod", "A path to the manifest that will be used to boot Consul.").ExistingFile()
-	existingConsul          = kingpin.Flag("existing-consul-url", "A URL to an existing Consul server that will be supplied to the base agent's configuration")
+	existingConsul          = kingpin.Flag("existing-consul-url", "A URL to an existing Consul server that will be supplied to the base agent's configuration").String()
 	agentManifestPath       = kingpin.Flag("agent-pod", "A path to the manifest that will used to boot the base agent.").ExistingFile()
 	additionalManifestsPath = kingpin.Flag("additional-pods", "(Optional) a directory of additional pods that will be launched and added to the intent store immediately").ExistingDir()
 )
@@ -21,15 +23,32 @@ var (
 func main() {
 	kingpin.Version("0.0.1")
 	kingpin.Parse()
-
+	log.Println("Starting bootstrap")
 	consulManifest, err := pods.PodManifestFromPath(*consulManifestPath)
-	consulPod := pods.PodFromManifest(consulManifest)
+	if err != nil {
+		log.Fatalf("Could not get consul manifest: %s", err)
+	}
+	consulPod := pods.NewPod(consulManifest)
 	agentManifest, err := pods.PodManifestFromPath(*agentManifestPath)
-
-	InstallConsul(consulPod)
-	RegisterBaseAgentInConsul(agentManifest)
-	InstallBaseAgent(agentManifest)
-	AdditionalPods(*additionalManifests)
+	if err != nil {
+		log.Fatalln("Could not get agent manifest: %s", err)
+	}
+	log.Println("Installing and launching consul")
+	err = InstallConsul(consulPod)
+	if err != nil {
+		log.Fatalf("Could not install consul: %s", err)
+	}
+	log.Println("Registering base agent in consul")
+	err = RegisterBaseAgentInConsul(agentManifest)
+	if err != nil {
+		log.Fatalf("Could not register base agent with consul: %s", err)
+	}
+	log.Println("Installing and launching base agent")
+	err = InstallBaseAgent(agentManifest)
+	if err != nil {
+		log.Fatalf("Could not install base agent: %s", err)
+	}
+	log.Println("Bootstrapping complete")
 }
 
 func InstallConsul(consulPod *pods.Pod) error {
@@ -42,6 +61,9 @@ func InstallConsul(consulPod *pods.Pod) error {
 	if err != nil {
 		return util.Errorf("Can't launch Consul, aborting: %s", err)
 	}
+	// Sleep to allow Consul to elect master and such. TODO: replace
+	// with a sv stat poll (implement in the runit package)
+	time.Sleep(time.Second * 3)
 	return nil
 }
 
@@ -58,19 +80,19 @@ func RegisterBaseAgentInConsul(agentManifest *pods.PodManifest) error {
 	if err != nil {
 		return err
 	}
-	client.Put(fmt.Sprintf("/nodes/%s/%s", hostname, agentManifest.Id), b.String())
+	endpoint := fmt.Sprintf("/nodes/%s/%s", hostname, agentManifest.Id)
+	err = client.Put(endpoint, b.String())
+	if err != nil {
+		return util.Errorf("Could not PUT %s into %s: %s", b.String(), endpoint, err)
+	}
 	return nil
 }
 
 func InstallBaseAgent(agentManifest *pods.PodManifest) error {
-	agentPod := pods.PodFromManifest(agentManifest)
+	agentPod := pods.NewPod(agentManifest)
 	err := agentPod.Install()
 	if err != nil {
 		return err
 	}
-	err = agentPod.Launch()
-	if err != nil {
-		return err
-	}
-	return nil
+	return agentPod.Launch()
 }

@@ -9,11 +9,16 @@ import (
 	"strings"
 
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 )
 
 type Pod struct {
 	podManifest *PodManifest
+}
+
+func NewPod(manifest *PodManifest) *Pod {
+	return &Pod{manifest}
 }
 
 func CurrentPodFromManifestId(manifestId string) (*Pod, error) {
@@ -128,7 +133,14 @@ func (pod *Pod) Install() error {
 	}
 
 	podHome := path.Join(podsHome, pod.podManifest.Id)
-	os.MkdirAll(podHome, 0755) // this dir needs to be owned by different user at some point
+	err = os.MkdirAll(podHome, 0755) // this dir needs to be owned by different user at some point
+	if err != nil {
+		return util.Errorf("Could not create pod home: %s", err)
+	}
+	_, err = user.CreateUser(pod.podManifest.Id, podHome)
+	if err != nil && err != user.AlreadyExists {
+		return err
+	}
 
 	// we may need to write config files to a unique directory per pod version, depending on restart semantics. Need
 	// to think about this more.
@@ -233,7 +245,14 @@ func getLaunchable(launchableStanza LaunchableStanza, podId string) (*HoistLaunc
 	if launchableStanza.LaunchableType == "hoist" {
 		launchableRootDir := path.Join(PodHomeDir(podId), launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{podId, "__", launchableStanza.LaunchableId}, "")
-		runAs := strings.Join([]string{podId, podId}, ":")
+		var runAs string
+		// proposition: rename all reserved users to p2_*. p2_* users all run as root until
+		// precise roles can be assigned to each.
+		if podId == "intent" || podId == "preparer" {
+			runAs = "root"
+		} else {
+			runAs = strings.Join([]string{podId, podId}, ":")
+		}
 		return &HoistLaunchable{launchableStanza.Location, launchableId, runAs, EnvDir(podId), DefaultFetcher(), launchableRootDir}, nil
 	} else {
 		return nil, fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)
