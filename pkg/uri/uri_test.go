@@ -9,13 +9,14 @@ import (
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/pkg/util"
 )
 
 func TestURIWillCopyFilesCorrectly(t *testing.T) {
 	tempdir, err := ioutil.TempDir("", "cp-dest")
 	Assert(t).IsNil(err, "Couldn't create temp dir")
 	defer os.RemoveAll(tempdir)
-	thisFile := From(runtime.Caller(0)).Filename
+	thisFile := util.From(runtime.Caller(0)).Filename
 	copied := path.Join(tempdir, "copied")
 	err = URICopy(fmt.Sprintf("file:///%s", thisFile), copied)
 	Assert(t).IsNil(err, "The file should have been copied")
