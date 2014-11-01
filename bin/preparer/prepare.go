@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/square/p2/pkg/intent"
 	"github.com/square/p2/pkg/pods"
@@ -62,7 +63,7 @@ func installAndLaunchPod(podChan <-chan *pods.PodManifest, quit <-chan struct{})
 		case <-quit:
 			return
 		case manifestToLaunch = <-podChan:
-		default:
+		case <-time.After(500 * time.Millisecond):
 			if manifestToLaunch != nil {
 				newPod := pods.PodFromPodManifest(manifestToLaunch)
 				err := newPod.Install()

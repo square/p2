@@ -60,11 +60,7 @@ func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuil
 	}
 
 	_, err = hoistLaunchable.Enable()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func (hoistLaunchable *HoistLaunchable) Disable() (string, error) {
@@ -139,14 +135,17 @@ func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuild
 	}
 
 	for _, executable := range executables {
-		maxRetries := 3
-		var err error
+		_, err := sv.Restart(&executable.Service)
+		if err != nil {
+			sv.Start(&executable.Service)
+		}
+		maxRetries := 6
 		for i := 0; i < maxRetries; i++ {
-			_, err = sv.Start(&executable.Service)
+			_, err := sv.Stat(&executable.Service)
 			if err == nil {
 				break
 			}
-			<-time.After(1)
+			<-time.After(1 * time.Second)
 		}
 		if err != nil {
 			return err

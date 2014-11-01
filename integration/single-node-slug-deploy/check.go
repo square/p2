@@ -23,8 +23,6 @@ func main() {
 	// 4. Deploy hello pod manifest by pushing to intent store
 	// 5. Verify that hello is running (listen to syslog? verify Runit PIDs? Both?)
 	tempdir, err := ioutil.TempDir("", "single-node-check")
-	log.Println(os.Getenv("PATH"))
-	log.Println(exec.Command("which", "rake").Run())
 	log.Printf("Putting test manifests in %s\n", tempdir)
 	if err != nil {
 		log.Fatalln("Could not create temp directory, bailing")
@@ -59,7 +57,14 @@ func generatePreparerPod(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	preparerTar := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../../target/preparer_fed987.tar.gz"))
+	candidateTars, err := util.From(runtime.Caller(0)).Glob("../../target/preparer_*.tar.gz")
+	if err != nil {
+		return "", util.Errorf("Failed to glob a preparer tar: %s", err)
+	}
+	if len(candidateTars) != 1 {
+		return "", util.Errorf("Ambiguous preparer tar, remove them")
+	}
+	preparerTar := fmt.Sprintf("file://%s", candidateTars[0])
 	manifest := &pods.PodManifest{}
 	manifest.Id = "preparer"
 	stanza := pods.LaunchableStanza{
@@ -116,12 +121,13 @@ func executeBootstrap(preparerManifest, consulManifest string) error {
 		return fmt.Errorf("Could not install newest bootstrap: %s", err)
 	}
 	bootstr := exec.Command("bootstrap", "--consul-pod", consulManifest, "--agent-pod", preparerManifest)
+	bootstr.Stdout = os.Stdout
 	bootstr.Stderr = os.Stdout
 	return bootstr.Run()
 }
 
 func postHelloManifest(dir string) error {
-	hello := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("hoisted-hello_def456.tar.gz"))
+	hello := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-hello_def456.tar.gz"))
 	manifest := &pods.PodManifest{}
 	manifest.Id = "hello"
 	stanza := pods.LaunchableStanza{
@@ -142,7 +148,7 @@ func postHelloManifest(dir string) error {
 		return err
 	}
 
-	return client.Put("/nodes/testnode/hello", buf.String())
+	return client.Put("nodes/testnode/hello", buf.String())
 }
 
 func verifyHelloRunning() error {
@@ -152,7 +158,7 @@ func verifyHelloRunning() error {
 	go func() {
 		for {
 			time.Sleep(100 * time.Millisecond)
-			res := exec.Command("sudo sv stat /var/service/hello__hello")
+			res := exec.Command("sudo", "sv", "stat", "/var/service/hello__hello").Run()
 			if res == nil {
 				select {
 				case <-quit:
@@ -161,6 +167,7 @@ func verifyHelloRunning() error {
 				}
 				return
 			} else {
+				fmt.Println(res)
 				select {
 				case <-quit:
 					return

@@ -27,7 +27,7 @@ end
 
 # TODO read a conf file in the test dir specifying what commands to run on what VMs
 
-options = {:regex => /.*/, :test_command => 'cd $GOPATH/src/github.com/square/p2 && sudo -E godep go run %s/*.go', :vm_maintenance => true }
+options = {:regex => /.*/, :test_command => 'cd $GOPATH/src/github.com/square/p2 && sudo env PATH=$PATH godep go run %s/*.go', :vm_maintenance => true }
 parser = OptionParser.new do |opts|
   opts.on('-p', '--pattern=PATTERN', 'Only run tests that match the given regex') do |p|
     options[:regex] = Regexp.new(p)
@@ -74,6 +74,7 @@ Dir.glob(File.join(path, '*/')).each do |test_dir|
         unless system("vagrant halt")
           puts "Tried to halt #{test_name} but it failed".red
         end
+        puts "Halted VM"
       end
     end
   end if options[:regex].match(test_name)

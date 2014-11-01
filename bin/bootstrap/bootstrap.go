@@ -61,9 +61,7 @@ func InstallConsul(consulPod *pods.Pod) error {
 	if err != nil {
 		return util.Errorf("Can't launch Consul, aborting: %s", err)
 	}
-	// Sleep to allow Consul to elect master and such. TODO: replace
-	// with a sv stat poll (implement in the runit package)
-	time.Sleep(time.Second * 3)
+	time.Sleep(time.Second * 10)
 	return nil
 }
 
@@ -80,7 +78,7 @@ func RegisterBaseAgentInConsul(agentManifest *pods.PodManifest) error {
 	if err != nil {
 		return err
 	}
-	endpoint := fmt.Sprintf("/nodes/%s/%s", hostname, agentManifest.Id)
+	endpoint := fmt.Sprintf("nodes/%s/%s", hostname, agentManifest.Id)
 	err = client.Put(endpoint, b.String())
 	if err != nil {
 		return util.Errorf("Could not PUT %s into %s: %s", b.String(), endpoint, err)
