@@ -11,6 +11,10 @@
 			"Rev": "3d46664b062c3a468b50e367f115179e26a9462c"
 		},
 		{
+			"ImportPath": "github.com/alecthomas/units",
+			"Rev": "2520fa84b92528712dc56507660230aca45d6c79"
+		},
+		{
 			"ImportPath": "github.com/anthonybishopric/gotcha",
 			"Rev": "584121597f0f6ea20dbd6b63ddf7440b86e379ed"
 		},
@@ -21,6 +25,11 @@
 		{
 			"ImportPath": "github.com/nareix/curl",
 			"Rev": "2a24f92ae126cce9a0ae1c97d955b0d06590448f"
+		},
+		{
+			"ImportPath": "gopkg.in/alecthomas/kingpin.v1",
+			"Comment": "v1.3.0",
+			"Rev": "4ed1198b32095834da05b9a5bacaa2704fd6ac6c"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",

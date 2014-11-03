@@ -2,6 +2,7 @@ package util
 
 import (
 	"path"
+	"path/filepath"
 )
 
 type Caller struct {
@@ -19,4 +20,8 @@ func From(pc uintptr, file string, line int, ok bool) *Caller {
 
 func (c *Caller) ExpandPath(pathstr string) string {
 	return path.Join(path.Dir(c.Filename), pathstr)
+}
+
+func (c *Caller) Glob(pattern string) ([]string, error) {
+	return filepath.Glob(path.Join(path.Dir(c.Filename), pattern))
 }

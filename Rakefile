@@ -32,13 +32,16 @@ namespace :artifact do
     preparer_launch = target('preparer/bin/launch')
     preparer_enable = target('preparer/bin/enable')
     preparer_disable = target('preparer/bin/disable')
+    e "rm -rf #{preparer_bin}"
     e "mkdir -p #{preparer_bin}"
     e "mv preparer #{preparer_launch}"
-    e "touch #{preparer_enable}"
-    e "chmod 744 #{preparer_enable}"
-    e "touch #{preparer_disable}"
-    e "chmod 744 #{preparer_disable}"
-    e "tar -cvzf #{target('preparer.tar.gz')} -C #{target('preparer')} ."
+    # e "touch #{preparer_enable}"
+    # e "chmod 744 #{preparer_enable}"
+    # e "touch #{preparer_disable}"
+    # e "chmod 744 #{preparer_disable}"
+    sha = `git rev-parse HEAD`.strip
+    tar_out = target("preparer_#{sha}.tar.gz")
+    e "tar -cvzf #{tar_out} -C #{target('preparer')} ."
   end
 
 end

@@ -47,6 +47,10 @@ func PodFromPodManifest(podManifest *PodManifest) *Pod {
 	return &Pod{podManifest}
 }
 
+func PodManifestFromString(str string) (*PodManifest, error) {
+	return PodManifestFromBytes(bytes.NewBufferString(str).Bytes())
+}
+
 func PodManifestFromBytes(bytes []byte) (*PodManifest, error) {
 	podManifest := &PodManifest{}
 	if err := yaml.Unmarshal(bytes, podManifest); err != nil {

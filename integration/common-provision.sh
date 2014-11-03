@@ -18,6 +18,7 @@ sudo sh -c "echo 'export PATH=$PATH' > /etc/profile.d/gopath.sh"
 go version
 
 # Install Godep
+sudo yum install -y mercurial
 go get github.com/tools/godep
 
 # Build p2.
@@ -26,3 +27,9 @@ godep go install ./...
 
 # Install ruby + rake
 sudo yum install -y ruby rubygem-rake
+
+# Install P2 test dependencies
+sudo yum -y --nogpgcheck localinstall $GOPATH/src/github.com/square/p2/integration/test-deps/*rpm
+sudo mkdir -p /etc/servicebuilder.d
+sudo mkdir -p /var/service-stage
+

@@ -12,8 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nareix/curl"
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/uri"
+	"github.com/square/p2/pkg/util"
 )
 
 type Fetcher func(string, string, ...interface{}) error
@@ -29,7 +30,7 @@ type HoistLaunchable struct {
 }
 
 func DefaultFetcher() Fetcher {
-	return curl.File
+	return uri.URICopy
 }
 
 func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
@@ -55,15 +56,11 @@ func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuil
 	// probably want to do something with output at some point
 	err := hoistLaunchable.Start(serviceBuilder, sv)
 	if err != nil {
-		return err
+		return util.Errorf("Could not launch %s: %s", hoistLaunchable.Id, err)
 	}
 
 	_, err = hoistLaunchable.Enable()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func (hoistLaunchable *HoistLaunchable) Disable() (string, error) {
@@ -138,14 +135,17 @@ func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuild
 	}
 
 	for _, executable := range executables {
-		maxRetries := 3
-		var err error
+		_, err := sv.Restart(&executable.Service)
+		if err != nil {
+			sv.Start(&executable.Service)
+		}
+		maxRetries := 6
 		for i := 0; i < maxRetries; i++ {
-			_, err = sv.Start(&executable.Service)
+			_, err = sv.Stat(&executable.Service)
 			if err == nil {
 				break
 			}
-			<-time.After(1)
+			<-time.After(1 * time.Second)
 		}
 		if err != nil {
 			return err
