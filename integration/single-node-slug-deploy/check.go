@@ -167,7 +167,6 @@ func verifyHelloRunning() error {
 				}
 				return
 			} else {
-				fmt.Println(res)
 				select {
 				case <-quit:
 					return

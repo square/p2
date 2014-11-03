@@ -9,5 +9,5 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.box = "centos-7-vagrantbox"
 
   config.vm.synced_folder "../../", "/usr/local/share/go/src/github.com/square/p2"
-  config.vm.provision "shell", :path => "../common-provision.sh"
+  config.vm.provision "shell", path: "../common-provision.sh"
 end

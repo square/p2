@@ -141,7 +141,7 @@ func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuild
 		}
 		maxRetries := 6
 		for i := 0; i < maxRetries; i++ {
-			_, err := sv.Stat(&executable.Service)
+			_, err = sv.Stat(&executable.Service)
 			if err == nil {
 				break
 			}
