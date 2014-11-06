@@ -41,5 +41,11 @@ func main() {
 	if preparerConfig.ConsulAddress == "" {
 		preparerConfig.ConsulAddress = "127.0.0.1:8500"
 	}
-	watchForPodManifestsForNode(preparerConfig.NodeName, preparerConfig.ConsulAddress)
+	logFile, err := os.OpenFile("/tmp/platypus", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		os.Exit(1)
+	}
+	defer logFile.Close()
+
+	watchForPodManifestsForNode(preparerConfig.NodeName, preparerConfig.ConsulAddress, logFile)
 }

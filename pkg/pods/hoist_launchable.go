@@ -290,7 +290,7 @@ func (*HoistLaunchable) Type() string {
 
 func (hoistLaunchable *HoistLaunchable) InstallDir() string {
 	launchableName := hoistLaunchable.Version()
-	return path.Join(hoistLaunchable.RootDir, "installs", launchableName) // need to generalize this (no /data/pods assumption)
+	return path.Join(hoistLaunchable.RootDir, "installs", launchableName)
 }
 
 func extractTarGz(fp *os.File, dest string) (err error) {

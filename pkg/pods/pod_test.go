@@ -6,7 +6,10 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"strings"
 	"testing"
+
+	"github.com/square/p2/pkg/util"
 
 	. "github.com/anthonybishopric/gotcha"
 )
@@ -84,4 +87,63 @@ config:
 	env, err := ioutil.ReadFile(path.Join(envDir, "CONFIG_PATH"))
 	Assert(t).IsNil(err, "should not have erred reading the env file")
 	Assert(t).AreEqual(configPath, string(env), "The env path to config didn't match")
+}
+
+func TestLogLaunchableError(t *testing.T) {
+	out := bytes.Buffer{}
+	SetLogOut(&out)
+
+	testLaunchable := &HoistLaunchable{Id: "TestLaunchable"}
+	testPod := &Pod{podManifest: &PodManifest{Id: "TestPod"}}
+	error := util.Errorf("Unable to do something")
+	message := "Test error occurred"
+	logLaunchableError(testPod.podManifest.Id, testLaunchable.Id, error, message)
+
+	output, err := ioutil.ReadAll(&out)
+	Assert(t).IsNil(err, "Got an error reading the logging output")
+	outputString := bytes.NewBuffer(output).String()
+	Assert(t).Matches(outputString, ContainsString("TestLaunchable"), "Expected 'TestLaunchable' to appear somewhere in log output")
+	Assert(t).Matches(outputString, ContainsString("TestPod"), "Expected 'TestPod' to appear somewhere in log output")
+	Assert(t).Matches(outputString, ContainsString("Test error occurred"), "Expected error message to appear somewhere in log output")
+}
+
+func TestLogPodError(t *testing.T) {
+	out := bytes.Buffer{}
+	SetLogOut(&out)
+
+	testPod := &Pod{podManifest: &PodManifest{Id: "TestPod"}}
+	error := util.Errorf("Unable to do something")
+	message := "Test error occurred"
+	logPodError(testPod.podManifest.Id, error, message)
+
+	output, err := ioutil.ReadAll(&out)
+	Assert(t).IsNil(err, "Got an error reading the logging output")
+	outputString := bytes.NewBuffer(output).String()
+	Assert(t).Matches(outputString, ContainsString("TestPod"), "Expected 'TestPod' to appear somewhere in log output")
+	Assert(t).Matches(outputString, ContainsString("Test error occurred"), "Expected error message to appear somewhere in log output")
+}
+
+func TestLogPodInfo(t *testing.T) {
+	out := bytes.Buffer{}
+	SetLogOut(&out)
+
+	testPod := &Pod{podManifest: &PodManifest{Id: "TestPod"}}
+	message := "Pod did something good"
+	logPodInfo(testPod.podManifest.Id, message)
+
+	output, err := ioutil.ReadAll(&out)
+	Assert(t).IsNil(err, "Got an error reading the logging output")
+	outputString := bytes.NewBuffer(output).String()
+	Assert(t).Matches(outputString, ContainsString("TestPod"), "Expected 'TestPod' to appear somewhere in log output")
+	Assert(t).Matches(outputString, ContainsString("Pod did something good"), "Expected error message to appear somewhere in log output")
+}
+
+func ContainsString(test string) func(interface{}) bool {
+	return func(subject interface{}) bool {
+		if subjectString, ok := subject.(string); ok {
+			return strings.Contains(subjectString, test)
+		} else {
+			return false
+		}
+	}
 }

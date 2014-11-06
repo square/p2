@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -9,7 +10,8 @@ import (
 	"github.com/square/p2/pkg/pods"
 )
 
-func watchForPodManifestsForNode(nodeName string, consulAddress string) {
+func watchForPodManifestsForNode(nodeName string, consulAddress string, logFile io.Writer) {
+	pods.SetLogOut(logFile)
 	watchOpts := intent.WatchOptions{
 		Token:   nodeName,
 		Address: consulAddress,
@@ -28,33 +30,31 @@ func watchForPodManifestsForNode(nodeName string, consulAddress string) {
 	// we will have one long running goroutine for each app installed on this
 	// host. We keep a map of podId => podChan so we can send the new manifests
 	// that come in to the appropriate goroutine
-	podChanMap := make(map[string]chan *pods.PodManifest)
+	podChanMap := make(map[string]chan pods.PodManifest)
 	quitChanMap := make(map[string]chan struct{})
 
 	for {
 		select {
-		case err := <-errChan:
+		case <-errChan:
 			// do something, probably log somewhere? alert "deployer"?
-			fmt.Println(err)
 		case manifest := <-podChan:
 			podId := manifest.Id
 
 			if podChanMap[podId] == nil {
-				fmt.Println(fmt.Sprintf("starting a new goroutine for %s because one doesn't exist", podId))
 				// No goroutine is servicing this app currently, let's start one
-				podChanMap[podId] = make(chan *pods.PodManifest)
+				podChanMap[podId] = make(chan pods.PodManifest)
 				quitChanMap[podId] = make(chan struct{})
-				go installAndLaunchPod(podChanMap[podId], quitChanMap[podId])
+				go handlePods(podChanMap[podId], quitChanMap[podId])
 			}
 
-			podChanMap[podId] <- &manifest
+			podChanMap[podId] <- manifest
 		}
 	}
 }
 
 // no return value, no output channels. This should do everything it needs to do
 // without outside intervention (other than being signalled to quit)
-func installAndLaunchPod(podChan <-chan *pods.PodManifest, quit <-chan struct{}) {
+func handlePods(podChan <-chan pods.PodManifest, quit <-chan struct{}) {
 	// install new launchables
 	var manifestToLaunch *pods.PodManifest
 	manifestToLaunch = nil
@@ -62,48 +62,56 @@ func installAndLaunchPod(podChan <-chan *pods.PodManifest, quit <-chan struct{})
 		select {
 		case <-quit:
 			return
-		case manifestToLaunch = <-podChan:
-		case <-time.After(500 * time.Millisecond):
+		case *manifestToLaunch = <-podChan:
+		default:
 			if manifestToLaunch != nil {
-				newPod := pods.PodFromPodManifest(manifestToLaunch)
-				err := newPod.Install()
-				if err != nil {
-					fmt.Println(err)
-					// log this
-					// probably retry
-					// should this be in its own go routine that we kill if a new manifest is pushed?
-					break
-				}
-
-				// get currently running pod to compare with the new pod
-				currentPod, err := pods.CurrentPodFromManifestId(manifestToLaunch.Id)
-				if err != nil {
-					if os.IsNotExist(err) {
-						// we can ignore this, just means it's a first time deploy
-					} else {
-						fmt.Println(err)
-						// log this
-					}
+				ok := installAndLaunchPod(manifestToLaunch)
+				if ok {
+					manifestToLaunch = nil
 				} else {
-					currentSHA, _ := currentPod.ManifestSHA()
-					newSHA, _ := newPod.ManifestSHA()
-					if currentSHA != newSHA {
-						err = currentPod.Halt()
-						if err != nil {
-							fmt.Println(err)
-							// log this
-						}
-					}
-
+					// we're about to retry, sleep a little first
+					time.Sleep(1 * time.Second)
 				}
-				err = newPod.Launch()
-				if err != nil {
-					fmt.Println(err)
-					// log this
-				}
-				manifestToLaunch = nil
-
 			}
 		}
 	}
+}
+
+func installAndLaunchPod(podManifest *pods.PodManifest) bool {
+	newPod := pods.PodFromPodManifest(podManifest)
+	err := newPod.Install()
+	if err != nil {
+		// abort and retry
+		return false
+	}
+
+	// get currently running pod to compare with the new pod
+	currentPod, err := pods.CurrentPodFromManifestId(podManifest.Id)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// we can ignore this, just means it's a first time deploy
+		} else {
+
+			// Abort so we retry
+			return false
+		}
+	} else {
+		currentSHA, _ := currentPod.ManifestSHA()
+		newSHA, _ := newPod.ManifestSHA()
+		if currentSHA != newSHA {
+			ok, err := currentPod.Halt()
+			if err != nil || !ok {
+				// Abort so we retry
+				return false
+			}
+		}
+
+	}
+	ok, err := newPod.Launch()
+	if err != nil || !ok {
+		// abort and retry
+		return false
+	}
+	return true
+
 }

@@ -57,8 +57,8 @@ func InstallConsul(consulPod *pods.Pod) error {
 	if err != nil {
 		return util.Errorf("Can't install Consul, aborting: %s", err)
 	}
-	err = consulPod.Launch()
-	if err != nil {
+	ok, err := consulPod.Launch()
+	if err != nil || !ok {
 		return util.Errorf("Can't launch Consul, aborting: %s", err)
 	}
 	time.Sleep(time.Second * 10)
@@ -92,5 +92,6 @@ func InstallBaseAgent(agentManifest *pods.PodManifest) error {
 	if err != nil {
 		return err
 	}
-	return agentPod.Launch()
+	_, err = agentPod.Launch()
+	return err
 }
