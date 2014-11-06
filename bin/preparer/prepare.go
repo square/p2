@@ -56,18 +56,17 @@ func watchForPodManifestsForNode(nodeName string, consulAddress string, logFile 
 // without outside intervention (other than being signalled to quit)
 func handlePods(podChan <-chan pods.PodManifest, quit <-chan struct{}) {
 	// install new launchables
-	var manifestToLaunch *pods.PodManifest
-	manifestToLaunch = nil
+	var manifestToLaunch pods.PodManifest
 	for {
 		select {
 		case <-quit:
 			return
-		case *manifestToLaunch = <-podChan:
+		case manifestToLaunch = <-podChan:
 		default:
-			if manifestToLaunch != nil {
-				ok := installAndLaunchPod(manifestToLaunch)
+			if !manifestToLaunch.IsEmpty() {
+				ok := installAndLaunchPod(&manifestToLaunch)
 				if ok {
-					manifestToLaunch = nil
+					manifestToLaunch = pods.PodManifest{}
 				} else {
 					// we're about to retry, sleep a little first
 					time.Sleep(1 * time.Second)
