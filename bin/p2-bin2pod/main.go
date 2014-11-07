@@ -34,7 +34,7 @@ var (
     cat example.json | jq '.["tar_path"] | xargs -I {} cp {} ~/test_file_server_dir
     cat example.json | jq '.["manifest_path"] | xargs -I {} curl -X PUT https://consul.dev:8500/api/v1/kv/nodes/$(hostname)/example -d {}
     `)
-	executable = bin2pod.Arg("executable", "the executable to turn into a hoist artifact + pod manifest. The format of executable is of a URL. If referencing a path, use file:// as a prefix.").String()
+	executable = bin2pod.Arg("executable", "the executable to turn into a hoist artifact + pod manifest. The format of executable is of a URL.").String()
 	id         = bin2pod.Flag("id", "The ID of the pod. By default this is the name of the executable passed").String()
 	location   = bin2pod.Flag("location", "The location where the outputted tar will live. The characters {} will be replaced with the unique basename of the tar, including its SHA. If not provided, the location will be a file path to the resulting tar from the build, which is included in the output of this script. Users must copy the resultant tar to the new location if it is different from the default output path.").String()
 )
@@ -110,7 +110,7 @@ func makeTar(workingDir string, manifest *pods.PodManifest) (string, error) {
 		return "", fmt.Errorf("Couldn't make bin directory in %s: %s", tarContents, err)
 	}
 	launchablePath := path.Join(tarContents, "bin", "launch")
-	err = uri.CopyFile(launchablePath, *executable)
+	err = uri.URICopy(launchablePath, *executable)
 	if err != nil {
 		return "", fmt.Errorf("Couldn't copy from %s.: %s", *executable, err)
 	}
