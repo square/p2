@@ -14,10 +14,29 @@ import (
 )
 
 var (
-	bin2pod    = kingpin.New("bin2pod", "Convert an executable file into a pod manifest with a single hoist-type launchable")
+	bin2pod = kingpin.New("bin2pod", `Convert an executable file into a pod manifest with a single hoist-type launchable.
+    EXAMPLES
+
+    1. Simple example
+    -----------------
+
+    $ p2-bin2pod example.sh
+    {
+      "tar_path": "/Users/joe/example.sh_63754b9a17f9479bdd90a510d3eee6635a6060a8.tar.gz",
+      "manifest_path": "/Users/joe/example.sh.yaml",
+      "final_location": "/Users/joe/example.sh_63754b9a17f9479bdd90a510d3eee6635a6060a8.tar.gz"
+    }
+
+    2. Copy to fileserver and intent store.
+    ---------------------------------------
+
+    p2-bin2pod --location http://localhost:5000/{} example.sh > example.json
+    cat example.json | jq '.["tar_path"] | xargs -I {} cp {} ~/test_file_server_dir
+    cat example.json | jq '.["manifest_path"] | xargs -I {} curl -X PUT https://consul.dev:8500/api/v1/kv/nodes/$(hostname)/example -d {}
+    `)
 	executable = bin2pod.Arg("executable", "the executable to turn into a hoist artifact + pod manifest. The format of executable is of a URL. If referencing a path, use file:// as a prefix.").String()
 	id         = bin2pod.Flag("id", "The ID of the pod. By default this is the name of the executable passed").String()
-	location   = bin2pod.Flag("location", "The location where the outputted tar will live. If not provided, the location will be a file path to the resulting tar from the build, which is included in the output of this script. Users must copy the resultant tar to the new location if it is different from the default output path.").String()
+	location   = bin2pod.Flag("location", "The location where the outputted tar will live. The characters {} will be replaced with the unique basename of the tar, including its SHA. If not provided, the location will be a file path to the resulting tar from the build, which is included in the output of this script. Users must copy the resultant tar to the new location if it is different from the default output path.").String()
 )
 
 type output struct {
