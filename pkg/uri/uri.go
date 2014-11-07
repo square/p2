@@ -13,13 +13,13 @@ import (
 // delegates to a curl implementation.
 func URICopy(uri, path string, opts ...interface{}) error {
 	if strings.HasPrefix(uri, "file://") {
-		return copyFile(path, uri[len("file://"):])
+		return CopyFile(path, uri[len("file://"):])
 	} else {
 		return curl.File(uri, path, opts...)
 	}
 }
 
-func copyFile(dst, src string) error {
+func CopyFile(dst, src string) error {
 	s, err := os.Open(src)
 	if err != nil {
 		return err
