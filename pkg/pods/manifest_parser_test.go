@@ -78,3 +78,13 @@ func TestPodManifestCanReportItsSHA(t *testing.T) {
 	Assert(t).IsNil(err, "should not have erred when getting SHA")
 	Assert(t).AreEqual("f176d13fd3ec91e21bc163ec8b2e937df3625ea5", val, "SHA mismatched expectations")
 }
+
+func TestIsEmpty(t *testing.T) {
+	manifest := PodManifest{}
+	manifest.Id = "foobar"
+	Assert(t).IsFalse(manifest.IsEmpty(), "Expected IsEmpty() to be true for a manifest that has a value set for one of its properties")
+
+	manifest = *new(PodManifest)
+	Assert(t).IsTrue(manifest.IsEmpty(), "Expected IsEmpty() to be true when called on an empty manifest")
+
+}
