@@ -3,9 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
-	"os/exec"
 	"path"
 	"time"
 
@@ -55,34 +53,6 @@ func watchForPodManifestsForNode(nodeName string, consulAddress string, hooksDir
 	}
 }
 
-func runDirectory(dirpath string, environment []string) error {
-	entries, err := ioutil.ReadDir(dirpath)
-	if err != nil {
-		return err
-	}
-
-	for _, f := range entries {
-		fullpath := path.Join(dirpath, f.Name())
-		executable := (f.Mode() & 0111) != 0
-		if !executable {
-			// TODO: Port to structured logger.
-			fmt.Printf("%s is not executable\n", f.Name())
-			continue
-		}
-		cmd := exec.Command(fullpath)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		cmd.Env = environment
-		err := cmd.Run()
-		if err != nil {
-			// TODO: Port to structured logger.
-			fmt.Println(err)
-		}
-	}
-
-	return nil
-}
-
 // no return value, no output channels. This should do everything it needs to do
 // without outside intervention (other than being signalled to quit)
 func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-chan struct{}) {
@@ -100,11 +70,8 @@ func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-c
 			working = true
 		default:
 			if working {
-				hookEnvironment := os.Environ()
-				hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_ID=%s", manifestToLaunch.Id))
-				hookEnvironment = append(hookEnvironment, fmt.Sprintf("CONFIG_PATH=%s", pods.ConfigDir(manifestToLaunch.Id)))
 
-				err := runDirectory(path.Join(hooksDirectory, "before"), hookEnvironment)
+				err := pods.RunHooks(path.Join(hooksDirectory, "before"), manifestToLaunch.Id)
 				if err != nil {
 					// TODO port to structured logger.
 					fmt.Println(err)
@@ -115,7 +82,7 @@ func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-c
 					manifestToLaunch = pods.PodManifest{}
 					working = false
 
-					err = runDirectory(path.Join(hooksDirectory, "after"), hookEnvironment)
+					err = pods.RunHooks(path.Join(hooksDirectory, "after"), manifestToLaunch.Id)
 					if err != nil {
 						// TODO port to structured logger.
 						fmt.Println(err)
