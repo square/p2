@@ -12,7 +12,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"reflect"
 
 	"github.com/square/p2/pkg/util"
 	"gopkg.in/yaml.v2"
@@ -95,8 +94,4 @@ func (manifest *PodManifest) SHA() (string, error) {
 	hasher := sha1.New()
 	hasher.Write(valueBuf.Bytes())
 	return hex.EncodeToString(hasher.Sum(nil)), nil
-}
-
-func (manifest *PodManifest) IsEmpty() bool {
-	return reflect.DeepEqual(*manifest, PodManifest{})
 }

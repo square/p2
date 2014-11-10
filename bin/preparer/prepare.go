@@ -57,16 +57,22 @@ func watchForPodManifestsForNode(nodeName string, consulAddress string, logFile 
 func handlePods(podChan <-chan pods.PodManifest, quit <-chan struct{}) {
 	// install new launchables
 	var manifestToLaunch pods.PodManifest
+
+	// used to track if we have work to do (i.e. pod manifest came through channel
+	// and we have yet to operate on it)
+	working := false
 	for {
 		select {
 		case <-quit:
 			return
 		case manifestToLaunch = <-podChan:
+			working = true
 		default:
-			if !manifestToLaunch.IsEmpty() {
+			if working {
 				ok := installAndLaunchPod(&manifestToLaunch)
 				if ok {
 					manifestToLaunch = pods.PodManifest{}
+					working = false
 				} else {
 					// we're about to retry, sleep a little first
 					time.Sleep(1 * time.Second)
