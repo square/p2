@@ -36,8 +36,8 @@ func watchForPodManifestsForNode(nodeName string, consulAddress string, hooksDir
 
 	for {
 		select {
-		case <-errChan:
-			// do something, probably log somewhere? alert "deployer"?
+		case err := <-errChan:
+			fmt.Printf("Manifest error encountered: %s", err) // change to logrus output
 		case manifest := <-podChan:
 			podId := manifest.Id
 

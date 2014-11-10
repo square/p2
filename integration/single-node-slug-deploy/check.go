@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -50,43 +51,31 @@ func main() {
 	}
 }
 
-func generatePreparerPod(dir string) (string, error) {
+func generatePreparerPod(workdir string) (string, error) {
 	// build the artifact from HEAD
-	cmd := exec.Command("rake", "artifact:preparer")
-	err := cmd.Run()
+	err := exec.Command("go", "build", "github.com/square/p2/bin/preparer").Run()
+	if err != nil {
+		return "", util.Errorf("Couldn't build preparer: %s", err)
+	}
+	wd, _ := os.Getwd()
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", util.Errorf("Couldn't get hostname: %s", err)
+	}
+	cmd := exec.Command("p2-bin2pod", "--work-dir", workdir, "--id", "preparer", "--config", fmt.Sprintf("node_name=%s", hostname), wd+"/preparer")
+	out := bytes.Buffer{}
+	cmd.Stdout = &out
+	cmd.Stderr = os.Stderr
+	err = cmd.Run()
+	if err != nil {
+		return "", util.Errorf("p2-bin2pod failed: %s", err)
+	}
+	var bin2podres map[string]string
+	err = json.Unmarshal(out.Bytes(), &bin2podres)
 	if err != nil {
 		return "", err
 	}
-	candidateTars, err := util.From(runtime.Caller(0)).Glob("../../target/preparer_*.tar.gz")
-	if err != nil {
-		return "", util.Errorf("Failed to glob a preparer tar: %s", err)
-	}
-	if len(candidateTars) != 1 {
-		return "", util.Errorf("Ambiguous preparer tar, remove them")
-	}
-	preparerTar := fmt.Sprintf("file://%s", candidateTars[0])
-	manifest := &pods.PodManifest{}
-	manifest.Id = "preparer"
-	stanza := pods.LaunchableStanza{
-		LaunchableId:   "preparer",
-		LaunchableType: "hoist",
-		Location:       preparerTar,
-	}
-	manifest.LaunchableStanzas = map[string]pods.LaunchableStanza{
-		"preparer": stanza,
-	}
-	manifest.Config = make(map[string]interface{})
-	manifest.Config["node_name"] = "testnode"
-	preparerPath := path.Join(dir, "preparer.yaml")
-	f, err := os.OpenFile(preparerPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return "", err
-	}
-	err = manifest.Write(f)
-	if err != nil {
-		return "", err
-	}
-	return preparerPath, f.Close()
+	return bin2podres["manifest_path"], nil
 }
 
 func getConsulManifest(dir string) (string, error) {
@@ -147,8 +136,8 @@ func postHelloManifest(dir string) error {
 	if err != nil {
 		return err
 	}
-
-	return client.Put("nodes/testnode/hello", buf.String())
+	hostname, _ := os.Hostname()
+	return client.Put(fmt.Sprintf("nodes/%s/hello", hostname), buf.String())
 }
 
 func verifyHelloRunning() error {
@@ -177,7 +166,14 @@ func verifyHelloRunning() error {
 	}()
 	select {
 	case <-time.After(10 * time.Second):
-		return fmt.Errorf("Couldn't start hello after 10 seconds")
+		var helloTail, preparerTail bytes.Buffer
+		helloT := exec.Command("tail", "/var/service/hello__hello/log/main/current")
+		helloT.Stdout = &helloTail
+		helloT.Run()
+		preparerT := exec.Command("tail", "/var/service/preparer__preparer/log/main/current")
+		preparerT.Stdout = &preparerTail
+		preparerT.Run()
+		return fmt.Errorf("Couldn't start hello after 10 seconds: \n\n hello tail: \n%s\n\n preparer tail: \n%s", helloTail.String(), preparerTail.String())
 	case <-helloPidAppeared:
 		return nil
 	}

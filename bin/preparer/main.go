@@ -51,5 +51,7 @@ func main() {
 	}
 	defer logFile.Close()
 
+	fmt.Println("Preparer started successfully") // change to logrus message
 	watchForPodManifestsForNode(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logFile)
+
 }

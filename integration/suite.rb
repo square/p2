@@ -55,7 +55,7 @@ Dir.glob(File.join(path, '*/')).each do |test_dir|
       next
     end
     if options[:vm_maintenance]
-        unless system('vagrant up')
+      unless system('vagrant up')
         $stderr.puts "Couldn't start test #{test_name}, skipping".red
         next
       end

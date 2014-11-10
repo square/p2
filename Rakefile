@@ -23,29 +23,6 @@ task :build => :godep_check do
   e "godep go build -v ./..."
 end
 
-namespace :artifact do
-
-  desc 'Build the hoist artifact for the preparer'
-  task :preparer => :godep_check do
-    e "godep go build ./bin/preparer" # this will put a copy of preparer in the root
-    preparer_bin = target('preparer/bin')
-    preparer_launch = target('preparer/bin/launch')
-    preparer_enable = target('preparer/bin/enable')
-    preparer_disable = target('preparer/bin/disable')
-    e "rm -rf #{preparer_bin}"
-    e "mkdir -p #{preparer_bin}"
-    e "mv preparer #{preparer_launch}"
-    # e "touch #{preparer_enable}"
-    # e "chmod 744 #{preparer_enable}"
-    # e "touch #{preparer_disable}"
-    # e "chmod 744 #{preparer_disable}"
-    sha = `git rev-parse HEAD`.strip
-    tar_out = target("preparer_#{sha}.tar.gz")
-    e "tar -cvzf #{tar_out} -C #{target('preparer')} ."
-  end
-
-end
-
 desc 'Test all projects'
 task :test => [:godep_check, :build] do
   e "godep go test -timeout 10s -v ./..."
