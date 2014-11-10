@@ -3,7 +3,10 @@ package main
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
+	"os/exec"
+	"path"
 	"time"
 
 	"github.com/square/p2/pkg/intent"
@@ -52,6 +55,33 @@ func watchForPodManifestsForNode(nodeName string, consulAddress string, logFile 
 	}
 }
 
+func runDirectory(dirpath string, args ...string) error {
+	entries, err := ioutil.ReadDir(dirpath)
+	if err != nil {
+		return err
+	}
+
+	for _, f := range entries {
+		fullpath := path.Join(dirpath, f.Name())
+		executable := (f.Mode() & 0111) != 0
+		if !executable {
+			// TODO: Port to structured logger.
+			fmt.Printf("%s is not executable\n", f.Name())
+			continue
+		}
+		cmd := exec.Command(fullpath, args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err := cmd.Run()
+		if err != nil {
+			// TODO: Port to structured logger.
+			fmt.Println(err)
+		}
+	}
+
+	return nil
+}
+
 // no return value, no output channels. This should do everything it needs to do
 // without outside intervention (other than being signalled to quit)
 func handlePods(podChan <-chan pods.PodManifest, quit <-chan struct{}) {
@@ -69,10 +99,23 @@ func handlePods(podChan <-chan pods.PodManifest, quit <-chan struct{}) {
 			working = true
 		default:
 			if working {
+				err := runDirectory("/usr/local/p2hooks.d/before", manifestToLaunch.Id, pods.ConfigDir(manifestToLaunch.Id))
+				if err != nil {
+					// TODO port to structured logger.
+					fmt.Println(err)
+				}
+
 				ok := installAndLaunchPod(&manifestToLaunch)
 				if ok {
 					manifestToLaunch = pods.PodManifest{}
 					working = false
+
+					err = runDirectory("/usr/local/p2hooks.d/after", manifestToLaunch.Id, pods.ConfigDir(manifestToLaunch.Id))
+					if err != nil {
+						// TODO port to structured logger.
+						fmt.Println(err)
+					}
+
 				} else {
 					// we're about to retry, sleep a little first
 					time.Sleep(1 * time.Second)
