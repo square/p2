@@ -13,7 +13,7 @@ import (
 	"github.com/square/p2/pkg/pods"
 )
 
-func watchForPodManifestsForNode(nodeName string, consulAddress string, logFile io.Writer) {
+func watchForPodManifestsForNode(nodeName string, consulAddress string, hooksDirectory string, logFile io.Writer) {
 	pods.SetLogOut(logFile)
 	watchOpts := intent.WatchOptions{
 		Token:   nodeName,
@@ -47,7 +47,7 @@ func watchForPodManifestsForNode(nodeName string, consulAddress string, logFile 
 				// No goroutine is servicing this app currently, let's start one
 				podChanMap[podId] = make(chan pods.PodManifest)
 				quitChanMap[podId] = make(chan struct{})
-				go handlePods(podChanMap[podId], quitChanMap[podId])
+				go handlePods(hooksDirectory, podChanMap[podId], quitChanMap[podId])
 			}
 
 			podChanMap[podId] <- manifest
@@ -84,7 +84,7 @@ func runDirectory(dirpath string, args ...string) error {
 
 // no return value, no output channels. This should do everything it needs to do
 // without outside intervention (other than being signalled to quit)
-func handlePods(podChan <-chan pods.PodManifest, quit <-chan struct{}) {
+func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-chan struct{}) {
 	// install new launchables
 	var manifestToLaunch pods.PodManifest
 
@@ -99,7 +99,7 @@ func handlePods(podChan <-chan pods.PodManifest, quit <-chan struct{}) {
 			working = true
 		default:
 			if working {
-				err := runDirectory("/usr/local/p2hooks.d/before", manifestToLaunch.Id, pods.ConfigDir(manifestToLaunch.Id))
+				err := runDirectory(path.Join(hooksDirectory, "before"), manifestToLaunch.Id, pods.ConfigDir(manifestToLaunch.Id))
 				if err != nil {
 					// TODO port to structured logger.
 					fmt.Println(err)
@@ -110,7 +110,7 @@ func handlePods(podChan <-chan pods.PodManifest, quit <-chan struct{}) {
 					manifestToLaunch = pods.PodManifest{}
 					working = false
 
-					err = runDirectory("/usr/local/p2hooks.d/after", manifestToLaunch.Id, pods.ConfigDir(manifestToLaunch.Id))
+					err = runDirectory(path.Join(hooksDirectory, "after"), manifestToLaunch.Id, pods.ConfigDir(manifestToLaunch.Id))
 					if err != nil {
 						// TODO port to structured logger.
 						fmt.Println(err)

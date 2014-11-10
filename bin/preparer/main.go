@@ -9,8 +9,9 @@ import (
 )
 
 type PreparerConfig struct {
-	NodeName      string `yaml:"node_name"`
-	ConsulAddress string `yaml:"consul_address"`
+	NodeName       string `yaml:"node_name"`
+	ConsulAddress  string `yaml:"consul_address"`
+	HooksDirectory string `yaml:"hooks_directory"`
 }
 
 func main() {
@@ -41,11 +42,14 @@ func main() {
 	if preparerConfig.ConsulAddress == "" {
 		preparerConfig.ConsulAddress = "127.0.0.1:8500"
 	}
+	if preparerConfig.HooksDirectory == "" {
+		preparerConfig.HooksDirectory = "/usr/local/p2hooks.d"
+	}
 	logFile, err := os.OpenFile("/tmp/platypus", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		os.Exit(1)
 	}
 	defer logFile.Close()
 
-	watchForPodManifestsForNode(preparerConfig.NodeName, preparerConfig.ConsulAddress, logFile)
+	watchForPodManifestsForNode(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logFile)
 }
