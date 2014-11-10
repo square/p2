@@ -55,7 +55,7 @@ func watchForPodManifestsForNode(nodeName string, consulAddress string, hooksDir
 	}
 }
 
-func runDirectory(dirpath string, args ...string) error {
+func runDirectory(dirpath string, environment []string) error {
 	entries, err := ioutil.ReadDir(dirpath)
 	if err != nil {
 		return err
@@ -69,9 +69,10 @@ func runDirectory(dirpath string, args ...string) error {
 			fmt.Printf("%s is not executable\n", f.Name())
 			continue
 		}
-		cmd := exec.Command(fullpath, args...)
+		cmd := exec.Command(fullpath)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
+		cmd.Env = environment
 		err := cmd.Run()
 		if err != nil {
 			// TODO: Port to structured logger.
@@ -99,7 +100,11 @@ func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-c
 			working = true
 		default:
 			if working {
-				err := runDirectory(path.Join(hooksDirectory, "before"), manifestToLaunch.Id, pods.ConfigDir(manifestToLaunch.Id))
+				hookEnvironment := os.Environ()
+				hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_ID=%s", manifestToLaunch.Id))
+				hookEnvironment = append(hookEnvironment, fmt.Sprintf("CONFIG_PATH=%s", pods.ConfigDir(manifestToLaunch.Id)))
+
+				err := runDirectory(path.Join(hooksDirectory, "before"), hookEnvironment)
 				if err != nil {
 					// TODO port to structured logger.
 					fmt.Println(err)
@@ -110,7 +115,7 @@ func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-c
 					manifestToLaunch = pods.PodManifest{}
 					working = false
 
-					err = runDirectory(path.Join(hooksDirectory, "after"), manifestToLaunch.Id, pods.ConfigDir(manifestToLaunch.Id))
+					err = runDirectory(path.Join(hooksDirectory, "after"), hookEnvironment)
 					if err != nil {
 						// TODO port to structured logger.
 						fmt.Println(err)
