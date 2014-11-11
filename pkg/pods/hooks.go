@@ -36,10 +36,10 @@ func runDirectory(dirpath string, environment []string) error {
 	return nil
 }
 
-func RunHooks(dirpath string, podId string) error {
+func RunHooks(dirpath string, podManifest *PodManifest) error {
 	hookEnvironment := os.Environ()
-	hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_ID=%s", podId))
-	hookEnvironment = append(hookEnvironment, fmt.Sprintf("CONFIG_PATH=%s", ConfigDir(podId)))
+	hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_ID=%s", podManifest.Id))
+	hookEnvironment = append(hookEnvironment, fmt.Sprintf("CONFIG_PATH=%s", ConfigDir(podManifest.Id)))
 
 	return runDirectory(dirpath, hookEnvironment)
 }

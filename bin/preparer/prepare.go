@@ -71,7 +71,7 @@ func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-c
 		default:
 			if working {
 
-				err := pods.RunHooks(path.Join(hooksDirectory, "before"), manifestToLaunch.Id)
+				err := pods.RunHooks(path.Join(hooksDirectory, "before"), &manifestToLaunch)
 				if err != nil {
 					// TODO port to structured logger.
 					fmt.Println(err)
@@ -82,7 +82,7 @@ func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-c
 					manifestToLaunch = pods.PodManifest{}
 					working = false
 
-					err = pods.RunHooks(path.Join(hooksDirectory, "after"), manifestToLaunch.Id)
+					err = pods.RunHooks(path.Join(hooksDirectory, "after"), &manifestToLaunch)
 					if err != nil {
 						// TODO port to structured logger.
 						fmt.Println(err)
