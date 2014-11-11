@@ -16,7 +16,7 @@ func Hooks(dirpath string) *HookDir {
 	return &HookDir{dirpath}
 }
 
-func (h *HookDir) runDirectory(dirpath string, environment []string) error {
+func runDirectory(dirpath string, environment []string) error {
 	entries, err := ioutil.ReadDir(dirpath)
 	if err != nil {
 		return err
@@ -44,7 +44,7 @@ func (h *HookDir) runDirectory(dirpath string, environment []string) error {
 	return nil
 }
 
-func (h *HookDir) runHooks(dirpath string, pod *Pod, podManifest *PodManifest) error {
+func runHooks(dirpath string, pod *Pod, podManifest *PodManifest) error {
 	configFileName, err := podManifest.ConfigFileName()
 	if err != nil {
 		return err
@@ -54,13 +54,13 @@ func (h *HookDir) runHooks(dirpath string, pod *Pod, podManifest *PodManifest) e
 	hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_ID=%s", podManifest.Id))
 	hookEnvironment = append(hookEnvironment, fmt.Sprintf("CONFIG_PATH=%s", path.Join(pod.ConfigDir(), configFileName)))
 
-	return h.runDirectory(dirpath, hookEnvironment)
+	return runDirectory(dirpath, hookEnvironment)
 }
 
 func (h *HookDir) RunBefore(pod *Pod, manifest *PodManifest) error {
-	return h.runHooks(path.Join(h.dirpath, "before"), pod, manifest)
+	return runHooks(path.Join(h.dirpath, "before"), pod, manifest)
 }
 
 func (h *HookDir) RunAfter(pod *Pod, manifest *PodManifest) error {
-	return h.runHooks(path.Join(h.dirpath, "after"), pod, manifest)
+	return runHooks(path.Join(h.dirpath, "after"), pod, manifest)
 }

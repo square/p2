@@ -11,52 +11,57 @@ import (
 
 func TestExecutableHooksAreRun(t *testing.T) {
 	tempDir, err := ioutil.TempDir("", "hook")
-	if err != nil {
-		panic(err)
-	}
+	Assert(t).IsNil(err, "the error should have been nil")
 	defer os.RemoveAll(tempDir)
+
+	podDir, err := ioutil.TempDir("", "pod")
+	defer os.RemoveAll(podDir)
+	Assert(t).IsNil(err, "the error should have been nil")
 
 	ioutil.WriteFile(path.Join(tempDir, "test1"), []byte("#!/bin/sh\necho $POD_ID > $(dirname $0)/output"), 0755)
 
 	manifest := PodManifest{Id: "TestPod"}
-	RunHooks(tempDir, &manifest)
+	runHooks(tempDir, &Pod{podDir}, &manifest)
 
 	contents, err := ioutil.ReadFile(path.Join(tempDir, "output"))
-	if err != nil {
-		panic(err)
-	}
+	Assert(t).IsNil(err, "the error should have been nil")
 
 	Assert(t).AreEqual(string(contents), "TestPod\n", "hook should output pod ID into output file")
 }
 
 func TestNonExecutableHooksAreNotRun(t *testing.T) {
 	tempDir, err := ioutil.TempDir("", "hook")
-	if err != nil {
-		panic(err)
-	}
+	Assert(t).IsNil(err, "the error should have been nil")
 	defer os.RemoveAll(tempDir)
 
-	ioutil.WriteFile(path.Join(tempDir, "test2"), []byte("#!/bin/sh\ntouch $(dirname $0)/failed"), 0644)
+	podDir, err := ioutil.TempDir("", "pod")
+	defer os.RemoveAll(podDir)
+	Assert(t).IsNil(err, "the error should have been nil")
+
+	err = ioutil.WriteFile(path.Join(tempDir, "test2"), []byte("#!/bin/sh\ntouch $(dirname $0)/failed"), 0644)
+	Assert(t).IsNil(err, "the error should have been nil")
 
 	manifest := PodManifest{Id: "TestPod"}
-	RunHooks(tempDir, &manifest)
+	runHooks(tempDir, &Pod{podDir}, &manifest)
 
 	if _, err := os.Stat(path.Join(tempDir, "failed")); err == nil {
-		panic("`failed` file exists; non-executable hook ran but should not have run")
+		t.Fatal("`failed` file exists; non-executable hook ran but should not have run")
 	}
 }
 
 func TestDirectoriesDoNotBreakEverything(t *testing.T) {
 	tempDir, err := ioutil.TempDir("", "hook")
-	if err != nil {
-		panic(err)
-	}
+	Assert(t).IsNil(err, "the error should have been nil")
 	defer os.RemoveAll(tempDir)
+
+	podDir, err := ioutil.TempDir("", "pod")
+	defer os.RemoveAll(podDir)
+	Assert(t).IsNil(err, "the error should have been nil")
 
 	os.Mkdir(path.Join(tempDir, "mydir"), 0755)
 
 	manifest := PodManifest{Id: "TestPod"}
-	err = RunHooks(tempDir, &manifest)
+	err = runHooks(tempDir, &Pod{podDir}, &manifest)
 
 	Assert(t).IsNil(err, "Got an error when running a directory inside the hooks directory")
 }
