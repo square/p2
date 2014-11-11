@@ -61,7 +61,7 @@ func activeDir() string {
 	}
 	dir, err := os.Getwd()
 	if err != nil {
-		log.Fatalf("Cannot get current directory", err)
+		log.Fatalf("Cannot get current directory: %s", err)
 	}
 	return dir
 }
