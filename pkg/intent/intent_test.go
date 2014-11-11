@@ -83,7 +83,7 @@ func TestHappyPathPodWatch(t *testing.T) {
 	case err := <-errChan:
 		t.Fatalf("Should not have resulted in an error: %s", err)
 	case manifest := <-podCh:
-		Assert(t).AreEqual("thepod", manifest.Id, "The ID of the manifest should have matched the document")
+		Assert(t).AreEqual("thepod", manifest.ID(), "The ID of the manifest should have matched the document")
 	}
 }
 
@@ -123,7 +123,7 @@ func TestErrorsAndPodsReturned(t *testing.T) {
 			foundErr = true
 			x += 1
 		case manifest := <-podCh:
-			Assert(t).AreEqual("thepod", manifest.Id, "The ID of the manifest should have matched the document")
+			Assert(t).AreEqual("thepod", manifest.ID(), "The ID of the manifest should have matched the document")
 			Assert(t).IsFalse(foundManifests, "should not have found more than one manifest")
 			foundManifests = true
 			x += 1

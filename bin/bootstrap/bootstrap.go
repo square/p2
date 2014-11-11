@@ -28,7 +28,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not get consul manifest: %s", err)
 	}
-	consulPod := pods.PodFromManifestId(consulManifest.Id)
+	consulPod := pods.PodFromManifestId(consulManifest.ID())
 	agentManifest, err := pods.PodManifestFromPath(*agentManifestPath)
 	if err != nil {
 		log.Fatalln("Could not get agent manifest: %s", err)
@@ -78,7 +78,7 @@ func RegisterBaseAgentInConsul(agentManifest *pods.PodManifest) error {
 	if err != nil {
 		return err
 	}
-	endpoint := fmt.Sprintf("nodes/%s/%s", hostname, agentManifest.Id)
+	endpoint := fmt.Sprintf("nodes/%s/%s", hostname, agentManifest.ID())
 	err = client.Put(endpoint, b.String())
 	if err != nil {
 		return util.Errorf("Could not PUT %s into %s: %s", b.String(), endpoint, err)
@@ -87,7 +87,7 @@ func RegisterBaseAgentInConsul(agentManifest *pods.PodManifest) error {
 }
 
 func InstallBaseAgent(agentManifest *pods.PodManifest) error {
-	agentPod := pods.PodFromManifestId(agentManifest.Id)
+	agentPod := pods.PodFromManifestId(agentManifest.ID())
 	err := agentPod.Install(agentManifest)
 	if err != nil {
 		return err

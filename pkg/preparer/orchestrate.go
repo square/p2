@@ -3,8 +3,14 @@ package preparer
 import (
 	"fmt"
 	"io"
+<<<<<<< HEAD
 	"os"
 	"path"
+||||||| merged common ancestors
+	"os"
+=======
+	// "os"
+>>>>>>> Use ID() getter for manifests
 	"time"
 
 	"github.com/square/p2/pkg/intent"
@@ -52,7 +58,7 @@ func WatchForPodManifestsForNode(nodeName string, consulAddress string, logFile 
 		case err := <-errChan:
 			fmt.Printf("Manifest error encountered: %s", err) // change to logrus output
 		case manifest := <-podChan:
-			podId := manifest.Id
+			podId := manifest.ID()
 			if podChanMap[podId] == nil {
 				// No goroutine is servicing this app currently, let's start one
 				podChanMap[podId] = make(chan pods.PodManifest)
@@ -80,22 +86,12 @@ func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-c
 			return
 		case manifestToLaunch = <-podChan:
 			working = true
-		default:
+		case <-time.After(1 * time.Second):
 			if working {
-				ok := installAndLaunchPod(&manifestToLaunch, pods.PodFromManifestId(manifestToLaunch.Id))
+				ok := installAndLaunchPod(&manifestToLaunch, pods.PodFromManifestId(manifestToLaunch.ID()))
 				if ok {
 					manifestToLaunch = pods.PodManifest{}
 					working = false
-
-					err = pods.RunHooks(path.Join(hooksDirectory, "after"), &manifestToLaunch)
-					if err != nil {
-						// TODO port to structured logger.
-						fmt.Println(err)
-					}
-
-				} else {
-					// we're about to retry, sleep a little first
-					time.Sleep(1 * time.Second)
 				}
 			}
 		}
@@ -103,7 +99,7 @@ func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-c
 }
 
 func installAndLaunchPod(newManifest *pods.PodManifest, pod Pod) bool {
-	fmt.Printf("Launching %s\n", newManifest.Id)
+	fmt.Printf("Launching %s\n", newManifest.ID())
 
 	err := pod.Install(newManifest)
 	if err != nil {
@@ -113,26 +109,25 @@ func installAndLaunchPod(newManifest *pods.PodManifest, pod Pod) bool {
 
 	// get currently running pod to compare with the new pod
 	currentManifest, err := pod.CurrentManifest()
-	if err != nil {
-		if os.IsNotExist(err) {
-			ok, err := pod.Launch(newManifest)
-			if err != nil || !ok {
-				// abort and retry
-				return false
-			}
-			return true
-		} else {
-			// Abort so we retry
+	if err == pods.NoCurrentManifest {
+		ok, err := pod.Launch(newManifest)
+		if err != nil || !ok {
+			// abort and retry
 			return false
 		}
+		return true
 	} else {
 		currentSHA, _ := currentManifest.SHA()
 		newSHA, _ := newManifest.SHA()
 		if currentSHA != newSHA {
-			fmt.Printf("Halting %s of %s to launch %s\n", currentSHA, newManifest.Id, newSHA)
+			fmt.Printf("Halting %s of %s to launch %s\n", currentSHA, newManifest.ID(), newSHA)
 			ok, err := pod.Halt()
 			if err != nil || !ok {
 				// Abort so we retry
+				return false
+			}
+			ok, err = pod.Launch(newManifest)
+			if err != nil || !ok {
 				return false
 			}
 		}

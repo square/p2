@@ -102,7 +102,7 @@ func TestLogLaunchableError(t *testing.T) {
 	testManifest := getTestPodManifest()
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
-	logLaunchableError(testManifest.Id, testLaunchable.Id, testErr, message)
+	logLaunchableError(testManifest.ID(), testLaunchable.Id, testErr, message)
 
 	output, err := ioutil.ReadAll(&out)
 	Assert(t).IsNil(err, "Got an error reading the logging output")
@@ -119,7 +119,7 @@ func TestLogPodError(t *testing.T) {
 	testManifest := getTestPodManifest()
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
-	logPodError(testManifest.Id, testErr, message)
+	logPodError(testManifest.ID(), testErr, message)
 
 	output, err := ioutil.ReadAll(&out)
 	Assert(t).IsNil(err, "Got an error reading the logging output")
@@ -134,7 +134,7 @@ func TestLogPodInfo(t *testing.T) {
 
 	testManifest := getTestPodManifest()
 	message := "Pod did something good"
-	logPodInfo(testManifest.Id, message)
+	logPodInfo(testManifest.ID(), message)
 
 	output, err := ioutil.ReadAll(&out)
 	Assert(t).IsNil(err, "Got an error reading the logging output")

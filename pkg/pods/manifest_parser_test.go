@@ -15,7 +15,7 @@ func TestPodManifestCanBeRead(t *testing.T) {
 
 	manifest, err := PodManifestFromPath(testPath)
 	Assert(t).IsNil(err, "Should not have failed to get pod manifest.")
-	Assert(t).AreEqual("hello", manifest.Id, "Id read from manifest didn't have expected value")
+	Assert(t).AreEqual("hello", manifest.ID(), "Id read from manifest didn't have expected value")
 	Assert(t).AreEqual(manifest.LaunchableStanzas["app"].Location, "http://localhost:8000/foo/bar/baz/hello_abc123_vagrant.tar.gz", "Location read from manifest didn't have expected value")
 	Assert(t).AreEqual("hoist", manifest.LaunchableStanzas["app"].LaunchableType, "LaunchableType read from manifest didn't have expected value")
 	Assert(t).AreEqual("hello", manifest.LaunchableStanzas["app"].LaunchableId, "LaunchableId read from manifest didn't have expected value")
@@ -77,4 +77,11 @@ func TestPodManifestCanReportItsSHA(t *testing.T) {
 	val, err := manifest.SHA()
 	Assert(t).IsNil(err, "should not have erred when getting SHA")
 	Assert(t).AreEqual("f176d13fd3ec91e21bc163ec8b2e937df3625ea5", val, "SHA mismatched expectations")
+}
+
+func TestNilPodManifestHasEmptySHA(t *testing.T) {
+	var manifest *PodManifest
+	content, err := manifest.SHA()
+	Assert(t).AreEqual("", content, "the SHA should have been empty")
+	Assert(t).IsNotNil(err, "Should have had an error when attempting to read SHA from nil manifest")
 }
