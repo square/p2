@@ -84,7 +84,9 @@ config:
 	err = setupConfig(envDir, configDir, manifest)
 	Assert(t).IsNil(err, "There shouldn't have been an error setting up config")
 
-	configPath := path.Join(configDir, "thepod_f176d13fd3ec91e21bc163ec8b2e937df3625ea5.yml")
+	configFileName, err := manifest.ConfigFileName()
+	Assert(t).IsNil(err, "Couldn't generate config filename")
+	configPath := path.Join(configDir, configFileName)
 	config, err := ioutil.ReadFile(configPath)
 	Assert(t).IsNil(err, "should not have erred reading the config")
 	Assert(t).AreEqual("ENVIRONMENT: staging\n", string(config), "the config didn't match")

@@ -45,7 +45,7 @@ func (h *HookDir) runDirectory(dirpath string, environment []string) error {
 }
 
 func (h *HookDir) runHooks(dirpath string, pod *Pod, podManifest *PodManifest) error {
-	configFileName, err := podManifest.configFileName()
+	configFileName, err := podManifest.ConfigFileName()
 	if err != nil {
 		return err
 	}
