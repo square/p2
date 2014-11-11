@@ -121,6 +121,8 @@ func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilde
 	return nil
 }
 
+// Start will take a launchable and start every runit service associated with the launchable.
+// All services will attempt to be started.
 func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 
 	// if the service is new, building the runit services also starts them, making the sv start superfluous but harmless
@@ -135,9 +137,9 @@ func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuild
 	}
 
 	for _, executable := range executables {
-		_, err := sv.Restart(&executable.Service)
-		if err != nil {
-			sv.Start(&executable.Service)
+		_, err := sv.Start(&executable.Service)
+		if err != runit.SuperviseOkMissing {
+			return err
 		}
 		maxRetries := 6
 		for i := 0; i < maxRetries; i++ {

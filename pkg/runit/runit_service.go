@@ -40,11 +40,11 @@ func (sv *SV) execOnService(service *Service, toRun string) (string, error) {
 }
 
 func (sv *SV) Start(service *Service) (string, error) {
-	return sv.execOnService(service, "start")
+	return convertToErr(sv.execOnService(service, "start"))
 }
 
 func (sv *SV) Stop(service *Service) (string, error) {
-	return sv.execOnService(service, "stop")
+	return convertToErr(sv.execOnService(service, "stop"))
 }
 
 func (sv *SV) Restart(service *Service) (string, error) {

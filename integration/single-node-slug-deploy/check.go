@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path"
@@ -62,7 +63,9 @@ func generatePreparerPod(workdir string) (string, error) {
 	if err != nil {
 		return "", util.Errorf("Couldn't get hostname: %s", err)
 	}
-	cmd := exec.Command("p2-bin2pod", "--work-dir", workdir, "--id", "preparer", "--config", fmt.Sprintf("node_name=%s", hostname), wd+"/preparer")
+	// the test number forces the pod manifest to change every test run.
+	testNumber := fmt.Sprintf("test=%d", rand.Intn(2000000000))
+	cmd := exec.Command("p2-bin2pod", "--work-dir", workdir, "--id", "preparer", "--config", fmt.Sprintf("node_name=%s", hostname), "--config", testNumber, wd+"/preparer")
 	out := bytes.Buffer{}
 	cmd.Stdout = &out
 	cmd.Stderr = os.Stderr

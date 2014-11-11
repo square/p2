@@ -1,4 +1,4 @@
-package main
+package preparer
 
 import (
 	"fmt"
@@ -11,7 +11,19 @@ import (
 	"github.com/square/p2/pkg/pods"
 )
 
+<<<<<<< HEAD:bin/preparer/prepare.go
 func watchForPodManifestsForNode(nodeName string, consulAddress string, hooksDirectory string, logFile io.Writer) {
+||||||| merged common ancestors
+func watchForPodManifestsForNode(nodeName string, consulAddress string, logFile io.Writer) {
+=======
+type Pod interface {
+	Launch() (bool, error)
+	Install() error
+	ManifestSHA() (string, error)
+}
+
+func WatchForPodManifestsForNode(nodeName string, consulAddress string, logFile io.Writer) {
+>>>>>>> Use correct runit errors:pkg/preparer/orchestrate.go
 	pods.SetLogOut(logFile)
 	watchOpts := intent.WatchOptions{
 		Token:   nodeName,
@@ -40,7 +52,6 @@ func watchForPodManifestsForNode(nodeName string, consulAddress string, hooksDir
 			fmt.Printf("Manifest error encountered: %s", err) // change to logrus output
 		case manifest := <-podChan:
 			podId := manifest.Id
-
 			if podChanMap[podId] == nil {
 				// No goroutine is servicing this app currently, let's start one
 				podChanMap[podId] = make(chan pods.PodManifest)
@@ -71,13 +82,8 @@ func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-c
 		default:
 			if working {
 
-				err := pods.RunHooks(path.Join(hooksDirectory, "before"), &manifestToLaunch)
-				if err != nil {
-					// TODO port to structured logger.
-					fmt.Println(err)
-				}
+				ok := installAndLaunchPod(&manifestToLaunch, pods.PodFromPodManifest(&manifestToLaunch))
 
-				ok := installAndLaunchPod(&manifestToLaunch)
 				if ok {
 					manifestToLaunch = pods.PodManifest{}
 					working = false
@@ -97,8 +103,9 @@ func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-c
 	}
 }
 
-func installAndLaunchPod(podManifest *pods.PodManifest) bool {
-	newPod := pods.PodFromPodManifest(podManifest)
+func installAndLaunchPod(podManifest *pods.PodManifest, newPod Pod) bool {
+	fmt.Printf("Launching %s\n", podManifest.Id)
+
 	err := newPod.Install()
 	if err != nil {
 		// abort and retry
@@ -109,9 +116,13 @@ func installAndLaunchPod(podManifest *pods.PodManifest) bool {
 	currentPod, err := pods.CurrentPodFromManifestId(podManifest.Id)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// we can ignore this, just means it's a first time deploy
+			ok, err := newPod.Launch()
+			if err != nil || !ok {
+				// abort and retry
+				return false
+			}
+			return true
 		} else {
-
 			// Abort so we retry
 			return false
 		}
@@ -119,6 +130,7 @@ func installAndLaunchPod(podManifest *pods.PodManifest) bool {
 		currentSHA, _ := currentPod.ManifestSHA()
 		newSHA, _ := newPod.ManifestSHA()
 		if currentSHA != newSHA {
+			fmt.Printf("Halting %s of %s to launch %s\n", currentSHA, podManifest.Id, newSHA)
 			ok, err := currentPod.Halt()
 			if err != nil || !ok {
 				// Abort so we retry
@@ -127,11 +139,5 @@ func installAndLaunchPod(podManifest *pods.PodManifest) bool {
 		}
 
 	}
-	ok, err := newPod.Launch()
-	if err != nil || !ok {
-		// abort and retry
-		return false
-	}
-	return true
 
 }

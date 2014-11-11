@@ -76,6 +76,10 @@ func (pod *Pod) Halt() (bool, error) {
 	return success, nil
 }
 
+// Launch will attempt to start every launchable listed in the pod manifest. Errors encountered
+// during the launch process will be logged, but will not stop attempts to launch other launchables
+// in the same pod. If any services fail to start, the first return bool will be false. If an error
+// occurs when writing the current manifest to the pod directory, an error will be returned.
 func (pod *Pod) Launch() (bool, error) {
 	launchables, err := getLaunchablesFromPodManifest(pod.podManifest)
 	if err != nil {
@@ -156,7 +160,9 @@ func (pod *Pod) Uninstall() error {
 	return nil
 }
 
-// This assumes all launchables are Hoist artifacts, we will generalize this at a later point
+// Install will ensure that executables for all required services are present on the host
+// machine and are set up to run. In the case of Hoist artifacts (which is the only format
+// supported currently, this will set up runit services.).
 func (pod *Pod) Install() error {
 	// if we don't want this to run as root, need another way to create pods directory
 	podsHome := path.Join("/data", "pods")

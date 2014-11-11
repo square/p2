@@ -77,11 +77,11 @@ func main() {
 	stanza.LaunchableId = podId()
 	stanza.LaunchableType = "hoist"
 
-	workingDir, err := os.Getwd()
+	workingDir := activeDir()
 	if err != nil {
 		log.Fatalf("Couldn't get the current working directory: %s", err)
 	}
-
+	err = addManifestConfig(manifest)
 	tarLocation, err := makeTar(workingDir, manifest)
 	if err != nil {
 		log.Fatalln(err.Error())
@@ -97,7 +97,6 @@ func main() {
 	}
 	manifest.LaunchableStanzas[podId()] = stanza
 
-	err = addManifestConfig(manifest)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}

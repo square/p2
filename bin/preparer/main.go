@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/square/p2/pkg/preparer"
 	"gopkg.in/yaml.v2"
 )
 
@@ -52,6 +53,7 @@ func main() {
 	defer logFile.Close()
 
 	fmt.Println("Preparer started successfully") // change to logrus message
-	watchForPodManifestsForNode(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logFile)
 
+	preparer.watchForPodManifestsForNode(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logFile)
+	fmt.Println("Terminating")
 }
