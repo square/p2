@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/nareix/curl"
+	"github.com/square/p2/pkg/util"
 )
 
 var leadingProto = regexp.MustCompile("^[a-zA-Z\\d\\.]+:.//.*")
@@ -29,16 +30,16 @@ func URICopy(uri, path string, opts ...interface{}) error {
 func copyFile(dst, src string) error {
 	s, err := os.Open(src)
 	if err != nil {
-		return err
+		return util.Errorf("Couldn't open source file '%s' for reading: %s", src, err)
 	}
 	defer s.Close()
 	d, err := os.Create(dst)
 	if err != nil {
-		return err
+		return util.Errorf("Couldn't open destination file '%s' for writing: %s", dst, err)
 	}
 	if _, err := io.Copy(d, s); err != nil {
 		d.Close()
-		return err
+		return util.Errorf("Couldn't copy file contents to the destination: %s", err)
 	}
 	return d.Close()
 }

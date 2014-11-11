@@ -28,13 +28,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not get consul manifest: %s", err)
 	}
-	consulPod := pods.NewPod(consulManifest)
+	consulPod := pods.PodFromManifestId(consulManifest.ID())
 	agentManifest, err := pods.PodManifestFromPath(*agentManifestPath)
 	if err != nil {
 		log.Fatalln("Could not get agent manifest: %s", err)
 	}
 	log.Println("Installing and launching consul")
-	err = InstallConsul(consulPod)
+	err = InstallConsul(consulPod, consulManifest)
 	if err != nil {
 		log.Fatalf("Could not install consul: %s", err)
 	}
@@ -51,13 +51,13 @@ func main() {
 	log.Println("Bootstrapping complete")
 }
 
-func InstallConsul(consulPod *pods.Pod) error {
+func InstallConsul(consulPod *pods.Pod, consulManifest *pods.PodManifest) error {
 	// Inject servicebuilder?
-	err := consulPod.Install()
+	err := consulPod.Install(consulManifest)
 	if err != nil {
 		return util.Errorf("Can't install Consul, aborting: %s", err)
 	}
-	ok, err := consulPod.Launch()
+	ok, err := consulPod.Launch(consulManifest)
 	if err != nil || !ok {
 		return util.Errorf("Can't launch Consul, aborting: %s", err)
 	}
@@ -78,7 +78,7 @@ func RegisterBaseAgentInConsul(agentManifest *pods.PodManifest) error {
 	if err != nil {
 		return err
 	}
-	endpoint := fmt.Sprintf("nodes/%s/%s", hostname, agentManifest.Id)
+	endpoint := fmt.Sprintf("nodes/%s/%s", hostname, agentManifest.ID())
 	err = client.Put(endpoint, b.String())
 	if err != nil {
 		return util.Errorf("Could not PUT %s into %s: %s", b.String(), endpoint, err)
@@ -87,11 +87,11 @@ func RegisterBaseAgentInConsul(agentManifest *pods.PodManifest) error {
 }
 
 func InstallBaseAgent(agentManifest *pods.PodManifest) error {
-	agentPod := pods.NewPod(agentManifest)
-	err := agentPod.Install()
+	agentPod := pods.PodFromManifestId(agentManifest.ID())
+	err := agentPod.Install(agentManifest)
 	if err != nil {
 		return err
 	}
-	_, err = agentPod.Launch()
+	_, err = agentPod.Launch(agentManifest)
 	return err
 }

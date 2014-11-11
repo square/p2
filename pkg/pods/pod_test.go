@@ -15,26 +15,31 @@ import (
 )
 
 func getTestPod() *Pod {
+	return &Pod{"/data/pods/test"}
+}
+
+func getTestPodManifest() *PodManifest {
 	_, filename, _, _ := runtime.Caller(0)
 	testPath := path.Join(path.Dir(filename), "test_manifest.yaml")
-	pod, _ := PodFromManifestPath(testPath)
+	pod, _ := PodManifestFromPath(testPath)
 	return pod
 }
 
 func getLaunchableStanzasFromTestManifest() map[string]LaunchableStanza {
-	return getTestPod().podManifest.LaunchableStanzas
+	return getTestPodManifest().LaunchableStanzas
 }
 
 func getPodIdFromTestManifest() string {
-	return getTestPod().podManifest.Id
+	return getTestPodManifest().Id
 }
 
 func TestGetLaunchable(t *testing.T) {
 	launchableStanzas := getLaunchableStanzasFromTestManifest()
-	podId := getPodIdFromTestManifest()
+	pod := getTestPod()
+	manifest := getTestPodManifest()
 	Assert(t).AreNotEqual(0, len(launchableStanzas), "Expected there to be at least one launchable stanza in the test manifest")
 	for _, stanza := range launchableStanzas {
-		launchable, _ := getLaunchable(stanza, podId)
+		launchable, _ := pod.getLaunchable(stanza, manifest)
 		Assert(t).AreEqual("hello__hello", launchable.Id, "LaunchableId did not have expected value")
 		Assert(t).AreEqual("http://localhost:8000/foo/bar/baz/hello_abc123_vagrant.tar.gz", launchable.Location, "Launchable location did not have expected value")
 	}
@@ -79,7 +84,9 @@ config:
 	err = setupConfig(envDir, configDir, manifest)
 	Assert(t).IsNil(err, "There shouldn't have been an error setting up config")
 
-	configPath := path.Join(configDir, "thepod_f176d13fd3ec91e21bc163ec8b2e937df3625ea5.yml")
+	configFileName, err := manifest.ConfigFileName()
+	Assert(t).IsNil(err, "Couldn't generate config filename")
+	configPath := path.Join(configDir, configFileName)
 	config, err := ioutil.ReadFile(configPath)
 	Assert(t).IsNil(err, "should not have erred reading the config")
 	Assert(t).AreEqual("ENVIRONMENT: staging\n", string(config), "the config didn't match")
@@ -94,16 +101,16 @@ func TestLogLaunchableError(t *testing.T) {
 	SetLogOut(&out)
 
 	testLaunchable := &HoistLaunchable{Id: "TestLaunchable"}
-	testPod := &Pod{podManifest: &PodManifest{Id: "TestPod"}}
-	error := util.Errorf("Unable to do something")
+	testManifest := getTestPodManifest()
+	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
-	logLaunchableError(testPod.podManifest.Id, testLaunchable.Id, error, message)
+	logLaunchableError(testManifest.ID(), testLaunchable.Id, testErr, message)
 
 	output, err := ioutil.ReadAll(&out)
 	Assert(t).IsNil(err, "Got an error reading the logging output")
 	outputString := bytes.NewBuffer(output).String()
 	Assert(t).Matches(outputString, ContainsString("TestLaunchable"), "Expected 'TestLaunchable' to appear somewhere in log output")
-	Assert(t).Matches(outputString, ContainsString("TestPod"), "Expected 'TestPod' to appear somewhere in log output")
+	Assert(t).Matches(outputString, ContainsString("hello"), "Expected 'hello' to appear somewhere in log output")
 	Assert(t).Matches(outputString, ContainsString("Test error occurred"), "Expected error message to appear somewhere in log output")
 }
 
@@ -111,15 +118,15 @@ func TestLogPodError(t *testing.T) {
 	out := bytes.Buffer{}
 	SetLogOut(&out)
 
-	testPod := &Pod{podManifest: &PodManifest{Id: "TestPod"}}
-	error := util.Errorf("Unable to do something")
+	testManifest := getTestPodManifest()
+	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
-	logPodError(testPod.podManifest.Id, error, message)
+	logPodError(testManifest.ID(), testErr, message)
 
 	output, err := ioutil.ReadAll(&out)
 	Assert(t).IsNil(err, "Got an error reading the logging output")
 	outputString := bytes.NewBuffer(output).String()
-	Assert(t).Matches(outputString, ContainsString("TestPod"), "Expected 'TestPod' to appear somewhere in log output")
+	Assert(t).Matches(outputString, ContainsString("hello"), "Expected 'hello' to appear somewhere in log output")
 	Assert(t).Matches(outputString, ContainsString("Test error occurred"), "Expected error message to appear somewhere in log output")
 }
 
@@ -127,14 +134,14 @@ func TestLogPodInfo(t *testing.T) {
 	out := bytes.Buffer{}
 	SetLogOut(&out)
 
-	testPod := &Pod{podManifest: &PodManifest{Id: "TestPod"}}
+	testManifest := getTestPodManifest()
 	message := "Pod did something good"
-	logPodInfo(testPod.podManifest.Id, message)
+	logPodInfo(testManifest.ID(), message)
 
 	output, err := ioutil.ReadAll(&out)
 	Assert(t).IsNil(err, "Got an error reading the logging output")
 	outputString := bytes.NewBuffer(output).String()
-	Assert(t).Matches(outputString, ContainsString("TestPod"), "Expected 'TestPod' to appear somewhere in log output")
+	Assert(t).Matches(outputString, ContainsString("hello"), "Expected 'hello' to appear somewhere in log output")
 	Assert(t).Matches(outputString, ContainsString("Pod did something good"), "Expected error message to appear somewhere in log output")
 }
 

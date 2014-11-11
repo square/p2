@@ -24,9 +24,13 @@ type LaunchableStanza struct {
 }
 
 type PodManifest struct {
-	Id                string                      `yaml:"id"`
+	Id                string                      `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
 	LaunchableStanzas map[string]LaunchableStanza `yaml:"launchables"`
 	Config            map[string]interface{}      `yaml:"config"`
+}
+
+func (manifest *PodManifest) ID() string {
+	return manifest.Id
 }
 
 func PodManifestFromPath(path string) (*PodManifest, error) {
@@ -41,10 +45,6 @@ func PodManifestFromPath(path string) (*PodManifest, error) {
 	}
 
 	return PodManifestFromBytes(bytes)
-}
-
-func PodFromPodManifest(podManifest *PodManifest) *Pod {
-	return &Pod{podManifest}
 }
 
 func PodManifestFromString(str string) (*PodManifest, error) {
@@ -62,11 +62,11 @@ func PodManifestFromBytes(bytes []byte) (*PodManifest, error) {
 func (manifest *PodManifest) Write(out io.Writer) error {
 	bytes, err := yaml.Marshal(manifest)
 	if err != nil {
-		return util.Errorf("Could not write manifest for %s: %s", manifest.Id, err)
+		return util.Errorf("Could not write manifest for %s: %s", manifest.ID(), err)
 	}
 	_, err = out.Write(bytes)
 	if err != nil {
-		return util.Errorf("Could not write manifest for %s: %s", manifest.Id, err)
+		return util.Errorf("Could not write manifest for %s: %s", manifest.ID(), err)
 	}
 	return nil
 }
@@ -74,11 +74,11 @@ func (manifest *PodManifest) Write(out io.Writer) error {
 func (manifest *PodManifest) WriteConfig(out io.Writer) error {
 	bytes, err := yaml.Marshal(manifest.Config)
 	if err != nil {
-		return util.Errorf("Could not write config for %s: %s", manifest.Id, err)
+		return util.Errorf("Could not write config for %s: %s", manifest.ID(), err)
 	}
 	_, err = out.Write(bytes)
 	if err != nil {
-		return util.Errorf("Could not write config for %s: %s", manifest.Id, err)
+		return util.Errorf("Could not write config for %s: %s", manifest.ID(), err)
 	}
 	return nil
 }
@@ -86,6 +86,9 @@ func (manifest *PodManifest) WriteConfig(out io.Writer) error {
 // SHA() returns a string containing a hex encoded SHA-1
 // checksum of the manifest's contents
 func (manifest *PodManifest) SHA() (string, error) {
+	if manifest == nil {
+		return "", util.Errorf("the manifest is nil")
+	}
 	valueBuf := bytes.Buffer{}
 	err := manifest.Write(&valueBuf)
 	if err != nil {
@@ -96,10 +99,10 @@ func (manifest *PodManifest) SHA() (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-func (manifest *PodManifest) configFileName() (string, error) {
+func (manifest *PodManifest) ConfigFileName() (string, error) {
 	sha, err := manifest.SHA()
 	if err != nil {
 		return "", err
 	}
-	return manifest.Id + "_" + sha + ".yml", nil
+	return manifest.Id + "_" + sha + ".yaml", nil
 }

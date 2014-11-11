@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strings"
 
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/uri"
@@ -34,12 +35,14 @@ var (
     cat example.json | jq '.["tar_path"] | xargs -I {} cp {} ~/test_file_server_dir
     cat example.json | jq '.["manifest_path"] | xargs -I {} curl -X PUT https://consul.dev:8500/api/v1/kv/nodes/$(hostname)/example -d {}
     `)
-	executable = bin2pod.Arg("executable", "the executable to turn into a hoist artifact + pod manifest. The format of executable is of a URL.").String()
-	id         = bin2pod.Flag("id", "The ID of the pod. By default this is the name of the executable passed").String()
-	location   = bin2pod.Flag("location", "The location where the outputted tar will live. The characters {} will be replaced with the unique basename of the tar, including its SHA. If not provided, the location will be a file path to the resulting tar from the build, which is included in the output of this script. Users must copy the resultant tar to the new location if it is different from the default output path.").String()
+	executable    = bin2pod.Arg("executable", "the executable to turn into a hoist artifact + pod manifest. The format of executable is of a URL.").Required().String()
+	id            = bin2pod.Flag("id", "The ID of the pod. By default this is the name of the executable passed").String()
+	location      = bin2pod.Flag("location", "The location where the outputted tar will live. The characters {} will be replaced with the unique basename of the tar, including its SHA. If not provided, the location will be a file path to the resulting tar from the build, which is included in the output of this script. Users must copy the resultant tar to the new location if it is different from the default output path.").String()
+	workDirectory = bin2pod.Flag("work-dir", "A directory where the results will be written.").ExistingDir()
+	config        = bin2pod.Flag("config", "a list of key=value assignments. Each key will be set in the config section.").Strings()
 )
 
-type output struct {
+type Result struct {
 	TarPath       string `json:"tar_path"`
 	ManifestPath  string `json:"manifest_path"`
 	FinalLocation string `json:"final_location"`
@@ -52,10 +55,21 @@ func podId() string {
 	return *executable
 }
 
+func activeDir() string {
+	if *workDirectory != "" {
+		return *workDirectory
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		log.Fatalf("Cannot get current directory: %s", err)
+	}
+	return dir
+}
+
 func main() {
 	bin2pod.Parse(os.Args[1:])
 
-	res := output{}
+	res := Result{}
 	manifest := &pods.PodManifest{}
 	manifest.Id = podId()
 	manifest.LaunchableStanzas = map[string]pods.LaunchableStanza{}
@@ -63,11 +77,9 @@ func main() {
 	stanza.LaunchableId = podId()
 	stanza.LaunchableType = "hoist"
 
-	workingDir, err := os.Getwd()
-	if err != nil {
-		log.Fatalf("Couldn't get the current working directory: %s", err)
-	}
+	workingDir := activeDir()
 
+	err := addManifestConfig(manifest)
 	tarLocation, err := makeTar(workingDir, manifest)
 	if err != nil {
 		log.Fatalln(err.Error())
@@ -82,6 +94,10 @@ func main() {
 		res.FinalLocation = tarLocation
 	}
 	manifest.LaunchableStanzas[podId()] = stanza
+
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
 
 	res.ManifestPath, err = writeManifest(workingDir, manifest)
 	if err != nil {
@@ -110,9 +126,13 @@ func makeTar(workingDir string, manifest *pods.PodManifest) (string, error) {
 		return "", fmt.Errorf("Couldn't make bin directory in %s: %s", tarContents, err)
 	}
 	launchablePath := path.Join(tarContents, "bin", "launch")
-	err = uri.URICopy(launchablePath, *executable)
+	err = uri.URICopy(*executable, launchablePath)
 	if err != nil {
 		return "", fmt.Errorf("Couldn't copy from %s.: %s", *executable, err)
+	}
+	err = os.Chmod(launchablePath, 0755) // make file executable by all.
+	if err != nil {
+		return "", fmt.Errorf("Couldn't make %s executable: %s", launchablePath, err)
 	}
 	sha, err := manifest.SHA()
 	if err != nil {
@@ -125,6 +145,18 @@ func makeTar(workingDir string, manifest *pods.PodManifest) (string, error) {
 		return "", fmt.Errorf("Couldn't build tar: %s", err)
 	}
 	return tarPath, nil
+}
+
+func addManifestConfig(manifest *pods.PodManifest) error {
+	manifest.Config = make(map[string]interface{})
+	for _, pair := range *config {
+		res := strings.Split(pair, "=")
+		if len(res) != 2 {
+			return fmt.Errorf("%s is not a valid key=value config assignment", pair)
+		}
+		manifest.Config[res[0]] = res[1]
+	}
+	return nil
 }
 
 func writeManifest(workingDir string, manifest *pods.PodManifest) (string, error) {

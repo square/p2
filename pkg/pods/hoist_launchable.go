@@ -51,10 +51,13 @@ func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilde
 }
 
 func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-
+	err := hoistLaunchable.MakeCurrent()
+	if err != nil {
+		return err
+	}
 	// Should probably do something with output at some point
 	// probably want to do something with output at some point
-	err := hoistLaunchable.Start(serviceBuilder, sv)
+	err = hoistLaunchable.Start(serviceBuilder, sv)
 	if err != nil {
 		return util.Errorf("Could not launch %s: %s", hoistLaunchable.Id, err)
 	}
@@ -121,6 +124,8 @@ func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilde
 	return nil
 }
 
+// Start will take a launchable and start every runit service associated with the launchable.
+// All services will attempt to be started.
 func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 
 	// if the service is new, building the runit services also starts them, making the sv start superfluous but harmless
@@ -135,9 +140,9 @@ func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuild
 	}
 
 	for _, executable := range executables {
-		_, err := sv.Restart(&executable.Service)
-		if err != nil {
-			sv.Start(&executable.Service)
+		_, err := sv.Start(&executable.Service)
+		if err != runit.SuperviseOkMissing {
+			return err
 		}
 		maxRetries := 6
 		for i := 0; i < maxRetries; i++ {
@@ -286,6 +291,14 @@ func (hoistLaunchable *HoistLaunchable) Version() string {
 
 func (*HoistLaunchable) Type() string {
 	return "hoist"
+}
+
+func (hoistLaunchable *HoistLaunchable) CurrentDir() string {
+	return path.Join(hoistLaunchable.RootDir, "current")
+}
+
+func (hoistLaunchable *HoistLaunchable) MakeCurrent() error {
+	return os.Symlink(hoistLaunchable.InstallDir(), hoistLaunchable.CurrentDir())
 }
 
 func (hoistLaunchable *HoistLaunchable) InstallDir() string {

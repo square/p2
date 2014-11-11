@@ -49,13 +49,14 @@ Dir.glob(File.join(path, '*/')).each do |test_dir|
   next if /.*test-deps/.match(test_dir)
   test_name = File.basename(test_dir)
   Dir.chdir(test_dir) do
+    succeeded = false
     puts "Launching test environment in #{test_name}".yellow
     unless system('stat Vagrantfile')
       $stderr.puts "No Vagrantfile found, is this test set up properly?".red
       next
     end
     if options[:vm_maintenance]
-        unless system('vagrant up')
+      unless system('vagrant up')
         $stderr.puts "Couldn't start test #{test_name}, skipping".red
         next
       end
@@ -67,9 +68,10 @@ Dir.glob(File.join(path, '*/')).each do |test_dir|
         puts "#{test_name} #{'FAILED'.red}"
         next
       end
+      succeeded = true
       puts "#{test_name} #{'SUCCEEDED'.green}"
     ensure
-      if options[:vm_maintenance]
+      if options[:vm_maintenance] && succeeded
         puts "Halting VM".yellow
         unless system("vagrant halt")
           puts "Tried to halt #{test_name} but it failed".red

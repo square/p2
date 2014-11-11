@@ -1,18 +1,24 @@
-package main
+package preparer
 
 import (
 	"fmt"
 	"io"
-	"os"
-	"path"
 	"time"
 
 	"github.com/square/p2/pkg/intent"
 	"github.com/square/p2/pkg/pods"
 )
 
-func watchForPodManifestsForNode(nodeName string, consulAddress string, hooksDirectory string, logFile io.Writer) {
+type Pod interface {
+	Launch(*pods.PodManifest) (bool, error)
+	Install(*pods.PodManifest) error
+	CurrentManifest() (*pods.PodManifest, error)
+	Halt() (bool, error)
+}
+
+func WatchForPodManifestsForNode(nodeName string, consulAddress string, hooksDirectory string, logFile io.Writer) {
 	pods.SetLogOut(logFile)
+	hooks := pods.Hooks(hooksDirectory)
 	watchOpts := intent.WatchOptions{
 		Token:   nodeName,
 		Address: consulAddress,
@@ -36,18 +42,16 @@ func watchForPodManifestsForNode(nodeName string, consulAddress string, hooksDir
 
 	for {
 		select {
-		case <-errChan:
-			// do something, probably log somewhere? alert "deployer"?
+		case err := <-errChan:
+			fmt.Printf("Manifest error encountered: %s", err) // change to logrus output
 		case manifest := <-podChan:
-			podId := manifest.Id
-
+			podId := manifest.ID()
 			if podChanMap[podId] == nil {
 				// No goroutine is servicing this app currently, let's start one
 				podChanMap[podId] = make(chan pods.PodManifest)
 				quitChanMap[podId] = make(chan struct{})
-				go handlePods(hooksDirectory, podChanMap[podId], quitChanMap[podId])
+				go handlePods(hooks, podChanMap[podId], quitChanMap[podId])
 			}
-
 			podChanMap[podId] <- manifest
 		}
 	}
@@ -55,7 +59,7 @@ func watchForPodManifestsForNode(nodeName string, consulAddress string, hooksDir
 
 // no return value, no output channels. This should do everything it needs to do
 // without outside intervention (other than being signalled to quit)
-func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-chan struct{}) {
+func handlePods(hooks *pods.HookDir, podChan <-chan pods.PodManifest, quit <-chan struct{}) {
 	// install new launchables
 	var manifestToLaunch pods.PodManifest
 
@@ -68,70 +72,61 @@ func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-c
 			return
 		case manifestToLaunch = <-podChan:
 			working = true
-		default:
+		case <-time.After(1 * time.Second):
 			if working {
-
-				err := pods.RunHooks(path.Join(hooksDirectory, "before"), &manifestToLaunch)
+				pod := pods.PodFromManifestId(manifestToLaunch.ID())
+				err := hooks.RunBefore(pod, &manifestToLaunch)
 				if err != nil {
-					// TODO port to structured logger.
-					fmt.Println(err)
+					fmt.Println(err) // use structured log
 				}
-
-				ok := installAndLaunchPod(&manifestToLaunch)
+				ok := installAndLaunchPod(&manifestToLaunch, pod)
 				if ok {
 					manifestToLaunch = pods.PodManifest{}
 					working = false
-
-					err = pods.RunHooks(path.Join(hooksDirectory, "after"), &manifestToLaunch)
-					if err != nil {
-						// TODO port to structured logger.
-						fmt.Println(err)
-					}
-
-				} else {
-					// we're about to retry, sleep a little first
-					time.Sleep(1 * time.Second)
+				}
+				err = hooks.RunAfter(pod, &manifestToLaunch)
+				if err != nil {
+					fmt.Println(err) // use structured log
 				}
 			}
 		}
 	}
 }
 
-func installAndLaunchPod(podManifest *pods.PodManifest) bool {
-	newPod := pods.PodFromPodManifest(podManifest)
-	err := newPod.Install()
+func installAndLaunchPod(newManifest *pods.PodManifest, pod Pod) bool {
+	fmt.Printf("Launching %s\n", newManifest.ID())
+
+	err := pod.Install(newManifest)
 	if err != nil {
 		// abort and retry
 		return false
 	}
 
 	// get currently running pod to compare with the new pod
-	currentPod, err := pods.CurrentPodFromManifestId(podManifest.Id)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// we can ignore this, just means it's a first time deploy
-		} else {
-
-			// Abort so we retry
+	currentManifest, err := pod.CurrentManifest()
+	if err == pods.NoCurrentManifest {
+		ok, err := pod.Launch(newManifest)
+		if err != nil || !ok {
+			// abort and retry
 			return false
 		}
+		return true
 	} else {
-		currentSHA, _ := currentPod.ManifestSHA()
-		newSHA, _ := newPod.ManifestSHA()
+		currentSHA, _ := currentManifest.SHA()
+		newSHA, _ := newManifest.SHA()
 		if currentSHA != newSHA {
-			ok, err := currentPod.Halt()
+			fmt.Printf("Halting %s of %s to launch %s\n", currentSHA, newManifest.ID(), newSHA)
+			ok, err := pod.Halt()
 			if err != nil || !ok {
 				// Abort so we retry
+				return false
+			}
+			ok, err = pod.Launch(newManifest)
+			if err != nil || !ok {
 				return false
 			}
 		}
 
 	}
-	ok, err := newPod.Launch()
-	if err != nil || !ok {
-		// abort and retry
-		return false
-	}
 	return true
-
 }
