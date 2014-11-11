@@ -3,25 +3,12 @@ package preparer
 import (
 	"fmt"
 	"io"
-<<<<<<< HEAD
-	"os"
-	"path"
-||||||| merged common ancestors
-	"os"
-=======
-	// "os"
->>>>>>> Use ID() getter for manifests
 	"time"
 
 	"github.com/square/p2/pkg/intent"
 	"github.com/square/p2/pkg/pods"
 )
 
-<<<<<<< HEAD:bin/preparer/prepare.go
-func watchForPodManifestsForNode(nodeName string, consulAddress string, hooksDirectory string, logFile io.Writer) {
-||||||| merged common ancestors
-func watchForPodManifestsForNode(nodeName string, consulAddress string, logFile io.Writer) {
-=======
 type Pod interface {
 	Launch(*pods.PodManifest) (bool, error)
 	Install(*pods.PodManifest) error
@@ -29,9 +16,9 @@ type Pod interface {
 	Halt() (bool, error)
 }
 
-func WatchForPodManifestsForNode(nodeName string, consulAddress string, logFile io.Writer) {
->>>>>>> Use correct runit errors:pkg/preparer/orchestrate.go
+func WatchForPodManifestsForNode(nodeName string, consulAddress string, hooksDirectory string, logFile io.Writer) {
 	pods.SetLogOut(logFile)
+	hooks := pods.Hooks(hooksDirectory)
 	watchOpts := intent.WatchOptions{
 		Token:   nodeName,
 		Address: consulAddress,
@@ -63,9 +50,8 @@ func WatchForPodManifestsForNode(nodeName string, consulAddress string, logFile 
 				// No goroutine is servicing this app currently, let's start one
 				podChanMap[podId] = make(chan pods.PodManifest)
 				quitChanMap[podId] = make(chan struct{})
-				go handlePods(hooksDirectory, podChanMap[podId], quitChanMap[podId])
+				go handlePods(hooks, podChanMap[podId], quitChanMap[podId])
 			}
-
 			podChanMap[podId] <- manifest
 		}
 	}
@@ -73,7 +59,7 @@ func WatchForPodManifestsForNode(nodeName string, consulAddress string, logFile 
 
 // no return value, no output channels. This should do everything it needs to do
 // without outside intervention (other than being signalled to quit)
-func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-chan struct{}) {
+func handlePods(hooks *pods.HookDir, podChan <-chan pods.PodManifest, quit <-chan struct{}) {
 	// install new launchables
 	var manifestToLaunch pods.PodManifest
 
@@ -88,10 +74,19 @@ func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-c
 			working = true
 		case <-time.After(1 * time.Second):
 			if working {
-				ok := installAndLaunchPod(&manifestToLaunch, pods.PodFromManifestId(manifestToLaunch.ID()))
+				pod := pods.PodFromManifestId(manifestToLaunch.ID())
+				err := hooks.RunBefore(pod, &manifestToLaunch)
+				if err != nil {
+					fmt.Println(err) // use structured log
+				}
+				ok := installAndLaunchPod(&manifestToLaunch, pod)
 				if ok {
 					manifestToLaunch = pods.PodManifest{}
 					working = false
+				}
+				err = hooks.RunAfter(pod, &manifestToLaunch)
+				if err != nil {
+					fmt.Println(err) // use structured log
 				}
 			}
 		}

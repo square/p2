@@ -118,6 +118,7 @@ func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
 	} else {
 		logPodInfo(manifest.ID(), "Launched pod but one or more services failed to start")
 	}
+
 	return success, nil
 }
 
@@ -216,7 +217,7 @@ func setupConfig(envDir string, configDir string, podManifest *PodManifest) erro
 	if err != nil {
 		return util.Errorf("Could not create config directory for pod %s: %s", podManifest.ID(), err)
 	}
-	configFileName, err := podManifest.configFileName()
+	configFileName, err := podManifest.ConfigFileName()
 	if err != nil {
 		return err
 	}

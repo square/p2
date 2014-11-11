@@ -99,10 +99,10 @@ func (manifest *PodManifest) SHA() (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-func (manifest *PodManifest) configFileName() (string, error) {
+func (manifest *PodManifest) ConfigFileName() (string, error) {
 	sha, err := manifest.SHA()
 	if err != nil {
 		return "", err
 	}
-	return manifest.Id + "_" + sha + ".yml", nil
+	return manifest.Id + "_" + sha + ".yaml", nil
 }
