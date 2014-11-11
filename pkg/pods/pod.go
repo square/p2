@@ -216,11 +216,11 @@ func setupConfig(envDir string, configDir string, podManifest *PodManifest) erro
 	if err != nil {
 		return util.Errorf("Could not create config directory for pod %s: %s", podManifest.Id, err)
 	}
-	sha, err := podManifest.SHA()
+	configFileName, err := podManifest.configFileName()
 	if err != nil {
 		return err
 	}
-	configPath := path.Join(configDir, podManifest.Id+"_"+sha+".yml")
+	configPath := path.Join(configDir, configFileName)
 
 	file, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer file.Close()

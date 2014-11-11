@@ -95,3 +95,11 @@ func (manifest *PodManifest) SHA() (string, error) {
 	hasher.Write(valueBuf.Bytes())
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
+
+func (manifest *PodManifest) configFileName() (string, error) {
+	sha, err := manifest.SHA()
+	if err != nil {
+		return "", err
+	}
+	return manifest.Id + "_" + sha + ".yml", nil
+}

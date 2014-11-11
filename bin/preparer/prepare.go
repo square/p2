@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"time"
 
 	"github.com/square/p2/pkg/intent"
 	"github.com/square/p2/pkg/pods"
 )
 
-func watchForPodManifestsForNode(nodeName string, consulAddress string, logFile io.Writer) {
+func watchForPodManifestsForNode(nodeName string, consulAddress string, hooksDirectory string, logFile io.Writer) {
 	pods.SetLogOut(logFile)
 	watchOpts := intent.WatchOptions{
 		Token:   nodeName,
@@ -44,7 +45,7 @@ func watchForPodManifestsForNode(nodeName string, consulAddress string, logFile 
 				// No goroutine is servicing this app currently, let's start one
 				podChanMap[podId] = make(chan pods.PodManifest)
 				quitChanMap[podId] = make(chan struct{})
-				go handlePods(podChanMap[podId], quitChanMap[podId])
+				go handlePods(hooksDirectory, podChanMap[podId], quitChanMap[podId])
 			}
 
 			podChanMap[podId] <- manifest
@@ -54,7 +55,7 @@ func watchForPodManifestsForNode(nodeName string, consulAddress string, logFile 
 
 // no return value, no output channels. This should do everything it needs to do
 // without outside intervention (other than being signalled to quit)
-func handlePods(podChan <-chan pods.PodManifest, quit <-chan struct{}) {
+func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-chan struct{}) {
 	// install new launchables
 	var manifestToLaunch pods.PodManifest
 
@@ -69,10 +70,24 @@ func handlePods(podChan <-chan pods.PodManifest, quit <-chan struct{}) {
 			working = true
 		default:
 			if working {
+
+				err := pods.RunHooks(path.Join(hooksDirectory, "before"), &manifestToLaunch)
+				if err != nil {
+					// TODO port to structured logger.
+					fmt.Println(err)
+				}
+
 				ok := installAndLaunchPod(&manifestToLaunch)
 				if ok {
 					manifestToLaunch = pods.PodManifest{}
 					working = false
+
+					err = pods.RunHooks(path.Join(hooksDirectory, "after"), &manifestToLaunch)
+					if err != nil {
+						// TODO port to structured logger.
+						fmt.Println(err)
+					}
+
 				} else {
 					// we're about to retry, sleep a little first
 					time.Sleep(1 * time.Second)
