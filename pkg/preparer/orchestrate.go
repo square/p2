@@ -17,9 +17,10 @@ func watchForPodManifestsForNode(nodeName string, consulAddress string, hooksDir
 func watchForPodManifestsForNode(nodeName string, consulAddress string, logFile io.Writer) {
 =======
 type Pod interface {
-	Launch() (bool, error)
-	Install() error
-	ManifestSHA() (string, error)
+	Launch(*pods.PodManifest) (bool, error)
+	Install(*pods.PodManifest) error
+	CurrentManifest() (*pods.PodManifest, error)
+	Halt() (bool, error)
 }
 
 func WatchForPodManifestsForNode(nodeName string, consulAddress string, logFile io.Writer) {
@@ -81,9 +82,7 @@ func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-c
 			working = true
 		default:
 			if working {
-
-				ok := installAndLaunchPod(&manifestToLaunch, pods.PodFromPodManifest(&manifestToLaunch))
-
+				ok := installAndLaunchPod(&manifestToLaunch, pods.PodFromManifestId(manifestToLaunch.Id))
 				if ok {
 					manifestToLaunch = pods.PodManifest{}
 					working = false
@@ -103,20 +102,20 @@ func handlePods(hooksDirectory string, podChan <-chan pods.PodManifest, quit <-c
 	}
 }
 
-func installAndLaunchPod(podManifest *pods.PodManifest, newPod Pod) bool {
-	fmt.Printf("Launching %s\n", podManifest.Id)
+func installAndLaunchPod(newManifest *pods.PodManifest, pod Pod) bool {
+	fmt.Printf("Launching %s\n", newManifest.Id)
 
-	err := newPod.Install()
+	err := pod.Install(newManifest)
 	if err != nil {
 		// abort and retry
 		return false
 	}
 
 	// get currently running pod to compare with the new pod
-	currentPod, err := pods.CurrentPodFromManifestId(podManifest.Id)
+	currentManifest, err := pod.CurrentManifest()
 	if err != nil {
 		if os.IsNotExist(err) {
-			ok, err := newPod.Launch()
+			ok, err := pod.Launch(newManifest)
 			if err != nil || !ok {
 				// abort and retry
 				return false
@@ -127,11 +126,11 @@ func installAndLaunchPod(podManifest *pods.PodManifest, newPod Pod) bool {
 			return false
 		}
 	} else {
-		currentSHA, _ := currentPod.ManifestSHA()
-		newSHA, _ := newPod.ManifestSHA()
+		currentSHA, _ := currentManifest.SHA()
+		newSHA, _ := newManifest.SHA()
 		if currentSHA != newSHA {
-			fmt.Printf("Halting %s of %s to launch %s\n", currentSHA, podManifest.Id, newSHA)
-			ok, err := currentPod.Halt()
+			fmt.Printf("Halting %s of %s to launch %s\n", currentSHA, newManifest.Id, newSHA)
+			ok, err := pod.Halt()
 			if err != nil || !ok {
 				// Abort so we retry
 				return false
@@ -139,5 +138,5 @@ func installAndLaunchPod(podManifest *pods.PodManifest, newPod Pod) bool {
 		}
 
 	}
-
+	return true
 }

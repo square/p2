@@ -78,10 +78,8 @@ func main() {
 	stanza.LaunchableType = "hoist"
 
 	workingDir := activeDir()
-	if err != nil {
-		log.Fatalf("Couldn't get the current working directory: %s", err)
-	}
-	err = addManifestConfig(manifest)
+
+	err := addManifestConfig(manifest)
 	tarLocation, err := makeTar(workingDir, manifest)
 	if err != nil {
 		log.Fatalln(err.Error())

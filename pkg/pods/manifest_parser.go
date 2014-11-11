@@ -43,10 +43,6 @@ func PodManifestFromPath(path string) (*PodManifest, error) {
 	return PodManifestFromBytes(bytes)
 }
 
-func PodFromPodManifest(podManifest *PodManifest) *Pod {
-	return &Pod{podManifest}
-}
-
 func PodManifestFromString(str string) (*PodManifest, error) {
 	return PodManifestFromBytes(bytes.NewBufferString(str).Bytes())
 }
