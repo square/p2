@@ -15,7 +15,7 @@ import (
 )
 
 func getTestPod() *Pod {
-	return &Pod{"/data/pods/test"}
+	return NewPod("/data/pods/test")
 }
 
 func getTestPodManifest() *PodManifest {
@@ -98,13 +98,14 @@ config:
 
 func TestLogLaunchableError(t *testing.T) {
 	out := bytes.Buffer{}
-	SetLogOut(&out)
+	Log.SetLogOut(&out)
 
 	testLaunchable := &HoistLaunchable{Id: "TestLaunchable"}
 	testManifest := getTestPodManifest()
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
-	logLaunchableError(testManifest.ID(), testLaunchable.Id, testErr, message)
+	pod := PodFromManifestId(testManifest.Id)
+	pod.logLaunchableError(testLaunchable.Id, testErr, message)
 
 	output, err := ioutil.ReadAll(&out)
 	Assert(t).IsNil(err, "Got an error reading the logging output")
@@ -114,14 +115,15 @@ func TestLogLaunchableError(t *testing.T) {
 	Assert(t).Matches(outputString, ContainsString("Test error occurred"), "Expected error message to appear somewhere in log output")
 }
 
-func TestLogPodError(t *testing.T) {
+func TestLogError(t *testing.T) {
 	out := bytes.Buffer{}
-	SetLogOut(&out)
+	Log.SetLogOut(&out)
 
 	testManifest := getTestPodManifest()
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
-	logPodError(testManifest.ID(), testErr, message)
+	pod := PodFromManifestId(testManifest.Id)
+	pod.logError(testErr, message)
 
 	output, err := ioutil.ReadAll(&out)
 	Assert(t).IsNil(err, "Got an error reading the logging output")
@@ -130,13 +132,14 @@ func TestLogPodError(t *testing.T) {
 	Assert(t).Matches(outputString, ContainsString("Test error occurred"), "Expected error message to appear somewhere in log output")
 }
 
-func TestLogPodInfo(t *testing.T) {
+func TestLogInfo(t *testing.T) {
 	out := bytes.Buffer{}
-	SetLogOut(&out)
+	Log.SetLogOut(&out)
 
 	testManifest := getTestPodManifest()
+	pod := PodFromManifestId(testManifest.Id)
 	message := "Pod did something good"
-	logPodInfo(testManifest.ID(), message)
+	pod.logInfo(message)
 
 	output, err := ioutil.ReadAll(&out)
 	Assert(t).IsNil(err, "Got an error reading the logging output")
