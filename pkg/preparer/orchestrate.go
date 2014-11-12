@@ -5,7 +5,9 @@ import (
 	"io"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/intent"
+	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 )
 
@@ -17,7 +19,9 @@ type Pod interface {
 }
 
 func WatchForPodManifestsForNode(nodeName string, consulAddress string, hooksDirectory string, logFile io.Writer) {
-	pods.SetLogOut(logFile)
+	log := logging.NewLogger(logrus.Fields{})
+	log.SetLogOut(logFile)
+	pods.Log = log
 	hooks := pods.Hooks(hooksDirectory)
 	watchOpts := intent.WatchOptions{
 		Token:   nodeName,

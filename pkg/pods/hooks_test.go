@@ -21,7 +21,7 @@ func TestExecutableHooksAreRun(t *testing.T) {
 	ioutil.WriteFile(path.Join(tempDir, "test1"), []byte("#!/bin/sh\necho $POD_ID > $(dirname $0)/output"), 0755)
 
 	manifest := PodManifest{Id: "TestPod"}
-	runHooks(tempDir, &Pod{podDir}, &manifest)
+	runHooks(tempDir, NewPod(podDir), &manifest)
 
 	contents, err := ioutil.ReadFile(path.Join(tempDir, "output"))
 	Assert(t).IsNil(err, "the error should have been nil")
@@ -42,7 +42,7 @@ func TestNonExecutableHooksAreNotRun(t *testing.T) {
 	Assert(t).IsNil(err, "the error should have been nil")
 
 	manifest := PodManifest{Id: "TestPod"}
-	runHooks(tempDir, &Pod{podDir}, &manifest)
+	runHooks(tempDir, NewPod(podDir), &manifest)
 
 	if _, err := os.Stat(path.Join(tempDir, "failed")); err == nil {
 		t.Fatal("`failed` file exists; non-executable hook ran but should not have run")
@@ -61,7 +61,7 @@ func TestDirectoriesDoNotBreakEverything(t *testing.T) {
 	os.Mkdir(path.Join(tempDir, "mydir"), 0755)
 
 	manifest := PodManifest{Id: "TestPod"}
-	err = runHooks(tempDir, &Pod{podDir}, &manifest)
+	err = runHooks(tempDir, NewPod(podDir), &manifest)
 
 	Assert(t).IsNil(err, "Got an error when running a directory inside the hooks directory")
 }
