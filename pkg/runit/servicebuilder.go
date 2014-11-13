@@ -104,6 +104,9 @@ func (b *ServiceBuilder) Remove(template *SBTemplate) error {
 	return nil
 }
 
+// Rebuild executes the servicebuilder binary with the given configuration. Any
+// templates written up to this point will be used to create or update existing services.
+// Servicebuilder will err if two or more services with the same name have been configured.
 func (b *ServiceBuilder) Rebuild() (string, error) {
 	return b.RebuildWithStreams(os.Stdin)
 }
