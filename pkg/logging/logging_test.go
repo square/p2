@@ -36,3 +36,15 @@ func TestSubLoggerMergesFields(t *testing.T) {
 	Assert(t).AreEqual("b", res["bar"], "Should have taken old value's bar")
 	Assert(t).AreEqual("q", res["baz"], "Should have taken old value's baz")
 }
+
+func TestLoggingMergeDoesNotModifyOriginalMap(t *testing.T) {
+	fields1 := logrus.Fields{
+		"foo": "a",
+	}
+	fields2 := logrus.Fields{
+		"foo": "b",
+	}
+	Merge(fields1, fields2)
+
+	Assert(t).AreEqual("a", fields1["foo"], "Should not have modified the original fields")
+}
