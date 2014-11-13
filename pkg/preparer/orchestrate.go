@@ -98,39 +98,27 @@ func handlePods(hooks *pods.HookDir, podChan <-chan pods.PodManifest, quit <-cha
 }
 
 func installAndLaunchPod(newManifest *pods.PodManifest, pod Pod) bool {
-	fmt.Printf("Launching %s\n", newManifest.ID())
-
 	err := pod.Install(newManifest)
 	if err != nil {
-		// abort and retry
+		// install failed, abort and retry
 		return false
 	}
 
 	// get currently running pod to compare with the new pod
 	currentManifest, err := pod.CurrentManifest()
-	if err == pods.NoCurrentManifest {
-		ok, err := pod.Launch(newManifest)
-		if err != nil || !ok {
-			// abort and retry
-			return false
-		}
-		return true
-	} else {
-		currentSHA, _ := currentManifest.SHA()
-		newSHA, _ := newManifest.SHA()
-		if currentSHA != newSHA {
-			fmt.Printf("Halting %s of %s to launch %s\n", currentSHA, newManifest.ID(), newSHA)
-			ok, err := pod.Halt()
-			if err != nil || !ok {
-				// Abort so we retry
-				return false
-			}
-			ok, err = pod.Launch(newManifest)
-			if err != nil || !ok {
-				return false
-			}
-		}
+	currentSHA, _ := currentManifest.SHA()
+	newSHA, _ := newManifest.SHA()
 
+	// if new or the manifest is different, launch
+	newOrDifferent := err == pods.NoCurrentManifest || currentSHA != newSHA
+
+	// if the old manifest is corrupted somehow, re-launch since we don't know if this is an update.
+	problemReadingCurrentManifest := (err != nil && err != pods.NoCurrentManifest)
+
+	if newOrDifferent || problemReadingCurrentManifest {
+		ok, err := pod.Launch(newManifest)
+		return err == nil && ok
 	}
+
 	return true
 }

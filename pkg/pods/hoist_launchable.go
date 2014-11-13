@@ -21,12 +21,12 @@ type Fetcher func(string, string, ...interface{}) error
 
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type HoistLaunchable struct {
-	Location    string                                     // A URL where we can download the artifact from.
-	Id          string                                     // A unique identifier for this launchable, used when creating runit services
-	RunAs       string                                     // The user to assume when launching the executable
-	ConfigDir   string                                     // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
-	FetchToFile func(string, string, ...interface{}) error // Callback that downloads the file from the remote location.
-	RootDir     string                                     // The root directory of the launchable, containing N:N>=1 installs.
+	Location    string  // A URL where we can download the artifact from.
+	Id          string  // A unique identifier for this launchable, used when creating runit services
+	RunAs       string  // The user to assume when launching the executable
+	ConfigDir   string  // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
+	FetchToFile Fetcher // Callback that downloads the file from the remote location.
+	RootDir     string  // The root directory of the launchable, containing N:N>=1 installs.
 }
 
 func DefaultFetcher() Fetcher {
@@ -53,8 +53,9 @@ func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilde
 func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 	err := hoistLaunchable.MakeCurrent()
 	if err != nil {
-		return err
+		return util.Errorf("Could not make %s current: %s", err)
 	}
+
 	// Should probably do something with output at some point
 	// probably want to do something with output at some point
 	err = hoistLaunchable.Start(serviceBuilder, sv)
@@ -140,7 +141,7 @@ func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuild
 	}
 
 	for _, executable := range executables {
-		_, err := sv.Start(&executable.Service)
+		_, err := sv.Restart(&executable.Service)
 		if err != runit.SuperviseOkMissing {
 			return err
 		}
@@ -160,7 +161,8 @@ func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuild
 	return nil
 }
 
-// Write servicebuilder *.yaml file and run servicebuilder, which will register runit service
+// Write servicebuilder *.yaml file and run servicebuilder, which will register runit services for this
+// launchable. The executables generated are located in the "current" symlink of the hoist artifact.
 func (hoistLaunchable *HoistLaunchable) BuildRunitServices(serviceBuilder *runit.ServiceBuilder) error {
 	sbTemplate := runit.NewSBTemplate(hoistLaunchable.Id)
 	executables, err := hoistLaunchable.Executables(serviceBuilder)
@@ -213,7 +215,7 @@ func (hoistLaunchable *HoistLaunchable) Executables(serviceBuilder *runit.Servic
 
 	binLaunchInfo, err := os.Stat(binLaunchPath)
 	if err != nil {
-		return nil, err
+		return nil, util.Errorf("%s", err)
 	}
 
 	// we support bin/launch being a file, or a directory, so we have to check
@@ -298,7 +300,17 @@ func (hoistLaunchable *HoistLaunchable) CurrentDir() string {
 }
 
 func (hoistLaunchable *HoistLaunchable) MakeCurrent() error {
-	return os.Symlink(hoistLaunchable.InstallDir(), hoistLaunchable.CurrentDir())
+	dir, err := ioutil.TempDir("", hoistLaunchable.Id)
+	if err != nil {
+		return util.Errorf("Couldn't create temporary directory for symlink: %s", err)
+	}
+	defer os.RemoveAll(dir)
+	tempLinkPath := path.Join(dir, hoistLaunchable.Id)
+	err = os.Symlink(hoistLaunchable.InstallDir(), tempLinkPath)
+	if err != nil {
+		return util.Errorf("Couldn't create symlink for hoist launchable %s: %s", hoistLaunchable.Id, err)
+	}
+	return os.Rename(tempLinkPath, hoistLaunchable.CurrentDir())
 }
 
 func (hoistLaunchable *HoistLaunchable) InstallDir() string {

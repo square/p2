@@ -13,7 +13,7 @@ import (
 type TestPod struct {
 	currentManifest                                         *pods.PodManifest
 	installed, launched, launchSuccess, halted, haltSuccess bool
-	installErr, launchErr, haltError                        error
+	installErr, launchErr, haltError, currentManifestError  error
 }
 
 func (t *TestPod) ManifestSHA() (string, error) {
@@ -35,6 +35,9 @@ func (t *TestPod) Install(manifest *pods.PodManifest) error {
 }
 
 func (t *TestPod) CurrentManifest() (*pods.PodManifest, error) {
+	if t.currentManifestError != nil {
+		return nil, t.currentManifestError
+	}
 	if t.currentManifest == nil {
 		return t.currentManifest, pods.NoCurrentManifest
 	}
@@ -82,7 +85,6 @@ func TestPreparerLaunchesPodsThatHaveDifferentSHAs(t *testing.T) {
 
 	Assert(t).IsTrue(success, "should have succeeded")
 	Assert(t).IsTrue(testPod.launched, "should have launched")
-	Assert(t).IsTrue(testPod.halted, "should have halted")
 	Assert(t).AreEqual(newManifest, testPod.currentManifest, "the current manifest should now be the new manifest")
 }
 
@@ -96,5 +98,31 @@ func TestPreparerFailsIfInstallFails(t *testing.T) {
 	Assert(t).IsFalse(success, "The deploy should have failed")
 	Assert(t).IsTrue(testPod.installed, "Install should have been attempted")
 	Assert(t).IsFalse(testPod.launched, "Launch should not have happened")
+}
 
+func TestPreparerWillNotLaunchIfSHAIsTheSame(t *testing.T) {
+	testManifest := testManifest(t)
+	testPod := &TestPod{
+		currentManifest: testManifest,
+	}
+
+	success := installAndLaunchPod(testManifest, testPod)
+
+	Assert(t).IsTrue(success, "Should have been a success to prevent retries")
+	Assert(t).IsFalse(testPod.launched, "Should not have attempted to launch")
+	Assert(t).IsTrue(testPod.installed, "Should have installed")
+}
+
+func TestInstallReturnsFalseIfManifestErrsOnRead(t *testing.T) {
+	testManifest := testManifest(t)
+	testPod := &TestPod{
+		currentManifestError: fmt.Errorf("it erred"),
+		launchSuccess:        true,
+	}
+
+	success := installAndLaunchPod(testManifest, testPod)
+
+	Assert(t).IsTrue(success, "should have attempted to install following corrupt current manifest")
+	Assert(t).IsTrue(testPod.launched, "Should have launched the new manifest")
+	Assert(t).AreEqual(testManifest, testPod.currentManifest, "The manifest passed was wrong")
 }

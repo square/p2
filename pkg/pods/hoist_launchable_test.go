@@ -84,7 +84,9 @@ func TestMultipleExecutables(t *testing.T) {
 }
 
 func TestSingleRunitService(t *testing.T) {
-	executables, err := FakeHoistLaunchableForDir("single_script_test_hoist_launchable").Executables(runit.DefaultBuilder)
+	launchable := FakeHoistLaunchableForDir("single_script_test_hoist_launchable")
+	Assert(t).IsNil(launchable.MakeCurrent(), "Should have been made current")
+	executables, err := launchable.Executables(runit.DefaultBuilder)
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
 
 	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__script1"}
