@@ -53,7 +53,7 @@ func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilde
 func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 	err := hoistLaunchable.MakeCurrent()
 	if err != nil {
-		return err
+		return util.Errorf("Could not make %s current: %s", err)
 	}
 
 	// Should probably do something with output at some point
@@ -211,11 +211,11 @@ func (hoistLaunchable *HoistLaunchable) RemoveRunitServices(serviceBuilder *runi
 }
 
 func (hoistLaunchable *HoistLaunchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]HoistExecutable, error) {
-	binLaunchPath := path.Join(hoistLaunchable.CurrentDir(), "bin", "launch")
+	binLaunchPath := path.Join(hoistLaunchable.InstallDir(), "bin", "launch")
 
 	binLaunchInfo, err := os.Stat(binLaunchPath)
 	if err != nil {
-		return nil, err
+		return nil, util.Errorf("%s", err)
 	}
 
 	// we support bin/launch being a file, or a directory, so we have to check
