@@ -10,7 +10,7 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-var leadingProto = regexp.MustCompile("^[a-zA-Z\\d\\.]+:.//.*")
+var leadingProto = regexp.MustCompile("^[a-zA-Z\\d\\.]+:.*")
 
 // URICopy Wraps opening and copying content from URIs. Will attempt
 // directly perform file copies if the uri is begins with file://, otherwise
