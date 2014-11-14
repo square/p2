@@ -18,10 +18,14 @@ func From(pc uintptr, file string, line int, ok bool) *Caller {
 	return &Caller{file}
 }
 
+func (c *Caller) Dirname() string {
+	return path.Dir(c.Filename)
+}
+
 func (c *Caller) ExpandPath(pathstr string) string {
-	return path.Join(path.Dir(c.Filename), pathstr)
+	return path.Join(c.Dirname(), pathstr)
 }
 
 func (c *Caller) Glob(pattern string) ([]string, error) {
-	return filepath.Glob(path.Join(path.Dir(c.Filename), pattern))
+	return filepath.Glob(path.Join(c.Dirname(), pattern))
 }
