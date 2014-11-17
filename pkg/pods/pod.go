@@ -298,14 +298,14 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, manifest *PodMa
 
 func (p *Pod) logError(err error, message string) {
 	p.logger.WithFields(logrus.Fields{
-		"error": err,
+		"err": err,
 	}).Error(message)
 }
 
 func (p *Pod) logLaunchableError(launchableId string, err error, message string) {
 	p.logger.WithFields(logrus.Fields{
 		"launchable": launchableId,
-		"error":      err,
+		"err":        err,
 	}).Error(message)
 }
 

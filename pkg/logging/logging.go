@@ -37,6 +37,10 @@ func (l *Logger) SubLogger(fields logrus.Fields) Logger {
 	return Logger{l.Logger, Merge(l.baseFields, fields)}
 }
 
+func (l *Logger) NoFields() *logrus.Entry {
+	return l.WithFields(logrus.Fields{})
+}
+
 func (l *Logger) WithFields(fields logrus.Fields) *logrus.Entry {
 	return l.Logger.WithFields(Merge(Merge(l.baseFields, fields), processCounter.Fields()))
 }

@@ -1,10 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 
+	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/preparer"
 	"gopkg.in/yaml.v2"
 )
@@ -16,27 +17,34 @@ type PreparerConfig struct {
 }
 
 func main() {
+	logger := logging.NewLogger(logrus.Fields{
+		"app": "preparer",
+	})
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		fmt.Println("No CONFIG_PATH variable was given")
+		logger.NoFields().Println("No CONFIG_PATH variable was given")
 		os.Exit(1)
 		return
 	}
 	configBytes, err := ioutil.ReadFile(configPath)
 	if err != nil {
-		fmt.Println(fmt.Sprintf("Could not read the config file at %s", err))
+		logger.WithFields(logrus.Fields{
+			"inner_err": err,
+		}).Println("Could not read the config file")
 		os.Exit(1)
 		return
 	}
 	preparerConfig := PreparerConfig{}
 	err = yaml.Unmarshal(configBytes, &preparerConfig)
 	if err != nil {
-		fmt.Println(fmt.Sprintf("The config file was malformatted: %s", err))
+		logger.WithFields(logrus.Fields{
+			"inner_err": err,
+		}).Println("The config file was malformatted")
 		os.Exit(1)
 		return
 	}
 	if preparerConfig.NodeName == "" {
-		fmt.Println("`node_name` was not set in the file at CONFIG_PATH")
+		logger.NoFields().Println("`node_name` was not set in the file at CONFIG_PATH")
 		os.Exit(1)
 		return
 	}
@@ -52,8 +60,15 @@ func main() {
 	}
 	defer logFile.Close()
 
-	fmt.Println("Preparer started successfully") // change to logrus message
+	logger.WithFields(logrus.Fields{
+		"starting":  true,
+		"node_name": preparerConfig.NodeName,
+		"consul":    preparerConfig.ConsulAddress,
+		"hooks_dir": preparerConfig.HooksDirectory,
+	}).Println("Preparer started successfully") // change to logrus message
 
-	preparer.WatchForPodManifestsForNode(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logFile)
-	fmt.Println("Terminating")
+	preparer.WatchForPodManifestsForNode(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logger)
+	logger.WithFields(logrus.Fields{
+		"stopping": true,
+	}).Println("Terminating")
 }
