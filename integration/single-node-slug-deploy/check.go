@@ -168,7 +168,7 @@ func verifyHelloRunning() error {
 		}
 	}()
 	select {
-	case <-time.After(10 * time.Second):
+	case <-time.After(15 * time.Second):
 		var helloTail, preparerTail bytes.Buffer
 		helloT := exec.Command("tail", "/var/service/hello__hello/log/main/current")
 		helloT.Stdout = &helloTail
