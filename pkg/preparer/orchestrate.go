@@ -17,6 +17,10 @@ type Pod interface {
 	Halt() (bool, error)
 }
 
+type ServiceRegistry interface {
+	Healthy(serviceId string) bool
+}
+
 func WatchForPodManifestsForNode(nodeName string, consulAddress string, hooksDirectory string, logger logging.Logger) {
 	pods.Log = logger // make it clear that it's
 	hooks := pods.Hooks(hooksDirectory)
@@ -93,7 +97,7 @@ func handlePods(hooks *pods.HookDir, podChan <-chan pods.PodManifest, quit <-cha
 						"hooks": "before",
 					}).Warnln("Could not run before hooks")
 				}
-				ok := installAndLaunchPod(&manifestToLaunch, pod)
+				ok := installAndLaunchPod(&manifestToLaunch, pod, logger)
 				if ok {
 					manifestToLaunch = pods.PodManifest{}
 					working = false
@@ -110,7 +114,7 @@ func handlePods(hooks *pods.HookDir, podChan <-chan pods.PodManifest, quit <-cha
 	}
 }
 
-func installAndLaunchPod(newManifest *pods.PodManifest, pod Pod) bool {
+func installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, logger logging.Logger) bool {
 	err := pod.Install(newManifest)
 	if err != nil {
 		// install failed, abort and retry
@@ -124,9 +128,22 @@ func installAndLaunchPod(newManifest *pods.PodManifest, pod Pod) bool {
 
 	// if new or the manifest is different, launch
 	newOrDifferent := err == pods.NoCurrentManifest || currentSHA != newSHA
+	if newOrDifferent {
+		logger.WithFields(logrus.Fields{
+			"old_sha":  currentSHA,
+			"sha":      newSHA,
+			"manifest": newManifest.ID(),
+		}).Infoln("SHA is new or different from old, will update")
+	}
 
 	// if the old manifest is corrupted somehow, re-launch since we don't know if this is an update.
 	problemReadingCurrentManifest := (err != nil && err != pods.NoCurrentManifest)
+	if problemReadingCurrentManifest {
+		logger.WithFields(logrus.Fields{
+			"sha":       newSHA,
+			"inner_err": err,
+		}).Errorln("Current manifest not readable, will relaunch")
+	}
 
 	if newOrDifferent || problemReadingCurrentManifest {
 		ok, err := pod.Launch(newManifest)

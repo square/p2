@@ -60,7 +60,7 @@ func PodManifestFromBytes(bytes []byte) (*PodManifest, error) {
 }
 
 func (manifest *PodManifest) Write(out io.Writer) error {
-	bytes, err := yaml.Marshal(manifest)
+	bytes, err := manifest.Bytes()
 	if err != nil {
 		return util.Errorf("Could not write manifest for %s: %s", manifest.ID(), err)
 	}
@@ -69,6 +69,10 @@ func (manifest *PodManifest) Write(out io.Writer) error {
 		return util.Errorf("Could not write manifest for %s: %s", manifest.ID(), err)
 	}
 	return nil
+}
+
+func (manifest *PodManifest) Bytes() ([]byte, error) {
+	return yaml.Marshal(manifest)
 }
 
 func (manifest *PodManifest) WriteConfig(out io.Writer) error {

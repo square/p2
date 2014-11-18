@@ -2,6 +2,7 @@ package pods
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
@@ -18,25 +19,28 @@ func getTestPod() *Pod {
 	return NewPod("/data/pods/test")
 }
 
-func getTestPodManifest() *PodManifest {
-	_, filename, _, _ := runtime.Caller(0)
-	testPath := path.Join(path.Dir(filename), "test_manifest.yaml")
-	pod, _ := PodManifestFromPath(testPath)
+func getTestPodManifest(t *testing.T) *PodManifest {
+	testPath := util.From(runtime.Caller(0)).ExpandPath("test_manifest.yaml")
+	pod, err := PodManifestFromPath(testPath)
+	Assert(t).IsNil(err, "couldn't read test manifest")
 	return pod
 }
 
-func getLaunchableStanzasFromTestManifest() map[string]LaunchableStanza {
-	return getTestPodManifest().LaunchableStanzas
+func getUpdatedManifest(t *testing.T) *PodManifest {
+	podPath := util.From(runtime.Caller(0)).ExpandPath("updated_manifest.yaml")
+	pod, err := PodManifestFromPath(podPath)
+	Assert(t).IsNil(err, "couldn't read test manifest")
+	return pod
 }
 
-func getPodIdFromTestManifest() string {
-	return getTestPodManifest().Id
+func getLaunchableStanzasFromTestManifest(t *testing.T) map[string]LaunchableStanza {
+	return getTestPodManifest(t).LaunchableStanzas
 }
 
 func TestGetLaunchable(t *testing.T) {
-	launchableStanzas := getLaunchableStanzasFromTestManifest()
+	launchableStanzas := getLaunchableStanzasFromTestManifest(t)
 	pod := getTestPod()
-	manifest := getTestPodManifest()
+	manifest := getTestPodManifest(t)
 	Assert(t).AreNotEqual(0, len(launchableStanzas), "Expected there to be at least one launchable stanza in the test manifest")
 	for _, stanza := range launchableStanzas {
 		launchable, _ := pod.getLaunchable(stanza, manifest)
@@ -101,7 +105,7 @@ func TestLogLaunchableError(t *testing.T) {
 	Log.SetLogOut(&out)
 
 	testLaunchable := &HoistLaunchable{Id: "TestLaunchable"}
-	testManifest := getTestPodManifest()
+	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
 	pod := PodFromManifestId(testManifest.Id)
@@ -119,7 +123,7 @@ func TestLogError(t *testing.T) {
 	out := bytes.Buffer{}
 	Log.SetLogOut(&out)
 
-	testManifest := getTestPodManifest()
+	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
 	pod := PodFromManifestId(testManifest.Id)
@@ -136,7 +140,7 @@ func TestLogInfo(t *testing.T) {
 	out := bytes.Buffer{}
 	Log.SetLogOut(&out)
 
-	testManifest := getTestPodManifest()
+	testManifest := getTestPodManifest(t)
 	pod := PodFromManifestId(testManifest.Id)
 	message := "Pod did something good"
 	pod.logInfo(message)
@@ -146,6 +150,41 @@ func TestLogInfo(t *testing.T) {
 	outputString := bytes.NewBuffer(output).String()
 	Assert(t).Matches(outputString, ContainsString("hello"), "Expected 'hello' to appear somewhere in log output")
 	Assert(t).Matches(outputString, ContainsString("Pod did something good"), "Expected error message to appear somewhere in log output")
+}
+
+func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
+	existing := getTestPodManifest(t)
+	updated := getUpdatedManifest(t)
+	poddir, err := ioutil.TempDir("", "poddir")
+	Assert(t).IsNil(err, "couldn't create tempdir")
+	pod := NewPod(poddir)
+	manifestContent, err := existing.Bytes()
+	Assert(t).IsNil(err, "couldn't get manifest bytes")
+	err = ioutil.WriteFile(pod.CurrentPodManifestPath(), manifestContent, 0744)
+	Assert(t).IsNil(err, "should have written current manifest")
+
+	oldPath, err := pod.writeCurrentManifest(updated)
+	Assert(t).IsNil(err, "should have writtne the current manifest and linked the old one")
+
+	writtenOld, err := PodManifestFromPath(oldPath)
+	Assert(t).IsNil(err, "should have written a manifest to the old path")
+	manifestMustEqual(existing, writtenOld, t)
+
+	writtenCurrent, err := pod.CurrentManifest()
+	Assert(t).IsNil(err, "the manifest was not written properly")
+	manifestMustEqual(updated, writtenCurrent, t)
+}
+
+func manifestMustEqual(expected, actual *PodManifest, t *testing.T) {
+	actualSha, err := actual.SHA()
+	Assert(t).IsNil(err, "should have gotten SHA from old manifest")
+	expectedSha, err := expected.SHA()
+	Assert(t).IsNil(err, "should have gotten SHA from known old manifest")
+	manifestBytes, err := expected.Bytes()
+	Assert(t).IsNil(err, "should have gotten bytes from manifest")
+	actualBytes, err := actual.Bytes()
+	Assert(t).IsNil(err, "should have gotten bytes from writtenOld")
+	Assert(t).AreEqual(expectedSha, actualSha, fmt.Sprintf("known: \n\n%s\n\nactual:\n\n%s\n", string(manifestBytes), string(actualBytes)))
 }
 
 func ContainsString(test string) func(interface{}) bool {

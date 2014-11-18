@@ -22,7 +22,7 @@ func main() {
 	})
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		logger.NoFields().Println("No CONFIG_PATH variable was given")
+		logger.NoFields().Errorln("No CONFIG_PATH variable was given")
 		os.Exit(1)
 		return
 	}
@@ -30,7 +30,7 @@ func main() {
 	if err != nil {
 		logger.WithFields(logrus.Fields{
 			"inner_err": err,
-		}).Println("Could not read the config file")
+		}).Errorln("Could not read the config file")
 		os.Exit(1)
 		return
 	}
@@ -39,12 +39,12 @@ func main() {
 	if err != nil {
 		logger.WithFields(logrus.Fields{
 			"inner_err": err,
-		}).Println("The config file was malformatted")
+		}).Errorln("The config file was malformatted")
 		os.Exit(1)
 		return
 	}
 	if preparerConfig.NodeName == "" {
-		logger.NoFields().Println("`node_name` was not set in the file at CONFIG_PATH")
+		logger.NoFields().Errorln("`node_name` was not set in the file at CONFIG_PATH")
 		os.Exit(1)
 		return
 	}
@@ -65,10 +65,10 @@ func main() {
 		"node_name": preparerConfig.NodeName,
 		"consul":    preparerConfig.ConsulAddress,
 		"hooks_dir": preparerConfig.HooksDirectory,
-	}).Println("Preparer started successfully") // change to logrus message
+	}).Infoln("Preparer started successfully") // change to logrus message
 
 	preparer.WatchForPodManifestsForNode(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logger)
 	logger.WithFields(logrus.Fields{
 		"stopping": true,
-	}).Println("Terminating")
+	}).Infoln("Terminating")
 }

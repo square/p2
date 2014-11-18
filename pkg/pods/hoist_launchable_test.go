@@ -38,7 +38,9 @@ func TestInstall(t *testing.T) {
 	testPath := path.Join(tempDir, "test_launchable")
 	testLocation := "http://someserver/test_launchable.tar.gz"
 	os.Remove(testPath)
-	launchableStanzas := getLaunchableStanzasFromTestManifest()
+	manifest, err := PodManifestFromPath(util.From(runtime.Caller(0)).ExpandPath("test_manifest.yaml"))
+	Assert(t).IsNil(err, "should not have erred trying to read manifest")
+	launchableStanzas := manifest.LaunchableStanzas
 	for _, stanza := range launchableStanzas {
 		fc := new(fakeCurl)
 		launchable := &HoistLaunchable{testLocation, stanza.LaunchableId, "testuser", tempDir, fc.File, tempDir}

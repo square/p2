@@ -27,12 +27,14 @@ func PodPath(manifestId string) string {
 }
 
 type Pod struct {
-	path   string
-	logger logging.Logger
+	path           string
+	logger         logging.Logger
+	SV             *runit.SV
+	ServiceBuilder *runit.ServiceBuilder
 }
 
 func NewPod(path string) *Pod {
-	return &Pod{path, Log.SubLogger(logrus.Fields{"pod": path})}
+	return &Pod{path, Log.SubLogger(logrus.Fields{"pod": path}), runit.DefaultSV, runit.DefaultBuilder}
 }
 
 func PodFromManifestId(manifestId string) *Pod {
@@ -42,7 +44,7 @@ func PodFromManifestId(manifestId string) *Pod {
 var NoCurrentManifest error = fmt.Errorf("No current manifest for this pod")
 
 func (pod *Pod) CurrentManifest() (*PodManifest, error) {
-	currentManPath := path.Join(pod.path, "current_manifest.yaml")
+	currentManPath := pod.CurrentPodManifestPath()
 	if _, err := os.Stat(currentManPath); os.IsNotExist(err) {
 		return nil, NoCurrentManifest
 	}
@@ -87,26 +89,21 @@ func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
 		return false, err
 	}
 
+	oldManifestTemp, err := pod.writeCurrentManifest(manifest)
+	defer os.RemoveAll(oldManifestTemp)
+
+	if err != nil {
+		return false, err
+	}
+
 	success := true
 	for _, launchable := range launchables {
-		err = launchable.Launch(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
+		err = launchable.Launch(pod.ServiceBuilder, pod.SV) // TODO: make these configurable
 		if err != nil {
 			// Log the failure but continue
 			pod.logLaunchableError(launchable.Id, err, "Unable to launch launchable")
 			success = false
 		}
-	}
-
-	f, err := os.OpenFile(pod.CurrentPodManifestPath(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		pod.logError(err, "Unable to open current manifest file")
-		return false, err
-	}
-
-	err = manifest.Write(f)
-	if err != nil {
-		pod.logError(err, "Unable to write current manifest file")
-		return false, err
 	}
 
 	if success {
@@ -116,6 +113,51 @@ func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
 	}
 
 	return success, nil
+}
+
+func (pod *Pod) writeCurrentManifest(manifest *PodManifest) (string, error) {
+	// write the old manifest to a temporary location in case a launch fails.
+	tmpDir, err := ioutil.TempDir("", "manifests")
+	if err != nil {
+		return "", util.Errorf("could not create a tempdir to write old manifest: %s", err)
+	}
+	lastManifest := path.Join(tmpDir, "last_manifest.yaml")
+
+	if _, err := os.Stat(pod.CurrentPodManifestPath()); err == nil {
+		err = os.Rename(pod.CurrentPodManifestPath(), lastManifest)
+		if err != nil && !os.IsNotExist(err) {
+			return "", err
+		}
+	}
+
+	f, err := os.OpenFile(pod.CurrentPodManifestPath(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		pod.logError(err, "Unable to open current manifest file")
+		err = pod.revertCurrentManifest(lastManifest)
+		if err != nil {
+			pod.logError(err, "Couldn't replace old manifest as current")
+		}
+		return "", err
+	}
+
+	err = manifest.Write(f)
+	if err != nil {
+		pod.logError(err, "Unable to write current manifest file")
+		err = pod.revertCurrentManifest(lastManifest)
+		if err != nil {
+			pod.logError(err, "Couldn't replace old manifest as current")
+		}
+		return "", err
+	}
+	return lastManifest, nil
+}
+
+func (pod *Pod) revertCurrentManifest(lastPath string) error {
+	if _, err := os.Stat(lastPath); err == nil {
+		return os.Rename(lastPath, pod.CurrentPodManifestPath())
+	} else {
+		return err
+	}
 }
 
 func (pod *Pod) CurrentPodManifestPath() string {

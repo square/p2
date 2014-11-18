@@ -1,0 +1,15 @@
+id: hello
+launchables:
+  app:
+    launchable_type: hoist
+    launchable_id: hello
+    location: http://localhost:8000/foo/bar/baz/hello_def456.tar.gz
+
+config:
+  # is written to a file and passed as CONFIG_FILE to the process
+  ENVIRONMENT: staging
+  TMPDIR: /data/app/ocrcard/current/tmp
+  hoptoad:
+    url: https://hoptoad.com/notifier_api/v2/notices/
+    api_key: aabbccddeeffgghhiiijjjkkklll
+    api_key_warn: aabbccddeeffgghhiiijjjkkklll
