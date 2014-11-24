@@ -10,6 +10,13 @@ import (
 	"github.com/square/p2/pkg/pods"
 )
 
+type fakeClient struct{}
+
+func (f fakeClient) KV() *consulapi.KV {
+	client, _ := consulapi.NewClient(consulapi.DefaultConfig())
+	return client.KV()
+}
+
 func makePodKv(key string, value string) *consulapi.KVPair {
 	return &consulapi.KVPair{
 		Key:   key,
@@ -71,7 +78,7 @@ func errorWatch(kv ppkv.KV, prefix string, opts consulapi.QueryOptions, kvCh cha
 }
 
 func TestHappyPathPodWatch(t *testing.T) {
-	i := IntentWatcher{WatchOptions{}, consulapi.DefaultConfig(), happyWatch}
+	i := Store{Options{}, consulapi.DefaultConfig(), happyWatch, fakeClient{}}
 
 	path := "/nodes/ama1.dfw.square"
 	quit := make(chan struct{})
@@ -88,7 +95,7 @@ func TestHappyPathPodWatch(t *testing.T) {
 }
 
 func TestErrorPath(t *testing.T) {
-	i := IntentWatcher{WatchOptions{}, consulapi.DefaultConfig(), errorWatch}
+	i := Store{Options{}, consulapi.DefaultConfig(), errorWatch, fakeClient{}}
 
 	path := "/nodes/ama1.dfw.square"
 	quit := make(chan struct{})
@@ -106,7 +113,7 @@ func TestErrorPath(t *testing.T) {
 
 // This tests the case where an error occurs when parsing a single
 func TestErrorsAndPodsReturned(t *testing.T) {
-	i := IntentWatcher{WatchOptions{}, consulapi.DefaultConfig(), partiallyHappyWatch}
+	i := Store{Options{}, consulapi.DefaultConfig(), partiallyHappyWatch, fakeClient{}}
 
 	path := "/nodes/ama1.dfw.square"
 	quit := make(chan struct{})

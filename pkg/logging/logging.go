@@ -63,6 +63,12 @@ func (l *Logger) WithFields(fields logrus.Fields) *logrus.Entry {
 	return l.Logger.WithFields(Merge(Merge(l.baseFields, fields), processCounter.Fields()))
 }
 
+func (l *Logger) WithField(key string, value interface{}) *logrus.Entry {
+	return l.WithFields(logrus.Fields{
+		key: value,
+	})
+}
+
 func Merge(template, additional logrus.Fields) logrus.Fields {
 	combined := logrus.Fields{}
 	for key, value := range template {
