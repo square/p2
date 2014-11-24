@@ -50,10 +50,24 @@ func runHooks(dirpath string, pod *Pod, podManifest *PodManifest) error {
 		return err
 	}
 
+	// Write manifest to a file so hooks can read it.
+	tmpManifestFile, err := ioutil.TempFile("", fmt.Sprintf("%s-manifest.yaml", podManifest.Id))
+	if err != nil {
+		pod.logError(err, "Unable to open manifest file for hooks")
+		return err
+	}
+	defer os.Remove(tmpManifestFile.Name())
+
+	err = podManifest.Write(tmpManifestFile)
+	if err != nil {
+		pod.logError(err, "Unable to write manifest file for hooks")
+		return err
+	}
+
 	hookEnvironment := os.Environ()
 	hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_ID=%s", podManifest.Id))
 	hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_HOME=%s", PodPath(podManifest.Id)))
-	hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_MANIFEST=%s", pod.CurrentPodManifestPath()))
+	hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_MANIFEST=%s", tmpManifestFile.Name()))
 	hookEnvironment = append(hookEnvironment, fmt.Sprintf("CONFIG_PATH=%s", path.Join(pod.ConfigDir(), configFileName)))
 
 	return runDirectory(dirpath, hookEnvironment)
