@@ -4,6 +4,7 @@ import (
 	"io"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/util"
 )
 
 // the process counter increments for every sent message over logrus. If
@@ -16,6 +17,12 @@ type Logger struct {
 	Logger     *logrus.Logger
 	baseFields logrus.Fields
 }
+
+type OutType string
+
+const (
+	OUT_SOCKET = "socket"
+)
 
 var DefaultLogger Logger
 
@@ -31,6 +38,17 @@ func NewLogger(baseFields logrus.Fields) Logger {
 
 func (l *Logger) SetLogOut(out io.Writer) {
 	l.Logger.Out = out
+}
+
+func (l *Logger) AddHook(outType OutType, dest string) error {
+	if outType == OUT_SOCKET {
+		socketHook := SocketHook{socketPath: dest}
+		l.Logger.Hooks.Add(socketHook)
+	} else {
+		return util.Errorf("Unsupported log output type: %s", outType)
+	}
+
+	return nil
 }
 
 func (l *Logger) SubLogger(fields logrus.Fields) Logger {
