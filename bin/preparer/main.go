@@ -11,9 +11,10 @@ import (
 )
 
 type PreparerConfig struct {
-	NodeName       string `yaml:"node_name"`
-	ConsulAddress  string `yaml:"consul_address"`
-	HooksDirectory string `yaml:"hooks_directory"`
+	NodeName             string                     `yaml:"node_name"`
+	ConsulAddress        string                     `yaml:"consul_address"`
+	HooksDirectory       string                     `yaml:"hooks_directory"`
+	ExtraLogDestinations map[logging.OutType]string `yaml:"extra_log_destinations,omitempty"`
 }
 
 func main() {
@@ -42,6 +43,9 @@ func main() {
 		}).Errorln("The config file was malformatted")
 		os.Exit(1)
 		return
+	}
+	for outType, dest := range preparerConfig.ExtraLogDestinations {
+		logger.AddHook(outType, dest)
 	}
 	if preparerConfig.NodeName == "" {
 		logger.NoFields().Errorln("`node_name` was not set in the file at CONFIG_PATH")
