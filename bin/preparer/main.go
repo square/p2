@@ -48,9 +48,7 @@ func main() {
 		logger.AddHook(outType, dest)
 	}
 	if preparerConfig.NodeName == "" {
-		logger.NoFields().Errorln("`node_name` was not set in the file at CONFIG_PATH")
-		os.Exit(1)
-		return
+		preparerConfig.NodeName, _ = os.Hostname()
 	}
 	if preparerConfig.ConsulAddress == "" {
 		preparerConfig.ConsulAddress = "127.0.0.1:8500"
