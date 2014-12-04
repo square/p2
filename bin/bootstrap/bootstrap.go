@@ -24,20 +24,27 @@ func main() {
 	kingpin.Version("0.0.1")
 	kingpin.Parse()
 	log.Println("Starting bootstrap")
-	consulManifest, err := pods.PodManifestFromPath(*consulManifestPath)
-	if err != nil {
-		log.Fatalf("Could not get consul manifest: %s", err)
-	}
-	consulPod := pods.PodFromManifestId(consulManifest.ID())
 	agentManifest, err := pods.PodManifestFromPath(*agentManifestPath)
 	if err != nil {
 		log.Fatalln("Could not get agent manifest: %s", err)
 	}
 	log.Println("Installing and launching consul")
-	err = InstallConsul(consulPod, consulManifest)
-	if err != nil {
-		log.Fatalf("Could not install consul: %s", err)
+
+	if *existingConsul == "" {
+		consulManifest, err := pods.PodManifestFromPath(*consulManifestPath)
+		if err != nil {
+			log.Fatalf("Could not get consul manifest: %s", err)
+		}
+		consulPod := pods.PodFromManifestId(consulManifest.ID())
+		err = InstallConsul(consulPod, consulManifest)
+		if err != nil {
+			log.Fatalf("Could not install consul: %s", err)
+		}
+	} else {
+		log.Printf("Using existing Consul at %s\n", *existingConsul)
+		agentManifest.Config["consul_address"] = *existingConsul
 	}
+
 	log.Println("Registering base agent in consul")
 	err = RegisterBaseAgentInConsul(agentManifest)
 	if err != nil {
@@ -71,8 +78,6 @@ func RegisterBaseAgentInConsul(agentManifest *pods.PodManifest) error {
 		return err
 	}
 	b := bytes.Buffer{}
-	// TODO: pass consul URI as value in agentManifest config.
-	// agentManifest.Config["consul_url"] = "localhost:8300"
 	agentManifest.Write(&b)
 	hostname, err := os.Hostname()
 	if err != nil {
