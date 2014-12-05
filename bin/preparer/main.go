@@ -10,11 +10,16 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type LogDestination struct {
+	Type logging.OutType `yaml:"type"`
+	Path string          `yaml:"path"`
+}
+
 type PreparerConfig struct {
-	NodeName             string                     `yaml:"node_name"`
-	ConsulAddress        string                     `yaml:"consul_address"`
-	HooksDirectory       string                     `yaml:"hooks_directory"`
-	ExtraLogDestinations map[logging.OutType]string `yaml:"extra_log_destinations,omitempty"`
+	NodeName             string           `yaml:"node_name"`
+	ConsulAddress        string           `yaml:"consul_address"`
+	HooksDirectory       string           `yaml:"hooks_directory"`
+	ExtraLogDestinations []LogDestination `yaml:"extra_log_destinations,omitempty"`
 }
 
 func main() {
@@ -44,8 +49,8 @@ func main() {
 		os.Exit(1)
 		return
 	}
-	for outType, dest := range preparerConfig.ExtraLogDestinations {
-		logger.AddHook(outType, dest)
+	for _, dest := range preparerConfig.ExtraLogDestinations {
+		logger.AddHook(dest.Type, dest.Path)
 	}
 	if preparerConfig.NodeName == "" {
 		preparerConfig.NodeName, _ = os.Hostname()
