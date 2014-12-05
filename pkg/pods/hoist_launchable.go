@@ -321,7 +321,7 @@ func (hoistLaunchable *HoistLaunchable) InstallDir() string {
 func extractTarGz(fp *os.File, dest string) (err error) {
 	fz, err := gzip.NewReader(fp)
 	if err != nil {
-		return err
+		return util.Errorf("Unable to create gzip reader: %s", err)
 	}
 	defer fz.Close()
 
@@ -332,7 +332,7 @@ func extractTarGz(fp *os.File, dest string) (err error) {
 			break
 		}
 		if err != nil {
-			return err
+			return util.Errorf("Encountered an error reading gunzipped tar archive: %s", err)
 		}
 		fpath := path.Join(dest, hdr.Name)
 		if hdr.FileInfo().IsDir() {
@@ -343,13 +343,13 @@ func extractTarGz(fp *os.File, dest string) (err error) {
 			f, err := os.OpenFile(
 				fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, hdr.FileInfo().Mode())
 			if err != nil {
-				return err
+				return util.Errorf("Unable to open destination file when unpacking tar: %s", err)
 			}
 			defer f.Close()
 
 			_, err = io.Copy(f, tr)
 			if err != nil {
-				return err
+				return util.Errorf("Unable to copy file to destination when extracting tar.gz: %s", err)
 			}
 		}
 	}
