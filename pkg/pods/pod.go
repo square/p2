@@ -10,7 +10,7 @@ import (
 
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/runit"
-	"github.com/square/p2/pkg/user"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
@@ -124,7 +124,7 @@ func (pod *Pod) writeCurrentManifest(manifest *PodManifest) (string, error) {
 	lastManifest := path.Join(tmpDir, "last_manifest.yaml")
 
 	if _, err := os.Stat(pod.CurrentPodManifestPath()); err == nil {
-		err = os.Rename(pod.CurrentPodManifestPath(), lastManifest)
+		err = uri.URICopy(pod.CurrentPodManifestPath(), lastManifest)
 		if err != nil && !os.IsNotExist(err) {
 			return "", err
 		}
@@ -213,10 +213,6 @@ func (pod *Pod) Install(manifest *PodManifest) error {
 	err := os.MkdirAll(podHome, 0755) // this dir needs to be owned by different user at some point
 	if err != nil {
 		return util.Errorf("Could not create pod home: %s", err)
-	}
-	_, err = user.CreateUser(manifest.ID(), podHome)
-	if err != nil && err != user.AlreadyExists {
-		return err
 	}
 
 	// we may need to write config files to a unique directory per pod version, depending on restart semantics. Need
