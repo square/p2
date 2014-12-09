@@ -14,6 +14,7 @@ import (
 
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
+	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -268,7 +269,7 @@ func (hoistLaunchable *HoistLaunchable) Install() error {
 	}
 	defer fd.Close()
 
-	err = extractTarGz(fd, installDir)
+	err = hoistLaunchable.extractTarGz(fd, installDir)
 	if err != nil {
 		return err
 	}
@@ -300,7 +301,7 @@ func (hoistLaunchable *HoistLaunchable) CurrentDir() string {
 }
 
 func (hoistLaunchable *HoistLaunchable) MakeCurrent() error {
-	dir, err := ioutil.TempDir("", hoistLaunchable.Id)
+	dir, err := ioutil.TempDir(hoistLaunchable.RootDir, hoistLaunchable.Id)
 	if err != nil {
 		return util.Errorf("Couldn't create temporary directory for symlink: %s", err)
 	}
@@ -318,7 +319,7 @@ func (hoistLaunchable *HoistLaunchable) InstallDir() string {
 	return path.Join(hoistLaunchable.RootDir, "installs", launchableName)
 }
 
-func extractTarGz(fp *os.File, dest string) (err error) {
+func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (err error) {
 	fz, err := gzip.NewReader(fp)
 	if err != nil {
 		return util.Errorf("Unable to create gzip reader: %s", err)
@@ -326,6 +327,10 @@ func extractTarGz(fp *os.File, dest string) (err error) {
 	defer fz.Close()
 
 	tr := tar.NewReader(fz)
+	uid, gid, err := user.IDs(hoistLaunchable.RunAs)
+	if err != nil {
+		return util.Errorf("Could not get UID/GID for user %s: %s", hoistLaunchable.RunAs, err)
+	}
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -342,10 +347,15 @@ func extractTarGz(fp *os.File, dest string) (err error) {
 			os.MkdirAll(dir, 0755)
 			f, err := os.OpenFile(
 				fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, hdr.FileInfo().Mode())
+
 			if err != nil {
 				return util.Errorf("Unable to open destination file when unpacking tar: %s", err)
 			}
 			defer f.Close()
+			err = f.Chown(uid, gid) // this operation may cause tar unpacking to become significantly slower. Refactor as necessary.
+			if err != nil {
+				return util.Errorf("Unable to chown destination file to user %s: %s", hoistLaunchable.RunAs, err)
+			}
 
 			_, err = io.Copy(f, tr)
 			if err != nil {
