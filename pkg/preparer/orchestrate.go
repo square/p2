@@ -97,7 +97,7 @@ func handlePods(hooks *pods.HookDir, podChan <-chan pods.PodManifest, quit <-cha
 						"hooks": "before",
 					}).Warnln("Could not run before hooks")
 				}
-				ok := installAndLaunchPod(&manifestToLaunch, pod, logger)
+				ok := installAndLaunchPod(&manifestToLaunch, pod, manifestLogger)
 				if ok {
 					manifestToLaunch = pods.PodManifest{}
 					working = false
@@ -118,6 +118,9 @@ func installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, logger logging.
 	err := pod.Install(newManifest)
 	if err != nil {
 		// install failed, abort and retry
+		logger.WithFields(logrus.Fields{
+			"err": err,
+		}).Errorln("Install failed")
 		return false
 	}
 
@@ -147,6 +150,11 @@ func installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, logger logging.
 
 	if newOrDifferent || problemReadingCurrentManifest {
 		ok, err := pod.Launch(newManifest)
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"err": err,
+			}).Errorln("Launch failed")
+		}
 		return err == nil && ok
 	}
 
