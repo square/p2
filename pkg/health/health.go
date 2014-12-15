@@ -42,13 +42,13 @@ func toHealthState(v string) HealthCheckState {
 }
 
 type ServiceStatus struct {
-	Statuses []ServiceNodeStatus `yaml:"statuses"`
+	Statuses map[string]*ServiceNodeStatus `yaml:"statuses"`
 }
 
-func (s ServiceStatus) ForNode(node string) (*ServiceNodeStatus, error) {
+func (s *ServiceStatus) ForNode(node string) (*ServiceNodeStatus, error) {
 	for _, status := range s.Statuses {
 		if status.Node == node {
-			return &status, nil
+			return status, nil
 		}
 	}
 	return nil, NoStatusGiven
@@ -60,7 +60,7 @@ type ServiceNodeStatus struct {
 	Version string `yaml:"version"`
 }
 
-func (s *ServiceNodeStatus) Current(version string) bool {
+func (s *ServiceNodeStatus) IsCurrentVersion(version string) bool {
 	return s.Version == version
 }
 
@@ -74,7 +74,7 @@ func NewConsulHealthChecker(consulHealth *consulapi.Health) *ConsulHealthChecker
 	}
 }
 
-func (s *ConsulHealthChecker) toNodeStatus(entry consulapi.ServiceEntry) ServiceNodeStatus {
+func (s *ConsulHealthChecker) toNodeStatus(entry consulapi.ServiceEntry) *ServiceNodeStatus {
 	nodeStatus := ServiceNodeStatus{
 		Node:    entry.Node.Node,
 		Version: entry.Service.Tags[0],
@@ -84,7 +84,7 @@ func (s *ConsulHealthChecker) toNodeStatus(entry consulapi.ServiceEntry) Service
 		checkPassing := toHealthState(check.Status) == Passing
 		nodeStatus.Healthy = nodeStatus.Healthy && checkPassing
 	}
-	return nodeStatus
+	return &nodeStatus
 }
 
 func (s *ConsulHealthChecker) LookupHealth(serviceID string) (*ServiceStatus, error) {
@@ -94,11 +94,11 @@ func (s *ConsulHealthChecker) LookupHealth(serviceID string) (*ServiceStatus, er
 		return nil, err
 	}
 	serviceStatus := ServiceStatus{
-		Statuses: []ServiceNodeStatus{},
+		Statuses: make(map[string]*ServiceNodeStatus),
 	}
 	for _, entry := range entries {
 		if serviceID == entry.Service.ID {
-			serviceStatus.Statuses = append(serviceStatus.Statuses, s.toNodeStatus(*entry))
+			serviceStatus.Statuses[entry.Node.Node] = s.toNodeStatus(*entry)
 		}
 	}
 	return &serviceStatus, nil
@@ -123,7 +123,7 @@ func (s *ConsulHealthChecker) WatchHealth(serviceID string, statusChan chan Serv
 			for _, entry := range res {
 				nodeStatus := s.toNodeStatus(*entry)
 				select {
-				case statusChan <- nodeStatus:
+				case statusChan <- *nodeStatus:
 				case <-statusQuitChan:
 					return
 				}

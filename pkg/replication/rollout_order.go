@@ -107,9 +107,12 @@ func getRolloutOrder(alloc allocation.Allocation, status *health.ServiceStatus) 
 		referenceStatus: status,
 	}
 	sort.Sort(order)
-	channel := make(chan allocation.Node, len(alloc.Nodes))
-	for _, node := range order.nodes {
-		channel <- node
-	}
+	channel := make(chan allocation.Node)
+	go func() {
+		for _, node := range order.nodes {
+			channel <- node
+		}
+		close(channel)
+	}()
 	return channel
 }

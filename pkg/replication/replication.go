@@ -1,3 +1,8 @@
+// Package replication provides logic for safely creating and updating
+// pod manifests for multiple nodes as specified by an allocation.Allocation.
+// Healthchecks and version tags are used to establish safety. Replicators will
+// try forever until either the pods are shown to be updated or a signal is sent
+// on the passed stop channel.
 package replication
 
 import (
@@ -53,6 +58,7 @@ func (repl *Replicator) Enact(store IntentStore, serviceChecker ServiceChecker, 
 		}).Errorln("Minimum nuber of nodes cannot meet or exceed allocated")
 		return
 	}
+	repl.Logger.NoFields().Infoln("Enacting replication")
 	status, err := serviceChecker.LookupHealth(repl.Manifest.ID())
 	if err != nil {
 		repl.Logger.WithField("err", err).Errorln("Couldn't communicate with health checker on first run")
@@ -68,7 +74,7 @@ func (repl *Replicator) Enact(store IntentStore, serviceChecker ServiceChecker, 
 	defer close(quitCh)
 	go repl.healthAggregateStream(serviceChecker, healthCh, errCh, quitCh)
 
-	currentlyUpdating := make([]allocation.Node, repl.MinimumNodes-len(repl.Allocation.Nodes))
+	currentlyUpdating := make([]allocation.Node, len(repl.Allocation.Nodes)-repl.MinimumNodes)
 
 	for i := 0; i < len(currentlyUpdating); i++ {
 		currentlyUpdating[i] = <-toUpdatechannel
@@ -93,13 +99,18 @@ func (repl *Replicator) Enact(store IntentStore, serviceChecker ServiceChecker, 
 
 				healthy, current := repl.isHealthyAndCurrent(status, err)
 				if healthy && current {
-					repl.Logger.WithField("node", node.Name).Infoln("Node is now current and healthy")
-					currentlyUpdating[i] = <-toUpdatechannel
 					leftToUpdate--
+					currentlyUpdating[i] = <-toUpdatechannel
+					repl.Logger.WithFields(logrus.Fields{
+						"node":           node.Name,
+						"next":           currentlyUpdating[i].Name,
+						"left_to_update": leftToUpdate,
+					}).Infoln("Node is now current and healthy")
 				} else if !current {
 					// node is out of date, update the store with the new manifest.
 					// this will almost definitely result in duplicate Sets in the
 					// preparer, which is expected to ignore duplicate updates.
+					repl.Logger.WithField("node", node.Name).Infoln("Updating node")
 					dur, err := store.Set(node.Name, repl.Manifest)
 					if err != nil {
 						repl.Logger.WithFields(logrus.Fields{
@@ -128,7 +139,8 @@ func (repl *Replicator) isHealthyAndCurrent(status *health.ServiceNodeStatus, er
 		return false, false
 	} else if err == nil {
 		sha, _ := repl.Manifest.SHA()
-		return status.Healthy, status.Current(sha)
+		repl.Logger.WithField("status", status).Debugln("Comparing")
+		return status.Healthy, status.IsCurrentVersion(sha)
 	} else {
 		repl.Logger.WithFields(logrus.Fields{
 			"err":  err,
@@ -139,6 +151,7 @@ func (repl *Replicator) isHealthyAndCurrent(status *health.ServiceNodeStatus, er
 }
 
 func (repl *Replicator) healthAggregateStream(serviceChecker ServiceChecker, healthCh chan health.ServiceStatus, errCh chan error, quitCh chan struct{}) {
+	lookupCount := 0
 	for {
 		status, err := serviceChecker.LookupHealth(repl.Manifest.ID())
 		if err == nil {
@@ -154,6 +167,8 @@ func (repl *Replicator) healthAggregateStream(serviceChecker ServiceChecker, hea
 			case errCh <- err:
 			}
 		}
+		repl.Logger.WithField("lookup_count", lookupCount).Debugln("Sent health, sleeping")
+		lookupCount++
 		time.Sleep(repl.NodePauseTime)
 	}
 }

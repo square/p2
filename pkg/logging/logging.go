@@ -2,6 +2,7 @@ package logging
 
 import (
 	"io"
+	"os"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/util"
@@ -78,4 +79,12 @@ func Merge(template, additional logrus.Fields) logrus.Fields {
 		combined[key] = value
 	}
 	return combined
+}
+
+func TestLogger() Logger {
+	logger := NewLogger(logrus.Fields{})
+	logger.Logger.Out = os.Stdout
+	logger.Logger.Formatter = &logrus.TextFormatter{}
+	logger.Logger.Level = logrus.DebugLevel
+	return logger
 }
