@@ -3,7 +3,10 @@
 package intent
 
 import (
+	"bytes"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/armon/consul-api"
 	"github.com/square/p2/pkg/kv-consul"
@@ -11,25 +14,46 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-type WatchOptions struct {
+type ConsulClient interface {
+	KV() *consulapi.KV
+}
+
+type Options struct {
 	Token   string
 	Address string
 }
 
-type IntentWatcher struct {
-	Opts       WatchOptions
-	ConsulOpts *consulapi.Config
-	WatchFn    func(ppkv.KV, string, consulapi.QueryOptions, chan<- consulapi.KVPairs, chan<- error, <-chan struct{})
+type ManifestErr struct {
+	Key     string
+	Value   string
+	Message string
 }
 
-func NewWatcher(opts WatchOptions) *IntentWatcher {
-	watcher := &IntentWatcher{
+func (m *ManifestErr) Error() string {
+	return m.Message
+}
+
+type Store struct {
+	Opts       Options
+	ConsulOpts *consulapi.Config
+	WatchFn    func(ppkv.KV, string, consulapi.QueryOptions, chan<- consulapi.KVPairs, chan<- error, <-chan struct{})
+	client     ConsulClient
+}
+
+func LookupStore(opts Options) (*Store, error) {
+	watcher := &Store{
 		Opts:       opts,
 		ConsulOpts: consulapi.DefaultConfig(),
-		WatchFn:    ppkv.Watch,
+		WatchFn:    ppkv.WatchKV,
 	}
 	watcher.ConsulOpts.Address = opts.Address
-	return watcher
+	var err error
+	watcher.client, err = consulapi.NewClient(watcher.ConsulOpts)
+
+	if err != nil {
+		return nil, util.Errorf("Could not initialize consul client: %s", err)
+	}
+	return watcher, nil
 }
 
 // Watch the kv-store for changes to any pod under the given path. All pods will be returned
@@ -38,11 +62,7 @@ func NewWatcher(opts WatchOptions) *IntentWatcher {
 // of acting on multiple changes at once. The quit channel is used to terminate watching on the
 // spawned goroutine. The error channel should be observed for errors from the underlying watcher.
 // If an error occurs during watch, it is the caller's responsibility to quit the watcher.
-func (i *IntentWatcher) WatchPods(path string, quit <-chan struct{}, errChan chan<- error, podCh chan<- pods.PodManifest) error {
-	client, err := consulapi.NewClient(i.ConsulOpts)
-	if err != nil {
-		return util.Errorf("Could not initialize consul client: %s", err)
-	}
+func (i *Store) WatchPods(path string, quit <-chan struct{}, errChan chan<- error, podCh chan<- pods.PodManifest) error {
 	opts := consulapi.QueryOptions{Token: i.Opts.Token}
 
 	defer close(podCh)
@@ -52,7 +72,7 @@ func (i *IntentWatcher) WatchPods(path string, quit <-chan struct{}, errChan cha
 	kvQuitCh := make(chan struct{})
 	defer close(kvQuitCh)
 	kvErrCh := make(chan error)
-	go i.WatchFn(client.KV(), path, opts, kvPairCh, kvErrCh, kvQuitCh)
+	go i.WatchFn(i.client.KV(), path, opts, kvPairCh, kvErrCh, kvQuitCh)
 
 	for {
 		select {
@@ -68,7 +88,7 @@ func (i *IntentWatcher) WatchPods(path string, quit <-chan struct{}, errChan cha
 					errChan <- util.Errorf("An empty string was returned for the manifest %s", pair.Key)
 					continue
 				}
-				if str[0] == '"' { // escaped for json YAML leads and ends with a doublequote and has escaped newlines
+				if str[0] == '"' { // escaped for JSON YAML leads and ends with a doublequote and has escaped newlines
 					str = str[1 : len(str)-1] // remove leading, following double quotes from escaping
 					str = strings.Replace(str, `\n`, "\n", -1)
 				}
@@ -81,5 +101,23 @@ func (i *IntentWatcher) WatchPods(path string, quit <-chan struct{}, errChan cha
 			}
 		}
 	}
+}
 
+func (i *Store) IntentKey(node string, manifest pods.PodManifest) string {
+	return fmt.Sprintf("nodes/%s/%s", node, manifest.ID())
+}
+
+func (i *Store) SetPod(node string, manifest pods.PodManifest) (time.Duration, error) {
+	buf := bytes.Buffer{}
+	err := manifest.Write(&buf)
+	if err != nil {
+		return 0, err
+	}
+	keyPair := &consulapi.KVPair{
+		Key:   i.IntentKey(node, manifest),
+		Value: buf.Bytes(),
+	}
+
+	writeMeta, err := i.client.KV().Put(keyPair, nil)
+	return writeMeta.RequestTime, err
 }

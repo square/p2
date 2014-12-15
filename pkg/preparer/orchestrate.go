@@ -17,18 +17,20 @@ type Pod interface {
 	Halt() (bool, error)
 }
 
-type ServiceRegistry interface {
-	Healthy(serviceId string) bool
-}
-
 func WatchForPodManifestsForNode(nodeName string, consulAddress string, hooksDirectory string, logger logging.Logger) {
-	pods.Log = logger // make it clear that it's
+	pods.Log = logger
 	hooks := pods.Hooks(hooksDirectory)
-	watchOpts := intent.WatchOptions{
+	watchOpts := intent.Options{
 		Token:   nodeName,
 		Address: consulAddress,
-	} // placeholder for now
-	watcher := intent.NewWatcher(watchOpts)
+	}
+	watcher, err := intent.LookupStore(watchOpts)
+	if err != nil {
+		logger.WithFields(logrus.Fields{
+			"inner_err": err,
+		}).Errorln("Could not watch nodes; error when looking up intent store")
+		return
+	}
 
 	path := fmt.Sprintf("nodes/%s", nodeName)
 
