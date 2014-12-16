@@ -176,7 +176,7 @@ func (hoistLaunchable *HoistLaunchable) BuildRunitServices(serviceBuilder *runit
 			"/usr/bin/nolimit",
 			"/usr/bin/chpst",
 			"-u",
-			hoistLaunchable.RunAs,
+			strings.Join([]string{hoistLaunchable.RunAs, hoistLaunchable.RunAs}, ":"),
 			"-e",
 			hoistLaunchable.ConfigDir,
 			executable.execPath,
@@ -329,7 +329,7 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 	tr := tar.NewReader(fz)
 	uid, gid, err := user.IDs(hoistLaunchable.RunAs)
 	if err != nil {
-		return util.Errorf("Could not get UID/GID for user %s: %s", hoistLaunchable.RunAs, err)
+		return err
 	}
 	for {
 		hdr, err := tr.Next()

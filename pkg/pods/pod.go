@@ -321,10 +321,10 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, manifest *PodMa
 		var runAs string
 		// proposition: rename all reserved users to p2_*. p2_* users all run as root until
 		// precise roles can be assigned to each.
-		if manifest.ID() == "intent" || manifest.ID() == "preparer" {
+		if manifest.ID() == "intent" || manifest.ID() == "p2-preparer" {
 			runAs = "root"
 		} else {
-			runAs = strings.Join([]string{manifest.ID(), manifest.ID()}, ":")
+			runAs = manifest.ID()
 		}
 		return &HoistLaunchable{launchableStanza.Location, launchableId, runAs, pod.EnvDir(), DefaultFetcher(), launchableRootDir}, nil
 	} else {
