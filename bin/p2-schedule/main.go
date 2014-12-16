@@ -38,10 +38,12 @@ func main() {
 		manifest, err := pods.PodManifestFromPath(manifestPath)
 		if err != nil {
 			os.Stderr.WriteString(fmt.Sprintf("Could not read manifest at %s: %s\n", manifestPath, err))
+			continue
 		}
 		duration, err := store.SetPod(node, *manifest)
 		if err != nil {
 			os.Stderr.WriteString(fmt.Sprintf("Could not write manifest %s to intent store: %s\n", manifest.ID(), err))
+			continue
 		}
 		log.Printf("Scheduling %s took %s", manifest.ID(), duration)
 	}
