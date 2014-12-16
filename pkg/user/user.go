@@ -34,15 +34,17 @@ func CreateUser(username string, homedir string) (*osuser.User, error) {
 func IDs(username string) (int, int, error) {
 	user, err := osuser.Lookup(username)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, util.Errorf(err.Error())
+
 	}
 	uid, err := strconv.ParseInt(user.Uid, 10, 0)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, util.Errorf(err.Error())
 	}
 	gid, err := strconv.ParseInt(user.Gid, 10, 0)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, util.Errorf(err.Error())
+
 	}
 	return int(uid), int(gid), nil
 }

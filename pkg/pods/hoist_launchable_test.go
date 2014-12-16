@@ -70,7 +70,7 @@ func FakeHoistLaunchableForDir(dirName string) *HoistLaunchable {
 	tempDir := os.TempDir()
 	_, filename, _, _ := runtime.Caller(0)
 	launchableInstallDir := path.Join(path.Dir(filename), dirName)
-	launchable := &HoistLaunchable{"testLaunchable.tar.gz", "testPod__testLaunchable", "testPod:testPod", tempDir, new(fakeCurl).File, launchableInstallDir}
+	launchable := &HoistLaunchable{"testLaunchable.tar.gz", "testPod__testLaunchable", "testPod", tempDir, new(fakeCurl).File, launchableInstallDir}
 
 	return launchable
 }
