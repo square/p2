@@ -331,6 +331,10 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 	if err != nil {
 		return err
 	}
+	err = hoistLaunchable.makeAndChown(dest, uid, gid, fp)
+	if err != nil {
+		return err
+	}
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -344,7 +348,10 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 			continue
 		} else {
 			dir := path.Dir(fpath)
-			os.MkdirAll(dir, 0755)
+			err = hoistLaunchable.makeAndChown(dir, uid, gid, fp)
+			if err != nil {
+				return err
+			}
 			f, err := os.OpenFile(
 				fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, hdr.FileInfo().Mode())
 
@@ -362,6 +369,18 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 				return util.Errorf("Unable to copy file to destination when extracting tar.gz: %s", err)
 			}
 		}
+	}
+	return nil
+}
+
+func (hoistLaunchable *HoistLaunchable) makeAndChown(dir string, uid, gid int, fp *os.File) error {
+	err := os.MkdirAll(dir, 0755)
+	if err != nil {
+		return util.Errorf("Could not create directory %s when expanding %s: %s", dir, fp.Name(), err)
+	}
+	err = os.Chown(dir, uid, gid)
+	if err != nil {
+		return util.Errorf("Could not give directory ownership of %s to %s when expanding %s: %s", hoistLaunchable.RunAs, dir, fp.Name(), err)
 	}
 	return nil
 }

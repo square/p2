@@ -15,6 +15,7 @@ import (
 
 	"github.com/square/p2/pkg/kv-consul"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -42,6 +43,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not execute bootstrap: %s", err)
 	}
+	_, err = user.CreateUser("hello", pods.PodPath("hello"))
+	if err != nil && err != user.AlreadyExists {
+		log.Fatalf("Could not create user: %s", err)
+	}
 	err = postHelloManifest(tempdir)
 	if err != nil {
 		log.Fatalf("Could not generate hello pod: %s\n", err)
@@ -65,7 +70,7 @@ func generatePreparerPod(workdir string) (string, error) {
 	}
 	// the test number forces the pod manifest to change every test run.
 	testNumber := fmt.Sprintf("test=%d", rand.Intn(2000000000))
-	cmd := exec.Command("p2-bin2pod", "--work-dir", workdir, "--id", "preparer", "--config", fmt.Sprintf("node_name=%s", hostname), "--config", testNumber, wd+"/preparer")
+	cmd := exec.Command("p2-bin2pod", "--work-dir", workdir, "--id", "p2-preparer", "--config", fmt.Sprintf("node_name=%s", hostname), "--config", testNumber, wd+"/preparer")
 	out := bytes.Buffer{}
 	cmd.Stdout = &out
 	cmd.Stderr = os.Stderr
