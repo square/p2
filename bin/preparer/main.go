@@ -10,6 +10,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type AppConfig struct {
+	P2PreparerConfig PreparerConfig `yaml:"preparer"`
+}
+
 type LogDestination struct {
 	Type logging.OutType `yaml:"type"`
 	Path string          `yaml:"path"`
@@ -40,8 +44,9 @@ func main() {
 		os.Exit(1)
 		return
 	}
-	preparerConfig := PreparerConfig{}
-	err = yaml.Unmarshal(configBytes, &preparerConfig)
+	appConfig := AppConfig{}
+	err = yaml.Unmarshal(configBytes, &appConfig)
+	preparerConfig := appConfig.P2PreparerConfig
 	if err != nil {
 		logger.WithFields(logrus.Fields{
 			"inner_err": err,
@@ -50,6 +55,10 @@ func main() {
 		return
 	}
 	for _, dest := range preparerConfig.ExtraLogDestinations {
+		logger.WithFields(logrus.Fields{
+			"type": dest.Type,
+			"path": dest.Path,
+		}).Infoln("Adding log destination")
 		logger.AddHook(dest.Type, dest.Path)
 	}
 	if preparerConfig.NodeName == "" {
