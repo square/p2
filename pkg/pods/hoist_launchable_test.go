@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/user"
 	"path"
 	"runtime"
 	"testing"
@@ -23,35 +24,49 @@ func (fc *fakeCurl) File(url string, outPath string, args ...interface{}) error 
 	fc.url = url
 	fc.outPath = outPath
 
-	f, err := os.OpenFile(outPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	defer f.Close()
-	if err != nil {
-		return err
-	}
-	f.Write([]byte("test worked!"))
-
-	return nil
+	return DefaultFetcher()(url, outPath, args...)
 }
 
 func TestInstall(t *testing.T) {
-	tempDir := os.TempDir()
-	testPath := path.Join(tempDir, "test_launchable")
-	testLocation := "http://someserver/test_launchable.tar.gz"
-	os.Remove(testPath)
-	manifest, err := PodManifestFromPath(util.From(runtime.Caller(0)).ExpandPath("test_manifest.yaml"))
+	testDir := util.From(runtime.Caller(0))
+	launchableHome, err := ioutil.TempDir("", "test_launchable")
+	defer os.RemoveAll(launchableHome)
+	expectedDownloadPath := path.Join(os.TempDir(), "hoisted-hello_def456")
+	testLocation := testDir.ExpandPath("hoisted-hello_def456.tar.gz")
+	if _, err = os.Stat(testLocation); os.IsNotExist(err) {
+		t.Fatalf("test setup: %s is not a valid hoist artifact", testLocation)
+	}
+	os.Remove(expectedDownloadPath)
+	manifest, err := PodManifestFromPath(testDir.ExpandPath("test_manifest.yaml"))
 	Assert(t).IsNil(err, "should not have erred trying to read manifest")
 	launchableStanzas := manifest.LaunchableStanzas
+	Assert(t).IsTrue(len(manifest.LaunchableStanzas) > 0, "test setup: should have been more than zero launchables")
+	currentUser, err := user.Current()
+	Assert(t).IsNil(err, "test setup: couldn't get current user")
 	for _, stanza := range launchableStanzas {
 		fc := new(fakeCurl)
-		launchable := &HoistLaunchable{testLocation, stanza.LaunchableId, "testuser", tempDir, fc.File, tempDir}
 
-		launchable.Install()
+		launchable := &HoistLaunchable{testLocation, stanza.LaunchableId, currentUser.Username, launchableHome, fc.File, launchableHome}
+
+		err = launchable.Install()
+		Assert(t).IsNil(err, "there should not have been an error")
 
 		Assert(t).AreEqual(fc.url, testLocation, "The correct url wasn't set for the curl library")
-		Assert(t).AreEqual(fc.outPath, testPath, "The correct url wasn't set for the curl library")
-		fileContents, err := ioutil.ReadFile(testPath)
+		Assert(t).AreEqual(fc.outPath, expectedDownloadPath, "The correct outPath wasn't set for the curl library")
+
+		targetDownloadedFile, err := ioutil.ReadFile(expectedDownloadPath)
 		Assert(t).IsNil(err, "Didn't expect an error when reading the test file")
-		Assert(t).AreEqual(string(fileContents), "test worked!", "Test file didn't have the expected contents")
+
+		sourceDownloadedFile, err := ioutil.ReadFile(testLocation)
+		Assert(t).IsNil(err, "Didn't expect an error when reading the test file")
+
+		Assert(t).AreEqual(string(targetDownloadedFile), string(sourceDownloadedFile), "Test file didn't have the expected contents")
+
+		hoistedHelloUnpacked := path.Join(launchableHome, "installs", "hoisted-hello_def456")
+		if info, err := os.Stat(hoistedHelloUnpacked); err != nil || !info.IsDir() {
+
+			t.Fatalf("Expected %s to be the unpacked artifact location", hoistedHelloUnpacked)
+		}
 	}
 }
 

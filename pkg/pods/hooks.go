@@ -16,7 +16,7 @@ func Hooks(dirpath string) *HookDir {
 	return &HookDir{dirpath}
 }
 
-func runDirectory(dirpath string, environment []string) error {
+func runDirectory(dirpath string, environment []string, pod *Pod) error {
 	entries, err := ioutil.ReadDir(dirpath)
 	if err != nil {
 		return err
@@ -26,8 +26,7 @@ func runDirectory(dirpath string, environment []string) error {
 		fullpath := path.Join(dirpath, f.Name())
 		executable := (f.Mode() & 0111) != 0
 		if !executable {
-			// TODO: Port to structured logger.
-			fmt.Printf("%s is not executable\n", f.Name())
+			pod.logError(fmt.Errorf("%s is not executable", fullpath), "Could not execute hook")
 			continue
 		}
 		cmd := exec.Command(fullpath)
@@ -36,8 +35,7 @@ func runDirectory(dirpath string, environment []string) error {
 		cmd.Env = environment
 		err := cmd.Run()
 		if err != nil {
-			// TODO: Port to structured logger.
-			fmt.Println(err)
+			pod.logError(err, "Could not execute hook")
 		}
 	}
 
@@ -70,7 +68,7 @@ func runHooks(dirpath string, pod *Pod, podManifest *PodManifest) error {
 	hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_MANIFEST=%s", tmpManifestFile.Name()))
 	hookEnvironment = append(hookEnvironment, fmt.Sprintf("CONFIG_PATH=%s", path.Join(pod.ConfigDir(), configFileName)))
 
-	return runDirectory(dirpath, hookEnvironment)
+	return runDirectory(dirpath, hookEnvironment, pod)
 }
 
 func (h *HookDir) RunBefore(pod *Pod, manifest *PodManifest) error {

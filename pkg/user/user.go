@@ -5,18 +5,24 @@ import (
 	"errors"
 	"os/exec"
 	osuser "os/user"
+	"runtime"
 	"strconv"
 
 	"github.com/square/p2/pkg/util"
 )
 
 var AlreadyExists error
+var NoAddFacility error
 
 func init() {
 	AlreadyExists = errors.New("The user already exists")
+	NoAddFacility = errors.New("Cannot add users on this OS.")
 }
 
 func CreateUser(username string, homedir string) (*osuser.User, error) {
+	if runtime.GOOS != "linux" {
+		return nil, NoAddFacility
+	}
 	user, err := osuser.Lookup(username)
 	if err == nil {
 		return user, AlreadyExists

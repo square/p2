@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/pkg/logging"
 )
 
 func TestExecutableHooksAreRun(t *testing.T) {
@@ -58,10 +59,12 @@ func TestDirectoriesDoNotBreakEverything(t *testing.T) {
 	defer os.RemoveAll(podDir)
 	Assert(t).IsNil(err, "the error should have been nil")
 
-	os.Mkdir(path.Join(tempDir, "mydir"), 0755)
+	Assert(t).IsNil(os.Mkdir(path.Join(tempDir, "mydir"), 0755), "Should not have erred")
 
 	manifest := PodManifest{Id: "TestPod"}
-	err = runHooks(tempDir, NewPod(podDir), &manifest)
+	pod := NewPod(podDir)
+	pod.logger = logging.TestLogger()
+	err = runHooks(tempDir, pod, &manifest)
 
 	Assert(t).IsNil(err, "Got an error when running a directory inside the hooks directory")
 }

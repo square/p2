@@ -45,7 +45,7 @@ func TestGetLaunchable(t *testing.T) {
 	for _, stanza := range launchableStanzas {
 		launchable, _ := pod.getLaunchable(stanza, manifest)
 		Assert(t).AreEqual("hello__hello", launchable.Id, "LaunchableId did not have expected value")
-		Assert(t).AreEqual("http://localhost:8000/foo/bar/baz/hello_abc123_vagrant.tar.gz", launchable.Location, "Launchable location did not have expected value")
+		Assert(t).AreEqual("hoisted-hello_def456.tar.gz", launchable.Location, "Launchable location did not have expected value")
 	}
 }
 
