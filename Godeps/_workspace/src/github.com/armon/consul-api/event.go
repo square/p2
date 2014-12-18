@@ -22,7 +22,7 @@ type UserEvent struct {
 	LTime         uint64
 }
 
-// Session returns a handle to the session endpoints
+// Event returns a handle to the event endpoints
 func (c *Client) Event() *Event {
 	return &Event{c}
 }

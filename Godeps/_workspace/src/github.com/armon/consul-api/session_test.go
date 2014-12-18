@@ -31,6 +31,54 @@ func TestSession_CreateDestroy(t *testing.T) {
 	}
 }
 
+func TestSession_CreateRenewDestroy(t *testing.T) {
+	c := makeClient(t)
+	session := c.Session()
+
+	se := &SessionEntry{
+		TTL: "10s",
+	}
+
+	id, meta, err := session.Create(se, nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer session.Destroy(id, nil)
+
+	if meta.RequestTime == 0 {
+		t.Fatalf("bad: %v", meta)
+	}
+
+	if id == "" {
+		t.Fatalf("invalid: %v", id)
+	}
+
+	if meta.RequestTime == 0 {
+		t.Fatalf("bad: %v", meta)
+	}
+
+	renew, meta, err := session.Renew(id, nil)
+
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if meta.RequestTime == 0 {
+		t.Fatalf("bad: %v", meta)
+	}
+
+	if renew == nil {
+		t.Fatalf("should get session")
+	}
+
+	if renew.ID != id {
+		t.Fatalf("should have matching id")
+	}
+
+	if renew.TTL != "10s" {
+		t.Fatalf("should get session with TTL")
+	}
+}
+
 func TestSession_Info(t *testing.T) {
 	c := makeClient(t)
 	session := c.Session()
@@ -72,6 +120,12 @@ func TestSession_Info(t *testing.T) {
 		t.Fatalf("bad: %v", info)
 	}
 	if info.LockDelay == 0 {
+		t.Fatalf("bad: %v", info)
+	}
+	if info.Behavior != "release" {
+		t.Fatalf("bad: %v", info)
+	}
+	if info.TTL != "" {
 		t.Fatalf("bad: %v", info)
 	}
 }

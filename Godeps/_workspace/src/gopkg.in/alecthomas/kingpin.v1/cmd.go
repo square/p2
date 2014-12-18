@@ -44,12 +44,18 @@ func (c *cmdGroup) init() error {
 			return fmt.Errorf("duplicate command '%s'", cmd.name)
 		}
 		seen[cmd.name] = true
+		if err := cmd.init(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 func (c *cmdGroup) parse(context *ParseContext) (selected []string, _ error) {
 	token := context.Peek()
+	if token.Type == TokenEOL {
+		return nil, nil
+	}
 	if token.Type != TokenArg {
 		return nil, fmt.Errorf("expected command but got '%s'", token)
 	}
@@ -95,7 +101,7 @@ func newCommand(app *Application, name, help string) *CmdClause {
 	return c
 }
 
-func (c *CmdClause) fullCommand() string {
+func (c *CmdClause) FullCommand() string {
 	out := []string{c.name}
 	for p := c.parent; p != nil; p = p.parent {
 		out = append([]string{p.name}, out...)
@@ -104,7 +110,7 @@ func (c *CmdClause) fullCommand() string {
 }
 
 func (c *CmdClause) onHelp(context *ParseContext) error {
-	c.app.CommandUsage(os.Stderr, c.fullCommand())
+	c.app.CommandUsage(os.Stderr, c.FullCommand())
 	os.Exit(0)
 	return nil
 }
@@ -142,10 +148,12 @@ func (c *CmdClause) parse(context *ParseContext) (selected []string, _ error) {
 	if err != nil {
 		return nil, err
 	}
-	if c.cmdGroup.have() {
-		selected, err = c.cmdGroup.parse(context)
-	} else if c.argGroup.have() {
-		err = c.argGroup.parse(context)
+	if context.SelectedCommand != "help" {
+		if c.cmdGroup.have() {
+			selected, err = c.cmdGroup.parse(context)
+		} else if c.argGroup.have() {
+			err = c.argGroup.parse(context)
+		}
 	}
 	if err == nil && c.dispatch != nil {
 		err = c.dispatch(context)

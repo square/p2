@@ -1,4 +1,3 @@
-
 /*
 
 Curl library for golang
@@ -14,46 +13,46 @@ Curl library for golang
 ### Curl string or bytes
 
     import "github.com/go-av/curl"
-    
+
   	err, str := curl.String("http://www.baidu.com")
   	err, b := curl.Bytes("http://www.baidu.com")
-  	
+
 ### Save to file or writer
 
     err := curl.File("www.baidu.com", "/tmp/index.html")
-  
+
   	var w io.Writer
   	err := curl.Write("http://www.baidu.com", w)
-  
+
 ### With timeout (both dial timeout and read timeout set)
 
   	curl.String("http://www.baidu.com", "timeout=10")
   	curl.String("http://www.baidu.com", "timeout=", 10)
   	curl.String("http://www.baidu.com", "timeout=", time.Second*10)
-  
+
 ### With different dial timeout and read timeout
 
     curl.String("http://www.baidu.com", "dialtimeout=10", "readtimeout=20")
   	curl.String("http://www.baidu.com", "dialtimeout=", 10, "readtimeout=", time.Second*20)
-  
+
 ### With deadline (if cannot download in 10s then die)
 
     curl.File("http://www.baidu.com", "index.html", "deadline=", time.Now().Add(time.Second*10))
   	curl.File("http://www.baidu.com", "index.html", "deadline=10")
   	curl.File("http://www.baidu.com", "index.html", "deadline=", 10.0)
   	curl.File("http://www.baidu.com", "index.html", "deadline=", time.Second*10)
-  
-### With speed limit 
+
+### With speed limit
 
     curl.File("http://www.baidu.com", "index.html", "maxspeed=", 30*1024)
-  
+
 ### With custom http header
 
     header := http.Header {
   		"User-Agent" : {"curl/7.29.0"},
   	}
   	curl.File("http://www.baidu.com", "file", header)
-  
+
 ### These params can be use in any function and in any order
 
     curl.File("http://www.baidu.com", "index.html", "timeout=", 10, header)
@@ -65,15 +64,15 @@ Curl library for golang
 
     var st curl.IocopyStat
     curl.File(
-      "http://tk.wangyuehd.com/soft/skycn/WinRAR.exe_2.exe", 
+      "http://tk.wangyuehd.com/soft/skycn/WinRAR.exe_2.exe",
     	"a.exe",
     	&st)
     fmt.Println("size=", st.Sizestr, "average speed=", st.Speedstr)
-    
+
 outputs
 
     size= 1307880 average speed= 118898
-    
+
 ### Monitor progress
 
     curl.File(
@@ -115,19 +114,19 @@ outputs
   	con := &curl.Control{}
   	go curl.File("xxx", "xxx", con)
   	// and then get stat
-  	st := con.Stat() 
+  	st := con.Stat()
   	// or stop
   	con.Stop()
     // set max speed
     con.MaxSpeed(1024*10)
     // cancel max speed
     con.MaxSpeed(0)
-  
+
 ### Just dial
 
     err, r, length := curl.Dial("http://weibo.com", "timeout=11")
     fmt.Println("contentLength=", length)
-  
+
 ## Useful Functions
 
 ### Functions format size, speed pretty
@@ -137,7 +136,7 @@ outputs
   	curl.PrettyPer(0.345) // 34.5%
   	curl.PrettySpeed(1200) // 1.2K/s
   	curl.PrettyDur(time.Second*66) // 1:06
-  
+
 ### Progressed io.Copy
 
     r, _ := os.Open("infile")
@@ -153,44 +152,44 @@ outputs
 package curl
 
 import (
-	"os"
-	"log"
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"net/http"
-	"bytes"
-	"io"
-	"time"
+	"os"
 	"strings"
+	"time"
 )
 
 type IocopyStat struct {
-	Stat string					// dial,download
-	Done bool 					// download is done
-	Begin time.Time 		// download begin time
-	Dur time.Duration 	// download elapsed time
-	Per float64 				// complete percent. range 0.0 ~ 1.0
-	Size int64 					// bytes downloaded
-	Speed int64 				// bytes per second
-	Length int64 				// content length
-	Durstr string 			// pretty format of Dur. like: 10:11
-	Perstr string 			// pretty format of Per. like: 3.9%
-	Sizestr string  		// pretty format of Size. like: 1.1M, 3.5G, 33K
-	Speedstr string 		// pretty format of Speed. like 1.1M/s
-	Lengthstr string 		// pretty format of Length. like: 1.1M, 3.5G, 33K
+	Stat      string        // dial,download
+	Done      bool          // download is done
+	Begin     time.Time     // download begin time
+	Dur       time.Duration // download elapsed time
+	Per       float64       // complete percent. range 0.0 ~ 1.0
+	Size      int64         // bytes downloaded
+	Speed     int64         // bytes per second
+	Length    int64         // content length
+	Durstr    string        // pretty format of Dur. like: 10:11
+	Perstr    string        // pretty format of Per. like: 3.9%
+	Sizestr   string        // pretty format of Size. like: 1.1M, 3.5G, 33K
+	Speedstr  string        // pretty format of Speed. like 1.1M/s
+	Lengthstr string        // pretty format of Length. like: 1.1M, 3.5G, 33K
 }
 
 type Control struct {
-	stop bool
-	maxSpeed int64
-	st *IocopyStat
+	stop        bool
+	maxSpeed    int64
+	st          *IocopyStat
 	readTimeout time.Duration
 	dialTimeout time.Duration
-	deadline time.Time
+	deadline    time.Time
 }
 
-type IocopyCb func (st IocopyStat) error
+type IocopyCb func(st IocopyStat) error
 
 type deadlineS interface {
 	SetReadDeadline(t time.Time) error
@@ -200,7 +199,7 @@ func (c *Control) Stop() {
 	c.stop = true
 }
 
-func (c *Control) Stat() (IocopyStat) {
+func (c *Control) Stat() IocopyStat {
 	c.st.update()
 	return *c.st
 }
@@ -254,10 +253,16 @@ func optGet(name string, opts []interface{}) (got bool, val interface{}) {
 func optDuration(name string, opts []interface{}) (got bool, dur time.Duration) {
 	var val interface{}
 	var f float64
-	if got, val = optGet(name, opts); !got { return }
-	if dur, got = val.(time.Duration); got { return }
-	if got, f = toFloat(val); !got { return }
-	dur = time.Duration(float64(time.Second)*f)
+	if got, val = optGet(name, opts); !got {
+		return
+	}
+	if dur, got = val.(time.Duration); got {
+		return
+	}
+	if got, f = toFloat(val); !got {
+		return
+	}
+	dur = time.Duration(float64(time.Second) * f)
 	return
 }
 
@@ -272,7 +277,9 @@ func optInt64(name string, opts []interface{}) (got bool, i int64) {
 	var val interface{}
 	var f float64
 	got, val = optGet(name, opts)
-	if got, f = toFloat(val); !got { return }
+	if got, f = toFloat(val); !got {
+		return
+	}
 	i = int64(f)
 	return
 }
@@ -286,7 +293,7 @@ func dbp(opts ...interface{}) {
 func (st *IocopyStat) update() {
 	st.Stat = "downloading"
 	if st.Length > 0 {
-		st.Per = float64(st.Size)/float64(st.Length)
+		st.Per = float64(st.Size) / float64(st.Length)
 	}
 	st.Dur = time.Since(st.Begin)
 	st.Perstr = PrettyPer(st.Per)
@@ -297,7 +304,7 @@ func (st *IocopyStat) update() {
 }
 
 func (st *IocopyStat) finish() {
-	dur := float64(time.Since(st.Begin))/float64(time.Second)
+	dur := float64(time.Since(st.Begin)) / float64(time.Second)
 	st.Speed = int64(float64(st.Size) / dur)
 	st.Per = 1.0
 	st.update()
@@ -314,9 +321,9 @@ func optIntv(opts ...interface{}) (intv time.Duration) {
 
 type mywriter struct {
 	io.Writer
-	n int64
-	curn int64
-	maxn int64
+	n     int64
+	curn  int64
+	maxn  int64
 	maxtm time.Time
 }
 
@@ -346,17 +353,17 @@ func IoCopy(
 			st = o.(*IocopyStat)
 		case *Control:
 			ct = o.(*Control)
-		case func(IocopyStat)error:
-			cb = o.(func(IocopyStat)error)
+		case func(IocopyStat) error:
+			cb = o.(func(IocopyStat) error)
 		}
 	}
 
-	myw := &mywriter{Writer:w}
+	myw := &mywriter{Writer: w}
 	if st == nil {
 		st = &IocopyStat{}
 	}
 	if ct == nil {
-		ct = &Control{st:st}
+		ct = &Control{st: st}
 	}
 
 	var rto time.Duration
@@ -387,7 +394,7 @@ func IoCopy(
 	st.Length = length
 
 	done := make(chan int, 0)
-	go func () {
+	go func() {
 		if ct.maxSpeed == 0 {
 			_, err = io.Copy(myw, r)
 		} else {
@@ -424,8 +431,12 @@ func IoCopy(
 			st.Size = myw.n
 			st.Speed = myw.n - n
 			st.finish()
-			if cb != nil { err = cb(ct.Stat())	}
-			if err != nil { return }
+			if cb != nil {
+				err = cb(ct.Stat())
+			}
+			if err != nil {
+				return
+			}
 			return
 		case <-time.After(intv):
 			if ct.stop {
@@ -434,8 +445,12 @@ func IoCopy(
 			}
 			st.Size = myw.n
 			st.Speed = myw.n - n
-			if cb != nil { err = cb(ct.Stat())	}
-			if err != nil { return }
+			if cb != nil {
+				err = cb(ct.Stat())
+			}
+			if err != nil {
+				return
+			}
 			if myw.n != n {
 				n = myw.n
 				idle = 0
@@ -473,8 +488,8 @@ func Dial(url string, opts ...interface{}) (
 		switch o.(type) {
 		case http.Header:
 			header = o.(http.Header)
-		case func(IocopyStat)error:
-			cb = o.(func(IocopyStat)error)
+		case func(IocopyStat) error:
+			cb = o.(func(IocopyStat) error)
 		}
 	}
 
@@ -486,17 +501,16 @@ func Dial(url string, opts ...interface{}) (
 	intv := optIntv(opts)
 
 	if header == nil {
-		header = http.Header {
-			"Accept" : {"*/*"},
-			"User-Agent" : {"curl/7.21.6 (i686-pc-linux-gnu) libcurl/7.21.6 OpenSSL/1.0.0e zlib/1.2.3.4 libidn/1.22"},
+		header = http.Header{
+			"Accept":     {"*/*"},
+			"User-Agent": {"curl/7.21.6 (i686-pc-linux-gnu) libcurl/7.21.6 OpenSSL/1.0.0e zlib/1.2.3.4 libidn/1.22"},
 		}
 	}
 	req.Header = header
 
 	var resp *http.Response
-	var conn net.Conn
 
-	tr := &http.Transport {
+	tr := &http.Transport{
 		//DisableCompression: true,
 		Dial: func(network, addr string) (c net.Conn, e error) {
 			if hasdto {
@@ -504,7 +518,6 @@ func Dial(url string, opts ...interface{}) (
 			} else {
 				c, e = net.Dial(network, addr)
 			}
-			conn = c
 			return
 		},
 	}
@@ -512,7 +525,7 @@ func Dial(url string, opts ...interface{}) (
 		Transport: tr,
 	}
 
-	callcb := func (st IocopyStat) bool {
+	callcb := func(st IocopyStat) bool {
 		if cb != nil {
 			err = cb(st)
 		}
@@ -530,8 +543,11 @@ func Dial(url string, opts ...interface{}) (
 
 	starttm := time.Now()
 
-	if callcb(IocopyStat{Stat:"connecting"}) { return }
-	out: for {
+	if callcb(IocopyStat{Stat: "connecting"}) {
+		return
+	}
+out:
+	for {
 		select {
 		case <-done:
 			break out
@@ -540,7 +556,7 @@ func Dial(url string, opts ...interface{}) (
 				err = errors.New("dial timeout")
 				return
 			}
-			if callcb(IocopyStat{Stat:"connecting"}) {
+			if callcb(IocopyStat{Stat: "connecting"}) {
 				return
 			}
 		}
@@ -592,7 +608,7 @@ func Write(url string, w io.Writer, opts ...interface{}) (err error) {
 }
 
 func PrettyDur(dur time.Duration) string {
-	d := float64(dur)/float64(time.Second)
+	d := float64(dur) / float64(time.Second)
 	if d < 60*60 {
 		return fmt.Sprintf("%d:%.2d", int(d/60), int(d)%60)
 	}
@@ -644,4 +660,3 @@ func PrettySize(size interface{}) string {
 func PrettySpeed(s int64) string {
 	return fmt.Sprintf("%s/s", PrettySize(s))
 }
-

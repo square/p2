@@ -1,13 +1,12 @@
-
 package curl
 
 import (
-	"testing"
 	"fmt"
+	"testing"
 )
 
 func TestOptDur(t *testing.T) {
-	opts := []interface{} {
+	opts := []interface{}{
 		"timeout=", 10,
 	}
 	has, dur := optDuration("timeout=", opts)
@@ -16,4 +15,3 @@ func TestOptDur(t *testing.T) {
 	}
 	fmt.Println(dur)
 }
-

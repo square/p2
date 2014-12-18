@@ -126,7 +126,7 @@ func main() {
   // exported logger. See Godoc.
   log.Out = os.Stderr
 
-  log.WithFields(log.Fields{
+  log.WithFields(logrus.Fields{
     "animal": "walrus",
     "size":   10,
   }).Info("A group of walrus emerges from the ocean")
@@ -206,11 +206,18 @@ import (
   log "github.com/Sirupsen/logrus"
   "github.com/Sirupsen/logrus/hooks/airbrake"
   "github.com/Sirupsen/logrus/hooks/syslog"
+  "log/syslog"
 )
 
 func init() {
   log.AddHook(new(logrus_airbrake.AirbrakeHook))
-  log.AddHook(logrus_syslog.NewSyslogHook("udp", "localhost:514", syslog.LOG_INFO, ""))
+
+  hook, err := logrus_syslog.NewSyslogHook("udp", "localhost:514", syslog.LOG_INFO, "")
+  if err != nil {
+    log.Error("Unable to connect to local syslog daemon")
+  } else {
+    log.AddHook(hook)
+  }
 }
 ```
 
@@ -227,6 +234,9 @@ func init() {
 
 * [`github.com/nubo/hiprus`](https://github.com/nubo/hiprus)
   Send errors to a channel in hipchat.
+
+* [`github.com/sebest/logrusly`](https://github.com/sebest/logrusly)
+  Send logs to Loggly (https://www.loggly.com/)
 
 #### Level logging
 

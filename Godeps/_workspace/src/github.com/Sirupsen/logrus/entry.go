@@ -76,12 +76,16 @@ func (entry *Entry) log(level Level, msg string) {
 	entry.Message = msg
 
 	if err := entry.Logger.Hooks.Fire(level, entry); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to fire hook\n", err)
+		entry.Logger.mu.Lock()
+		fmt.Fprintf(os.Stderr, "Failed to fire hook: %v\n", err)
+		entry.Logger.mu.Unlock()
 	}
 
 	reader, err := entry.Reader()
 	if err != nil {
+		entry.Logger.mu.Lock()
 		fmt.Fprintf(os.Stderr, "Failed to obtain reader, %v\n", err)
+		entry.Logger.mu.Unlock()
 	}
 
 	entry.Logger.mu.Lock()
@@ -96,7 +100,7 @@ func (entry *Entry) log(level Level, msg string) {
 	// panic() to use in Entry#Panic(), we avoid the allocation by checking
 	// directly here.
 	if level <= PanicLevel {
-		panic(reader.String())
+		panic(entry)
 	}
 }
 
