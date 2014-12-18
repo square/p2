@@ -7,12 +7,12 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
-			"Comment": "v0.5.1-33-g3d46664",
-			"Rev": "3d46664b062c3a468b50e367f115179e26a9462c"
+			"Comment": "v0.6.2-10-g51fe59a",
+			"Rev": "51fe59aca108dc5680109e7b2051cbdcfa5a253c"
 		},
 		{
 			"ImportPath": "github.com/alecthomas/units",
-			"Rev": "2520fa84b92528712dc56507660230aca45d6c79"
+			"Rev": "eaf541876f0d9e17c669524a99f6f585ba362fbd"
 		},
 		{
 			"ImportPath": "github.com/anthonybishopric/gotcha",
@@ -20,20 +20,20 @@
 		},
 		{
 			"ImportPath": "github.com/armon/consul-api",
-			"Rev": "1b81c8e0c4cbf1d382310e4c0dc11221632e79d1"
+			"Rev": "74cc5bab614dfecd6fe4ee5975b6ac97d2abc672"
 		},
 		{
 			"ImportPath": "github.com/nareix/curl",
-			"Rev": "2a24f92ae126cce9a0ae1c97d955b0d06590448f"
+			"Rev": "d1b02f168dccd6f70100d8c3926fb97c709b21da"
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v1",
-			"Comment": "v1.3.0",
-			"Rev": "4ed1198b32095834da05b9a5bacaa2704fd6ac6c"
+			"Comment": "v1.3.2",
+			"Rev": "261e7fbc88a2987695fb2240a6d8ec3ee15739c8"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
-			"Rev": "eca94c41d994ae2215d455ce578ae6e2dc6ee516"
+			"Rev": "d466437aa4adc35830964cffc5b5f262c63ddcb4"
 		}
 	]
 }

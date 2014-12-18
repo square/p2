@@ -276,7 +276,6 @@ func parseQueryMeta(resp *http.Response, q *QueryMeta) error {
 
 // decodeBody is used to JSON decode a body
 func decodeBody(resp *http.Response, out interface{}) error {
-	defer resp.Body.Close()
 	dec := json.NewDecoder(resp.Body)
 	return dec.Decode(out)
 }

@@ -12,6 +12,8 @@ type SessionEntry struct {
 	Node        string
 	Checks      []string
 	LockDelay   time.Duration
+	Behavior    string
+	TTL         string
 }
 
 // Session can be used to query the Session endpoints
@@ -39,6 +41,12 @@ func (s *Session) CreateNoChecks(se *SessionEntry, q *WriteOptions) (string, *Wr
 		if se.LockDelay != 0 {
 			body["LockDelay"] = durToMsec(se.LockDelay)
 		}
+		if se.Behavior != "" {
+			body["Behavior"] = se.Behavior
+		}
+		if se.TTL != "" {
+			body["TTL"] = se.TTL
+		}
 	}
 	return s.create(body, q)
 
@@ -62,6 +70,12 @@ func (s *Session) Create(se *SessionEntry, q *WriteOptions) (string, *WriteMeta,
 		}
 		if len(se.Checks) > 0 {
 			body["Checks"] = se.Checks
+		}
+		if se.Behavior != "" {
+			body["Behavior"] = se.Behavior
+		}
+		if se.TTL != "" {
+			body["TTL"] = se.TTL
 		}
 	}
 	return s.create(obj, q)
@@ -97,6 +111,29 @@ func (s *Session) Destroy(id string, q *WriteOptions) (*WriteMeta, error) {
 
 	wm := &WriteMeta{RequestTime: rtt}
 	return wm, nil
+}
+
+// Renew renews the TTL on a given session
+func (s *Session) Renew(id string, q *WriteOptions) (*SessionEntry, *WriteMeta, error) {
+	r := s.c.newRequest("PUT", "/v1/session/renew/"+id)
+	r.setWriteOptions(q)
+	rtt, resp, err := requireOK(s.c.doRequest(r))
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+
+	wm := &WriteMeta{RequestTime: rtt}
+
+	var entries []*SessionEntry
+	if err := decodeBody(resp, &entries); err != nil {
+		return nil, wm, err
+	}
+
+	if len(entries) > 0 {
+		return entries[0], wm, nil
+	}
+	return nil, wm, nil
 }
 
 // Info looks up a single session

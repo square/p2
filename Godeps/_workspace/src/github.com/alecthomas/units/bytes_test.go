@@ -3,7 +3,7 @@ package units
 import (
 	"testing"
 
-	"github.com/stretchrcom/testify/assert"
+	"github.com/strechr/testify/assert"
 )
 
 func TestBase2BytesString(t *testing.T) {
