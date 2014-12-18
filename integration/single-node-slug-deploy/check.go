@@ -181,7 +181,7 @@ func verifyHelloRunning() error {
 		preparerT := exec.Command("tail", "/var/service/preparer__preparer/log/main/current")
 		preparerT.Stdout = &preparerTail
 		preparerT.Run()
-		return fmt.Errorf("Couldn't start hello after 10 seconds: \n\n hello tail: \n%s\n\n preparer tail: \n%s", helloTail.String(), preparerTail.String())
+		return fmt.Errorf("Couldn't start hello after 15 seconds: \n\n hello tail: \n%s\n\n preparer tail: \n%s", helloTail.String(), preparerTail.String())
 	case <-helloPidAppeared:
 		return nil
 	}

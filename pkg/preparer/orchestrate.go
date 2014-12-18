@@ -160,5 +160,6 @@ func installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, logger logging.
 		return err == nil && ok
 	}
 
+	// TODO: shut down removed launchables between pod versions.
 	return true
 }

@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/uri"
@@ -134,11 +136,7 @@ func makeTar(workingDir string, manifest *pods.PodManifest) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("Couldn't make %s executable: %s", launchablePath, err)
 	}
-	sha, err := manifest.SHA()
-	if err != nil {
-		return "", err
-	}
-	tarPath := path.Join(workingDir, fmt.Sprintf("%s_%s.tar.gz", path.Base(*executable), sha))
+	tarPath := path.Join(workingDir, fmt.Sprintf("%s_%s.tar.gz", path.Base(*executable), randomSuffix()))
 	cmd := exec.Command("tar", "-czvf", tarPath, "-C", tarContents, ".")
 	err = cmd.Run()
 	if err != nil {
@@ -171,4 +169,15 @@ func writeManifest(workingDir string, manifest *pods.PodManifest) (string, error
 		return "", err
 	}
 	return file.Name(), nil
+}
+
+func randomSuffix() string {
+	rand.Seed(time.Now().UnixNano())
+	set := []rune("ghijklmnopqrstuvwxyz")
+	strlen := 40
+	res := make([]string, strlen)
+	for i := 0; i < strlen; i++ {
+		res[i] = string(set[rand.Intn(len(set))])
+	}
+	return strings.Join(res, "")
 }
