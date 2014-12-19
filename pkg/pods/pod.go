@@ -34,7 +34,9 @@ type Pod struct {
 }
 
 func NewPod(path string) *Pod {
-	return &Pod{path, Log.SubLogger(logrus.Fields{"pod": path}), runit.DefaultSV, runit.DefaultBuilder}
+	pathParts := strings.Split(path, "/")
+	name := pathParts[len(pathParts)-1]
+	return &Pod{path, Log.SubLogger(logrus.Fields{"pod": name}), runit.DefaultSV, runit.DefaultBuilder}
 }
 
 func PodFromManifestId(manifestId string) *Pod {
