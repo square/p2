@@ -111,6 +111,17 @@ func TestSingleRunitService(t *testing.T) {
 	Assert(t).AreEqual(executables[0].Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
 }
 
+func TestLaunchExecutableOnlyRunitService(t *testing.T) {
+	launchable := FakeHoistLaunchableForDir("launch_script_only_test_hoist_launchable")
+	Assert(t).IsNil(launchable.MakeCurrent(), "Should have been made current")
+	executables, err := launchable.Executables(runit.DefaultBuilder)
+	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
+
+	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__launch"}
+	Assert(t).AreEqual(len(executables), 1, "Found an unexpected number of runit services")
+	Assert(t).AreEqual(executables[0].Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
+}
+
 func TestDisable(t *testing.T) {
 	hoistLaunchable := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
 
