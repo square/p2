@@ -59,7 +59,7 @@ func main() {
 
 func generatePreparerPod(workdir string) (string, error) {
 	// build the artifact from HEAD
-	err := exec.Command("go", "build", "github.com/square/p2/bin/preparer").Run()
+	err := exec.Command("go", "build", "github.com/square/p2/bin/p2-preparer").Run()
 	if err != nil {
 		return "", util.Errorf("Couldn't build preparer: %s", err)
 	}
@@ -117,7 +117,7 @@ func executeBootstrap(preparerManifest, consulManifest string) error {
 	if err != nil {
 		return fmt.Errorf("Could not install newest bootstrap: %s", err)
 	}
-	bootstr := exec.Command("bootstrap", "--consul-pod", consulManifest, "--agent-pod", preparerManifest)
+	bootstr := exec.Command("p2-bootstrap", "--consul-pod", consulManifest, "--agent-pod", preparerManifest)
 	bootstr.Stdout = os.Stdout
 	bootstr.Stderr = os.Stdout
 	return bootstr.Run()
