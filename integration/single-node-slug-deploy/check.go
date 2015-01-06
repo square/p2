@@ -70,7 +70,7 @@ func generatePreparerPod(workdir string) (string, error) {
 	}
 	// the test number forces the pod manifest to change every test run.
 	testNumber := fmt.Sprintf("test=%d", rand.Intn(2000000000))
-	cmd := exec.Command("p2-bin2pod", "--work-dir", workdir, "--id", "p2-preparer", "--config", fmt.Sprintf("node_name=%s", hostname), "--config", testNumber, wd+"/preparer")
+	cmd := exec.Command("p2-bin2pod", "--work-dir", workdir, "--id", "p2-preparer", "--config", fmt.Sprintf("node_name=%s", hostname), "--config", testNumber, wd+"/p2-preparer")
 	out := bytes.Buffer{}
 	cmd.Stdout = &out
 	cmd.Stderr = os.Stderr
@@ -155,7 +155,7 @@ func verifyHelloRunning() error {
 	go func() {
 		for {
 			time.Sleep(100 * time.Millisecond)
-			res := exec.Command("sudo", "sv", "stat", "/var/service/hello__hello").Run()
+			res := exec.Command("sudo", "sv", "stat", "/var/service/hello__hello__launch").Run()
 			if res == nil {
 				select {
 				case <-quit:
