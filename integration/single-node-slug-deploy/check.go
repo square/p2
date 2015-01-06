@@ -59,7 +59,7 @@ func main() {
 
 func generatePreparerPod(workdir string) (string, error) {
 	// build the artifact from HEAD
-	err := exec.Command("go", "build", "github.com/square/p2/bin/preparer").Run()
+	err := exec.Command("go", "build", "github.com/square/p2/bin/p2-preparer").Run()
 	if err != nil {
 		return "", util.Errorf("Couldn't build preparer: %s", err)
 	}
@@ -70,7 +70,7 @@ func generatePreparerPod(workdir string) (string, error) {
 	}
 	// the test number forces the pod manifest to change every test run.
 	testNumber := fmt.Sprintf("test=%d", rand.Intn(2000000000))
-	cmd := exec.Command("p2-bin2pod", "--work-dir", workdir, "--id", "p2-preparer", "--config", fmt.Sprintf("node_name=%s", hostname), "--config", testNumber, wd+"/preparer")
+	cmd := exec.Command("p2-bin2pod", "--work-dir", workdir, "--id", "p2-preparer", "--config", fmt.Sprintf("node_name=%s", hostname), "--config", testNumber, wd+"/p2-preparer")
 	out := bytes.Buffer{}
 	cmd.Stdout = &out
 	cmd.Stderr = os.Stderr
@@ -117,7 +117,7 @@ func executeBootstrap(preparerManifest, consulManifest string) error {
 	if err != nil {
 		return fmt.Errorf("Could not install newest bootstrap: %s", err)
 	}
-	bootstr := exec.Command("bootstrap", "--consul-pod", consulManifest, "--agent-pod", preparerManifest)
+	bootstr := exec.Command("p2-bootstrap", "--consul-pod", consulManifest, "--agent-pod", preparerManifest)
 	bootstr.Stdout = os.Stdout
 	bootstr.Stderr = os.Stdout
 	return bootstr.Run()
@@ -155,7 +155,7 @@ func verifyHelloRunning() error {
 	go func() {
 		for {
 			time.Sleep(100 * time.Millisecond)
-			res := exec.Command("sudo", "sv", "stat", "/var/service/hello__hello").Run()
+			res := exec.Command("sudo", "sv", "stat", "/var/service/hello__hello__launch").Run()
 			if res == nil {
 				select {
 				case <-quit:
