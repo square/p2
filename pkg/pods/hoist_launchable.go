@@ -223,7 +223,7 @@ func (hoistLaunchable *HoistLaunchable) Executables(serviceBuilder *runit.Servic
 	// ideally a launchable will have just one launch script someday (can't be
 	// a dir)
 	if !(binLaunchInfo.IsDir()) {
-		serviceName := hoistLaunchable.Id // use the ID of the launchable as its unique Runit service name
+		serviceName := strings.Join([]string{hoistLaunchable.Id, "__", "launch"}, "")
 		servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
 		runitService := &runit.Service{servicePath, serviceName}
 		executable := &HoistExecutable{*runitService, binLaunchPath}
