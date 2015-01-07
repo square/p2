@@ -54,7 +54,7 @@ func podId() string {
 	if *id != "" {
 		return *id
 	}
-	return *executable
+	return path.Base(*executable)
 }
 
 func activeDir() string {
