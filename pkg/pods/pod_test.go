@@ -16,7 +16,7 @@ import (
 )
 
 func getTestPod() *Pod {
-	return NewPod("/data/pods/test")
+	return NewPod("test", "/data/pods/test")
 }
 
 func getTestPodManifest(t *testing.T) *PodManifest {
@@ -157,7 +157,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 	updated := getUpdatedManifest(t)
 	poddir, err := ioutil.TempDir("", "poddir")
 	Assert(t).IsNil(err, "couldn't create tempdir")
-	pod := NewPod(poddir)
+	pod := NewPod("testPod", poddir)
 	manifestContent, err := existing.Bytes()
 	Assert(t).IsNil(err, "couldn't get manifest bytes")
 	err = ioutil.WriteFile(pod.CurrentPodManifestPath(), manifestContent, 0744)
@@ -173,6 +173,85 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 	writtenCurrent, err := pod.CurrentManifest()
 	Assert(t).IsNil(err, "the manifest was not written properly")
 	manifestMustEqual(updated, writtenCurrent, t)
+}
+
+func TestBuildRunitServices(t *testing.T) {
+	serviceBuilder := FakeServiceBuilder()
+	serviceBuilderDir, err := ioutil.TempDir("", "servicebuilderDir")
+	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
+	serviceBuilder.ConfigRoot = serviceBuilderDir
+	pod := Pod{
+		Id:             "testPod",
+		path:           "/data/pods/testPod",
+		ServiceBuilder: serviceBuilder,
+	}
+	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	executables, err := hoistLaunchable.Executables(serviceBuilder)
+	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
+
+	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
+
+	pod.BuildRunitServices([]HoistLaunchable{*hoistLaunchable})
+	expected := fmt.Sprintf(`%s:
+  run:
+  - /usr/bin/nolimit
+  - /usr/bin/chpst
+  - -u
+  - testPod:testPod
+  - -e
+  - %s
+  - %s
+%s:
+  run:
+  - /usr/bin/nolimit
+  - /usr/bin/chpst
+  - -u
+  - testPod:testPod
+  - -e
+  - %s
+  - %s
+`, executables[0].Name,
+		hoistLaunchable.ConfigDir,
+		executables[0].execPath,
+		executables[1].Name,
+		hoistLaunchable.ConfigDir,
+		executables[1].execPath)
+
+	f, err := os.Open(outFilePath)
+	defer f.Close()
+	bytes, err := ioutil.ReadAll(f)
+	Assert(t).IsNil(err, "Got an unexpected error reading the servicebuilder yaml file")
+	Assert(t).AreEqual(string(bytes), expected, "Servicebuilder yaml file didn't have expected contents")
+}
+
+func TestUninstall(t *testing.T) {
+	serviceBuilder := FakeServiceBuilder()
+	serviceBuilderDir, err := ioutil.TempDir("", "servicebuilderDir")
+	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
+	serviceBuilder.ConfigRoot = serviceBuilderDir
+	testPodDir, err := ioutil.TempDir("", "testPodDir")
+	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
+	pod := Pod{
+		Id:             "testPod",
+		path:           testPodDir,
+		ServiceBuilder: serviceBuilder,
+	}
+	manifest := getTestPodManifest(t)
+	manifestContent, err := manifest.Bytes()
+	Assert(t).IsNil(err, "couldn't get manifest bytes")
+	err = ioutil.WriteFile(pod.CurrentPodManifestPath(), manifestContent, 0744)
+	Assert(t).IsNil(err, "should have written current manifest")
+
+	serviceBuilderFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
+	err = ioutil.WriteFile(serviceBuilderFilePath, []byte("stuff"), 0744)
+	Assert(t).IsNil(err, "Error writing fake servicebuilder file")
+
+	err = pod.Uninstall()
+	Assert(t).IsNil(err, "Error uninstalling pod")
+	_, err = os.Stat(serviceBuilderFilePath)
+	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
+	_, err = os.Stat(pod.CurrentPodManifestPath())
+	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
 }
 
 func manifestMustEqual(expected, actual *PodManifest, t *testing.T) {
