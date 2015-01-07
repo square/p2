@@ -32,7 +32,7 @@ func main() {
 		log.Fatalf("Invalid manifest: %s", err)
 	}
 
-	pod := pods.NewPod(pods.PodPath(manifest.ID()))
+	pod := pods.NewPod(manifest.ID(), pods.PodPath(manifest.ID()))
 	err = pod.Install(manifest)
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)
