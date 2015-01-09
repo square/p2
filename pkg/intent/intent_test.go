@@ -2,6 +2,7 @@ package intent
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -80,7 +81,7 @@ func errorWatch(kv ppkv.KV, prefix string, opts consulapi.QueryOptions, kvCh cha
 func TestHappyPathPodWatch(t *testing.T) {
 	i := Store{Options{}, consulapi.DefaultConfig(), happyWatch, fakeClient{}}
 
-	path := "/intent/ama1.dfw.square"
+	path := fmt.Sprintf("%s/ama1.dfw.square", INTENT_TREE)
 	quit := make(chan struct{})
 	defer close(quit)
 	errChan := make(chan error)
@@ -97,7 +98,7 @@ func TestHappyPathPodWatch(t *testing.T) {
 func TestErrorPath(t *testing.T) {
 	i := Store{Options{}, consulapi.DefaultConfig(), errorWatch, fakeClient{}}
 
-	path := "/intent/ama1.dfw.square"
+	path := fmt.Sprintf("%s/ama1.dfw.square", INTENT_TREE)
 	quit := make(chan struct{})
 	defer close(quit)
 	errChan := make(chan error)
@@ -115,7 +116,7 @@ func TestErrorPath(t *testing.T) {
 func TestErrorsAndPodsReturned(t *testing.T) {
 	i := Store{Options{}, consulapi.DefaultConfig(), partiallyHappyWatch, fakeClient{}}
 
-	path := "/intent/ama1.dfw.square"
+	path := fmt.Sprintf("%s/ama1.dfw.square", INTENT_TREE)
 	quit := make(chan struct{})
 	defer close(quit)
 	errChan := make(chan error)
