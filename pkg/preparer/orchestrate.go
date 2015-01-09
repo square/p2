@@ -32,7 +32,7 @@ func WatchForPodManifestsForNode(nodeName string, consulAddress string, hooksDir
 		return
 	}
 
-	path := fmt.Sprintf("nodes/%s", nodeName)
+	path := fmt.Sprintf("intent/%s", nodeName)
 
 	// This allows us to signal the goroutine watching consul to quit
 	watcherQuit := make(<-chan struct{})

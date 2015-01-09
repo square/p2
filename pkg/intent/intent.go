@@ -104,7 +104,7 @@ func (i *Store) WatchPods(path string, quit <-chan struct{}, errChan chan<- erro
 }
 
 func (i *Store) IntentKey(node string, manifest pods.PodManifest) string {
-	return fmt.Sprintf("nodes/%s/%s", node, manifest.ID())
+	return fmt.Sprintf("intent/%s/%s", node, manifest.ID())
 }
 
 func (i *Store) SetPod(node string, manifest pods.PodManifest) (time.Duration, error) {
