@@ -27,6 +27,7 @@ type PodManifest struct {
 	Id                string                      `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
 	LaunchableStanzas map[string]LaunchableStanza `yaml:"launchables"`
 	Config            map[string]interface{}      `yaml:"config"`
+	Port              int                         `yaml:"port"`
 }
 
 func (manifest *PodManifest) ID() string {
