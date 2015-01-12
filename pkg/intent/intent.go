@@ -18,6 +18,7 @@ const INTENT_TREE string = "/intent"
 
 type ConsulClient interface {
 	KV() *consulapi.KV
+	Agent() *consulapi.Agent
 }
 
 type Options struct {
@@ -115,11 +116,26 @@ func (i *Store) SetPod(node string, manifest pods.PodManifest) (time.Duration, e
 	if err != nil {
 		return 0, err
 	}
+
+	podService := &consulapi.AgentServiceRegistration{
+		Name: manifest.ID(),
+	}
+	if manifest.StatusPort != 0 {
+		podService.Check = &consulapi.AgentServiceCheck{
+			// prints the HTTP response on stderr, while exiting 0 if the status code is 200
+			Script:   fmt.Sprintf(`if [[ $(curl 0.0.0.0:%v/_status -s -o /dev/stderr -w "%%{http_code}") == "200" ]] ; then exit 0 ; else exit 2; fi`, manifest.StatusPort),
+			Interval: "5s", // magic number alert
+		}
+	}
+	err = i.client.Agent().ServiceRegister(podService)
+	if err != nil {
+		return 0, err
+	}
+
 	keyPair := &consulapi.KVPair{
 		Key:   i.IntentKey(node, manifest),
 		Value: buf.Bytes(),
 	}
-
 	writeMeta, err := i.client.KV().Put(keyPair, nil)
 	return writeMeta.RequestTime, err
 }

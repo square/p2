@@ -18,6 +18,11 @@ func (f fakeClient) KV() *consulapi.KV {
 	return client.KV()
 }
 
+func (f fakeClient) Agent() *consulapi.Agent {
+	client, _ := consulapi.NewClient(consulapi.DefaultConfig())
+	return client.Agent()
+}
+
 func makePodKv(key string, value string) *consulapi.KVPair {
 	return &consulapi.KVPair{
 		Key:   key,
