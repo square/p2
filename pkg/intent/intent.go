@@ -119,11 +119,13 @@ func (i *Store) SetPod(node string, manifest pods.PodManifest) (time.Duration, e
 
 	podService := &consulapi.AgentServiceRegistration{
 		Name: manifest.ID(),
-		Check: &consulapi.AgentServiceCheck{
+	}
+	if manifest.Port != 0 {
+		podService.Check = &consulapi.AgentServiceCheck{
 			// prints the HTTP response on stderr, while exiting 0 if the status code is 200
 			Script:   fmt.Sprintf(`if [[ $(curl 0.0.0.0:%v/_status -s -o /dev/stderr -w "%%{http_code}") == "200" ]] ; then exit 0 ; else exit 2; fi`, manifest.Port),
 			Interval: "5s", // magic number alert
-		},
+		}
 	}
 	err = i.client.Agent().ServiceRegister(podService)
 	if err != nil {
