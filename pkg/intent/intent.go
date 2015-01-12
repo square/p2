@@ -18,6 +18,7 @@ const INTENT_TREE string = "intent"
 
 type ConsulClient interface {
 	KV() *consulapi.KV
+	Agent() *consulapi.Agent
 }
 
 type Options struct {
