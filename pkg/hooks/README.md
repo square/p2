@@ -4,7 +4,7 @@ Hooks are code that may execute at predefined moments in the `p2` preparer workf
 
 Hooks can be declared and deployed using the `p2-hook` utility. Here is an example creating and deploying a hook that sets up the right application users before the application is launched.
 
-```
+```bash
 $ echo '#!/bin/bash
 useradd -D -d /data/pods/$POD_ID $POD_ID
 ' > ensure_user
