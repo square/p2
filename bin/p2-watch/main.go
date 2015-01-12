@@ -29,7 +29,7 @@ func main() {
 			log.Fatalf("Could not get the hostname to do scheduling: %s", err)
 		}
 	}
-	path := fmt.Sprintf("nodes/%s", node)
+	path := fmt.Sprintf("%s/%s", intent.INTENT_TREE, node)
 
 	log.Printf("Watching manifests at %s\n", path)
 
