@@ -35,7 +35,7 @@ var (
 
     p2-bin2pod --location http://localhost:5000/{} example.sh > example.json
     cat example.json | jq '.["tar_path"] | xargs -I {} cp {} ~/test_file_server_dir
-    cat example.json | jq '.["manifest_path"] | xargs -I {} curl -X PUT https://consul.dev:8500/api/v1/kv/nodes/$(hostname)/example -d {}
+    cat example.json | jq '.["manifest_path"] | xargs -I {} curl -X PUT https://consul.dev:8500/api/v1/kv/intent/$(hostname)/example -d {}
     `)
 	executable    = bin2pod.Arg("executable", "the executable to turn into a hoist artifact + pod manifest. The format of executable is of a URL.").Required().String()
 	id            = bin2pod.Flag("id", "The ID of the pod. By default this is the name of the executable passed").String()

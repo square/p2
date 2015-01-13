@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/square/p2/pkg/intent"
 	"github.com/square/p2/pkg/kv-consul"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
@@ -73,6 +74,7 @@ func InstallConsul(consulPod *pods.Pod, consulManifest *pods.PodManifest) error 
 }
 
 func RegisterBaseAgentInConsul(agentManifest *pods.PodManifest) error {
+	// TODO: refactor in terms of intent.SetPod
 	client, err := ppkv.NewClient()
 	if err != nil {
 		return err
@@ -83,7 +85,7 @@ func RegisterBaseAgentInConsul(agentManifest *pods.PodManifest) error {
 	if err != nil {
 		return err
 	}
-	endpoint := fmt.Sprintf("nodes/%s/%s", hostname, agentManifest.ID())
+	endpoint := fmt.Sprintf("%s/%s/%s", intent.INTENT_TREE, hostname, agentManifest.ID())
 	err = client.Put(endpoint, b.String())
 	if err != nil {
 		return util.Errorf("Could not PUT %s into %s: %s", b.String(), endpoint, err)
