@@ -8,6 +8,7 @@ import (
 	"github.com/square/p2/pkg/intent"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/reality"
 )
 
 type Pod interface {
@@ -17,29 +18,50 @@ type Pod interface {
 	Halt() (bool, error)
 }
 
-func WatchForPodManifestsForNode(nodeName string, consulAddress string, hooksDirectory string, logger logging.Logger) {
-	pods.Log = logger
-	hooks := pods.Hooks(hooksDirectory)
-	watchOpts := intent.Options{
+type Preparer struct {
+	node   string
+	iStore *intent.Store
+	rStore *reality.Store
+	hooks  *pods.HookDir
+	Logger logging.Logger
+}
+
+func New(nodeName string, consulAddress string, hooksDirectory string, logger logging.Logger) (*Preparer, error) {
+	iStore, err := intent.LookupStore(intent.Options{
 		Token:   nodeName,
 		Address: consulAddress,
-	}
-	watcher, err := intent.LookupStore(watchOpts)
+	})
 	if err != nil {
-		logger.WithFields(logrus.Fields{
-			"inner_err": err,
-		}).Errorln("Could not watch nodes; error when looking up intent store")
-		return
+		return nil, err
 	}
 
-	path := fmt.Sprintf("%s/%s", intent.INTENT_TREE, nodeName)
+	rStore, err := reality.LookupStore(reality.Options{
+		Token:   nodeName,
+		Address: consulAddress,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &Preparer{
+		node:   nodeName,
+		iStore: iStore,
+		rStore: rStore,
+		hooks:  pods.Hooks(hooksDirectory),
+		Logger: logger,
+	}, nil
+}
+
+func (p *Preparer) WatchForPodManifestsForNode() {
+	pods.Log = p.Logger
+	path := fmt.Sprintf("%s/%s", intent.INTENT_TREE, p.node)
 
 	// This allows us to signal the goroutine watching consul to quit
 	watcherQuit := make(<-chan struct{})
 	errChan := make(chan error)
 	podChan := make(chan pods.PodManifest)
 
-	go watcher.WatchPods(path, watcherQuit, errChan, podChan)
+	go p.iStore.WatchPods(path, watcherQuit, errChan, podChan)
 
 	// we will have one long running goroutine for each app installed on this
 	// host. We keep a map of podId => podChan so we can send the new manifests
@@ -50,7 +72,7 @@ func WatchForPodManifestsForNode(nodeName string, consulAddress string, hooksDir
 	for {
 		select {
 		case err := <-errChan:
-			logger.WithFields(logrus.Fields{
+			p.Logger.WithFields(logrus.Fields{
 				"inner_err": err,
 			}).Errorln("there was an error reading the manifest")
 		case manifest := <-podChan:
@@ -59,7 +81,7 @@ func WatchForPodManifestsForNode(nodeName string, consulAddress string, hooksDir
 				// No goroutine is servicing this app currently, let's start one
 				podChanMap[podId] = make(chan pods.PodManifest)
 				quitChanMap[podId] = make(chan struct{})
-				go handlePods(hooks, podChanMap[podId], quitChanMap[podId], logger)
+				go p.handlePods(podChanMap[podId], quitChanMap[podId])
 			}
 			podChanMap[podId] <- manifest
 		}
@@ -68,7 +90,7 @@ func WatchForPodManifestsForNode(nodeName string, consulAddress string, hooksDir
 
 // no return value, no output channels. This should do everything it needs to do
 // without outside intervention (other than being signalled to quit)
-func handlePods(hooks *pods.HookDir, podChan <-chan pods.PodManifest, quit <-chan struct{}, logger logging.Logger) {
+func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struct{}) {
 	// install new launchables
 	var manifestToLaunch pods.PodManifest
 
@@ -82,7 +104,7 @@ func handlePods(hooks *pods.HookDir, podChan <-chan pods.PodManifest, quit <-cha
 			return
 		case manifestToLaunch = <-podChan:
 			sha, err := manifestToLaunch.SHA()
-			manifestLogger = logger.SubLogger(logrus.Fields{
+			manifestLogger = p.Logger.SubLogger(logrus.Fields{
 				"manifest": manifestToLaunch.ID(),
 				"sha":      sha,
 				"sha_err":  err,
@@ -92,19 +114,19 @@ func handlePods(hooks *pods.HookDir, podChan <-chan pods.PodManifest, quit <-cha
 		case <-time.After(1 * time.Second):
 			if working {
 				pod := pods.PodFromManifestId(manifestToLaunch.ID())
-				err := hooks.RunBefore(pod, &manifestToLaunch)
+				err := p.hooks.RunBefore(pod, &manifestToLaunch)
 				if err != nil {
 					manifestLogger.WithFields(logrus.Fields{
 						"err":   err,
 						"hooks": "before",
 					}).Warnln("Could not run before hooks")
 				}
-				ok := installAndLaunchPod(&manifestToLaunch, pod, manifestLogger)
+				ok := p.installAndLaunchPod(&manifestToLaunch, pod, manifestLogger)
 				if ok {
 					manifestToLaunch = pods.PodManifest{}
 					working = false
 				}
-				err = hooks.RunAfter(pod, &manifestToLaunch)
+				err = p.hooks.RunAfter(pod, &manifestToLaunch)
 				if err != nil {
 					manifestLogger.WithFields(logrus.Fields{
 						"err":   err,
@@ -116,7 +138,7 @@ func handlePods(hooks *pods.HookDir, podChan <-chan pods.PodManifest, quit <-cha
 	}
 }
 
-func installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, logger logging.Logger) bool {
+func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, logger logging.Logger) bool {
 	err := pod.Install(newManifest)
 	if err != nil {
 		// install failed, abort and retry
