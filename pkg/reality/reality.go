@@ -15,7 +15,7 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-const REALITY_TREE string = "/reality"
+const REALITY_TREE string = "reality"
 
 type ConsulClient interface {
 	KV() *consulapi.KV
