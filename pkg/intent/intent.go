@@ -121,5 +121,8 @@ func (i *Store) SetPod(node string, manifest pods.PodManifest) (time.Duration, e
 	}
 
 	writeMeta, err := i.client.KV().Put(keyPair, nil)
+	if writeMeta == nil {
+		return 0, err
+	}
 	return writeMeta.RequestTime, err
 }
