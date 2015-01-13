@@ -14,7 +14,7 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-const INTENT_TREE string = "/intent"
+const INTENT_TREE string = "intent"
 
 type ConsulClient interface {
 	KV() *consulapi.KV
