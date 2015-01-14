@@ -40,10 +40,9 @@ func getLaunchableStanzasFromTestManifest(t *testing.T) map[string]LaunchableSta
 func TestGetLaunchable(t *testing.T) {
 	launchableStanzas := getLaunchableStanzasFromTestManifest(t)
 	pod := getTestPod()
-	manifest := getTestPodManifest(t)
 	Assert(t).AreNotEqual(0, len(launchableStanzas), "Expected there to be at least one launchable stanza in the test manifest")
 	for _, stanza := range launchableStanzas {
-		launchable, _ := pod.getLaunchable(stanza, manifest)
+		launchable, _ := pod.getLaunchable(stanza)
 		Assert(t).AreEqual("hello__hello", launchable.Id, "LaunchableId did not have expected value")
 		Assert(t).AreEqual("hoisted-hello_def456.tar.gz", launchable.Location, "Launchable location did not have expected value")
 	}
@@ -163,7 +162,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 	err = ioutil.WriteFile(pod.CurrentPodManifestPath(), manifestContent, 0744)
 	Assert(t).IsNil(err, "should have written current manifest")
 
-	oldPath, err := pod.writeCurrentManifest(updated)
+	oldPath, err := pod.WriteCurrentManifest(updated)
 	Assert(t).IsNil(err, "should have writtne the current manifest and linked the old one")
 
 	writtenOld, err := PodManifestFromPath(oldPath)
@@ -212,10 +211,10 @@ func TestBuildRunitServices(t *testing.T) {
   - %s
 `, executables[0].Name,
 		hoistLaunchable.ConfigDir,
-		executables[0].execPath,
+		executables[0].ExecPath,
 		executables[1].Name,
 		hoistLaunchable.ConfigDir,
-		executables[1].execPath)
+		executables[1].ExecPath)
 
 	f, err := os.Open(outFilePath)
 	defer f.Close()

@@ -2,7 +2,7 @@
 
 Hooks are code that may execute at predefined moments in the `p2` preparer workflow. Hooks are registered in a fashion similar to pods, although several key differences exist between pods, intended as applications, and hooks.
 
-Hooks can be declared and deployed using the `p2-hook` utility. Here is an example creating and deploying a hook that sets up the right application users before the application is launched.
+Hooks can be declared and deployed using the `p2-hook` utility. Here is an example creating and deploying a hook that sets up the right application users before the application is launched. `p2-hook` can be run on any host with access to the Consul cluster.
 
 ```bash
 $ echo '#!/bin/bash
@@ -10,12 +10,20 @@ useradd -D -d /data/pods/$POD_ID $POD_ID
 ' > ensure_user
 $ chmod o+x ensure_user
 $ MANIFEST=$(p2-bin2pod ensure_user | jq '.["manifest_path"]')
-$ p2-hook enable $MANIFEST before_install
+$ p2-hook schedule $MANIFEST before_install
 ```
 
 This hook establishes that the user running your application is present on the host before any launchable begins.
 
-## Fundamental hooks design
+## Hook Constraints
+
+Hooks are run as the user running the preparer. This will be root for most installations. Any future authentication mechanism will be required when scheduling hooks as they permit the rapid deployment of code that will execute as root in your cluster. Needless to say, `p2` is still in development and we do not recommend deploying it in production yet.
+
+Hooks run with time restrictions. After 30 seconds, the preparer will send the hook SIGTERM and proceed with operations. At 60 seconds if the hook is still running, the preparer will send a SIGKILL.
+
+Finally, hooks cannot alter the execution of the preparer, even if they fail. This is a safety feature similar to the timeouts. This prevents a broken hook from preventing deploys across your cluster.
+
+## Fundamental Hooks Design
 
 At its root, `p2`'s hooks are simply a directory of scripts that are executed during the install and launch phases of `p2` launchables. Each directory can be populated independently of `p2`. However, the `p2-preparer` comes with an option to register all pod manifests and their launchables at `/hooks` as scripts that will be symlinked into this directory. The option is on by default.
 

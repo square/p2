@@ -32,6 +32,11 @@ type ManifestErr struct {
 	Message string
 }
 
+type ManifestResult struct {
+	Manifest pods.PodManifest
+	Path     string
+}
+
 func (m *ManifestErr) Error() string {
 	return m.Message
 }
@@ -65,7 +70,7 @@ func LookupStore(opts Options) (*Store, error) {
 // of acting on multiple changes at once. The quit channel is used to terminate watching on the
 // spawned goroutine. The error channel should be observed for errors from the underlying watcher.
 // If an error occurs during watch, it is the caller's responsibility to quit the watcher.
-func (i *Store) WatchPods(path string, quit <-chan struct{}, errChan chan<- error, podCh chan<- pods.PodManifest) error {
+func (i *Store) WatchPods(path string, quit <-chan struct{}, errChan chan<- error, podCh chan<- ManifestResult) error {
 	opts := consulapi.QueryOptions{Token: i.Opts.Token}
 
 	defer close(podCh)
@@ -99,7 +104,7 @@ func (i *Store) WatchPods(path string, quit <-chan struct{}, errChan chan<- erro
 				if err != nil {
 					errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value)
 				} else {
-					podCh <- *manifest
+					podCh <- ManifestResult{*manifest, pair.Key}
 				}
 			}
 		}
