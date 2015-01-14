@@ -76,6 +76,12 @@ func main() {
 	}
 	defer logFile.Close()
 
+	prep, err := preparer.New(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logger)
+	if err != nil {
+		logger.WithField("inner_err", err).Errorln("Could not initialize preparer")
+		os.Exit(1)
+	}
+
 	logger.WithFields(logrus.Fields{
 		"starting":  true,
 		"node_name": preparerConfig.NodeName,
@@ -83,7 +89,7 @@ func main() {
 		"hooks_dir": preparerConfig.HooksDirectory,
 	}).Infoln("Preparer started successfully") // change to logrus message
 
-	preparer.WatchForPodManifestsForNode(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logger)
+	prep.WatchForPodManifestsForNode()
 	logger.WithFields(logrus.Fields{
 		"stopping": true,
 	}).Infoln("Terminating")
