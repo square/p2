@@ -34,6 +34,7 @@ launchables:
     location: https://localhost:4444/foo/bar/baz.tar.gz
 config:
   ENVIRONMENT: staging
+status_port: 8000
 `
 }
 
@@ -50,6 +51,8 @@ func TestPodManifestCanBeWritten(t *testing.T) {
 	}
 	manifest.LaunchableStanzas["my-app"] = launchable
 	manifest.Config["ENVIRONMENT"] = "staging"
+
+	manifest.StatusPort = 8000
 
 	buff := bytes.Buffer{}
 	manifest.Write(&buff)
@@ -76,7 +79,7 @@ func TestPodManifestCanReportItsSHA(t *testing.T) {
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 	val, err := manifest.SHA()
 	Assert(t).IsNil(err, "should not have erred when getting SHA")
-	Assert(t).AreEqual("f176d13fd3ec91e21bc163ec8b2e937df3625ea5", val, "SHA mismatched expectations")
+	Assert(t).AreEqual("5a92dd996feb6c9bd5c451d2b36282cc7804f911", val, "SHA mismatched expectations")
 }
 
 func TestNilPodManifestHasEmptySHA(t *testing.T) {
