@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 	"testing"
+	"time"
 
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/logging"
@@ -35,16 +36,6 @@ func (t *TestPod) Install(manifest *pods.PodManifest) error {
 	return t.installErr
 }
 
-func (t *TestPod) CurrentManifest() (*pods.PodManifest, error) {
-	if t.currentManifestError != nil {
-		return nil, t.currentManifestError
-	}
-	if t.currentManifest == nil {
-		return t.currentManifest, pods.NoCurrentManifest
-	}
-	return t.currentManifest, nil
-}
-
 func (t *TestPod) Halt() (bool, error) {
 	t.halted = true
 	return t.haltSuccess, t.haltError
@@ -59,13 +50,47 @@ func testManifest(t *testing.T) *pods.PodManifest {
 	return manifest
 }
 
+type FakeStore struct {
+	currentManifest      *pods.PodManifest
+	currentManifestError error
+}
+
+func (f *FakeStore) Pod(string, string) (*pods.PodManifest, error) {
+	if f.currentManifest == nil {
+		return nil, pods.NoCurrentManifest
+	}
+	if f.currentManifestError != nil {
+		return nil, f.currentManifestError
+	}
+	return f.currentManifest, nil
+}
+
+func (f *FakeStore) SetPod(string, pods.PodManifest) (time.Duration, error) {
+	return 0, nil
+}
+
+func (f *FakeStore) RegisterPodService(pods.PodManifest) error {
+	return nil
+}
+
+func (f *FakeStore) WatchPods(string, <-chan struct{}, chan<- error, chan<- pods.PodManifest) error {
+	return nil
+}
+
+func testPreparer(f *FakeStore) *Preparer {
+	p, _ := New("hostname", "0.0.0.0", "/hooks/dir", logging.DefaultLogger)
+	p.iStore = f
+	p.rStore = f
+	return p
+}
+
 func TestPreparerLaunchesNewPodsThatArentInstalledYet(t *testing.T) {
 	testPod := &TestPod{
 		launchSuccess: true,
 	}
 	newManifest := testManifest(t)
 
-	var p *Preparer
+	p := testPreparer(&FakeStore{})
 	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "should have succeeded")
@@ -85,7 +110,9 @@ func TestPreparerLaunchesPodsThatHaveDifferentSHAs(t *testing.T) {
 	}
 	newManifest := testManifest(t)
 
-	var p *Preparer
+	p := testPreparer(&FakeStore{
+		currentManifest: existing,
+	})
 	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "should have succeeded")
@@ -99,7 +126,7 @@ func TestPreparerFailsIfInstallFails(t *testing.T) {
 	}
 	newManifest := testManifest(t)
 
-	var p *Preparer
+	p := testPreparer(&FakeStore{})
 	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsFalse(success, "The deploy should have failed")
@@ -113,7 +140,9 @@ func TestPreparerWillNotLaunchIfSHAIsTheSame(t *testing.T) {
 		currentManifest: testManifest,
 	}
 
-	var p *Preparer
+	p := testPreparer(&FakeStore{
+		currentManifest: testManifest,
+	})
 	success := p.installAndLaunchPod(testManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "Should have been a success to prevent retries")
@@ -121,14 +150,15 @@ func TestPreparerWillNotLaunchIfSHAIsTheSame(t *testing.T) {
 	Assert(t).IsTrue(testPod.installed, "Should have installed")
 }
 
-func TestInstallReturnsFalseIfManifestErrsOnRead(t *testing.T) {
+func TestPreparerWillLaunchIfRealityErrsOnRead(t *testing.T) {
 	testManifest := testManifest(t)
 	testPod := &TestPod{
-		currentManifestError: fmt.Errorf("it erred"),
-		launchSuccess:        true,
+		launchSuccess: true,
 	}
 
-	var p *Preparer
+	p := testPreparer(&FakeStore{
+		currentManifestError: fmt.Errorf("it erred"),
+	})
 	success := p.installAndLaunchPod(testManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "should have attempted to install following corrupt current manifest")

@@ -14,14 +14,22 @@ import (
 type Pod interface {
 	Launch(*pods.PodManifest) (bool, error)
 	Install(*pods.PodManifest) error
-	CurrentManifest() (*pods.PodManifest, error)
 	Halt() (bool, error)
+}
+
+type RealityStore interface {
+	Pod(string, string) (*pods.PodManifest, error)
+	SetPod(string, pods.PodManifest) (time.Duration, error)
+}
+type IntentStore interface {
+	RegisterPodService(pods.PodManifest) error
+	WatchPods(string, <-chan struct{}, chan<- error, chan<- pods.PodManifest) error
 }
 
 type Preparer struct {
 	node   string
-	iStore *intent.Store
-	rStore *reality.Store
+	iStore IntentStore
+	rStore RealityStore
 	hooks  *pods.HookDir
 	Logger logging.Logger
 }
