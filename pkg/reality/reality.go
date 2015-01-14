@@ -57,6 +57,9 @@ func (r *Store) Pod(node, podId string) (*pods.PodManifest, error) {
 	if err != nil {
 		return nil, err
 	}
+	if kvPair == nil {
+		return nil, pods.NoCurrentManifest
+	}
 	return pods.PodManifestFromBytes(kvPair.Value)
 }
 
