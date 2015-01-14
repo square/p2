@@ -72,13 +72,13 @@ func TestAddSocketHook(t *testing.T) {
 	socket_location := "test_socket.sock"
 	os.Remove(socket_location)
 
+	l, err := net.Listen("unix", socket_location)
+	Assert(t).IsNil(err, "Got an unexpected error when trying to listen to socket")
+	defer l.Close()
+
 	// make goroutine to listen to socket and write what it gets to channel
 	out := make(chan []byte)
 	go func() {
-		l, err := net.Listen("unix", socket_location)
-		Assert(t).IsNil(err, "Got an unexpected error when trying to listen to socket")
-		defer l.Close()
-
 		fd, err := l.Accept()
 		Assert(t).IsNil(err, "Got an unexpected error when trying to call accept() on socket")
 		buf := make([]byte, 1024)
@@ -91,7 +91,7 @@ func TestAddSocketHook(t *testing.T) {
 	time.Sleep(1 * time.Millisecond)
 
 	// Add socket hook and log something
-	err := logger.AddHook(OUT_SOCKET, socket_location)
+	err = logger.AddHook(OUT_SOCKET, socket_location)
 	Assert(t).IsNil(err, "Got an unexpected error when adding a socket logging hook")
 	logger.WithFields(logrus.Fields{}).Error("some message")
 
