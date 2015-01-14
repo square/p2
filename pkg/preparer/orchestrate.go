@@ -178,6 +178,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 		err := p.iStore.RegisterPodService(*newManifest)
 		if err != nil {
 			logger.WithField("err", err).Errorln("Service registration failed")
+			return false
 		}
 		ok, err := pod.Launch(newManifest)
 		if err != nil {
