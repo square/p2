@@ -151,8 +151,11 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 	}
 
 	// get currently running pod to compare with the new pod
-	currentManifest, err := pod.CurrentManifest()
-	currentSHA, _ := currentManifest.SHA()
+	currentManifest, err := p.rStore.Pod(p.node, newManifest.ID())
+	currentSHA := ""
+	if currentManifest != nil {
+		currentSHA, _ = currentManifest.SHA()
+	}
 	newSHA, _ := newManifest.SHA()
 
 	// if new or the manifest is different, launch
@@ -185,6 +188,8 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 			logger.WithFields(logrus.Fields{
 				"err": err,
 			}).Errorln("Launch failed")
+		} else {
+			p.rStore.SetPod(p.node, *newManifest)
 		}
 		return err == nil && ok
 	}
