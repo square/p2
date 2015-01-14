@@ -185,6 +185,8 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 			logger.WithFields(logrus.Fields{
 				"err": err,
 			}).Errorln("Launch failed")
+		} else {
+			p.rStore.SetPod(p.node, *newManifest)
 		}
 		return err == nil && ok
 	}
