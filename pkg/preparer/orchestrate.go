@@ -151,7 +151,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 	}
 
 	// get currently running pod to compare with the new pod
-	currentManifest, err := pod.CurrentManifest()
+	currentManifest, err := p.rStore.Pod(p.node, newManifest.ID())
 	currentSHA, _ := currentManifest.SHA()
 	newSHA, _ := newManifest.SHA()
 
