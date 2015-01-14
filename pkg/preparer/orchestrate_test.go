@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 	"testing"
+	"time"
 
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/logging"
@@ -59,13 +60,34 @@ func testManifest(t *testing.T) *pods.PodManifest {
 	return manifest
 }
 
+type FakeStore struct{}
+
+func (f *FakeStore) Pod(string, string) (*pods.PodManifest, error) {
+	return nil, pods.NoCurrentManifest
+}
+
+func (f *FakeStore) SetPod(string, pods.PodManifest) (time.Duration, error) {
+	return 0, nil
+}
+
+func (f *FakeStore) RegisterPodService(pods.PodManifest) error {
+	return nil
+}
+
+func (f *FakeStore) WatchPods(string, <-chan struct{}, chan<- error, chan<- pods.PodManifest) error {
+	return nil
+}
+
 func TestPreparerLaunchesNewPodsThatArentInstalledYet(t *testing.T) {
 	testPod := &TestPod{
 		launchSuccess: true,
 	}
 	newManifest := testManifest(t)
 
-	var p *Preparer
+	p, _ := New("hostname", "0.0.0.0", "/hooks/dir", logging.DefaultLogger)
+	fakeStore := &FakeStore{}
+	p.iStore = fakeStore
+	p.rStore = fakeStore
 	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "should have succeeded")
@@ -85,7 +107,10 @@ func TestPreparerLaunchesPodsThatHaveDifferentSHAs(t *testing.T) {
 	}
 	newManifest := testManifest(t)
 
-	var p *Preparer
+	p, _ := New("hostname", "0.0.0.0", "/hooks/dir", logging.DefaultLogger)
+	fakeStore := &FakeStore{}
+	p.iStore = fakeStore
+	p.rStore = fakeStore
 	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "should have succeeded")
@@ -99,7 +124,10 @@ func TestPreparerFailsIfInstallFails(t *testing.T) {
 	}
 	newManifest := testManifest(t)
 
-	var p *Preparer
+	p, _ := New("hostname", "0.0.0.0", "/hooks/dir", logging.DefaultLogger)
+	fakeStore := &FakeStore{}
+	p.iStore = fakeStore
+	p.rStore = fakeStore
 	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsFalse(success, "The deploy should have failed")
@@ -113,7 +141,10 @@ func TestPreparerWillNotLaunchIfSHAIsTheSame(t *testing.T) {
 		currentManifest: testManifest,
 	}
 
-	var p *Preparer
+	p, _ := New("hostname", "0.0.0.0", "/hooks/dir", logging.DefaultLogger)
+	fakeStore := &FakeStore{}
+	p.iStore = fakeStore
+	p.rStore = fakeStore
 	success := p.installAndLaunchPod(testManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "Should have been a success to prevent retries")
@@ -128,7 +159,10 @@ func TestInstallReturnsFalseIfManifestErrsOnRead(t *testing.T) {
 		launchSuccess:        true,
 	}
 
-	var p *Preparer
+	p, _ := New("hostname", "0.0.0.0", "/hooks/dir", logging.DefaultLogger)
+	fakeStore := &FakeStore{}
+	p.iStore = fakeStore
+	p.rStore = fakeStore
 	success := p.installAndLaunchPod(testManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "should have attempted to install following corrupt current manifest")
