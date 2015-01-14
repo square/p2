@@ -14,7 +14,6 @@ import (
 type Pod interface {
 	Launch(*pods.PodManifest) (bool, error)
 	Install(*pods.PodManifest) error
-	CurrentManifest() (*pods.PodManifest, error)
 	Halt() (bool, error)
 }
 
