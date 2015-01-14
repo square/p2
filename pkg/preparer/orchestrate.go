@@ -139,6 +139,8 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 }
 
 func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, logger logging.Logger) bool {
+	// do not remove the logger argument, it's not the same as p.Logger
+
 	err := pod.Install(newManifest)
 	if err != nil {
 		// install failed, abort and retry
