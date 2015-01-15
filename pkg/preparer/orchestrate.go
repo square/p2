@@ -23,7 +23,7 @@ type RealityStore interface {
 }
 type IntentStore interface {
 	RegisterPodService(pods.PodManifest) error
-	WatchPods(string, <-chan struct{}, chan<- error, chan<- pods.PodManifest) error
+	WatchPods(string, <-chan struct{}, chan<- error, chan<- intent.ManifestResult) error
 }
 
 type Preparer struct {

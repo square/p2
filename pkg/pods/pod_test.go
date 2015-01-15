@@ -16,7 +16,7 @@ import (
 )
 
 func getTestPod() *Pod {
-	return NewPod("test", "/data/pods/test")
+	return NewPod("hello", "/data/pods/test")
 }
 
 func getTestPodManifest(t *testing.T) *PodManifest {

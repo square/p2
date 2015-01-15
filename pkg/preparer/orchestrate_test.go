@@ -7,6 +7,7 @@ import (
 	"time"
 
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/pkg/intent"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
@@ -73,7 +74,7 @@ func (f *FakeStore) RegisterPodService(pods.PodManifest) error {
 	return nil
 }
 
-func (f *FakeStore) WatchPods(string, <-chan struct{}, chan<- error, chan<- pods.PodManifest) error {
+func (f *FakeStore) WatchPods(string, <-chan struct{}, chan<- error, chan<- intent.ManifestResult) error {
 	return nil
 }
 
