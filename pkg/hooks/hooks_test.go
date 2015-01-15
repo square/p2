@@ -1,4 +1,4 @@
-package pods
+package hooks
 
 import (
 	"io/ioutil"
@@ -8,6 +8,7 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/pods"
 )
 
 func TestExecutableHooksAreRun(t *testing.T) {
@@ -22,8 +23,9 @@ func TestExecutableHooksAreRun(t *testing.T) {
 	ioutil.WriteFile(path.Join(tempDir, "test1"), []byte("#!/bin/sh\necho $POD_ID > $(dirname $0)/output"), 0755)
 
 	podId := "TestPod"
-	manifest := PodManifest{Id: podId}
-	runHooks(tempDir, NewPod(podId, podDir), &manifest)
+	manifest := pods.PodManifest{Id: podId}
+	hooks := Hooks(os.TempDir(), &logging.DefaultLogger)
+	hooks.runHooks(tempDir, pods.NewPod(podId, podDir), &manifest)
 
 	contents, err := ioutil.ReadFile(path.Join(tempDir, "output"))
 	Assert(t).IsNil(err, "the error should have been nil")
@@ -44,8 +46,9 @@ func TestNonExecutableHooksAreNotRun(t *testing.T) {
 	Assert(t).IsNil(err, "the error should have been nil")
 
 	podId := "TestPod"
-	manifest := PodManifest{Id: podId}
-	runHooks(tempDir, NewPod(podId, podDir), &manifest)
+	manifest := pods.PodManifest{Id: podId}
+	hooks := Hooks(os.TempDir(), &logging.DefaultLogger)
+	hooks.runHooks(tempDir, pods.NewPod(podId, podDir), &manifest)
 
 	if _, err := os.Stat(path.Join(tempDir, "failed")); err == nil {
 		t.Fatal("`failed` file exists; non-executable hook ran but should not have run")
@@ -64,10 +67,11 @@ func TestDirectoriesDoNotBreakEverything(t *testing.T) {
 	Assert(t).IsNil(os.Mkdir(path.Join(tempDir, "mydir"), 0755), "Should not have erred")
 
 	podId := "TestPod"
-	manifest := PodManifest{Id: podId}
-	pod := NewPod(podId, podDir)
-	pod.logger = logging.TestLogger()
-	err = runHooks(tempDir, pod, &manifest)
+	manifest := pods.PodManifest{Id: podId}
+	pod := pods.NewPod(podId, podDir)
+	logger := logging.TestLogger()
+	hooks := Hooks(os.TempDir(), &logger)
+	err = hooks.runHooks(tempDir, pod, &manifest)
 
 	Assert(t).IsNil(err, "Got an error when running a directory inside the hooks directory")
 }

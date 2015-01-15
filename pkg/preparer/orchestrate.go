@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/intent"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
@@ -12,9 +13,15 @@ import (
 )
 
 type Pod interface {
+	hooks.Pod
 	Launch(*pods.PodManifest) (bool, error)
 	Install(*pods.PodManifest) error
 	Halt() (bool, error)
+}
+
+type Hooks interface {
+	RunBeforeInstall(pod hooks.Pod, manifest *pods.PodManifest) error
+	RunAfterLaunch(pod hooks.Pod, manifest *pods.PodManifest) error
 }
 
 type RealityStore interface {
@@ -30,7 +37,7 @@ type Preparer struct {
 	node   string
 	iStore IntentStore
 	rStore RealityStore
-	hooks  *pods.HookDir
+	hooks  Hooks
 	Logger logging.Logger
 }
 
@@ -55,7 +62,7 @@ func New(nodeName string, consulAddress string, hooksDirectory string, logger lo
 		node:   nodeName,
 		iStore: iStore,
 		rStore: rStore,
-		hooks:  pods.Hooks(hooksDirectory),
+		hooks:  hooks.Hooks(hooksDirectory, &logger),
 		Logger: logger,
 	}, nil
 }
@@ -122,24 +129,11 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 		case <-time.After(1 * time.Second):
 			if working {
 				pod := pods.PodFromManifestId(manifestToLaunch.ID())
-				err := p.hooks.RunBefore(pod, &manifestToLaunch)
-				if err != nil {
-					manifestLogger.WithFields(logrus.Fields{
-						"err":   err,
-						"hooks": "before",
-					}).Warnln("Could not run before hooks")
-				}
+
 				ok := p.installAndLaunchPod(&manifestToLaunch, pod, manifestLogger)
 				if ok {
 					manifestToLaunch = pods.PodManifest{}
 					working = false
-				}
-				err = p.hooks.RunAfter(pod, &manifestToLaunch)
-				if err != nil {
-					manifestLogger.WithFields(logrus.Fields{
-						"err":   err,
-						"hooks": "after",
-					}).Warnln("Could not run after hooks")
 				}
 			}
 		}
@@ -148,15 +142,6 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 
 func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, logger logging.Logger) bool {
 	// do not remove the logger argument, it's not the same as p.Logger
-
-	err := pod.Install(newManifest)
-	if err != nil {
-		// install failed, abort and retry
-		logger.WithFields(logrus.Fields{
-			"err": err,
-		}).Errorln("Install failed")
-		return false
-	}
 
 	// get currently running pod to compare with the new pod
 	currentManifest, err := p.rStore.Pod(p.node, newManifest.ID())
@@ -186,7 +171,24 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 	}
 
 	if newOrDifferent || problemReadingCurrentManifest {
-		err := p.iStore.RegisterPodService(*newManifest)
+		err := p.hooks.RunBeforeInstall(pod, newManifest)
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"err":   err,
+				"hooks": "before_install",
+			}).Warnln("Could not run hooks")
+		}
+
+		err = pod.Install(newManifest)
+		if err != nil {
+			// install failed, abort and retry
+			logger.WithFields(logrus.Fields{
+				"err": err,
+			}).Errorln("Install failed")
+			return false
+		}
+
+		err = p.iStore.RegisterPodService(*newManifest)
 		if err != nil {
 			logger.WithField("err", err).Errorln("Service registration failed")
 			return false
@@ -197,7 +199,21 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 				"err": err,
 			}).Errorln("Launch failed")
 		} else {
-			p.rStore.SetPod(p.node, *newManifest)
+			duration, err := p.rStore.SetPod(p.node, *newManifest)
+			if err != nil {
+				logger.WithFields(logrus.Fields{
+					"err":      err,
+					"duration": duration,
+				}).Errorln("Could not set pod in reality store")
+			}
+
+			err = p.hooks.RunAfterLaunch(pod, newManifest)
+			if err != nil {
+				logger.WithFields(logrus.Fields{
+					"err":   err,
+					"hooks": "after_launch",
+				}).Warnln("Could not run hooks")
+			}
 		}
 		return err == nil && ok
 	}

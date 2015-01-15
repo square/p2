@@ -45,6 +45,10 @@ func PodFromManifestId(manifestId string) *Pod {
 
 var NoCurrentManifest error = fmt.Errorf("No current manifest for this pod")
 
+func (pod *Pod) Path() string {
+	return pod.path
+}
+
 func (pod *Pod) CurrentManifest() (*PodManifest, error) {
 	currentManPath := pod.CurrentPodManifestPath()
 	if _, err := os.Stat(currentManPath); os.IsNotExist(err) {
