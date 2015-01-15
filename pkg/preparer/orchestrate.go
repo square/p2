@@ -130,6 +130,13 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 			if working {
 				pod := pods.PodFromManifestId(manifestToLaunch.ID())
 
+				// HACK ZONE. When we have better authz, rewrite.
+				// Still need to ensure that preparer, intent both launch correctly
+				// as root
+				if pod.Id == "intent" || pod.Id == "p2-preparer" {
+					pod.RunAs = "root"
+				}
+
 				ok := p.installAndLaunchPod(&manifestToLaunch, pod, manifestLogger)
 				if ok {
 					manifestToLaunch = pods.PodManifest{}

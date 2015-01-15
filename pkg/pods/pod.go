@@ -368,7 +368,6 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*HoistLaunchab
 	if launchableStanza.LaunchableType == "hoist" {
 		launchableRootDir := path.Join(pod.path, launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
-
 		return &HoistLaunchable{launchableStanza.Location, launchableId, pod.RunAs, pod.EnvDir(), DefaultFetcher(), launchableRootDir}, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)
