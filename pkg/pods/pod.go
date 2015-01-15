@@ -29,13 +29,14 @@ func PodPath(manifestId string) string {
 type Pod struct {
 	Id             string
 	path           string
+	RunAs          string
 	logger         logging.Logger
 	SV             *runit.SV
 	ServiceBuilder *runit.ServiceBuilder
 }
 
 func NewPod(id string, path string) *Pod {
-	return &Pod{id, path, Log.SubLogger(logrus.Fields{"pod": id}), runit.DefaultSV, runit.DefaultBuilder}
+	return &Pod{id, path, id, Log.SubLogger(logrus.Fields{"pod": id}), runit.DefaultSV, runit.DefaultBuilder}
 }
 
 func PodFromManifestId(manifestId string) *Pod {
@@ -58,7 +59,7 @@ func (pod *Pod) Halt() (bool, error) {
 		return false, util.Errorf("Could not get current manifest: %s", err)
 	}
 
-	launchables, err := pod.getLaunchablesFromPodManifest(currentManifest)
+	launchables, err := pod.GetLaunchables(currentManifest)
 	if err != nil {
 		return false, err
 	}
@@ -85,12 +86,12 @@ func (pod *Pod) Halt() (bool, error) {
 // in the same pod. If any services fail to start, the first return bool will be false. If an error
 // occurs when writing the current manifest to the pod directory, an error will be returned.
 func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
-	launchables, err := pod.getLaunchablesFromPodManifest(manifest)
+	launchables, err := pod.GetLaunchables(manifest)
 	if err != nil {
 		return false, err
 	}
 
-	oldManifestTemp, err := pod.writeCurrentManifest(manifest)
+	oldManifestTemp, err := pod.WriteCurrentManifest(manifest)
 	defer os.RemoveAll(oldManifestTemp)
 
 	if err != nil {
@@ -136,7 +137,7 @@ func (pod *Pod) BuildRunitServices(launchables []HoistLaunchable) error {
 				strings.Join([]string{launchable.RunAs, launchable.RunAs}, ":"),
 				"-e",
 				launchable.ConfigDir,
-				executable.execPath,
+				executable.ExecPath,
 			})
 		}
 		if err != nil {
@@ -156,7 +157,7 @@ func (pod *Pod) BuildRunitServices(launchables []HoistLaunchable) error {
 	return nil
 }
 
-func (pod *Pod) writeCurrentManifest(manifest *PodManifest) (string, error) {
+func (pod *Pod) WriteCurrentManifest(manifest *PodManifest) (string, error) {
 	// write the old manifest to a temporary location in case a launch fails.
 	tmpDir, err := ioutil.TempDir("", "manifests")
 	if err != nil {
@@ -218,7 +219,7 @@ func (pod *Pod) Uninstall() error {
 	if err != nil {
 		return err
 	}
-	launchables, err := pod.getLaunchablesFromPodManifest(currentManifest)
+	launchables, err := pod.GetLaunchables(currentManifest)
 	if err != nil {
 		return err
 	}
@@ -268,7 +269,7 @@ func (pod *Pod) Install(manifest *PodManifest) error {
 		return util.Errorf("Could not setup config: %s", err)
 	}
 
-	launchables, err := pod.getLaunchablesFromPodManifest(manifest)
+	launchables, err := pod.GetLaunchables(manifest)
 	if err != nil {
 		return err
 	}
@@ -338,7 +339,7 @@ func writeEnvFile(envDir, name, value string) error {
 	return nil
 }
 
-func (pod *Pod) getLaunchablesFromPodManifest(podManifest *PodManifest) ([]HoistLaunchable, error) {
+func (pod *Pod) GetLaunchables(podManifest *PodManifest) ([]HoistLaunchable, error) {
 	launchableStanzas := podManifest.LaunchableStanzas
 	if len(launchableStanzas) == 0 {
 		return nil, util.Errorf("Pod must provide at least one launchable, none found")
@@ -348,7 +349,7 @@ func (pod *Pod) getLaunchablesFromPodManifest(podManifest *PodManifest) ([]Hoist
 	var i int = 0
 	for _, launchableStanza := range launchableStanzas {
 
-		launchable, err := pod.getLaunchable(launchableStanza, podManifest)
+		launchable, err := pod.getLaunchable(launchableStanza)
 		if err != nil {
 			return nil, err
 		}
@@ -359,19 +360,12 @@ func (pod *Pod) getLaunchablesFromPodManifest(podManifest *PodManifest) ([]Hoist
 	return launchables, nil
 }
 
-func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, manifest *PodManifest) (*HoistLaunchable, error) {
+func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*HoistLaunchable, error) {
 	if launchableStanza.LaunchableType == "hoist" {
 		launchableRootDir := path.Join(pod.path, launchableStanza.LaunchableId)
-		launchableId := strings.Join([]string{manifest.ID(), "__", launchableStanza.LaunchableId}, "")
-		var runAs string
-		// proposition: rename all reserved users to p2_*. p2_* users all run as root until
-		// precise roles can be assigned to each.
-		if manifest.ID() == "intent" || manifest.ID() == "p2-preparer" {
-			runAs = "root"
-		} else {
-			runAs = manifest.ID()
-		}
-		return &HoistLaunchable{launchableStanza.Location, launchableId, runAs, pod.EnvDir(), DefaultFetcher(), launchableRootDir}, nil
+		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
+
+		return &HoistLaunchable{launchableStanza.Location, launchableId, pod.RunAs, pod.EnvDir(), DefaultFetcher(), launchableRootDir}, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)
 		pod.logLaunchableError(launchableStanza.LaunchableId, err, "Unknown launchable type")

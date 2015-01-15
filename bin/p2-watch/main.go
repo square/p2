@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/square/p2/pkg/intent"
-	"github.com/square/p2/pkg/pods"
 	"gopkg.in/alecthomas/kingpin.v1"
 )
 
@@ -35,13 +34,13 @@ func main() {
 
 	quit := make(chan struct{})
 	errChan := make(chan error)
-	podCh := make(chan pods.PodManifest)
+	podCh := make(chan intent.ManifestResult)
 	go store.WatchPods(path, quit, errChan, podCh)
 	for {
 		select {
-		case manifest := <-podCh:
+		case result := <-podCh:
 			fmt.Println("")
-			manifest.Write(os.Stdout)
+			result.Manifest.Write(os.Stdout)
 		case err := <-errChan:
 			log.Fatalf("Error occurred while listening to pods: %s", err)
 		}

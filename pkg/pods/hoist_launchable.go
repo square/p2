@@ -194,9 +194,14 @@ func (hoistLaunchable *HoistLaunchable) Executables(serviceBuilder *runit.Servic
 	}
 }
 
-func (hoistLaunchable *HoistLaunchable) Install() error {
+func (hoistLaunchable *HoistLaunchable) Installed() bool {
 	installDir := hoistLaunchable.InstallDir()
-	if _, err := os.Stat(installDir); err == nil {
+	_, err := os.Stat(installDir)
+	return err == nil
+}
+
+func (hoistLaunchable *HoistLaunchable) Install() error {
+	if hoistLaunchable.Installed() {
 		// install is idempotent, no-op if already installed
 		return nil
 	}
@@ -214,7 +219,7 @@ func (hoistLaunchable *HoistLaunchable) Install() error {
 	}
 	defer fd.Close()
 
-	err = hoistLaunchable.extractTarGz(fd, installDir)
+	err = hoistLaunchable.extractTarGz(fd, hoistLaunchable.InstallDir())
 	if err != nil {
 		return err
 	}

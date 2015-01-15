@@ -6,5 +6,9 @@ import (
 
 type HoistExecutable struct {
 	runit.Service
-	execPath string
+	ExecPath string
+}
+
+func (e HoistExecutable) Execute(env []string) (string, error) {
+	return "", nil
 }

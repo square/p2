@@ -203,10 +203,10 @@ func TestStart(t *testing.T) {
   - %s
 `, executables[0].Name,
 		hoistLaunchable.ConfigDir,
-		executables[0].execPath,
+		executables[0].ExecPath,
 		executables[1].Name,
 		hoistLaunchable.ConfigDir,
-		executables[1].execPath)
+		executables[1].ExecPath)
 
 	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod__testLaunchable.yaml")
 	f, err := os.Open(outFilePath)
@@ -246,10 +246,10 @@ func TestFailingStart(t *testing.T) {
   - %s
 `, executables[0].Name,
 		hoistLaunchable.ConfigDir,
-		executables[0].execPath,
+		executables[0].ExecPath,
 		executables[1].Name,
 		hoistLaunchable.ConfigDir,
-		executables[1].execPath)
+		executables[1].ExecPath)
 
 	f, err := os.Open(outFilePath)
 	defer f.Close()

@@ -16,12 +16,12 @@ type StackError interface {
 }
 
 type stackError struct {
-	message string
+	Message string
 	stack   []byte
 }
 
 func (e *stackError) Error() string {
-	return e.message
+	return e.Message
 }
 
 func (e *stackError) Stack() []byte {

@@ -23,7 +23,7 @@ type RealityStore interface {
 }
 type IntentStore interface {
 	RegisterPodService(pods.PodManifest) error
-	WatchPods(string, <-chan struct{}, chan<- error, chan<- pods.PodManifest) error
+	WatchPods(string, <-chan struct{}, chan<- error, chan<- intent.ManifestResult) error
 }
 
 type Preparer struct {
@@ -67,7 +67,7 @@ func (p *Preparer) WatchForPodManifestsForNode() {
 	// This allows us to signal the goroutine watching consul to quit
 	watcherQuit := make(<-chan struct{})
 	errChan := make(chan error)
-	podChan := make(chan pods.PodManifest)
+	podChan := make(chan intent.ManifestResult)
 
 	go p.iStore.WatchPods(path, watcherQuit, errChan, podChan)
 
@@ -83,15 +83,15 @@ func (p *Preparer) WatchForPodManifestsForNode() {
 			p.Logger.WithFields(logrus.Fields{
 				"inner_err": err,
 			}).Errorln("there was an error reading the manifest")
-		case manifest := <-podChan:
-			podId := manifest.ID()
+		case result := <-podChan:
+			podId := result.Manifest.ID()
 			if podChanMap[podId] == nil {
 				// No goroutine is servicing this app currently, let's start one
 				podChanMap[podId] = make(chan pods.PodManifest)
 				quitChanMap[podId] = make(chan struct{})
 				go p.handlePods(podChanMap[podId], quitChanMap[podId])
 			}
-			podChanMap[podId] <- manifest
+			podChanMap[podId] <- result.Manifest
 		}
 	}
 }
