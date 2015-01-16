@@ -1,14 +1,11 @@
 package main
 
 import (
-	"bytes"
-	"fmt"
 	"log"
 	"os"
 	"time"
 
 	"github.com/square/p2/pkg/intent"
-	"github.com/square/p2/pkg/kv-consul"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
 	"gopkg.in/alecthomas/kingpin.v1"
@@ -75,23 +72,16 @@ func InstallConsul(consulPod *pods.Pod, consulManifest *pods.PodManifest) error 
 }
 
 func RegisterBaseAgentInConsul(agentManifest *pods.PodManifest) error {
-	// TODO: refactor in terms of intent.SetPod
-	client, err := ppkv.NewClient()
+	store, err := intent.LookupStore(intent.Options{})
 	if err != nil {
 		return err
 	}
-	b := bytes.Buffer{}
-	agentManifest.Write(&b)
 	hostname, err := os.Hostname()
 	if err != nil {
 		return err
 	}
-	endpoint := fmt.Sprintf("%s/%s/%s", intent.INTENT_TREE, hostname, agentManifest.ID())
-	err = client.Put(endpoint, b.String())
-	if err != nil {
-		return util.Errorf("Could not PUT %s into %s: %s", b.String(), endpoint, err)
-	}
-	return nil
+	_, err = store.SetPod(hostname, *agentManifest)
+	return err
 }
 
 func InstallBaseAgent(agentManifest *pods.PodManifest) error {
