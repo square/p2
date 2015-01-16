@@ -15,6 +15,7 @@ import (
 )
 
 const INTENT_TREE string = "intent"
+const HOOK_TREE string = "hooks"
 
 type ConsulClient interface {
 	KV() *consulapi.KV

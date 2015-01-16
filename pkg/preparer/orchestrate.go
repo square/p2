@@ -34,11 +34,12 @@ type IntentStore interface {
 }
 
 type Preparer struct {
-	node   string
-	iStore IntentStore
-	rStore RealityStore
-	hooks  Hooks
-	Logger logging.Logger
+	node         string
+	iStore       IntentStore
+	rStore       RealityStore
+	hooks        Hooks
+	hookListener hooks.Listener
+	Logger       logging.Logger
 }
 
 func New(nodeName string, consulAddress string, hooksDirectory string, logger logging.Logger) (*Preparer, error) {
@@ -58,13 +59,38 @@ func New(nodeName string, consulAddress string, hooksDirectory string, logger lo
 		return nil, err
 	}
 
+	listener := hooks.Listener{
+		Intent:         iStore,
+		HookPrefix:     intent.HOOK_TREE,
+		DestinationDir: pods.DEFAULT_PATH,
+		ExecDir:        hooksDirectory,
+		Logger:         logger,
+	}
+
 	return &Preparer{
-		node:   nodeName,
-		iStore: iStore,
-		rStore: rStore,
-		hooks:  hooks.Hooks(hooksDirectory, &logger),
-		Logger: logger,
+		node:         nodeName,
+		iStore:       iStore,
+		rStore:       rStore,
+		hooks:        hooks.Hooks(hooksDirectory, &logger),
+		hookListener: listener,
+		Logger:       logger,
 	}, nil
+}
+
+func (p *Preparer) WatchForHooks(quit chan struct{}) {
+	hookErrCh := make(chan error)
+	hookQuitCh := make(chan struct{})
+
+	go p.hookListener.Sync(hookQuitCh, hookErrCh)
+	for {
+		select {
+		case <-quit:
+			hookQuitCh <- struct{}{}
+			return
+		case err := <-hookErrCh:
+			p.Logger.WithField("err", err).Errorln("Error updating hooks")
+		}
+	}
 }
 
 func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
