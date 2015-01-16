@@ -194,7 +194,7 @@ func TestPreparerWillNotInstallOrLaunchIfSHAIsTheSame(t *testing.T) {
 	Assert(t).IsFalse(hooks.ranBeforeInstall, "Should not have run hooks prior to install")
 	Assert(t).IsFalse(testPod.installed, "Should not have installed")
 	Assert(t).IsFalse(testPod.launched, "Should not have attempted to launch")
-	Assert(t).IsFalse(hooks.ranAfterLaunch, "Should not have launched")
+	Assert(t).IsFalse(hooks.ranAfterLaunch, "Should not have run after_launch hooks")
 }
 
 func TestPreparerWillLaunchIfRealityErrsOnRead(t *testing.T) {
