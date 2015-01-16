@@ -5,7 +5,6 @@ package intent
 import (
 	"bytes"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/armon/consul-api"
@@ -91,16 +90,7 @@ func (i *Store) WatchPods(path string, quit <-chan struct{}, errChan chan<- erro
 			errChan <- err
 		case rawManifests := <-kvPairCh:
 			for _, pair := range rawManifests {
-				str := string(pair.Value)
-				if len(str) == 0 {
-					errChan <- util.Errorf("An empty string was returned for the manifest %s", pair.Key)
-					continue
-				}
-				if str[0] == '"' { // escaped for JSON YAML leads and ends with a doublequote and has escaped newlines
-					str = str[1 : len(str)-1] // remove leading, following double quotes from escaping
-					str = strings.Replace(str, `\n`, "\n", -1)
-				}
-				manifest, err := pods.PodManifestFromString(str)
+				manifest, err := pods.PodManifestFromBytes(pair.Value)
 				if err != nil {
 					errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value)
 				} else {
