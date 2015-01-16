@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
@@ -28,6 +27,7 @@ type HoistLaunchable struct {
 	ConfigDir   string  // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
 	FetchToFile Fetcher // Callback that downloads the file from the remote location.
 	RootDir     string  // The root directory of the launchable, containing N:N>=1 installs.
+	TermTimeout int     // The number of seconds to wait to Stop or Restart the service. Ignored if 0
 }
 
 func DefaultFetcher() Fetcher {
@@ -138,17 +138,6 @@ func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuild
 	for _, executable := range executables {
 		_, err := sv.Restart(&executable.Service)
 		if err != runit.SuperviseOkMissing {
-			return err
-		}
-		maxRetries := 6
-		for i := 0; i < maxRetries; i++ {
-			_, err = sv.Stat(&executable.Service)
-			if err == nil {
-				break
-			}
-			<-time.After(1 * time.Second)
-		}
-		if err != nil {
 			return err
 		}
 	}
@@ -307,7 +296,7 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 
 			_, err = io.Copy(f, tr)
 			if err != nil {
-				return util.Errorf("Unable to copy file to destination when extracting tar.gz: %s", err)
+				return util.Errorf("Unable to copy file to destination when extracting %s from tar.gz: %s", hdr.Name, err)
 			}
 		}
 	}
