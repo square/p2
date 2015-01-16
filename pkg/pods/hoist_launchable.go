@@ -27,7 +27,6 @@ type HoistLaunchable struct {
 	ConfigDir   string  // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
 	FetchToFile Fetcher // Callback that downloads the file from the remote location.
 	RootDir     string  // The root directory of the launchable, containing N:N>=1 installs.
-	TermTimeout int     // The number of seconds to wait to Stop or Restart the service. Ignored if 0
 }
 
 func DefaultFetcher() Fetcher {
