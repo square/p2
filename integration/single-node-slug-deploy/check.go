@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/square/p2/pkg/intent"
 	"github.com/square/p2/pkg/kv-consul"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/user"
@@ -145,7 +146,7 @@ func postHelloManifest(dir string) error {
 		return err
 	}
 	hostname, _ := os.Hostname()
-	return client.Put(fmt.Sprintf("nodes/%s/hello", hostname), buf.String())
+	return client.Put(fmt.Sprintf("%s/%s/hello", intent.INTENT_TREE, hostname), buf.String())
 }
 
 func verifyHelloRunning() error {

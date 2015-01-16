@@ -45,6 +45,10 @@ func PodFromManifestId(manifestId string) *Pod {
 
 var NoCurrentManifest error = fmt.Errorf("No current manifest for this pod")
 
+func (pod *Pod) Path() string {
+	return pod.path
+}
+
 func (pod *Pod) CurrentManifest() (*PodManifest, error) {
 	currentManPath := pod.CurrentPodManifestPath()
 	if _, err := os.Stat(currentManPath); os.IsNotExist(err) {
@@ -364,7 +368,6 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*HoistLaunchab
 	if launchableStanza.LaunchableType == "hoist" {
 		launchableRootDir := path.Join(pod.path, launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
-
 		return &HoistLaunchable{launchableStanza.Location, launchableId, pod.RunAs, pod.EnvDir(), DefaultFetcher(), launchableRootDir}, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)

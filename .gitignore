@@ -1,6 +1,6 @@
 .vagrant
 target/*
-p2-preparer
-p2-launch
-p2-bootstrap
-p2-bin2pod
+/p2-preparer
+/p2-launch
+/p2-bootstrap
+/p2-bin2pod
