@@ -3,6 +3,8 @@ package main
 import (
 	"io/ioutil"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/logging"
@@ -89,8 +91,19 @@ func main() {
 		"hooks_dir": preparerConfig.HooksDirectory,
 	}).Infoln("Preparer started successfully") // change to logrus message
 
-	prep.WatchForPodManifestsForNode()
-	logger.WithFields(logrus.Fields{
-		"stopping": true,
-	}).Infoln("Terminating")
+	quitCh := make(chan struct{})
+	go prep.WatchForPodManifestsForNode(quitCh)
+
+	waitForTermination(logger, quitCh)
+
+	logger.NoFields().Infoln("Terminating")
+}
+
+func waitForTermination(logger logging.Logger, quitCh chan struct{}) {
+	signalCh := make(chan os.Signal, 2)
+	signal.Notify(signalCh, syscall.SIGTERM, os.Interrupt)
+	received := <-signalCh
+	logger.WithField("signal", received.String()).Infoln("Stopping work")
+	quitCh <- struct{}{}
+	<-quitCh // acknowledgement
 }

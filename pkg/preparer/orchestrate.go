@@ -67,7 +67,7 @@ func New(nodeName string, consulAddress string, hooksDirectory string, logger lo
 	}, nil
 }
 
-func (p *Preparer) WatchForPodManifestsForNode() {
+func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	pods.Log = p.Logger
 	path := fmt.Sprintf("%s/%s", intent.INTENT_TREE, p.node)
 
@@ -99,7 +99,16 @@ func (p *Preparer) WatchForPodManifestsForNode() {
 				go p.handlePods(podChanMap[podId], quitChanMap[podId])
 			}
 			podChanMap[podId] <- result.Manifest
+		case <-quitAndAck:
+			for podToQuit, quitCh := range quitChanMap {
+				p.Logger.WithField("pod", podToQuit).Infoln("Quitting...")
+				quitCh <- struct{}{}
+			}
+			p.Logger.NoFields().Infoln("Done, acknowledging quit")
+			quitAndAck <- struct{}{} // acknowledge quit
+			return
 		}
+
 	}
 }
 
