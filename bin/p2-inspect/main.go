@@ -8,9 +8,7 @@ import (
 	"strings"
 
 	"github.com/armon/consul-api"
-	"github.com/square/p2/pkg/intent"
-	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/reality"
+	"github.com/square/p2/pkg/kp"
 	"gopkg.in/alecthomas/kingpin.v1"
 )
 
@@ -42,18 +40,13 @@ func main() {
 	kingpin.Version("0.0.1")
 	kingpin.Parse()
 
-	client, err := consulapi.NewClient(&consulapi.Config{
-		Address: *consulUrl,
-	})
-	if err != nil {
-		log.Fatalf("Could not open consul client: %s", err)
-	}
+	store := kp.NewStore(kp.Options{Address: *consulUrl})
 
-	intents, _, err := client.KV().List(intent.INTENT_TREE, nil)
+	intents, _, err := store.ListPods(kp.INTENT_TREE)
 	if err != nil {
 		log.Fatalf("Could not list intent kvpairs: %s", err)
 	}
-	realities, _, err := client.KV().List(reality.REALITY_TREE, nil)
+	realities, _, err := store.ListPods(kp.REALITY_TREE)
 	if err != nil {
 		log.Fatalf("Could not list reality kvpairs: %s", err)
 	}
@@ -72,6 +65,10 @@ func main() {
 		}
 	}
 
+	// error is always nil
+	client, _ := consulapi.NewClient(&consulapi.Config{
+		Address: *consulUrl,
+	})
 	for podId := range statusMap {
 		checks, _, err := client.Health().Checks(podId, nil)
 		if err != nil {
@@ -96,8 +93,8 @@ func main() {
 	enc.Encode(statusMap)
 }
 
-func addKVPToMap(kvp *consulapi.KVPair, source int, filterNode, filterPod string, statuses map[string]map[string]NodePodStatus) error {
-	keySegs := strings.Split(kvp.Key, "/")
+func addKVPToMap(result kp.ManifestResult, source int, filterNode, filterPod string, statuses map[string]map[string]NodePodStatus) error {
+	keySegs := strings.Split(result.Path, "/")
 	nodeName := keySegs[1]
 	podId := keySegs[2]
 
@@ -113,11 +110,7 @@ func addKVPToMap(kvp *consulapi.KVPair, source int, filterNode, filterPod string
 	}
 	old := statuses[podId][nodeName]
 
-	manifest, err := pods.PodManifestFromBytes(kvp.Value)
-	if err != nil {
-		return err
-	}
-	manifestSHA, err := manifest.SHA()
+	manifestSHA, err := result.Manifest.SHA()
 	if err != nil {
 		return err
 	}
