@@ -8,6 +8,7 @@ import (
 
 	"github.com/armon/consul-api"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/util"
 )
 
 type ManifestResult struct {
@@ -88,4 +89,44 @@ func (s *Store) ListPods(keyPrefix string) ([]ManifestResult, time.Duration, err
 	}
 
 	return ret, writeMeta.RequestTime, nil
+}
+
+// WatchPods watches the key-value store for any changes under the given key
+// prefix. The resulting manifests are emitted on podChan. WatchPods does not
+// return in the event of an error, but it will emit the error on errChan. To
+// terminate WatchPods, emit on quitChan.
+//
+// All the values under the given key prefix must be pod manifests. Emitted
+// manifests might be unchanged from the last time they were read. It is the
+// caller's responsibility to filter out unchanged manifests.
+func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult) {
+	defer close(podChan)
+	defer close(errChan)
+
+	var curIndex uint64 = 0
+
+	for {
+		select {
+		case <-quitChan:
+			return
+		default:
+		}
+
+		pairs, meta, err := s.client.KV().List(keyPrefix, &consulapi.QueryOptions{
+			WaitIndex: curIndex,
+		})
+		curIndex = meta.LastIndex
+		if err != nil {
+			errChan <- err
+		} else {
+			for _, pair := range pairs {
+				manifest, err := pods.PodManifestFromBytes(pair.Value)
+				if err != nil {
+					errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value)
+				} else {
+					podChan <- ManifestResult{*manifest, pair.Key}
+				}
+			}
+		}
+	}
 }
