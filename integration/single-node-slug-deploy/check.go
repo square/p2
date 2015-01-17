@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/intent"
-	"github.com/square/p2/pkg/kv-consul"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
@@ -136,17 +135,14 @@ func postHelloManifest(dir string) error {
 	manifest.LaunchableStanzas = map[string]pods.LaunchableStanza{
 		"hello": stanza,
 	}
-	client, err := ppkv.NewClient()
-	if err != nil {
-		return err
-	}
-	buf := bytes.Buffer{}
-	err = manifest.Write(&buf)
+
+	store, err := intent.LookupStore(intent.Options{})
 	if err != nil {
 		return err
 	}
 	hostname, _ := os.Hostname()
-	return client.Put(fmt.Sprintf("%s/%s/hello", intent.INTENT_TREE, hostname), buf.String())
+	_, err = store.SetPod(hostname, *manifest)
+	return err
 }
 
 func verifyHelloRunning() error {
