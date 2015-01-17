@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/square/p2/pkg/intent"
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/runit"
@@ -20,7 +20,7 @@ import (
 var eventPrefix = regexp.MustCompile("/?([a-zA-Z\\_]+)\\/.+")
 
 type IntentStore interface {
-	WatchPods(watchPath string, quit <-chan struct{}, errCh chan<- error, manifests chan<- intent.ManifestResult) error
+	WatchPods(watchPath string, quit <-chan struct{}, errCh chan<- error, manifests chan<- kp.ManifestResult)
 }
 
 type Listener struct {
@@ -42,7 +42,7 @@ func (l *Listener) Sync(quit <-chan struct{}, errCh chan<- error) {
 
 	watcherQuit := make(chan struct{})
 	watcherErrCh := make(chan error)
-	podChan := make(chan intent.ManifestResult)
+	podChan := make(chan kp.ManifestResult)
 
 	go l.Intent.WatchPods(watchPath, watcherQuit, watcherErrCh, podChan)
 

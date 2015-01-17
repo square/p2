@@ -1,15 +1,13 @@
 package preparer
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/hooks"
-	"github.com/square/p2/pkg/intent"
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/reality"
 )
 
 type Pod interface {
@@ -24,44 +22,29 @@ type Hooks interface {
 	RunAfterLaunch(pod hooks.Pod, manifest *pods.PodManifest) error
 }
 
-type RealityStore interface {
-	Pod(string, string) (*pods.PodManifest, error)
+type Store interface {
+	Pod(string) (*pods.PodManifest, time.Duration, error)
 	SetPod(string, pods.PodManifest) (time.Duration, error)
-}
-type IntentStore interface {
-	RegisterPodService(pods.PodManifest) error
-	WatchPods(string, <-chan struct{}, chan<- error, chan<- intent.ManifestResult) error
+	RegisterService(pods.PodManifest) error
+	WatchPods(string, <-chan struct{}, chan<- error, chan<- kp.ManifestResult)
 }
 
 type Preparer struct {
 	node         string
-	iStore       IntentStore
-	rStore       RealityStore
+	store        Store
 	hooks        Hooks
 	hookListener hooks.Listener
 	Logger       logging.Logger
 }
 
 func New(nodeName string, consulAddress string, hooksDirectory string, logger logging.Logger) (*Preparer, error) {
-	iStore, err := intent.LookupStore(intent.Options{
-		Token:   nodeName,
+	store := kp.NewStore(kp.Options{
 		Address: consulAddress,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	rStore, err := reality.LookupStore(reality.Options{
-		Token:   nodeName,
-		Address: consulAddress,
-	})
-	if err != nil {
-		return nil, err
-	}
 
 	listener := hooks.Listener{
-		Intent:         iStore,
-		HookPrefix:     intent.HOOK_TREE,
+		Intent:         store,
+		HookPrefix:     kp.HOOK_TREE,
 		DestinationDir: pods.DEFAULT_PATH,
 		ExecDir:        hooksDirectory,
 		Logger:         logger,
@@ -69,8 +52,7 @@ func New(nodeName string, consulAddress string, hooksDirectory string, logger lo
 
 	return &Preparer{
 		node:         nodeName,
-		iStore:       iStore,
-		rStore:       rStore,
+		store:        store,
 		hooks:        hooks.Hooks(hooksDirectory, &logger),
 		hookListener: listener,
 		Logger:       logger,
@@ -95,14 +77,14 @@ func (p *Preparer) WatchForHooks(quit chan struct{}) {
 
 func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	pods.Log = p.Logger
-	path := fmt.Sprintf("%s/%s", intent.INTENT_TREE, p.node)
+	path := kp.IntentPath(p.node)
 
 	// This allows us to signal the goroutine watching consul to quit
 	watcherQuit := make(<-chan struct{})
 	errChan := make(chan error)
-	podChan := make(chan intent.ManifestResult)
+	podChan := make(chan kp.ManifestResult)
 
-	go p.iStore.WatchPods(path, watcherQuit, errChan, podChan)
+	go p.store.WatchPods(path, watcherQuit, errChan, podChan)
 
 	// we will have one long running goroutine for each app installed on this
 	// host. We keep a map of podId => podChan so we can send the new manifests
@@ -186,7 +168,8 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 	// do not remove the logger argument, it's not the same as p.Logger
 
 	// get currently running pod to compare with the new pod
-	currentManifest, err := p.rStore.Pod(p.node, newManifest.ID())
+	realityPath := kp.RealityPath(p.node, newManifest.ID())
+	currentManifest, _, err := p.store.Pod(realityPath)
 	currentSHA := ""
 	if currentManifest != nil {
 		currentSHA, _ = currentManifest.SHA()
@@ -230,7 +213,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 			return false
 		}
 
-		err = p.iStore.RegisterPodService(*newManifest)
+		err = p.store.RegisterService(*newManifest)
 		if err != nil {
 			logger.WithField("err", err).Errorln("Service registration failed")
 			return false
@@ -241,7 +224,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 				"err": err,
 			}).Errorln("Launch failed")
 		} else {
-			duration, err := p.rStore.SetPod(p.node, *newManifest)
+			duration, err := p.store.SetPod(realityPath, *newManifest)
 			if err != nil {
 				logger.WithFields(logrus.Fields{
 					"err":      err,
