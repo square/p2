@@ -72,11 +72,6 @@ func main() {
 	if preparerConfig.HooksDirectory == "" {
 		preparerConfig.HooksDirectory = "/usr/local/p2hooks.d"
 	}
-	logFile, err := os.OpenFile("/tmp/platypus", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		os.Exit(1)
-	}
-	defer logFile.Close()
 
 	prep, err := preparer.New(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logger)
 	if err != nil {
@@ -91,19 +86,22 @@ func main() {
 		"hooks_dir": preparerConfig.HooksDirectory,
 	}).Infoln("Preparer started successfully") // change to logrus message
 
-	quitCh := make(chan struct{})
-	go prep.WatchForPodManifestsForNode(quitCh)
+	quitMainUpdate := make(chan struct{})
+	quitHookUpdate := make(chan struct{})
+	go prep.WatchForPodManifestsForNode(quitMainUpdate)
+	go prep.WatchForHooks(quitHookUpdate)
 
-	waitForTermination(logger, quitCh)
+	waitForTermination(logger, quitMainUpdate, quitHookUpdate)
 
 	logger.NoFields().Infoln("Terminating")
 }
 
-func waitForTermination(logger logging.Logger, quitCh chan struct{}) {
+func waitForTermination(logger logging.Logger, quitMainUpdate, quitHookUpdate chan struct{}) {
 	signalCh := make(chan os.Signal, 2)
 	signal.Notify(signalCh, syscall.SIGTERM, os.Interrupt)
 	received := <-signalCh
 	logger.WithField("signal", received.String()).Infoln("Stopping work")
-	quitCh <- struct{}{}
-	<-quitCh // acknowledgement
+	quitHookUpdate <- struct{}{}
+	quitMainUpdate <- struct{}{}
+	<-quitMainUpdate // acknowledgement
 }

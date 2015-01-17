@@ -20,7 +20,7 @@ import (
 var eventPrefix = regexp.MustCompile("/?([a-zA-Z\\_]+)\\/.+")
 
 type IntentStore interface {
-	WatchPods(watchPath string, quit chan struct{}, errCh chan error, manifests chan intent.ManifestResult)
+	WatchPods(watchPath string, quit <-chan struct{}, errCh chan<- error, manifests chan<- intent.ManifestResult) error
 }
 
 type Listener struct {

@@ -18,12 +18,14 @@ import (
 
 var Log logging.Logger
 
+const DEFAULT_PATH = "/data/pods"
+
 func init() {
 	Log = logging.NewLogger(logrus.Fields{})
 }
 
 func PodPath(manifestId string) string {
-	return path.Join("/data/pods", manifestId)
+	return path.Join(DEFAULT_PATH, manifestId)
 }
 
 type Pod struct {
