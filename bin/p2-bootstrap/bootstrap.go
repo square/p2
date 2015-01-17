@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/square/p2/pkg/intent"
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
 	"gopkg.in/alecthomas/kingpin.v1"
@@ -72,15 +72,12 @@ func InstallConsul(consulPod *pods.Pod, consulManifest *pods.PodManifest) error 
 }
 
 func RegisterBaseAgentInConsul(agentManifest *pods.PodManifest) error {
-	store, err := intent.LookupStore(intent.Options{})
-	if err != nil {
-		return err
-	}
+	store := kp.NewStore(kp.Options{})
 	hostname, err := os.Hostname()
 	if err != nil {
 		return err
 	}
-	_, err = store.SetPod(hostname, *agentManifest)
+	_, err = store.SetPod(kp.IntentPath(hostname, agentManifest.ID()), *agentManifest)
 	return err
 }
 
