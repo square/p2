@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/square/p2/pkg/intent"
+	"github.com/square/p2/pkg/kp"
 	"gopkg.in/alecthomas/kingpin.v1"
 )
 
@@ -17,24 +17,22 @@ func main() {
 	kingpin.Version("0.0.1")
 	kingpin.Parse()
 
-	store, err := intent.LookupStore(intent.Options{})
-	if err != nil {
-		log.Fatalf("Could not look up intent store: %s", err)
-	}
-	node := *nodeName
-	if node == "" {
-		node, err = os.Hostname()
+	store := kp.NewStore(kp.Options{})
+
+	if *nodeName == "" {
+		hostname, err := os.Hostname()
 		if err != nil {
 			log.Fatalf("Could not get the hostname to do scheduling: %s", err)
 		}
+		*nodeName = hostname
 	}
-	path := fmt.Sprintf("%s/%s", intent.INTENT_TREE, node)
 
+	path := kp.IntentPath(*nodeName)
 	log.Printf("Watching manifests at %s\n", path)
 
 	quit := make(chan struct{})
 	errChan := make(chan error)
-	podCh := make(chan intent.ManifestResult)
+	podCh := make(chan kp.ManifestResult)
 	go store.WatchPods(path, quit, errChan, podCh)
 	for {
 		select {

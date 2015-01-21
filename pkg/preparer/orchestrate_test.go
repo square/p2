@@ -9,7 +9,7 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/hooks"
-	"github.com/square/p2/pkg/intent"
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
@@ -92,34 +92,31 @@ type FakeStore struct {
 	currentManifestError error
 }
 
-func (f *FakeStore) Pod(string, string) (*pods.PodManifest, error) {
+func (f *FakeStore) Pod(string) (*pods.PodManifest, time.Duration, error) {
 	if f.currentManifest == nil {
-		return nil, pods.NoCurrentManifest
+		return nil, 0, pods.NoCurrentManifest
 	}
 	if f.currentManifestError != nil {
-		return nil, f.currentManifestError
+		return nil, 0, f.currentManifestError
 	}
-	return f.currentManifest, nil
+	return f.currentManifest, 0, nil
 }
 
 func (f *FakeStore) SetPod(string, pods.PodManifest) (time.Duration, error) {
 	return 0, nil
 }
 
-func (f *FakeStore) RegisterPodService(pods.PodManifest) error {
+func (f *FakeStore) RegisterService(pods.PodManifest) error {
 	return nil
 }
 
-func (f *FakeStore) WatchPods(string, <-chan struct{}, chan<- error, chan<- intent.ManifestResult) error {
-	return nil
-}
+func (f *FakeStore) WatchPods(string, <-chan struct{}, chan<- error, chan<- kp.ManifestResult) {}
 
 func testPreparer(f *FakeStore) (*Preparer, *fakeHooks) {
 	p, _ := New("hostname", "0.0.0.0", util.From(runtime.Caller(0)).ExpandPath("test_hooks"), logging.DefaultLogger)
 	hooks := &fakeHooks{}
 	p.hooks = hooks
-	p.iStore = f
-	p.rStore = f
+	p.store = f
 	return p, hooks
 }
 

@@ -9,27 +9,27 @@ import (
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
-	"github.com/square/p2/pkg/intent"
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
 )
 
 type fakeIntentStore struct {
-	manifests   []intent.ManifestResult
+	manifests   []kp.ManifestResult
 	quit        chan struct{}
 	errToSend   error
 	watchedPath string
 }
 
-func fakeStoreWithManifests(manifests ...intent.ManifestResult) *fakeIntentStore {
+func fakeStoreWithManifests(manifests ...kp.ManifestResult) *fakeIntentStore {
 	return &fakeIntentStore{
 		manifests: manifests,
 		quit:      make(chan struct{}),
 	}
 }
 
-func (f *fakeIntentStore) WatchPods(watchedPath string, quitCh <-chan struct{}, errCh chan<- error, podCh chan<- intent.ManifestResult) error {
+func (f *fakeIntentStore) WatchPods(watchedPath string, quitCh <-chan struct{}, errCh chan<- error, podCh chan<- kp.ManifestResult) {
 	f.watchedPath = watchedPath
 	go func() {
 		for _, manifest := range f.manifests {
@@ -42,7 +42,6 @@ func (f *fakeIntentStore) WatchPods(watchedPath string, quitCh <-chan struct{}, 
 		}
 	}()
 	<-quitCh
-	return nil
 }
 
 func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
@@ -53,7 +52,7 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 	defer os.RemoveAll(execDir)
 	Assert(t).IsNil(err, "should not have erred creating a tempdir")
 
-	fakeIntent := fakeStoreWithManifests(intent.ManifestResult{
+	fakeIntent := fakeStoreWithManifests(kp.ManifestResult{
 		Path: path.Join(hookPrefix, "before_install/users"),
 		Manifest: pods.PodManifest{
 			Id: "users",
