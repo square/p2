@@ -13,6 +13,7 @@ import (
 
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/uri"
+	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v1"
 )
 
@@ -69,6 +70,7 @@ func activeDir() string {
 }
 
 func main() {
+	bin2pod.Version(version.VERSION)
 	bin2pod.Parse(os.Args[1:])
 
 	res := Result{}
