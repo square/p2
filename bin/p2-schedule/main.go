@@ -7,6 +7,7 @@ import (
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v1"
 )
 
@@ -17,7 +18,7 @@ var (
 )
 
 func main() {
-	kingpin.Version("0.0.1")
+	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 
 	store := kp.NewStore(kp.Options{})
