@@ -13,6 +13,7 @@ import (
 var (
 	manifests = kingpin.Arg("manifests", "one or more manifest files to schedule in the intent store").Strings()
 	nodeName  = kingpin.Flag("node", "The node to do the scheduling on. Uses the hostname by default.").String()
+	asHook    = kingpin.Flag("hook", "Schedule as a hook, not an intended pod. False by default.").Default("false").Bool()
 )
 
 func main() {
@@ -40,7 +41,11 @@ func main() {
 			os.Stderr.WriteString(fmt.Sprintf("Could not read manifest at %s: %s\n", manifestPath, err))
 			continue
 		}
-		duration, err := store.SetPod(kp.IntentPath(*nodeName, manifest.ID()), *manifest)
+		path := kp.IntentPath(*nodeName, manifest.ID())
+		if *asHook {
+			path = kp.HookPath(*nodeName, manifest.ID())
+		}
+		duration, err := store.SetPod(path, *manifest)
 		if err != nil {
 			os.Stderr.WriteString(fmt.Sprintf("Could not write manifest %s to intent store: %s\n", manifest.ID(), err))
 			continue
