@@ -10,7 +10,8 @@ import (
 )
 
 var (
-	nodeName = kingpin.Flag("node", "The node to do the scheduling on. Uses the hostname by default.").String()
+	nodeName     = kingpin.Flag("node", "The node to do the scheduling on. Uses the hostname by default.").String()
+	watchReality = kingpin.Flag("reality", "Watch the reality store instead of the intent store. False by default").Default("false").Bool()
 )
 
 func main() {
@@ -28,6 +29,9 @@ func main() {
 	}
 
 	path := kp.IntentPath(*nodeName)
+	if *watchReality {
+		path = kp.RealityPath(*nodeName)
+	}
 	log.Printf("Watching manifests at %s\n", path)
 
 	quit := make(chan struct{})
