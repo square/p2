@@ -34,7 +34,7 @@ func TestInstall(t *testing.T) {
 	for _, stanza := range launchableStanzas {
 		fc := new(FakeCurl)
 
-		launchable := &HoistLaunchable{testLocation, stanza.LaunchableId, currentUser.Username, launchableHome, fc.File, launchableHome}
+		launchable := &HoistLaunchable{testLocation, stanza.LaunchableId, currentUser.Username, launchableHome, fc.File, launchableHome, ""}
 
 		err = launchable.Install()
 		Assert(t).IsNil(err, "there should not have been an error")
@@ -61,7 +61,7 @@ func TestInstall(t *testing.T) {
 func TestInstallDir(t *testing.T) {
 	tempDir := os.TempDir()
 	testLocation := "http://someserver/test_launchable_abc123.tar.gz"
-	launchable := &HoistLaunchable{testLocation, "testLaunchable", "testuser", tempDir, new(FakeCurl).File, tempDir}
+	launchable := &HoistLaunchable{testLocation, "testLaunchable", "testuser", tempDir, new(FakeCurl).File, tempDir, ""}
 
 	installDir := launchable.InstallDir()
 

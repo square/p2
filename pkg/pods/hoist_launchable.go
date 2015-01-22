@@ -27,6 +27,7 @@ type HoistLaunchable struct {
 	ConfigDir   string  // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
 	FetchToFile Fetcher // Callback that downloads the file from the remote location.
 	RootDir     string  // The root directory of the launchable, containing N:N>=1 installs.
+	Chpst       string  // The path to chpst
 }
 
 func DefaultFetcher() Fetcher {
@@ -51,20 +52,26 @@ func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilde
 }
 
 func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-	err := hoistLaunchable.MakeCurrent()
-	if err != nil {
-		return util.Errorf("Could not make %s current: %s", err)
-	}
-
 	// Should probably do something with output at some point
 	// probably want to do something with output at some point
-	err = hoistLaunchable.Start(serviceBuilder, sv)
+	err := hoistLaunchable.Start(serviceBuilder, sv)
 	if err != nil {
 		return util.Errorf("Could not launch %s: %s", hoistLaunchable.Id, err)
 	}
 
 	_, err = hoistLaunchable.Enable()
 	return err
+}
+
+func (hoistLaunchable *HoistLaunchable) PostActivate() (string, error) {
+	output, err := hoistLaunchable.invokeBinScript("post-activate")
+
+	// providing a post-activate script is optional, ignore those errors
+	if err != nil && !os.IsNotExist(err) {
+		return output, err
+	}
+
+	return output, nil
 }
 
 func (hoistLaunchable *HoistLaunchable) Disable() (string, error) {
@@ -96,9 +103,10 @@ func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, 
 		return "", err
 	}
 
-	cmd := exec.Command(cmdPath)
+	cmd := exec.Command(hoistLaunchable.Chpst, "-u", hoistLaunchable.RunAs, cmdPath)
 	buffer := bytes.Buffer{}
 	cmd.Stdout = &buffer
+	cmd.Stderr = &buffer
 	err = cmd.Run()
 	if err != nil {
 		return buffer.String(), err
@@ -297,6 +305,7 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 			if err != nil {
 				return util.Errorf("Unable to copy file to destination when extracting %s from tar.gz: %s", hdr.Name, err)
 			}
+			f.Close() // eagerly release file descriptors rather than letting them pile up
 		}
 	}
 	return nil

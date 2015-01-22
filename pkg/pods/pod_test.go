@@ -183,6 +183,7 @@ func TestBuildRunitServices(t *testing.T) {
 		Id:             "testPod",
 		path:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
+		Chpst:          FakeChpst(),
 	}
 	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	executables, err := hoistLaunchable.Executables(serviceBuilder)
@@ -194,7 +195,7 @@ func TestBuildRunitServices(t *testing.T) {
 	expected := fmt.Sprintf(`%s:
   run:
   - /usr/bin/nolimit
-  - /usr/bin/chpst
+  - %s
   - -u
   - testPod:testPod
   - -e
@@ -203,16 +204,18 @@ func TestBuildRunitServices(t *testing.T) {
 %s:
   run:
   - /usr/bin/nolimit
-  - /usr/bin/chpst
+  - %s
   - -u
   - testPod:testPod
   - -e
   - %s
   - %s
 `, executables[0].Name,
+		hoistLaunchable.Chpst,
 		hoistLaunchable.ConfigDir,
 		executables[0].ExecPath,
 		executables[1].Name,
+		hoistLaunchable.Chpst,
 		hoistLaunchable.ConfigDir,
 		executables[1].ExecPath)
 
