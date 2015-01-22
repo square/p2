@@ -107,7 +107,7 @@ func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, 
 		return "", err
 	}
 
-	cmd := exec.Command(cmdPath)
+	cmd := exec.Command("/usr/bin/chpst", "-u", hoistLaunchable.RunAs, cmdPath)
 	buffer := bytes.Buffer{}
 	cmd.Stdout = &buffer
 	err = cmd.Run()
