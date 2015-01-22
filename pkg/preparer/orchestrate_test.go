@@ -68,14 +68,16 @@ type fakeHooks struct {
 	ranBeforeInstall, ranAfterLaunch  bool
 }
 
-func (f *fakeHooks) RunBeforeInstall(pod hooks.Pod, manifest *pods.PodManifest) error {
-	f.ranBeforeInstall = true
-	return f.beforeInstallErr
-}
-
-func (f *fakeHooks) RunAfterLaunch(pod hooks.Pod, manifest *pods.PodManifest) error {
-	f.ranAfterLaunch = true
-	return f.afterInstallErr
+func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest *pods.PodManifest) error {
+	switch hookType {
+	case hooks.BEFORE_INSTALL:
+		f.ranBeforeInstall = true
+		return f.beforeInstallErr
+	case hooks.AFTER_LAUNCH:
+		f.ranAfterLaunch = true
+		return f.afterInstallErr
+	}
+	return util.Errorf("Invalid hook type configured in test: %s", hookType)
 }
 
 func testManifest(t *testing.T) *pods.PodManifest {

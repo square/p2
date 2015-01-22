@@ -23,6 +23,29 @@ type HookDir struct {
 	logger  *logging.Logger
 }
 
+type HookType string
+
+func (hookType HookType) String() string {
+	return string(hookType)
+}
+
+var (
+	BEFORE_INSTALL = HookType("before_install")
+	AFTER_LAUNCH   = HookType("after_launch")
+)
+
+func AsHookType(value string) (HookType, error) {
+	switch value {
+	case BEFORE_INSTALL.String():
+		return BEFORE_INSTALL, nil
+	case AFTER_LAUNCH.String():
+		return AFTER_LAUNCH, nil
+	default:
+		return HookType(""), fmt.Errorf("%s is not a valid hook type", value)
+	}
+
+}
+
 func Hooks(dirpath string, logger *logging.Logger) *HookDir {
 	return &HookDir{dirpath, logger}
 }
@@ -57,6 +80,7 @@ func runDirectory(dirpath string, environment []string, logger logging.Logger) e
 }
 
 func (h *HookDir) runHooks(dirpath string, pod Pod, podManifest *pods.PodManifest) error {
+
 	logger := h.logger.SubLogger(logrus.Fields{
 		"hook":     dirpath,
 		"pod":      podManifest.ID(),
@@ -83,6 +107,7 @@ func (h *HookDir) runHooks(dirpath string, pod Pod, podManifest *pods.PodManifes
 	}
 
 	hookEnvironment := os.Environ()
+	hookEnvironment = append(hookEnvironment, fmt.Sprintf("HOOK=%s", path.Base(dirpath)))
 	hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_ID=%s", podManifest.Id))
 	hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_HOME=%s", pod.Path()))
 	hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_MANIFEST=%s", tmpManifestFile.Name()))
@@ -92,10 +117,7 @@ func (h *HookDir) runHooks(dirpath string, pod Pod, podManifest *pods.PodManifes
 	return runDirectory(dirpath, hookEnvironment, logger)
 }
 
-func (h *HookDir) RunBeforeInstall(pod Pod, manifest *pods.PodManifest) error {
-	return h.runHooks(path.Join(h.dirpath, "before_install"), pod, manifest)
-}
-
-func (h *HookDir) RunAfterLaunch(pod Pod, manifest *pods.PodManifest) error {
-	return h.runHooks(path.Join(h.dirpath, "after_launch"), pod, manifest)
+func (h *HookDir) RunHookType(hookType HookType, pod Pod, manifest *pods.PodManifest) error {
+	dirpath := path.Join(h.dirpath, hookType.String())
+	return h.runHooks(dirpath, pod, manifest)
 }

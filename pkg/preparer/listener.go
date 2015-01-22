@@ -1,4 +1,4 @@
-package hooks
+package preparer
 
 import (
 	"fmt"
@@ -23,7 +23,7 @@ type IntentStore interface {
 	WatchPods(watchPath string, quit <-chan struct{}, errCh chan<- error, manifests chan<- kp.ManifestResult)
 }
 
-type Listener struct {
+type HookListener struct {
 	Intent         IntentStore
 	HookPrefix     string // The prefix in the intent store to watch
 	DestinationDir string // The destination directory for downloaded pods that will act as hooks
@@ -36,7 +36,7 @@ type Listener struct {
 // any pods listed there in a hook pod directory. Following that, it will
 // remove old links named by the same pod in the same event directory and
 // symlink in the new pod's launchables.
-func (l *Listener) Sync(quit <-chan struct{}, errCh chan<- error) {
+func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 
 	watchPath := l.HookPrefix
 
@@ -118,7 +118,7 @@ func (l *Listener) Sync(quit <-chan struct{}, errCh chan<- error) {
 	}
 }
 
-func (l *Listener) determineEvent(pathInIntent string) (string, error) {
+func (l *HookListener) determineEvent(pathInIntent string) (string, error) {
 	// The structure of a path in the hooks that we'll
 	// accept from consul is {prefix}/{event}/{podID}
 	split := strings.Split(pathInIntent, l.HookPrefix)
@@ -133,7 +133,7 @@ func (l *Listener) determineEvent(pathInIntent string) (string, error) {
 	return matches[1], nil
 }
 
-func (l *Listener) writeHook(event string, hookPod *pods.Pod, manifest *pods.PodManifest) error {
+func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods.PodManifest) error {
 	eventExecDir := path.Join(l.ExecDir, event)
 	err := os.MkdirAll(eventExecDir, 0755)
 	if err != nil {

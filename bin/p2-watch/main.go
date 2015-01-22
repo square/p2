@@ -5,7 +5,9 @@ import (
 	"log"
 	"os"
 
+	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
+
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v1"
 )
@@ -13,7 +15,7 @@ import (
 var (
 	nodeName     = kingpin.Flag("node", "The node to do the scheduling on. Uses the hostname by default.").String()
 	watchReality = kingpin.Flag("reality", "Watch the reality store instead of the intent store. False by default").Default("false").Bool()
-	watchHooks   = kingpin.Flag("hooks", "Watch the hooks instead of the intent store. False by default").Default("false").Bool()
+	hookTypeName = kingpin.Flag("hook-type", "Watch a particular hook type instead of the intent store.").String()
 )
 
 func main() {
@@ -33,8 +35,12 @@ func main() {
 	path := kp.IntentPath(*nodeName)
 	if *watchReality {
 		path = kp.RealityPath(*nodeName)
-	} else if *watchHooks {
-		path = kp.HookPath(*nodeName)
+	} else if *hookTypeName != "" {
+		hookType, err := hooks.AsHookType(*hookTypeName)
+		if err != nil {
+			log.Fatalln("github.com/square/p2/pkg/kp")
+		}
+		path = kp.HookPath(hookType, *nodeName)
 	}
 	log.Printf("Watching manifests at %s\n", path)
 
