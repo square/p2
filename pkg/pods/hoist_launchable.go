@@ -297,6 +297,7 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 			if err != nil {
 				return util.Errorf("Unable to copy file to destination when extracting %s from tar.gz: %s", hdr.Name, err)
 			}
+			f.Close() // eagerly release file descriptors rather than letting them pile up
 		}
 	}
 	return nil
