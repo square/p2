@@ -8,7 +8,9 @@ import (
 )
 
 type AppManifest struct {
-	Ports map[int][]string `yaml:"ports"`
+	Ports           map[int][]string `yaml:"ports"`
+	Owners          []string         `yaml:"owners"`
+	RolloutStrategy string           `yaml:"rollout_strategy"`
 }
 
 func ManifestFromPath(path string) (*AppManifest, error) {
