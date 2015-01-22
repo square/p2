@@ -1,0 +1,23 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+
+options = {}
+OptionParser.new do |opts|
+  opts.on("-e", "--env ENV", "Pass environment vars") do |v|
+    options[:env] = v
+  end
+  opts.on("-u", "--user USER", "A user that this process would act as... but this is fake so we ignore it") do |u|
+    # no op
+  end
+end.parse!
+
+if options[:env]
+  Dir.new(options[:env]).each do |file|
+    if file != "." && file != ".."
+      ENV[file] = File.read(file)
+    end
+  end
+end
+puts ARGV
+exec ARGV.join(" ")

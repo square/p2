@@ -11,6 +11,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/user"
@@ -223,6 +224,20 @@ func (hoistLaunchable *HoistLaunchable) Version() string {
 
 func (*HoistLaunchable) Type() string {
 	return "hoist"
+}
+
+func (hoistLaunchable *HoistLaunchable) AppManifest() (*artifact.AppManifest, error) {
+	if !hoistLaunchable.Installed() {
+		return nil, util.Errorf("%s has not been installed yet", hoistLaunchable.Id)
+	}
+	manPath := path.Join(hoistLaunchable.InstallDir(), "app-manifest.yaml")
+	if _, err := os.Stat(manPath); os.IsNotExist(err) {
+		manPath = path.Join(hoistLaunchable.InstallDir(), "app-manifest.yml")
+		if _, err = os.Stat(manPath); os.IsNotExist(err) {
+			return nil, util.Errorf("No app manifest was found in the Hoist launchable %s", hoistLaunchable.Id)
+		}
+	}
+	return artifact.ManifestFromPath(manPath)
 }
 
 func (hoistLaunchable *HoistLaunchable) CurrentDir() string {
