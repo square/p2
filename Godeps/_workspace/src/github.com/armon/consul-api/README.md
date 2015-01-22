@@ -1,10 +1,13 @@
 consul-api
 ==========
 
+*DEPRECATED* Please use [consul api package](https://github.com/hashicorp/consul/tree/master/api) instead.
+Godocs for that package [are here](http://godoc.org/github.com/hashicorp/consul/api).
+
 This package provides the `consulapi` package which attempts to
 provide programmatic access to the full Consul API.
 
-Currently, all of the Consul APIs included in version 0.3 are supported.
+Currently, all of the Consul APIs included in version 0.4 are supported.
 
 Documentation
 =============

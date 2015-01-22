@@ -166,9 +166,28 @@ var marshalTests = []struct {
 		"{}\n",
 	}, {
 		&struct {
-			A *struct{ X int } "a,omitempty"
-			B int              "b,omitempty"
-		}{nil, 0},
+			A *struct{ X, y int } "a,omitempty,flow"
+		}{&struct{ X, y int }{1, 2}},
+		"a: {x: 1}\n",
+	}, {
+		&struct {
+			A *struct{ X, y int } "a,omitempty,flow"
+		}{nil},
+		"{}\n",
+	}, {
+		&struct {
+			A *struct{ X, y int } "a,omitempty,flow"
+		}{&struct{ X, y int }{}},
+		"a: {x: 0}\n",
+	}, {
+		&struct {
+			A struct{ X, y int } "a,omitempty,flow"
+		}{struct{ X, y int }{1, 2}},
+		"a: {x: 1}\n",
+	}, {
+		&struct {
+			A struct{ X, y int } "a,omitempty,flow"
+		}{struct{ X, y int }{0, 1}},
 		"{}\n",
 	},
 
@@ -216,6 +235,15 @@ var marshalTests = []struct {
 			A int
 			C inlineB `yaml:",inline"`
 		}{1, inlineB{2, inlineC{3}}},
+		"a: 1\nb: 2\nc: 3\n",
+	},
+
+	// Map inlining
+	{
+		&struct {
+			A int
+			C map[string]int `yaml:",inline"`
+		}{1, map[string]int{"b": 2, "c": 3}},
 		"a: 1\nb: 2\nc: 3\n",
 	},
 
@@ -267,6 +295,12 @@ var marshalTests = []struct {
 		map[string]net.IP{"a": net.IPv4(1, 2, 3, 4)},
 		"a: 1.2.3.4\n",
 	},
+
+	// Ensure strings containing ": " are quoted (reported as PR #43, but not reproducible).
+	{
+		map[string]string{"a": "b: c"},
+		"a: 'b: c'\n",
+	},
 }
 
 func (s *S) TestMarshal(c *C) {
@@ -287,6 +321,12 @@ var marshalErrorTests = []struct {
 		inlineB ",inline"
 	}{1, inlineB{2, inlineC{3}}},
 	panic: `Duplicated key 'b' in struct struct \{ B int; .*`,
+}, {
+	value: &struct {
+		A       int
+		B map[string]int ",inline"
+	}{1, map[string]int{"a": 2}},
+	panic: `Can't have key "a" in inlined map; conflicts with struct field`,
 }}
 
 func (s *S) TestMarshalErrors(c *C) {
@@ -329,6 +369,10 @@ var marshalerTests = []struct {
 
 type marshalerType struct {
 	value interface{}
+}
+
+func (o marshalerType) MarshalText() ([]byte, error) {
+	panic("MarshalText called on type with MarshalYAML")
 }
 
 func (o marshalerType) MarshalYAML() (interface{}, error) {
