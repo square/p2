@@ -16,7 +16,10 @@ import (
 	"github.com/Sirupsen/logrus"
 )
 
-var Log logging.Logger
+var (
+	Log          logging.Logger
+	DefaultChpst = "/usr/bin/chpst"
+)
 
 const DEFAULT_PATH = "/data/pods"
 
@@ -35,10 +38,19 @@ type Pod struct {
 	logger         logging.Logger
 	SV             *runit.SV
 	ServiceBuilder *runit.ServiceBuilder
+	Chpst          string
 }
 
 func NewPod(id string, path string) *Pod {
-	return &Pod{id, path, id, Log.SubLogger(logrus.Fields{"pod": id}), runit.DefaultSV, runit.DefaultBuilder}
+	return &Pod{
+		Id:             id,
+		path:           path,
+		RunAs:          id,
+		logger:         Log.SubLogger(logrus.Fields{"pod": id}),
+		SV:             runit.DefaultSV,
+		ServiceBuilder: runit.DefaultBuilder,
+		Chpst:          DefaultChpst,
+	}
 }
 
 func PodFromManifestId(manifestId string) *Pod {
@@ -159,7 +171,7 @@ func (pod *Pod) BuildRunitServices(launchables []HoistLaunchable) error {
 		for _, executable := range executables {
 			sbTemplate.AddEntry(executable.Name, []string{
 				"/usr/bin/nolimit",
-				"/usr/bin/chpst",
+				pod.Chpst,
 				"-u",
 				strings.Join([]string{launchable.RunAs, launchable.RunAs}, ":"),
 				"-e",
@@ -391,7 +403,15 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*HoistLaunchab
 	if launchableStanza.LaunchableType == "hoist" {
 		launchableRootDir := path.Join(pod.path, launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
-		return &HoistLaunchable{launchableStanza.Location, launchableId, pod.RunAs, pod.EnvDir(), DefaultFetcher(), launchableRootDir}, nil
+		return &HoistLaunchable{
+			Location:    launchableStanza.Location,
+			Id:          launchableId,
+			RunAs:       pod.RunAs,
+			ConfigDir:   pod.EnvDir(),
+			FetchToFile: DefaultFetcher(),
+			RootDir:     launchableRootDir,
+			Chpst:       pod.Chpst,
+		}, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)
 		pod.logLaunchableError(launchableStanza.LaunchableId, err, "Unknown launchable type")

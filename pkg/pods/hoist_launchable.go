@@ -27,6 +27,7 @@ type HoistLaunchable struct {
 	ConfigDir   string  // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
 	FetchToFile Fetcher // Callback that downloads the file from the remote location.
 	RootDir     string  // The root directory of the launchable, containing N:N>=1 installs.
+	Chpst       string  // The path to chpst
 }
 
 func DefaultFetcher() Fetcher {
@@ -102,7 +103,7 @@ func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, 
 		return "", err
 	}
 
-	cmd := exec.Command("/usr/bin/chpst", "-u", hoistLaunchable.RunAs, cmdPath)
+	cmd := exec.Command(hoistLaunchable.Chpst, "-u", hoistLaunchable.RunAs, cmdPath)
 	buffer := bytes.Buffer{}
 	cmd.Stdout = &buffer
 	cmd.Stderr = &buffer
