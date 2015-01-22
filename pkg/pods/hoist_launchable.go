@@ -67,6 +67,17 @@ func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuil
 	return err
 }
 
+func (hoistLaunchable *HoistLaunchable) PostActivate() (string, error) {
+	output, err := hoistLaunchable.invokeBinScript("post-activate")
+
+	// providing a post-activate script is optional, ignore those errors
+	if err != nil && !os.IsNotExist(err) {
+		return output, err
+	}
+
+	return output, nil
+}
+
 func (hoistLaunchable *HoistLaunchable) Disable() (string, error) {
 	output, err := hoistLaunchable.invokeBinScript("disable")
 
