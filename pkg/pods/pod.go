@@ -104,10 +104,31 @@ func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
 		return false, err
 	}
 
+	for _, launchable := range launchables {
+		err := launchable.MakeCurrent()
+		if err != nil {
+			// being unable to flip a symlink is a catastrophic error
+			return false, err
+		}
+
+		out, err := launchable.PostActivate()
+		if err != nil {
+			// if a launchable's post-activate fails, we probably can't
+			// launch it, but this does not break the entire pod
+			pod.logLaunchableError(launchable.Id, err, out)
+			launchable.Id = ""
+		} else {
+			pod.logInfo(out)
+		}
+	}
+
 	err = pod.BuildRunitServices(launchables)
 
 	success := true
 	for _, launchable := range launchables {
+		if launchable.Id == "" {
+			continue
+		}
 		err = launchable.Launch(pod.ServiceBuilder, pod.SV) // TODO: make these configurable
 		if err != nil {
 			// Log the failure but continue

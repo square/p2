@@ -51,14 +51,9 @@ func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilde
 }
 
 func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-	err := hoistLaunchable.MakeCurrent()
-	if err != nil {
-		return util.Errorf("Could not make %s current: %s", err)
-	}
-
 	// Should probably do something with output at some point
 	// probably want to do something with output at some point
-	err = hoistLaunchable.Start(serviceBuilder, sv)
+	err := hoistLaunchable.Start(serviceBuilder, sv)
 	if err != nil {
 		return util.Errorf("Could not launch %s: %s", hoistLaunchable.Id, err)
 	}
