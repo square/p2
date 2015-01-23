@@ -38,7 +38,7 @@ func main() {
 	} else if *hookTypeName != "" {
 		hookType, err := hooks.AsHookType(*hookTypeName)
 		if err != nil {
-			log.Fatalln("github.com/square/p2/pkg/kp")
+			log.Fatalln(err)
 		}
 		path = kp.HookPath(hookType, *nodeName)
 	}
