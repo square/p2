@@ -310,7 +310,6 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 			if err != nil {
 				return util.Errorf("Unable to open destination file when unpacking tar: %s", err)
 			}
-			defer f.Close()
 			err = f.Chown(uid, gid) // this operation may cause tar unpacking to become significantly slower. Refactor as necessary.
 			if err != nil {
 				return util.Errorf("Unable to chown destination file to user %s: %s", hoistLaunchable.RunAs, err)
