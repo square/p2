@@ -4,6 +4,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 
@@ -32,14 +33,41 @@ func LoadConfigFile(filepath string) (*Config, error) {
 	return config, nil
 }
 
-func (c *Config) ReadString(key string) string {
+func (c *Config) ReadString(key string) (string, error) {
 	readVal := c.Read(key)
 	if readVal == nil {
-		return ""
+		return "", nil
 	}
-	return readVal.(string)
+	strVal, ok := readVal.(string)
+	if !ok {
+		return "", fmt.Errorf("%s is not a string value", key)
+	}
+	return strVal, nil
 }
 
 func (c *Config) Read(key string) interface{} {
 	return c.unpacked[key]
+}
+
+func (c *Config) ReadMap(key string) (*Config, error) {
+	readVal := c.Read(key)
+	if readVal == nil {
+		return &Config{make(map[interface{}]interface{})}, nil
+	}
+	mapVal, ok := readVal.(map[interface{}]interface{})
+	if !ok {
+		return &Config{make(map[interface{}]interface{})}, fmt.Errorf("%s is not a map", key)
+	}
+	return &Config{mapVal}, nil
+}
+
+func (c *Config) Keys() []string {
+	keys := []string{}
+	for intf, _ := range c.unpacked {
+		strVal, ok := intf.(string)
+		if ok {
+			keys = append(keys, strVal)
+		}
+	}
+	return keys
 }
