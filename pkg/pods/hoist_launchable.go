@@ -104,7 +104,7 @@ func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, 
 		return "", err
 	}
 
-	cmd := exec.Command(hoistLaunchable.Chpst, "-u", hoistLaunchable.RunAs, cmdPath)
+	cmd := exec.Command(hoistLaunchable.Chpst, "-u", hoistLaunchable.RunAs, "-e", hoistLaunchable.ConfigDir, cmdPath)
 	buffer := bytes.Buffer{}
 	cmd.Stdout = &buffer
 	cmd.Stderr = &buffer
