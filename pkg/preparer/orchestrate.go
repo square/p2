@@ -18,8 +18,7 @@ type Pod interface {
 }
 
 type Hooks interface {
-	RunBeforeInstall(pod hooks.Pod, manifest *pods.PodManifest) error
-	RunAfterLaunch(pod hooks.Pod, manifest *pods.PodManifest) error
+	RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest *pods.PodManifest) error
 }
 
 type Store interface {
@@ -33,7 +32,7 @@ type Preparer struct {
 	node         string
 	store        Store
 	hooks        Hooks
-	hookListener hooks.Listener
+	hookListener HookListener
 	Logger       logging.Logger
 }
 
@@ -42,7 +41,7 @@ func New(nodeName string, consulAddress string, hooksDirectory string, logger lo
 		Address: consulAddress,
 	})
 
-	listener := hooks.Listener{
+	listener := HookListener{
 		Intent:         store,
 		HookPrefix:     kp.HOOK_TREE,
 		DestinationDir: pods.DEFAULT_PATH,
@@ -196,7 +195,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 	}
 
 	if newOrDifferent || problemReadingCurrentManifest {
-		err := p.hooks.RunBeforeInstall(pod, newManifest)
+		err := p.hooks.RunHookType(hooks.BEFORE_INSTALL, pod, newManifest)
 		if err != nil {
 			logger.WithFields(logrus.Fields{
 				"err":   err,
@@ -232,7 +231,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 				}).Errorln("Could not set pod in reality store")
 			}
 
-			err = p.hooks.RunAfterLaunch(pod, newManifest)
+			err = p.hooks.RunHookType(hooks.AFTER_LAUNCH, pod, newManifest)
 			if err != nil {
 				logger.WithFields(logrus.Fields{
 					"err":   err,

@@ -1,4 +1,4 @@
-package hooks
+package preparer
 
 import (
 	"fmt"
@@ -66,7 +66,7 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 		},
 	})
 
-	listener := Listener{
+	listener := HookListener{
 		Intent:         fakeIntent,
 		HookPrefix:     hookPrefix,
 		ExecDir:        execDir,
