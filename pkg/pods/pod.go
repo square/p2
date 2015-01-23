@@ -302,7 +302,7 @@ func (pod *Pod) Install(manifest *PodManifest) error {
 
 	// we may need to write config files to a unique directory per pod version, depending on restart semantics. Need
 	// to think about this more.
-	err = setupConfig(pod.EnvDir(), pod.ConfigDir(), manifest)
+	err = pod.setupConfig(manifest)
 	if err != nil {
 		pod.logError(err, "Could not setup config")
 		return util.Errorf("Could not setup config: %s", err)
@@ -331,8 +331,8 @@ func (pod *Pod) Install(manifest *PodManifest) error {
 // SHA of its manifest's content. The "env" directory contains environment files
 // (as described in http://smarden.org/runit/chpst.8.html, with the -e option) and includes a
 // single file called CONFIG_PATH, which points at the file written in the "config" directory.
-func setupConfig(envDir string, configDir string, podManifest *PodManifest) error {
-	err := os.MkdirAll(configDir, 0755)
+func (pod *Pod) setupConfig(podManifest *PodManifest) error {
+	err := os.MkdirAll(pod.ConfigDir(), 0755)
 	if err != nil {
 		return util.Errorf("Could not create config directory for pod %s: %s", podManifest.ID(), err)
 	}
@@ -340,7 +340,7 @@ func setupConfig(envDir string, configDir string, podManifest *PodManifest) erro
 	if err != nil {
 		return err
 	}
-	configPath := path.Join(configDir, configFileName)
+	configPath := path.Join(pod.ConfigDir(), configFileName)
 
 	file, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer file.Close()
@@ -352,11 +352,15 @@ func setupConfig(envDir string, configDir string, podManifest *PodManifest) erro
 		return err
 	}
 
-	err = os.MkdirAll(envDir, 0755)
+	err = os.MkdirAll(pod.EnvDir(), 0755)
 	if err != nil {
 		return util.Errorf("Could not create the environment dir for pod %s: %s", podManifest.ID(), err)
 	}
-	err = writeEnvFile(envDir, "CONFIG_PATH", configPath)
+	err = writeEnvFile(pod.EnvDir(), "CONFIG_PATH", configPath)
+	if err != nil {
+		return err
+	}
+	err = writeEnvFile(pod.EnvDir(), "POD_HOME", pod.Path())
 	if err != nil {
 		return err
 	}

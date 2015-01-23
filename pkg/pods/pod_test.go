@@ -66,12 +66,6 @@ func TestPodCanWriteEnvFile(t *testing.T) {
 }
 
 func TestPodSetupConfigWritesFiles(t *testing.T) {
-	envDir, err := ioutil.TempDir("", "envdir")
-	Assert(t).IsNil(err, "Should not have been an error writing the env dir")
-	configDir, err := ioutil.TempDir("", "confdir")
-	Assert(t).IsNil(err, "Should not have been an error writing the env dir")
-	defer os.RemoveAll(envDir)
-	defer os.RemoveAll(configDir)
 	manifestStr := `id: thepod
 launchables:
   my-app:
@@ -84,17 +78,19 @@ config:
 	manifest, err := PodManifestFromBytes(bytes.NewBufferString(manifestStr).Bytes())
 	Assert(t).IsNil(err, "should not have erred reading the manifest")
 
-	err = setupConfig(envDir, configDir, manifest)
+	pod := PodFromManifestId(manifest.ID())
+
+	err = pod.setupConfig(manifest)
 	Assert(t).IsNil(err, "There shouldn't have been an error setting up config")
 
 	configFileName, err := manifest.ConfigFileName()
 	Assert(t).IsNil(err, "Couldn't generate config filename")
-	configPath := path.Join(configDir, configFileName)
+	configPath := path.Join(pod.ConfigDir(), configFileName)
 	config, err := ioutil.ReadFile(configPath)
 	Assert(t).IsNil(err, "should not have erred reading the config")
 	Assert(t).AreEqual("ENVIRONMENT: staging\n", string(config), "the config didn't match")
 
-	env, err := ioutil.ReadFile(path.Join(envDir, "CONFIG_PATH"))
+	env, err := ioutil.ReadFile(path.Join(pod.EnvDir(), "CONFIG_PATH"))
 	Assert(t).IsNil(err, "should not have erred reading the env file")
 	Assert(t).AreEqual(configPath, string(env), "The env path to config didn't match")
 }
