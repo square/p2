@@ -14,8 +14,12 @@ end.parse!
 
 if options[:env]
   Dir.new(options[:env]).each do |file|
-    if file != "." && file != ".."
-      ENV[file] = File.read(file)
+    if file != "." && file != ".." && !File.directory?(file)
+      begin
+        ENV[file] = File.read(file)
+      rescue
+        # silence errors
+      end
     end
   end
 end
