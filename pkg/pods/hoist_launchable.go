@@ -283,56 +283,53 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 	if err != nil {
 		return err
 	}
-	err = hoistLaunchable.makeAndChown(dest, uid, gid, fp)
+
+	err = os.MkdirAll(dest, 0755)
 	if err != nil {
-		return err
+		return util.Errorf("Unable to create root directory %s when unpacking %s: %s", dest, fp.Name(), err)
 	}
+	err = os.Chown(dest, uid, gid)
+	if err != nil {
+		return util.Errorf("Unable to chown root directory %s to %s when unpacking %s: %s", dest, hoistLaunchable.RunAs, fp.Name(), err)
+	}
+
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return util.Errorf("Encountered an error reading gunzipped tar archive: %s", err)
+			return util.Errorf("Unable to read %s: %s", fp.Name(), err)
 		}
 		fpath := path.Join(dest, hdr.Name)
-		if hdr.FileInfo().IsDir() {
-			continue
-		} else {
-			dir := path.Dir(fpath)
-			err = hoistLaunchable.makeAndChown(dir, uid, gid, fp)
-			if err != nil {
-				return err
-			}
-			f, err := os.OpenFile(
-				fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, hdr.FileInfo().Mode())
 
-			if err != nil {
-				return util.Errorf("Unable to open destination file when unpacking tar: %s", err)
+		if hdr.FileInfo().IsDir() {
+			err = os.Mkdir(fpath, hdr.FileInfo().Mode())
+			if err != nil && !os.IsExist(err) {
+				return util.Errorf("Unable to create destination directory %s when unpacking %s: %s", fpath, fp.Name(), err)
 			}
+
+			err = os.Chown(fpath, uid, gid)
+			if err != nil {
+				return util.Errorf("Unable to chown destination directory %s to %s when unpacking %s: %s", fpath, hoistLaunchable.RunAs, fp.Name(), err)
+			}
+		} else {
+			f, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, hdr.FileInfo().Mode())
+			if err != nil {
+				return util.Errorf("Unable to open destination file %s when unpacking %s: %s", fpath, fp.Name(), err)
+			}
+
 			err = f.Chown(uid, gid) // this operation may cause tar unpacking to become significantly slower. Refactor as necessary.
 			if err != nil {
-				return util.Errorf("Unable to chown destination file to user %s: %s", hoistLaunchable.RunAs, err)
+				return util.Errorf("Unable to chown destination file %s to %s when unpacking %s: %s", fpath, hoistLaunchable.RunAs, fp.Name(), err)
 			}
 
 			_, err = io.Copy(f, tr)
 			if err != nil {
-				return util.Errorf("Unable to copy file to destination when extracting %s from tar.gz: %s", hdr.Name, err)
+				return util.Errorf("Unable to copy into destination file %s when unpacking %s: %s", fpath, fp.Name(), err)
 			}
 			f.Close() // eagerly release file descriptors rather than letting them pile up
 		}
-	}
-	return nil
-}
-
-func (hoistLaunchable *HoistLaunchable) makeAndChown(dir string, uid, gid int, fp *os.File) error {
-	err := os.MkdirAll(dir, 0755)
-	if err != nil {
-		return util.Errorf("Could not create directory %s when expanding %s: %s", dir, fp.Name(), err)
-	}
-	err = os.Chown(dir, uid, gid)
-	if err != nil {
-		return util.Errorf("Could not give directory ownership of %s to %s when expanding %s: %s", hoistLaunchable.RunAs, dir, fp.Name(), err)
 	}
 	return nil
 }
