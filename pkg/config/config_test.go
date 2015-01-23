@@ -5,6 +5,8 @@ import (
 	"path"
 	"runtime"
 	"testing"
+
+	. "github.com/anthonybishopric/gotcha"
 )
 
 func testFilePath() string {
@@ -21,7 +23,9 @@ func readTestFile() *Config {
 }
 
 func TestConfigFileCanReadStringKeys(t *testing.T) {
-	app := readTestFile().ReadString("app")
+	app, err := readTestFile().ReadString("app")
+	Assert(t).IsNil(err, "app should have been a valid string key")
+
 	if app != "multicurse" {
 		t.Fatal("Expected config to be able to read the app name")
 	}
@@ -33,11 +37,10 @@ func TestConfigCanBeReadFromEnvironment(t *testing.T) {
 	defer os.Setenv("CONFIG_PATH", prev)
 
 	cfg, err := LoadFromEnvironment()
-	if err != nil {
-		t.Fatalf("An error occurred while trying to load the test configuration: %s", err)
-	}
-	app := cfg.ReadString("app")
-	if app != "multicurse" {
-		t.Fatal("Expected environment-backed config to be able to read the app name")
-	}
+	Assert(t).IsNil(err, "An error occurred while trying to load the test configuration")
+
+	app, err := cfg.ReadString("app")
+
+	Assert(t).IsNil(err, "Expected app to be a valid key read by string")
+	Assert(t).AreEqual(app, "multicurse", "Expected environment-backed config to be able to read the app name")
 }
