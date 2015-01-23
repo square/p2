@@ -79,6 +79,7 @@ config:
 	Assert(t).IsNil(err, "should not have erred reading the manifest")
 
 	pod := PodFromManifestId(manifest.ID())
+	pod.path = os.TempDir()
 
 	err = pod.setupConfig(manifest)
 	Assert(t).IsNil(err, "There shouldn't have been an error setting up config")
