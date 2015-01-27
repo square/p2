@@ -3,6 +3,7 @@ package replication
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -121,7 +122,8 @@ statuses:
 	manifest := podManifest(t, "foo", "def345")
 	newManSha, _ := manifest.SHA()
 	store := pausingIntentStore(2, 0)
-	store.manifestUpdated = func(node, manId string) {
+	store.manifestUpdated = func(key, manId string) {
+		node := strings.Split(key, "/")[1]
 		_, err := checker.resp.ForNode(node)
 		if err != nil {
 			t.Fatalf("Wrong node updated: %s", node)
