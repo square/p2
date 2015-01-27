@@ -36,7 +36,7 @@ end
 
 desc 'Install all built binaries'
 task :install => :godep_check do
-  e "godep go install ./..."
+  e "godep go install -a -ldflags \"-X github.com/square/p2/pkg/version.VERSION $(git describe --tags)\" ./..."
 end
 
 desc 'Run the vagrant integration tests. Will attempt to build first to save you some time.'
