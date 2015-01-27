@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/armon/consul-api"
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kv-consul"
 )
 
@@ -66,11 +67,13 @@ func (s *ServiceNodeStatus) IsCurrentVersion(version string) bool {
 
 type ConsulHealthChecker struct {
 	Health *consulapi.Health
+	Store  kp.Store
 }
 
-func NewConsulHealthChecker(consulHealth *consulapi.Health) *ConsulHealthChecker {
+func NewConsulHealthChecker(store kp.Store, consulHealth *consulapi.Health) *ConsulHealthChecker {
 	return &ConsulHealthChecker{
 		Health: consulHealth,
+		Store:  store,
 	}
 }
 
