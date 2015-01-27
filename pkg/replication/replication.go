@@ -29,7 +29,7 @@ type ServiceChecker interface {
 }
 
 type IntentStore interface {
-	Set(node string, manifest pods.PodManifest) (time.Duration, error)
+	SetPod(node string, manifest pods.PodManifest) (time.Duration, error)
 }
 
 func NewReplicator(manifest pods.PodManifest, allocated allocation.Allocation) *Replicator {
@@ -111,7 +111,7 @@ func (repl *Replicator) Enact(store IntentStore, serviceChecker ServiceChecker, 
 					// this will almost definitely result in duplicate Sets in the
 					// preparer, which is expected to ignore duplicate updates.
 					repl.Logger.WithField("node", node.Name).Infoln("Updating node")
-					dur, err := store.Set(node.Name, repl.Manifest)
+					dur, err := store.SetPod(node.Name, repl.Manifest)
 					if err != nil {
 						repl.Logger.WithFields(logrus.Fields{
 							"err":      err,

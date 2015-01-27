@@ -43,7 +43,7 @@ type fakeIntentNodeInfo struct {
 
 // Track the number of concurrent updates are allowed. the hostTrace can be inspected
 // to see how many hosts were being updated at the time a particular host was updated.
-func (i *fakeIntent) Set(node string, manifest pods.PodManifest) (time.Duration, error) {
+func (i *fakeIntent) SetPod(node string, manifest pods.PodManifest) (time.Duration, error) {
 	i.counterMutex.Lock()
 	sha, _ := manifest.SHA()
 	fmt.Printf("Setting %s to %s:%s\n", node, manifest.ID(), sha)
