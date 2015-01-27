@@ -200,7 +200,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 		if err != nil {
 			logger.WithFields(logrus.Fields{
 				"err":   err,
-				"hooks": "before_install",
+				"hooks": hooks.BEFORE_INSTALL,
 			}).Warnln("Could not run hooks")
 		}
 
@@ -211,6 +211,14 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 				"err": err,
 			}).Errorln("Install failed")
 			return false
+		}
+
+		err = p.hooks.RunHookType(hooks.AFTER_INSTALL, pod, newManifest)
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"err":   err,
+				"hooks": hooks.AFTER_INSTALL,
+			}).Warnln("Could not run hooks")
 		}
 
 		err = p.store.RegisterService(*newManifest)
@@ -236,7 +244,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 			if err != nil {
 				logger.WithFields(logrus.Fields{
 					"err":   err,
-					"hooks": "after_launch",
+					"hooks": hooks.AFTER_LAUNCH,
 				}).Warnln("Could not run hooks")
 			}
 		}

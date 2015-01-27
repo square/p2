@@ -32,6 +32,7 @@ func (hookType HookType) String() string {
 
 var (
 	BEFORE_INSTALL = HookType("before_install")
+	AFTER_INSTALL  = HookType("after_install")
 	AFTER_LAUNCH   = HookType("after_launch")
 )
 
