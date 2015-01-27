@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -64,15 +65,22 @@ func runDirectory(dirpath string, environment []string, logger logging.Logger) e
 			continue
 		}
 		cmd := exec.Command(fullpath)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		hookOut := &bytes.Buffer{}
+		cmd.Stdout = hookOut
+		cmd.Stderr = hookOut
 		cmd.Env = environment
 		err := cmd.Run()
 		if err != nil {
 			logger.WithFields(logrus.Fields{
-				"err":  err,
-				"path": fullpath,
+				"err":    err,
+				"path":   fullpath,
+				"output": hookOut.String(),
 			}).Warnln("Could not execute hook")
+		} else {
+			logger.WithFields(logrus.Fields{
+				"path":   fullpath,
+				"output": hookOut.String(),
+			}).Infoln("Executed hook")
 		}
 	}
 

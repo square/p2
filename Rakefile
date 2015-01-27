@@ -39,5 +39,13 @@ task :install => :godep_check do
   e "godep go install ./..."
 end
 
+desc 'Run the vagrant integration tests. Will attempt to build first to save you some time.'
+task :integration => :build do
+  root = File.dirname(__FILE__)
+  # suite.rb has a number of options, this one just runs the default one.
+  script = File.expand_path("integration/suite.rb", root)
+  exec "ruby #{script}"
+end
+
 desc 'By default, gather dependencies, build and test'
 task :default => [:deps, :test, :install]

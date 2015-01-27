@@ -109,24 +109,24 @@ func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan ch
 		select {
 		case <-quitChan:
 			return
-		default:
-		}
-
-		pairs, meta, err := s.client.KV().List(keyPrefix, &consulapi.QueryOptions{
-			WaitIndex: curIndex,
-		})
-		curIndex = meta.LastIndex
-		if err != nil {
-			errChan <- err
-		} else {
-			for _, pair := range pairs {
-				manifest, err := pods.PodManifestFromBytes(pair.Value)
-				if err != nil {
-					errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value)
-				} else {
-					podChan <- ManifestResult{*manifest, pair.Key}
+		case <-time.After(1 * time.Second):
+			pairs, meta, err := s.client.KV().List(keyPrefix, &consulapi.QueryOptions{
+				WaitIndex: curIndex,
+			})
+			if err != nil {
+				errChan <- err
+			} else {
+				curIndex = meta.LastIndex
+				for _, pair := range pairs {
+					manifest, err := pods.PodManifestFromBytes(pair.Value)
+					if err != nil {
+						errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value)
+					} else {
+						podChan <- ManifestResult{*manifest, pair.Key}
+					}
 				}
 			}
 		}
+
 	}
 }
