@@ -40,6 +40,8 @@ func AsHookType(value string) (HookType, error) {
 	switch value {
 	case BEFORE_INSTALL.String():
 		return BEFORE_INSTALL, nil
+	case AFTER_INSTALL.String():
+		return AFTER_INSTALL, nil
 	case AFTER_LAUNCH.String():
 		return AFTER_LAUNCH, nil
 	default:
