@@ -62,7 +62,7 @@ Dir.glob(File.join(path, '*/')).each do |test_dir|
       end
     end
     begin
-      to_execute = sprintf(options[:test_command], test_dir)
+      to_execute = sprintf(options[:test_command], "integration/#{test_name}")
       puts "Starting test #{test_name}: #{to_execute}".yellow
       unless system("vagrant ssh -c #{Shellwords.escape(to_execute)}")
         puts "#{test_name} #{'FAILED'.red}"

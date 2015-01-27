@@ -1,6 +1,7 @@
 package preparer
 
 import (
+	"path"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -44,7 +45,7 @@ func New(nodeName string, consulAddress string, hooksDirectory string, logger lo
 	listener := HookListener{
 		Intent:         store,
 		HookPrefix:     kp.HOOK_TREE,
-		DestinationDir: pods.DEFAULT_PATH,
+		DestinationDir: path.Join(pods.DEFAULT_PATH, "hooks"),
 		ExecDir:        hooksDirectory,
 		Logger:         logger,
 	}

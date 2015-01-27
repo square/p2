@@ -13,9 +13,10 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/intent"
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -43,9 +44,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not execute bootstrap: %s", err)
 	}
-	_, err = user.CreateUser("hello", pods.PodPath("hello"))
-	if err != nil && err != user.AlreadyExists {
-		log.Fatalf("Could not create user: %s", err)
+	// _, err = user.CreateUser("hello", pods.PodPath("hello"))
+	// if err != nil && err != user.AlreadyExists {
+	// 	log.Fatalf("Could not create user: %s", err)
+	// }
+	err = scheduleUserCreationHook(tempdir)
+	if err != nil {
+		log.Fatalf("Couldn't schedule the user creation hook: %s", err)
 	}
 	err = postHelloManifest(tempdir)
 	if err != nil {
@@ -71,10 +76,42 @@ func generatePreparerPod(workdir string) (string, error) {
 	// the test number forces the pod manifest to change every test run.
 	testNumber := fmt.Sprintf("test=%d", rand.Intn(2000000000))
 	cmd := exec.Command("p2-bin2pod", "--work-dir", workdir, "--id", "p2-preparer", "--config", fmt.Sprintf("node_name=%s", hostname), "--config", testNumber, wd+"/p2-preparer")
+	return executeBin2Pod(cmd)
+}
+
+func scheduleUserCreationHook(tmpdir string) error {
+	createUserPath := path.Join(tmpdir, "create_user")
+	script := `#!/usr/bin/env bash
+set -e
+useradd $POD_ID -d $POD_HOME
+`
+	err := ioutil.WriteFile(createUserPath, []byte(script), 0744)
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command("p2-bin2pod", "--work-dir", tmpdir, createUserPath)
+	manifestPath, err := executeBin2Pod(cmd)
+	if err != nil {
+		return err
+	}
+	manifest, err := pods.PodManifestFromPath(manifestPath)
+	if err != nil {
+		return err
+	}
+	store := kp.NewStore(kp.Options{})
+	_, err = store.SetPod(kp.HookPath(hooks.BEFORE_INSTALL, "create_user"), *manifest)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func executeBin2Pod(cmd *exec.Cmd) (string, error) {
 	out := bytes.Buffer{}
 	cmd.Stdout = &out
 	cmd.Stderr = os.Stderr
-	err = cmd.Run()
+	err := cmd.Run()
 	if err != nil {
 		return "", util.Errorf("p2-bin2pod failed: %s", err)
 	}
@@ -170,7 +207,7 @@ func verifyHelloRunning() error {
 		}
 	}()
 	select {
-	case <-time.After(15 * time.Second):
+	case <-time.After(20 * time.Second):
 		var helloTail, preparerTail bytes.Buffer
 		helloT := exec.Command("tail", "/var/service/hello__hello/log/main/current")
 		helloT.Stdout = &helloTail

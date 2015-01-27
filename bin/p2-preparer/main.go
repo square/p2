@@ -29,9 +29,7 @@ type PreparerConfig struct {
 }
 
 func main() {
-	logger := logging.NewLogger(logrus.Fields{
-		"app": "preparer",
-	})
+	logger := logging.NewLogger(logrus.Fields{})
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		logger.NoFields().Errorln("No CONFIG_PATH variable was given")
