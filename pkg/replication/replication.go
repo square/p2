@@ -11,6 +11,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/allocation"
 	"github.com/square/p2/pkg/health"
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 )
@@ -111,7 +112,7 @@ func (repl *Replicator) Enact(store IntentStore, serviceChecker ServiceChecker, 
 					// this will almost definitely result in duplicate Sets in the
 					// preparer, which is expected to ignore duplicate updates.
 					repl.Logger.WithField("node", node.Name).Infoln("Updating node")
-					dur, err := store.SetPod(node.Name, repl.Manifest)
+					dur, err := store.SetPod(kp.IntentPath(node.Name, repl.Manifest.ID()), repl.Manifest)
 					if err != nil {
 						repl.Logger.WithFields(logrus.Fields{
 							"err":      err,
