@@ -48,6 +48,12 @@ func (r *rolloutOrder) Less(i, j int) bool {
 	iHealth, iErr := r.referenceStatus.ForNode(iNode.Name)
 	jHealth, jErr := r.referenceStatus.ForNode(jNode.Name)
 
+	// If neither have status, they are equal (so not less)
+	// We cannot compareHealth on nil health (causes nil deref), so stop now.
+	if iErr == health.NoStatusGiven && jErr == health.NoStatusGiven {
+		return false
+	}
+
 	if comp := r.compareErrors(iErr, jErr); !comp.equal() {
 		return comp.less()
 	}
