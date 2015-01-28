@@ -86,8 +86,7 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 	_, err = os.Stat(currentAlias)
 	Assert(t).IsNil(err, fmt.Sprintf("%s should have been created", currentAlias))
 
-	realLaunchLocation := path.Join(destDir, "before_install", "users", "create", "installs", "hoisted-hello_def456", "bin", "launch")
-	readSymlinkLocation, err := os.Readlink(path.Join(execDir, "before_install", "users__create__launch"))
-	Assert(t).IsNil(err, "Could not read symlink on the exec dir")
-	Assert(t).AreEqual(realLaunchLocation, readSymlinkLocation, "The read symlink location should have been the install's launch location")
+	hookFile := path.Join(execDir, "before_install", "users__create__launch")
+	_, err = os.Stat(hookFile)
+	Assert(t).IsNil(err, "should have created the user launch script")
 }

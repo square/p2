@@ -1,6 +1,7 @@
 package pods
 
 import (
+	"io/ioutil"
 	"os"
 	"path"
 	"runtime"
@@ -25,8 +26,8 @@ func FakeChpst() string {
 	return util.From(runtime.Caller(0)).ExpandPath("fake_chpst")
 }
 
-func FakeHoistLaunchableForDir(dirName string) *HoistLaunchable {
-	tempDir := os.TempDir()
+func fakeHoistLaunchableForDir(dirName string) *HoistLaunchable {
+	tempDir, _ := ioutil.TempDir("", "fakeenv")
 	_, filename, _, _ := runtime.Caller(0)
 	launchableInstallDir := path.Join(path.Dir(filename), dirName)
 
@@ -40,6 +41,12 @@ func FakeHoistLaunchableForDir(dirName string) *HoistLaunchable {
 		Chpst:       FakeChpst(),
 	}
 	return launchable
+}
+
+func cleanupFakeLaunchable(h *HoistLaunchable) {
+	if os.TempDir() != h.ConfigDir {
+		os.RemoveAll(h.ConfigDir)
+	}
 }
 
 func FakeServiceBuilder() *runit.ServiceBuilder {

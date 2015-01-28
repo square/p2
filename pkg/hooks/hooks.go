@@ -117,13 +117,14 @@ func (h *HookDir) runHooks(dirpath string, pod Pod, podManifest *pods.PodManifes
 		return err
 	}
 
-	hookEnvironment := os.Environ()
-	hookEnvironment = append(hookEnvironment, fmt.Sprintf("HOOK=%s", path.Base(dirpath)))
-	hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_ID=%s", podManifest.Id))
-	hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_HOME=%s", pod.Path()))
-	hookEnvironment = append(hookEnvironment, fmt.Sprintf("POD_MANIFEST=%s", tmpManifestFile.Name()))
-	hookEnvironment = append(hookEnvironment, fmt.Sprintf("CONFIG_PATH=%s", path.Join(pod.ConfigDir(), configFileName)))
-	hookEnvironment = append(hookEnvironment, fmt.Sprintf("ENV_PATH=%s", pod.EnvDir()))
+	hookEnvironment := []string{
+		fmt.Sprintf("HOOK=%s", path.Base(dirpath)),
+		fmt.Sprintf("HOOKED_POD_ID=%s", podManifest.Id),
+		fmt.Sprintf("HOOKED_POD_HOME=%s", pod.Path()),
+		fmt.Sprintf("HOOKED_POD_MANIFEST=%s", tmpManifestFile.Name()),
+		fmt.Sprintf("HOOKED_CONFIG_PATH=%s", path.Join(pod.ConfigDir(), configFileName)),
+		fmt.Sprintf("HOOKED_ENV_PATH=%s", pod.EnvDir()),
+	}
 
 	return runDirectory(dirpath, hookEnvironment, logger)
 }

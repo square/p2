@@ -153,22 +153,31 @@ func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuild
 	return nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]HoistExecutable, error) {
-	binLaunchPath := path.Join(hoistLaunchable.InstallDir(), "bin", "launch")
+func (h *HoistLaunchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]HoistExecutable, error) {
+	if !h.Installed() {
+		return []HoistExecutable{}, util.Errorf("%s is not installed", h.Id)
+	}
+
+	binLaunchPath := path.Join(h.InstallDir(), "bin", "launch")
 
 	binLaunchInfo, err := os.Stat(binLaunchPath)
 	if err != nil {
 		return nil, util.Errorf("%s", err)
 	}
 
-	// we support bin/launch being a file, or a directory, so we have to check
-	// ideally a launchable will have just one launch script someday (can't be
-	// a dir)
+	// we support bin/launch being a file, or a directory, so we check here.
 	if !(binLaunchInfo.IsDir()) {
-		serviceName := strings.Join([]string{hoistLaunchable.Id, "__", "launch"}, "")
+		serviceName := strings.Join([]string{h.Id, "__", "launch"}, "")
 		servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
 		runitService := &runit.Service{servicePath, serviceName}
-		executable := &HoistExecutable{*runitService, binLaunchPath}
+		executable := &HoistExecutable{
+			Service:   *runitService,
+			ExecPath:  binLaunchPath,
+			Chpst:     h.Chpst,
+			Nolimit:   "/usr/bin/nolimit",
+			RunAs:     h.RunAs,
+			ConfigDir: h.ConfigDir,
+		}
 
 		return []HoistExecutable{*executable}, nil
 	} else {
@@ -180,11 +189,18 @@ func (hoistLaunchable *HoistLaunchable) Executables(serviceBuilder *runit.Servic
 		executables := make([]HoistExecutable, len(services))
 		for i, service := range services {
 			// use the ID of the hoist launchable plus "__" plus the name of the script inside the launch/ directory
-			serviceName := strings.Join([]string{hoistLaunchable.Id, "__", service.Name()}, "")
+			serviceName := strings.Join([]string{h.Id, "__", service.Name()}, "")
 			servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
 			execPath := path.Join(binLaunchPath, service.Name())
 			runitService := &runit.Service{servicePath, serviceName}
-			executable := &HoistExecutable{*runitService, execPath}
+			executable := &HoistExecutable{
+				Service:   *runitService,
+				ExecPath:  execPath,
+				Chpst:     h.Chpst,
+				Nolimit:   "/usr/bin/nolimit",
+				RunAs:     h.RunAs,
+				ConfigDir: h.ConfigDir,
+			}
 			executables[i] = *executable
 		}
 		return executables, nil
