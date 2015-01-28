@@ -7,12 +7,10 @@ import (
 	"os/exec"
 	"os/user"
 	"path"
-	"runtime"
 	"strings"
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
-	"github.com/square/p2/pkg/util"
 )
 
 func TestExecutableWritesValidScript(t *testing.T) {
@@ -26,7 +24,7 @@ func TestExecutableWritesValidScript(t *testing.T) {
 	err = ioutil.WriteFile(path.Join(envdir, "SPECIALTESTVAR"), []byte("specialvalue"), 0644)
 	Assert(t).IsNil(err, "test setup failure - should not have failed to write an environment var")
 	executable := &HoistExecutable{
-		Chpst:     util.From(runtime.Caller(0)).ExpandPath("fake_chpst"),
+		Chpst:     FakeChpst(),
 		Nolimit:   "",
 		ExecPath:  "/usr/bin/env",
 		RunAs:     user.Username,

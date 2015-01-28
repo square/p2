@@ -19,12 +19,13 @@ func TestInstall(t *testing.T) {
 	testDir := util.From(runtime.Caller(0))
 	launchableHome, err := ioutil.TempDir("", "test_launchable")
 	defer os.RemoveAll(launchableHome)
-	expectedDownloadPath := path.Join(os.TempDir(), "hoisted-hello_def456")
+	tempDir, _ := ioutil.TempDir("", "hello")
+	expectedDownloadPath := path.Join(tempDir, "hoisted-hello_def456")
 	testLocation := testDir.ExpandPath("hoisted-hello_def456.tar.gz")
 	if _, err = os.Stat(testLocation); os.IsNotExist(err) {
 		t.Fatalf("test setup: %s is not a valid hoist artifact", testLocation)
 	}
-	os.Remove(expectedDownloadPath)
+	defer os.Remove(expectedDownloadPath)
 	manifest, err := PodManifestFromPath(testDir.ExpandPath("test_manifest.yaml"))
 	Assert(t).IsNil(err, "should not have erred trying to read manifest")
 	launchableStanzas := manifest.LaunchableStanzas
@@ -37,7 +38,7 @@ func TestInstall(t *testing.T) {
 		launchable := &HoistLaunchable{testLocation, stanza.LaunchableId, currentUser.Username, launchableHome, fc.File, launchableHome, ""}
 
 		err = launchable.Install()
-		Assert(t).IsNil(err, "there should not have been an error")
+		Assert(t).IsNil(err, "there should not have been an error when installing")
 
 		Assert(t).AreEqual(fc.url, testLocation, "The correct url wasn't set for the curl library")
 		Assert(t).AreEqual(fc.outPath, expectedDownloadPath, "The correct outPath wasn't set for the curl library")
