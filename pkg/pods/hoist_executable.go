@@ -1,6 +1,8 @@
 package pods
 
 import (
+	"fmt"
+	"io"
 	"strings"
 
 	"github.com/square/p2/pkg/runit"
@@ -25,4 +27,11 @@ func (e HoistExecutable) SBEntry() []string {
 		e.ConfigDir,
 		e.ExecPath,
 	}
+}
+
+func (e HoistExecutable) WriteExecutor(writer io.Writer) error {
+	_, err := io.WriteString(writer, fmt.Sprintf(`#!/bin/sh
+    exec %s
+    `, strings.Join(e.SBEntry(), " ")))
+	return err
 }

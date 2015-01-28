@@ -189,7 +189,6 @@ func (hoistLaunchable *HoistLaunchable) Executables(serviceBuilder *runit.Servic
 			servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
 			execPath := path.Join(binLaunchPath, service.Name())
 			runitService := &runit.Service{servicePath, serviceName}
-			// executable := &HoistExecutable{*runitService, execPath}
 			executable := &HoistExecutable{
 				Service:   *runitService,
 				ExecPath:  execPath,

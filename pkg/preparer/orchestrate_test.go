@@ -64,8 +64,8 @@ func (t *TestPod) Path() string {
 }
 
 type fakeHooks struct {
-	beforeInstallErr, afterInstallErr error
-	ranBeforeInstall, ranAfterLaunch  bool
+	beforeInstallErr, afterInstallErr, afterLaunchErr error
+	ranBeforeInstall, ranAfterLaunch, runAfterInstall bool
 }
 
 func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest *pods.PodManifest) error {
@@ -73,9 +73,12 @@ func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest
 	case hooks.BEFORE_INSTALL:
 		f.ranBeforeInstall = true
 		return f.beforeInstallErr
+	case hooks.AFTER_INSTALL:
+		f.runAfterInstall = true
+		return f.afterInstallErr
 	case hooks.AFTER_LAUNCH:
 		f.ranAfterLaunch = true
-		return f.afterInstallErr
+		return f.afterLaunchErr
 	}
 	return util.Errorf("Invalid hook type configured in test: %s", hookType)
 }

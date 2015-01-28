@@ -14,13 +14,10 @@ end.parse!
 
 if options[:env]
   Dir.new(options[:env]).each do |file|
-    if file != "." && file != ".." && !File.directory?(file)
-      begin
-        ENV[file] = File.read(file)
-      rescue
-        # silence errors
-      end
+    env_path = File.join(options[:env], file)
+    if File.file?(env_path)
+      ENV[file] = File.read(env_path).chomp.to_s
     end
-  end
+  end if options[:env]
 end
 exec ARGV.join(" ")

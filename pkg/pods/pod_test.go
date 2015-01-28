@@ -182,7 +182,7 @@ func TestBuildRunitServices(t *testing.T) {
 		ServiceBuilder: serviceBuilder,
 		Chpst:          FakeChpst(),
 	}
-	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	hoistLaunchable := fakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	executables, err := hoistLaunchable.Executables(serviceBuilder)
 	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 

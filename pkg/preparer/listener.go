@@ -116,6 +116,8 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 			err = l.writeHook(event, hookPod, &result.Manifest)
 			if err != nil {
 				sub.WithField("err", err).Errorln("Could not write hook link")
+			} else {
+				sub.NoFields().Infoln("Updated hook")
 			}
 		}
 	}
@@ -170,9 +172,15 @@ func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods
 		}
 
 		for _, executable := range executables {
-			// we use the RunScript as opposed to the ExecPath in order to take advantage of the written
-			// service environment variables.
-			err = os.Symlink(executable.Service.RunScript(), path.Join(eventExecDir, executable.Service.Name))
+			// Write a script to the event directory that executes the pod's executables
+			// with the correct environment for that pod.
+			scriptPath := path.Join(eventExecDir, executable.Service.Name)
+			file, err := os.OpenFile(scriptPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0744)
+			defer file.Close()
+			if err != nil {
+				l.Logger.WithField("err", err).Errorln("Could write to event dir path")
+			}
+			err = executable.WriteExecutor(file)
 			if err != nil {
 				l.Logger.WithField("err", err).Errorln("Could not install new hook")
 			}
