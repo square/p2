@@ -7,7 +7,9 @@ import (
 	"fmt"
 
 	"github.com/armon/consul-api"
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kv-consul"
+	"github.com/square/p2/pkg/pods"
 )
 
 type HealthCheckState string
@@ -66,25 +68,41 @@ func (s *ServiceNodeStatus) IsCurrentVersion(version string) bool {
 
 type ConsulHealthChecker struct {
 	Health *consulapi.Health
+	Store  kp.Store
 }
 
-func NewConsulHealthChecker(consulHealth *consulapi.Health) *ConsulHealthChecker {
+func NewConsulHealthChecker(store kp.Store, consulHealth *consulapi.Health) *ConsulHealthChecker {
 	return &ConsulHealthChecker{
 		Health: consulHealth,
+		Store:  store,
 	}
 }
 
-func (s *ConsulHealthChecker) toNodeStatus(entry consulapi.ServiceEntry) *ServiceNodeStatus {
+func (s *ConsulHealthChecker) toNodeStatus(serviceID string, entry consulapi.ServiceEntry) (*ServiceNodeStatus, error) {
+
+	version := ""
+	manifest, _, err := s.Store.Pod(kp.RealityPath(entry.Node.Node, serviceID))
+	if err != nil && err != pods.NoCurrentManifest {
+		return nil, err
+	}
+
+	if manifest != nil {
+		version, err = manifest.SHA()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	nodeStatus := ServiceNodeStatus{
 		Node:    entry.Node.Node,
-		Version: entry.Service.Tags[0],
+		Version: version,
 		Healthy: true,
 	}
 	for _, check := range entry.Checks {
 		checkPassing := toHealthState(check.Status) == Passing
 		nodeStatus.Healthy = nodeStatus.Healthy && checkPassing
 	}
-	return &nodeStatus
+	return &nodeStatus, nil
 }
 
 func (s *ConsulHealthChecker) LookupHealth(serviceID string) (*ServiceStatus, error) {
@@ -96,12 +114,18 @@ func (s *ConsulHealthChecker) LookupHealth(serviceID string) (*ServiceStatus, er
 	serviceStatus := ServiceStatus{
 		Statuses: make(map[string]*ServiceNodeStatus),
 	}
+
+	var firstErr error = nil
 	for _, entry := range entries {
 		if serviceID == entry.Service.ID {
-			serviceStatus.Statuses[entry.Node.Node] = s.toNodeStatus(*entry)
+			status, err := s.toNodeStatus(serviceID, *entry)
+			if err != nil && firstErr == nil {
+				firstErr = err
+			}
+			serviceStatus.Statuses[entry.Node.Node] = status
 		}
 	}
-	return &serviceStatus, nil
+	return &serviceStatus, firstErr
 }
 
 // Get a channel of service statuses watched by this health checker. This approach
@@ -121,7 +145,10 @@ func (s *ConsulHealthChecker) WatchHealth(serviceID string, statusChan chan Serv
 		select {
 		case res := <-healthCh:
 			for _, entry := range res {
-				nodeStatus := s.toNodeStatus(*entry)
+				nodeStatus, err := s.toNodeStatus(serviceID, *entry)
+				if err != nil {
+					statusErrChan <- err
+				}
 				select {
 				case statusChan <- *nodeStatus:
 				case <-statusQuitChan:
