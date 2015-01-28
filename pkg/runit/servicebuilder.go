@@ -73,6 +73,8 @@ var DefaultBuilder = &ServiceBuilder{
 	Bin:         "/usr/bin/servicebuilder",
 }
 
+var DefaultChpst = "/usr/bin/chpst"
+
 func (b *ServiceBuilder) serviceYamlPath(name string) string {
 	return path.Join(b.ConfigRoot, fmt.Sprintf("%s.yaml", name))
 }

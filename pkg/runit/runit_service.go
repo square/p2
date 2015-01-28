@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os/exec"
+	"path"
 	"strings"
 
 	"github.com/square/p2/pkg/util"
@@ -66,4 +67,8 @@ func convertToErr(msg string, original error) (string, error) {
 	} else {
 		return msg, original
 	}
+}
+
+func (service *Service) RunScript() string {
+	return path.Join(service.Path, "run")
 }

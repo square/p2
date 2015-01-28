@@ -20,7 +20,7 @@ func TestExecutableHooksAreRun(t *testing.T) {
 	defer os.RemoveAll(podDir)
 	Assert(t).IsNil(err, "the error should have been nil")
 
-	ioutil.WriteFile(path.Join(tempDir, "test1"), []byte("#!/bin/sh\necho $POD_ID > $(dirname $0)/output"), 0755)
+	ioutil.WriteFile(path.Join(tempDir, "test1"), []byte("#!/bin/sh\necho $HOOKED_POD_ID > $(dirname $0)/output"), 0755)
 
 	podId := "TestPod"
 	manifest := pods.PodManifest{Id: podId}

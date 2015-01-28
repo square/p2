@@ -75,8 +75,8 @@ func TestMultipleExecutables(t *testing.T) {
 
 	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__script1", "/var/service/testPod__testLaunchable__script2"}
 	Assert(t).AreEqual(2, len(executables), "Found an unexpected number of runit services")
-	Assert(t).AreEqual(executables[0].Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
-	Assert(t).AreEqual(executables[1].Path, expectedServicePaths[1], "Runit service paths from launchable did not match expected")
+	Assert(t).AreEqual(executables[0].Service.Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
+	Assert(t).AreEqual(executables[1].Service.Path, expectedServicePaths[1], "Runit service paths from launchable did not match expected")
 }
 
 func TestSingleRunitService(t *testing.T) {
@@ -87,7 +87,7 @@ func TestSingleRunitService(t *testing.T) {
 
 	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__script1"}
 	Assert(t).AreEqual(len(executables), 1, "Found an unexpected number of runit services")
-	Assert(t).AreEqual(executables[0].Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
+	Assert(t).AreEqual(executables[0].Service.Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
 }
 
 func TestLaunchExecutableOnlyRunitService(t *testing.T) {
@@ -98,7 +98,7 @@ func TestLaunchExecutableOnlyRunitService(t *testing.T) {
 
 	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__launch"}
 	Assert(t).AreEqual(len(executables), 1, "Found an unexpected number of runit services")
-	Assert(t).AreEqual(executables[0].Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
+	Assert(t).AreEqual(executables[0].Service.Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
 }
 
 func TestDisable(t *testing.T) {
@@ -201,10 +201,10 @@ func TestStart(t *testing.T) {
   - -e
   - %s
   - %s
-`, executables[0].Name,
+`, executables[0].Service.Name,
 		hoistLaunchable.ConfigDir,
 		executables[0].ExecPath,
-		executables[1].Name,
+		executables[1].Service.Name,
 		hoistLaunchable.ConfigDir,
 		executables[1].ExecPath)
 
@@ -244,10 +244,10 @@ func TestFailingStart(t *testing.T) {
   - -e
   - %s
   - %s
-`, executables[0].Name,
+`, executables[0].Service.Name,
 		hoistLaunchable.ConfigDir,
 		executables[0].ExecPath,
-		executables[1].Name,
+		executables[1].Service.Name,
 		hoistLaunchable.ConfigDir,
 		executables[1].ExecPath)
 

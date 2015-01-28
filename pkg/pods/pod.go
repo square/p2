@@ -17,8 +17,7 @@ import (
 )
 
 var (
-	Log          logging.Logger
-	DefaultChpst = "/usr/bin/chpst"
+	Log logging.Logger
 )
 
 const DEFAULT_PATH = "/data/pods"
@@ -49,7 +48,7 @@ func NewPod(id string, path string) *Pod {
 		logger:         Log.SubLogger(logrus.Fields{"pod": id}),
 		SV:             runit.DefaultSV,
 		ServiceBuilder: runit.DefaultBuilder,
-		Chpst:          DefaultChpst,
+		Chpst:          runit.DefaultChpst,
 	}
 }
 
@@ -169,15 +168,7 @@ func (pod *Pod) BuildRunitServices(launchables []HoistLaunchable) error {
 			return err
 		}
 		for _, executable := range executables {
-			sbTemplate.AddEntry(executable.Name, []string{
-				"/usr/bin/nolimit",
-				pod.Chpst,
-				"-u",
-				strings.Join([]string{launchable.RunAs, launchable.RunAs}, ":"),
-				"-e",
-				launchable.ConfigDir,
-				executable.ExecPath,
-			})
+			sbTemplate.AddEntry(executable.Service.Name, executable.SBEntry())
 		}
 		if err != nil {
 			// Log the failure but continue

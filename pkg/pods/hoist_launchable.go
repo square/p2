@@ -161,14 +161,19 @@ func (hoistLaunchable *HoistLaunchable) Executables(serviceBuilder *runit.Servic
 		return nil, util.Errorf("%s", err)
 	}
 
-	// we support bin/launch being a file, or a directory, so we have to check
-	// ideally a launchable will have just one launch script someday (can't be
-	// a dir)
+	// we support bin/launch being a file, or a directory, so we check here.
 	if !(binLaunchInfo.IsDir()) {
 		serviceName := strings.Join([]string{hoistLaunchable.Id, "__", "launch"}, "")
 		servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
 		runitService := &runit.Service{servicePath, serviceName}
-		executable := &HoistExecutable{*runitService, binLaunchPath}
+		executable := &HoistExecutable{
+			Service:   *runitService,
+			ExecPath:  binLaunchPath,
+			Chpst:     hoistLaunchable.Chpst,
+			Nolimit:   "/usr/bin/nolimit",
+			RunAs:     hoistLaunchable.RunAs,
+			ConfigDir: hoistLaunchable.ConfigDir,
+		}
 
 		return []HoistExecutable{*executable}, nil
 	} else {
@@ -184,7 +189,15 @@ func (hoistLaunchable *HoistLaunchable) Executables(serviceBuilder *runit.Servic
 			servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
 			execPath := path.Join(binLaunchPath, service.Name())
 			runitService := &runit.Service{servicePath, serviceName}
-			executable := &HoistExecutable{*runitService, execPath}
+			// executable := &HoistExecutable{*runitService, execPath}
+			executable := &HoistExecutable{
+				Service:   *runitService,
+				ExecPath:  execPath,
+				Chpst:     hoistLaunchable.Chpst,
+				Nolimit:   "/usr/bin/nolimit",
+				RunAs:     hoistLaunchable.RunAs,
+				ConfigDir: hoistLaunchable.ConfigDir,
+			}
 			executables[i] = *executable
 		}
 		return executables, nil

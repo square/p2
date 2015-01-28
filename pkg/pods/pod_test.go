@@ -207,11 +207,11 @@ func TestBuildRunitServices(t *testing.T) {
   - -e
   - %s
   - %s
-`, executables[0].Name,
+`, executables[0].Service.Name,
 		hoistLaunchable.Chpst,
 		hoistLaunchable.ConfigDir,
 		executables[0].ExecPath,
-		executables[1].Name,
+		executables[1].Service.Name,
 		hoistLaunchable.Chpst,
 		hoistLaunchable.ConfigDir,
 		executables[1].ExecPath)
