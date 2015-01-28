@@ -1,7 +1,9 @@
 package main
 
 import (
+	"io/ioutil"
 	"log"
+	"os"
 
 	"github.com/armon/consul-api"
 	"github.com/square/p2/pkg/allocation"
@@ -9,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/replication"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v1"
 )
@@ -33,7 +36,18 @@ func main() {
 
 	healthChecker := health.NewConsulHealthChecker(*store, client.Health())
 
-	manifest, err := pods.PodManifestFromPath(*manifestUri)
+	// Fetch manifest (could be URI) into temp file
+	localMan, err := ioutil.TempFile("", "tempmanifest")
+	defer os.Remove(localMan.Name())
+	if err != nil {
+		log.Fatalln("Couldn't create tempfile")
+	}
+	err = uri.URICopy(*manifestUri, localMan.Name())
+	if err != nil {
+		log.Fatalf("Could not fetch manifest: %s", err)
+	}
+
+	manifest, err := pods.PodManifestFromPath(localMan.Name())
 	if err != nil {
 		log.Fatalf("Invalid manifest: %s", err)
 	}
