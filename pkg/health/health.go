@@ -53,7 +53,11 @@ func (s *ServiceStatus) ForNode(node string) (*ServiceNodeStatus, error) {
 			return status, nil
 		}
 	}
-	return nil, NoStatusGiven
+	return &ServiceNodeStatus{
+		Node:    node,
+		Version: "",
+		Healthy: false,
+	}, NoStatusGiven
 }
 
 type ServiceNodeStatus struct {
