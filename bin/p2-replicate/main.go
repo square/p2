@@ -31,6 +31,7 @@ var (
 	`)
 	manifestUri = replicate.Arg("manifest", "a path or url to a pod manifest that will be replicated.").Required().String()
 	hosts       = replicate.Arg("hosts", "Hosts to replicate to").Required().Strings()
+	minNodes    = replicate.Flag("min-nodes", "The minimum number of healthy nodes that must remain up while replicating.").Default("1").Short('m').Int()
 	consulUrl   = replicate.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
 )
 
@@ -67,6 +68,7 @@ func main() {
 	allocated := allocation.NewAllocation(*hosts...)
 
 	replicator := replication.NewReplicator(*manifest, allocated)
+	replicator.MinimumNodes = *minNodes
 
 	stopChan := make(chan struct{})
 	replicator.Enact(store, healthChecker, stopChan)
