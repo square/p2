@@ -17,14 +17,26 @@ import (
 )
 
 var (
-	manifestUri = kingpin.Arg("manifest", "a path or url to a pod manifest that will be replicated.").String()
-	hosts       = kingpin.Arg("hosts", "Hosts to replicate to").Strings()
-	consulUrl   = kingpin.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
+	replicate = kingpin.New("p2-replicate", `p2-replicate uses the replication package to schedule deployment of a pod across multiple nodes. See the replication package's README and godoc for more information.
+
+	Example invocation: p2-replicate --min-nodes 2 helloworld.yaml aws{1,2,3}.example.com
+
+	This will take the pod whose manifest is located at helloworld.yaml and
+	deploy it to the three nodes aws1.example.com, aws2.example.com, and
+	aws3.example.com
+
+	Because of --min-nodes 2, the replicator will ensure that at least two healthy
+	nodes remain up at all times, according to p2's health checks.
+
+	`)
+	manifestUri = replicate.Arg("manifest", "a path or url to a pod manifest that will be replicated.").Required().String()
+	hosts       = replicate.Arg("hosts", "Hosts to replicate to").Required().Strings()
+	consulUrl   = replicate.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
 )
 
 func main() {
-	kingpin.Version(version.VERSION)
-	kingpin.Parse()
+	replicate.Version(version.VERSION)
+	replicate.Parse(os.Args[1:])
 
 	store := kp.NewStore(kp.Options{Address: *consulUrl})
 
