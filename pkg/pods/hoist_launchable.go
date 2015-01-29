@@ -101,7 +101,7 @@ func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, 
 	cmdPath := path.Join(hoistLaunchable.InstallDir(), "bin", script)
 	_, err := os.Stat(cmdPath)
 	if err != nil {
-		return "", err
+		return "", util.Errorf("Unable to locate bin/%s: %s", script, err)
 	}
 
 	cmd := exec.Command(hoistLaunchable.Chpst, "-u", hoistLaunchable.RunAs, "-e", hoistLaunchable.ConfigDir, cmdPath)
@@ -110,7 +110,7 @@ func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, 
 	cmd.Stderr = &buffer
 	err = cmd.Run()
 	if err != nil {
-		return buffer.String(), err
+		return buffer.String(), util.Errorf("bin/%s failed: %s", script, err)
 	}
 
 	return buffer.String(), nil
