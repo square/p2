@@ -220,6 +220,7 @@ func (hoistLaunchable *HoistLaunchable) Install() error {
 	}
 
 	outDir, err := ioutil.TempDir("", hoistLaunchable.Version())
+	defer os.RemoveAll(outDir)
 	if err != nil {
 		return util.Errorf("Could not create temporary directory to install %s: %s", hoistLaunchable.Version(), err)
 	}
