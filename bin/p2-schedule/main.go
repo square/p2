@@ -49,7 +49,7 @@ func main() {
 			if err != nil {
 				log.Fatalln(err)
 			}
-			path = kp.HookPath(hookType, *nodeName, manifest.ID())
+			path = kp.HookPath(hookType, manifest.ID())
 		}
 		duration, err := store.SetPod(path, *manifest)
 		if err != nil {
