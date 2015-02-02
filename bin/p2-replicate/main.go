@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/armon/consul-api"
 	"github.com/square/p2/pkg/allocation"
 	"github.com/square/p2/pkg/health"
@@ -68,6 +69,7 @@ func main() {
 	allocated := allocation.NewAllocation(*hosts...)
 
 	replicator := replication.NewReplicator(*manifest, allocated)
+	replicator.Logger.Logger.Formatter = new(logrus.TextFormatter)
 	replicator.MinimumNodes = *minNodes
 
 	stopChan := make(chan struct{})
