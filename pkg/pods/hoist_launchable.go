@@ -18,7 +18,7 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-type Fetcher func(string, string, ...interface{}) error
+type Fetcher func(string, string) error
 
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type HoistLaunchable struct {
