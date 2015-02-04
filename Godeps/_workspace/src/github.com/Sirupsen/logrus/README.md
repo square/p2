@@ -2,7 +2,7 @@
 
 Logrus is a structured logger for Go (golang), completely API compatible with
 the standard library logger. [Godoc][godoc]. **Please note the Logrus API is not
-yet stable (pre 1.0), the core API is unlikely change much but please version
+yet stable (pre 1.0), the core API is unlikely to change much but please version
 control your Logrus to make sure you aren't fetching latest `master` on every
 build.**
 
@@ -344,6 +344,24 @@ func (f *JSONFormatter) Format(entry *Entry) ([]byte, error) {
   return append(serialized, '\n'), nil
 }
 ```
+
+#### Logger as an `io.Writer`
+
+Logrus can be transormed into an `io.Writer`. That writer is the end of an `io.Pipe` and it is your responsability to close it.
+
+```go
+w := logger.Writer()
+defer w.Close()
+
+srv := http.Server{
+    // create a stdlib log.Logger that writes to
+    // logrus.Logger.
+    ErrorLog: log.New(w, "", 0),
+}
+```
+
+Each line written to that writer will be printed the usual way, using formatters
+and hooks. The level for those entries is `info`.
 
 #### Rotation
 

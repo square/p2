@@ -7,8 +7,8 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
-			"Comment": "v0.6.4-4-g844911c",
-			"Rev": "844911ce078544c0d950b86ef09e6d19270ed33a"
+			"Comment": "v0.6.4-12-g467d9d5",
+			"Rev": "467d9d55c2d2c17248441a8fc661561161f40d5e"
 		},
 		{
 			"ImportPath": "github.com/alecthomas/units",
@@ -28,8 +28,8 @@
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v1",
-			"Comment": "v1.3.3",
-			"Rev": "afafa8aab106d31c9dc8f5e562b3f30f6246c3d4"
+			"Comment": "v1.3.5",
+			"Rev": "a1508bd4f5b75aaa7ce97f411fcdc72138434bbb"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",

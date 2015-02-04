@@ -15,11 +15,11 @@ type FakeCurl struct {
 	outPath string
 }
 
-func (fc *FakeCurl) File(url string, outPath string, args ...interface{}) error {
+func (fc *FakeCurl) File(url string, outPath string) error {
 	fc.url = url
 	fc.outPath = outPath
 
-	return DefaultFetcher()(url, outPath, args...)
+	return DefaultFetcher()(url, outPath)
 }
 
 func FakeChpst() string {
