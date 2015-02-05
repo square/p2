@@ -29,4 +29,7 @@ func TestMkdirAll(t *testing.T) {
 
 	_, err = os.Stat(dirPath)
 	Assert(t).IsNil(err, "There should not have been an error statting the directory")
+
+	err = os.RemoveAll(temp)
+	Assert(t).IsNil(err, "There should not have been an error cleaning up the temp directory")
 }
