@@ -366,6 +366,10 @@ func (pod *Pod) setupConfig(podManifest *PodManifest) error {
 	if err != nil {
 		return err
 	}
+	err = file.Chown(uid, gid)
+	if err != nil {
+		return err
+	}
 
 	err = util.MkdirChownAll(pod.EnvDir(), uid, gid, 0755)
 	if err != nil {
