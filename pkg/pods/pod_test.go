@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/user"
 	"path"
 	"runtime"
 	"strings"
@@ -80,6 +81,11 @@ config:
 
 	pod := PodFromManifestId(manifest.ID())
 	pod.path = os.TempDir()
+
+	curUser, err := user.Current()
+	if err == nil {
+		pod.RunAs = curUser.Username
+	}
 
 	err = pod.setupConfig(manifest)
 	Assert(t).IsNil(err, "There shouldn't have been an error setting up config")
