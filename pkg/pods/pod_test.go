@@ -159,7 +159,13 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 	updated := getUpdatedManifest(t)
 	poddir, err := ioutil.TempDir("", "poddir")
 	Assert(t).IsNil(err, "couldn't create tempdir")
+
 	pod := NewPod("testPod", poddir)
+	curUser, err := user.Current()
+	if err == nil {
+		pod.RunAs = curUser.Username
+	}
+
 	manifestContent, err := existing.Bytes()
 	Assert(t).IsNil(err, "couldn't get manifest bytes")
 	err = ioutil.WriteFile(pod.CurrentPodManifestPath(), manifestContent, 0744)

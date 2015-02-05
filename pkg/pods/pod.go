@@ -212,6 +212,7 @@ func (pod *Pod) WriteCurrentManifest(manifest *PodManifest) (string, error) {
 		}
 		return "", err
 	}
+	defer f.Close()
 
 	err = manifest.Write(f)
 	if err != nil {
@@ -222,6 +223,19 @@ func (pod *Pod) WriteCurrentManifest(manifest *PodManifest) (string, error) {
 		}
 		return "", err
 	}
+
+	uid, gid, err := user.IDs(pod.RunAs)
+	if err != nil {
+		pod.logError(err, "Unable to find pod UID/GID")
+		// the write was still successful so we are not going to revert
+		return "", err
+	}
+	err = f.Chown(uid, gid)
+	if err != nil {
+		pod.logError(err, "Unable to chown current manifest")
+		return "", err
+	}
+
 	return lastManifest, nil
 }
 
