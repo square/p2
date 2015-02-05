@@ -3,6 +3,7 @@ package pods
 import (
 	"io/ioutil"
 	"os"
+	"os/user"
 	"path"
 	"runtime"
 
@@ -40,6 +41,12 @@ func fakeHoistLaunchableForDir(dirName string) *HoistLaunchable {
 		RootDir:     launchableInstallDir,
 		Chpst:       FakeChpst(),
 	}
+
+	curUser, err := user.Current()
+	if err == nil {
+		launchable.RunAs = curUser.Username
+	}
+
 	return launchable
 }
 

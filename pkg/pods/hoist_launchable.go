@@ -285,6 +285,16 @@ func (hoistLaunchable *HoistLaunchable) MakeCurrent() error {
 	if err != nil {
 		return util.Errorf("Couldn't create symlink for hoist launchable %s: %s", hoistLaunchable.Id, err)
 	}
+
+	uid, gid, err := user.IDs(hoistLaunchable.RunAs)
+	if err != nil {
+		return util.Errorf("Couldn't retrieve UID/GID for hoist launchable %s user %s: %s", hoistLaunchable.Id, hoistLaunchable.RunAs, err)
+	}
+	err = os.Lchown(tempLinkPath, uid, gid)
+	if err != nil {
+		return util.Errorf("Couldn't lchown symlink for hoist launchable %s: %s", hoistLaunchable.Id, err)
+	}
+
 	return os.Rename(tempLinkPath, hoistLaunchable.CurrentDir())
 }
 
