@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
+	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
@@ -284,9 +285,13 @@ func (pod *Pod) Uninstall() error {
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
 func (pod *Pod) Install(manifest *PodManifest) error {
-	// if we don't want this to run as root, need another way to create pods directory
 	podHome := pod.path
-	err := os.MkdirAll(podHome, 0755) // this dir needs to be owned by different user at some point
+	uid, gid, err := user.IDs(pod.RunAs)
+	if err != nil {
+		return util.Errorf("Could not determine pod UID/GID: %s", err)
+	}
+
+	err = util.MkdirChownAll(podHome, uid, gid, 0755)
 	if err != nil {
 		return util.Errorf("Could not create pod home: %s", err)
 	}
@@ -323,7 +328,12 @@ func (pod *Pod) Install(manifest *PodManifest) error {
 // (as described in http://smarden.org/runit/chpst.8.html, with the -e option) and includes a
 // single file called CONFIG_PATH, which points at the file written in the "config" directory.
 func (pod *Pod) setupConfig(podManifest *PodManifest) error {
-	err := os.MkdirAll(pod.ConfigDir(), 0755)
+	uid, gid, err := user.IDs(pod.RunAs)
+	if err != nil {
+		return util.Errorf("Could not determine pod UID/GID: %s", err)
+	}
+
+	err = util.MkdirChownAll(pod.ConfigDir(), uid, gid, 0755)
 	if err != nil {
 		return util.Errorf("Could not create config directory for pod %s: %s", podManifest.ID(), err)
 	}
@@ -343,7 +353,7 @@ func (pod *Pod) setupConfig(podManifest *PodManifest) error {
 		return err
 	}
 
-	err = os.MkdirAll(pod.EnvDir(), 0755)
+	err = util.MkdirChownAll(pod.EnvDir(), uid, gid, 0755)
 	if err != nil {
 		return util.Errorf("Could not create the environment dir for pod %s: %s", podManifest.ID(), err)
 	}

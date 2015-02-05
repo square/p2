@@ -306,7 +306,7 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 		return err
 	}
 
-	err = os.MkdirAll(dest, 0755)
+	err = util.MkdirChownAll(dest, uid, gid, 0755)
 	if err != nil {
 		return util.Errorf("Unable to create root directory %s when unpacking %s: %s", dest, fp.Name(), err)
 	}
