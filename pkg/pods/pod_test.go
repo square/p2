@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"path"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -54,7 +55,14 @@ func TestPodCanWriteEnvFile(t *testing.T) {
 	Assert(t).IsNil(err, "Should not have been an error writing the env dir")
 	defer os.RemoveAll(envDir)
 
-	err = writeEnvFile(envDir, "ENVIRONMENT", "staging")
+	curUser, err := user.Current()
+	Assert(t).IsNil(err, "There should not have been an error finding the current user")
+	uid, err := strconv.ParseInt(curUser.Uid, 10, 0)
+	Assert(t).IsNil(err, "There should not have been an error converting the UID to an int")
+	gid, err := strconv.ParseInt(curUser.Gid, 10, 0)
+	Assert(t).IsNil(err, "There should not have been an error converting the UID to an int")
+
+	err = writeEnvFile(envDir, "ENVIRONMENT", "staging", int(uid), int(gid))
 	Assert(t).IsNil(err, "There should not have been an error writing the config file")
 
 	expectedWritten := path.Join(envDir, "ENVIRONMENT")

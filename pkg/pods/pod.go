@@ -371,11 +371,11 @@ func (pod *Pod) setupConfig(podManifest *PodManifest) error {
 	if err != nil {
 		return util.Errorf("Could not create the environment dir for pod %s: %s", podManifest.ID(), err)
 	}
-	err = writeEnvFile(pod.EnvDir(), "CONFIG_PATH", configPath)
+	err = writeEnvFile(pod.EnvDir(), "CONFIG_PATH", configPath, uid, gid)
 	if err != nil {
 		return err
 	}
-	err = writeEnvFile(pod.EnvDir(), "POD_HOME", pod.Path())
+	err = writeEnvFile(pod.EnvDir(), "POD_HOME", pod.Path(), uid, gid)
 	if err != nil {
 		return err
 	}
@@ -385,7 +385,7 @@ func (pod *Pod) setupConfig(podManifest *PodManifest) error {
 
 // writeEnvFile takes an environment directory (as described in http://smarden.org/runit/chpst.8.html, with the -e option)
 // and writes a new file with the given value.
-func writeEnvFile(envDir, name, value string) error {
+func writeEnvFile(envDir, name, value string, uid, gid int) error {
 	fpath := path.Join(envDir, name)
 
 	buf := bytes.NewBufferString(value)
@@ -393,6 +393,11 @@ func writeEnvFile(envDir, name, value string) error {
 	err := ioutil.WriteFile(fpath, buf.Bytes(), 0644)
 	if err != nil {
 		return util.Errorf("Could not write environment config file at %s: %s", fpath, err)
+	}
+
+	err = os.Chown(fpath, uid, gid)
+	if err != nil {
+		return util.Errorf("Could not chown environment config file at %s: %s", fpath, err)
 	}
 	return nil
 }
