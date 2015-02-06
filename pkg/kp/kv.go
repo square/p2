@@ -130,3 +130,22 @@ func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan ch
 
 	}
 }
+
+// Ping confirms that the store's Consul agent can be reached and it has a
+// leader. If the return is nil, then the store should be ready to accept
+// requests.
+//
+// If the return is non-nil, this typically indicates that either Consul is
+// unreachable (eg the agent is not listening on the target port) or has not
+// found a leader (in which case Consul returns a 500 to all endpoints, except
+// the status types).
+func (s *Store) Ping() error {
+	_, qm, err := s.client.Catalog().Nodes(&consulapi.QueryOptions{RequireConsistent: true})
+	if err != nil {
+		return err
+	}
+	if qm == nil || !qm.KnownLeader {
+		return util.Errorf("No known leader")
+	}
+	return nil
+}
