@@ -14,7 +14,7 @@ import (
 
 var (
 	consulManifestPath      = kingpin.Flag("consul-pod", "A path to the manifest that will be used to boot Consul.").ExistingFile()
-	existingConsul          = kingpin.Flag("existing-consul-url", "A URL to an existing Consul server that will be supplied to the base agent's configuration").String()
+	existingConsul          = kingpin.Flag("existing-consul-pod", "A path to an existing Consul pod that will be supplied to the base agent's configuration.").ExistingDir()
 	agentManifestPath       = kingpin.Flag("agent-pod", "A path to the manifest that will used to boot the base agent.").ExistingFile()
 	additionalManifestsPath = kingpin.Flag("additional-pods", "(Optional) a directory of additional pods that will be launched and added to the intent store immediately").ExistingDir()
 )
@@ -29,12 +29,14 @@ func main() {
 	}
 	log.Println("Installing and launching consul")
 
+	var consulPod *pods.Pod
+	var consulManifest *pods.PodManifest
 	if *existingConsul == "" {
-		consulManifest, err := pods.PodManifestFromPath(*consulManifestPath)
+		consulManifest, err = pods.PodManifestFromPath(*consulManifestPath)
 		if err != nil {
 			log.Fatalf("Could not get consul manifest: %s", err)
 		}
-		consulPod := pods.PodFromManifestId(consulManifest.ID())
+		consulPod = pods.PodFromManifestId(consulManifest.ID())
 		consulPod.RunAs = "root"
 		err = InstallConsul(consulPod, consulManifest)
 		if err != nil {
@@ -42,11 +44,24 @@ func main() {
 		}
 	} else {
 		log.Printf("Using existing Consul at %s\n", *existingConsul)
-		agentManifest.Config["consul_address"] = *existingConsul
+
+		consulPod, err = pods.ExistingPod(*existingConsul)
+		if err != nil {
+			log.Fatalf("The existing consul pod is invalid: %s", err)
+		}
+		consulManifest, err = consulPod.CurrentManifest()
+		if err != nil {
+			log.Fatalf("Cannot get the current consul manifest: %s", err)
+		}
+	}
+
+	err = ScheduleForThisHost(consulManifest)
+	if err != nil {
+		log.Fatalf("Could not register consul in the intent store: %s", err)
 	}
 
 	log.Println("Registering base agent in consul")
-	err = RegisterBaseAgentInConsul(agentManifest)
+	err = ScheduleForThisHost(agentManifest)
 	if err != nil {
 		log.Fatalf("Could not register base agent with consul: %s", err)
 	}
@@ -72,13 +87,13 @@ func InstallConsul(consulPod *pods.Pod, consulManifest *pods.PodManifest) error 
 	return nil
 }
 
-func RegisterBaseAgentInConsul(agentManifest *pods.PodManifest) error {
+func ScheduleForThisHost(manifest *pods.PodManifest) error {
 	store := kp.NewStore(kp.Options{})
 	hostname, err := os.Hostname()
 	if err != nil {
 		return err
 	}
-	_, err = store.SetPod(kp.IntentPath(hostname, agentManifest.ID()), *agentManifest)
+	_, err = store.SetPod(kp.IntentPath(hostname, manifest.ID()), *manifest)
 	return err
 }
 

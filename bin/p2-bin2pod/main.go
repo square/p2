@@ -40,6 +40,7 @@ var (
     `)
 	executable    = bin2pod.Arg("executable", "the executable to turn into a hoist artifact + pod manifest. The format of executable is of a URL.").Required().String()
 	id            = bin2pod.Flag("id", "The ID of the pod. By default this is the name of the executable passed").String()
+	isArtifact    = bin2pod.Flag("is-artifact", "If specified, will treat the bin argument as a completed Hoist artifact instead of a binary").Bool()
 	location      = bin2pod.Flag("location", "The location where the outputted tar will live. The characters {} will be replaced with the unique basename of the tar, including its SHA. If not provided, the location will be a file path to the resulting tar from the build, which is included in the output of this script. Users must copy the resultant tar to the new location if it is different from the default output path.").String()
 	workDirectory = bin2pod.Flag("work-dir", "A directory where the results will be written.").ExistingDir()
 	config        = bin2pod.Flag("config", "a list of key=value assignments. Each key will be set in the config section.").Strings()
