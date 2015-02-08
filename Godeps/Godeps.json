@@ -23,10 +23,6 @@
 			"Rev": "dcfedd50ed5334f96adee43fc88518a4f095e15c"
 		},
 		{
-			"ImportPath": "github.com/nareix/curl",
-			"Rev": "d1b02f168dccd6f70100d8c3926fb97c709b21da"
-		},
-		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v1",
 			"Comment": "v1.3.5",
 			"Rev": "a1508bd4f5b75aaa7ce97f411fcdc72138434bbb"
