@@ -58,6 +58,8 @@ func ExistingPod(path string) (*Pod, error) {
 	manifest, err := pod.CurrentManifest()
 	if err == NoCurrentManifest {
 		return nil, util.Errorf("No current manifest set, this is not an extant pod directory")
+	} else if err != nil {
+		return nil, err
 	}
 	pod.Id = manifest.ID()
 	return pod, nil

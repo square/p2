@@ -83,7 +83,8 @@ func scheduleUserCreationHook(tmpdir string) error {
 	createUserPath := path.Join(tmpdir, "create_user")
 	script := `#!/usr/bin/env bash
 set -e
-/sbin/useradd $HOOKED_POD_ID -d $HOOKED_POD_HOME
+mkdir -p $HOOKED_POD_HOME
+/sbin/adduser $HOOKED_POD_ID -d $HOOKED_POD_HOME
 `
 	err := ioutil.WriteFile(createUserPath, []byte(script), 0744)
 	if err != nil {

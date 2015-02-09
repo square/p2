@@ -13,6 +13,8 @@ import (
 	"github.com/square/p2/pkg/pods"
 )
 
+var DEFAULT_PATH = "/usr/local/p2hooks.d"
+
 type Pod interface {
 	ConfigDir() string
 	EnvDir() string

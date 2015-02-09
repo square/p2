@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
@@ -69,7 +70,7 @@ func main() {
 		preparerConfig.ConsulAddress = "127.0.0.1:8500"
 	}
 	if preparerConfig.HooksDirectory == "" {
-		preparerConfig.HooksDirectory = "/usr/local/p2hooks.d"
+		preparerConfig.HooksDirectory = hooks.DEFAULT_PATH
 	}
 
 	prep, err := preparer.New(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logger)
