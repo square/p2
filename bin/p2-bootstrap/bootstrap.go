@@ -17,6 +17,7 @@ var (
 	existingConsul          = kingpin.Flag("existing-consul-pod", "A path to an existing Consul pod that will be supplied to the base agent's configuration.").ExistingDir()
 	agentManifestPath       = kingpin.Flag("agent-pod", "A path to the manifest that will used to boot the base agent.").ExistingFile()
 	additionalManifestsPath = kingpin.Flag("additional-pods", "(Optional) a directory of additional pods that will be launched and added to the intent store immediately").ExistingDir()
+	timeout                 = kingpin.Flag("timeout", "The amount of time to wait for consul to begin serving. Defaults to '10s'.").Default("10s").String()
 )
 
 func main() {
@@ -54,7 +55,7 @@ func main() {
 			log.Fatalf("Cannot get the current consul manifest: %s", err)
 		}
 	}
-	if err = VerifyConsulUp(); err != nil {
+	if err = VerifyConsulUp(*timeout); err != nil {
 		log.Fatalln(err)
 	}
 	// TODO: uncomment this. We want to schedule the consul manifest to facilitate
@@ -92,7 +93,12 @@ func InstallConsul(consulPod *pods.Pod, consulManifest *pods.PodManifest) error 
 	return nil
 }
 
-func VerifyConsulUp() error {
+func VerifyConsulUp(timeout string) error {
+	timeoutDur, err := time.ParseDuration(timeout)
+	if err != nil {
+		timeoutDur = 10 * time.Second
+	}
+
 	store := kp.NewStore(kp.Options{})
 	consulIsUp := make(chan struct{})
 	go func() {
@@ -106,8 +112,8 @@ func VerifyConsulUp() error {
 		}
 	}()
 	select {
-	case <-time.After(10 * time.Second):
-		return util.Errorf("Consul did not start or was not available after 10 seconds")
+	case <-time.After(timeoutDur):
+		return util.Errorf("Consul did not start or was not available after %v", timeoutDur)
 	case <-consulIsUp:
 		return nil
 	}
