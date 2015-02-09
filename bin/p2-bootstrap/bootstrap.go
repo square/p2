@@ -17,7 +17,7 @@ var (
 	existingConsul          = kingpin.Flag("existing-consul-pod", "A path to an existing Consul pod that will be supplied to the base agent's configuration.").ExistingDir()
 	agentManifestPath       = kingpin.Flag("agent-pod", "A path to the manifest that will used to boot the base agent.").ExistingFile()
 	additionalManifestsPath = kingpin.Flag("additional-pods", "(Optional) a directory of additional pods that will be launched and added to the intent store immediately").ExistingDir()
-	timeout                 = kingpin.Flag("timeout", "The amount of time to wait for consul to begin serving. Defaults to '10s'.").Default("10s").String()
+	timeout                 = kingpin.Flag("consul-timeout", "How long to wait for consul to begin serving. 0 will skip the consul check altogether.").Default("10s").String()
 )
 
 func main() {
@@ -96,7 +96,7 @@ func InstallConsul(consulPod *pods.Pod, consulManifest *pods.PodManifest) error 
 func VerifyConsulUp(timeout string) error {
 	timeoutDur, err := time.ParseDuration(timeout)
 	if err != nil {
-		timeoutDur = 10 * time.Second
+		return err
 	}
 	if timeoutDur == 0 {
 		return nil
