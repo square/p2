@@ -53,6 +53,16 @@ func NewPod(id string, path string) *Pod {
 	}
 }
 
+func ExistingPod(path string) (*Pod, error) {
+	pod := NewPod("temp", path)
+	manifest, err := pod.CurrentManifest()
+	if err == NoCurrentManifest {
+		return nil, util.Errorf("No current manifest set, this is not an extant pod directory")
+	}
+	pod.Id = manifest.ID()
+	return pod, nil
+}
+
 func PodFromManifestId(manifestId string) *Pod {
 	return NewPod(manifestId, PodPath(manifestId))
 }
