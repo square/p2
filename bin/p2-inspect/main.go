@@ -29,6 +29,8 @@ type NodePodStatus struct {
 	PodId              string      `json:"pod,omitempty"`
 	IntentManifestSHA  string      `json:"intent_manifest_sha"`
 	RealityManifestSHA string      `json:"reality_manifest_sha"`
+	IntentLocations    []string    `json:"intent_locations"`
+	RealityLocations   []string    `json:"reality_locations"`
 	Health             *NodeHealth `json:"health_check,omitempty"`
 }
 
@@ -122,11 +124,17 @@ func addKVPToMap(result kp.ManifestResult, source int, filterNode, filterPod str
 			return fmt.Errorf("Two intent manifests for node %s pod %s", nodeName, podId)
 		}
 		old.IntentManifestSHA = manifestSHA
+		for _, launchable := range result.Manifest.LaunchableStanzas {
+			old.IntentLocations = append(old.IntentLocations, launchable.Location)
+		}
 	case REALITY_SOURCE:
 		if old.RealityManifestSHA != "" {
 			return fmt.Errorf("Two reality manifests for node %s pod %s", nodeName, podId)
 		}
 		old.RealityManifestSHA = manifestSHA
+		for _, launchable := range result.Manifest.LaunchableStanzas {
+			old.RealityLocations = append(old.RealityLocations, launchable.Location)
+		}
 	}
 
 	statuses[podId][nodeName] = old
