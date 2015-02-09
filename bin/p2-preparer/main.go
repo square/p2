@@ -8,6 +8,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
 	"gopkg.in/yaml.v2"
 )
@@ -74,6 +75,12 @@ func main() {
 	prep, err := preparer.New(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logger)
 	if err != nil {
 		logger.WithField("inner_err", err).Errorln("Could not initialize preparer")
+		os.Exit(1)
+	}
+
+	err = os.MkdirAll(pods.DEFAULT_PATH, 0755)
+	if err != nil {
+		logger.WithField("inner_err", err).Errorln("Could not create preparer pod directory")
 		os.Exit(1)
 	}
 

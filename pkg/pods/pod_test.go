@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/user"
 	"path"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -53,7 +55,14 @@ func TestPodCanWriteEnvFile(t *testing.T) {
 	Assert(t).IsNil(err, "Should not have been an error writing the env dir")
 	defer os.RemoveAll(envDir)
 
-	err = writeEnvFile(envDir, "ENVIRONMENT", "staging")
+	curUser, err := user.Current()
+	Assert(t).IsNil(err, "There should not have been an error finding the current user")
+	uid, err := strconv.ParseInt(curUser.Uid, 10, 0)
+	Assert(t).IsNil(err, "There should not have been an error converting the UID to an int")
+	gid, err := strconv.ParseInt(curUser.Gid, 10, 0)
+	Assert(t).IsNil(err, "There should not have been an error converting the UID to an int")
+
+	err = writeEnvFile(envDir, "ENVIRONMENT", "staging", int(uid), int(gid))
 	Assert(t).IsNil(err, "There should not have been an error writing the config file")
 
 	expectedWritten := path.Join(envDir, "ENVIRONMENT")
@@ -80,6 +89,11 @@ config:
 
 	pod := PodFromManifestId(manifest.ID())
 	pod.path = os.TempDir()
+
+	curUser, err := user.Current()
+	if err == nil {
+		pod.RunAs = curUser.Username
+	}
 
 	err = pod.setupConfig(manifest)
 	Assert(t).IsNil(err, "There shouldn't have been an error setting up config")
@@ -153,7 +167,13 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 	updated := getUpdatedManifest(t)
 	poddir, err := ioutil.TempDir("", "poddir")
 	Assert(t).IsNil(err, "couldn't create tempdir")
+
 	pod := NewPod("testPod", poddir)
+	curUser, err := user.Current()
+	if err == nil {
+		pod.RunAs = curUser.Username
+	}
+
 	manifestContent, err := existing.Bytes()
 	Assert(t).IsNil(err, "couldn't get manifest bytes")
 	err = ioutil.WriteFile(pod.CurrentPodManifestPath(), manifestContent, 0744)
@@ -183,6 +203,7 @@ func TestBuildRunitServices(t *testing.T) {
 		Chpst:          FakeChpst(),
 	}
 	hoistLaunchable := fakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	hoistLaunchable.RunAs = "testPod"
 	executables, err := hoistLaunchable.Executables(serviceBuilder)
 	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 

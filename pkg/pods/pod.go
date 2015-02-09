@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
+	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
@@ -211,6 +212,7 @@ func (pod *Pod) WriteCurrentManifest(manifest *PodManifest) (string, error) {
 		}
 		return "", err
 	}
+	defer f.Close()
 
 	err = manifest.Write(f)
 	if err != nil {
@@ -221,6 +223,19 @@ func (pod *Pod) WriteCurrentManifest(manifest *PodManifest) (string, error) {
 		}
 		return "", err
 	}
+
+	uid, gid, err := user.IDs(pod.RunAs)
+	if err != nil {
+		pod.logError(err, "Unable to find pod UID/GID")
+		// the write was still successful so we are not going to revert
+		return "", err
+	}
+	err = f.Chown(uid, gid)
+	if err != nil {
+		pod.logError(err, "Unable to chown current manifest")
+		return "", err
+	}
+
 	return lastManifest, nil
 }
 
@@ -284,9 +299,13 @@ func (pod *Pod) Uninstall() error {
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
 func (pod *Pod) Install(manifest *PodManifest) error {
-	// if we don't want this to run as root, need another way to create pods directory
 	podHome := pod.path
-	err := os.MkdirAll(podHome, 0755) // this dir needs to be owned by different user at some point
+	uid, gid, err := user.IDs(pod.RunAs)
+	if err != nil {
+		return util.Errorf("Could not determine pod UID/GID: %s", err)
+	}
+
+	err = util.MkdirChownAll(podHome, uid, gid, 0755)
 	if err != nil {
 		return util.Errorf("Could not create pod home: %s", err)
 	}
@@ -323,7 +342,12 @@ func (pod *Pod) Install(manifest *PodManifest) error {
 // (as described in http://smarden.org/runit/chpst.8.html, with the -e option) and includes a
 // single file called CONFIG_PATH, which points at the file written in the "config" directory.
 func (pod *Pod) setupConfig(podManifest *PodManifest) error {
-	err := os.MkdirAll(pod.ConfigDir(), 0755)
+	uid, gid, err := user.IDs(pod.RunAs)
+	if err != nil {
+		return util.Errorf("Could not determine pod UID/GID: %s", err)
+	}
+
+	err = util.MkdirChownAll(pod.ConfigDir(), uid, gid, 0755)
 	if err != nil {
 		return util.Errorf("Could not create config directory for pod %s: %s", podManifest.ID(), err)
 	}
@@ -342,16 +366,20 @@ func (pod *Pod) setupConfig(podManifest *PodManifest) error {
 	if err != nil {
 		return err
 	}
-
-	err = os.MkdirAll(pod.EnvDir(), 0755)
-	if err != nil {
-		return util.Errorf("Could not create the environment dir for pod %s: %s", podManifest.ID(), err)
-	}
-	err = writeEnvFile(pod.EnvDir(), "CONFIG_PATH", configPath)
+	err = file.Chown(uid, gid)
 	if err != nil {
 		return err
 	}
-	err = writeEnvFile(pod.EnvDir(), "POD_HOME", pod.Path())
+
+	err = util.MkdirChownAll(pod.EnvDir(), uid, gid, 0755)
+	if err != nil {
+		return util.Errorf("Could not create the environment dir for pod %s: %s", podManifest.ID(), err)
+	}
+	err = writeEnvFile(pod.EnvDir(), "CONFIG_PATH", configPath, uid, gid)
+	if err != nil {
+		return err
+	}
+	err = writeEnvFile(pod.EnvDir(), "POD_HOME", pod.Path(), uid, gid)
 	if err != nil {
 		return err
 	}
@@ -361,7 +389,7 @@ func (pod *Pod) setupConfig(podManifest *PodManifest) error {
 
 // writeEnvFile takes an environment directory (as described in http://smarden.org/runit/chpst.8.html, with the -e option)
 // and writes a new file with the given value.
-func writeEnvFile(envDir, name, value string) error {
+func writeEnvFile(envDir, name, value string, uid, gid int) error {
 	fpath := path.Join(envDir, name)
 
 	buf := bytes.NewBufferString(value)
@@ -369,6 +397,11 @@ func writeEnvFile(envDir, name, value string) error {
 	err := ioutil.WriteFile(fpath, buf.Bytes(), 0644)
 	if err != nil {
 		return util.Errorf("Could not write environment config file at %s: %s", fpath, err)
+	}
+
+	err = os.Chown(fpath, uid, gid)
+	if err != nil {
+		return util.Errorf("Could not chown environment config file at %s: %s", fpath, err)
 	}
 	return nil
 }
