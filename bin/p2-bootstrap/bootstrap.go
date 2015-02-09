@@ -98,6 +98,9 @@ func VerifyConsulUp(timeout string) error {
 	if err != nil {
 		timeoutDur = 10 * time.Second
 	}
+	if timeoutDur == 0 {
+		return nil
+	}
 
 	store := kp.NewStore(kp.Options{})
 	consulIsUp := make(chan struct{})
