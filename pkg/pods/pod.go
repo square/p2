@@ -71,6 +71,28 @@ func (pod *Pod) CurrentManifest() (*PodManifest, error) {
 	return PodManifestFromPath(currentManPath)
 }
 
+func (pod *Pod) Disable(manifest *PodManifest) (bool, error) {
+	launchables, err := pod.GetLaunchables(manifest)
+	if err != nil {
+		return false, err
+	}
+
+	success := true
+	for _, launchable := range launchables {
+		_, err = launchable.Disable()
+		if err != nil {
+			pod.logLaunchableError(launchable.Id, err, "Unable to disable launchable")
+			success = false
+		}
+	}
+	if success {
+		pod.logInfo("Successfully disabled")
+	} else {
+		pod.logInfo("Attempted disable, but one or more services did not disable successfully")
+	}
+	return success, nil
+}
+
 func (pod *Pod) Halt() (bool, error) {
 	currentManifest, err := pod.CurrentManifest()
 	if err != nil {
@@ -116,6 +138,7 @@ func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
 		return false, err
 	}
 
+	var successes []bool
 	for _, launchable := range launchables {
 		err := launchable.MakeCurrent()
 		if err != nil {
@@ -128,17 +151,18 @@ func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
 			// if a launchable's post-activate fails, we probably can't
 			// launch it, but this does not break the entire pod
 			pod.logLaunchableError(launchable.Id, err, out)
-			launchable.Id = ""
+			successes = append(successes, false)
 		} else {
 			pod.logInfo(out)
+			successes = append(successes, true)
 		}
 	}
 
 	err = pod.BuildRunitServices(launchables)
 
 	success := true
-	for _, launchable := range launchables {
-		if launchable.Id == "" {
+	for i, launchable := range launchables {
+		if !successes[i] {
 			continue
 		}
 		err = launchable.Launch(pod.ServiceBuilder, pod.SV) // TODO: make these configurable

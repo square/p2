@@ -40,6 +40,10 @@ func (t *TestPod) Install(manifest *pods.PodManifest) error {
 	return t.installErr
 }
 
+func (t *TestPod) Disable(manifest *pods.PodManifest) (bool, error) {
+	return true, nil
+}
+
 func (t *TestPod) Halt() (bool, error) {
 	t.halted = true
 	return t.haltSuccess, t.haltError
