@@ -54,7 +54,9 @@ func main() {
 			log.Fatalf("Cannot get the current consul manifest: %s", err)
 		}
 	}
-
+	if err = VerifyConsulUp(); err != nil {
+		log.Fatalln(err)
+	}
 	// TODO: uncomment this. We want to schedule the consul manifest to facilitate
 	// future rollouts. However, to achieve this as a general goal, we must have good
 	// failure+retry semantics baked into the preparer when doing both reads AND writes.
@@ -87,8 +89,28 @@ func InstallConsul(consulPod *pods.Pod, consulManifest *pods.PodManifest) error 
 	if err != nil || !ok {
 		return util.Errorf("Can't launch Consul, aborting: %s", err)
 	}
-	time.Sleep(time.Second * 10)
 	return nil
+}
+
+func VerifyConsulUp() error {
+	store := kp.NewStore(kp.Options{})
+	consulIsUp := make(chan struct{})
+	go func() {
+		for {
+			time.Sleep(200 * time.Millisecond)
+			err := store.Ping()
+			if err == nil {
+				consulIsUp <- struct{}{}
+				return
+			}
+		}
+	}()
+	select {
+	case <-time.After(10 * time.Second):
+		return util.Errorf("Consul did not start or was not available after 10 seconds")
+	case <-consulIsUp:
+		return nil
+	}
 }
 
 func ScheduleForThisHost(manifest *pods.PodManifest) error {
