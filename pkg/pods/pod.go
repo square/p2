@@ -71,6 +71,28 @@ func (pod *Pod) CurrentManifest() (*PodManifest, error) {
 	return PodManifestFromPath(currentManPath)
 }
 
+func (pod *Pod) Disable(manifest *PodManifest) (bool, error) {
+	launchables, err := pod.GetLaunchables(manifest)
+	if err != nil {
+		return false, err
+	}
+
+	success := true
+	for _, launchable := range launchables {
+		_, err = launchable.Disable()
+		if err != nil {
+			pod.logLaunchableError(launchable.Id, err, "Unable to disable launchable")
+			success = false
+		}
+	}
+	if success {
+		pod.logInfo("Successfully disabled")
+	} else {
+		pod.logInfo("Attempted disable, but one or more services did not disable successfully")
+	}
+	return success, nil
+}
+
 func (pod *Pod) Halt() (bool, error) {
 	currentManifest, err := pod.CurrentManifest()
 	if err != nil {

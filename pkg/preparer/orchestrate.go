@@ -15,6 +15,7 @@ type Pod interface {
 	hooks.Pod
 	Launch(*pods.PodManifest) (bool, error)
 	Install(*pods.PodManifest) error
+	Disable(*pods.PodManifest) (bool, error)
 	Halt() (bool, error)
 }
 
@@ -226,6 +227,12 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 			logger.WithField("err", err).Errorln("Service registration failed")
 			return false
 		}
+
+		if currentManifest != nil {
+			// the exit code of disable is always ignored
+			pod.Disable(currentManifest)
+		}
+
 		ok, err := pod.Launch(newManifest)
 		if err != nil {
 			logger.WithFields(logrus.Fields{
