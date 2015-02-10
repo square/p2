@@ -142,7 +142,7 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 				"sha":      sha,
 				"sha_err":  err,
 			})
-			manifestLogger.NoFields().Infoln("New manifest received")
+			manifestLogger.NoFields().Debugln("New manifest received")
 			working = true
 		case <-time.After(1 * time.Second):
 			if working {
