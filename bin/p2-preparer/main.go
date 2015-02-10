@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
+	"github.com/square/p2/pkg/version"
 	"gopkg.in/yaml.v2"
 )
 
@@ -90,7 +91,8 @@ func main() {
 		"node_name": preparerConfig.NodeName,
 		"consul":    preparerConfig.ConsulAddress,
 		"hooks_dir": preparerConfig.HooksDirectory,
-	}).Infoln("Preparer started successfully") // change to logrus message
+		"version":   version.VERSION,
+	}).Infoln("Preparer started successfully")
 
 	quitMainUpdate := make(chan struct{})
 	quitHookUpdate := make(chan struct{})
