@@ -147,20 +147,7 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 			})
 			manifestLogger.NoFields().Debugln("New manifest received")
 
-			if p.keyring != nil {
-				signer, err := manifestToLaunch.Signer(p.keyring)
-				if signer == nil && err == nil {
-					manifestLogger.NoFields().Warnln("Received unsigned manifest, but preparer expects signed manifests")
-					continue
-				} else if err != nil {
-					manifestLogger.WithField("inner_err", err).Warnln("Could not resolve signature of manifest")
-					continue
-				} else {
-					manifestLogger.WithField("signer_public_key", signer.PrimaryKey.KeyIdShortString()).Debugln("Resolved manifest signature")
-				}
-			}
-
-			working = true
+			working = p.verifySignature(manifestToLaunch, manifestLogger)
 		case <-time.After(1 * time.Second):
 			if working {
 				pod := pods.PodFromManifestId(manifestToLaunch.ID())
@@ -180,6 +167,27 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 			}
 		}
 	}
+}
+
+// check if a manifest satisfies the signature requirement of this preparer
+func (p *Preparer) verifySignature(manifest pods.PodManifest, logger logging.Logger) bool {
+	// do not remove the logger argument, it's not the same as p.Logger
+	if p.keyring == nil {
+		return true
+	}
+
+	signer, err := manifest.Signer(p.keyring)
+	if signer != nil {
+		logger.WithField("signer_key", signer.PrimaryKey.KeyIdShortString()).Debugln("Resolved manifest signature")
+		return true
+	}
+
+	if err == nil {
+		logger.NoFields().Warnln("Received unsigned manifest (expected signature)")
+	} else {
+		logger.WithField("inner_err", err).Warnln("Error while resolving manifest signature")
+	}
+	return false
 }
 
 func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, logger logging.Logger) bool {
