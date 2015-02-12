@@ -1,6 +1,7 @@
 package preparer
 
 import (
+	"fmt"
 	"path"
 	"time"
 
@@ -41,6 +42,10 @@ type Preparer struct {
 }
 
 func New(nodeName string, consulAddress string, hooksDirectory string, logger logging.Logger, keyring openpgp.KeyRing) (*Preparer, error) {
+	if keyring == nil {
+		return nil, fmt.Errorf("No keyring configured")
+	}
+
 	store := kp.NewStore(kp.Options{
 		Address: consulAddress,
 	})
@@ -174,7 +179,7 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 func (p *Preparer) verifySignature(manifest pods.PodManifest, logger logging.Logger) bool {
 	// do not remove the logger argument, it's not the same as p.Logger
 	if p.keyring == nil {
-		return true
+		return false
 	}
 
 	signer, err := manifest.Signer(p.keyring)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/signal"
@@ -128,7 +129,7 @@ func waitForTermination(logger logging.Logger, quitMainUpdate, quitHookUpdate ch
 
 func loadKeyring(path string) (openpgp.KeyRing, error) {
 	if path == "" {
-		return nil, nil
+		return nil, fmt.Errorf("No keyring configured")
 	}
 
 	f, err := os.Open(path)

@@ -223,15 +223,6 @@ func TestPreparerWillLaunchIfRealityErrsOnRead(t *testing.T) {
 	Assert(t).AreEqual(testManifest, testPod.currentManifest, "The manifest passed was wrong")
 }
 
-func TestPreparerWillIgnoreSignatureWithoutKeyring(t *testing.T) {
-	manifest := testManifest(t)
-
-	p, _ := testPreparer(&FakeStore{})
-	p.keyring = nil
-
-	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "should have accepted unsigned manifest")
-}
-
 func TestPreparerWillRequireSignatureWithKeyring(t *testing.T) {
 	manifest := testManifest(t)
 
