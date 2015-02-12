@@ -51,6 +51,7 @@ func New(nodeName string, consulAddress string, hooksDirectory string, logger lo
 		DestinationDir: path.Join(pods.DEFAULT_PATH, "hooks"),
 		ExecDir:        hooksDirectory,
 		Logger:         logger,
+		Keyring:        keyring,
 	}
 
 	return &Preparer{

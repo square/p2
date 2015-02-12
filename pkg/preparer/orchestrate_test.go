@@ -125,7 +125,7 @@ func (f *FakeStore) RegisterService(pods.PodManifest) error {
 func (f *FakeStore) WatchPods(string, <-chan struct{}, chan<- error, chan<- kp.ManifestResult) {}
 
 func testPreparer(f *FakeStore) (*Preparer, *fakeHooks) {
-	p, _ := New("hostname", "0.0.0.0", util.From(runtime.Caller(0)).ExpandPath("test_hooks"), logging.DefaultLogger, nil)
+	p, _ := New("hostname", "0.0.0.0", util.From(runtime.Caller(0)).ExpandPath("test_hooks"), logging.DefaultLogger, openpgp.EntityList{})
 	hooks := &fakeHooks{}
 	p.hooks = hooks
 	p.store = f
@@ -249,7 +249,7 @@ func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 	Assert(t).IsNil(err, "NewEntity error should have been nil")
 
 	p, _ := testPreparer(&FakeStore{})
-	p.keyring = openpgp.EntityList([]*openpgp.Entity{fakeSigner})
+	p.keyring = openpgp.EntityList{fakeSigner}
 
 	var buf bytes.Buffer
 	sigWriter, err := clearsign.Encode(&buf, fakeSigner.PrivateKey, nil)

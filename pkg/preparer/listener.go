@@ -15,6 +15,7 @@ import (
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
+	"golang.org/x/crypto/openpgp"
 )
 
 var eventPrefix = regexp.MustCompile("/?([a-zA-Z\\_]+)\\/.+")
@@ -29,6 +30,7 @@ type HookListener struct {
 	DestinationDir string // The destination directory for downloaded pods that will act as hooks
 	ExecDir        string // The directory that will actually be executed by the HookDir
 	Logger         logging.Logger
+	Keyring        openpgp.KeyRing
 }
 
 // Sync keeps manifests located at the hook pods in the intent store.
@@ -60,6 +62,13 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 				"pod":  result.Manifest.ID(),
 				"dest": l.DestinationDir,
 			})
+
+			signer, _ := result.Manifest.Signer(l.Keyring)
+			if signer == nil {
+				sub.NoFields().Warnln("Hook is not signed")
+				break
+			}
+
 			// Figure out what event we're setting a hook pod for. For example,
 			// if we find a pod at /hooks/before_install/usercreate, then the
 			// event is called "before_install"
