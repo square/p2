@@ -9,6 +9,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"golang.org/x/crypto/openpgp"
 )
 
 type Pod interface {
@@ -36,9 +37,10 @@ type Preparer struct {
 	hooks        Hooks
 	hookListener HookListener
 	Logger       logging.Logger
+	keyring      openpgp.KeyRing
 }
 
-func New(nodeName string, consulAddress string, hooksDirectory string, logger logging.Logger) (*Preparer, error) {
+func New(nodeName string, consulAddress string, hooksDirectory string, logger logging.Logger, keyring openpgp.KeyRing) (*Preparer, error) {
 	store := kp.NewStore(kp.Options{
 		Address: consulAddress,
 	})
@@ -57,6 +59,7 @@ func New(nodeName string, consulAddress string, hooksDirectory string, logger lo
 		hooks:        hooks.Hooks(hooksDirectory, &logger),
 		hookListener: listener,
 		Logger:       logger,
+		keyring:      keyring,
 	}, nil
 }
 
@@ -143,6 +146,20 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 				"sha_err":  err,
 			})
 			manifestLogger.NoFields().Debugln("New manifest received")
+
+			if p.keyring != nil {
+				signer, err := manifestToLaunch.Signer(p.keyring)
+				if signer == nil && err == nil {
+					manifestLogger.NoFields().Warnln("Received unsigned manifest, but preparer expects signed manifests")
+					continue
+				} else if err != nil {
+					manifestLogger.WithField("inner_err", err).Warnln("Could not resolve signature of manifest")
+					continue
+				} else {
+					manifestLogger.WithField("signer_public_key", signer.PrimaryKey.KeyIdShortString()).Debugln("Resolved manifest signature")
+				}
+			}
+
 			working = true
 		case <-time.After(1 * time.Second):
 			if working {

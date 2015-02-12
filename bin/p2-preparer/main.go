@@ -74,7 +74,7 @@ func main() {
 		preparerConfig.HooksDirectory = hooks.DEFAULT_PATH
 	}
 
-	prep, err := preparer.New(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logger)
+	prep, err := preparer.New(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logger, nil)
 	if err != nil {
 		logger.WithField("inner_err", err).Errorln("Could not initialize preparer")
 		os.Exit(1)
