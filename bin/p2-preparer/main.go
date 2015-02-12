@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/version"
+	"golang.org/x/crypto/openpgp"
 	"gopkg.in/yaml.v2"
 )
 
@@ -28,6 +29,7 @@ type PreparerConfig struct {
 	NodeName             string           `yaml:"node_name"`
 	ConsulAddress        string           `yaml:"consul_address"`
 	HooksDirectory       string           `yaml:"hooks_directory"`
+	KeyringPath          string           `yaml:"keyring,omitempty"`
 	ExtraLogDestinations []LogDestination `yaml:"extra_log_destinations,omitempty"`
 }
 
@@ -74,7 +76,16 @@ func main() {
 		preparerConfig.HooksDirectory = hooks.DEFAULT_PATH
 	}
 
-	prep, err := preparer.New(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logger, nil)
+	keyring, err := loadKeyring(preparerConfig.KeyringPath)
+	if err != nil {
+		logger.WithFields(logrus.Fields{
+			"inner_err":    err,
+			"keyring_path": preparerConfig.KeyringPath,
+		}).Errorln("Could not load preparer keyring")
+		os.Exit(1)
+	}
+
+	prep, err := preparer.New(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logger, keyring)
 	if err != nil {
 		logger.WithField("inner_err", err).Errorln("Could not initialize preparer")
 		os.Exit(1)
@@ -91,6 +102,7 @@ func main() {
 		"node_name": preparerConfig.NodeName,
 		"consul":    preparerConfig.ConsulAddress,
 		"hooks_dir": preparerConfig.HooksDirectory,
+		"keyring":   preparerConfig.KeyringPath,
 		"version":   version.VERSION,
 	}).Infoln("Preparer started successfully")
 
@@ -112,4 +124,18 @@ func waitForTermination(logger logging.Logger, quitMainUpdate, quitHookUpdate ch
 	quitHookUpdate <- struct{}{}
 	quitMainUpdate <- struct{}{}
 	<-quitMainUpdate // acknowledgement
+}
+
+func loadKeyring(path string) (openpgp.KeyRing, error) {
+	if path == "" {
+		return nil, nil
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	return openpgp.ReadKeyRing(f)
 }
