@@ -1,6 +1,7 @@
 package preparer
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"runtime"
@@ -13,6 +14,8 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
+	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/clearsign"
 )
 
 type TestPod struct {
@@ -122,7 +125,7 @@ func (f *FakeStore) RegisterService(pods.PodManifest) error {
 func (f *FakeStore) WatchPods(string, <-chan struct{}, chan<- error, chan<- kp.ManifestResult) {}
 
 func testPreparer(f *FakeStore) (*Preparer, *fakeHooks) {
-	p, _ := New("hostname", "0.0.0.0", util.From(runtime.Caller(0)).ExpandPath("test_hooks"), logging.DefaultLogger)
+	p, _ := New("hostname", "0.0.0.0", util.From(runtime.Caller(0)).ExpandPath("test_hooks"), logging.DefaultLogger, openpgp.EntityList{})
 	hooks := &fakeHooks{}
 	p.hooks = hooks
 	p.store = f
@@ -218,4 +221,36 @@ func TestPreparerWillLaunchIfRealityErrsOnRead(t *testing.T) {
 	Assert(t).IsTrue(testPod.launched, "Should have launched the new manifest")
 	Assert(t).IsTrue(hooks.ranAfterLaunch, "Should have run after_launch hooks")
 	Assert(t).AreEqual(testManifest, testPod.currentManifest, "The manifest passed was wrong")
+}
+
+func TestPreparerWillRequireSignatureWithKeyring(t *testing.T) {
+	manifest := testManifest(t)
+
+	p, _ := testPreparer(&FakeStore{})
+	p.keyring = openpgp.EntityList{}
+
+	Assert(t).IsFalse(p.verifySignature(*manifest, logging.DefaultLogger), "should have accepted unsigned manifest")
+}
+
+func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
+	manifestBytes, err := testManifest(t).Bytes()
+	Assert(t).IsNil(err, "manifest bytes error should have been nil")
+
+	fakeSigner, err := openpgp.NewEntity("p2", "p2-test", "p2@squareup.com", nil)
+	Assert(t).IsNil(err, "NewEntity error should have been nil")
+
+	p, _ := testPreparer(&FakeStore{})
+	p.keyring = openpgp.EntityList{fakeSigner}
+
+	var buf bytes.Buffer
+	sigWriter, err := clearsign.Encode(&buf, fakeSigner.PrivateKey, nil)
+	Assert(t).IsNil(err, "clearsign Encode error should have been nil")
+
+	sigWriter.Write(manifestBytes)
+	sigWriter.Close()
+
+	manifest, err := pods.PodManifestFromBytes(buf.Bytes())
+	Assert(t).IsNil(err, "should have generated manifest from signed bytes")
+
+	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "should have accepted signed manifest")
 }

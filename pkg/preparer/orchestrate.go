@@ -1,6 +1,7 @@
 package preparer
 
 import (
+	"fmt"
 	"path"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"golang.org/x/crypto/openpgp"
 )
 
 type Pod interface {
@@ -36,9 +38,14 @@ type Preparer struct {
 	hooks        Hooks
 	hookListener HookListener
 	Logger       logging.Logger
+	keyring      openpgp.KeyRing
 }
 
-func New(nodeName string, consulAddress string, hooksDirectory string, logger logging.Logger) (*Preparer, error) {
+func New(nodeName string, consulAddress string, hooksDirectory string, logger logging.Logger, keyring openpgp.KeyRing) (*Preparer, error) {
+	if keyring == nil {
+		return nil, fmt.Errorf("No keyring configured")
+	}
+
 	store := kp.NewStore(kp.Options{
 		Address: consulAddress,
 	})
@@ -49,6 +56,7 @@ func New(nodeName string, consulAddress string, hooksDirectory string, logger lo
 		DestinationDir: path.Join(pods.DEFAULT_PATH, "hooks"),
 		ExecDir:        hooksDirectory,
 		Logger:         logger,
+		Keyring:        keyring,
 	}
 
 	return &Preparer{
@@ -57,6 +65,7 @@ func New(nodeName string, consulAddress string, hooksDirectory string, logger lo
 		hooks:        hooks.Hooks(hooksDirectory, &logger),
 		hookListener: listener,
 		Logger:       logger,
+		keyring:      keyring,
 	}, nil
 }
 
@@ -143,7 +152,8 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 				"sha_err":  err,
 			})
 			manifestLogger.NoFields().Debugln("New manifest received")
-			working = true
+
+			working = p.verifySignature(manifestToLaunch, manifestLogger)
 		case <-time.After(1 * time.Second):
 			if working {
 				pod := pods.PodFromManifestId(manifestToLaunch.ID())
@@ -163,6 +173,27 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 			}
 		}
 	}
+}
+
+// check if a manifest satisfies the signature requirement of this preparer
+func (p *Preparer) verifySignature(manifest pods.PodManifest, logger logging.Logger) bool {
+	// do not remove the logger argument, it's not the same as p.Logger
+	if p.keyring == nil {
+		return false
+	}
+
+	signer, err := manifest.Signer(p.keyring)
+	if signer != nil {
+		logger.WithField("signer_key", signer.PrimaryKey.KeyIdShortString()).Debugln("Resolved manifest signature")
+		return true
+	}
+
+	if err == nil {
+		logger.NoFields().Warnln("Received unsigned manifest (expected signature)")
+	} else {
+		logger.WithField("inner_err", err).Warnln("Error while resolving manifest signature")
+	}
+	return false
 }
 
 func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, logger logging.Logger) bool {

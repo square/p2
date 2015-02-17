@@ -1,6 +1,7 @@
 package preparer
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -13,6 +14,8 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
+	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/clearsign"
 )
 
 type fakeIntentStore struct {
@@ -52,18 +55,35 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 	defer os.RemoveAll(execDir)
 	Assert(t).IsNil(err, "should not have erred creating a tempdir")
 
-	fakeIntent := fakeStoreWithManifests(kp.ManifestResult{
-		Path: path.Join(hookPrefix, "before_install/users"),
-		Manifest: pods.PodManifest{
-			Id: "users",
-			LaunchableStanzas: map[string]pods.LaunchableStanza{
-				"create": pods.LaunchableStanza{
-					Location:       util.From(runtime.Caller(0)).ExpandPath("hoisted-hello_def456.tar.gz"),
-					LaunchableType: "hoist",
-					LaunchableId:   "create",
-				},
+	manifest := &pods.PodManifest{
+		Id: "users",
+		LaunchableStanzas: map[string]pods.LaunchableStanza{
+			"create": pods.LaunchableStanza{
+				Location:       util.From(runtime.Caller(0)).ExpandPath("hoisted-hello_def456.tar.gz"),
+				LaunchableType: "hoist",
+				LaunchableId:   "create",
 			},
 		},
+	}
+	manifestBytes, err := manifest.Bytes()
+	Assert(t).IsNil(err, "manifest bytes error should have been nil")
+
+	fakeSigner, err := openpgp.NewEntity("p2", "p2-test", "p2@squareup.com", nil)
+	Assert(t).IsNil(err, "NewEntity error should have been nil")
+
+	var buf bytes.Buffer
+	sigWriter, err := clearsign.Encode(&buf, fakeSigner.PrivateKey, nil)
+	Assert(t).IsNil(err, "clearsign encode error should have been nil")
+
+	sigWriter.Write(manifestBytes)
+	sigWriter.Close()
+
+	manifest, err = pods.PodManifestFromBytes(buf.Bytes())
+	Assert(t).IsNil(err, "should have generated manifest from signed bytes")
+
+	fakeIntent := fakeStoreWithManifests(kp.ManifestResult{
+		Path:     path.Join(hookPrefix, "before_install/users"),
+		Manifest: *manifest,
 	})
 
 	listener := HookListener{
@@ -72,6 +92,7 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 		ExecDir:        execDir,
 		DestinationDir: destDir,
 		Logger:         logging.DefaultLogger,
+		Keyring:        openpgp.EntityList{fakeSigner},
 	}
 
 	errCh := make(chan error, 1)

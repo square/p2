@@ -14,6 +14,8 @@ import (
 	"os"
 
 	"github.com/square/p2/pkg/util"
+	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/clearsign"
 	"gopkg.in/yaml.v2"
 )
 
@@ -28,6 +30,10 @@ type PodManifest struct {
 	LaunchableStanzas map[string]LaunchableStanza `yaml:"launchables"`
 	Config            map[string]interface{}      `yaml:"config"`
 	StatusPort        int                         `yaml:"status_port,omitempty"`
+	// these fields are required to track the original text if it was signed
+	raw       []byte
+	plaintext []byte
+	signature []byte
 }
 
 func (manifest *PodManifest) ID() string {
@@ -55,6 +61,26 @@ func PodManifestFromString(str string) (*PodManifest, error) {
 
 func PodManifestFromBytes(bytes []byte) (*PodManifest, error) {
 	podManifest := &PodManifest{}
+
+	signed, _ := clearsign.Decode(bytes)
+	if signed != nil {
+		signature, err := ioutil.ReadAll(signed.ArmoredSignature.Body)
+		if err != nil {
+			return nil, fmt.Errorf("Could not read signature from pod manifest: %s", err)
+		}
+		podManifest.signature = signature
+
+		podManifest.raw = make([]byte, len(bytes))
+		copy(podManifest.raw, bytes)
+
+		// the original plaintext is in signed.Plaintext, but the signature
+		// corresponds to signed.Bytes, so that's what we need to save
+		podManifest.plaintext = signed.Bytes
+
+		// parse YAML from the message's plaintext instead
+		bytes = signed.Plaintext
+	}
+
 	if err := yaml.Unmarshal(bytes, podManifest); err != nil {
 		return nil, fmt.Errorf("Could not read pod manifest: %s", err)
 	}
@@ -74,6 +100,14 @@ func (manifest *PodManifest) Write(out io.Writer) error {
 }
 
 func (manifest *PodManifest) Bytes() ([]byte, error) {
+	if manifest.raw != nil {
+		// if it's signed, we must recycle the original content to preserve the
+		// signature's validity. remarshaling it might change the exact text of
+		// the YAML, which would invalidate the signature.
+		ret := make([]byte, len(manifest.raw))
+		copy(ret, manifest.raw)
+		return ret, nil
+	}
 	return yaml.Marshal(manifest)
 }
 
@@ -89,19 +123,20 @@ func (manifest *PodManifest) WriteConfig(out io.Writer) error {
 	return nil
 }
 
-// SHA() returns a string containing a hex encoded SHA-1
-// checksum of the manifest's contents
+// SHA() returns a string containing a hex encoded SHA-1 checksum of the
+// manifest's contents. The contents are normalized, such that all equivalent
+// YAML structures have the same SHA (despite differences in comments,
+// indentation, etc).
 func (manifest *PodManifest) SHA() (string, error) {
 	if manifest == nil {
 		return "", util.Errorf("the manifest is nil")
 	}
-	valueBuf := bytes.Buffer{}
-	err := manifest.Write(&valueBuf)
+	buf, err := yaml.Marshal(manifest) // always remarshal
 	if err != nil {
 		return "", err
 	}
 	hasher := sha1.New()
-	hasher.Write(valueBuf.Bytes())
+	hasher.Write(buf)
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
@@ -111,4 +146,14 @@ func (manifest *PodManifest) ConfigFileName() (string, error) {
 		return "", err
 	}
 	return manifest.Id + "_" + sha + ".yaml", nil
+}
+
+// Returns the entity that signed the manifest, if any. If there was no
+// signature, both returns are nil. If the signer is not in the given keyring,
+// an openpgp.ErrUnknownIssuer will be returned.
+func (manifest *PodManifest) Signer(keyring openpgp.KeyRing) (*openpgp.Entity, error) {
+	if manifest.signature == nil {
+		return nil, nil
+	}
+	return openpgp.CheckDetachedSignature(keyring, bytes.NewReader(manifest.plaintext), bytes.NewReader(manifest.signature))
 }
