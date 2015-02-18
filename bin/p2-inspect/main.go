@@ -17,6 +17,7 @@ var (
 	consulUrl      = kingpin.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
 	filterNodeName = kingpin.Flag("node", "The node to inspect. By default, all nodes are shown.").String()
 	filterPodId    = kingpin.Flag("pod", "The pod manifest ID to inspect. By default, all pods are shown.").String()
+	consulToken    = kingpin.Flag("token", "The consul ACL token to use. Empty by default.").String()
 )
 
 const (
@@ -43,7 +44,10 @@ func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 
-	store := kp.NewStore(kp.Options{Address: *consulUrl})
+	store := kp.NewStore(kp.Options{
+		Address: *consulUrl,
+		Token:   *consulToken,
+	})
 
 	intents, _, err := store.ListPods(kp.INTENT_TREE)
 	if err != nil {
@@ -71,6 +75,7 @@ func main() {
 	// error is always nil
 	client, _ := consulapi.NewClient(&consulapi.Config{
 		Address: *consulUrl,
+		Token:   *consulToken, // this is not actually needed because /health endpoints are unACLed
 	})
 	for podId := range statusMap {
 		checks, _, err := client.Health().Checks(podId, nil)

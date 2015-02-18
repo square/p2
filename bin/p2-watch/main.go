@@ -13,16 +13,21 @@ import (
 )
 
 var (
-	nodeName     = kingpin.Flag("node", "The node to do the scheduling on. Uses the hostname by default.").String()
-	watchReality = kingpin.Flag("reality", "Watch the reality store instead of the intent store. False by default").Default("false").Bool()
-	hookTypeName = kingpin.Flag("hook-type", "Watch a particular hook type instead of the intent store.").String()
+	nodeName      = kingpin.Flag("node", "The node to do the scheduling on. Uses the hostname by default.").String()
+	watchReality  = kingpin.Flag("reality", "Watch the reality store instead of the intent store. False by default").Default("false").Bool()
+	hookTypeName  = kingpin.Flag("hook-type", "Watch a particular hook type instead of the intent store.").String()
+	consulAddress = kingpin.Flag("consul", "The address of the consul node to use. Defaults to 0.0.0.0:8500").String()
+	consulToken   = kingpin.Flag("token", "The ACL to use for accessing consul.").String()
 )
 
 func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 
-	store := kp.NewStore(kp.Options{})
+	store := kp.NewStore(kp.Options{
+		Address: *consulAddress,
+		Token:   *consulToken,
+	})
 
 	if *nodeName == "" {
 		hostname, err := os.Hostname()
