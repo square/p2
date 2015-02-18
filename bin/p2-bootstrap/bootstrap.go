@@ -18,6 +18,7 @@ var (
 	agentManifestPath       = kingpin.Flag("agent-pod", "A path to the manifest that will used to boot the base agent.").ExistingFile()
 	additionalManifestsPath = kingpin.Flag("additional-pods", "(Optional) a directory of additional pods that will be launched and added to the intent store immediately").ExistingDir()
 	timeout                 = kingpin.Flag("consul-timeout", "How long to wait for consul to begin serving. 0 will skip the consul check altogether.").Default("10s").String()
+	consulToken             = kingpin.Flag("consul-token", "The ACL token to pass to consul when registering the bootstrapped pods").String()
 )
 
 func main() {
@@ -102,7 +103,9 @@ func VerifyConsulUp(timeout string) error {
 		return nil
 	}
 
-	store := kp.NewStore(kp.Options{})
+	store := kp.NewStore(kp.Options{
+		Token: *consulToken, // not actually necessary because this endpoint is unauthenticated
+	})
 	consulIsUp := make(chan struct{})
 	go func() {
 		for {
@@ -123,7 +126,9 @@ func VerifyConsulUp(timeout string) error {
 }
 
 func ScheduleForThisHost(manifest *pods.PodManifest) error {
-	store := kp.NewStore(kp.Options{})
+	store := kp.NewStore(kp.Options{
+		Token: *consulToken,
+	})
 	hostname, err := os.Hostname()
 	if err != nil {
 		return err
