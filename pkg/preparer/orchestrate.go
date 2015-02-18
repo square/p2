@@ -41,13 +41,14 @@ type Preparer struct {
 	keyring      openpgp.KeyRing
 }
 
-func New(nodeName string, consulAddress string, hooksDirectory string, logger logging.Logger, keyring openpgp.KeyRing) (*Preparer, error) {
+func New(nodeName string, consulAddress string, consulToken string, hooksDirectory string, logger logging.Logger, keyring openpgp.KeyRing) (*Preparer, error) {
 	if keyring == nil {
 		return nil, fmt.Errorf("No keyring configured")
 	}
 
 	store := kp.NewStore(kp.Options{
 		Address: consulAddress,
+		Token:   consulToken,
 	})
 
 	listener := HookListener{

@@ -29,6 +29,7 @@ type LogDestination struct {
 type PreparerConfig struct {
 	NodeName             string           `yaml:"node_name"`
 	ConsulAddress        string           `yaml:"consul_address"`
+	ConsulTokenPath      string           `yaml:"consul_token_path,omitempty"`
 	HooksDirectory       string           `yaml:"hooks_directory"`
 	KeyringPath          string           `yaml:"keyring,omitempty"`
 	ExtraLogDestinations []LogDestination `yaml:"extra_log_destinations,omitempty"`
@@ -86,7 +87,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	prep, err := preparer.New(preparerConfig.NodeName, preparerConfig.ConsulAddress, preparerConfig.HooksDirectory, logger, keyring)
+	consulToken, err := ioutil.ReadFile(preparerConfig.ConsulTokenPath)
+	if err != nil {
+		logger.WithFields(logrus.Fields{
+			"inner_err":  err,
+			"token_path": preparerConfig.ConsulTokenPath,
+		}).Errorln("Could not read consul token")
+		os.Exit(1)
+	}
+
+	prep, err := preparer.New(preparerConfig.NodeName, preparerConfig.ConsulAddress, string(consulToken), preparerConfig.HooksDirectory, logger, keyring)
 	if err != nil {
 		logger.WithField("inner_err", err).Errorln("Could not initialize preparer")
 		os.Exit(1)

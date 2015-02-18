@@ -34,16 +34,21 @@ var (
 	hosts       = replicate.Arg("hosts", "Hosts to replicate to").Required().Strings()
 	minNodes    = replicate.Flag("min-nodes", "The minimum number of healthy nodes that must remain up while replicating.").Default("1").Short('m').Int()
 	consulUrl   = replicate.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
+	consulToken = replicate.Flag("token", "The ACL token to use for consul").String()
 )
 
 func main() {
 	replicate.Version(version.VERSION)
 	replicate.Parse(os.Args[1:])
 
-	store := kp.NewStore(kp.Options{Address: *consulUrl})
+	store := kp.NewStore(kp.Options{
+		Address: *consulUrl,
+		Token:   *consulToken,
+	})
 
 	conf := consulapi.DefaultConfig()
 	conf.Address = *consulUrl
+	conf.Token = *consulToken
 
 	// the error is always nil
 	client, _ := consulapi.NewClient(conf)

@@ -125,7 +125,7 @@ func (f *FakeStore) RegisterService(pods.PodManifest) error {
 func (f *FakeStore) WatchPods(string, <-chan struct{}, chan<- error, chan<- kp.ManifestResult) {}
 
 func testPreparer(f *FakeStore) (*Preparer, *fakeHooks) {
-	p, _ := New("hostname", "0.0.0.0", util.From(runtime.Caller(0)).ExpandPath("test_hooks"), logging.DefaultLogger, openpgp.EntityList{})
+	p, _ := New("hostname", "0.0.0.0", "", util.From(runtime.Caller(0)).ExpandPath("test_hooks"), logging.DefaultLogger, openpgp.EntityList{})
 	hooks := &fakeHooks{}
 	p.hooks = hooks
 	p.store = f
