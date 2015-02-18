@@ -87,13 +87,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	consulToken, err := ioutil.ReadFile(preparerConfig.ConsulTokenPath)
-	if err != nil {
-		logger.WithFields(logrus.Fields{
-			"inner_err":  err,
-			"token_path": preparerConfig.ConsulTokenPath,
-		}).Errorln("Could not read consul token")
-		os.Exit(1)
+	consulToken := []byte{}
+	if preparerConfig.ConsulTokenPath != "" {
+		consulToken, err = ioutil.ReadFile(preparerConfig.ConsulTokenPath)
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"inner_err":  err,
+				"token_path": preparerConfig.ConsulTokenPath,
+			}).Errorln("Could not read consul token")
+			os.Exit(1)
+		}
 	}
 
 	prep, err := preparer.New(preparerConfig.NodeName, preparerConfig.ConsulAddress, string(consulToken), preparerConfig.HooksDirectory, logger, keyring)
