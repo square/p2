@@ -14,4 +14,6 @@ install:
   - export PATH=$PATH:$GOBINS
   - rake install
 
-script: rake test
+script:
+  - rake test
+  - integration/travis.sh
