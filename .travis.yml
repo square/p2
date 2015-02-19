@@ -12,4 +12,6 @@ install:
   - go get github.com/tools/godep
   - rake install
 
-script: rake test
+script:
+  - rake test
+  - integration/travis.sh
