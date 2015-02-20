@@ -335,7 +335,12 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 		}
 		fpath := path.Join(dest, hdr.Name)
 
-		if hdr.Typeflag == tar.TypeSymlink {
+		if hdr.Typeflag == tar.TypeSymlink, tar.TypeLink {
+			// hard links are intentionally treated as symlinks, because the
+			// target of a hardlink might be later in the tarball and not
+			// unpacked yet
+			// creating a hardlink in that situation would raise an error
+			// because the hardlink target doesn't exist
 			err = os.Symlink(hdr.Linkname, fpath)
 			if err != nil {
 				return util.Errorf("Unable to create destination symlink %s (to %s) when unpacking %s: %s", fpath, hdr.Linkname, fp.Name(), err)
