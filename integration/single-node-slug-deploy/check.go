@@ -134,9 +134,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not load GPG keys: %s\n", err)
 	}
+	signedPreparerManifest, err := signManifest(preparerManifest, tempdir)
+	if err != nil {
+		log.Fatalf("Could not sign preparer manifest: %s\n", err)
+	}
+	signedConsulManifest, err := signManifest(consulManifest, tempdir)
+	if err != nil {
+		log.Fatalf("Could not sign consul manifest: %s\n", err)
+	}
 
 	fmt.Println("Executing bootstrap")
-	err = executeBootstrap(preparerManifest, consulManifest)
+	err = executeBootstrap(signedPreparerManifest, signedConsulManifest)
 	if err != nil {
 		log.Fatalf("Could not execute bootstrap: %s", err)
 	}
@@ -174,6 +182,11 @@ func loadGPG(workdir string) error {
 	}
 
 	return nil
+}
+
+func signManifest(manifestPath string, workdir string) (string, error) {
+	signedManifestPath := fmt.Sprintf("%s.asc", manifestPath)
+	return signedManifestPath, exec.Command("gpg", "--no-default-keyring", "--keyring", path.Join(workdir, "pubring.gpg"), "--secret-keyring", path.Join(workdir, "secring.gpg"), "-u", "p2universe", "--output", signedManifestPath, "--clearsign", manifestPath).Run()
 }
 
 func generatePreparerPod(workdir string) (string, error) {
