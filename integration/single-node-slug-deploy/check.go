@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/square/p2/pkg/intent"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
 )
@@ -316,14 +315,25 @@ func postHelloManifest(dir string) error {
 	manifest.LaunchableStanzas = map[string]pods.LaunchableStanza{
 		"hello": stanza,
 	}
+	manifestPath := path.Join(dir, "hello.yaml")
 
-	store, err := intent.LookupStore(intent.Options{})
+	f, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
-	hostname, _ := os.Hostname()
-	_, err = store.SetPod(hostname, *manifest)
-	return err
+	defer f.Close()
+	err = manifest.Write(f)
+	if err != nil {
+		return err
+	}
+	f.Close()
+
+	manifestPath, err = signManifest(manifestPath, dir)
+	if err != nil {
+		return err
+	}
+
+	return exec.Command("p2-schedule", manifestPath).Run()
 }
 
 func verifyHelloRunning() error {
