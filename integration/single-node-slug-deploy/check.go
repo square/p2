@@ -203,7 +203,29 @@ func generatePreparerPod(workdir string) (string, error) {
 	// the test number forces the pod manifest to change every test run.
 	testNumber := fmt.Sprintf("test=%d", rand.Intn(2000000000))
 	cmd := exec.Command("p2-bin2pod", "--work-dir", workdir, "--id", "p2-preparer", "--config", fmt.Sprintf("node_name=%s", hostname), "--config", testNumber, wd+"/p2-preparer")
-	return executeBin2Pod(cmd)
+	manifestPath, err := executeBin2Pod(cmd)
+	if err != nil {
+		return "", err
+	}
+
+	manifest, err := pods.PodManifestFromPath(manifestPath)
+	if err != nil {
+		return "", err
+	}
+	manifest.Config["preparer"] = map[string]interface{}{
+		"keyring": path.Join(workdir, "pubring.gpg"),
+	}
+	f, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	err = manifest.Write(f)
+	if err != nil {
+		return "", err
+	}
+
+	return manifestPath, err
 }
 
 func scheduleUserCreationHook(tmpdir string) error {
