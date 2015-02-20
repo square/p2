@@ -13,9 +13,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/intent"
-	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
 )
@@ -245,16 +243,12 @@ mkdir -p $HOOKED_POD_HOME
 	if err != nil {
 		return err
 	}
-	manifest, err := pods.PodManifestFromPath(manifestPath)
+
+	manifestPath, err = signManifest(manifestPath, tmpdir)
 	if err != nil {
 		return err
 	}
-	store := kp.NewStore(kp.Options{})
-	_, err = store.SetPod(kp.HookPath(hooks.BEFORE_INSTALL, "create_user"), *manifest)
-	if err != nil {
-		return err
-	}
-	return nil
+	return exec.Command("p2-schedule", "--hook-type", "before_install", manifestPath).Run()
 }
 
 func executeBin2Pod(cmd *exec.Cmd) (string, error) {
