@@ -335,7 +335,12 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 		}
 		fpath := path.Join(dest, hdr.Name)
 
-		if hdr.FileInfo().IsDir() {
+		if hdr.Typeflag == tar.TypeSymlink {
+			err = os.Symlink(hdr.Linkname, fpath)
+			if err != nil {
+				return util.Errorf("Unable to create destination symlink %s (to %s) when unpacking %s: %s", fpath, hdr.Linkname, fp.Name(), err)
+			}
+		} else if hdr.Typeflag == tar.TypeDir {
 			err = os.Mkdir(fpath, hdr.FileInfo().Mode())
 			if err != nil && !os.IsExist(err) {
 				return util.Errorf("Unable to create destination directory %s when unpacking %s: %s", fpath, fp.Name(), err)
@@ -345,7 +350,7 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 			if err != nil {
 				return util.Errorf("Unable to chown destination directory %s to %s when unpacking %s: %s", fpath, hoistLaunchable.RunAs, fp.Name(), err)
 			}
-		} else {
+		} else if hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA {
 			f, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, hdr.FileInfo().Mode())
 			if err != nil {
 				return util.Errorf("Unable to open destination file %s when unpacking %s: %s", fpath, fp.Name(), err)
@@ -362,6 +367,8 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 				return util.Errorf("Unable to copy into destination file %s when unpacking %s: %s", fpath, fp.Name(), err)
 			}
 			f.Close() // eagerly release file descriptors rather than letting them pile up
+		} else {
+			return util.Errorf("Unhandled type flag %q (header %v) when unpacking %s", hdr.Typeflag, hdr, fp.Name())
 		}
 	}
 	return nil
