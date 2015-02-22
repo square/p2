@@ -1,4 +1,4 @@
-package pods
+package hoist
 
 import (
 	"fmt"
@@ -63,7 +63,7 @@ func TestInstallDir(t *testing.T) {
 }
 
 func TestMultipleExecutables(t *testing.T) {
-	fakeLaunchable := fakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	fakeLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	defer cleanupFakeLaunchable(fakeLaunchable)
 	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
 
@@ -76,7 +76,7 @@ func TestMultipleExecutables(t *testing.T) {
 }
 
 func TestSingleRunitService(t *testing.T) {
-	launchable := fakeHoistLaunchableForDir("single_script_test_hoist_launchable")
+	launchable := FakeHoistLaunchableForDir("single_script_test_hoist_launchable")
 	defer cleanupFakeLaunchable(launchable)
 	Assert(t).IsNil(launchable.MakeCurrent(), "Should have been made current")
 	executables, err := launchable.Executables(runit.DefaultBuilder)
@@ -88,7 +88,7 @@ func TestSingleRunitService(t *testing.T) {
 }
 
 func TestLaunchExecutableOnlyRunitService(t *testing.T) {
-	launchable := fakeHoistLaunchableForDir("launch_script_only_test_hoist_launchable")
+	launchable := FakeHoistLaunchableForDir("launch_script_only_test_hoist_launchable")
 	defer cleanupFakeLaunchable(launchable)
 	Assert(t).IsNil(launchable.MakeCurrent(), "Should have been made current")
 	executables, err := launchable.Executables(runit.DefaultBuilder)
@@ -100,7 +100,7 @@ func TestLaunchExecutableOnlyRunitService(t *testing.T) {
 }
 
 func TestDisable(t *testing.T) {
-	hoistLaunchable := fakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	hoistLaunchable := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hoistLaunchable)
 
 	disableOutput, err := hoistLaunchable.Disable()
@@ -112,7 +112,7 @@ func TestDisable(t *testing.T) {
 }
 
 func TestFailingDisable(t *testing.T) {
-	hoistLaunchable := fakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
+	hoistLaunchable := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hoistLaunchable)
 
 	disableOutput, err := hoistLaunchable.Disable()
@@ -125,7 +125,7 @@ func TestFailingDisable(t *testing.T) {
 
 // providing a disable script is optional, make sure we don't error
 func TestNonexistentDisable(t *testing.T) {
-	hoistLaunchable := fakeHoistLaunchableForDir("nonexistent_scripts_test_hoist_launchable")
+	hoistLaunchable := FakeHoistLaunchableForDir("nonexistent_scripts_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hoistLaunchable)
 
 	disableOutput, err := hoistLaunchable.Disable()
@@ -137,7 +137,7 @@ func TestNonexistentDisable(t *testing.T) {
 }
 
 func TestEnable(t *testing.T) {
-	hoistLaunchable := fakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	hoistLaunchable := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hoistLaunchable)
 
 	enableOutput, err := hoistLaunchable.Enable()
@@ -149,7 +149,7 @@ func TestEnable(t *testing.T) {
 }
 
 func TestFailingEnable(t *testing.T) {
-	hoistLaunchable := fakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
+	hoistLaunchable := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hoistLaunchable)
 
 	enableOutput, err := hoistLaunchable.Enable()
@@ -162,7 +162,7 @@ func TestFailingEnable(t *testing.T) {
 
 // providing an enable script is optional, make sure we don't error
 func TestNonexistentEnable(t *testing.T) {
-	hoistLaunchable := fakeHoistLaunchableForDir("nonexistent_scripts_test_hoist_launchable")
+	hoistLaunchable := FakeHoistLaunchableForDir("nonexistent_scripts_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hoistLaunchable)
 
 	enableOutput, err := hoistLaunchable.Enable()
@@ -174,7 +174,7 @@ func TestNonexistentEnable(t *testing.T) {
 }
 
 func TestFailingStop(t *testing.T) {
-	hoistLaunchable := fakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hoistLaunchable)
 
 	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("erring_sv")}
@@ -184,7 +184,7 @@ func TestFailingStop(t *testing.T) {
 }
 
 func TestStart(t *testing.T) {
-	hoistLaunchable := fakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hoistLaunchable)
 	serviceBuilder := FakeServiceBuilder()
 	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("fake_sv")}
@@ -226,7 +226,7 @@ func TestStart(t *testing.T) {
 }
 
 func TestFailingStart(t *testing.T) {
-	hoistLaunchable := fakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hoistLaunchable)
 	serviceBuilder := FakeServiceBuilder()
 	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("erring_sv")}
@@ -267,7 +267,7 @@ func TestFailingStart(t *testing.T) {
 }
 
 func TestStop(t *testing.T) {
-	hoistLaunchable := fakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	hoistLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hoistLaunchable)
 
 	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("fake_sv")}
