@@ -1,114 +1,34 @@
 package main
 
 import (
-	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/version"
-	"golang.org/x/crypto/openpgp"
-	"gopkg.in/yaml.v2"
 )
-
-type AppConfig struct {
-	P2PreparerConfig PreparerConfig `yaml:"preparer"`
-}
-
-type LogDestination struct {
-	Type logging.OutType `yaml:"type"`
-	Path string          `yaml:"path"`
-}
-
-type PreparerConfig struct {
-	NodeName             string           `yaml:"node_name"`
-	ConsulAddress        string           `yaml:"consul_address"`
-	ConsulTokenPath      string           `yaml:"consul_token_path,omitempty"`
-	HooksDirectory       string           `yaml:"hooks_directory"`
-	KeyringPath          string           `yaml:"keyring,omitempty"`
-	ExtraLogDestinations []LogDestination `yaml:"extra_log_destinations,omitempty"`
-}
 
 func main() {
 	logger := logging.NewLogger(logrus.Fields{})
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		logger.NoFields().Errorln("No CONFIG_PATH variable was given")
-		os.Exit(1)
-		return
+		logger.NoFields().Fatalln("No CONFIG_PATH variable was given")
 	}
-	configBytes, err := ioutil.ReadFile(configPath)
+	preparerConfig, err := preparer.LoadPreparerConfig(configPath)
 	if err != nil {
-		logger.WithFields(logrus.Fields{
-			"inner_err": err,
-		}).Errorln("Could not read the config file")
-		os.Exit(1)
-		return
-	}
-	appConfig := AppConfig{}
-	err = yaml.Unmarshal(configBytes, &appConfig)
-	preparerConfig := appConfig.P2PreparerConfig
-	if err != nil {
-		logger.WithFields(logrus.Fields{
-			"inner_err": err,
-		}).Errorln("The config file was malformatted")
-		os.Exit(1)
-		return
-	}
-	for _, dest := range preparerConfig.ExtraLogDestinations {
-		logger.WithFields(logrus.Fields{
-			"type": dest.Type,
-			"path": dest.Path,
-		}).Infoln("Adding log destination")
-		logger.AddHook(dest.Type, dest.Path)
-	}
-	if preparerConfig.NodeName == "" {
-		preparerConfig.NodeName, _ = os.Hostname()
-	}
-	if preparerConfig.ConsulAddress == "" {
-		preparerConfig.ConsulAddress = "127.0.0.1:8500"
-	}
-	if preparerConfig.HooksDirectory == "" {
-		preparerConfig.HooksDirectory = hooks.DEFAULT_PATH
+		logger.WithField("inner_err", err).Fatalln("could not load preparer config")
 	}
 
-	keyring, err := loadKeyring(preparerConfig.KeyringPath)
-	if err != nil {
-		logger.WithFields(logrus.Fields{
-			"inner_err":    err,
-			"keyring_path": preparerConfig.KeyringPath,
-		}).Errorln("Could not load preparer keyring")
-		os.Exit(1)
+	if preparerConfig.KeyringPath == "" {
+		logger.NoFields().Fatalln("The preparer must be launched with a keyring")
 	}
 
-	consulToken := []byte{}
-	if preparerConfig.ConsulTokenPath != "" {
-		consulToken, err = ioutil.ReadFile(preparerConfig.ConsulTokenPath)
-		if err != nil {
-			logger.WithFields(logrus.Fields{
-				"inner_err":  err,
-				"token_path": preparerConfig.ConsulTokenPath,
-			}).Errorln("Could not read consul token")
-			os.Exit(1)
-		}
-	}
-
-	prep, err := preparer.New(preparerConfig.NodeName, preparerConfig.ConsulAddress, string(consulToken), preparerConfig.HooksDirectory, logger, keyring)
+	prep, err := preparer.NewPreparer(preparerConfig, logger)
 	if err != nil {
-		logger.WithField("inner_err", err).Errorln("Could not initialize preparer")
-		os.Exit(1)
-	}
-
-	err = os.MkdirAll(pods.DEFAULT_PATH, 0755)
-	if err != nil {
-		logger.WithField("inner_err", err).Errorln("Could not create preparer pod directory")
-		os.Exit(1)
+		logger.WithField("inner_err", err).Fatalln("Could not initialize preparer")
 	}
 
 	logger.WithFields(logrus.Fields{
@@ -138,18 +58,4 @@ func waitForTermination(logger logging.Logger, quitMainUpdate, quitHookUpdate ch
 	quitHookUpdate <- struct{}{}
 	quitMainUpdate <- struct{}{}
 	<-quitMainUpdate // acknowledgement
-}
-
-func loadKeyring(path string) (openpgp.KeyRing, error) {
-	if path == "" {
-		return nil, fmt.Errorf("No keyring configured")
-	}
-
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	return openpgp.ReadKeyRing(f)
 }
