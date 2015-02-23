@@ -26,7 +26,7 @@ func main() {
 		logger.NoFields().Fatalln("The preparer must be launched with a keyring")
 	}
 
-	prep, err := preparer.NewPreparer(preparerConfig, logger)
+	prep, err := preparer.New(preparerConfig, logger)
 	if err != nil {
 		logger.WithField("inner_err", err).Fatalln("Could not initialize preparer")
 	}

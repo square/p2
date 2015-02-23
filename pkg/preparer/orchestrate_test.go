@@ -130,7 +130,7 @@ func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks) {
 		ConsulAddress:  "0.0.0.0",
 		HooksDirectory: util.From(runtime.Caller(0)).ExpandPath("test_hooks"),
 	}
-	p, err := NewPreparer(cfg, logging.DefaultLogger)
+	p, err := New(cfg, logging.DefaultLogger)
 	Assert(t).IsNil(err, "Test setup error: should not have erred when trying to load a fake preparer")
 	hooks := &fakeHooks{}
 	p.hooks = hooks

@@ -88,7 +88,7 @@ func addHooks(preparerConfig *PreparerConfig, logger logging.Logger) {
 	}
 }
 
-func NewPreparer(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, error) {
+func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, error) {
 	addHooks(preparerConfig, logger)
 
 	if preparerConfig.ConsulAddress == "" {
