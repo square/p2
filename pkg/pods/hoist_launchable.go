@@ -335,7 +335,18 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 		}
 		fpath := path.Join(dest, hdr.Name)
 
-		if hdr.FileInfo().IsDir() {
+		switch hdr.Typeflag {
+		case tar.TypeSymlink, tar.TypeLink:
+			// hard links are intentionally treated as symlinks, because the
+			// target of a hardlink might be later in the tarball and not
+			// unpacked yet
+			// creating a hardlink in that situation would raise an error
+			// because the hardlink target doesn't exist
+			err = os.Symlink(hdr.Linkname, fpath)
+			if err != nil {
+				return util.Errorf("Unable to create destination symlink %s (to %s) when unpacking %s: %s", fpath, hdr.Linkname, fp.Name(), err)
+			}
+		case tar.TypeDir:
 			err = os.Mkdir(fpath, hdr.FileInfo().Mode())
 			if err != nil && !os.IsExist(err) {
 				return util.Errorf("Unable to create destination directory %s when unpacking %s: %s", fpath, fp.Name(), err)
@@ -345,7 +356,7 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 			if err != nil {
 				return util.Errorf("Unable to chown destination directory %s to %s when unpacking %s: %s", fpath, hoistLaunchable.RunAs, fp.Name(), err)
 			}
-		} else {
+		case tar.TypeReg, tar.TypeRegA:
 			f, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, hdr.FileInfo().Mode())
 			if err != nil {
 				return util.Errorf("Unable to open destination file %s when unpacking %s: %s", fpath, fp.Name(), err)
@@ -362,6 +373,8 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 				return util.Errorf("Unable to copy into destination file %s when unpacking %s: %s", fpath, fp.Name(), err)
 			}
 			f.Close() // eagerly release file descriptors rather than letting them pile up
+		default:
+			return util.Errorf("Unhandled type flag %q (header %v) when unpacking %s", hdr.Typeflag, hdr, fp.Name())
 		}
 	}
 	return nil
