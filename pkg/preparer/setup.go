@@ -30,6 +30,7 @@ type PreparerConfig struct {
 	ConsulTokenPath      string           `yaml:"consul_token_path,omitempty"`
 	HooksDirectory       string           `yaml:"hooks_directory"`
 	KeyringPath          string           `yaml:"keyring,omitempty"`
+	PodRoot              string           `yaml:"pod_root,omitempty"`
 	ExtraLogDestinations []LogDestination `yaml:"extra_log_destinations,omitempty"`
 }
 
@@ -53,6 +54,9 @@ func LoadPreparerConfig(configPath string) (*PreparerConfig, error) {
 	}
 	if preparerConfig.HooksDirectory == "" {
 		preparerConfig.HooksDirectory = hooks.DEFAULT_PATH
+	}
+	if preparerConfig.PodRoot == "" {
+		preparerConfig.PodRoot = pods.DEFAULT_PATH
 	}
 	return &preparerConfig, nil
 }
@@ -94,6 +98,10 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	if preparerConfig.ConsulAddress == "" {
 		return nil, util.Errorf("No Consul address given to the preparer")
 	}
+	if preparerConfig.PodRoot == "" {
+		return nil, util.Errorf("No pod root given to the preparer")
+	}
+
 	var err error
 	var keyring openpgp.KeyRing = nil
 	if preparerConfig.KeyringPath != "" {
@@ -125,10 +133,9 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		Keyring:        keyring,
 	}
 
-	err = os.MkdirAll(pods.DEFAULT_PATH, 0755)
+	err = os.MkdirAll(preparerConfig.PodRoot, 0755)
 	if err != nil {
-		logger.WithField("inner_err", err).Errorln("Could not create preparer pod directory")
-		os.Exit(1)
+		return nil, util.Errorf("Could not create preparer pod directory: %s", err)
 	}
 
 	return &Preparer{

@@ -3,6 +3,7 @@ package preparer
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"runtime"
 	"testing"
@@ -124,18 +125,20 @@ func (f *FakeStore) RegisterService(pods.PodManifest) error {
 
 func (f *FakeStore) WatchPods(string, <-chan struct{}, chan<- error, chan<- kp.ManifestResult) {}
 
-func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks) {
+func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks, string) {
+	podRoot, _ := ioutil.TempDir("", "pod_root")
 	cfg := &PreparerConfig{
 		NodeName:       "hostname",
 		ConsulAddress:  "0.0.0.0",
 		HooksDirectory: util.From(runtime.Caller(0)).ExpandPath("test_hooks"),
+		PodRoot:        podRoot,
 	}
 	p, err := New(cfg, logging.DefaultLogger)
 	Assert(t).IsNil(err, "Test setup error: should not have erred when trying to load a fake preparer")
 	hooks := &fakeHooks{}
 	p.hooks = hooks
 	p.store = f
-	return p, hooks
+	return p, hooks, podRoot
 }
 
 func TestPreparerLaunchesNewPodsThatArentInstalledYet(t *testing.T) {
@@ -144,7 +147,8 @@ func TestPreparerLaunchesNewPodsThatArentInstalledYet(t *testing.T) {
 	}
 	newManifest := testManifest(t)
 
-	p, hooks := testPreparer(t, &FakeStore{})
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer os.RemoveAll(fakePodRoot)
 	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "should have succeeded")
@@ -165,9 +169,10 @@ func TestPreparerLaunchesPodsThatHaveDifferentSHAs(t *testing.T) {
 	}
 	newManifest := testManifest(t)
 
-	p, hooks := testPreparer(t, &FakeStore{
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{
 		currentManifest: existing,
 	})
+	defer os.RemoveAll(fakePodRoot)
 	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "should have succeeded")
@@ -184,7 +189,8 @@ func TestPreparerFailsIfInstallFails(t *testing.T) {
 	}
 	newManifest := testManifest(t)
 
-	p, hooks := testPreparer(t, &FakeStore{})
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer os.RemoveAll(fakePodRoot)
 	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsFalse(success, "The deploy should have failed")
@@ -200,9 +206,10 @@ func TestPreparerWillNotInstallOrLaunchIfSHAIsTheSame(t *testing.T) {
 		currentManifest: testManifest,
 	}
 
-	p, hooks := testPreparer(t, &FakeStore{
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{
 		currentManifest: testManifest,
 	})
+	defer os.RemoveAll(fakePodRoot)
 	success := p.installAndLaunchPod(testManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "Should have been a success to prevent retries")
@@ -218,9 +225,10 @@ func TestPreparerWillLaunchIfRealityErrsOnRead(t *testing.T) {
 		launchSuccess: true,
 	}
 
-	p, hooks := testPreparer(t, &FakeStore{
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{
 		currentManifestError: fmt.Errorf("it erred"),
 	})
+	defer os.RemoveAll(fakePodRoot)
 	success := p.installAndLaunchPod(testManifest, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "should have attempted to install following corrupt current manifest")
@@ -232,7 +240,8 @@ func TestPreparerWillLaunchIfRealityErrsOnRead(t *testing.T) {
 func TestPreparerWillRequireSignatureWithKeyring(t *testing.T) {
 	manifest := testManifest(t)
 
-	p, _ := testPreparer(t, &FakeStore{})
+	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer os.RemoveAll(fakePodRoot)
 	p.keyring = openpgp.EntityList{}
 
 	Assert(t).IsFalse(p.verifySignature(*manifest, logging.DefaultLogger), "should have accepted unsigned manifest")
@@ -245,7 +254,8 @@ func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 	fakeSigner, err := openpgp.NewEntity("p2", "p2-test", "p2@squareup.com", nil)
 	Assert(t).IsNil(err, "NewEntity error should have been nil")
 
-	p, _ := testPreparer(t, &FakeStore{})
+	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer os.RemoveAll(fakePodRoot)
 	p.keyring = openpgp.EntityList{fakeSigner}
 
 	var buf bytes.Buffer
@@ -263,7 +273,8 @@ func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 
 func TestPreparerWillAcceptSignatureWhenKeyringIsNil(t *testing.T) {
 	manifest := testManifest(t)
-	p, _ := testPreparer(t, &FakeStore{})
+	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer os.RemoveAll(fakePodRoot)
 	p.keyring = nil
 	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "expected the preparer to verify the signature when no keyring given")
 }
