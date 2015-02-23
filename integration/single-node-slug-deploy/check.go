@@ -17,96 +17,6 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-const (
-	pubkey string = `-----BEGIN PGP PUBLIC KEY BLOCK-----
-Version: GnuPG v1.4.13 (GNU/Linux)
-
-mQENBFTdUNwBCACdZSiKNBwUWsEfBBqN4JGuKBx7n9kQkD8sTn/i/InIe4GwxAs8
-R9/A07GNJe4WSkVA52T248MYzpCVjRAgM+u2OZHj8Y036dR5VoSIvtwy/OApXdU8
-SqzqyKpMK3w5cq5WP+ZNAZURYJbmdsZSW4aoT2YbqdHEAbudRWCOwI07f5wyJzrp
-dLjSR4pXmBZ5P9vB4vS5uvYRFuqud9Bg/+Z/EY3uDVm2gb+/yH+iwhjKQcEpdxF/
-yd7jom3DDHoOWtM/n+WO8V+iz7+fwRAhU+F9Dn1Ksx3cZuMYkPWHeSIzAg/5wYkk
-zZjBgsjZw/tGvc3f/yw5UnWHD8jS18I1I4B5ABEBAAG0JHAydW5pdmVyc2UgPGRl
-cGxveS1kZXZAc3F1YXJldXAuY29tPokBOAQTAQIAIgUCVN1Q3AIbAwYLCQgHAwIG
-FQgCCQoLBBYCAwECHgECF4AACgkQs6P0At4Z1foIOwf/f4JjQR/fmq/4sA4RIQz/
-qYOYpoBwA6VgFzlOsAjiCqE/xESmKofLVQAI2U9/aTJmzyVkvAA9C/UwWnXw45qM
-1z+/4ZFAVivvte7IAdXdvUdaa0mL092yWDivZBbymlIjTv2r8/pC6Zzxh59pPYmt
-1RoITo41l9YoZsmHFl5g4RT8j3vBV4i8q8RzF2pNhEPOK02qOnLOtoqGcVDQ/sXT
-CJLyewDF6OtkbrDVcT7Fru5gqgE+yx+6T4wYGySMNC8lhj0JYrYAuWWAAl9OgPfb
-L/8P1tsUANWG3DAB6921csJhXarX2zj+Iqap7O1VnATZMpUejiKAUvFDQW2PCxLv
-QLkBDQRU3VDcAQgAwqGSw1+BLcn/te1Dafda/Ahps+KVOC9nsec+q7+Ie2V4X6g+
-Qz0M4idKZbZVg+CSeWi9CFJ25Ti2IzqhBRxh0MM7j4yvr7vy6hREl63BVTQRv3nY
-KsmSJ2UhOWRx/QgeiIrGCuQwlaBulk+sFJ/nIv4XkebpZ4UkM0dL6Hx6O0ljQ9eV
-dbrRr7nPAu6YKR6TzESAxIy48iC/6GdYmgFHYJTRrRW6S9N4WnVd2FjLIoRDiYnD
-41G6P6jLILUfm8OGj/QqR6KQZRBEIm3c5qM5VI/AwoE1wEANo8eCro9DmwofIFMh
-AhJP3+QxbNETzrpC5dEQj+odn8OD+IkAUDeRPQARAQABiQEfBBgBAgAJBQJU3VDc
-AhsMAAoJELOj9ALeGdX6UCMH/iUmZqpJcyBi+4f7+s6SIT8SKh9IwM/klkxVoOsK
-S4eNHQK+0JXSTGLEx9XxNpSAZSke50fGcmzxokpb+IADH+p3ck3ZMu08395XzEMl
-4w3cmUu6pdN7urNVQBrdWwxyZ66i2Dh/Vd83QmZ5rwk6m5x0Ob97JsJ9KO/Dvqic
-JtI7nqAppVaYI9JeeOdSqjtddoQmuxzy4qfjT8M+D4y9/4ZcQGXFiKC5HOMaaar6
-25MG3OVT1k329oT9beauOdo3RqW8SjK/6y0Sy1ZfuZodCO43Ak7gYisYT1BgDsyx
-xisJuc75Ar7leHrw+7hdBeptVCVEaT9yylSTuwxugikXBzI=
-=XSs4
------END PGP PUBLIC KEY BLOCK-----`
-	privkey string = `-----BEGIN PGP PRIVATE KEY BLOCK-----
-Version: GnuPG v1.4.13 (GNU/Linux)
-
-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
-=I1Jf
------END PGP PRIVATE KEY BLOCK-----`
-)
-
 func main() {
 	// 1. Generate pod for preparer in this code version (`rake artifact:prepare`)
 	// 2. Locate manifests for preparer pod, premade consul pod
@@ -127,10 +37,6 @@ func main() {
 		log.Fatalf("Could not generate consul pod: %s\n", err)
 	}
 
-	err = loadGPG(tempdir)
-	if err != nil {
-		log.Fatalf("Could not load GPG keys: %s\n", err)
-	}
 	signedPreparerManifest, err := signManifest(preparerManifest, tempdir)
 	if err != nil {
 		log.Fatalf("Could not sign preparer manifest: %s\n", err)
@@ -163,27 +69,15 @@ func main() {
 	}
 }
 
-func loadGPG(workdir string) error {
-	importpub := exec.Command("gpg", "--no-default-keyring", "--keyring", path.Join(workdir, "pubring.gpg"), "--secret-keyring", path.Join(workdir, "secring.gpg"), "--import")
-	importpub.Stdin = bytes.NewBufferString(pubkey)
-	err := importpub.Run()
-	if err != nil {
-		return util.Errorf("Couldn't load GPG public key: %s", err)
-	}
-
-	importpriv := exec.Command("gpg", "--no-default-keyring", "--keyring", path.Join(workdir, "pubring.gpg"), "--secret-keyring", path.Join(workdir, "secring.gpg"), "--allow-secret-key-import", "--import")
-	importpriv.Stdin = bytes.NewBufferString(privkey)
-	err = importpriv.Run()
-	if err != nil {
-		return util.Errorf("Couldn't load GPG private key: %s", err)
-	}
-
-	return nil
-}
-
 func signManifest(manifestPath string, workdir string) (string, error) {
 	signedManifestPath := fmt.Sprintf("%s.asc", manifestPath)
-	return signedManifestPath, exec.Command("gpg", "--no-default-keyring", "--keyring", path.Join(workdir, "pubring.gpg"), "--secret-keyring", path.Join(workdir, "secring.gpg"), "-u", "p2universe", "--output", signedManifestPath, "--clearsign", manifestPath).Run()
+	return signedManifestPath,
+		exec.Command("gpg", "--no-default-keyring",
+			"--keyring", util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
+			"--secret-keyring", util.From(runtime.Caller(0)).ExpandPath("secring.gpg"),
+			"-u", "p2universe",
+			"--output", signedManifestPath,
+			"--clearsign", manifestPath).Run()
 }
 
 func generatePreparerPod(workdir string) (string, error) {
@@ -210,7 +104,7 @@ func generatePreparerPod(workdir string) (string, error) {
 		return "", err
 	}
 	manifest.Config["preparer"] = map[string]interface{}{
-		"keyring": path.Join(workdir, "pubring.gpg"),
+		"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
 	}
 	f, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
