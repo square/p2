@@ -15,12 +15,12 @@ import (
     "github.com/square/p2/pkg/allocation"
     "github.com/square/p2/pkg/health"
     "github.com/square/p2/pkg/pods"
-    "github.com/square/p2/pkg/intent"
+    "github.com/square/p2/pkg/kp"
     "github.com/square/p2/pkg/replication"
     "github.com/mycorp/myp2allocator"
 )
 
-func LaunchMysqlPod(mysqlManfiest pods.PodManifest, allocator allocation.Allocator, store intent.Store, healthChecker *health.Checker) (replication.Result, error){
+func LaunchMysqlPod(mysqlManfiest pods.PodManifest, allocator allocation.Allocator, store kp.Store, healthChecker *health.Checker) (replication.Result, error){
     request := allocation.Request {
         Manifest: mysqlManifest,
         Replicas: 3,

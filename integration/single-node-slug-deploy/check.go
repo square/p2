@@ -13,9 +13,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/square/p2/pkg/hooks"
-	"github.com/square/p2/pkg/intent"
-	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
 )
@@ -39,8 +36,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not generate consul pod: %s\n", err)
 	}
+
+	signedPreparerManifest, err := signManifest(preparerManifest, tempdir)
+	if err != nil {
+		log.Fatalf("Could not sign preparer manifest: %s\n", err)
+	}
+	signedConsulManifest, err := signManifest(consulManifest, tempdir)
+	if err != nil {
+		log.Fatalf("Could not sign consul manifest: %s\n", err)
+	}
+
 	fmt.Println("Executing bootstrap")
-	err = executeBootstrap(preparerManifest, consulManifest)
+	err = executeBootstrap(signedPreparerManifest, signedConsulManifest)
 	if err != nil {
 		log.Fatalf("Could not execute bootstrap: %s", err)
 	}
@@ -62,6 +69,17 @@ func main() {
 	}
 }
 
+func signManifest(manifestPath string, workdir string) (string, error) {
+	signedManifestPath := fmt.Sprintf("%s.asc", manifestPath)
+	return signedManifestPath,
+		exec.Command("gpg", "--no-default-keyring",
+			"--keyring", util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
+			"--secret-keyring", util.From(runtime.Caller(0)).ExpandPath("secring.gpg"),
+			"-u", "p2universe",
+			"--output", signedManifestPath,
+			"--clearsign", manifestPath).Run()
+}
+
 func generatePreparerPod(workdir string) (string, error) {
 	// build the artifact from HEAD
 	err := exec.Command("go", "build", "github.com/square/p2/bin/p2-preparer").Run()
@@ -76,7 +94,29 @@ func generatePreparerPod(workdir string) (string, error) {
 	// the test number forces the pod manifest to change every test run.
 	testNumber := fmt.Sprintf("test=%d", rand.Intn(2000000000))
 	cmd := exec.Command("p2-bin2pod", "--work-dir", workdir, "--id", "p2-preparer", "--config", fmt.Sprintf("node_name=%s", hostname), "--config", testNumber, wd+"/p2-preparer")
-	return executeBin2Pod(cmd)
+	manifestPath, err := executeBin2Pod(cmd)
+	if err != nil {
+		return "", err
+	}
+
+	manifest, err := pods.PodManifestFromPath(manifestPath)
+	if err != nil {
+		return "", err
+	}
+	manifest.Config["preparer"] = map[string]interface{}{
+		"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
+	}
+	f, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	err = manifest.Write(f)
+	if err != nil {
+		return "", err
+	}
+
+	return manifestPath, err
 }
 
 func scheduleUserCreationHook(tmpdir string) error {
@@ -96,16 +136,12 @@ mkdir -p $HOOKED_POD_HOME
 	if err != nil {
 		return err
 	}
-	manifest, err := pods.PodManifestFromPath(manifestPath)
+
+	manifestPath, err = signManifest(manifestPath, tmpdir)
 	if err != nil {
 		return err
 	}
-	store := kp.NewStore(kp.Options{})
-	_, err = store.SetPod(kp.HookPath(hooks.BEFORE_INSTALL, "create_user"), *manifest)
-	if err != nil {
-		return err
-	}
-	return nil
+	return exec.Command("p2-schedule", "--hook-type", "before_install", manifestPath).Run()
 }
 
 func executeBin2Pod(cmd *exec.Cmd) (string, error) {
@@ -141,6 +177,7 @@ func getConsulManifest(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer f.Close()
 	err = manifest.Write(f)
 	if err != nil {
 		return "", err
@@ -173,14 +210,25 @@ func postHelloManifest(dir string) error {
 	manifest.LaunchableStanzas = map[string]pods.LaunchableStanza{
 		"hello": stanza,
 	}
+	manifestPath := path.Join(dir, "hello.yaml")
 
-	store, err := intent.LookupStore(intent.Options{})
+	f, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
-	hostname, _ := os.Hostname()
-	_, err = store.SetPod(hostname, *manifest)
-	return err
+	defer f.Close()
+	err = manifest.Write(f)
+	if err != nil {
+		return err
+	}
+	f.Close()
+
+	manifestPath, err = signManifest(manifestPath, dir)
+	if err != nil {
+		return err
+	}
+
+	return exec.Command("p2-schedule", manifestPath).Run()
 }
 
 func verifyHelloRunning() error {
