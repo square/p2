@@ -100,6 +100,32 @@ func testManifest(t *testing.T) *pods.PodManifest {
 	return manifest
 }
 
+func testSignedManifest(t *testing.T, modify func(*pods.PodManifest, *openpgp.Entity)) (*pods.PodManifest, *openpgp.Entity) {
+	testManifest := testManifest(t)
+
+	fakeSigner, err := openpgp.NewEntity("p2", "p2-test", "p2@squareup.com", nil)
+	Assert(t).IsNil(err, "NewEntity error should have been nil")
+
+	if modify != nil {
+		modify(testManifest, fakeSigner)
+	}
+
+	manifestBytes, err := testManifest.Bytes()
+	Assert(t).IsNil(err, "manifest bytes error should have been nil")
+
+	var buf bytes.Buffer
+	sigWriter, err := clearsign.Encode(&buf, fakeSigner.PrivateKey, nil)
+	Assert(t).IsNil(err, "clearsign Encode error should have been nil")
+
+	sigWriter.Write(manifestBytes)
+	sigWriter.Close()
+
+	manifest, err := pods.PodManifestFromBytes(buf.Bytes())
+	Assert(t).IsNil(err, "should have generated manifest from signed bytes")
+
+	return manifest, fakeSigner
+}
+
 type FakeStore struct {
 	currentManifest      *pods.PodManifest
 	currentManifestError error
@@ -248,25 +274,11 @@ func TestPreparerWillRequireSignatureWithKeyring(t *testing.T) {
 }
 
 func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
-	manifestBytes, err := testManifest(t).Bytes()
-	Assert(t).IsNil(err, "manifest bytes error should have been nil")
-
-	fakeSigner, err := openpgp.NewEntity("p2", "p2-test", "p2@squareup.com", nil)
-	Assert(t).IsNil(err, "NewEntity error should have been nil")
+	manifest, fakeSigner := testSignedManifest(t, nil)
 
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
 	defer os.RemoveAll(fakePodRoot)
 	p.keyring = openpgp.EntityList{fakeSigner}
-
-	var buf bytes.Buffer
-	sigWriter, err := clearsign.Encode(&buf, fakeSigner.PrivateKey, nil)
-	Assert(t).IsNil(err, "clearsign Encode error should have been nil")
-
-	sigWriter.Write(manifestBytes)
-	sigWriter.Close()
-
-	manifest, err := pods.PodManifestFromBytes(buf.Bytes())
-	Assert(t).IsNil(err, "should have generated manifest from signed bytes")
 
 	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "should have accepted signed manifest")
 }
