@@ -31,6 +31,7 @@ type PreparerConfig struct {
 	HooksDirectory       string           `yaml:"hooks_directory"`
 	KeyringPath          string           `yaml:"keyring,omitempty"`
 	PodRoot              string           `yaml:"pod_root,omitempty"`
+	AuthorizedDeployers  []string         `yaml:"authorized_deployers,omitempty"`
 	ExtraLogDestinations []LogDestination `yaml:"extra_log_destinations,omitempty"`
 }
 
@@ -139,12 +140,13 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	}
 
 	return &Preparer{
-		node:         preparerConfig.NodeName,
-		store:        store,
-		hooks:        hooks.Hooks(preparerConfig.HooksDirectory, &logger),
-		hookListener: listener,
-		Logger:       logger,
-		keyring:      keyring,
-		podRoot:      preparerConfig.PodRoot,
+		node:                preparerConfig.NodeName,
+		store:               store,
+		hooks:               hooks.Hooks(preparerConfig.HooksDirectory, &logger),
+		hookListener:        listener,
+		Logger:              logger,
+		keyring:             keyring,
+		podRoot:             preparerConfig.PodRoot,
+		authorizedDeployers: preparerConfig.AuthorizedDeployers,
 	}, nil
 }

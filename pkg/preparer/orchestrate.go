@@ -31,13 +31,14 @@ type Store interface {
 }
 
 type Preparer struct {
-	node         string
-	store        Store
-	hooks        Hooks
-	hookListener HookListener
-	Logger       logging.Logger
-	keyring      openpgp.KeyRing
-	podRoot      string
+	node                string
+	store               Store
+	hooks               Hooks
+	hookListener        HookListener
+	Logger              logging.Logger
+	keyring             openpgp.KeyRing
+	podRoot             string
+	authorizedDeployers []string
 }
 
 func (p *Preparer) WatchForHooks(quit chan struct{}) {
