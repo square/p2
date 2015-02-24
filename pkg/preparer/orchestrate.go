@@ -157,7 +157,23 @@ func (p *Preparer) verifySignature(manifest pods.PodManifest, logger logging.Log
 
 	signer, err := manifest.Signer(p.keyring)
 	if signer != nil {
-		logger.WithField("signer_key", signer.PrimaryKey.KeyIdShortString()).Debugln("Resolved manifest signature")
+		signerId := signer.PrimaryKey.KeyIdShortString()
+		logger.WithField("signer_key", signerId).Debugln("Resolved manifest signature")
+
+		// Hmm, some hacks here.
+		if manifest.Id == "p2-preparer" {
+			foundAuthorized := false
+			for _, authorized := range p.authorizedDeployers {
+				if authorized == signerId {
+					foundAuthorized = true
+				}
+			}
+			if !foundAuthorized {
+				logger.WithField("signer_key", signerId).Errorln("Not an authorized deployer of the preparer")
+				return false
+			}
+		}
+
 		return true
 	}
 
