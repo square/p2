@@ -283,6 +283,46 @@ func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "should have accepted signed manifest")
 }
 
+func TestPreparerWillRejectSignatureForPreparerWithoutAuthorizedDeployers(t *testing.T) {
+	manifest, fakeSigner := testSignedManifest(t, func(m *pods.PodManifest, _ *openpgp.Entity) {
+		m.Id = "p2-preparer"
+	})
+
+	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer os.RemoveAll(fakePodRoot)
+	p.keyring = openpgp.EntityList{fakeSigner}
+
+	Assert(t).IsFalse(p.verifySignature(*manifest, logging.DefaultLogger), "expected preparer to reject manifest (no authorized deployer)")
+}
+
+func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
+	manifest, fakeSigner := testSignedManifest(t, func(m *pods.PodManifest, _ *openpgp.Entity) {
+		m.Id = "p2-preparer"
+	})
+
+	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer os.RemoveAll(fakePodRoot)
+	p.keyring = openpgp.EntityList{fakeSigner}
+	p.authorizedDeployers = []string{"nobodylol"}
+
+	Assert(t).IsFalse(p.verifySignature(*manifest, logging.DefaultLogger), "expected preparer to reject manifest (unauthorized deployer)")
+}
+
+func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
+	sig := ""
+	manifest, fakeSigner := testSignedManifest(t, func(m *pods.PodManifest, e *openpgp.Entity) {
+		m.Id = "p2-preparer"
+		sig = e.PrimaryKey.KeyIdShortString()
+	})
+
+	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer os.RemoveAll(fakePodRoot)
+	p.keyring = openpgp.EntityList{fakeSigner}
+	p.authorizedDeployers = []string{sig}
+
+	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "expected preparer to accept manifest (authorized deployer)")
+}
+
 func TestPreparerWillAcceptSignatureWhenKeyringIsNil(t *testing.T) {
 	manifest := testManifest(t)
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
