@@ -37,6 +37,7 @@ type Preparer struct {
 	hookListener HookListener
 	Logger       logging.Logger
 	keyring      openpgp.KeyRing
+	podRoot      string
 }
 
 func (p *Preparer) WatchForHooks(quit chan struct{}) {
@@ -126,7 +127,7 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 			working = p.verifySignature(manifestToLaunch, manifestLogger)
 		case <-time.After(1 * time.Second):
 			if working {
-				pod := pods.PodFromManifestId(manifestToLaunch.ID())
+				pod := pods.NewPod(manifestToLaunch.ID(), p.podRoot)
 
 				// HACK ZONE. When we have better authz, rewrite.
 				// Still need to ensure that preparer launches correctly

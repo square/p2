@@ -145,5 +145,6 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		hookListener: listener,
 		Logger:       logger,
 		keyring:      keyring,
+		podRoot:      preparerConfig.PodRoot,
 	}, nil
 }
