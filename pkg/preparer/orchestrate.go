@@ -11,6 +11,10 @@ import (
 	"golang.org/x/crypto/openpgp"
 )
 
+// The Pod ID of the preparer.
+// Used because the preparer special-cases itself in a few places.
+const POD_ID = "p2-preparer"
+
 type Pod interface {
 	hooks.Pod
 	Launch(*pods.PodManifest) (bool, error)
@@ -133,7 +137,7 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 				// HACK ZONE. When we have better authz, rewrite.
 				// Still need to ensure that preparer launches correctly
 				// as root
-				if pod.Id == "p2-preparer" {
+				if pod.Id == POD_ID {
 					pod.RunAs = "root"
 				}
 
@@ -161,7 +165,7 @@ func (p *Preparer) verifySignature(manifest pods.PodManifest, logger logging.Log
 		logger.WithField("signer_key", signerId).Debugln("Resolved manifest signature")
 
 		// Hmm, some hacks here.
-		if manifest.Id == "p2-preparer" {
+		if manifest.Id == POD_ID {
 			foundAuthorized := false
 			for _, authorized := range p.authorizedDeployers {
 				if authorized == signerId {

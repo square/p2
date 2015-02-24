@@ -285,7 +285,7 @@ func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 
 func TestPreparerWillRejectSignatureForPreparerWithoutAuthorizedDeployers(t *testing.T) {
 	manifest, fakeSigner := testSignedManifest(t, func(m *pods.PodManifest, _ *openpgp.Entity) {
-		m.Id = "p2-preparer"
+		m.Id = POD_ID
 	})
 
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
@@ -297,7 +297,7 @@ func TestPreparerWillRejectSignatureForPreparerWithoutAuthorizedDeployers(t *tes
 
 func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 	manifest, fakeSigner := testSignedManifest(t, func(m *pods.PodManifest, _ *openpgp.Entity) {
-		m.Id = "p2-preparer"
+		m.Id = POD_ID
 	})
 
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
@@ -311,7 +311,7 @@ func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 	sig := ""
 	manifest, fakeSigner := testSignedManifest(t, func(m *pods.PodManifest, e *openpgp.Entity) {
-		m.Id = "p2-preparer"
+		m.Id = POD_ID
 		sig = e.PrimaryKey.KeyIdShortString()
 	})
 
