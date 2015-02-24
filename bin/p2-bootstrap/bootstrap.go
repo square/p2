@@ -19,6 +19,7 @@ var (
 	additionalManifestsPath = kingpin.Flag("additional-pods", "(Optional) a directory of additional pods that will be launched and added to the intent store immediately").ExistingDir()
 	timeout                 = kingpin.Flag("consul-timeout", "How long to wait for consul to begin serving. 0 will skip the consul check altogether.").Default("10s").String()
 	consulToken             = kingpin.Flag("consul-token", "The ACL token to pass to consul when registering the bootstrapped pods").String()
+	podRoot                 = kingpin.Flag("pod-root", "The root of where pods will be installed").Default(pods.DEFAULT_PATH).String()
 )
 
 func main() {
@@ -38,7 +39,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Could not get consul manifest: %s", err)
 		}
-		consulPod = pods.PodFromManifestId(consulManifest.ID())
+		consulPod = pods.NewPod(consulManifest.ID(), pods.PodPath(*podRoot, agentManifest.ID()))
 		consulPod.RunAs = "root"
 		err = InstallConsul(consulPod, consulManifest)
 		if err != nil {
@@ -138,7 +139,7 @@ func ScheduleForThisHost(manifest *pods.PodManifest) error {
 }
 
 func InstallBaseAgent(agentManifest *pods.PodManifest) error {
-	agentPod := pods.PodFromManifestId(agentManifest.ID())
+	agentPod := pods.NewPod(agentManifest.ID(), pods.PodPath(*podRoot, agentManifest.ID()))
 	agentPod.RunAs = "root"
 	err := agentPod.Install(agentManifest)
 	if err != nil {

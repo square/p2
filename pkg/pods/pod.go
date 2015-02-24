@@ -28,8 +28,8 @@ func init() {
 	Log = logging.NewLogger(logrus.Fields{})
 }
 
-func PodPath(manifestId string) string {
-	return path.Join(DEFAULT_PATH, manifestId)
+func PodPath(root, manifestId string) string {
+	return path.Join(root, manifestId)
 }
 
 type Pod struct {
@@ -67,7 +67,7 @@ func ExistingPod(path string) (*Pod, error) {
 }
 
 func PodFromManifestId(manifestId string) *Pod {
-	return NewPod(manifestId, PodPath(manifestId))
+	return NewPod(manifestId, PodPath(DEFAULT_PATH, manifestId))
 }
 
 var NoCurrentManifest error = fmt.Errorf("No current manifest for this pod")

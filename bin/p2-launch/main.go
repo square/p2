@@ -14,6 +14,7 @@ import (
 var (
 	manifestURI = kingpin.Arg("manifest", "a path or url to a pod manifest that will be installed and launched immediately.").String()
 	runUser     = kingpin.Flag("runas", "the user that the pod will execute as. Defaults to the pod's ID.").String()
+	podRoot     = kingpin.Flag("pod-root", "the root of the pods directory").Default(pods.DEFAULT_PATH).String()
 )
 
 func main() {
@@ -34,7 +35,7 @@ func main() {
 		log.Fatalf("Invalid manifest: %s", err)
 	}
 
-	pod := pods.NewPod(manifest.ID(), pods.PodPath(manifest.ID()))
+	pod := pods.NewPod(manifest.ID(), pods.PodPath(*podRoot, manifest.ID()))
 	if runUser != nil && *runUser != "" {
 		pod.RunAs = *runUser
 	}

@@ -88,8 +88,9 @@ config:
 	manifest, err := PodManifestFromBytes(bytes.NewBufferString(manifestStr).Bytes())
 	Assert(t).IsNil(err, "should not have erred reading the manifest")
 
-	pod := PodFromManifestId(manifest.ID())
-	pod.path = os.TempDir()
+	podTemp, _ := ioutil.TempDir("", "pod")
+
+	pod := NewPod(manifest.ID(), PodPath(podTemp, manifest.ID()))
 
 	curUser, err := user.Current()
 	if err == nil {
