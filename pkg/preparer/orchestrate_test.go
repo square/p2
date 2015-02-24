@@ -100,11 +100,19 @@ func testManifest(t *testing.T) *pods.PodManifest {
 	return manifest
 }
 
+// Use the same signer for all SignedManifests.
+// Otherwise, Travis may time out waiting for entropy.
+var cachedSigner *openpgp.Entity
+
 func testSignedManifest(t *testing.T, modify func(*pods.PodManifest, *openpgp.Entity)) (*pods.PodManifest, *openpgp.Entity) {
 	testManifest := testManifest(t)
 
-	fakeSigner, err := openpgp.NewEntity("p2", "p2-test", "p2@squareup.com", nil)
-	Assert(t).IsNil(err, "NewEntity error should have been nil")
+	if cachedSigner == nil {
+		var err error
+		cachedSigner, err = openpgp.NewEntity("p2", "p2-test", "p2@squareup.com", nil)
+		Assert(t).IsNil(err, "NewEntity error should have been nil")
+	}
+	fakeSigner := cachedSigner
 
 	if modify != nil {
 		modify(testManifest, fakeSigner)
