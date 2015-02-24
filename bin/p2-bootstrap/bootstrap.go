@@ -39,7 +39,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Could not get consul manifest: %s", err)
 		}
-		consulPod = pods.NewPod(consulManifest.ID(), pods.PodPath(*podRoot, agentManifest.ID()))
+		consulPod = pods.NewPod(consulManifest.ID(), pods.PodPath(*podRoot, consulManifest.ID()))
 		consulPod.RunAs = "root"
 		err = InstallConsul(consulPod, consulManifest)
 		if err != nil {

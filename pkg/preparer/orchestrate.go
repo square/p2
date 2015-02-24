@@ -127,7 +127,7 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 			working = p.verifySignature(manifestToLaunch, manifestLogger)
 		case <-time.After(1 * time.Second):
 			if working {
-				pod := pods.NewPod(manifestToLaunch.ID(), p.podRoot)
+				pod := pods.NewPod(manifestToLaunch.ID(), pods.PodPath(p.podRoot, manifestToLaunch.ID()))
 
 				// HACK ZONE. When we have better authz, rewrite.
 				// Still need to ensure that preparer launches correctly
