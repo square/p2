@@ -1,8 +1,6 @@
 package preparer
 
 import (
-	"fmt"
-	"path"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -39,35 +37,6 @@ type Preparer struct {
 	hookListener HookListener
 	Logger       logging.Logger
 	keyring      openpgp.KeyRing
-}
-
-func New(nodeName string, consulAddress string, consulToken string, hooksDirectory string, logger logging.Logger, keyring openpgp.KeyRing) (*Preparer, error) {
-	if keyring == nil {
-		return nil, fmt.Errorf("No keyring configured")
-	}
-
-	store := kp.NewStore(kp.Options{
-		Address: consulAddress,
-		Token:   consulToken,
-	})
-
-	listener := HookListener{
-		Intent:         store,
-		HookPrefix:     kp.HOOK_TREE,
-		DestinationDir: path.Join(pods.DEFAULT_PATH, "hooks"),
-		ExecDir:        hooksDirectory,
-		Logger:         logger,
-		Keyring:        keyring,
-	}
-
-	return &Preparer{
-		node:         nodeName,
-		store:        store,
-		hooks:        hooks.Hooks(hooksDirectory, &logger),
-		hookListener: listener,
-		Logger:       logger,
-		keyring:      keyring,
-	}, nil
 }
 
 func (p *Preparer) WatchForHooks(quit chan struct{}) {
@@ -180,7 +149,8 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 func (p *Preparer) verifySignature(manifest pods.PodManifest, logger logging.Logger) bool {
 	// do not remove the logger argument, it's not the same as p.Logger
 	if p.keyring == nil {
-		return false
+		// signature is fine if the preparer has not been required to have a keyring
+		return true
 	}
 
 	signer, err := manifest.Signer(p.keyring)

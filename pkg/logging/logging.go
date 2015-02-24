@@ -22,7 +22,7 @@ type Logger struct {
 type OutType string
 
 const (
-	OUT_SOCKET = "socket"
+	OUT_SOCKET = OutType("socket")
 )
 
 var DefaultLogger Logger

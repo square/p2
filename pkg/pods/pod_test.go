@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/util"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -114,7 +115,7 @@ func TestLogLaunchableError(t *testing.T) {
 	out := bytes.Buffer{}
 	Log.SetLogOut(&out)
 
-	testLaunchable := &HoistLaunchable{Id: "TestLaunchable"}
+	testLaunchable := &hoist.HoistLaunchable{Id: "TestLaunchable"}
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
@@ -192,7 +193,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 }
 
 func TestBuildRunitServices(t *testing.T) {
-	serviceBuilder := FakeServiceBuilder()
+	serviceBuilder := hoist.FakeServiceBuilder()
 	serviceBuilderDir, err := ioutil.TempDir("", "servicebuilderDir")
 	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
 	serviceBuilder.ConfigRoot = serviceBuilderDir
@@ -200,16 +201,16 @@ func TestBuildRunitServices(t *testing.T) {
 		Id:             "testPod",
 		path:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
-		Chpst:          FakeChpst(),
+		Chpst:          hoist.FakeChpst(),
 	}
-	hoistLaunchable := fakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	hoistLaunchable := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	hoistLaunchable.RunAs = "testPod"
 	executables, err := hoistLaunchable.Executables(serviceBuilder)
 	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
 
-	pod.BuildRunitServices([]HoistLaunchable{*hoistLaunchable})
+	pod.BuildRunitServices([]hoist.HoistLaunchable{*hoistLaunchable})
 	expected := fmt.Sprintf(`%s:
   run:
   - /usr/bin/nolimit
@@ -245,7 +246,7 @@ func TestBuildRunitServices(t *testing.T) {
 }
 
 func TestUninstall(t *testing.T) {
-	serviceBuilder := FakeServiceBuilder()
+	serviceBuilder := hoist.FakeServiceBuilder()
 	serviceBuilderDir, err := ioutil.TempDir("", "servicebuilderDir")
 	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
 	serviceBuilder.ConfigRoot = serviceBuilderDir
