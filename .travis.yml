@@ -12,6 +12,8 @@ install:
   - go get github.com/tools/godep
   - GOBINS=`ruby -e "puts ENV['GOPATH'].split(':').map{ |p| sprintf('%s/bin', p) }.join(':')"`
   - export PATH=$PATH:$GOBINS
-  - rake build
+  - rake install
 
-script: rake test
+script:
+  - rake test
+  - integration/travis.sh
