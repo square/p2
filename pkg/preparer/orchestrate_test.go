@@ -291,7 +291,7 @@ func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "should have accepted signed manifest")
 }
 
-func TestPreparerWillRejectSignatureForPreparerWithoutAuthorizedDeployers(t *testing.T) {
+func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *testing.T) {
 	manifest, fakeSigner := testSignedManifest(t, func(m *pods.PodManifest, _ *openpgp.Entity) {
 		m.Id = POD_ID
 	})
@@ -300,7 +300,7 @@ func TestPreparerWillRejectSignatureForPreparerWithoutAuthorizedDeployers(t *tes
 	defer os.RemoveAll(fakePodRoot)
 	p.keyring = openpgp.EntityList{fakeSigner}
 
-	Assert(t).IsFalse(p.verifySignature(*manifest, logging.DefaultLogger), "expected preparer to reject manifest (no authorized deployer)")
+	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "expected preparer to accept manifest (empty authorized deployers)")
 }
 
 func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {

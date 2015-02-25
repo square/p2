@@ -165,7 +165,7 @@ func (p *Preparer) verifySignature(manifest pods.PodManifest, logger logging.Log
 		logger.WithField("signer_key", signerId).Debugln("Resolved manifest signature")
 
 		// Hmm, some hacks here.
-		if manifest.Id == POD_ID {
+		if manifest.Id == POD_ID && len(p.authorizedDeployers) > 0 {
 			foundAuthorized := false
 			for _, authorized := range p.authorizedDeployers {
 				if authorized == signerId {
