@@ -131,6 +131,15 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 			manifestLogger.NoFields().Debugln("New manifest received")
 
 			working = p.verifySignature(manifestToLaunch, manifestLogger)
+			if !working {
+				err = p.hooks.RunHookType(hooks.AFTER_AUTH_FAIL, pods.NewPod(manifestToLaunch.ID(), pods.PodPath(p.podRoot, manifestToLaunch.ID())), &manifestToLaunch)
+				if err != nil {
+					manifestLogger.WithFields(logrus.Fields{
+						"err":   err,
+						"hooks": hooks.AFTER_AUTH_FAIL,
+					}).Warnln("Could not run hooks")
+				}
+			}
 		case <-time.After(1 * time.Second):
 			if working {
 				pod := pods.NewPod(manifestToLaunch.ID(), pods.PodPath(p.podRoot, manifestToLaunch.ID()))
