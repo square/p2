@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"os/user"
 	"path"
 	"runtime"
 	"time"
@@ -163,7 +164,7 @@ func executeBin2Pod(cmd *exec.Cmd) (string, error) {
 func getConsulManifest(dir string) (string, error) {
 	consulTar := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-consul_abc123.tar.gz"))
 	manifest := &pods.PodManifest{}
-	manifest.Id = "intent"
+	manifest.Id = "consul"
 	stanza := pods.LaunchableStanza{
 		LaunchableId:   "consul",
 		LaunchableType: "hoist",
@@ -186,9 +187,17 @@ func getConsulManifest(dir string) (string, error) {
 }
 
 func executeBootstrap(preparerManifest, consulManifest string) error {
+	_, err := user.Lookup("consul")
+	if _, ok := err.(user.UnknownUserError); ok {
+		err = exec.Command("sudo", "useradd", "consul").Run()
+		if err != nil {
+			return fmt.Errorf("Could not create consul user: %s", err)
+		}
+	}
+
 	cmd := exec.Command("rake", "install")
 	cmd.Stderr = os.Stdout
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("Could not install newest bootstrap: %s", err)
 	}
