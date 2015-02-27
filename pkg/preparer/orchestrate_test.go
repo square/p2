@@ -153,7 +153,7 @@ func (f *FakeStore) SetPod(string, pods.PodManifest) (time.Duration, error) {
 	return 0, nil
 }
 
-func (f *FakeStore) RegisterService(pods.PodManifest) error {
+func (f *FakeStore) RegisterService(pods.PodManifest, string) error {
 	return nil
 }
 

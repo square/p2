@@ -30,7 +30,7 @@ type Hooks interface {
 type Store interface {
 	Pod(string) (*pods.PodManifest, time.Duration, error)
 	SetPod(string, pods.PodManifest) (time.Duration, error)
-	RegisterService(pods.PodManifest) error
+	RegisterService(pods.PodManifest, string) error
 	WatchPods(string, <-chan struct{}, chan<- error, chan<- kp.ManifestResult)
 }
 
@@ -43,6 +43,7 @@ type Preparer struct {
 	keyring             openpgp.KeyRing
 	podRoot             string
 	authorizedDeployers []string
+	caPath              string
 }
 
 func (p *Preparer) WatchForHooks(quit chan struct{}) {
@@ -246,7 +247,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 			}).Warnln("Could not run hooks")
 		}
 
-		err = p.store.RegisterService(*newManifest)
+		err = p.store.RegisterService(*newManifest, p.caPath)
 		if err != nil {
 			logger.WithField("err", err).Errorln("Service registration failed")
 			return false

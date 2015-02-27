@@ -30,6 +30,7 @@ type PreparerConfig struct {
 	ConsulTokenPath      string           `yaml:"consul_token_path,omitempty"`
 	HooksDirectory       string           `yaml:"hooks_directory"`
 	KeyringPath          string           `yaml:"keyring,omitempty"`
+	CAPath               string           `yaml:"ca_path,omitempty"`
 	PodRoot              string           `yaml:"pod_root,omitempty"`
 	AuthorizedDeployers  []string         `yaml:"authorized_deployers,omitempty"`
 	ExtraLogDestinations []LogDestination `yaml:"extra_log_destinations,omitempty"`
@@ -148,5 +149,6 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		keyring:             keyring,
 		podRoot:             preparerConfig.PodRoot,
 		authorizedDeployers: preparerConfig.AuthorizedDeployers,
+		caPath:              preparerConfig.CAPath,
 	}, nil
 }

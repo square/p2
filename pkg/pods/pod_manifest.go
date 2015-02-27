@@ -30,6 +30,7 @@ type PodManifest struct {
 	LaunchableStanzas map[string]LaunchableStanza `yaml:"launchables"`
 	Config            map[string]interface{}      `yaml:"config"`
 	StatusPort        int                         `yaml:"status_port,omitempty"`
+	StatusHTTP        bool                        `yaml:"status_http,omitempty"`
 	// these fields are required to track the original text if it was signed
 	raw       []byte
 	plaintext []byte
