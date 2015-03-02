@@ -27,6 +27,10 @@ func FakeChpst() string {
 	return util.From(runtime.Caller(0)).ExpandPath("fake_chpst")
 }
 
+func FakeContain() string {
+	return util.From(runtime.Caller(0)).ExpandPath("fake_contain")
+}
+
 func FakeHoistLaunchableForDir(dirName string) *HoistLaunchable {
 	tempDir, _ := ioutil.TempDir("", "fakeenv")
 	_, filename, _, _ := runtime.Caller(0)

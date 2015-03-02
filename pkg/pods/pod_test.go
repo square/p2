@@ -203,41 +203,60 @@ func TestBuildRunitServices(t *testing.T) {
 		path:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
 		Chpst:          hoist.FakeChpst(),
+		Contain:        hoist.FakeContain(),
 	}
 	hoistLaunchable := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	hoistLaunchable.RunAs = "testPod"
+	hoistLaunchable.Contain = hoist.FakeContain()
 	executables, err := hoistLaunchable.Executables(serviceBuilder)
 	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
 
 	pod.BuildRunitServices([]hoist.HoistLaunchable{*hoistLaunchable})
-	expected := fmt.Sprintf(`%s:
+	expected := fmt.Sprintf(`%[1]s:
   run:
   - /usr/bin/nolimit
-  - %s
+  - %[6]s
+  - -a
+  - %[7]s
+  - -s
+  - %[8]s
+  - -v
+  - --
+  - %[5]s
   - -u
   - testPod:testPod
   - -e
-  - %s
-  - %s
-%s:
+  - %[9]s
+  - %[2]s
+%[3]s:
   run:
   - /usr/bin/nolimit
-  - %s
+  - %[6]s
+  - -a
+  - %[7]s
+  - -s
+  - %[8]s
+  - -v
+  - --
+  - %[5]s
   - -u
   - testPod:testPod
   - -e
-  - %s
-  - %s
-`, executables[0].Service.Name,
-		hoistLaunchable.Chpst,
-		hoistLaunchable.ConfigDir,
+  - %[9]s
+  - %[4]s
+`,
+		executables[0].Service.Name,
 		executables[0].ExecPath,
 		executables[1].Service.Name,
+		executables[1].ExecPath,
 		hoistLaunchable.Chpst,
+		hoistLaunchable.Contain,
+		hoistLaunchable.Id,
+		"mycgroup",
 		hoistLaunchable.ConfigDir,
-		executables[1].ExecPath)
+	)
 
 	f, err := os.Open(outFilePath)
 	defer f.Close()

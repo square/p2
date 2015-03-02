@@ -9,17 +9,26 @@ import (
 )
 
 type HoistExecutable struct {
-	Service   runit.Service
-	ExecPath  string
-	Chpst     string
-	Nolimit   string
-	RunAs     string
-	ConfigDir string
+	Service       runit.Service
+	ExecPath      string
+	Chpst         string
+	Contain       string
+	ContainerName string
+	Nolimit       string
+	RunAs         string
+	ConfigDir     string
 }
 
 func (e HoistExecutable) SBEntry() []string {
 	return []string{
 		e.Nolimit,
+		e.Contain,
+		"-a",
+		e.ContainerName,
+		"-s",
+		"mycgroup",
+		"-v",
+		"--",
 		e.Chpst,
 		"-u",
 		strings.Join([]string{e.RunAs, e.RunAs}, ":"),

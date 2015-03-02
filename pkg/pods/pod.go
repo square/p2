@@ -40,6 +40,7 @@ type Pod struct {
 	SV             *runit.SV
 	ServiceBuilder *runit.ServiceBuilder
 	Chpst          string
+	Contain        string
 }
 
 func NewPod(id string, path string) *Pod {
@@ -51,6 +52,7 @@ func NewPod(id string, path string) *Pod {
 		SV:             runit.DefaultSV,
 		ServiceBuilder: runit.DefaultBuilder,
 		Chpst:          runit.DefaultChpst,
+		Contain:        runit.DefaultContain,
 	}
 }
 
@@ -476,6 +478,7 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*hoist.HoistLa
 			FetchToFile: hoist.DefaultFetcher(),
 			RootDir:     launchableRootDir,
 			Chpst:       pod.Chpst,
+			Contain:     pod.Contain,
 		}, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)

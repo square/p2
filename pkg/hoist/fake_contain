@@ -1,0 +1,19 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+options = {}
+# accept the same options as contain but fake out
+OptionParser.new do |opts|
+  opts.on('-s size', '--size size', 'size') do |arg|
+  end
+  opts.on('-a app', '--app application', 'application name') do |arg|
+  end
+  opts.on('-d dir', '--dir dir for container defs', 'directory name') do |arg|
+  end
+  opts.on('-n', '--dry-run', 'dry run') do |arg|
+  end
+  opts.on('-v', '--verbose', 'verbose') do |arg|
+  end
+end.parse!
+
+exec ARGV.join(" ")
