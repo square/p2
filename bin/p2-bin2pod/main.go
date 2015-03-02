@@ -43,6 +43,7 @@ var (
 	location      = bin2pod.Flag("location", "The location where the outputted tar will live. The characters {} will be replaced with the unique basename of the tar, including its SHA. If not provided, the location will be a file path to the resulting tar from the build, which is included in the output of this script. Users must copy the resultant tar to the new location if it is different from the default output path.").String()
 	workDirectory = bin2pod.Flag("work-dir", "A directory where the results will be written.").ExistingDir()
 	config        = bin2pod.Flag("config", "a list of key=value assignments. Each key will be set in the config section.").Strings()
+	containerSize = bin2pod.Flag("container", "the container size that this manifest should use").Default("small").String()
 )
 
 type Result struct {
@@ -97,6 +98,7 @@ func main() {
 		stanza.Location = tarLocation
 		res.FinalLocation = tarLocation
 	}
+	stanza.ContainerType = *containerSize
 	manifest.LaunchableStanzas[podId()] = stanza
 
 	if err != nil {
