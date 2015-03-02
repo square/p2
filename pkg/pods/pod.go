@@ -471,14 +471,15 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*hoist.HoistLa
 		launchableRootDir := path.Join(pod.path, launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
 		return &hoist.HoistLaunchable{
-			Location:    launchableStanza.Location,
-			Id:          launchableId,
-			RunAs:       pod.RunAs,
-			ConfigDir:   pod.EnvDir(),
-			FetchToFile: hoist.DefaultFetcher(),
-			RootDir:     launchableRootDir,
-			Chpst:       pod.Chpst,
-			Contain:     pod.Contain,
+			Location:      launchableStanza.Location,
+			Id:            launchableId,
+			RunAs:         pod.RunAs,
+			ConfigDir:     pod.EnvDir(),
+			FetchToFile:   hoist.DefaultFetcher(),
+			RootDir:       launchableRootDir,
+			Chpst:         pod.Chpst,
+			Contain:       pod.Contain,
+			ContainerType: launchableStanza.ContainerType,
 		}, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)

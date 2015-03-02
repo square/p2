@@ -13,6 +13,7 @@ type HoistExecutable struct {
 	ExecPath      string
 	Chpst         string
 	Contain       string
+	Container     string
 	ContainerName string
 	Nolimit       string
 	RunAs         string
@@ -26,7 +27,7 @@ func (e HoistExecutable) SBEntry() []string {
 		"-a",
 		e.ContainerName,
 		"-s",
-		"mycgroup",
+		e.Container,
 		"-v",
 		"--",
 		e.Chpst,
