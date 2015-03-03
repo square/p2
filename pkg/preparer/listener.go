@@ -3,7 +3,6 @@ package preparer
 import (
 	"fmt"
 	"os"
-	"os/user"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -79,13 +78,6 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 			}
 
 			hookPod := pods.NewPod(result.Manifest.ID(), path.Join(l.DestinationDir, event, result.Manifest.ID()))
-			// install hooks as current user, not the pod ID. TODO: authorization checks for the pod
-			// to ensure they are permitted.
-			curUser, err := user.Current()
-			if err != nil {
-				sub.WithField("err", err).Errorln("could not get current user")
-			}
-			hookPod.RunAs = curUser.Username
 
 			// Figure out if we even need to install anything.
 			// Hooks aren't running services and so there isn't a need
