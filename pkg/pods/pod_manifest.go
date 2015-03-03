@@ -23,6 +23,7 @@ type LaunchableStanza struct {
 	LaunchableType string `yaml:"launchable_type"`
 	LaunchableId   string `yaml:"launchable_id"`
 	Location       string `yaml:"location"`
+	ContainerType  string `yaml:"container,omitempty"`
 }
 
 type PodManifest struct {

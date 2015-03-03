@@ -27,13 +27,14 @@ func TestInstall(t *testing.T) {
 	defer os.RemoveAll(launchableHome)
 
 	launchable := &HoistLaunchable{
-		testLocation,
-		"hello",
-		currentUser.Username,
-		launchableHome,
-		fc.File,
-		launchableHome,
-		FakeChpst(),
+		Location:    testLocation,
+		Id:          "hello",
+		RunAs:       currentUser.Username,
+		ConfigDir:   launchableHome,
+		FetchToFile: fc.File,
+		RootDir:     launchableHome,
+		Chpst:       FakeChpst(),
+		Contain:     "/usr/bin/contain",
 	}
 
 	err = launchable.Install()
@@ -54,7 +55,16 @@ func TestInstall(t *testing.T) {
 func TestInstallDir(t *testing.T) {
 	tempDir := os.TempDir()
 	testLocation := "http://someserver/test_launchable_abc123.tar.gz"
-	launchable := &HoistLaunchable{testLocation, "testLaunchable", "testuser", tempDir, new(FakeCurl).File, tempDir, ""}
+	launchable := &HoistLaunchable{
+		Location:    testLocation,
+		Id:          "testLaunchable",
+		RunAs:       "testuser",
+		ConfigDir:   tempDir,
+		FetchToFile: new(FakeCurl).File,
+		RootDir:     tempDir,
+		Chpst:       "",
+		Contain:     "",
+	}
 
 	installDir := launchable.InstallDir()
 

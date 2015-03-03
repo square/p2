@@ -9,24 +9,40 @@ import (
 )
 
 type HoistExecutable struct {
-	Service   runit.Service
-	ExecPath  string
-	Chpst     string
-	Nolimit   string
-	RunAs     string
-	ConfigDir string
+	Service       runit.Service
+	ExecPath      string
+	Chpst         string
+	Contain       string
+	Container     string
+	ContainerName string
+	Nolimit       string
+	RunAs         string
+	ConfigDir     string
 }
 
 func (e HoistExecutable) SBEntry() []string {
-	return []string{
-		e.Nolimit,
+	var ret []string
+	ret = append(ret, e.Nolimit)
+	if e.Container != "" {
+		ret = append(ret,
+			e.Contain,
+			"-a",
+			e.ContainerName,
+			"-s",
+			e.Container,
+			"-v",
+			"--",
+		)
+	}
+	ret = append(ret,
 		e.Chpst,
 		"-u",
 		strings.Join([]string{e.RunAs, e.RunAs}, ":"),
 		"-e",
 		e.ConfigDir,
-		e.ExecPath,
-	}
+	)
+	ret = append(ret, e.ExecPath)
+	return ret
 }
 
 func (e HoistExecutable) WriteExecutor(writer io.Writer) error {

@@ -22,6 +22,7 @@ P2 is based on existing deployment tools at Square. The following list reflects 
 * [Consul](https://consul.io/)
 * [Runit](http://smarden.org/runit/), which includes chpst
 * [ServiceBuilder](https://github.com/square/prodeng/tree/master/servicebuilder)
+* [Contain](https://github.com/square/prodeng/tree/master/cgroup-container)
 * Logrotate
 * [Nolimit](https://github.com/square/prodeng/tree/master/nolimit)
 
