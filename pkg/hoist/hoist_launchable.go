@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/square/p2/pkg/artifact"
@@ -344,15 +345,23 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 		fpath := path.Join(dest, hdr.Name)
 
 		switch hdr.Typeflag {
-		case tar.TypeSymlink, tar.TypeLink:
-			// hard links are intentionally treated as symlinks, because the
-			// target of a hardlink might be later in the tarball and not
-			// unpacked yet
-			// creating a hardlink in that situation would raise an error
-			// because the hardlink target doesn't exist
+		case tar.TypeSymlink:
 			err = os.Symlink(hdr.Linkname, fpath)
 			if err != nil {
 				return util.Errorf("Unable to create destination symlink %s (to %s) when unpacking %s: %s", fpath, hdr.Linkname, fp.Name(), err)
+			}
+		case tar.TypeLink:
+			// hardlink paths are encoded relative to the tarball root, rather than
+			// the path of the link itself, so we need to resolve that path
+			linkTarget, err := filepath.Rel(filepath.Dir(hdr.Name), hdr.Linkname)
+			if err != nil {
+				return util.Errorf("Unable to resolve relative path for hardlink %s (to %s) when unpacking %s: %s", fpath, hdr.Linkname, fp.Name(), err)
+			}
+			// we can't make the hardlink right away because the target might not
+			// exist, so we'll just make a symlink instead
+			err = os.Symlink(linkTarget, fpath)
+			if err != nil {
+				return util.Errorf("Unable to create destination symlink %s (resolved %s to %s) when unpacking %s: %s", fpath, linkTarget, hdr.Linkname, fp.Name(), err)
 			}
 		case tar.TypeDir:
 			err = os.Mkdir(fpath, hdr.FileInfo().Mode())
