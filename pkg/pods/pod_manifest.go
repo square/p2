@@ -28,7 +28,7 @@ type LaunchableStanza struct {
 type PodManifest struct {
 	Id                string                      `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
 	LaunchableStanzas map[string]LaunchableStanza `yaml:"launchables"`
-	Config            map[string]interface{}      `yaml:"config"`
+	Config            map[interface{}]interface{} `yaml:"config"`
 	StatusPort        int                         `yaml:"status_port,omitempty"`
 	// these fields are required to track the original text if it was signed
 	raw       []byte

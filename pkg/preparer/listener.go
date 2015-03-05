@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/config"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
@@ -158,6 +159,20 @@ func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods
 		return err
 	}
 
+	topLevelConfig := config.LoadFromUnpacked(manifest.Config)
+	hookConfig, err := topLevelConfig.ReadMap("hook")
+	if err != nil {
+		return err
+	}
+
+	runAs, err := hookConfig.ReadString("run_as")
+	if err != nil {
+		return err
+	}
+	if runAs == "" {
+		runAs = manifest.ID()
+	}
+
 	// First remove any pre-existing hooks for that pod. Note that this is gross
 	// and that we should have hooks recurse into subfolders.
 	podHookPattern := path.Join(eventExecDir, fmt.Sprintf("%s__*", hookPod.Id))
@@ -181,6 +196,7 @@ func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods
 		}
 
 		for _, executable := range executables {
+			executable.RunAs = runAs
 			// Write a script to the event directory that executes the pod's executables
 			// with the correct environment for that pod.
 			scriptPath := path.Join(eventExecDir, executable.Service.Name)
