@@ -3,7 +3,6 @@ package preparer
 import (
 	"fmt"
 	"os"
-	"os/user"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -80,13 +79,23 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 			}
 
 			hookPod := pods.NewPod(result.Manifest.ID(), path.Join(l.DestinationDir, event, result.Manifest.ID()))
-			// install hooks as current user, not the pod ID. TODO: authorization checks for the pod
-			// to ensure they are permitted.
-			curUser, err := user.Current()
+
+			// Hooks may specify a user to run as - by default they will run as their pod ID.
+			topLevelConfig := config.LoadFromUnpacked(result.Manifest.Config)
+			hookConfig, err := topLevelConfig.ReadMap("hook")
 			if err != nil {
-				sub.WithField("err", err).Errorln("could not get current user")
+				sub.WithField("err", err).Errorln("Hook configuration is invalid")
+				break
 			}
-			hookPod.RunAs = curUser.Username
+			runAs, err := hookConfig.ReadString("run_as")
+			if err != nil {
+				sub.WithField("err", err).Errorln("Hook configuration is invalid")
+				break
+			}
+			if runAs == "" {
+				runAs = hookPod.Id
+			}
+			hookPod.RunAs = runAs
 
 			// Figure out if we even need to install anything.
 			// Hooks aren't running services and so there isn't a need
@@ -159,20 +168,6 @@ func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods
 		return err
 	}
 
-	topLevelConfig := config.LoadFromUnpacked(manifest.Config)
-	hookConfig, err := topLevelConfig.ReadMap("hook")
-	if err != nil {
-		return err
-	}
-
-	runAs, err := hookConfig.ReadString("run_as")
-	if err != nil {
-		return err
-	}
-	if runAs == "" {
-		runAs = manifest.ID()
-	}
-
 	// First remove any pre-existing hooks for that pod. Note that this is gross
 	// and that we should have hooks recurse into subfolders.
 	podHookPattern := path.Join(eventExecDir, fmt.Sprintf("%s__*", hookPod.Id))
@@ -196,7 +191,6 @@ func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods
 		}
 
 		for _, executable := range executables {
-			executable.RunAs = runAs
 			// Write a script to the event directory that executes the pod's executables
 			// with the correct environment for that pod.
 			scriptPath := path.Join(eventExecDir, executable.Service.Name)
