@@ -8,6 +8,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/square/p2/pkg/digest"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/runit"
@@ -16,6 +17,7 @@ import (
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
+	"golang.org/x/crypto/openpgp"
 )
 
 var (
@@ -372,6 +374,63 @@ func (pod *Pod) Install(manifest *PodManifest) error {
 
 	pod.logInfo("Successfully installed")
 
+	return nil
+}
+
+func (pod *Pod) Verify(manifest *PodManifest, keyring openpgp.KeyRing) error {
+	temp, err := ioutil.TempDir("", manifest.ID())
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(temp)
+
+	for _, stanza := range manifest.LaunchableStanzas {
+		if stanza.DigestLocation == "" {
+			continue
+		}
+
+		launchable, err := pod.getLaunchable(stanza)
+		if err != nil {
+			return err
+		}
+
+		digestPath := path.Join(temp, launchable.Version()+".sum")
+		err = launchable.FetchToFile(stanza.DigestLocation, digestPath)
+		if err != nil {
+			return err
+		}
+
+		var launchableDigest map[string]string
+
+		if stanza.DigestSignatureLocation == "" || keyring == nil {
+			fd, err := os.Open(digestPath)
+			if err != nil {
+				return err
+			}
+			defer fd.Close()
+
+			launchableDigest, err = digest.ParseDigest(fd)
+			if err != nil {
+				return err
+			}
+		} else {
+			digestSigPath := path.Join(temp, launchable.Version()+".sum.sig")
+			err = launchable.FetchToFile(stanza.DigestSignatureLocation, digestSigPath)
+			if err != nil {
+				return err
+			}
+
+			launchableDigest, err = digest.ParseSignedDigestFiles(digestPath, digestSigPath, keyring)
+			if err != nil {
+				return err
+			}
+		}
+
+		err = digest.VerifyDir(launchable.InstallDir(), launchableDigest)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

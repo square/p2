@@ -20,10 +20,12 @@ import (
 )
 
 type LaunchableStanza struct {
-	LaunchableType string `yaml:"launchable_type"`
-	LaunchableId   string `yaml:"launchable_id"`
-	Location       string `yaml:"location"`
-	ContainerType  string `yaml:"container,omitempty"`
+	LaunchableType          string `yaml:"launchable_type"`
+	LaunchableId            string `yaml:"launchable_id"`
+	Location                string `yaml:"location"`
+	DigestLocation          string `yaml:"digest_location,omitempty"`
+	DigestSignatureLocation string `yaml:"digest_signature_location,omitempty"`
+	ContainerType           string `yaml:"container,omitempty"`
 }
 
 type PodManifest struct {
