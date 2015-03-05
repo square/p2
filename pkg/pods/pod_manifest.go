@@ -6,7 +6,7 @@ package pods
 
 import (
 	"bytes"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -125,7 +125,7 @@ func (manifest *PodManifest) WriteConfig(out io.Writer) error {
 	return nil
 }
 
-// SHA() returns a string containing a hex encoded SHA-1 checksum of the
+// SHA() returns a string containing a hex encoded SHA256 checksum of the
 // manifest's contents. The contents are normalized, such that all equivalent
 // YAML structures have the same SHA (despite differences in comments,
 // indentation, etc).
@@ -137,7 +137,7 @@ func (manifest *PodManifest) SHA() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	hasher := sha1.New()
+	hasher := sha256.New()
 	hasher.Write(buf)
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }

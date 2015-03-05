@@ -79,7 +79,7 @@ func TestPodManifestCanReportItsSHA(t *testing.T) {
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 	val, err := manifest.SHA()
 	Assert(t).IsNil(err, "should not have erred when getting SHA")
-	Assert(t).AreEqual("5a92dd996feb6c9bd5c451d2b36282cc7804f911", val, "SHA mismatched expectations")
+	Assert(t).AreEqual("17acfa1ce4bdd9674524f8faed383bf365d168c81d9d981d63173a33a7fed5a1", val, "SHA mismatched expectations")
 }
 
 func TestNilPodManifestHasEmptySHA(t *testing.T) {
