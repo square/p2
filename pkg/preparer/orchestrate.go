@@ -19,6 +19,7 @@ type Pod interface {
 	hooks.Pod
 	Launch(*pods.PodManifest) (bool, error)
 	Install(*pods.PodManifest) error
+	Verify(*pods.PodManifest, openpgp.KeyRing) error
 	Disable(*pods.PodManifest) (bool, error)
 	Halt() (bool, error)
 }
@@ -245,6 +246,19 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 			logger.WithFields(logrus.Fields{
 				"err": err,
 			}).Errorln("Install failed")
+			return false
+		}
+
+		err = pod.Verify(newManifest, p.keyring)
+		if err != nil {
+			logger.WithField("err", err).Errorln("Pod digest verification failed")
+			err = p.hooks.RunHookType(hooks.AFTER_AUTH_FAIL, pod, newManifest)
+			if err != nil {
+				logger.WithFields(logrus.Fields{
+					"err":   err,
+					"hooks": hooks.AFTER_AUTH_FAIL,
+				}).Warnln("Could not run hooks")
+			}
 			return false
 		}
 

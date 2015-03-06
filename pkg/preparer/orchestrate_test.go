@@ -44,6 +44,10 @@ func (t *TestPod) Install(manifest *pods.PodManifest) error {
 	return t.installErr
 }
 
+func (t *TestPod) Verify(manifest *pods.PodManifest, keyring openpgp.KeyRing) error {
+	return nil
+}
+
 func (t *TestPod) Disable(manifest *pods.PodManifest) (bool, error) {
 	return true, nil
 }
