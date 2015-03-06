@@ -150,7 +150,7 @@ func makeTar(workingDir string, manifest *pods.PodManifest) (string, error) {
 }
 
 func addManifestConfig(manifest *pods.PodManifest) error {
-	manifest.Config = make(map[string]interface{})
+	manifest.Config = make(map[interface{}]interface{})
 	for _, pair := range *config {
 		res := strings.Split(pair, "=")
 		if len(res) != 2 {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/user"
 	"path"
 	"runtime"
 	"testing"
@@ -55,6 +56,14 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 	defer os.RemoveAll(execDir)
 	Assert(t).IsNil(err, "should not have erred creating a tempdir")
 
+	current, err := user.Current()
+	Assert(t).IsNil(err, "test setup: could not get the current user")
+
+	testConfig := make(map[interface{}]interface{})
+	testConfig["hook"] = map[string]interface{}{
+		"run_as": current.Username,
+	}
+
 	manifest := &pods.PodManifest{
 		Id: "users",
 		LaunchableStanzas: map[string]pods.LaunchableStanza{
@@ -64,6 +73,7 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 				LaunchableId:   "create",
 			},
 		},
+		Config: testConfig,
 	}
 	manifestBytes, err := manifest.Bytes()
 	Assert(t).IsNil(err, "manifest bytes error should have been nil")

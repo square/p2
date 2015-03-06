@@ -15,6 +15,10 @@ type Config struct {
 	unpacked map[interface{}]interface{}
 }
 
+func LoadFromUnpacked(unpacked map[interface{}]interface{}) *Config {
+	return &Config{unpacked}
+}
+
 func LoadFromEnvironment() (*Config, error) {
 	env := os.Getenv("CONFIG_PATH")
 	if env == "" {
