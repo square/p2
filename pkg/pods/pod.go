@@ -176,7 +176,9 @@ func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
 			pod.logLaunchableError(launchable.Id, err, out)
 			successes = append(successes, false)
 		} else {
-			pod.logInfo(out)
+			if out != "" {
+				pod.logInfo(out)
+			}
 			successes = append(successes, true)
 		}
 	}
