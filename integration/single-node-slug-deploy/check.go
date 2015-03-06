@@ -138,6 +138,21 @@ mkdir -p $HOOKED_POD_HOME
 		return err
 	}
 
+	userHookManifest, err := pods.PodManifestFromPath(manifestPath)
+	if err != nil {
+		return err
+	}
+
+	userHookManifest.Config["hook"] = map[interface{}]interface{}{
+		"run_as": "root",
+	}
+	contents, err := userHookManifest.Bytes()
+	if err != nil {
+		return err
+	}
+
+	ioutil.WriteFile(manifestPath, contents, 0644)
+
 	manifestPath, err = signManifest(manifestPath, tmpdir)
 	if err != nil {
 		return err
