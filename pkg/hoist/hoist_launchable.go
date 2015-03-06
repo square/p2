@@ -284,6 +284,18 @@ func (hoistLaunchable *HoistLaunchable) CurrentDir() string {
 }
 
 func (hoistLaunchable *HoistLaunchable) MakeCurrent() error {
+	return hoistLaunchable.flipSymlink(hoistLaunchable.CurrentDir())
+}
+
+func (hoistLaunchable *HoistLaunchable) LastDir() string {
+	return path.Join(hoistLaunchable.RootDir, "last")
+}
+
+func (hoistLaunchable *HoistLaunchable) MakeLast() error {
+	return hoistLaunchable.flipSymlink(hoistLaunchable.LastDir())
+}
+
+func (hoistLaunchable *HoistLaunchable) flipSymlink(newLinkPath string) error {
 	dir, err := ioutil.TempDir(hoistLaunchable.RootDir, hoistLaunchable.Id)
 	if err != nil {
 		return util.Errorf("Couldn't create temporary directory for symlink: %s", err)
@@ -304,7 +316,7 @@ func (hoistLaunchable *HoistLaunchable) MakeCurrent() error {
 		return util.Errorf("Couldn't lchown symlink for hoist launchable %s: %s", hoistLaunchable.Id, err)
 	}
 
-	return os.Rename(tempLinkPath, hoistLaunchable.CurrentDir())
+	return os.Rename(tempLinkPath, newLinkPath)
 }
 
 func (hoistLaunchable *HoistLaunchable) InstallDir() string {
