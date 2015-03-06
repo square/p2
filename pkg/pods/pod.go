@@ -395,6 +395,8 @@ func (pod *Pod) Verify(manifest *PodManifest, keyring openpgp.KeyRing) error {
 		}
 
 		digestPath := path.Join(temp, launchable.Version()+".sum")
+		// TODO: the fetcher should eventually be configurable, passed to a
+		// launchable from the pod that instantiated it
 		err = launchable.FetchToFile(stanza.DigestLocation, digestPath)
 		if err != nil {
 			return err
