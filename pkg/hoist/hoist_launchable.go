@@ -23,15 +23,14 @@ type Fetcher func(string, string) error
 
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type HoistLaunchable struct {
-	Location      string  // A URL where we can download the artifact from.
-	Id            string  // A unique identifier for this launchable, used when creating runit services
-	RunAs         string  // The user to assume when launching the executable
-	ConfigDir     string  // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
-	FetchToFile   Fetcher // Callback that downloads the file from the remote location.
-	RootDir       string  // The root directory of the launchable, containing N:N>=1 installs.
-	Chpst         string  // The path to chpst
-	Contain       string  // The path to contain
-	ContainerType string  // The container type to pass to contain
+	Location    string  // A URL where we can download the artifact from.
+	Id          string  // A unique identifier for this launchable, used when creating runit services
+	RunAs       string  // The user to assume when launching the executable
+	ConfigDir   string  // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
+	FetchToFile Fetcher // Callback that downloads the file from the remote location.
+	RootDir     string  // The root directory of the launchable, containing N:N>=1 installs.
+	Chpst       string  // The path to chpst
+	Cgexec      string  // The path to cgexec
 }
 
 func DefaultFetcher() Fetcher {
@@ -174,15 +173,14 @@ func (h *HoistLaunchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]H
 		servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
 		runitService := &runit.Service{servicePath, serviceName}
 		executable := &HoistExecutable{
-			Service:       *runitService,
-			ExecPath:      binLaunchPath,
-			Chpst:         h.Chpst,
-			Contain:       h.Contain,
-			Container:     h.ContainerType,
-			ContainerName: h.Id,
-			Nolimit:       "/usr/bin/nolimit",
-			RunAs:         h.RunAs,
-			ConfigDir:     h.ConfigDir,
+			Service:    *runitService,
+			ExecPath:   binLaunchPath,
+			Chpst:      h.Chpst,
+			Cgexec:     h.Cgexec,
+			CgroupName: h.Id,
+			Nolimit:    "/usr/bin/nolimit",
+			RunAs:      h.RunAs,
+			ConfigDir:  h.ConfigDir,
 		}
 
 		return []HoistExecutable{*executable}, nil
@@ -200,15 +198,14 @@ func (h *HoistLaunchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]H
 			execPath := path.Join(binLaunchPath, service.Name())
 			runitService := &runit.Service{servicePath, serviceName}
 			executable := &HoistExecutable{
-				Service:       *runitService,
-				ExecPath:      execPath,
-				Chpst:         h.Chpst,
-				Contain:       h.Contain,
-				Container:     h.ContainerType,
-				ContainerName: h.Id,
-				Nolimit:       "/usr/bin/nolimit",
-				RunAs:         h.RunAs,
-				ConfigDir:     h.ConfigDir,
+				Service:    *runitService,
+				ExecPath:   execPath,
+				Chpst:      h.Chpst,
+				Cgexec:     h.Cgexec,
+				CgroupName: h.Id,
+				Nolimit:    "/usr/bin/nolimit",
+				RunAs:      h.RunAs,
+				ConfigDir:  h.ConfigDir,
 			}
 			executables[i] = *executable
 		}

@@ -27,8 +27,8 @@ func FakeChpst() string {
 	return util.From(runtime.Caller(0)).ExpandPath("fake_chpst")
 }
 
-func FakeContain() string {
-	return util.From(runtime.Caller(0)).ExpandPath("fake_contain")
+func FakeCgexec() string {
+	return util.From(runtime.Caller(0)).ExpandPath("fake_cgexec")
 }
 
 func FakeHoistLaunchableForDir(dirName string) *HoistLaunchable {

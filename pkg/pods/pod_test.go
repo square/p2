@@ -203,12 +203,11 @@ func TestBuildRunitServices(t *testing.T) {
 		path:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
 		Chpst:          hoist.FakeChpst(),
-		Contain:        hoist.FakeContain(),
+		Cgexec:         hoist.FakeCgexec(),
 	}
 	hoistLaunchable := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	hoistLaunchable.RunAs = "testPod"
-	hoistLaunchable.Contain = hoist.FakeContain()
-	hoistLaunchable.ContainerType = "mycgroup"
+	hoistLaunchable.Cgexec = hoist.FakeCgexec()
 	executables, err := hoistLaunchable.Executables(serviceBuilder)
 	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
@@ -219,33 +218,31 @@ func TestBuildRunitServices(t *testing.T) {
   run:
   - /usr/bin/nolimit
   - %[6]s
-  - -a
-  - %[7]s
-  - -s
-  - %[8]s
-  - -v
-  - --
+  - -g
+  - memory:%[7]s
+  - -g
+  - cpu:%[7]s
+  - --sticky
   - %[5]s
   - -u
   - testPod:testPod
   - -e
-  - %[9]s
+  - %[8]s
   - %[2]s
 %[3]s:
   run:
   - /usr/bin/nolimit
   - %[6]s
-  - -a
-  - %[7]s
-  - -s
-  - %[8]s
-  - -v
-  - --
+  - -g
+  - memory:%[7]s
+  - -g
+  - cpu:%[7]s
+  - --sticky
   - %[5]s
   - -u
   - testPod:testPod
   - -e
-  - %[9]s
+  - %[8]s
   - %[4]s
 `,
 		executables[0].Service.Name,
@@ -253,9 +250,8 @@ func TestBuildRunitServices(t *testing.T) {
 		executables[1].Service.Name,
 		executables[1].ExecPath,
 		hoistLaunchable.Chpst,
-		hoistLaunchable.Contain,
+		hoistLaunchable.Cgexec,
 		hoistLaunchable.Id,
-		"mycgroup",
 		hoistLaunchable.ConfigDir,
 	)
 

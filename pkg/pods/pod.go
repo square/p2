@@ -42,7 +42,7 @@ type Pod struct {
 	SV             *runit.SV
 	ServiceBuilder *runit.ServiceBuilder
 	Chpst          string
-	Contain        string
+	Cgexec         string
 }
 
 func NewPod(id string, path string) *Pod {
@@ -54,7 +54,7 @@ func NewPod(id string, path string) *Pod {
 		SV:             runit.DefaultSV,
 		ServiceBuilder: runit.DefaultBuilder,
 		Chpst:          runit.DefaultChpst,
-		Contain:        runit.DefaultContain,
+		Cgexec:         runit.DefaultCgexec,
 	}
 }
 
@@ -539,17 +539,17 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*hoist.HoistLa
 	if launchableStanza.LaunchableType == "hoist" {
 		launchableRootDir := path.Join(pod.path, launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
-		return &hoist.HoistLaunchable{
-			Location:      launchableStanza.Location,
-			Id:            launchableId,
-			RunAs:         pod.RunAs,
-			ConfigDir:     pod.EnvDir(),
-			FetchToFile:   hoist.DefaultFetcher(),
-			RootDir:       launchableRootDir,
-			Chpst:         pod.Chpst,
-			Contain:       pod.Contain,
-			ContainerType: launchableStanza.ContainerType,
-		}, nil
+		ret := &hoist.HoistLaunchable{
+			Location:    launchableStanza.Location,
+			Id:          launchableId,
+			RunAs:       pod.RunAs,
+			ConfigDir:   pod.EnvDir(),
+			FetchToFile: hoist.DefaultFetcher(),
+			RootDir:     launchableRootDir,
+			Chpst:       pod.Chpst,
+			Cgexec:      pod.Cgexec,
+		}
+		return ret, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)
 		pod.logLaunchableError(launchableStanza.LaunchableId, err, "Unknown launchable type")

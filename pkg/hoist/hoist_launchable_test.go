@@ -34,7 +34,7 @@ func TestInstall(t *testing.T) {
 		FetchToFile: fc.File,
 		RootDir:     launchableHome,
 		Chpst:       FakeChpst(),
-		Contain:     "/usr/bin/contain",
+		Cgexec:      FakeCgexec(),
 	}
 
 	err = launchable.Install()
@@ -63,7 +63,7 @@ func TestInstallDir(t *testing.T) {
 		FetchToFile: new(FakeCurl).File,
 		RootDir:     tempDir,
 		Chpst:       "",
-		Contain:     "",
+		Cgexec:      "",
 	}
 
 	installDir := launchable.InstallDir()
