@@ -44,7 +44,7 @@ type Preparer struct {
 	keyring             openpgp.KeyRing
 	podRoot             string
 	authorizedDeployers []string
-	forbiddenPodIds     []string
+	forbiddenPodIds     map[string]struct{}
 	caPath              string
 }
 
@@ -110,12 +110,8 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 }
 
 func (p *Preparer) podIdForbidden(id string) bool {
-	for _, forbidden := range p.forbiddenPodIds {
-		if forbidden == id {
-			return true
-		}
-	}
-	return false
+	_, forbidden := p.forbiddenPodIds[id]
+	return forbidden
 }
 
 // no return value, no output channels. This should do everything it needs to do

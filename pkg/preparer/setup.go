@@ -141,6 +141,11 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		return nil, util.Errorf("Could not create preparer pod directory: %s", err)
 	}
 
+	forbiddenPodIds := make(map[string]struct{})
+	for _, forbidden := range preparerConfig.ForbiddenPodIds {
+		forbiddenPodIds[forbidden] = struct{}{}
+	}
+
 	return &Preparer{
 		node:                preparerConfig.NodeName,
 		store:               store,
@@ -150,7 +155,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		keyring:             keyring,
 		podRoot:             preparerConfig.PodRoot,
 		authorizedDeployers: preparerConfig.AuthorizedDeployers,
-		forbiddenPodIds:     preparerConfig.ForbiddenPodIds,
+		forbiddenPodIds:     forbiddenPodIds,
 		caPath:              preparerConfig.CAPath,
 	}, nil
 }

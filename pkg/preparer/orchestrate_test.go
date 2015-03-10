@@ -247,7 +247,8 @@ func TestPreparerWillNotInstallOrLaunchIfIdIsForbidden(t *testing.T) {
 
 	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
 	defer os.RemoveAll(fakePodRoot)
-	p.forbiddenPodIds = []string{testManifest.ID()}
+	p.forbiddenPodIds = make(map[string]struct{})
+	p.forbiddenPodIds[testManifest.ID()] = struct{}{}
 
 	success := p.installAndLaunchPod(testManifest, testPod, logging.DefaultLogger)
 
