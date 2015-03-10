@@ -33,6 +33,7 @@ type PreparerConfig struct {
 	CAPath               string           `yaml:"ca_path,omitempty"`
 	PodRoot              string           `yaml:"pod_root,omitempty"`
 	AuthorizedDeployers  []string         `yaml:"authorized_deployers,omitempty"`
+	ForbiddenPodIds      []string         `yaml:"forbidden_pod_ids,omitempty"`
 	ExtraLogDestinations []LogDestination `yaml:"extra_log_destinations,omitempty"`
 }
 
@@ -149,6 +150,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		keyring:             keyring,
 		podRoot:             preparerConfig.PodRoot,
 		authorizedDeployers: preparerConfig.AuthorizedDeployers,
+		forbiddenPodIds:     preparerConfig.ForbiddenPodIds,
 		caPath:              preparerConfig.CAPath,
 	}, nil
 }

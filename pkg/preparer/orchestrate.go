@@ -44,6 +44,7 @@ type Preparer struct {
 	keyring             openpgp.KeyRing
 	podRoot             string
 	authorizedDeployers []string
+	forbiddenPodIds     []string
 	caPath              string
 }
 
