@@ -8,6 +8,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/digest"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/logging"
@@ -367,16 +368,25 @@ func (pod *Pod) Install(manifest *PodManifest) error {
 		return util.Errorf("Could not setup config: %s", err)
 	}
 
-	launchables, err := pod.GetLaunchables(manifest)
-	if err != nil {
-		return err
-	}
+	for _, launchableStanza := range manifest.LaunchableStanzas {
+		launchable, err := pod.getLaunchable(launchableStanza)
+		if err != nil {
+			return err
+		}
 
-	for _, launchable := range launchables {
-		err := launchable.Install()
+		err = launchable.Install()
 		if err != nil {
 			pod.logLaunchableError(launchable.Id, err, "Unable to install launchable")
 			return err
+		}
+
+		err = cgroups.Default.SetCPU(launchable.Id, launchableStanza.CgroupConfig.Cpus)
+		if err != nil {
+			pod.logLaunchableError(launchable.Id, err, "Unable to set cgroup cpu limits")
+		}
+		err = cgroups.Default.SetMemory(launchable.Id, launchableStanza.CgroupConfig.Memory)
+		if err != nil {
+			pod.logLaunchableError(launchable.Id, err, "Unable to set cgroup memory limits")
 		}
 	}
 
