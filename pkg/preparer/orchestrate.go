@@ -215,6 +215,13 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 
 	if p.podIdForbidden(newManifest.ID()) {
 		logger.WithField("manifest", newManifest.ID()).Errorln("Cannot use this pod ID")
+		err := p.hooks.RunHookType(hooks.AFTER_AUTH_FAIL, pod, newManifest)
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"err":   err,
+				"hooks": hooks.AFTER_AUTH_FAIL,
+			}).Warnln("Could not run hooks")
+		}
 		return false
 	}
 
