@@ -109,6 +109,15 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	}
 }
 
+func (p *Preparer) podIdForbidden(id string) bool {
+	for _, forbidden := range p.forbiddenPodIds {
+		if forbidden == id {
+			return true
+		}
+	}
+	return false
+}
+
 // no return value, no output channels. This should do everything it needs to do
 // without outside intervention (other than being signalled to quit)
 func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struct{}) {
@@ -203,6 +212,11 @@ func (p *Preparer) verifySignature(manifest pods.PodManifest, logger logging.Log
 
 func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, logger logging.Logger) bool {
 	// do not remove the logger argument, it's not the same as p.Logger
+
+	if p.podIdForbidden(newManifest.ID()) {
+		logger.WithField("manifest", newManifest.ID()).Errorln("Cannot use this pod ID")
+		return false
+	}
 
 	// get currently running pod to compare with the new pod
 	realityPath := kp.RealityPath(p.node, newManifest.ID())

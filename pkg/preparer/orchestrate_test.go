@@ -238,6 +238,26 @@ func TestPreparerFailsIfInstallFails(t *testing.T) {
 	Assert(t).IsFalse(hooks.ranAfterLaunch, "should not have run after_launch hooks")
 }
 
+func TestPreparerWillNotInstallOrLaunchIfIdIsForbidden(t *testing.T) {
+	testManifest := testManifest(t)
+	testPod := &TestPod{
+		launchSuccess:   true,
+		currentManifest: testManifest,
+	}
+
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer os.RemoveAll(fakePodRoot)
+	p.forbiddenPodIds = []string{testManifest.ID()}
+
+	success := p.installAndLaunchPod(testManifest, testPod, logging.DefaultLogger)
+
+	Assert(t).IsFalse(success, "Installing a forbidden ID should not succeed")
+	Assert(t).IsFalse(hooks.ranBeforeInstall, "Should not have run hooks prior to install")
+	Assert(t).IsFalse(testPod.installed, "Should not have installed")
+	Assert(t).IsFalse(testPod.launched, "Should not have attempted to launch")
+	Assert(t).IsFalse(hooks.ranAfterLaunch, "Should not have run after_launch hooks")
+}
+
 func TestPreparerWillNotInstallOrLaunchIfSHAIsTheSame(t *testing.T) {
 	testManifest := testManifest(t)
 	testPod := &TestPod{
