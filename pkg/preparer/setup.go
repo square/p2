@@ -74,7 +74,16 @@ func loadKeyring(path string) (openpgp.KeyRing, error) {
 	}
 	defer f.Close()
 
-	return openpgp.ReadKeyRing(f)
+	keyring, err := openpgp.ReadArmoredKeyRing(f)
+	if err != nil && err.Error() == "openpgp: invalid argument: no armored data found" {
+		offset, seekErr := f.Seek(0, os.SEEK_SET)
+		if offset != 0 || seekErr != nil {
+			return nil, util.Errorf("Couldn't seek to beginning, got %d %s", offset, seekErr)
+		}
+		keyring, err = openpgp.ReadKeyRing(f)
+	}
+
+	return keyring, err
 }
 
 func loadConsulToken(path string) (string, error) {
