@@ -68,11 +68,14 @@ var Default Cgroups = map[string]string{
 }
 
 // set the number of logical CPUs in a given cgroup, 0 to unrestrict
+// https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
 func (cg Cgroups) SetCPU(name string, cpus int) error {
 	period := 1000000 // one million microseconds
-	quota := cpus * 1000000
+	quota := cpus * period
 	if cpus == 0 {
-		period = -1
+		// one hundred thousand microseconds is the default, -1 will return EINVAL
+		period = 100000
+		// setting -1 here will unrestrict the cgroup, so the period won't matter
 		quota = -1
 	}
 
@@ -95,9 +98,10 @@ func (cg Cgroups) SetCPU(name string, cpus int) error {
 }
 
 // set the memory limit on a cgroup, 0 to unrestrict
+// https://www.kernel.org/doc/Documentation/cgroups/memory.txt
 func (cg Cgroups) SetMemory(name string, bytes int) error {
 	softLimit := bytes
-	hardLimit := bytes * 2
+	hardLimit := bytes * 11 / 10
 	if bytes == 0 {
 		softLimit = -1
 		hardLimit = -1
