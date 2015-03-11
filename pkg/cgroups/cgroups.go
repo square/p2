@@ -10,8 +10,11 @@ import (
 	"strings"
 )
 
-// map of cgroup subsystems to their respective paths
-type Cgroups map[string]string
+// maps cgroup subsystems to their respective paths
+type Cgroups struct {
+	CPU    string
+	Memory string
+}
 
 // Find retrieves the mount points for all cgroup subsystems on the host. The
 // result of this operation should be cached if possible.
@@ -20,25 +23,11 @@ func Find() (Cgroups, error) {
 	// https://www.kernel.org/doc/Documentation/filesystems/proc.txt section 3.5
 	mountInfo, err := os.Open("/proc/self/mountinfo")
 	if err != nil {
-		return nil, err
+		return Cgroups{}, err
 	}
 	defer mountInfo.Close()
 
-	cgroupSystems, err := os.Open("/proc/cgroups")
-	if err != nil {
-		return nil, err
-	}
-	defer cgroupSystems.Close()
-
-	var subsystems []string
-	subsysScanner := bufio.NewScanner(cgroupSystems)
-	for subsysScanner.Scan() {
-		lineSegs := strings.Fields(subsysScanner.Text())
-		subsystems = append(subsystems, lineSegs[0])
-	}
-
-	ret := make(map[string]string)
-
+	var ret Cgroups
 	scanner := bufio.NewScanner(mountInfo)
 	for scanner.Scan() {
 		lineSegs := strings.Fields(scanner.Text())
@@ -50,11 +39,11 @@ func Find() (Cgroups, error) {
 
 		cgroupSuperOpts := strings.Split(lineSegs[len(lineSegs)-1], ",")
 		for _, opt := range cgroupSuperOpts {
-			for _, subsystem := range subsystems {
-				if opt == subsystem {
-					ret[subsystem] = mountPoint
-					break
-				}
+			switch opt {
+			case "cpu":
+				ret.CPU = mountPoint
+			case "memory":
+				ret.Memory = mountPoint
 			}
 		}
 	}
@@ -62,9 +51,9 @@ func Find() (Cgroups, error) {
 	return ret, nil
 }
 
-var Default Cgroups = map[string]string{
-	"cpu":    "/cgroup/cpu",
-	"memory": "/cgroup/memory",
+var Default Cgroups = Cgroups{
+	CPU:    "/cgroup/cpu",
+	Memory: "/cgroup/memory",
 }
 
 // set the number of logical CPUs in a given cgroup, 0 to unrestrict
@@ -79,17 +68,17 @@ func (cg Cgroups) SetCPU(name string, cpus int) error {
 		quota = -1
 	}
 
-	err := os.Mkdir(filepath.Join(cg["cpu"], name), 0755)
+	err := os.Mkdir(filepath.Join(cg.CPU, name), 0755)
 	if err != nil && !os.IsExist(err) {
 		return err
 	}
 
-	_, err = writeIfChanged(filepath.Join(cg["cpu"], name, "cpu.cfs_period_us"), []byte(strconv.Itoa(period)+"\n"), 0)
+	_, err = writeIfChanged(filepath.Join(cg.CPU, name, "cpu.cfs_period_us"), []byte(strconv.Itoa(period)+"\n"), 0)
 	if err != nil {
 		return err
 	}
 
-	_, err = writeIfChanged(filepath.Join(cg["cpu"], name, "cpu.cfs_quota_us"), []byte(strconv.Itoa(quota)+"\n"), 0)
+	_, err = writeIfChanged(filepath.Join(cg.CPU, name, "cpu.cfs_quota_us"), []byte(strconv.Itoa(quota)+"\n"), 0)
 	if err != nil {
 		return err
 	}
@@ -107,29 +96,29 @@ func (cg Cgroups) SetMemory(name string, bytes int) error {
 		hardLimit = -1
 	}
 
-	err := os.Mkdir(filepath.Join(cg["memory"], name), 0755)
+	err := os.Mkdir(filepath.Join(cg.Memory, name), 0755)
 	if err != nil && !os.IsExist(err) {
 		return err
 	}
 
 	// the hard memory limit must be set BEFORE the mem+swap limit
 	// so we must clear the swap limit at the start
-	err = ioutil.WriteFile(filepath.Join(cg["memory"], name, "memory.memsw.limit_in_bytes"), []byte("-1\n"), 0)
+	err = ioutil.WriteFile(filepath.Join(cg.Memory, name, "memory.memsw.limit_in_bytes"), []byte("-1\n"), 0)
 	if err != nil {
 		return err
 	}
 
-	_, err = writeIfChanged(filepath.Join(cg["memory"], name, "memory.soft_limit_in_bytes"), []byte(strconv.Itoa(softLimit)+"\n"), 0)
+	_, err = writeIfChanged(filepath.Join(cg.Memory, name, "memory.soft_limit_in_bytes"), []byte(strconv.Itoa(softLimit)+"\n"), 0)
 	if err != nil {
 		return err
 	}
 
-	_, err = writeIfChanged(filepath.Join(cg["memory"], name, "memory.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0)
+	_, err = writeIfChanged(filepath.Join(cg.Memory, name, "memory.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0)
 	if err != nil {
 		return err
 	}
 
-	_, err = writeIfChanged(filepath.Join(cg["memory"], name, "memory.memsw.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0)
+	_, err = writeIfChanged(filepath.Join(cg.Memory, name, "memory.memsw.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0)
 	if err != nil {
 		return err
 	}
