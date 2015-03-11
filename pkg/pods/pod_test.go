@@ -14,6 +14,7 @@ import (
 
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/util"
+	"gopkg.in/yaml.v2"
 
 	. "github.com/anthonybishopric/gotcha"
 )
@@ -214,52 +215,23 @@ func TestBuildRunitServices(t *testing.T) {
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
 
 	pod.BuildRunitServices([]hoist.HoistLaunchable{*hoistLaunchable})
-	expected := fmt.Sprintf(`%[1]s:
-  run:
-  - /usr/bin/nolimit
-  - %[6]s
-  - -g
-  - memory:%[7]s
-  - -g
-  - cpu:%[7]s
-  - --sticky
-  - %[5]s
-  - -u
-  - testPod:testPod
-  - -e
-  - %[8]s
-  - %[2]s
-%[3]s:
-  run:
-  - /usr/bin/nolimit
-  - %[6]s
-  - -g
-  - memory:%[7]s
-  - -g
-  - cpu:%[7]s
-  - --sticky
-  - %[5]s
-  - -u
-  - testPod:testPod
-  - -e
-  - %[8]s
-  - %[4]s
-`,
-		executables[0].Service.Name,
-		executables[0].ExecPath,
-		executables[1].Service.Name,
-		executables[1].ExecPath,
-		hoistLaunchable.Chpst,
-		hoistLaunchable.Cgexec,
-		hoistLaunchable.Id,
-		hoistLaunchable.ConfigDir,
-	)
-
 	f, err := os.Open(outFilePath)
 	defer f.Close()
 	bytes, err := ioutil.ReadAll(f)
 	Assert(t).IsNil(err, "Got an unexpected error reading the servicebuilder yaml file")
-	Assert(t).AreEqual(string(bytes), expected, "Servicebuilder yaml file didn't have expected contents")
+
+	expectedMap := map[string]interface{}{
+		executables[0].Service.Name: map[string]interface{}{
+			"run": executables[0].SBEntry(),
+		},
+		executables[1].Service.Name: map[string]interface{}{
+			"run": executables[1].SBEntry(),
+		},
+	}
+	expected, err := yaml.Marshal(expectedMap)
+	Assert(t).IsNil(err, "Got error marshalling expected map to yaml")
+
+	Assert(t).AreEqual(string(bytes), string(expected), "Servicebuilder yaml file didn't have expected contents")
 }
 
 func TestUninstall(t *testing.T) {
