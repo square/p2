@@ -21,7 +21,7 @@ type Pod interface {
 	Install(*pods.PodManifest) error
 	Verify(*pods.PodManifest, openpgp.KeyRing) error
 	Disable(*pods.PodManifest) (bool, error)
-	Halt() (bool, error)
+	Halt(*pods.PodManifest) (bool, error)
 }
 
 type Hooks interface {

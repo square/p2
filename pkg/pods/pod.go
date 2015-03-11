@@ -116,13 +116,8 @@ func (pod *Pod) Disable(manifest *PodManifest) (bool, error) {
 	return success, nil
 }
 
-func (pod *Pod) Halt() (bool, error) {
-	currentManifest, err := pod.CurrentManifest()
-	if err != nil {
-		return false, util.Errorf("Could not get current manifest: %s", err)
-	}
-
-	launchables, err := pod.GetLaunchables(currentManifest)
+func (pod *Pod) Halt(manifest *PodManifest) (bool, error) {
+	launchables, err := pod.GetLaunchables(manifest)
 	if err != nil {
 		return false, err
 	}
