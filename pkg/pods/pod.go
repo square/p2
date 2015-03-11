@@ -489,11 +489,34 @@ func (pod *Pod) setupConfig(podManifest *PodManifest) error {
 		return err
 	}
 
+	platConfigFileName, err := podManifest.PlatformConfigFileName()
+	if err != nil {
+		return err
+	}
+	platConfigPath := path.Join(pod.ConfigDir(), platConfigFileName)
+	platFile, err := os.OpenFile(platConfigPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	defer platFile.Close()
+	if err != nil {
+		return util.Errorf("Could not open config file for pod %s for writing: %s", podManifest.ID(), err)
+	}
+	err = podManifest.WritePlatformConfig(platFile)
+	if err != nil {
+		return err
+	}
+	err = platFile.Chown(uid, gid)
+	if err != nil {
+		return err
+	}
+
 	err = util.MkdirChownAll(pod.EnvDir(), uid, gid, 0755)
 	if err != nil {
 		return util.Errorf("Could not create the environment dir for pod %s: %s", podManifest.ID(), err)
 	}
 	err = writeEnvFile(pod.EnvDir(), "CONFIG_PATH", configPath, uid, gid)
+	if err != nil {
+		return err
+	}
+	err = writeEnvFile(pod.EnvDir(), "PLATFORM_CONFIG_PATH", platConfigPath, uid, gid)
 	if err != nil {
 		return err
 	}

@@ -132,6 +132,25 @@ func (manifest *PodManifest) WriteConfig(out io.Writer) error {
 	return nil
 }
 
+func (manifest *PodManifest) WritePlatformConfig(out io.Writer) error {
+	platConf := make(map[string]interface{})
+	for _, stanza := range manifest.LaunchableStanzas {
+		platConf[stanza.LaunchableId] = map[string]interface{}{
+			"cgroup": stanza.CgroupConfig,
+		}
+	}
+
+	bytes, err := yaml.Marshal(platConf)
+	if err != nil {
+		return util.Errorf("Could not write config for %s: %s", manifest.ID(), err)
+	}
+	_, err = out.Write(bytes)
+	if err != nil {
+		return util.Errorf("Could not write config for %s: %s", manifest.ID(), err)
+	}
+	return nil
+}
+
 // SHA() returns a string containing a hex encoded SHA256 checksum of the
 // manifest's contents. The contents are normalized, such that all equivalent
 // YAML structures have the same SHA (despite differences in comments,
@@ -155,6 +174,14 @@ func (manifest *PodManifest) ConfigFileName() (string, error) {
 		return "", err
 	}
 	return manifest.Id + "_" + sha + ".yaml", nil
+}
+
+func (manifest *PodManifest) PlatformConfigFileName() (string, error) {
+	sha, err := manifest.SHA()
+	if err != nil {
+		return "", err
+	}
+	return manifest.Id + "_" + sha + ".platform.yaml", nil
 }
 
 // Returns the entity that signed the manifest, if any. If there was no
