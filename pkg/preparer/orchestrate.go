@@ -44,6 +44,7 @@ type Preparer struct {
 	keyring             openpgp.KeyRing
 	podRoot             string
 	authorizedDeployers []string
+	forbiddenPodIds     map[string]struct{}
 	caPath              string
 }
 
@@ -108,6 +109,21 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	}
 }
 
+func (p *Preparer) podIdForbidden(id string) bool {
+	_, forbidden := p.forbiddenPodIds[id]
+	return forbidden
+}
+
+func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest *pods.PodManifest, logger logging.Logger) {
+	err := p.hooks.RunHookType(hookType, pod, manifest)
+	if err != nil {
+		logger.WithFields(logrus.Fields{
+			"err":   err,
+			"hooks": hookType,
+		}).Warnln("Could not run hooks")
+	}
+}
+
 // no return value, no output channels. This should do everything it needs to do
 // without outside intervention (other than being signalled to quit)
 func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struct{}) {
@@ -133,13 +149,7 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 
 			working = p.verifySignature(manifestToLaunch, manifestLogger)
 			if !working {
-				err = p.hooks.RunHookType(hooks.AFTER_AUTH_FAIL, pods.NewPod(manifestToLaunch.ID(), pods.PodPath(p.podRoot, manifestToLaunch.ID())), &manifestToLaunch)
-				if err != nil {
-					manifestLogger.WithFields(logrus.Fields{
-						"err":   err,
-						"hooks": hooks.AFTER_AUTH_FAIL,
-					}).Warnln("Could not run hooks")
-				}
+				p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pods.NewPod(manifestToLaunch.ID(), pods.PodPath(p.podRoot, manifestToLaunch.ID())), &manifestToLaunch, manifestLogger)
 			}
 		case <-time.After(1 * time.Second):
 			if working {
@@ -203,6 +213,12 @@ func (p *Preparer) verifySignature(manifest pods.PodManifest, logger logging.Log
 func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, logger logging.Logger) bool {
 	// do not remove the logger argument, it's not the same as p.Logger
 
+	if p.podIdForbidden(newManifest.ID()) {
+		logger.WithField("manifest", newManifest.ID()).Errorln("Cannot use this pod ID")
+		p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pod, newManifest, logger)
+		return false
+	}
+
 	// get currently running pod to compare with the new pod
 	realityPath := kp.RealityPath(p.node, newManifest.ID())
 	currentManifest, _, err := p.store.Pod(realityPath)
@@ -232,13 +248,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 	}
 
 	if newOrDifferent || problemReadingCurrentManifest {
-		err := p.hooks.RunHookType(hooks.BEFORE_INSTALL, pod, newManifest)
-		if err != nil {
-			logger.WithFields(logrus.Fields{
-				"err":   err,
-				"hooks": hooks.BEFORE_INSTALL,
-			}).Warnln("Could not run hooks")
-		}
+		p.tryRunHooks(hooks.BEFORE_INSTALL, pod, newManifest, logger)
 
 		err = pod.Install(newManifest)
 		if err != nil {
@@ -252,23 +262,11 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 		err = pod.Verify(newManifest, p.keyring)
 		if err != nil {
 			logger.WithField("err", err).Errorln("Pod digest verification failed")
-			err = p.hooks.RunHookType(hooks.AFTER_AUTH_FAIL, pod, newManifest)
-			if err != nil {
-				logger.WithFields(logrus.Fields{
-					"err":   err,
-					"hooks": hooks.AFTER_AUTH_FAIL,
-				}).Warnln("Could not run hooks")
-			}
+			p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pod, newManifest, logger)
 			return false
 		}
 
-		err = p.hooks.RunHookType(hooks.AFTER_INSTALL, pod, newManifest)
-		if err != nil {
-			logger.WithFields(logrus.Fields{
-				"err":   err,
-				"hooks": hooks.AFTER_INSTALL,
-			}).Warnln("Could not run hooks")
-		}
+		p.tryRunHooks(hooks.AFTER_INSTALL, pod, newManifest, logger)
 
 		err = p.store.RegisterService(*newManifest, p.caPath)
 		if err != nil {
@@ -295,13 +293,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 				}).Errorln("Could not set pod in reality store")
 			}
 
-			err = p.hooks.RunHookType(hooks.AFTER_LAUNCH, pod, newManifest)
-			if err != nil {
-				logger.WithFields(logrus.Fields{
-					"err":   err,
-					"hooks": hooks.AFTER_LAUNCH,
-				}).Warnln("Could not run hooks")
-			}
+			p.tryRunHooks(hooks.AFTER_LAUNCH, pod, newManifest, logger)
 		}
 		return err == nil && ok
 	}
