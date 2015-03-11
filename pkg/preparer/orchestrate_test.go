@@ -48,10 +48,6 @@ func (t *TestPod) Verify(manifest *pods.PodManifest, keyring openpgp.KeyRing) er
 	return nil
 }
 
-func (t *TestPod) Disable(manifest *pods.PodManifest) (bool, error) {
-	return true, nil
-}
-
 func (t *TestPod) Halt(manifest *pods.PodManifest) (bool, error) {
 	t.halted = true
 	return t.haltSuccess, t.haltError

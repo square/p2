@@ -20,7 +20,6 @@ type Pod interface {
 	Launch(*pods.PodManifest) (bool, error)
 	Install(*pods.PodManifest) error
 	Verify(*pods.PodManifest, openpgp.KeyRing) error
-	Disable(*pods.PodManifest) (bool, error)
 	Halt(*pods.PodManifest) (bool, error)
 }
 
@@ -275,8 +274,12 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, l
 		}
 
 		if currentManifest != nil {
-			// the exit code of disable is always ignored
-			pod.Disable(currentManifest)
+			success, err := pod.Halt(currentManifest)
+			if err != nil {
+				logger.WithField("err", err).Errorln("Pod halt failed")
+			} else if !success {
+				logger.NoFields().Warnln("One or more launchables did not halt successfully")
+			}
 		}
 
 		ok, err := pod.Launch(newManifest)

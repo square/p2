@@ -52,6 +52,11 @@ func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilde
 		return err
 	}
 
+	err = hoistLaunchable.MakeLast()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
