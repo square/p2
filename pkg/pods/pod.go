@@ -55,7 +55,7 @@ func NewPod(id string, path string) *Pod {
 		SV:             runit.DefaultSV,
 		ServiceBuilder: runit.DefaultBuilder,
 		Chpst:          runit.DefaultChpst,
-		Cgexec:         runit.DefaultCgexec,
+		Cgexec:         cgroups.DefaultCgexec,
 	}
 }
 
@@ -368,25 +368,21 @@ func (pod *Pod) Install(manifest *PodManifest) error {
 		return util.Errorf("Could not setup config: %s", err)
 	}
 
-	for _, launchableStanza := range manifest.LaunchableStanzas {
-		launchable, err := pod.getLaunchable(launchableStanza)
-		if err != nil {
-			return err
-		}
+	launchables, err := pod.GetLaunchables(manifest)
+	if err != nil {
+		return err
+	}
 
+	for _, launchable := range launchables {
 		err = launchable.Install()
 		if err != nil {
 			pod.logLaunchableError(launchable.Id, err, "Unable to install launchable")
 			return err
 		}
 
-		err = cgroups.Default.SetCPU(launchable.Id, launchableStanza.CgroupConfig.Cpus)
+		err = cgroups.Default.Write(launchable.CgroupConfig)
 		if err != nil {
 			pod.logLaunchableError(launchable.Id, err, "Unable to set cgroup cpu limits")
-		}
-		err = cgroups.Default.SetMemory(launchable.Id, launchableStanza.CgroupConfig.Memory)
-		if err != nil {
-			pod.logLaunchableError(launchable.Id, err, "Unable to set cgroup memory limits")
 		}
 	}
 
@@ -573,14 +569,15 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*hoist.HoistLa
 		launchableRootDir := path.Join(pod.path, launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
 		ret := &hoist.HoistLaunchable{
-			Location:    launchableStanza.Location,
-			Id:          launchableId,
-			RunAs:       pod.RunAs,
-			ConfigDir:   pod.EnvDir(),
-			FetchToFile: hoist.DefaultFetcher(),
-			RootDir:     launchableRootDir,
-			Chpst:       pod.Chpst,
-			Cgexec:      pod.Cgexec,
+			Location:     launchableStanza.Location,
+			Id:           launchableId,
+			RunAs:        pod.RunAs,
+			ConfigDir:    pod.EnvDir(),
+			FetchToFile:  hoist.DefaultFetcher(),
+			RootDir:      launchableRootDir,
+			Chpst:        pod.Chpst,
+			Cgexec:       pod.Cgexec,
+			CgroupConfig: launchableStanza.CgroupConfig,
 		}
 		return ret, nil
 	} else {

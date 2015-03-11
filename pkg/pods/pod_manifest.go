@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/util"
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/clearsign"
@@ -20,17 +21,12 @@ import (
 )
 
 type LaunchableStanza struct {
-	LaunchableType          string       `yaml:"launchable_type"`
-	LaunchableId            string       `yaml:"launchable_id"`
-	Location                string       `yaml:"location"`
-	DigestLocation          string       `yaml:"digest_location,omitempty"`
-	DigestSignatureLocation string       `yaml:"digest_signature_location,omitempty"`
-	CgroupConfig            CgroupConfig `yaml:"cgroup_config,omitempty"`
-}
-
-type CgroupConfig struct {
-	Cpus   int `yaml:"cpus,omitempty"`
-	Memory int `yaml:"memory,omitempty"`
+	LaunchableType          string         `yaml:"launchable_type"`
+	LaunchableId            string         `yaml:"launchable_id"`
+	Location                string         `yaml:"location"`
+	DigestLocation          string         `yaml:"digest_location,omitempty"`
+	DigestSignatureLocation string         `yaml:"digest_signature_location,omitempty"`
+	CgroupConfig            cgroups.Config `yaml:"cgroup_config,omitempty"`
 }
 
 type PodManifest struct {

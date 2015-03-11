@@ -17,6 +17,12 @@ type Cgroups struct {
 	Memory string
 }
 
+type Config struct {
+	Name   string `yaml:"-"`                // The name of the cgroup in cgroupfs
+	CPUs   int    `yaml:"cpus,omitempty"`   // The number of logical CPUs
+	Memory int    `yaml:"memory,omitempty"` // The number of bytes of memory
+}
+
 type UnsupportedError string
 
 func (err UnsupportedError) Error() string {
@@ -57,6 +63,8 @@ func Find() (Cgroups, error) {
 
 	return ret, nil
 }
+
+var DefaultCgexec = "/bin/cgexec"
 
 var Default Cgroups = Cgroups{
 	CPU:    "/cgroup/cpu",
@@ -160,4 +168,22 @@ func writeIfChanged(filename string, data []byte, perm os.FileMode) (bool, error
 		err = os.Chmod(filename, perm)
 	}
 	return true, err
+}
+
+func (cg Cgroups) Write(config Config) error {
+	err := cg.SetCPU(config.Name, config.CPUs)
+	if err != nil {
+		return err
+	}
+	return cg.SetMemory(config.Name, config.Memory)
+}
+
+func (config Config) CgexecArgs() []string {
+	return []string{
+		"-g",
+		fmt.Sprintf("memory:%s", config.Name),
+		"-g",
+		fmt.Sprintf("cpu:%s", config.Name),
+		"--sticky",
+	}
 }
