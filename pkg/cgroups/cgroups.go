@@ -3,6 +3,7 @@ package cgroups
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -14,6 +15,12 @@ import (
 type Cgroups struct {
 	CPU    string
 	Memory string
+}
+
+type UnsupportedError string
+
+func (err UnsupportedError) Error() string {
+	return fmt.Sprintf("subsystem %q is not available on this system", err)
 }
 
 // Find retrieves the mount points for all cgroup subsystems on the host. The
@@ -59,6 +66,10 @@ var Default Cgroups = Cgroups{
 // set the number of logical CPUs in a given cgroup, 0 to unrestrict
 // https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
 func (cg Cgroups) SetCPU(name string, cpus int) error {
+	if cg.CPU == "" {
+		return UnsupportedError("cpu")
+	}
+
 	period := 1000000 // one million microseconds
 	quota := cpus * period
 	if cpus == 0 {
@@ -89,6 +100,10 @@ func (cg Cgroups) SetCPU(name string, cpus int) error {
 // set the memory limit on a cgroup, 0 to unrestrict
 // https://www.kernel.org/doc/Documentation/cgroups/memory.txt
 func (cg Cgroups) SetMemory(name string, bytes int) error {
+	if cg.Memory == "" {
+		return UnsupportedError("memory")
+	}
+
 	softLimit := bytes
 	hardLimit := bytes * 11 / 10
 	if bytes == 0 {
