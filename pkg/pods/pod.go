@@ -88,41 +88,8 @@ func (pod *Pod) CurrentManifest() (*PodManifest, error) {
 	return PodManifestFromPath(currentManPath)
 }
 
-func (pod *Pod) Disable(manifest *PodManifest) (bool, error) {
+func (pod *Pod) Halt(manifest *PodManifest) (bool, error) {
 	launchables, err := pod.GetLaunchables(manifest)
-	if err != nil {
-		return false, err
-	}
-
-	success := true
-	for _, launchable := range launchables {
-		_, err = launchable.Disable()
-		if err != nil {
-			pod.logLaunchableError(launchable.Id, err, "Unable to disable launchable")
-			success = false
-		}
-
-		err = launchable.MakeLast()
-		if err != nil {
-			pod.logLaunchableError(launchable.Id, err, "Unable to flip last symlink")
-			success = false
-		}
-	}
-	if success {
-		pod.logInfo("Successfully disabled")
-	} else {
-		pod.logInfo("Attempted disable, but one or more services did not disable successfully")
-	}
-	return success, nil
-}
-
-func (pod *Pod) Halt() (bool, error) {
-	currentManifest, err := pod.CurrentManifest()
-	if err != nil {
-		return false, util.Errorf("Could not get current manifest: %s", err)
-	}
-
-	launchables, err := pod.GetLaunchables(currentManifest)
 	if err != nil {
 		return false, err
 	}
@@ -131,7 +98,8 @@ func (pod *Pod) Halt() (bool, error) {
 	for _, launchable := range launchables {
 		err = launchable.Halt(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
 		if err != nil {
-			// Log the failure but continue
+			// failing to halt cannot be a fatal error - otherwise, the preparer
+			// (which fails to halt due to sigterm handler) would be unable to restart itself
 			pod.logLaunchableError(launchable.Id, err, "Unable to halt launchable")
 			success = false
 		}

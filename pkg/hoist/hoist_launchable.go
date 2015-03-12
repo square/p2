@@ -52,6 +52,11 @@ func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilde
 		return err
 	}
 
+	err = hoistLaunchable.MakeLast()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -126,6 +131,9 @@ func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilde
 	}
 
 	for _, executable := range executables {
+		// if we use sv -w to wait for the service to stop and then SIGKILL, we
+		// will also kill the preparer itself before it can restart. do not use
+		// sv -w yet.
 		_, err := sv.Stop(&executable.Service)
 		if err != nil {
 			// TODO: FAILURE SCENARIO (what should we do here?)
