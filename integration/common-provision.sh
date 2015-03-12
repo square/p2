@@ -28,6 +28,9 @@ godep go install ./...
 # Install ruby + rake
 sudo yum install -y ruby rubygem-rake
 
+# Install cgexec
+sudo yum install -y libcgroup libcgroup-tools
+
 # Install P2 test dependencies
 sudo yum -y --nogpgcheck localinstall $GOPATH/src/github.com/square/p2/integration/test-deps/*rpm
 sudo mkdir -p /etc/servicebuilder.d
