@@ -141,7 +141,7 @@ func (repl *Replicator) isHealthyAndCurrent(status *health.ServiceNodeStatus, er
 	} else if err == nil {
 		sha, _ := repl.Manifest.SHA()
 		repl.Logger.WithField("status", status).Debugln("Comparing")
-		return status.Healthy, status.IsCurrentVersion(sha)
+		return status.Health == health.Passing, status.IsCurrentVersion(sha)
 	} else {
 		repl.Logger.WithFields(logrus.Fields{
 			"err":  err,

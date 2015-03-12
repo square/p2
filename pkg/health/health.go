@@ -4,44 +4,12 @@
 package health
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
 )
-
-type HealthCheckState string
-
-var (
-	Passing  = HealthCheckState("passing")
-	Any      = HealthCheckState("any")
-	Unknown  = HealthCheckState("unknown")
-	Warning  = HealthCheckState("warning")
-	Critical = HealthCheckState("critical")
-
-	NoStatusGiven = fmt.Errorf("No status given")
-)
-
-func toHealthState(v string) HealthCheckState {
-	if v == "passing" {
-		return Passing
-	}
-	if v == "any" {
-		return Any
-	}
-	if v == "unknown" {
-		return Unknown
-	}
-	if v == "warning" {
-		return Warning
-	}
-	if v == "critical" {
-		return Critical
-	}
-	return Unknown
-}
 
 type ServiceStatus struct {
 	Statuses map[string]*ServiceNodeStatus `yaml:"statuses"`
@@ -56,14 +24,14 @@ func (s *ServiceStatus) ForNode(node string) (*ServiceNodeStatus, error) {
 	return &ServiceNodeStatus{
 		Node:    node,
 		Version: "",
-		Healthy: false,
+		Health:  Unknown,
 	}, NoStatusGiven
 }
 
 type ServiceNodeStatus struct {
-	Node    string `yaml:"node"`
-	Healthy bool   `yaml:"healthy"`
-	Version string `yaml:"version"`
+	Node    string      `yaml:"node"`
+	Health  HealthState `yaml:"healthy"`
+	Version string      `yaml:"version"`
 }
 
 func (s *ServiceNodeStatus) IsCurrentVersion(version string) bool {
@@ -83,7 +51,6 @@ func NewConsulHealthChecker(store kp.Store, consulHealth *api.Health) *ConsulHea
 }
 
 func (s *ConsulHealthChecker) toNodeStatus(serviceID string, entry api.ServiceEntry) (*ServiceNodeStatus, error) {
-
 	version := ""
 	manifest, _, err := s.Store.Pod(kp.RealityPath(entry.Node.Node, serviceID))
 	if err != nil && err != pods.NoCurrentManifest {
@@ -100,11 +67,14 @@ func (s *ConsulHealthChecker) toNodeStatus(serviceID string, entry api.ServiceEn
 	nodeStatus := ServiceNodeStatus{
 		Node:    entry.Node.Node,
 		Version: version,
-		Healthy: true,
+		Health:  Passing,
 	}
 	for _, check := range entry.Checks {
-		checkPassing := toHealthState(check.Status) == Passing
-		nodeStatus.Healthy = nodeStatus.Healthy && checkPassing
+		// degrade the health of this service to the poorest of all its associated checks
+		thisHealth := ToHealthState(check.Status)
+		if Compare(thisHealth, nodeStatus.Health) == -1 {
+			nodeStatus.Health = thisHealth
+		}
 	}
 	return &nodeStatus, nil
 }
