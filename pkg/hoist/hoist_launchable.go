@@ -4,13 +4,12 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
-	"strings"
 
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/cgroups"
@@ -112,7 +111,7 @@ func (hoistLaunchable *HoistLaunchable) Enable() (string, error) {
 }
 
 func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, error) {
-	cmdPath := path.Join(hoistLaunchable.InstallDir(), "bin", script)
+	cmdPath := filepath.Join(hoistLaunchable.InstallDir(), "bin", script)
 	_, err := os.Stat(cmdPath)
 	if err != nil {
 		return "", err
@@ -175,7 +174,7 @@ func (h *HoistLaunchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]H
 		return []HoistExecutable{}, util.Errorf("%s is not installed", h.Id)
 	}
 
-	binLaunchPath := path.Join(h.InstallDir(), "bin", "launch")
+	binLaunchPath := filepath.Join(h.InstallDir(), "bin", "launch")
 
 	binLaunchInfo, err := os.Stat(binLaunchPath)
 	if err != nil {
@@ -183,48 +182,35 @@ func (h *HoistLaunchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]H
 	}
 
 	// we support bin/launch being a file, or a directory, so we check here.
-	if !(binLaunchInfo.IsDir()) {
-		serviceName := strings.Join([]string{h.Id, "__", "launch"}, "")
-		servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
-		runitService := &runit.Service{servicePath, serviceName}
-		executable := &HoistExecutable{
-			Service:      *runitService,
-			ExecPath:     binLaunchPath,
+	services := []os.FileInfo{binLaunchInfo}
+	serviceDir := filepath.Dir(binLaunchPath)
+	if binLaunchInfo.IsDir() {
+		serviceDir = binLaunchPath
+		services, err = ioutil.ReadDir(binLaunchPath)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var executables []HoistExecutable
+	for _, service := range services {
+		serviceName := fmt.Sprintf("%s__%s", h.Id, service.Name())
+
+		executables = append(executables, HoistExecutable{
+			Service: runit.Service{
+				Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
+				Name: serviceName,
+			},
+			ExecPath:     filepath.Join(serviceDir, service.Name()),
 			Chpst:        h.Chpst,
 			Cgexec:       h.Cgexec,
 			CgroupConfig: h.CgroupConfig,
 			Nolimit:      "/usr/bin/nolimit",
 			RunAs:        h.RunAs,
 			ConfigDir:    h.ConfigDir,
-		}
-		return []HoistExecutable{*executable}, nil
-	} else {
-		services, err := ioutil.ReadDir(binLaunchPath)
-		if err != nil {
-			return nil, err
-		}
-
-		executables := make([]HoistExecutable, len(services))
-		for i, service := range services {
-			// use the ID of the hoist launchable plus "__" plus the name of the script inside the launch/ directory
-			serviceName := strings.Join([]string{h.Id, "__", service.Name()}, "")
-			servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
-			execPath := path.Join(binLaunchPath, service.Name())
-			runitService := &runit.Service{servicePath, serviceName}
-			executable := &HoistExecutable{
-				Service:      *runitService,
-				ExecPath:     execPath,
-				Chpst:        h.Chpst,
-				Cgexec:       h.Cgexec,
-				CgroupConfig: h.CgroupConfig,
-				Nolimit:      "/usr/bin/nolimit",
-				RunAs:        h.RunAs,
-				ConfigDir:    h.ConfigDir,
-			}
-			executables[i] = *executable
-		}
-		return executables, nil
+		})
 	}
+	return executables, nil
 }
 
 func (hoistLaunchable *HoistLaunchable) Installed() bool {
@@ -245,7 +231,7 @@ func (hoistLaunchable *HoistLaunchable) Install() error {
 		return util.Errorf("Could not create temporary directory to install %s: %s", hoistLaunchable.Version(), err)
 	}
 
-	outPath := path.Join(outDir, hoistLaunchable.Version())
+	outPath := filepath.Join(outDir, hoistLaunchable.Version())
 
 	err = hoistLaunchable.FetchToFile(hoistLaunchable.Location, outPath)
 	if err != nil {
@@ -268,7 +254,7 @@ func (hoistLaunchable *HoistLaunchable) Install() error {
 // The version of the artifact is currently derived from the location, using
 // the naming scheme <the-app>_<unique-version-string>.tar.gz
 func (hoistLaunchable *HoistLaunchable) Version() string {
-	_, fileName := path.Split(hoistLaunchable.Location)
+	fileName := filepath.Base(hoistLaunchable.Location)
 	return fileName[:len(fileName)-len(".tar.gz")]
 }
 
@@ -280,9 +266,9 @@ func (hoistLaunchable *HoistLaunchable) AppManifest() (*artifact.AppManifest, er
 	if !hoistLaunchable.Installed() {
 		return nil, util.Errorf("%s has not been installed yet", hoistLaunchable.Id)
 	}
-	manPath := path.Join(hoistLaunchable.InstallDir(), "app-manifest.yaml")
+	manPath := filepath.Join(hoistLaunchable.InstallDir(), "app-manifest.yaml")
 	if _, err := os.Stat(manPath); os.IsNotExist(err) {
-		manPath = path.Join(hoistLaunchable.InstallDir(), "app-manifest.yml")
+		manPath = filepath.Join(hoistLaunchable.InstallDir(), "app-manifest.yml")
 		if _, err = os.Stat(manPath); os.IsNotExist(err) {
 			return nil, util.Errorf("No app manifest was found in the Hoist launchable %s", hoistLaunchable.Id)
 		}
@@ -291,7 +277,7 @@ func (hoistLaunchable *HoistLaunchable) AppManifest() (*artifact.AppManifest, er
 }
 
 func (hoistLaunchable *HoistLaunchable) CurrentDir() string {
-	return path.Join(hoistLaunchable.RootDir, "current")
+	return filepath.Join(hoistLaunchable.RootDir, "current")
 }
 
 func (hoistLaunchable *HoistLaunchable) MakeCurrent() error {
@@ -299,7 +285,7 @@ func (hoistLaunchable *HoistLaunchable) MakeCurrent() error {
 }
 
 func (hoistLaunchable *HoistLaunchable) LastDir() string {
-	return path.Join(hoistLaunchable.RootDir, "last")
+	return filepath.Join(hoistLaunchable.RootDir, "last")
 }
 
 func (hoistLaunchable *HoistLaunchable) MakeLast() error {
@@ -312,7 +298,7 @@ func (hoistLaunchable *HoistLaunchable) flipSymlink(newLinkPath string) error {
 		return util.Errorf("Couldn't create temporary directory for symlink: %s", err)
 	}
 	defer os.RemoveAll(dir)
-	tempLinkPath := path.Join(dir, hoistLaunchable.Id)
+	tempLinkPath := filepath.Join(dir, hoistLaunchable.Id)
 	err = os.Symlink(hoistLaunchable.InstallDir(), tempLinkPath)
 	if err != nil {
 		return util.Errorf("Couldn't create symlink for hoist launchable %s: %s", hoistLaunchable.Id, err)
@@ -332,7 +318,7 @@ func (hoistLaunchable *HoistLaunchable) flipSymlink(newLinkPath string) error {
 
 func (hoistLaunchable *HoistLaunchable) InstallDir() string {
 	launchableName := hoistLaunchable.Version()
-	return path.Join(hoistLaunchable.RootDir, "installs", launchableName)
+	return filepath.Join(hoistLaunchable.RootDir, "installs", launchableName)
 }
 
 func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (err error) {
@@ -365,7 +351,7 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 		if err != nil {
 			return util.Errorf("Unable to read %s: %s", fp.Name(), err)
 		}
-		fpath := path.Join(dest, hdr.Name)
+		fpath := filepath.Join(dest, hdr.Name)
 
 		switch hdr.Typeflag {
 		case tar.TypeSymlink:
