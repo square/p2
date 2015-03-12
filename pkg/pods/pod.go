@@ -98,7 +98,8 @@ func (pod *Pod) Halt(manifest *PodManifest) (bool, error) {
 	for _, launchable := range launchables {
 		err = launchable.Halt(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
 		if err != nil {
-			// Log the failure but continue
+			// failing to halt cannot be a fatal error - otherwise, the preparer
+			// (which fails to halt due to sigterm handler) would be unable to restart itself
 			pod.logLaunchableError(launchable.Id, err, "Unable to halt launchable")
 			success = false
 		}
