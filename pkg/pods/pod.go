@@ -8,6 +8,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/digest"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/logging"
@@ -42,7 +43,7 @@ type Pod struct {
 	SV             *runit.SV
 	ServiceBuilder *runit.ServiceBuilder
 	Chpst          string
-	Contain        string
+	Cgexec         string
 }
 
 func NewPod(id string, path string) *Pod {
@@ -54,7 +55,7 @@ func NewPod(id string, path string) *Pod {
 		SV:             runit.DefaultSV,
 		ServiceBuilder: runit.DefaultBuilder,
 		Chpst:          runit.DefaultChpst,
-		Contain:        runit.DefaultContain,
+		Cgexec:         cgroups.DefaultCgexec,
 	}
 }
 
@@ -341,10 +342,15 @@ func (pod *Pod) Install(manifest *PodManifest) error {
 	}
 
 	for _, launchable := range launchables {
-		err := launchable.Install()
+		err = launchable.Install()
 		if err != nil {
 			pod.logLaunchableError(launchable.Id, err, "Unable to install launchable")
 			return err
+		}
+
+		err = cgroups.Default.Write(launchable.CgroupConfig)
+		if err != nil {
+			pod.logLaunchableError(launchable.Id, err, "Unable to set cgroup cpu limits")
 		}
 	}
 
@@ -447,11 +453,34 @@ func (pod *Pod) setupConfig(podManifest *PodManifest) error {
 		return err
 	}
 
+	platConfigFileName, err := podManifest.PlatformConfigFileName()
+	if err != nil {
+		return err
+	}
+	platConfigPath := path.Join(pod.ConfigDir(), platConfigFileName)
+	platFile, err := os.OpenFile(platConfigPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	defer platFile.Close()
+	if err != nil {
+		return util.Errorf("Could not open config file for pod %s for writing: %s", podManifest.ID(), err)
+	}
+	err = podManifest.WritePlatformConfig(platFile)
+	if err != nil {
+		return err
+	}
+	err = platFile.Chown(uid, gid)
+	if err != nil {
+		return err
+	}
+
 	err = util.MkdirChownAll(pod.EnvDir(), uid, gid, 0755)
 	if err != nil {
 		return util.Errorf("Could not create the environment dir for pod %s: %s", podManifest.ID(), err)
 	}
 	err = writeEnvFile(pod.EnvDir(), "CONFIG_PATH", configPath, uid, gid)
+	if err != nil {
+		return err
+	}
+	err = writeEnvFile(pod.EnvDir(), "PLATFORM_CONFIG_PATH", platConfigPath, uid, gid)
 	if err != nil {
 		return err
 	}
@@ -507,17 +536,18 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*hoist.HoistLa
 	if launchableStanza.LaunchableType == "hoist" {
 		launchableRootDir := path.Join(pod.path, launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
-		return &hoist.HoistLaunchable{
-			Location:      launchableStanza.Location,
-			Id:            launchableId,
-			RunAs:         pod.RunAs,
-			ConfigDir:     pod.EnvDir(),
-			FetchToFile:   hoist.DefaultFetcher(),
-			RootDir:       launchableRootDir,
-			Chpst:         pod.Chpst,
-			Contain:       pod.Contain,
-			ContainerType: launchableStanza.ContainerType,
-		}, nil
+		ret := &hoist.HoistLaunchable{
+			Location:     launchableStanza.Location,
+			Id:           launchableId,
+			RunAs:        pod.RunAs,
+			ConfigDir:    pod.EnvDir(),
+			FetchToFile:  hoist.DefaultFetcher(),
+			RootDir:      launchableRootDir,
+			Chpst:        pod.Chpst,
+			Cgexec:       pod.Cgexec,
+			CgroupConfig: launchableStanza.CgroupConfig,
+		}
+		return ret, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)
 		pod.logLaunchableError(launchableStanza.LaunchableId, err, "Unknown launchable type")

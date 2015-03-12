@@ -25,14 +25,13 @@ func TestExecutableWritesValidScript(t *testing.T) {
 	err = ioutil.WriteFile(path.Join(envdir, "SPECIALTESTVAR"), []byte("specialvalue"), 0644)
 	Assert(t).IsNil(err, "test setup failure - should not have failed to write an environment var")
 	executable := &HoistExecutable{
-		Service:       runit.Service{Name: "foo"},
-		Chpst:         FakeChpst(),
-		Contain:       FakeContain(),
-		ContainerName: "mypod__mylaunchable",
-		Nolimit:       "",
-		ExecPath:      "/usr/bin/env",
-		RunAs:         user.Username,
-		ConfigDir:     envdir,
+		Service:   runit.Service{Name: "foo"},
+		Chpst:     FakeChpst(),
+		Cgexec:    FakeCgexec(),
+		Nolimit:   "",
+		ExecPath:  "/usr/bin/env",
+		RunAs:     user.Username,
+		ConfigDir: envdir,
 	}
 	scriptPath := path.Join(scriptdir, "script")
 	scriptHandle, err := os.OpenFile(scriptPath, os.O_CREATE|os.O_WRONLY, 0744)
