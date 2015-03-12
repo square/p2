@@ -23,8 +23,10 @@ type Executable struct {
 func (e Executable) SBEntry() []string {
 	var ret []string
 	ret = append(ret, e.Nolimit)
-	ret = append(ret, e.Cgexec)
-	ret = append(ret, e.CgroupConfig.CgexecArgs()...)
+	if e.Cgexec != "" {
+		ret = append(ret, e.Cgexec)
+		ret = append(ret, e.CgroupConfig.CgexecArgs()...)
+	}
 	ret = append(ret,
 		e.Chpst,
 		"-u",
@@ -38,7 +40,7 @@ func (e Executable) SBEntry() []string {
 
 func (e Executable) WriteExecutor(writer io.Writer) error {
 	_, err := io.WriteString(writer, fmt.Sprintf(`#!/bin/sh
-    exec %s
-    `, strings.Join(e.SBEntry(), " ")))
+exec %s
+`, strings.Join(e.SBEntry(), " ")))
 	return err
 }

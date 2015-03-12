@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/config"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
@@ -96,6 +97,7 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 				runAs = hookPod.Id
 			}
 			hookPod.RunAs = runAs
+			hookPod.Cgexec = "" // do not use cgroups in a hook
 
 			// Figure out if we even need to install anything.
 			// Hooks aren't running services and so there isn't a need
@@ -184,6 +186,11 @@ func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods
 
 	// For every launchable in the manifest, link its executable to the hook directory.
 	for _, launchable := range launchables {
+		// warn if a hook has a cgroup configured - it will be ignored
+		emptyCgroup := cgroups.Config{Name: launchable.CgroupConfig.Name}
+		if launchable.CgroupConfig != emptyCgroup {
+			l.Logger.WithField("hook_launchable_id", launchable.Id).Warnln("Hook cgroup will be ignored")
+		}
 
 		executables, err := launchable.Executables(runit.DefaultBuilder)
 		if err != nil {
@@ -197,7 +204,7 @@ func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods
 			file, err := os.OpenFile(scriptPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0744)
 			defer file.Close()
 			if err != nil {
-				l.Logger.WithField("err", err).Errorln("Could write to event dir path")
+				l.Logger.WithField("err", err).Errorln("Could not write to event dir path")
 			}
 			err = executable.WriteExecutor(file)
 			if err != nil {
