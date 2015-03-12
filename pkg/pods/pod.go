@@ -90,7 +90,7 @@ func (pod *Pod) CurrentManifest() (*PodManifest, error) {
 }
 
 func (pod *Pod) Halt(manifest *PodManifest) (bool, error) {
-	launchables, err := pod.GetLaunchables(manifest)
+	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return false, err
 	}
@@ -118,7 +118,7 @@ func (pod *Pod) Halt(manifest *PodManifest) (bool, error) {
 // in the same pod. If any services fail to start, the first return bool will be false. If an error
 // occurs when writing the current manifest to the pod directory, an error will be returned.
 func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
-	launchables, err := pod.GetLaunchables(manifest)
+	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return false, err
 	}
@@ -282,7 +282,7 @@ func (pod *Pod) Uninstall() error {
 	if err != nil {
 		return err
 	}
-	launchables, err := pod.GetLaunchables(currentManifest)
+	launchables, err := pod.Launchables(currentManifest)
 	if err != nil {
 		return err
 	}
@@ -336,7 +336,7 @@ func (pod *Pod) Install(manifest *PodManifest) error {
 		return util.Errorf("Could not setup config: %s", err)
 	}
 
-	launchables, err := pod.GetLaunchables(manifest)
+	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return err
 	}
@@ -506,7 +506,7 @@ func writeEnvFile(envDir, name, value string, uid, gid int) error {
 	return nil
 }
 
-func (pod *Pod) GetLaunchables(podManifest *PodManifest) ([]hoist.Launchable, error) {
+func (pod *Pod) Launchables(podManifest *PodManifest) ([]hoist.Launchable, error) {
 	launchableStanzas := podManifest.LaunchableStanzas
 	if len(launchableStanzas) == 0 {
 		return nil, util.Errorf("Pod must provide at least one launchable, none found")

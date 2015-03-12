@@ -163,7 +163,7 @@ func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods
 	if err != nil {
 		return util.Errorf("Couldn't make event exec dir %s", eventExecDir)
 	}
-	launchables, err := hookPod.GetLaunchables(manifest)
+	launchables, err := hookPod.Launchables(manifest)
 	if err != nil {
 		return err
 	}
