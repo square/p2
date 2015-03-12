@@ -20,7 +20,7 @@ type Node struct {
 // the allocation. Implementators of the Allocator interface accept these to determine the
 // allocation.
 type Request struct {
-	Manifest pods.PodManifest
+	Manifest pods.Manifest
 	Replicas int
 }
 

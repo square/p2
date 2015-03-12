@@ -20,7 +20,7 @@ type Replicator struct {
 	MinimumNodes  int
 	NodePauseTime time.Duration
 	timeout       chan struct{}
-	Manifest      pods.PodManifest
+	Manifest      pods.Manifest
 	Allocation    allocation.Allocation
 	Logger        logging.Logger
 }
@@ -30,10 +30,10 @@ type ServiceChecker interface {
 }
 
 type IntentStore interface {
-	SetPod(node string, manifest pods.PodManifest) (time.Duration, error)
+	SetPod(node string, manifest pods.Manifest) (time.Duration, error)
 }
 
-func NewReplicator(manifest pods.PodManifest, allocated allocation.Allocation) *Replicator {
+func NewReplicator(manifest pods.Manifest, allocated allocation.Allocation) *Replicator {
 	sha, _ := manifest.SHA()
 	replicator := Replicator{
 		MinimumNodes: 1,

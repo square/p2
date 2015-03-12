@@ -74,7 +74,7 @@ func main() {
 	bin2pod.Parse(os.Args[1:])
 
 	res := Result{}
-	manifest := &pods.PodManifest{}
+	manifest := &pods.Manifest{}
 	manifest.Id = podId()
 	manifest.LaunchableStanzas = map[string]pods.LaunchableStanza{}
 	stanza := pods.LaunchableStanza{}
@@ -118,7 +118,7 @@ func main() {
 	}
 }
 
-func makeTar(workingDir string, manifest *pods.PodManifest) (string, error) {
+func makeTar(workingDir string, manifest *pods.Manifest) (string, error) {
 	tarContents := path.Join(workingDir, fmt.Sprintf("%s.workd", podId()))
 	err := os.MkdirAll(tarContents, 0744)
 	defer os.RemoveAll(tarContents)
@@ -147,7 +147,7 @@ func makeTar(workingDir string, manifest *pods.PodManifest) (string, error) {
 	return tarPath, nil
 }
 
-func addManifestConfig(manifest *pods.PodManifest) error {
+func addManifestConfig(manifest *pods.Manifest) error {
 	manifest.Config = make(map[interface{}]interface{})
 	for _, pair := range *config {
 		res := strings.Split(pair, "=")
@@ -159,7 +159,7 @@ func addManifestConfig(manifest *pods.PodManifest) error {
 	return nil
 }
 
-func writeManifest(workingDir string, manifest *pods.PodManifest) (string, error) {
+func writeManifest(workingDir string, manifest *pods.Manifest) (string, error) {
 	file, err := os.OpenFile(path.Join(workingDir, fmt.Sprintf("%s.yaml", podId())), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer file.Close()
 	if err != nil {

@@ -43,7 +43,7 @@ func main() {
 	}
 
 	for _, manifestPath := range *manifests {
-		manifest, err := pods.PodManifestFromPath(manifestPath)
+		manifest, err := pods.ManifestFromPath(manifestPath)
 		if err != nil {
 			os.Stderr.WriteString(fmt.Sprintf("Could not read manifest at %s: %s\n", manifestPath, err))
 			continue

@@ -13,7 +13,7 @@ func TestPodManifestCanBeRead(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	testPath := filepath.Join(filepath.Dir(filename), "test_manifest.yaml")
 
-	manifest, err := PodManifestFromPath(testPath)
+	manifest, err := ManifestFromPath(testPath)
 	Assert(t).IsNil(err, "Should not have failed to get pod manifest.")
 	Assert(t).AreEqual("hello", manifest.ID(), "Id read from manifest didn't have expected value")
 	Assert(t).AreEqual(manifest.LaunchableStanzas["app"].Location, "hoisted-hello_def456.tar.gz", "Location read from manifest didn't have expected value")
@@ -39,7 +39,7 @@ status_port: 8000
 }
 
 func TestPodManifestCanBeWritten(t *testing.T) {
-	manifest := PodManifest{
+	manifest := Manifest{
 		Id:                "thepod",
 		LaunchableStanzas: make(map[string]LaunchableStanza),
 		Config:            make(map[interface{}]interface{}),
@@ -63,7 +63,7 @@ func TestPodManifestCanBeWritten(t *testing.T) {
 
 func TestPodManifestCanWriteItsConfigStanzaSeparately(t *testing.T) {
 	config := testPod()
-	manifest, err := PodManifestFromBytes(bytes.NewBufferString(config).Bytes())
+	manifest, err := ManifestFromBytes(bytes.NewBufferString(config).Bytes())
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 
 	buff := bytes.Buffer{}
@@ -75,7 +75,7 @@ func TestPodManifestCanWriteItsConfigStanzaSeparately(t *testing.T) {
 
 func TestPodManifestCanReportItsSHA(t *testing.T) {
 	config := testPod()
-	manifest, err := PodManifestFromBytes(bytes.NewBufferString(config).Bytes())
+	manifest, err := ManifestFromBytes(bytes.NewBufferString(config).Bytes())
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 	val, err := manifest.SHA()
 	Assert(t).IsNil(err, "should not have erred when getting SHA")
@@ -83,7 +83,7 @@ func TestPodManifestCanReportItsSHA(t *testing.T) {
 }
 
 func TestNilPodManifestHasEmptySHA(t *testing.T) {
-	var manifest *PodManifest
+	var manifest *Manifest
 	content, err := manifest.SHA()
 	Assert(t).AreEqual("", content, "the SHA should have been empty")
 	Assert(t).IsNotNil(err, "Should have had an error when attempting to read SHA from nil manifest")

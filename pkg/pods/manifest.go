@@ -29,7 +29,7 @@ type LaunchableStanza struct {
 	CgroupConfig            cgroups.Config `yaml:"cgroup,omitempty"`
 }
 
-type PodManifest struct {
+type Manifest struct {
 	Id                string                      `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
 	LaunchableStanzas map[string]LaunchableStanza `yaml:"launchables"`
 	Config            map[interface{}]interface{} `yaml:"config"`
@@ -41,11 +41,11 @@ type PodManifest struct {
 	signature []byte
 }
 
-func (manifest *PodManifest) ID() string {
+func (manifest *Manifest) ID() string {
 	return manifest.Id
 }
 
-func PodManifestFromPath(path string) (*PodManifest, error) {
+func ManifestFromPath(path string) (*Manifest, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -57,15 +57,15 @@ func PodManifestFromPath(path string) (*PodManifest, error) {
 		return nil, err
 	}
 
-	return PodManifestFromBytes(bytes)
+	return ManifestFromBytes(bytes)
 }
 
-func PodManifestFromString(str string) (*PodManifest, error) {
-	return PodManifestFromBytes(bytes.NewBufferString(str).Bytes())
+func ManifestFromString(str string) (*Manifest, error) {
+	return ManifestFromBytes(bytes.NewBufferString(str).Bytes())
 }
 
-func PodManifestFromBytes(bytes []byte) (*PodManifest, error) {
-	podManifest := &PodManifest{}
+func ManifestFromBytes(bytes []byte) (*Manifest, error) {
+	manifest := &Manifest{}
 
 	signed, _ := clearsign.Decode(bytes)
 	if signed != nil {
@@ -73,26 +73,26 @@ func PodManifestFromBytes(bytes []byte) (*PodManifest, error) {
 		if err != nil {
 			return nil, fmt.Errorf("Could not read signature from pod manifest: %s", err)
 		}
-		podManifest.signature = signature
+		manifest.signature = signature
 
-		podManifest.raw = make([]byte, len(bytes))
-		copy(podManifest.raw, bytes)
+		manifest.raw = make([]byte, len(bytes))
+		copy(manifest.raw, bytes)
 
 		// the original plaintext is in signed.Plaintext, but the signature
 		// corresponds to signed.Bytes, so that's what we need to save
-		podManifest.plaintext = signed.Bytes
+		manifest.plaintext = signed.Bytes
 
 		// parse YAML from the message's plaintext instead
 		bytes = signed.Plaintext
 	}
 
-	if err := yaml.Unmarshal(bytes, podManifest); err != nil {
+	if err := yaml.Unmarshal(bytes, manifest); err != nil {
 		return nil, fmt.Errorf("Could not read pod manifest: %s", err)
 	}
-	return podManifest, nil
+	return manifest, nil
 }
 
-func (manifest *PodManifest) Write(out io.Writer) error {
+func (manifest *Manifest) Write(out io.Writer) error {
 	bytes, err := manifest.Bytes()
 	if err != nil {
 		return util.Errorf("Could not write manifest for %s: %s", manifest.ID(), err)
@@ -104,7 +104,7 @@ func (manifest *PodManifest) Write(out io.Writer) error {
 	return nil
 }
 
-func (manifest *PodManifest) Bytes() ([]byte, error) {
+func (manifest *Manifest) Bytes() ([]byte, error) {
 	if manifest.raw != nil {
 		// if it's signed, we must recycle the original content to preserve the
 		// signature's validity. remarshaling it might change the exact text of
@@ -116,7 +116,7 @@ func (manifest *PodManifest) Bytes() ([]byte, error) {
 	return yaml.Marshal(manifest)
 }
 
-func (manifest *PodManifest) WriteConfig(out io.Writer) error {
+func (manifest *Manifest) WriteConfig(out io.Writer) error {
 	bytes, err := yaml.Marshal(manifest.Config)
 	if err != nil {
 		return util.Errorf("Could not write config for %s: %s", manifest.ID(), err)
@@ -128,7 +128,7 @@ func (manifest *PodManifest) WriteConfig(out io.Writer) error {
 	return nil
 }
 
-func (manifest *PodManifest) WritePlatformConfig(out io.Writer) error {
+func (manifest *Manifest) WritePlatformConfig(out io.Writer) error {
 	platConf := make(map[string]interface{})
 	for _, stanza := range manifest.LaunchableStanzas {
 		platConf[stanza.LaunchableId] = map[string]interface{}{
@@ -151,7 +151,7 @@ func (manifest *PodManifest) WritePlatformConfig(out io.Writer) error {
 // manifest's contents. The contents are normalized, such that all equivalent
 // YAML structures have the same SHA (despite differences in comments,
 // indentation, etc).
-func (manifest *PodManifest) SHA() (string, error) {
+func (manifest *Manifest) SHA() (string, error) {
 	if manifest == nil {
 		return "", util.Errorf("the manifest is nil")
 	}
@@ -164,7 +164,7 @@ func (manifest *PodManifest) SHA() (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-func (manifest *PodManifest) ConfigFileName() (string, error) {
+func (manifest *Manifest) ConfigFileName() (string, error) {
 	sha, err := manifest.SHA()
 	if err != nil {
 		return "", err
@@ -172,7 +172,7 @@ func (manifest *PodManifest) ConfigFileName() (string, error) {
 	return manifest.Id + "_" + sha + ".yaml", nil
 }
 
-func (manifest *PodManifest) PlatformConfigFileName() (string, error) {
+func (manifest *Manifest) PlatformConfigFileName() (string, error) {
 	sha, err := manifest.SHA()
 	if err != nil {
 		return "", err
@@ -183,7 +183,7 @@ func (manifest *PodManifest) PlatformConfigFileName() (string, error) {
 // Returns the entity that signed the manifest, if any. If there was no
 // signature, both returns are nil. If the signer is not in the given keyring,
 // an openpgp.ErrUnknownIssuer will be returned.
-func (manifest *PodManifest) Signer(keyring openpgp.KeyRing) (*openpgp.Entity, error) {
+func (manifest *Manifest) Signer(keyring openpgp.KeyRing) (*openpgp.Entity, error) {
 	if manifest.signature == nil {
 		return nil, nil
 	}

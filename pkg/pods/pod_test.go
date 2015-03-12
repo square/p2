@@ -25,16 +25,16 @@ func getTestPod() *Pod {
 	return NewPod("hello", "/data/pods/test")
 }
 
-func getTestPodManifest(t *testing.T) *PodManifest {
+func getTestPodManifest(t *testing.T) *Manifest {
 	testPath := util.From(runtime.Caller(0)).ExpandPath("test_manifest.yaml")
-	pod, err := PodManifestFromPath(testPath)
+	pod, err := ManifestFromPath(testPath)
 	Assert(t).IsNil(err, "couldn't read test manifest")
 	return pod
 }
 
-func getUpdatedManifest(t *testing.T) *PodManifest {
+func getUpdatedManifest(t *testing.T) *Manifest {
 	podPath := util.From(runtime.Caller(0)).ExpandPath("updated_manifest.yaml")
-	pod, err := PodManifestFromPath(podPath)
+	pod, err := ManifestFromPath(podPath)
 	Assert(t).IsNil(err, "couldn't read test manifest")
 	return pod
 }
@@ -91,7 +91,7 @@ launchables:
 config:
   ENVIRONMENT: staging
 `
-	manifest, err := PodManifestFromBytes(bytes.NewBufferString(manifestStr).Bytes())
+	manifest, err := ManifestFromBytes(bytes.NewBufferString(manifestStr).Bytes())
 	Assert(t).IsNil(err, "should not have erred reading the manifest")
 
 	podTemp, _ := ioutil.TempDir("", "pod")
@@ -207,7 +207,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 	oldPath, err := pod.WriteCurrentManifest(updated)
 	Assert(t).IsNil(err, "should have writtne the current manifest and linked the old one")
 
-	writtenOld, err := PodManifestFromPath(oldPath)
+	writtenOld, err := ManifestFromPath(oldPath)
 	Assert(t).IsNil(err, "should have written a manifest to the old path")
 	manifestMustEqual(existing, writtenOld, t)
 
@@ -286,7 +286,7 @@ func TestUninstall(t *testing.T) {
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
 }
 
-func manifestMustEqual(expected, actual *PodManifest, t *testing.T) {
+func manifestMustEqual(expected, actual *Manifest, t *testing.T) {
 	actualSha, err := actual.SHA()
 	Assert(t).IsNil(err, "should have gotten SHA from old manifest")
 	expectedSha, err := expected.SHA()

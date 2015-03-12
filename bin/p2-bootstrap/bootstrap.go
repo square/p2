@@ -26,16 +26,16 @@ func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 	log.Println("Starting bootstrap")
-	agentManifest, err := pods.PodManifestFromPath(*agentManifestPath)
+	agentManifest, err := pods.ManifestFromPath(*agentManifestPath)
 	if err != nil {
 		log.Fatalln("Could not get agent manifest: %s", err)
 	}
 	log.Println("Installing and launching consul")
 
 	var consulPod *pods.Pod
-	var consulManifest *pods.PodManifest
+	var consulManifest *pods.Manifest
 	if *existingConsul == "" {
-		consulManifest, err = pods.PodManifestFromPath(*consulManifestPath)
+		consulManifest, err = pods.ManifestFromPath(*consulManifestPath)
 		if err != nil {
 			log.Fatalf("Could not get consul manifest: %s", err)
 		}
@@ -81,7 +81,7 @@ func main() {
 	log.Println("Bootstrapping complete")
 }
 
-func InstallConsul(consulPod *pods.Pod, consulManifest *pods.PodManifest) error {
+func InstallConsul(consulPod *pods.Pod, consulManifest *pods.Manifest) error {
 	// Inject servicebuilder?
 	err := consulPod.Install(consulManifest)
 	if err != nil {
@@ -125,7 +125,7 @@ func VerifyConsulUp(timeout string) error {
 	}
 }
 
-func ScheduleForThisHost(manifest *pods.PodManifest) error {
+func ScheduleForThisHost(manifest *pods.Manifest) error {
 	store := kp.NewStore(kp.Options{
 		Token: *consulToken,
 	})
@@ -137,7 +137,7 @@ func ScheduleForThisHost(manifest *pods.PodManifest) error {
 	return err
 }
 
-func InstallBaseAgent(agentManifest *pods.PodManifest) error {
+func InstallBaseAgent(agentManifest *pods.Manifest) error {
 	agentPod := pods.NewPod(agentManifest.ID(), pods.PodPath(*podRoot, agentManifest.ID()))
 	agentPod.RunAs = "root"
 	err := agentPod.Install(agentManifest)
