@@ -139,6 +139,10 @@ func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan ch
 // unreachable (eg the agent is not listening on the target port) or has not
 // found a leader (in which case Consul returns a 500 to all endpoints, except
 // the status types).
+//
+// If a cluster is starting for the first time, it may report a leader just
+// before beginning raft replication, thus rejecting requests made at that
+// exact moment.
 func (s *Store) Ping() error {
 	_, qm, err := s.client.Catalog().Nodes(&consulapi.QueryOptions{RequireConsistent: true})
 	if err != nil {

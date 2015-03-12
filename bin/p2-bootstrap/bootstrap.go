@@ -59,6 +59,7 @@ func main() {
 	if err = VerifyConsulUp(*timeout); err != nil {
 		log.Fatalln(err)
 	}
+	time.Sleep(500 * time.Millisecond)
 	// TODO: uncomment this. We want to schedule the consul manifest to facilitate
 	// future rollouts. However, to achieve this as a general goal, we must have good
 	// failure+retry semantics baked into the preparer when doing both reads AND writes.
