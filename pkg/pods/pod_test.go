@@ -84,6 +84,9 @@ launchables:
     launchable_type: hoist
     launchable_id: web
     location: https://localhost:4444/foo/bar/baz.tar.gz
+    cgroup:
+      cpus: 4
+      memory: 4294967296
 config:
   ENVIRONMENT: staging
 `
@@ -112,6 +115,23 @@ config:
 	env, err := ioutil.ReadFile(path.Join(pod.EnvDir(), "CONFIG_PATH"))
 	Assert(t).IsNil(err, "should not have erred reading the env file")
 	Assert(t).AreEqual(configPath, string(env), "The env path to config didn't match")
+
+	platformConfigFileName, err := manifest.PlatformConfigFileName()
+	Assert(t).IsNil(err, "Couldn't generate platform config filename")
+	platformConfigPath := path.Join(pod.ConfigDir(), platformConfigFileName)
+	platConfig, err := ioutil.ReadFile(platformConfigPath)
+	Assert(t).IsNil(err, "should not have erred reading the platform config")
+
+	expectedPlatConfig := `web:
+  cgroup:
+    cpus: 4
+    memory: 4294967296
+`
+	Assert(t).AreEqual(expectedPlatConfig, string(platConfig), "the platform config didn't match")
+
+	platEnv, err := ioutil.ReadFile(path.Join(pod.EnvDir(), "PLATFORM_CONFIG_PATH"))
+	Assert(t).IsNil(err, "should not have erred reading the platform config env file")
+	Assert(t).AreEqual(platformConfigPath, string(platEnv), "The env path to platform config didn't match")
 }
 
 func TestLogLaunchableError(t *testing.T) {
