@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
 
@@ -34,7 +35,7 @@ func TestInstall(t *testing.T) {
 		FetchToFile: fc.File,
 		RootDir:     launchableHome,
 		Chpst:       FakeChpst(),
-		Contain:     "/usr/bin/contain",
+		Cgexec:      cgroups.FakeCgexec(),
 	}
 
 	err = launchable.Install()
@@ -63,7 +64,7 @@ func TestInstallDir(t *testing.T) {
 		FetchToFile: new(FakeCurl).File,
 		RootDir:     tempDir,
 		Chpst:       "",
-		Contain:     "",
+		Cgexec:      "",
 	}
 
 	installDir := launchable.InstallDir()

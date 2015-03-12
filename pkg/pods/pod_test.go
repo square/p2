@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/util"
 	"gopkg.in/yaml.v2"
@@ -204,12 +205,11 @@ func TestBuildRunitServices(t *testing.T) {
 		path:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
 		Chpst:          hoist.FakeChpst(),
-		Contain:        hoist.FakeContain(),
+		Cgexec:         cgroups.FakeCgexec(),
 	}
 	hoistLaunchable := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	hoistLaunchable.RunAs = "testPod"
-	hoistLaunchable.Contain = hoist.FakeContain()
-	hoistLaunchable.ContainerType = "mycgroup"
+	hoistLaunchable.Cgexec = cgroups.FakeCgexec()
 	executables, err := hoistLaunchable.Executables(serviceBuilder)
 	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
