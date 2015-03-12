@@ -60,7 +60,11 @@ func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) e
 }
 
 func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-	err := cgroups.Default.Write(hl.CgroupConfig)
+	cg, err := cgroups.Find()
+	if err != nil {
+		return util.Errorf("Could not find cgroups: %s", err)
+	}
+	err = cg.Write(hl.CgroupConfig)
 	if err != nil {
 		return util.Errorf("Could not configure cgroup %s: %s", hl.CgroupConfig.Name, err)
 	}
