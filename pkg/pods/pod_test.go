@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/user"
-	"path"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -69,7 +69,7 @@ func TestPodCanWriteEnvFile(t *testing.T) {
 	err = writeEnvFile(envDir, "ENVIRONMENT", "staging", int(uid), int(gid))
 	Assert(t).IsNil(err, "There should not have been an error writing the config file")
 
-	expectedWritten := path.Join(envDir, "ENVIRONMENT")
+	expectedWritten := filepath.Join(envDir, "ENVIRONMENT")
 	file, err := os.Open(expectedWritten)
 	defer file.Close()
 	Assert(t).IsNil(err, "There should not have been an error when opening the config file")
@@ -108,18 +108,18 @@ config:
 
 	configFileName, err := manifest.ConfigFileName()
 	Assert(t).IsNil(err, "Couldn't generate config filename")
-	configPath := path.Join(pod.ConfigDir(), configFileName)
+	configPath := filepath.Join(pod.ConfigDir(), configFileName)
 	config, err := ioutil.ReadFile(configPath)
 	Assert(t).IsNil(err, "should not have erred reading the config")
 	Assert(t).AreEqual("ENVIRONMENT: staging\n", string(config), "the config didn't match")
 
-	env, err := ioutil.ReadFile(path.Join(pod.EnvDir(), "CONFIG_PATH"))
+	env, err := ioutil.ReadFile(filepath.Join(pod.EnvDir(), "CONFIG_PATH"))
 	Assert(t).IsNil(err, "should not have erred reading the env file")
 	Assert(t).AreEqual(configPath, string(env), "The env path to config didn't match")
 
 	platformConfigFileName, err := manifest.PlatformConfigFileName()
 	Assert(t).IsNil(err, "Couldn't generate platform config filename")
-	platformConfigPath := path.Join(pod.ConfigDir(), platformConfigFileName)
+	platformConfigPath := filepath.Join(pod.ConfigDir(), platformConfigFileName)
 	platConfig, err := ioutil.ReadFile(platformConfigPath)
 	Assert(t).IsNil(err, "should not have erred reading the platform config")
 
@@ -130,7 +130,7 @@ config:
 `
 	Assert(t).AreEqual(expectedPlatConfig, string(platConfig), "the platform config didn't match")
 
-	platEnv, err := ioutil.ReadFile(path.Join(pod.EnvDir(), "PLATFORM_CONFIG_PATH"))
+	platEnv, err := ioutil.ReadFile(filepath.Join(pod.EnvDir(), "PLATFORM_CONFIG_PATH"))
 	Assert(t).IsNil(err, "should not have erred reading the platform config env file")
 	Assert(t).AreEqual(platformConfigPath, string(platEnv), "The env path to platform config didn't match")
 }
@@ -232,7 +232,7 @@ func TestBuildRunitServices(t *testing.T) {
 	hl.RunAs = "testPod"
 	hl.Cgexec = cgroups.FakeCgexec()
 	executables, err := hl.Executables(serviceBuilder)
-	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
+	outFilePath := filepath.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
 
@@ -274,7 +274,7 @@ func TestUninstall(t *testing.T) {
 	err = ioutil.WriteFile(pod.currentPodManifestPath(), manifestContent, 0744)
 	Assert(t).IsNil(err, "should have written current manifest")
 
-	serviceBuilderFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
+	serviceBuilderFilePath := filepath.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 	err = ioutil.WriteFile(serviceBuilderFilePath, []byte("stuff"), 0744)
 	Assert(t).IsNil(err, "Error writing fake servicebuilder file")
 

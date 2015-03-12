@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/square/p2/pkg/cgroups"
@@ -32,7 +32,7 @@ func init() {
 }
 
 func PodPath(root, manifestId string) string {
-	return path.Join(root, manifestId)
+	return filepath.Join(root, manifestId)
 }
 
 type Pod struct {
@@ -212,7 +212,7 @@ func (pod *Pod) WriteCurrentManifest(manifest *PodManifest) (string, error) {
 	if err != nil {
 		return "", util.Errorf("could not create a tempdir to write old manifest: %s", err)
 	}
-	lastManifest := path.Join(tmpDir, "last_manifest.yaml")
+	lastManifest := filepath.Join(tmpDir, "last_manifest.yaml")
 
 	if _, err := os.Stat(pod.currentPodManifestPath()); err == nil {
 		err = uri.URICopy(pod.currentPodManifestPath(), lastManifest)
@@ -266,15 +266,15 @@ func (pod *Pod) revertCurrentManifest(lastPath string) error {
 }
 
 func (pod *Pod) currentPodManifestPath() string {
-	return path.Join(pod.path, "current_manifest.yaml")
+	return filepath.Join(pod.path, "current_manifest.yaml")
 }
 
 func (pod *Pod) ConfigDir() string {
-	return path.Join(pod.path, "config")
+	return filepath.Join(pod.path, "config")
 }
 
 func (pod *Pod) EnvDir() string {
-	return path.Join(pod.path, "env")
+	return filepath.Join(pod.path, "env")
 }
 
 func (pod *Pod) Uninstall() error {
@@ -371,7 +371,7 @@ func (pod *Pod) Verify(manifest *PodManifest, keyring openpgp.KeyRing) error {
 			return err
 		}
 
-		digestPath := path.Join(temp, launchable.Version()+".sum")
+		digestPath := filepath.Join(temp, launchable.Version()+".sum")
 		// TODO: the fetcher should eventually be configurable, passed to a
 		// launchable from the pod that instantiated it
 		err = launchable.FetchToFile(stanza.DigestLocation, digestPath)
@@ -393,7 +393,7 @@ func (pod *Pod) Verify(manifest *PodManifest, keyring openpgp.KeyRing) error {
 				return err
 			}
 		} else {
-			digestSigPath := path.Join(temp, launchable.Version()+".sum.sig")
+			digestSigPath := filepath.Join(temp, launchable.Version()+".sum.sig")
 			err = launchable.FetchToFile(stanza.DigestSignatureLocation, digestSigPath)
 			if err != nil {
 				return err
@@ -432,7 +432,7 @@ func (pod *Pod) setupConfig(podManifest *PodManifest) error {
 	if err != nil {
 		return err
 	}
-	configPath := path.Join(pod.ConfigDir(), configFileName)
+	configPath := filepath.Join(pod.ConfigDir(), configFileName)
 
 	file, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer file.Close()
@@ -452,7 +452,7 @@ func (pod *Pod) setupConfig(podManifest *PodManifest) error {
 	if err != nil {
 		return err
 	}
-	platConfigPath := path.Join(pod.ConfigDir(), platConfigFileName)
+	platConfigPath := filepath.Join(pod.ConfigDir(), platConfigFileName)
 	platFile, err := os.OpenFile(platConfigPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer platFile.Close()
 	if err != nil {
@@ -490,7 +490,7 @@ func (pod *Pod) setupConfig(podManifest *PodManifest) error {
 // writeEnvFile takes an environment directory (as described in http://smarden.org/runit/chpst.8.html, with the -e option)
 // and writes a new file with the given value.
 func writeEnvFile(envDir, name, value string, uid, gid int) error {
-	fpath := path.Join(envDir, name)
+	fpath := filepath.Join(envDir, name)
 
 	buf := bytes.NewBufferString(value)
 
@@ -529,7 +529,7 @@ func (pod *Pod) Launchables(podManifest *PodManifest) ([]hoist.Launchable, error
 
 func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*hoist.Launchable, error) {
 	if launchableStanza.LaunchableType == "hoist" {
-		launchableRootDir := path.Join(pod.path, launchableStanza.LaunchableId)
+		launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
 		ret := &hoist.Launchable{
 			Location:     launchableStanza.Location,
