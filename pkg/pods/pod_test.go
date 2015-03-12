@@ -201,7 +201,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 
 	manifestContent, err := existing.Bytes()
 	Assert(t).IsNil(err, "couldn't get manifest bytes")
-	err = ioutil.WriteFile(pod.CurrentPodManifestPath(), manifestContent, 0744)
+	err = ioutil.WriteFile(pod.currentPodManifestPath(), manifestContent, 0744)
 	Assert(t).IsNil(err, "should have written current manifest")
 
 	oldPath, err := pod.WriteCurrentManifest(updated)
@@ -236,7 +236,7 @@ func TestBuildRunitServices(t *testing.T) {
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
 
-	pod.BuildRunitServices([]hoist.Launchable{*hl})
+	pod.buildRunitServices([]hoist.Launchable{*hl})
 	f, err := os.Open(outFilePath)
 	defer f.Close()
 	bytes, err := ioutil.ReadAll(f)
@@ -271,7 +271,7 @@ func TestUninstall(t *testing.T) {
 	manifest := getTestPodManifest(t)
 	manifestContent, err := manifest.Bytes()
 	Assert(t).IsNil(err, "couldn't get manifest bytes")
-	err = ioutil.WriteFile(pod.CurrentPodManifestPath(), manifestContent, 0744)
+	err = ioutil.WriteFile(pod.currentPodManifestPath(), manifestContent, 0744)
 	Assert(t).IsNil(err, "should have written current manifest")
 
 	serviceBuilderFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
@@ -282,7 +282,7 @@ func TestUninstall(t *testing.T) {
 	Assert(t).IsNil(err, "Error uninstalling pod")
 	_, err = os.Stat(serviceBuilderFilePath)
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
-	_, err = os.Stat(pod.CurrentPodManifestPath())
+	_, err = os.Stat(pod.currentPodManifestPath())
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
 }
 

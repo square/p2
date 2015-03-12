@@ -82,7 +82,7 @@ func (pod *Pod) Path() string {
 }
 
 func (pod *Pod) CurrentManifest() (*PodManifest, error) {
-	currentManPath := pod.CurrentPodManifestPath()
+	currentManPath := pod.currentPodManifestPath()
 	if _, err := os.Stat(currentManPath); os.IsNotExist(err) {
 		return nil, NoCurrentManifest
 	}
@@ -152,7 +152,7 @@ func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
 		}
 	}
 
-	err = pod.BuildRunitServices(launchables)
+	err = pod.buildRunitServices(launchables)
 
 	success := true
 	for i, launchable := range launchables {
@@ -178,7 +178,7 @@ func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
 
 // Write servicebuilder *.yaml file and run servicebuilder, which will register runit services for this
 // pod.
-func (pod *Pod) BuildRunitServices(launchables []hoist.Launchable) error {
+func (pod *Pod) buildRunitServices(launchables []hoist.Launchable) error {
 	// if the service is new, building the runit services also starts them, making the sv start superfluous but harmless
 	sbTemplate := runit.NewSBTemplate(pod.Id)
 	for _, launchable := range launchables {
@@ -214,14 +214,14 @@ func (pod *Pod) WriteCurrentManifest(manifest *PodManifest) (string, error) {
 	}
 	lastManifest := path.Join(tmpDir, "last_manifest.yaml")
 
-	if _, err := os.Stat(pod.CurrentPodManifestPath()); err == nil {
-		err = uri.URICopy(pod.CurrentPodManifestPath(), lastManifest)
+	if _, err := os.Stat(pod.currentPodManifestPath()); err == nil {
+		err = uri.URICopy(pod.currentPodManifestPath(), lastManifest)
 		if err != nil && !os.IsNotExist(err) {
 			return "", err
 		}
 	}
 
-	f, err := os.OpenFile(pod.CurrentPodManifestPath(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(pod.currentPodManifestPath(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		pod.logError(err, "Unable to open current manifest file")
 		err = pod.revertCurrentManifest(lastManifest)
@@ -259,13 +259,13 @@ func (pod *Pod) WriteCurrentManifest(manifest *PodManifest) (string, error) {
 
 func (pod *Pod) revertCurrentManifest(lastPath string) error {
 	if _, err := os.Stat(lastPath); err == nil {
-		return os.Rename(lastPath, pod.CurrentPodManifestPath())
+		return os.Rename(lastPath, pod.currentPodManifestPath())
 	} else {
 		return err
 	}
 }
 
-func (pod *Pod) CurrentPodManifestPath() string {
+func (pod *Pod) currentPodManifestPath() string {
 	return path.Join(pod.path, "current_manifest.yaml")
 }
 

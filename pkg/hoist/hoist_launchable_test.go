@@ -114,7 +114,7 @@ func TestDisable(t *testing.T) {
 	hl := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hl)
 
-	disableOutput, err := hl.Disable()
+	disableOutput, err := hl.disable()
 	Assert(t).IsNil(err, "Got an unexpected error when calling disable on the test hoist launchable")
 
 	expectedDisableOutput := "disable invoked\n"
@@ -126,7 +126,7 @@ func TestFailingDisable(t *testing.T) {
 	hl := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hl)
 
-	disableOutput, err := hl.Disable()
+	disableOutput, err := hl.disable()
 	Assert(t).IsNotNil(err, "Expected disable to fail for this test, but it didn't")
 
 	expectedDisableOutput := "Error: this script failed\n"
@@ -139,7 +139,7 @@ func TestNonexistentDisable(t *testing.T) {
 	hl := FakeHoistLaunchableForDir("nonexistent_scripts_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hl)
 
-	disableOutput, err := hl.Disable()
+	disableOutput, err := hl.disable()
 	Assert(t).IsNil(err, "Got an unexpected error when calling disable on the test hoist launchable")
 
 	expectedDisableOutput := ""
@@ -151,7 +151,7 @@ func TestEnable(t *testing.T) {
 	hl := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hl)
 
-	enableOutput, err := hl.Enable()
+	enableOutput, err := hl.enable()
 	Assert(t).IsNil(err, "Got an unexpected error when calling enable on the test hoist launchable")
 
 	expectedEnableOutput := "enable invoked\n"
@@ -163,7 +163,7 @@ func TestFailingEnable(t *testing.T) {
 	hl := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hl)
 
-	enableOutput, err := hl.Enable()
+	enableOutput, err := hl.enable()
 	Assert(t).IsNotNil(err, "Expected enable to fail for this test, but it didn't")
 
 	expectedEnableOutput := "Error: this script failed\n"
@@ -176,7 +176,7 @@ func TestNonexistentEnable(t *testing.T) {
 	hl := FakeHoistLaunchableForDir("nonexistent_scripts_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hl)
 
-	enableOutput, err := hl.Enable()
+	enableOutput, err := hl.enable()
 	Assert(t).IsNil(err, "Got an unexpected error when calling enable on the test hoist launchable")
 
 	expectedEnableOutput := ""
@@ -189,7 +189,7 @@ func TestFailingStop(t *testing.T) {
 	defer cleanupFakeLaunchable(hl)
 
 	sv := runit.ErringSV()
-	err := hl.Stop(runit.DefaultBuilder, sv)
+	err := hl.stop(runit.DefaultBuilder, sv)
 
 	Assert(t).IsNotNil(err, "Expected sv stop to fail for this test, but it didn't")
 }
@@ -230,7 +230,7 @@ func TestStart(t *testing.T) {
 	defer f.Close()
 	f.Write([]byte(sbContents))
 
-	err = hl.Start(serviceBuilder, sv)
+	err = hl.start(serviceBuilder, sv)
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
 
@@ -273,7 +273,7 @@ func TestFailingStart(t *testing.T) {
 	defer f.Close()
 	f.Write([]byte(sbContents))
 
-	err = hl.Start(serviceBuilder, sv)
+	err = hl.start(serviceBuilder, sv)
 	Assert(t).IsNotNil(err, "Expected an error starting runit services")
 }
 
@@ -282,7 +282,7 @@ func TestStop(t *testing.T) {
 	defer cleanupFakeLaunchable(hl)
 
 	sv := runit.FakeSV()
-	err := hl.Stop(runit.DefaultBuilder, sv)
+	err := hl.stop(runit.DefaultBuilder, sv)
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to stop runit services")
 }

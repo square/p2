@@ -39,20 +39,19 @@ func DefaultFetcher() Fetcher {
 }
 
 func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-
 	// probably want to do something with output at some point
-	_, err := hl.Disable()
+	_, err := hl.disable()
 	if err != nil {
 		return err
 	}
 
 	// probably want to do something with output at some point
-	err = hl.Stop(serviceBuilder, sv)
+	err = hl.stop(serviceBuilder, sv)
 	if err != nil {
 		return err
 	}
 
-	err = hl.MakeLast()
+	err = hl.makeLast()
 	if err != nil {
 		return err
 	}
@@ -68,16 +67,17 @@ func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV)
 
 	// Should probably do something with output at some point
 	// probably want to do something with output at some point
-	err = hl.Start(serviceBuilder, sv)
+	err = hl.start(serviceBuilder, sv)
 	if err != nil {
 		return util.Errorf("Could not launch %s: %s", hl.Id, err)
 	}
 
-	_, err = hl.Enable()
+	_, err = hl.enable()
 	return err
 }
 
 func (hl *Launchable) PostActivate() (string, error) {
+	// TODO: unexport this method (requires integrating BuildRunitServices into this API)
 	output, err := hl.invokeBinScript("post-activate")
 
 	// providing a post-activate script is optional, ignore those errors
@@ -88,7 +88,7 @@ func (hl *Launchable) PostActivate() (string, error) {
 	return output, nil
 }
 
-func (hl *Launchable) Disable() (string, error) {
+func (hl *Launchable) disable() (string, error) {
 	output, err := hl.invokeBinScript("disable")
 
 	// providing a disable script is optional, ignore those errors
@@ -99,7 +99,7 @@ func (hl *Launchable) Disable() (string, error) {
 	return output, nil
 }
 
-func (hl *Launchable) Enable() (string, error) {
+func (hl *Launchable) enable() (string, error) {
 	output, err := hl.invokeBinScript("enable")
 
 	// providing an enable script is optional, ignore those errors
@@ -129,7 +129,7 @@ func (hl *Launchable) invokeBinScript(script string) (string, error) {
 	return buffer.String(), nil
 }
 
-func (hl *Launchable) Stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+func (hl *Launchable) stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 	executables, err := hl.Executables(serviceBuilder)
 	if err != nil {
 		return err
@@ -152,8 +152,7 @@ func (hl *Launchable) Stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) e
 
 // Start will take a launchable and start every runit service associated with the launchable.
 // All services will attempt to be started.
-func (hl *Launchable) Start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-
+func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 	executables, err := hl.Executables(serviceBuilder)
 	if err != nil {
 		return err
@@ -281,6 +280,7 @@ func (hl *Launchable) CurrentDir() string {
 }
 
 func (hl *Launchable) MakeCurrent() error {
+	// TODO: unexport this method (requires integrating BuildRunitServices into this API)
 	return hl.flipSymlink(hl.CurrentDir())
 }
 
@@ -288,7 +288,7 @@ func (hl *Launchable) LastDir() string {
 	return filepath.Join(hl.RootDir, "last")
 }
 
-func (hl *Launchable) MakeLast() error {
+func (hl *Launchable) makeLast() error {
 	return hl.flipSymlink(hl.LastDir())
 }
 
