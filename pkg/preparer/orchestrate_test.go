@@ -20,7 +20,7 @@ import (
 )
 
 type TestPod struct {
-	currentManifest                                         *pods.PodManifest
+	currentManifest                                         *pods.Manifest
 	installed, launched, launchSuccess, halted, haltSuccess bool
 	installErr, launchErr, haltError, currentManifestError  error
 	configDir, envDir                                       string
@@ -30,7 +30,7 @@ func (t *TestPod) ManifestSHA() (string, error) {
 	return "abc123", nil
 }
 
-func (t *TestPod) Launch(manifest *pods.PodManifest) (bool, error) {
+func (t *TestPod) Launch(manifest *pods.Manifest) (bool, error) {
 	t.currentManifest = manifest
 	t.launched = true
 	if t.launchErr != nil {
@@ -39,16 +39,16 @@ func (t *TestPod) Launch(manifest *pods.PodManifest) (bool, error) {
 	return t.launchSuccess, nil
 }
 
-func (t *TestPod) Install(manifest *pods.PodManifest) error {
+func (t *TestPod) Install(manifest *pods.Manifest) error {
 	t.installed = true
 	return t.installErr
 }
 
-func (t *TestPod) Verify(manifest *pods.PodManifest, keyring openpgp.KeyRing) error {
+func (t *TestPod) Verify(manifest *pods.Manifest, keyring openpgp.KeyRing) error {
 	return nil
 }
 
-func (t *TestPod) Halt(manifest *pods.PodManifest) (bool, error) {
+func (t *TestPod) Halt(manifest *pods.Manifest) (bool, error) {
 	t.halted = true
 	return t.haltSuccess, t.haltError
 }
@@ -76,7 +76,7 @@ type fakeHooks struct {
 	ranBeforeInstall, ranAfterLaunch, runAfterInstall bool
 }
 
-func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest *pods.PodManifest) error {
+func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest *pods.Manifest) error {
 	switch hookType {
 	case hooks.BEFORE_INSTALL:
 		f.ranBeforeInstall = true
@@ -91,9 +91,9 @@ func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest
 	return util.Errorf("Invalid hook type configured in test: %s", hookType)
 }
 
-func testManifest(t *testing.T) *pods.PodManifest {
+func testManifest(t *testing.T) *pods.Manifest {
 	manifestPath := util.From(runtime.Caller(0)).ExpandPath("test_manifest.yaml")
-	manifest, err := pods.PodManifestFromPath(manifestPath)
+	manifest, err := pods.ManifestFromPath(manifestPath)
 	if err != nil {
 		t.Fatal("No test manifest found, failing\n")
 	}
@@ -104,7 +104,7 @@ func testManifest(t *testing.T) *pods.PodManifest {
 // Otherwise, Travis may time out waiting for entropy.
 var cachedSigner *openpgp.Entity
 
-func testSignedManifest(t *testing.T, modify func(*pods.PodManifest, *openpgp.Entity)) (*pods.PodManifest, *openpgp.Entity) {
+func testSignedManifest(t *testing.T, modify func(*pods.Manifest, *openpgp.Entity)) (*pods.Manifest, *openpgp.Entity) {
 	testManifest := testManifest(t)
 
 	if cachedSigner == nil {
@@ -128,18 +128,18 @@ func testSignedManifest(t *testing.T, modify func(*pods.PodManifest, *openpgp.En
 	sigWriter.Write(manifestBytes)
 	sigWriter.Close()
 
-	manifest, err := pods.PodManifestFromBytes(buf.Bytes())
+	manifest, err := pods.ManifestFromBytes(buf.Bytes())
 	Assert(t).IsNil(err, "should have generated manifest from signed bytes")
 
 	return manifest, fakeSigner
 }
 
 type FakeStore struct {
-	currentManifest      *pods.PodManifest
+	currentManifest      *pods.Manifest
 	currentManifestError error
 }
 
-func (f *FakeStore) Pod(string) (*pods.PodManifest, time.Duration, error) {
+func (f *FakeStore) Pod(string) (*pods.Manifest, time.Duration, error) {
 	if f.currentManifest == nil {
 		return nil, 0, pods.NoCurrentManifest
 	}
@@ -149,11 +149,11 @@ func (f *FakeStore) Pod(string) (*pods.PodManifest, time.Duration, error) {
 	return f.currentManifest, 0, nil
 }
 
-func (f *FakeStore) SetPod(string, pods.PodManifest) (time.Duration, error) {
+func (f *FakeStore) SetPod(string, pods.Manifest) (time.Duration, error) {
 	return 0, nil
 }
 
-func (f *FakeStore) RegisterService(pods.PodManifest, string) error {
+func (f *FakeStore) RegisterService(pods.Manifest, string) error {
 	return nil
 }
 
@@ -193,7 +193,7 @@ func TestPreparerLaunchesNewPodsThatArentInstalledYet(t *testing.T) {
 }
 
 func TestPreparerLaunchesPodsThatHaveDifferentSHAs(t *testing.T) {
-	existing := &pods.PodManifest{}
+	existing := &pods.Manifest{}
 	existing.Id = "different"
 
 	testPod := &TestPod{
@@ -313,7 +313,7 @@ func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 }
 
 func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *testing.T) {
-	manifest, fakeSigner := testSignedManifest(t, func(m *pods.PodManifest, _ *openpgp.Entity) {
+	manifest, fakeSigner := testSignedManifest(t, func(m *pods.Manifest, _ *openpgp.Entity) {
 		m.Id = POD_ID
 	})
 
@@ -325,7 +325,7 @@ func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *tes
 }
 
 func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
-	manifest, fakeSigner := testSignedManifest(t, func(m *pods.PodManifest, _ *openpgp.Entity) {
+	manifest, fakeSigner := testSignedManifest(t, func(m *pods.Manifest, _ *openpgp.Entity) {
 		m.Id = POD_ID
 	})
 
@@ -339,7 +339,7 @@ func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 
 func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 	sig := ""
-	manifest, fakeSigner := testSignedManifest(t, func(m *pods.PodManifest, e *openpgp.Entity) {
+	manifest, fakeSigner := testSignedManifest(t, func(m *pods.Manifest, e *openpgp.Entity) {
 		m.Id = POD_ID
 		sig = e.PrimaryKey.KeyIdShortString()
 	})

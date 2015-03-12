@@ -16,7 +16,7 @@ var (
 // RegisterService creates a consul service for the given pod manifest. If the
 // manifest specifies a status port, the resulting consul service will also
 // include a health check for that port.
-func (s *Store) RegisterService(manifest pods.PodManifest, caPath string) error {
+func (s *Store) RegisterService(manifest pods.Manifest, caPath string) error {
 	podService := &consulapi.AgentServiceRegistration{
 		Name: manifest.ID(),
 	}

@@ -64,7 +64,7 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 		"run_as": current.Username,
 	}
 
-	manifest := &pods.PodManifest{
+	manifest := &pods.Manifest{
 		Id: "users",
 		LaunchableStanzas: map[string]pods.LaunchableStanza{
 			"create": pods.LaunchableStanza{
@@ -88,7 +88,7 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 	sigWriter.Write(manifestBytes)
 	sigWriter.Close()
 
-	manifest, err = pods.PodManifestFromBytes(buf.Bytes())
+	manifest, err = pods.ManifestFromBytes(buf.Bytes())
 	Assert(t).IsNil(err, "should have generated manifest from signed bytes")
 
 	fakeIntent := fakeStoreWithManifests(kp.ManifestResult{

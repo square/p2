@@ -30,7 +30,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not fetch manifest: %s", err)
 	}
-	manifest, err := pods.PodManifestFromPath(localMan.Name())
+	manifest, err := pods.ManifestFromPath(localMan.Name())
 	if err != nil {
 		log.Fatalf("Invalid manifest: %s", err)
 	}

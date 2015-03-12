@@ -17,20 +17,20 @@ const POD_ID = "p2-preparer"
 
 type Pod interface {
 	hooks.Pod
-	Launch(*pods.PodManifest) (bool, error)
-	Install(*pods.PodManifest) error
-	Verify(*pods.PodManifest, openpgp.KeyRing) error
-	Halt(*pods.PodManifest) (bool, error)
+	Launch(*pods.Manifest) (bool, error)
+	Install(*pods.Manifest) error
+	Verify(*pods.Manifest, openpgp.KeyRing) error
+	Halt(*pods.Manifest) (bool, error)
 }
 
 type Hooks interface {
-	RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest *pods.PodManifest) error
+	RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest *pods.Manifest) error
 }
 
 type Store interface {
-	Pod(string) (*pods.PodManifest, time.Duration, error)
-	SetPod(string, pods.PodManifest) (time.Duration, error)
-	RegisterService(pods.PodManifest, string) error
+	Pod(string) (*pods.Manifest, time.Duration, error)
+	SetPod(string, pods.Manifest) (time.Duration, error)
+	RegisterService(pods.Manifest, string) error
 	WatchPods(string, <-chan struct{}, chan<- error, chan<- kp.ManifestResult)
 }
 
@@ -77,7 +77,7 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	// we will have one long running goroutine for each app installed on this
 	// host. We keep a map of podId => podChan so we can send the new manifests
 	// that come in to the appropriate goroutine
-	podChanMap := make(map[string]chan pods.PodManifest)
+	podChanMap := make(map[string]chan pods.Manifest)
 	quitChanMap := make(map[string]chan struct{})
 
 	for {
@@ -90,7 +90,7 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 			podId := result.Manifest.ID()
 			if podChanMap[podId] == nil {
 				// No goroutine is servicing this app currently, let's start one
-				podChanMap[podId] = make(chan pods.PodManifest)
+				podChanMap[podId] = make(chan pods.Manifest)
 				quitChanMap[podId] = make(chan struct{})
 				go p.handlePods(podChanMap[podId], quitChanMap[podId])
 			}
@@ -113,7 +113,7 @@ func (p *Preparer) podIdForbidden(id string) bool {
 	return forbidden
 }
 
-func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest *pods.PodManifest, logger logging.Logger) {
+func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest *pods.Manifest, logger logging.Logger) {
 	err := p.hooks.RunHookType(hookType, pod, manifest)
 	if err != nil {
 		logger.WithFields(logrus.Fields{
@@ -125,9 +125,9 @@ func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest 
 
 // no return value, no output channels. This should do everything it needs to do
 // without outside intervention (other than being signalled to quit)
-func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struct{}) {
+func (p *Preparer) handlePods(podChan <-chan pods.Manifest, quit <-chan struct{}) {
 	// install new launchables
-	var manifestToLaunch pods.PodManifest
+	var manifestToLaunch pods.Manifest
 
 	// used to track if we have work to do (i.e. pod manifest came through channel
 	// and we have yet to operate on it)
@@ -163,7 +163,7 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 
 				ok := p.installAndLaunchPod(&manifestToLaunch, pod, manifestLogger)
 				if ok {
-					manifestToLaunch = pods.PodManifest{}
+					manifestToLaunch = pods.Manifest{}
 					working = false
 				}
 			}
@@ -172,7 +172,7 @@ func (p *Preparer) handlePods(podChan <-chan pods.PodManifest, quit <-chan struc
 }
 
 // check if a manifest satisfies the signature requirement of this preparer
-func (p *Preparer) verifySignature(manifest pods.PodManifest, logger logging.Logger) bool {
+func (p *Preparer) verifySignature(manifest pods.Manifest, logger logging.Logger) bool {
 	// do not remove the logger argument, it's not the same as p.Logger
 	if p.keyring == nil {
 		// signature is fine if the preparer has not been required to have a keyring
@@ -209,7 +209,7 @@ func (p *Preparer) verifySignature(manifest pods.PodManifest, logger logging.Log
 	return false
 }
 
-func (p *Preparer) installAndLaunchPod(newManifest *pods.PodManifest, pod Pod, logger logging.Logger) bool {
+func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logger logging.Logger) bool {
 	// do not remove the logger argument, it's not the same as p.Logger
 
 	if p.podIdForbidden(newManifest.ID()) {

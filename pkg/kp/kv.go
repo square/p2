@@ -12,7 +12,7 @@ import (
 )
 
 type ManifestResult struct {
-	Manifest pods.PodManifest
+	Manifest pods.Manifest
 	Path     string
 }
 type Options struct {
@@ -36,7 +36,7 @@ func NewStore(opts Options) *Store {
 
 // SetPod writes a pod manifest into the consul key-value store. The key should
 // not have a leading or trailing slash.
-func (s *Store) SetPod(key string, manifest pods.PodManifest) (time.Duration, error) {
+func (s *Store) SetPod(key string, manifest pods.Manifest) (time.Duration, error) {
 	buf := bytes.Buffer{}
 	err := manifest.Write(&buf)
 	if err != nil {
@@ -57,7 +57,7 @@ func (s *Store) SetPod(key string, manifest pods.PodManifest) (time.Duration, er
 // Pod reads a pod manifest from the key-value store. If the given key does not
 // exist, a nil *PodManifest will be returned, along with a pods.NoCurrentManifest
 // error.
-func (s *Store) Pod(key string) (*pods.PodManifest, time.Duration, error) {
+func (s *Store) Pod(key string) (*pods.Manifest, time.Duration, error) {
 	kvPair, writeMeta, err := s.client.KV().Get(key, nil)
 	if err != nil {
 		return nil, 0, err
@@ -65,7 +65,7 @@ func (s *Store) Pod(key string) (*pods.PodManifest, time.Duration, error) {
 	if kvPair == nil {
 		return nil, writeMeta.RequestTime, pods.NoCurrentManifest
 	}
-	manifest, err := pods.PodManifestFromBytes(kvPair.Value)
+	manifest, err := pods.ManifestFromBytes(kvPair.Value)
 	return manifest, writeMeta.RequestTime, err
 }
 
@@ -81,7 +81,7 @@ func (s *Store) ListPods(keyPrefix string) ([]ManifestResult, time.Duration, err
 	var ret []ManifestResult
 
 	for _, kvp := range kvPairs {
-		manifest, err := pods.PodManifestFromBytes(kvp.Value)
+		manifest, err := pods.ManifestFromBytes(kvp.Value)
 		if err != nil {
 			return nil, writeMeta.RequestTime, err
 		}
@@ -118,7 +118,7 @@ func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan ch
 			} else {
 				curIndex = meta.LastIndex
 				for _, pair := range pairs {
-					manifest, err := pods.PodManifestFromBytes(pair.Value)
+					manifest, err := pods.ManifestFromBytes(pair.Value)
 					if err != nil {
 						errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value)
 					} else {

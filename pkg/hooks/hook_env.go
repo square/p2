@@ -16,12 +16,12 @@ func CurrentEnv() *HookEnv {
 // useful access to objects exported by the hooks package.
 type HookEnv struct{}
 
-func (h *HookEnv) PodManifest() (*pods.PodManifest, error) {
+func (h *HookEnv) Manifest() (*pods.Manifest, error) {
 	path := os.Getenv("HOOKED_POD_MANIFEST")
 	if path == "" {
 		return nil, util.Errorf("No manifest exported")
 	}
-	return pods.PodManifestFromPath(path)
+	return pods.ManifestFromPath(path)
 }
 
 func (h *HookEnv) Pod() (*pods.Pod, error) {

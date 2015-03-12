@@ -100,7 +100,7 @@ func generatePreparerPod(workdir string) (string, error) {
 		return "", err
 	}
 
-	manifest, err := pods.PodManifestFromPath(manifestPath)
+	manifest, err := pods.ManifestFromPath(manifestPath)
 	if err != nil {
 		return "", err
 	}
@@ -138,7 +138,7 @@ mkdir -p $HOOKED_POD_HOME
 		return err
 	}
 
-	userHookManifest, err := pods.PodManifestFromPath(manifestPath)
+	userHookManifest, err := pods.ManifestFromPath(manifestPath)
 	if err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func executeBin2Pod(cmd *exec.Cmd) (string, error) {
 
 func getConsulManifest(dir string) (string, error) {
 	consulTar := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-consul_abc123.tar.gz"))
-	manifest := &pods.PodManifest{}
+	manifest := &pods.Manifest{}
 	manifest.Id = "consul"
 	stanza := pods.LaunchableStanza{
 		LaunchableId:   "consul",
@@ -224,7 +224,7 @@ func executeBootstrap(preparerManifest, consulManifest string) error {
 
 func postHelloManifest(dir string) error {
 	hello := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-hello_def456.tar.gz"))
-	manifest := &pods.PodManifest{}
+	manifest := &pods.Manifest{}
 	manifest.Id = "hello"
 	stanza := pods.LaunchableStanza{
 		LaunchableId:   "hello",

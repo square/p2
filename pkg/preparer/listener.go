@@ -157,7 +157,7 @@ func (l *HookListener) determineEvent(pathInIntent string) (string, error) {
 	return matches[1], nil
 }
 
-func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods.PodManifest) error {
+func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods.Manifest) error {
 	eventExecDir := path.Join(l.ExecDir, event)
 	err := os.MkdirAll(eventExecDir, 0755)
 	if err != nil {
