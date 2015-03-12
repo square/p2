@@ -25,7 +25,7 @@ func TestExecutableWritesValidScript(t *testing.T) {
 	Assert(t).IsNil(err, "test setup failure - should not have failed to get a temp dir")
 	err = ioutil.WriteFile(path.Join(envdir, "SPECIALTESTVAR"), []byte("specialvalue"), 0644)
 	Assert(t).IsNil(err, "test setup failure - should not have failed to write an environment var")
-	executable := &HoistExecutable{
+	executable := &Executable{
 		Service:   runit.Service{Name: "foo"},
 		Chpst:     FakeChpst(),
 		Cgexec:    cgroups.FakeCgexec(),

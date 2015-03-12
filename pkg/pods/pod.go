@@ -178,7 +178,7 @@ func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
 
 // Write servicebuilder *.yaml file and run servicebuilder, which will register runit services for this
 // pod.
-func (pod *Pod) BuildRunitServices(launchables []hoist.HoistLaunchable) error {
+func (pod *Pod) BuildRunitServices(launchables []hoist.Launchable) error {
 	// if the service is new, building the runit services also starts them, making the sv start superfluous but harmless
 	sbTemplate := runit.NewSBTemplate(pod.Id)
 	for _, launchable := range launchables {
@@ -506,13 +506,13 @@ func writeEnvFile(envDir, name, value string, uid, gid int) error {
 	return nil
 }
 
-func (pod *Pod) GetLaunchables(podManifest *PodManifest) ([]hoist.HoistLaunchable, error) {
+func (pod *Pod) GetLaunchables(podManifest *PodManifest) ([]hoist.Launchable, error) {
 	launchableStanzas := podManifest.LaunchableStanzas
 	if len(launchableStanzas) == 0 {
 		return nil, util.Errorf("Pod must provide at least one launchable, none found")
 	}
 
-	launchables := make([]hoist.HoistLaunchable, len(launchableStanzas))
+	launchables := make([]hoist.Launchable, len(launchableStanzas))
 	var i int = 0
 	for _, launchableStanza := range launchableStanzas {
 
@@ -527,11 +527,11 @@ func (pod *Pod) GetLaunchables(podManifest *PodManifest) ([]hoist.HoistLaunchabl
 	return launchables, nil
 }
 
-func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*hoist.HoistLaunchable, error) {
+func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*hoist.Launchable, error) {
 	if launchableStanza.LaunchableType == "hoist" {
 		launchableRootDir := path.Join(pod.path, launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
-		ret := &hoist.HoistLaunchable{
+		ret := &hoist.Launchable{
 			Location:     launchableStanza.Location,
 			Id:           launchableId,
 			RunAs:        pod.RunAs,

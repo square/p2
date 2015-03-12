@@ -138,7 +138,7 @@ func TestLogLaunchableError(t *testing.T) {
 	out := bytes.Buffer{}
 	Log.SetLogOut(&out)
 
-	testLaunchable := &hoist.HoistLaunchable{Id: "TestLaunchable"}
+	testLaunchable := &hoist.Launchable{Id: "TestLaunchable"}
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
@@ -227,15 +227,15 @@ func TestBuildRunitServices(t *testing.T) {
 		Chpst:          hoist.FakeChpst(),
 		Cgexec:         cgroups.FakeCgexec(),
 	}
-	hoistLaunchable := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
-	hoistLaunchable.RunAs = "testPod"
-	hoistLaunchable.Cgexec = cgroups.FakeCgexec()
-	executables, err := hoistLaunchable.Executables(serviceBuilder)
+	hl := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	hl.RunAs = "testPod"
+	hl.Cgexec = cgroups.FakeCgexec()
+	executables, err := hl.Executables(serviceBuilder)
 	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
 
-	pod.BuildRunitServices([]hoist.HoistLaunchable{*hoistLaunchable})
+	pod.BuildRunitServices([]hoist.Launchable{*hl})
 	f, err := os.Open(outFilePath)
 	defer f.Close()
 	bytes, err := ioutil.ReadAll(f)

@@ -9,7 +9,7 @@ import (
 	"github.com/square/p2/pkg/runit"
 )
 
-type HoistExecutable struct {
+type Executable struct {
 	Service      runit.Service
 	ExecPath     string
 	Chpst        string
@@ -20,7 +20,7 @@ type HoistExecutable struct {
 	ConfigDir    string
 }
 
-func (e HoistExecutable) SBEntry() []string {
+func (e Executable) SBEntry() []string {
 	var ret []string
 	ret = append(ret, e.Nolimit)
 	ret = append(ret, e.Cgexec)
@@ -36,7 +36,7 @@ func (e HoistExecutable) SBEntry() []string {
 	return ret
 }
 
-func (e HoistExecutable) WriteExecutor(writer io.Writer) error {
+func (e Executable) WriteExecutor(writer io.Writer) error {
 	_, err := io.WriteString(writer, fmt.Sprintf(`#!/bin/sh
     exec %s
     `, strings.Join(e.SBEntry(), " ")))
