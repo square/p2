@@ -2,7 +2,7 @@ package pods
 
 import (
 	"bytes"
-	"path"
+	"path/filepath"
 	"runtime"
 	"testing"
 
@@ -11,7 +11,7 @@ import (
 
 func TestPodManifestCanBeRead(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
-	testPath := path.Join(path.Dir(filename), "test_manifest.yaml")
+	testPath := filepath.Join(filepath.Dir(filename), "test_manifest.yaml")
 
 	manifest, err := PodManifestFromPath(testPath)
 	Assert(t).IsNil(err, "Should not have failed to get pod manifest.")

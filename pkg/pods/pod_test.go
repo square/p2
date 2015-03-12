@@ -6,14 +6,17 @@ import (
 	"io/ioutil"
 	"os"
 	"os/user"
-	"path"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/hoist"
+	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
+	"gopkg.in/yaml.v2"
 
 	. "github.com/anthonybishopric/gotcha"
 )
@@ -66,7 +69,7 @@ func TestPodCanWriteEnvFile(t *testing.T) {
 	err = writeEnvFile(envDir, "ENVIRONMENT", "staging", int(uid), int(gid))
 	Assert(t).IsNil(err, "There should not have been an error writing the config file")
 
-	expectedWritten := path.Join(envDir, "ENVIRONMENT")
+	expectedWritten := filepath.Join(envDir, "ENVIRONMENT")
 	file, err := os.Open(expectedWritten)
 	defer file.Close()
 	Assert(t).IsNil(err, "There should not have been an error when opening the config file")
@@ -82,6 +85,9 @@ launchables:
     launchable_type: hoist
     launchable_id: web
     location: https://localhost:4444/foo/bar/baz.tar.gz
+    cgroup:
+      cpus: 4
+      memory: 4294967296
 config:
   ENVIRONMENT: staging
 `
@@ -102,21 +108,38 @@ config:
 
 	configFileName, err := manifest.ConfigFileName()
 	Assert(t).IsNil(err, "Couldn't generate config filename")
-	configPath := path.Join(pod.ConfigDir(), configFileName)
+	configPath := filepath.Join(pod.ConfigDir(), configFileName)
 	config, err := ioutil.ReadFile(configPath)
 	Assert(t).IsNil(err, "should not have erred reading the config")
 	Assert(t).AreEqual("ENVIRONMENT: staging\n", string(config), "the config didn't match")
 
-	env, err := ioutil.ReadFile(path.Join(pod.EnvDir(), "CONFIG_PATH"))
+	env, err := ioutil.ReadFile(filepath.Join(pod.EnvDir(), "CONFIG_PATH"))
 	Assert(t).IsNil(err, "should not have erred reading the env file")
 	Assert(t).AreEqual(configPath, string(env), "The env path to config didn't match")
+
+	platformConfigFileName, err := manifest.PlatformConfigFileName()
+	Assert(t).IsNil(err, "Couldn't generate platform config filename")
+	platformConfigPath := filepath.Join(pod.ConfigDir(), platformConfigFileName)
+	platConfig, err := ioutil.ReadFile(platformConfigPath)
+	Assert(t).IsNil(err, "should not have erred reading the platform config")
+
+	expectedPlatConfig := `web:
+  cgroup:
+    cpus: 4
+    memory: 4294967296
+`
+	Assert(t).AreEqual(expectedPlatConfig, string(platConfig), "the platform config didn't match")
+
+	platEnv, err := ioutil.ReadFile(filepath.Join(pod.EnvDir(), "PLATFORM_CONFIG_PATH"))
+	Assert(t).IsNil(err, "should not have erred reading the platform config env file")
+	Assert(t).AreEqual(platformConfigPath, string(platEnv), "The env path to platform config didn't match")
 }
 
 func TestLogLaunchableError(t *testing.T) {
 	out := bytes.Buffer{}
 	Log.SetLogOut(&out)
 
-	testLaunchable := &hoist.HoistLaunchable{Id: "TestLaunchable"}
+	testLaunchable := &hoist.Launchable{Id: "TestLaunchable"}
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
@@ -178,7 +201,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 
 	manifestContent, err := existing.Bytes()
 	Assert(t).IsNil(err, "couldn't get manifest bytes")
-	err = ioutil.WriteFile(pod.CurrentPodManifestPath(), manifestContent, 0744)
+	err = ioutil.WriteFile(pod.currentPodManifestPath(), manifestContent, 0744)
 	Assert(t).IsNil(err, "should have written current manifest")
 
 	oldPath, err := pod.WriteCurrentManifest(updated)
@@ -194,7 +217,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 }
 
 func TestBuildRunitServices(t *testing.T) {
-	serviceBuilder := hoist.FakeServiceBuilder()
+	serviceBuilder := runit.FakeServiceBuilder()
 	serviceBuilderDir, err := ioutil.TempDir("", "servicebuilderDir")
 	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
 	serviceBuilder.ConfigRoot = serviceBuilderDir
@@ -202,72 +225,39 @@ func TestBuildRunitServices(t *testing.T) {
 		Id:             "testPod",
 		path:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
-		Chpst:          hoist.FakeChpst(),
-		Contain:        hoist.FakeContain(),
+		Chpst:          runit.FakeChpst(),
+		Cgexec:         cgroups.FakeCgexec(),
 	}
-	hoistLaunchable := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
-	hoistLaunchable.RunAs = "testPod"
-	hoistLaunchable.Contain = hoist.FakeContain()
-	hoistLaunchable.ContainerType = "mycgroup"
-	executables, err := hoistLaunchable.Executables(serviceBuilder)
-	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
+	hl := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	hl.RunAs = "testPod"
+	hl.Cgexec = cgroups.FakeCgexec()
+	executables, err := hl.Executables(serviceBuilder)
+	outFilePath := filepath.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
 
-	pod.BuildRunitServices([]hoist.HoistLaunchable{*hoistLaunchable})
-	expected := fmt.Sprintf(`%[1]s:
-  run:
-  - /usr/bin/nolimit
-  - %[6]s
-  - -a
-  - %[7]s
-  - -s
-  - %[8]s
-  - -v
-  - --
-  - %[5]s
-  - -u
-  - testPod:testPod
-  - -e
-  - %[9]s
-  - %[2]s
-%[3]s:
-  run:
-  - /usr/bin/nolimit
-  - %[6]s
-  - -a
-  - %[7]s
-  - -s
-  - %[8]s
-  - -v
-  - --
-  - %[5]s
-  - -u
-  - testPod:testPod
-  - -e
-  - %[9]s
-  - %[4]s
-`,
-		executables[0].Service.Name,
-		executables[0].ExecPath,
-		executables[1].Service.Name,
-		executables[1].ExecPath,
-		hoistLaunchable.Chpst,
-		hoistLaunchable.Contain,
-		hoistLaunchable.Id,
-		"mycgroup",
-		hoistLaunchable.ConfigDir,
-	)
-
+	pod.buildRunitServices([]hoist.Launchable{*hl})
 	f, err := os.Open(outFilePath)
 	defer f.Close()
 	bytes, err := ioutil.ReadAll(f)
 	Assert(t).IsNil(err, "Got an unexpected error reading the servicebuilder yaml file")
-	Assert(t).AreEqual(string(bytes), expected, "Servicebuilder yaml file didn't have expected contents")
+
+	expectedMap := map[string]interface{}{
+		executables[0].Service.Name: map[string]interface{}{
+			"run": executables[0].SBEntry(),
+		},
+		executables[1].Service.Name: map[string]interface{}{
+			"run": executables[1].SBEntry(),
+		},
+	}
+	expected, err := yaml.Marshal(expectedMap)
+	Assert(t).IsNil(err, "Got error marshalling expected map to yaml")
+
+	Assert(t).AreEqual(string(bytes), string(expected), "Servicebuilder yaml file didn't have expected contents")
 }
 
 func TestUninstall(t *testing.T) {
-	serviceBuilder := hoist.FakeServiceBuilder()
+	serviceBuilder := runit.FakeServiceBuilder()
 	serviceBuilderDir, err := ioutil.TempDir("", "servicebuilderDir")
 	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
 	serviceBuilder.ConfigRoot = serviceBuilderDir
@@ -281,10 +271,10 @@ func TestUninstall(t *testing.T) {
 	manifest := getTestPodManifest(t)
 	manifestContent, err := manifest.Bytes()
 	Assert(t).IsNil(err, "couldn't get manifest bytes")
-	err = ioutil.WriteFile(pod.CurrentPodManifestPath(), manifestContent, 0744)
+	err = ioutil.WriteFile(pod.currentPodManifestPath(), manifestContent, 0744)
 	Assert(t).IsNil(err, "should have written current manifest")
 
-	serviceBuilderFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
+	serviceBuilderFilePath := filepath.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 	err = ioutil.WriteFile(serviceBuilderFilePath, []byte("stuff"), 0744)
 	Assert(t).IsNil(err, "Error writing fake servicebuilder file")
 
@@ -292,7 +282,7 @@ func TestUninstall(t *testing.T) {
 	Assert(t).IsNil(err, "Error uninstalling pod")
 	_, err = os.Stat(serviceBuilderFilePath)
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
-	_, err = os.Stat(pod.CurrentPodManifestPath())
+	_, err = os.Stat(pod.currentPodManifestPath())
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
 }
 

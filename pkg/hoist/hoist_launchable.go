@@ -4,15 +4,15 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
-	"strings"
 
 	"github.com/square/p2/pkg/artifact"
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/user"
@@ -22,37 +22,36 @@ import (
 type Fetcher func(string, string) error
 
 // A HoistLaunchable represents a particular install of a hoist artifact.
-type HoistLaunchable struct {
-	Location      string  // A URL where we can download the artifact from.
-	Id            string  // A unique identifier for this launchable, used when creating runit services
-	RunAs         string  // The user to assume when launching the executable
-	ConfigDir     string  // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
-	FetchToFile   Fetcher // Callback that downloads the file from the remote location.
-	RootDir       string  // The root directory of the launchable, containing N:N>=1 installs.
-	Chpst         string  // The path to chpst
-	Contain       string  // The path to contain
-	ContainerType string  // The container type to pass to contain
+type Launchable struct {
+	Location     string         // A URL where we can download the artifact from.
+	Id           string         // A unique identifier for this launchable, used when creating runit services
+	RunAs        string         // The user to assume when launching the executable
+	ConfigDir    string         // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
+	FetchToFile  Fetcher        // Callback that downloads the file from the remote location.
+	RootDir      string         // The root directory of the launchable, containing N:N>=1 installs.
+	Chpst        string         // The path to chpst
+	Cgexec       string         // The path to cgexec
+	CgroupConfig cgroups.Config // Cgroup parameters to use with cgexec
 }
 
 func DefaultFetcher() Fetcher {
 	return uri.URICopy
 }
 
-func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-
+func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 	// probably want to do something with output at some point
-	_, err := hoistLaunchable.Disable()
+	_, err := hl.disable()
 	if err != nil {
 		return err
 	}
 
 	// probably want to do something with output at some point
-	err = hoistLaunchable.Stop(serviceBuilder, sv)
+	err = hl.stop(serviceBuilder, sv)
 	if err != nil {
 		return err
 	}
 
-	err = hoistLaunchable.MakeLast()
+	err = hl.makeLast()
 	if err != nil {
 		return err
 	}
@@ -60,20 +59,26 @@ func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilde
 	return nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-	// Should probably do something with output at some point
-	// probably want to do something with output at some point
-	err := hoistLaunchable.Start(serviceBuilder, sv)
+func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+	err := cgroups.Default.Write(hl.CgroupConfig)
 	if err != nil {
-		return util.Errorf("Could not launch %s: %s", hoistLaunchable.Id, err)
+		return util.Errorf("Could not configure cgroup %s: %s", hl.CgroupConfig.Name, err)
 	}
 
-	_, err = hoistLaunchable.Enable()
+	// Should probably do something with output at some point
+	// probably want to do something with output at some point
+	err = hl.start(serviceBuilder, sv)
+	if err != nil {
+		return util.Errorf("Could not launch %s: %s", hl.Id, err)
+	}
+
+	_, err = hl.enable()
 	return err
 }
 
-func (hoistLaunchable *HoistLaunchable) PostActivate() (string, error) {
-	output, err := hoistLaunchable.invokeBinScript("post-activate")
+func (hl *Launchable) PostActivate() (string, error) {
+	// TODO: unexport this method (requires integrating BuildRunitServices into this API)
+	output, err := hl.invokeBinScript("post-activate")
 
 	// providing a post-activate script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
@@ -83,8 +88,8 @@ func (hoistLaunchable *HoistLaunchable) PostActivate() (string, error) {
 	return output, nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Disable() (string, error) {
-	output, err := hoistLaunchable.invokeBinScript("disable")
+func (hl *Launchable) disable() (string, error) {
+	output, err := hl.invokeBinScript("disable")
 
 	// providing a disable script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
@@ -94,8 +99,8 @@ func (hoistLaunchable *HoistLaunchable) Disable() (string, error) {
 	return output, nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Enable() (string, error) {
-	output, err := hoistLaunchable.invokeBinScript("enable")
+func (hl *Launchable) enable() (string, error) {
+	output, err := hl.invokeBinScript("enable")
 
 	// providing an enable script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
@@ -105,14 +110,14 @@ func (hoistLaunchable *HoistLaunchable) Enable() (string, error) {
 	return output, nil
 }
 
-func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, error) {
-	cmdPath := path.Join(hoistLaunchable.InstallDir(), "bin", script)
+func (hl *Launchable) invokeBinScript(script string) (string, error) {
+	cmdPath := filepath.Join(hl.InstallDir(), "bin", script)
 	_, err := os.Stat(cmdPath)
 	if err != nil {
 		return "", err
 	}
 
-	cmd := exec.Command(hoistLaunchable.Chpst, "-u", hoistLaunchable.RunAs, "-e", hoistLaunchable.ConfigDir, cmdPath)
+	cmd := exec.Command(hl.Chpst, "-u", hl.RunAs, "-e", hl.ConfigDir, cmdPath)
 	buffer := bytes.Buffer{}
 	cmd.Stdout = &buffer
 	cmd.Stderr = &buffer
@@ -124,8 +129,8 @@ func (hoistLaunchable *HoistLaunchable) invokeBinScript(script string) (string, 
 	return buffer.String(), nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-	executables, err := hoistLaunchable.Executables(serviceBuilder)
+func (hl *Launchable) stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+	executables, err := hl.Executables(serviceBuilder)
 	if err != nil {
 		return err
 	}
@@ -147,9 +152,8 @@ func (hoistLaunchable *HoistLaunchable) Stop(serviceBuilder *runit.ServiceBuilde
 
 // Start will take a launchable and start every runit service associated with the launchable.
 // All services will attempt to be started.
-func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-
-	executables, err := hoistLaunchable.Executables(serviceBuilder)
+func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+	executables, err := hl.Executables(serviceBuilder)
 	if err != nil {
 		return err
 	}
@@ -164,12 +168,12 @@ func (hoistLaunchable *HoistLaunchable) Start(serviceBuilder *runit.ServiceBuild
 	return nil
 }
 
-func (h *HoistLaunchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]HoistExecutable, error) {
-	if !h.Installed() {
-		return []HoistExecutable{}, util.Errorf("%s is not installed", h.Id)
+func (hl *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]Executable, error) {
+	if !hl.Installed() {
+		return []Executable{}, util.Errorf("%s is not installed", hl.Id)
 	}
 
-	binLaunchPath := path.Join(h.InstallDir(), "bin", "launch")
+	binLaunchPath := filepath.Join(hl.InstallDir(), "bin", "launch")
 
 	binLaunchInfo, err := os.Stat(binLaunchPath)
 	if err != nil {
@@ -177,74 +181,58 @@ func (h *HoistLaunchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]H
 	}
 
 	// we support bin/launch being a file, or a directory, so we check here.
-	if !(binLaunchInfo.IsDir()) {
-		serviceName := strings.Join([]string{h.Id, "__", "launch"}, "")
-		servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
-		runitService := &runit.Service{servicePath, serviceName}
-		executable := &HoistExecutable{
-			Service:       *runitService,
-			ExecPath:      binLaunchPath,
-			Chpst:         h.Chpst,
-			Contain:       h.Contain,
-			Container:     h.ContainerType,
-			ContainerName: h.Id,
-			Nolimit:       "/usr/bin/nolimit",
-			RunAs:         h.RunAs,
-			ConfigDir:     h.ConfigDir,
-		}
-
-		return []HoistExecutable{*executable}, nil
-	} else {
-		services, err := ioutil.ReadDir(binLaunchPath)
+	services := []os.FileInfo{binLaunchInfo}
+	serviceDir := filepath.Dir(binLaunchPath)
+	if binLaunchInfo.IsDir() {
+		serviceDir = binLaunchPath
+		services, err = ioutil.ReadDir(binLaunchPath)
 		if err != nil {
 			return nil, err
 		}
-
-		executables := make([]HoistExecutable, len(services))
-		for i, service := range services {
-			// use the ID of the hoist launchable plus "__" plus the name of the script inside the launch/ directory
-			serviceName := strings.Join([]string{h.Id, "__", service.Name()}, "")
-			servicePath := path.Join(serviceBuilder.RunitRoot, serviceName)
-			execPath := path.Join(binLaunchPath, service.Name())
-			runitService := &runit.Service{servicePath, serviceName}
-			executable := &HoistExecutable{
-				Service:       *runitService,
-				ExecPath:      execPath,
-				Chpst:         h.Chpst,
-				Contain:       h.Contain,
-				Container:     h.ContainerType,
-				ContainerName: h.Id,
-				Nolimit:       "/usr/bin/nolimit",
-				RunAs:         h.RunAs,
-				ConfigDir:     h.ConfigDir,
-			}
-			executables[i] = *executable
-		}
-		return executables, nil
 	}
+
+	var executables []Executable
+	for _, service := range services {
+		serviceName := fmt.Sprintf("%s__%s", hl.Id, service.Name())
+
+		executables = append(executables, Executable{
+			Service: runit.Service{
+				Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
+				Name: serviceName,
+			},
+			ExecPath:     filepath.Join(serviceDir, service.Name()),
+			Chpst:        hl.Chpst,
+			Cgexec:       hl.Cgexec,
+			CgroupConfig: hl.CgroupConfig,
+			Nolimit:      "/usr/bin/nolimit",
+			RunAs:        hl.RunAs,
+			ConfigDir:    hl.ConfigDir,
+		})
+	}
+	return executables, nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Installed() bool {
-	installDir := hoistLaunchable.InstallDir()
+func (hl *Launchable) Installed() bool {
+	installDir := hl.InstallDir()
 	_, err := os.Stat(installDir)
 	return err == nil
 }
 
-func (hoistLaunchable *HoistLaunchable) Install() error {
-	if hoistLaunchable.Installed() {
+func (hl *Launchable) Install() error {
+	if hl.Installed() {
 		// install is idempotent, no-op if already installed
 		return nil
 	}
 
-	outDir, err := ioutil.TempDir("", hoistLaunchable.Version())
+	outDir, err := ioutil.TempDir("", hl.Version())
 	defer os.RemoveAll(outDir)
 	if err != nil {
-		return util.Errorf("Could not create temporary directory to install %s: %s", hoistLaunchable.Version(), err)
+		return util.Errorf("Could not create temporary directory to install %s: %s", hl.Version(), err)
 	}
 
-	outPath := path.Join(outDir, hoistLaunchable.Version())
+	outPath := filepath.Join(outDir, hl.Version())
 
-	err = hoistLaunchable.FetchToFile(hoistLaunchable.Location, outPath)
+	err = hl.FetchToFile(hl.Location, outPath)
 	if err != nil {
 		return err
 	}
@@ -255,7 +243,7 @@ func (hoistLaunchable *HoistLaunchable) Install() error {
 	}
 	defer fd.Close()
 
-	err = hoistLaunchable.extractTarGz(fd, hoistLaunchable.InstallDir())
+	err = hl.extractTarGz(fd, hl.InstallDir())
 	if err != nil {
 		return err
 	}
@@ -264,75 +252,76 @@ func (hoistLaunchable *HoistLaunchable) Install() error {
 
 // The version of the artifact is currently derived from the location, using
 // the naming scheme <the-app>_<unique-version-string>.tar.gz
-func (hoistLaunchable *HoistLaunchable) Version() string {
-	_, fileName := path.Split(hoistLaunchable.Location)
+func (hl *Launchable) Version() string {
+	fileName := filepath.Base(hl.Location)
 	return fileName[:len(fileName)-len(".tar.gz")]
 }
 
-func (*HoistLaunchable) Type() string {
+func (*Launchable) Type() string {
 	return "hoist"
 }
 
-func (hoistLaunchable *HoistLaunchable) AppManifest() (*artifact.AppManifest, error) {
-	if !hoistLaunchable.Installed() {
-		return nil, util.Errorf("%s has not been installed yet", hoistLaunchable.Id)
+func (hl *Launchable) AppManifest() (*artifact.AppManifest, error) {
+	if !hl.Installed() {
+		return nil, util.Errorf("%s has not been installed yet", hl.Id)
 	}
-	manPath := path.Join(hoistLaunchable.InstallDir(), "app-manifest.yaml")
+	manPath := filepath.Join(hl.InstallDir(), "app-manifest.yaml")
 	if _, err := os.Stat(manPath); os.IsNotExist(err) {
-		manPath = path.Join(hoistLaunchable.InstallDir(), "app-manifest.yml")
+		manPath = filepath.Join(hl.InstallDir(), "app-manifest.yml")
 		if _, err = os.Stat(manPath); os.IsNotExist(err) {
-			return nil, util.Errorf("No app manifest was found in the Hoist launchable %s", hoistLaunchable.Id)
+			return nil, util.Errorf("No app manifest was found in the Hoist launchable %s", hl.Id)
 		}
 	}
 	return artifact.ManifestFromPath(manPath)
 }
 
-func (hoistLaunchable *HoistLaunchable) CurrentDir() string {
-	return path.Join(hoistLaunchable.RootDir, "current")
+func (hl *Launchable) CurrentDir() string {
+	return filepath.Join(hl.RootDir, "current")
 }
 
-func (hoistLaunchable *HoistLaunchable) MakeCurrent() error {
-	return hoistLaunchable.flipSymlink(hoistLaunchable.CurrentDir())
+func (hl *Launchable) MakeCurrent() error {
+	// TODO: unexport this method (requires integrating BuildRunitServices into this API)
+	return hl.flipSymlink(hl.CurrentDir())
 }
 
-func (hoistLaunchable *HoistLaunchable) LastDir() string {
-	return path.Join(hoistLaunchable.RootDir, "last")
+func (hl *Launchable) LastDir() string {
+	return filepath.Join(hl.RootDir, "last")
 }
 
-func (hoistLaunchable *HoistLaunchable) MakeLast() error {
-	return hoistLaunchable.flipSymlink(hoistLaunchable.LastDir())
+func (hl *Launchable) makeLast() error {
+	return hl.flipSymlink(hl.LastDir())
 }
 
-func (hoistLaunchable *HoistLaunchable) flipSymlink(newLinkPath string) error {
-	dir, err := ioutil.TempDir(hoistLaunchable.RootDir, hoistLaunchable.Id)
+func (hl *Launchable) flipSymlink(newLinkPath string) error {
+	dir, err := ioutil.TempDir(hl.RootDir, hl.Id)
 	if err != nil {
 		return util.Errorf("Couldn't create temporary directory for symlink: %s", err)
 	}
 	defer os.RemoveAll(dir)
-	tempLinkPath := path.Join(dir, hoistLaunchable.Id)
-	err = os.Symlink(hoistLaunchable.InstallDir(), tempLinkPath)
+	tempLinkPath := filepath.Join(dir, hl.Id)
+	err = os.Symlink(hl.InstallDir(), tempLinkPath)
 	if err != nil {
-		return util.Errorf("Couldn't create symlink for hoist launchable %s: %s", hoistLaunchable.Id, err)
+		return util.Errorf("Couldn't create symlink for hoist launchable %s: %s", hl.Id, err)
 	}
 
-	uid, gid, err := user.IDs(hoistLaunchable.RunAs)
+	uid, gid, err := user.IDs(hl.RunAs)
 	if err != nil {
-		return util.Errorf("Couldn't retrieve UID/GID for hoist launchable %s user %s: %s", hoistLaunchable.Id, hoistLaunchable.RunAs, err)
+		return util.Errorf("Couldn't retrieve UID/GID for hoist launchable %s user %s: %s", hl.Id, hl.RunAs, err)
 	}
 	err = os.Lchown(tempLinkPath, uid, gid)
 	if err != nil {
-		return util.Errorf("Couldn't lchown symlink for hoist launchable %s: %s", hoistLaunchable.Id, err)
+		return util.Errorf("Couldn't lchown symlink for hoist launchable %s: %s", hl.Id, err)
 	}
 
 	return os.Rename(tempLinkPath, newLinkPath)
 }
 
-func (hoistLaunchable *HoistLaunchable) InstallDir() string {
-	launchableName := hoistLaunchable.Version()
-	return path.Join(hoistLaunchable.RootDir, "installs", launchableName)
+func (hl *Launchable) InstallDir() string {
+	launchableName := hl.Version()
+	return filepath.Join(hl.RootDir, "installs", launchableName)
 }
 
-func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (err error) {
+func (hl *Launchable) extractTarGz(fp *os.File, dest string) (err error) {
 	fz, err := gzip.NewReader(fp)
 	if err != nil {
 		return util.Errorf("Unable to create gzip reader: %s", err)
@@ -340,7 +329,7 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 	defer fz.Close()
 
 	tr := tar.NewReader(fz)
-	uid, gid, err := user.IDs(hoistLaunchable.RunAs)
+	uid, gid, err := user.IDs(hl.RunAs)
 	if err != nil {
 		return err
 	}
@@ -351,7 +340,7 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 	}
 	err = os.Chown(dest, uid, gid)
 	if err != nil {
-		return util.Errorf("Unable to chown root directory %s to %s when unpacking %s: %s", dest, hoistLaunchable.RunAs, fp.Name(), err)
+		return util.Errorf("Unable to chown root directory %s to %s when unpacking %s: %s", dest, hl.RunAs, fp.Name(), err)
 	}
 
 	for {
@@ -362,7 +351,7 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 		if err != nil {
 			return util.Errorf("Unable to read %s: %s", fp.Name(), err)
 		}
-		fpath := path.Join(dest, hdr.Name)
+		fpath := filepath.Join(dest, hdr.Name)
 
 		switch hdr.Typeflag {
 		case tar.TypeSymlink:
@@ -391,7 +380,7 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 
 			err = os.Chown(fpath, uid, gid)
 			if err != nil {
-				return util.Errorf("Unable to chown destination directory %s to %s when unpacking %s: %s", fpath, hoistLaunchable.RunAs, fp.Name(), err)
+				return util.Errorf("Unable to chown destination directory %s to %s when unpacking %s: %s", fpath, hl.RunAs, fp.Name(), err)
 			}
 		case tar.TypeReg, tar.TypeRegA:
 			f, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, hdr.FileInfo().Mode())
@@ -402,7 +391,7 @@ func (hoistLaunchable *HoistLaunchable) extractTarGz(fp *os.File, dest string) (
 
 			err = f.Chown(uid, gid) // this operation may cause tar unpacking to become significantly slower. Refactor as necessary.
 			if err != nil {
-				return util.Errorf("Unable to chown destination file %s to %s when unpacking %s: %s", fpath, hoistLaunchable.RunAs, fp.Name(), err)
+				return util.Errorf("Unable to chown destination file %s to %s when unpacking %s: %s", fpath, hl.RunAs, fp.Name(), err)
 			}
 
 			_, err = io.Copy(f, tr)

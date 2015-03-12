@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/digest"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/logging"
@@ -31,7 +32,7 @@ func init() {
 }
 
 func PodPath(root, manifestId string) string {
-	return path.Join(root, manifestId)
+	return filepath.Join(root, manifestId)
 }
 
 type Pod struct {
@@ -42,7 +43,7 @@ type Pod struct {
 	SV             *runit.SV
 	ServiceBuilder *runit.ServiceBuilder
 	Chpst          string
-	Contain        string
+	Cgexec         string
 }
 
 func NewPod(id string, path string) *Pod {
@@ -54,7 +55,7 @@ func NewPod(id string, path string) *Pod {
 		SV:             runit.DefaultSV,
 		ServiceBuilder: runit.DefaultBuilder,
 		Chpst:          runit.DefaultChpst,
-		Contain:        runit.DefaultContain,
+		Cgexec:         cgroups.DefaultCgexec,
 	}
 }
 
@@ -81,7 +82,7 @@ func (pod *Pod) Path() string {
 }
 
 func (pod *Pod) CurrentManifest() (*PodManifest, error) {
-	currentManPath := pod.CurrentPodManifestPath()
+	currentManPath := pod.currentPodManifestPath()
 	if _, err := os.Stat(currentManPath); os.IsNotExist(err) {
 		return nil, NoCurrentManifest
 	}
@@ -89,7 +90,7 @@ func (pod *Pod) CurrentManifest() (*PodManifest, error) {
 }
 
 func (pod *Pod) Halt(manifest *PodManifest) (bool, error) {
-	launchables, err := pod.GetLaunchables(manifest)
+	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return false, err
 	}
@@ -117,7 +118,7 @@ func (pod *Pod) Halt(manifest *PodManifest) (bool, error) {
 // in the same pod. If any services fail to start, the first return bool will be false. If an error
 // occurs when writing the current manifest to the pod directory, an error will be returned.
 func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
-	launchables, err := pod.GetLaunchables(manifest)
+	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return false, err
 	}
@@ -151,7 +152,7 @@ func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
 		}
 	}
 
-	err = pod.BuildRunitServices(launchables)
+	err = pod.buildRunitServices(launchables)
 
 	success := true
 	for i, launchable := range launchables {
@@ -177,7 +178,7 @@ func (pod *Pod) Launch(manifest *PodManifest) (bool, error) {
 
 // Write servicebuilder *.yaml file and run servicebuilder, which will register runit services for this
 // pod.
-func (pod *Pod) BuildRunitServices(launchables []hoist.HoistLaunchable) error {
+func (pod *Pod) buildRunitServices(launchables []hoist.Launchable) error {
 	// if the service is new, building the runit services also starts them, making the sv start superfluous but harmless
 	sbTemplate := runit.NewSBTemplate(pod.Id)
 	for _, launchable := range launchables {
@@ -211,16 +212,16 @@ func (pod *Pod) WriteCurrentManifest(manifest *PodManifest) (string, error) {
 	if err != nil {
 		return "", util.Errorf("could not create a tempdir to write old manifest: %s", err)
 	}
-	lastManifest := path.Join(tmpDir, "last_manifest.yaml")
+	lastManifest := filepath.Join(tmpDir, "last_manifest.yaml")
 
-	if _, err := os.Stat(pod.CurrentPodManifestPath()); err == nil {
-		err = uri.URICopy(pod.CurrentPodManifestPath(), lastManifest)
+	if _, err := os.Stat(pod.currentPodManifestPath()); err == nil {
+		err = uri.URICopy(pod.currentPodManifestPath(), lastManifest)
 		if err != nil && !os.IsNotExist(err) {
 			return "", err
 		}
 	}
 
-	f, err := os.OpenFile(pod.CurrentPodManifestPath(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(pod.currentPodManifestPath(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		pod.logError(err, "Unable to open current manifest file")
 		err = pod.revertCurrentManifest(lastManifest)
@@ -258,22 +259,22 @@ func (pod *Pod) WriteCurrentManifest(manifest *PodManifest) (string, error) {
 
 func (pod *Pod) revertCurrentManifest(lastPath string) error {
 	if _, err := os.Stat(lastPath); err == nil {
-		return os.Rename(lastPath, pod.CurrentPodManifestPath())
+		return os.Rename(lastPath, pod.currentPodManifestPath())
 	} else {
 		return err
 	}
 }
 
-func (pod *Pod) CurrentPodManifestPath() string {
-	return path.Join(pod.path, "current_manifest.yaml")
+func (pod *Pod) currentPodManifestPath() string {
+	return filepath.Join(pod.path, "current_manifest.yaml")
 }
 
 func (pod *Pod) ConfigDir() string {
-	return path.Join(pod.path, "config")
+	return filepath.Join(pod.path, "config")
 }
 
 func (pod *Pod) EnvDir() string {
-	return path.Join(pod.path, "env")
+	return filepath.Join(pod.path, "env")
 }
 
 func (pod *Pod) Uninstall() error {
@@ -281,7 +282,7 @@ func (pod *Pod) Uninstall() error {
 	if err != nil {
 		return err
 	}
-	launchables, err := pod.GetLaunchables(currentManifest)
+	launchables, err := pod.Launchables(currentManifest)
 	if err != nil {
 		return err
 	}
@@ -335,7 +336,7 @@ func (pod *Pod) Install(manifest *PodManifest) error {
 		return util.Errorf("Could not setup config: %s", err)
 	}
 
-	launchables, err := pod.GetLaunchables(manifest)
+	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return err
 	}
@@ -370,7 +371,7 @@ func (pod *Pod) Verify(manifest *PodManifest, keyring openpgp.KeyRing) error {
 			return err
 		}
 
-		digestPath := path.Join(temp, launchable.Version()+".sum")
+		digestPath := filepath.Join(temp, launchable.Version()+".sum")
 		// TODO: the fetcher should eventually be configurable, passed to a
 		// launchable from the pod that instantiated it
 		err = launchable.FetchToFile(stanza.DigestLocation, digestPath)
@@ -392,7 +393,7 @@ func (pod *Pod) Verify(manifest *PodManifest, keyring openpgp.KeyRing) error {
 				return err
 			}
 		} else {
-			digestSigPath := path.Join(temp, launchable.Version()+".sum.sig")
+			digestSigPath := filepath.Join(temp, launchable.Version()+".sum.sig")
 			err = launchable.FetchToFile(stanza.DigestSignatureLocation, digestSigPath)
 			if err != nil {
 				return err
@@ -431,7 +432,7 @@ func (pod *Pod) setupConfig(podManifest *PodManifest) error {
 	if err != nil {
 		return err
 	}
-	configPath := path.Join(pod.ConfigDir(), configFileName)
+	configPath := filepath.Join(pod.ConfigDir(), configFileName)
 
 	file, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer file.Close()
@@ -447,11 +448,34 @@ func (pod *Pod) setupConfig(podManifest *PodManifest) error {
 		return err
 	}
 
+	platConfigFileName, err := podManifest.PlatformConfigFileName()
+	if err != nil {
+		return err
+	}
+	platConfigPath := filepath.Join(pod.ConfigDir(), platConfigFileName)
+	platFile, err := os.OpenFile(platConfigPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	defer platFile.Close()
+	if err != nil {
+		return util.Errorf("Could not open config file for pod %s for writing: %s", podManifest.ID(), err)
+	}
+	err = podManifest.WritePlatformConfig(platFile)
+	if err != nil {
+		return err
+	}
+	err = platFile.Chown(uid, gid)
+	if err != nil {
+		return err
+	}
+
 	err = util.MkdirChownAll(pod.EnvDir(), uid, gid, 0755)
 	if err != nil {
 		return util.Errorf("Could not create the environment dir for pod %s: %s", podManifest.ID(), err)
 	}
 	err = writeEnvFile(pod.EnvDir(), "CONFIG_PATH", configPath, uid, gid)
+	if err != nil {
+		return err
+	}
+	err = writeEnvFile(pod.EnvDir(), "PLATFORM_CONFIG_PATH", platConfigPath, uid, gid)
 	if err != nil {
 		return err
 	}
@@ -466,7 +490,7 @@ func (pod *Pod) setupConfig(podManifest *PodManifest) error {
 // writeEnvFile takes an environment directory (as described in http://smarden.org/runit/chpst.8.html, with the -e option)
 // and writes a new file with the given value.
 func writeEnvFile(envDir, name, value string, uid, gid int) error {
-	fpath := path.Join(envDir, name)
+	fpath := filepath.Join(envDir, name)
 
 	buf := bytes.NewBufferString(value)
 
@@ -482,13 +506,13 @@ func writeEnvFile(envDir, name, value string, uid, gid int) error {
 	return nil
 }
 
-func (pod *Pod) GetLaunchables(podManifest *PodManifest) ([]hoist.HoistLaunchable, error) {
+func (pod *Pod) Launchables(podManifest *PodManifest) ([]hoist.Launchable, error) {
 	launchableStanzas := podManifest.LaunchableStanzas
 	if len(launchableStanzas) == 0 {
 		return nil, util.Errorf("Pod must provide at least one launchable, none found")
 	}
 
-	launchables := make([]hoist.HoistLaunchable, len(launchableStanzas))
+	launchables := make([]hoist.Launchable, len(launchableStanzas))
 	var i int = 0
 	for _, launchableStanza := range launchableStanzas {
 
@@ -503,21 +527,23 @@ func (pod *Pod) GetLaunchables(podManifest *PodManifest) ([]hoist.HoistLaunchabl
 	return launchables, nil
 }
 
-func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*hoist.HoistLaunchable, error) {
+func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*hoist.Launchable, error) {
 	if launchableStanza.LaunchableType == "hoist" {
-		launchableRootDir := path.Join(pod.path, launchableStanza.LaunchableId)
+		launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
-		return &hoist.HoistLaunchable{
-			Location:      launchableStanza.Location,
-			Id:            launchableId,
-			RunAs:         pod.RunAs,
-			ConfigDir:     pod.EnvDir(),
-			FetchToFile:   hoist.DefaultFetcher(),
-			RootDir:       launchableRootDir,
-			Chpst:         pod.Chpst,
-			Contain:       pod.Contain,
-			ContainerType: launchableStanza.ContainerType,
-		}, nil
+		ret := &hoist.Launchable{
+			Location:     launchableStanza.Location,
+			Id:           launchableId,
+			RunAs:        pod.RunAs,
+			ConfigDir:    pod.EnvDir(),
+			FetchToFile:  hoist.DefaultFetcher(),
+			RootDir:      launchableRootDir,
+			Chpst:        pod.Chpst,
+			Cgexec:       pod.Cgexec,
+			CgroupConfig: launchableStanza.CgroupConfig,
+		}
+		ret.CgroupConfig.Name = ret.Id
+		return ret, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)
 		pod.logLaunchableError(launchableStanza.LaunchableId, err, "Unknown launchable type")
