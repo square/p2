@@ -62,9 +62,14 @@ func (hoistLaunchable *HoistLaunchable) Halt(serviceBuilder *runit.ServiceBuilde
 }
 
 func (hoistLaunchable *HoistLaunchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+	err := cgroups.Default.Write(hoistLaunchable.CgroupConfig)
+	if err != nil {
+		return util.Errorf("Could not configure cgroup %s: %s", hoistLaunchable.CgroupConfig.Name, err)
+	}
+
 	// Should probably do something with output at some point
 	// probably want to do something with output at some point
-	err := hoistLaunchable.Start(serviceBuilder, sv)
+	err = hoistLaunchable.Start(serviceBuilder, sv)
 	if err != nil {
 		return util.Errorf("Could not launch %s: %s", hoistLaunchable.Id, err)
 	}

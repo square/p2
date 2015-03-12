@@ -23,6 +23,8 @@ type HoistExecutable struct {
 func (e HoistExecutable) SBEntry() []string {
 	var ret []string
 	ret = append(ret, e.Nolimit)
+	ret = append(ret, e.Cgexec)
+	ret = append(ret, e.CgroupConfig.CgexecArgs()...)
 	ret = append(ret,
 		e.Chpst,
 		"-u",
