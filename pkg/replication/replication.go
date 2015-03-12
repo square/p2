@@ -29,6 +29,26 @@ type ServiceChecker interface {
 	LookupHealth(serviceID string) (*health.ServiceStatus, error)
 }
 
+// ServiceUpgrader wraps around another ServiceChecker. It mirrors the behavior
+// of the inner ServiceChecker, but any service with health >= threshold will be
+// coerced to Passing.
+type ServiceUpgrader struct {
+	Inner     ServiceChecker
+	Threshold health.HealthState
+}
+
+func (s ServiceUpgrader) LookupHealth(serviceID string) (*health.ServiceStatus, error) {
+	ret, err := s.Inner.LookupHealth(serviceID)
+	if ret != nil && ret.Statuses != nil {
+		for node := range ret.Statuses {
+			if health.Compare(ret.Statuses[node].Health, s.Threshold) >= 0 {
+				ret.Statuses[node].Health = health.Passing
+			}
+		}
+	}
+	return ret, err
+}
+
 type IntentStore interface {
 	SetPod(node string, manifest pods.Manifest) (time.Duration, error)
 }
