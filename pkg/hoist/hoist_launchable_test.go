@@ -34,7 +34,7 @@ func TestInstall(t *testing.T) {
 		ConfigDir:   launchableHome,
 		FetchToFile: fc.File,
 		RootDir:     launchableHome,
-		Chpst:       FakeChpst(),
+		Chpst:       runit.FakeChpst(),
 		Cgexec:      cgroups.FakeCgexec(),
 	}
 
@@ -188,8 +188,8 @@ func TestFailingStop(t *testing.T) {
 	hl := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hl)
 
-	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("erring_sv")}
-	err := hl.Stop(runit.DefaultBuilder, &sv)
+	sv := runit.ErringSV()
+	err := hl.Stop(runit.DefaultBuilder, sv)
 
 	Assert(t).IsNotNil(err, "Expected sv stop to fail for this test, but it didn't")
 }
@@ -197,8 +197,8 @@ func TestFailingStop(t *testing.T) {
 func TestStart(t *testing.T) {
 	hl := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hl)
-	serviceBuilder := FakeServiceBuilder()
-	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("fake_sv")}
+	serviceBuilder := runit.FakeServiceBuilder()
+	sv := runit.FakeSV()
 	executables, err := hl.Executables(serviceBuilder)
 	sbContents := fmt.Sprintf(`%s:
   run:
@@ -230,7 +230,7 @@ func TestStart(t *testing.T) {
 	defer f.Close()
 	f.Write([]byte(sbContents))
 
-	err = hl.Start(serviceBuilder, &sv)
+	err = hl.Start(serviceBuilder, sv)
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
 
@@ -239,8 +239,8 @@ func TestStart(t *testing.T) {
 func TestFailingStart(t *testing.T) {
 	hl := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hl)
-	serviceBuilder := FakeServiceBuilder()
-	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("erring_sv")}
+	serviceBuilder := runit.FakeServiceBuilder()
+	sv := runit.ErringSV()
 	executables, _ := hl.Executables(serviceBuilder)
 	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod__testLaunchable.yaml")
 
@@ -273,7 +273,7 @@ func TestFailingStart(t *testing.T) {
 	defer f.Close()
 	f.Write([]byte(sbContents))
 
-	err = hl.Start(serviceBuilder, &sv)
+	err = hl.Start(serviceBuilder, sv)
 	Assert(t).IsNotNil(err, "Expected an error starting runit services")
 }
 
@@ -281,8 +281,8 @@ func TestStop(t *testing.T) {
 	hl := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	defer cleanupFakeLaunchable(hl)
 
-	sv := runit.SV{util.From(runtime.Caller(0)).ExpandPath("fake_sv")}
-	err := hl.Stop(runit.DefaultBuilder, &sv)
+	sv := runit.FakeSV()
+	err := hl.Stop(runit.DefaultBuilder, sv)
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to stop runit services")
 }

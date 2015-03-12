@@ -27,7 +27,7 @@ func TestExecutableWritesValidScript(t *testing.T) {
 	Assert(t).IsNil(err, "test setup failure - should not have failed to write an environment var")
 	executable := &Executable{
 		Service:   runit.Service{Name: "foo"},
-		Chpst:     FakeChpst(),
+		Chpst:     runit.FakeChpst(),
 		Cgexec:    cgroups.FakeCgexec(),
 		Nolimit:   "",
 		ExecPath:  "/usr/bin/env",

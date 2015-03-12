@@ -14,6 +14,7 @@ import (
 
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/hoist"
+	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
 	"gopkg.in/yaml.v2"
 
@@ -216,7 +217,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 }
 
 func TestBuildRunitServices(t *testing.T) {
-	serviceBuilder := hoist.FakeServiceBuilder()
+	serviceBuilder := runit.FakeServiceBuilder()
 	serviceBuilderDir, err := ioutil.TempDir("", "servicebuilderDir")
 	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
 	serviceBuilder.ConfigRoot = serviceBuilderDir
@@ -224,7 +225,7 @@ func TestBuildRunitServices(t *testing.T) {
 		Id:             "testPod",
 		path:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
-		Chpst:          hoist.FakeChpst(),
+		Chpst:          runit.FakeChpst(),
 		Cgexec:         cgroups.FakeCgexec(),
 	}
 	hl := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
@@ -256,7 +257,7 @@ func TestBuildRunitServices(t *testing.T) {
 }
 
 func TestUninstall(t *testing.T) {
-	serviceBuilder := hoist.FakeServiceBuilder()
+	serviceBuilder := runit.FakeServiceBuilder()
 	serviceBuilderDir, err := ioutil.TempDir("", "servicebuilderDir")
 	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
 	serviceBuilder.ConfigRoot = serviceBuilderDir
