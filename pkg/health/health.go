@@ -5,10 +5,10 @@ package health
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/armon/consul-api"
 	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kv-consul"
 	"github.com/square/p2/pkg/pods"
 )
 
@@ -136,38 +136,33 @@ func (s *ConsulHealthChecker) LookupHealth(serviceID string) (*ServiceStatus, er
 // creates a watch for every lookup. A much more complex broadcast implementation might
 // be possible so long as it preserves order and allows new subscribers to see messages
 // that were sent before they began listening.
-func (s *ConsulHealthChecker) WatchHealth(serviceID string, statusChan chan ServiceNodeStatus, statusErrChan chan error, statusQuitChan chan struct{}) {
-	options := consulapi.QueryOptions{}
+func (s *ConsulHealthChecker) WatchHealth(serviceID string, statusCh chan<- ServiceNodeStatus, errCh chan<- error, quitCh <-chan struct{}) {
+	defer close(statusCh)
+	defer close(errCh)
 
-	healthCh := make(chan []*consulapi.ServiceEntry)
-	errCh := make(chan error)
-	quitCh := make(chan struct{})
-	defer close(quitCh)
-	go ppkv.WatchServiceHealth(s.Health, serviceID, "", false, options, healthCh, errCh, quitCh)
+	var curIndex uint64 = 0
 
 	for {
 		select {
-		case res := <-healthCh:
-			for _, entry := range res {
-				nodeStatus, err := s.toNodeStatus(serviceID, *entry)
-				if err != nil {
-					statusErrChan <- err
-				}
-				select {
-				case statusChan <- *nodeStatus:
-				case <-statusQuitChan:
-					return
+		case <-quitCh:
+			return
+		case <-time.After(1 * time.Second):
+			checks, meta, err := s.Health.Service(serviceID, "", false, &consulapi.QueryOptions{
+				WaitIndex: curIndex,
+			})
+			if err != nil {
+				errCh <- err
+			} else {
+				curIndex = meta.LastIndex
+				for _, check := range checks {
+					status, err := s.toNodeStatus(serviceID, *check)
+					if err != nil {
+						errCh <- err
+					} else {
+						statusCh <- *status
+					}
 				}
 			}
-		case err := <-errCh:
-			select {
-			case statusErrChan <- err:
-			case <-statusQuitChan:
-			}
-
-			return
-		case <-statusQuitChan:
-			return
 		}
 	}
 }
