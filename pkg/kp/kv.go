@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"time"
 
-	"github.com/armon/consul-api"
+	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
 )
@@ -21,16 +21,16 @@ type Options struct {
 }
 
 type Store struct {
-	client *consulapi.Client
+	client *api.Client
 }
 
 func NewStore(opts Options) *Store {
-	conf := consulapi.DefaultConfig()
+	conf := api.DefaultConfig()
 	conf.Address = opts.Address
 	conf.Token = opts.Token
 
 	// the error is always nil
-	client, _ := consulapi.NewClient(conf)
+	client, _ := api.NewClient(conf)
 	return &Store{client: client}
 }
 
@@ -42,7 +42,7 @@ func (s *Store) SetPod(key string, manifest pods.Manifest) (time.Duration, error
 	if err != nil {
 		return 0, err
 	}
-	keyPair := &consulapi.KVPair{
+	keyPair := &api.KVPair{
 		Key:   key,
 		Value: buf.Bytes(),
 	}
@@ -110,7 +110,7 @@ func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan ch
 		case <-quitChan:
 			return
 		case <-time.After(1 * time.Second):
-			pairs, meta, err := s.client.KV().List(keyPrefix, &consulapi.QueryOptions{
+			pairs, meta, err := s.client.KV().List(keyPrefix, &api.QueryOptions{
 				WaitIndex: curIndex,
 			})
 			if err != nil {
@@ -144,7 +144,7 @@ func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan ch
 // before beginning raft replication, thus rejecting requests made at that
 // exact moment.
 func (s *Store) Ping() error {
-	_, qm, err := s.client.Catalog().Nodes(&consulapi.QueryOptions{RequireConsistent: true})
+	_, qm, err := s.client.Catalog().Nodes(&api.QueryOptions{RequireConsistent: true})
 	if err != nil {
 		return err
 	}

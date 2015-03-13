@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/armon/consul-api"
+	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/allocation"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
@@ -46,12 +46,12 @@ func main() {
 		Token:   *consulToken,
 	})
 
-	conf := consulapi.DefaultConfig()
+	conf := api.DefaultConfig()
 	conf.Address = *consulUrl
 	conf.Token = *consulToken
 
 	// the error is always nil
-	client, _ := consulapi.NewClient(conf)
+	client, _ := api.NewClient(conf)
 
 	healthChecker := health.NewConsulHealthChecker(*store, client.Health())
 
