@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/hooks"
@@ -91,7 +92,7 @@ func loadConsulToken(path string) (string, error) {
 	if err != nil {
 		return "", util.Errorf("Could not read Consul token at path %s: %s", path, err)
 	}
-	return string(consulToken), nil
+	return strings.TrimSpace(string(consulToken)), nil
 }
 
 func addHooks(preparerConfig *PreparerConfig, logger logging.Logger) {
