@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/armon/consul-api"
+	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v1"
@@ -73,7 +73,7 @@ func main() {
 	}
 
 	// error is always nil
-	client, _ := consulapi.NewClient(&consulapi.Config{
+	client, _ := api.NewClient(&api.Config{
 		Address: *consulUrl,
 		Token:   *consulToken, // this is not actually needed because /health endpoints are unACLed
 	})

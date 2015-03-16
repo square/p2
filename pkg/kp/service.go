@@ -3,7 +3,7 @@ package kp
 import (
 	"fmt"
 
-	"github.com/armon/consul-api"
+	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/pods"
 )
 
@@ -17,13 +17,13 @@ var (
 // manifest specifies a status port, the resulting consul service will also
 // include a health check for that port.
 func (s *Store) RegisterService(manifest pods.Manifest, caPath string) error {
-	podService := &consulapi.AgentServiceRegistration{
+	podService := &api.AgentServiceRegistration{
 		Name: manifest.ID(),
 	}
 
 	if manifest.StatusPort != 0 {
 		podService.Port = manifest.StatusPort
-		podService.Check = &consulapi.AgentServiceCheck{
+		podService.Check = &api.AgentServiceCheck{
 			// magic number alert
 			Interval: "5s",
 		}

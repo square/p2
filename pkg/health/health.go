@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/armon/consul-api"
+	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
 )
@@ -71,18 +71,18 @@ func (s *ServiceNodeStatus) IsCurrentVersion(version string) bool {
 }
 
 type ConsulHealthChecker struct {
-	Health *consulapi.Health
+	Health *api.Health
 	Store  kp.Store
 }
 
-func NewConsulHealthChecker(store kp.Store, consulHealth *consulapi.Health) *ConsulHealthChecker {
+func NewConsulHealthChecker(store kp.Store, consulHealth *api.Health) *ConsulHealthChecker {
 	return &ConsulHealthChecker{
 		Health: consulHealth,
 		Store:  store,
 	}
 }
 
-func (s *ConsulHealthChecker) toNodeStatus(serviceID string, entry consulapi.ServiceEntry) (*ServiceNodeStatus, error) {
+func (s *ConsulHealthChecker) toNodeStatus(serviceID string, entry api.ServiceEntry) (*ServiceNodeStatus, error) {
 
 	version := ""
 	manifest, _, err := s.Store.Pod(kp.RealityPath(entry.Node.Node, serviceID))
@@ -110,7 +110,7 @@ func (s *ConsulHealthChecker) toNodeStatus(serviceID string, entry consulapi.Ser
 }
 
 func (s *ConsulHealthChecker) LookupHealth(serviceID string) (*ServiceStatus, error) {
-	options := consulapi.QueryOptions{}
+	options := api.QueryOptions{}
 	entries, _, err := s.Health.Service(serviceID, "", false, &options)
 	if err != nil {
 		return nil, err
@@ -147,7 +147,7 @@ func (s *ConsulHealthChecker) WatchHealth(serviceID string, statusCh chan<- Serv
 		case <-quitCh:
 			return
 		case <-time.After(1 * time.Second):
-			checks, meta, err := s.Health.Service(serviceID, "", false, &consulapi.QueryOptions{
+			checks, meta, err := s.Health.Service(serviceID, "", false, &api.QueryOptions{
 				WaitIndex: curIndex,
 			})
 			if err != nil {

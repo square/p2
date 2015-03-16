@@ -1,13 +1,16 @@
-package consulapi
+package api
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -111,11 +114,17 @@ type Config struct {
 
 // DefaultConfig returns a default configuration for the client
 func DefaultConfig() *Config {
-	return &Config{
+	config := &Config{
 		Address:    "127.0.0.1:8500",
 		Scheme:     "http",
 		HttpClient: http.DefaultClient,
 	}
+
+	if addr := os.Getenv("CONSUL_HTTP_ADDR"); addr != "" {
+		config.Address = addr
+	}
+
+	return config
 }
 
 // Client provides a client to the Consul API
@@ -138,6 +147,17 @@ func NewClient(config *Config) (*Client, error) {
 
 	if config.HttpClient == nil {
 		config.HttpClient = defConfig.HttpClient
+	}
+
+	if parts := strings.SplitN(config.Address, "unix://", 2); len(parts) == 2 {
+		config.HttpClient = &http.Client{
+			Transport: &http.Transport{
+				Dial: func(_, _ string) (net.Conn, error) {
+					return net.Dial("unix", parts[1])
+				},
+			},
+		}
+		config.Address = parts[1]
 	}
 
 	client := &Client{
@@ -206,9 +226,6 @@ func (r *request) toHTTP() (*http.Request, error) {
 	// Encode the query parameters
 	r.url.RawQuery = r.params.Encode()
 
-	// Get the url sring
-	urlRaw := r.url.String()
-
 	// Check if we should encode the body
 	if r.body == nil && r.obj != nil {
 		if b, err := encodeBody(r.obj); err != nil {
@@ -219,14 +236,21 @@ func (r *request) toHTTP() (*http.Request, error) {
 	}
 
 	// Create the HTTP request
-	req, err := http.NewRequest(r.method, urlRaw, r.body)
+	req, err := http.NewRequest(r.method, r.url.RequestURI(), r.body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.URL.Host = r.url.Host
+	req.URL.Scheme = r.url.Scheme
+	req.Host = r.url.Host
 
 	// Setup auth
-	if err == nil && r.config.HttpAuth != nil {
+	if r.config.HttpAuth != nil {
 		req.SetBasicAuth(r.config.HttpAuth.Username, r.config.HttpAuth.Password)
 	}
 
-	return req, err
+	return req, nil
 }
 
 // newRequest is used to create a new request
@@ -263,6 +287,49 @@ func (c *Client) doRequest(r *request) (time.Duration, *http.Response, error) {
 	resp, err := c.config.HttpClient.Do(req)
 	diff := time.Now().Sub(start)
 	return diff, resp, err
+}
+
+// Query is used to do a GET request against an endpoint
+// and deserialize the response into an interface using
+// standard Consul conventions.
+func (c *Client) query(endpoint string, out interface{}, q *QueryOptions) (*QueryMeta, error) {
+	r := c.newRequest("GET", endpoint)
+	r.setQueryOptions(q)
+	rtt, resp, err := requireOK(c.doRequest(r))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	qm := &QueryMeta{}
+	parseQueryMeta(resp, qm)
+	qm.RequestTime = rtt
+
+	if err := decodeBody(resp, out); err != nil {
+		return nil, err
+	}
+	return qm, nil
+}
+
+// write is used to do a PUT request against an endpoint
+// and serialize/deserialized using the standard Consul conventions.
+func (c *Client) write(endpoint string, in, out interface{}, q *WriteOptions) (*WriteMeta, error) {
+	r := c.newRequest("PUT", endpoint)
+	r.setWriteOptions(q)
+	r.obj = in
+	rtt, resp, err := requireOK(c.doRequest(r))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	wm := &WriteMeta{RequestTime: rtt}
+	if out != nil {
+		if err := decodeBody(resp, &out); err != nil {
+			return nil, err
+		}
+	}
+	return wm, nil
 }
 
 // parseQueryMeta is used to help parse query meta-data
@@ -312,12 +379,16 @@ func encodeBody(obj interface{}) (io.Reader, error) {
 // requireOK is used to wrap doRequest and check for a 200
 func requireOK(d time.Duration, resp *http.Response, e error) (time.Duration, *http.Response, error) {
 	if e != nil {
-		return d, resp, e
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return d, nil, e
 	}
 	if resp.StatusCode != 200 {
 		var buf bytes.Buffer
 		io.Copy(&buf, resp.Body)
-		return d, resp, fmt.Errorf("Unexpected response code: %d (%s)", resp.StatusCode, buf.Bytes())
+		resp.Body.Close()
+		return d, nil, fmt.Errorf("Unexpected response code: %d (%s)", resp.StatusCode, buf.Bytes())
 	}
-	return d, resp, e
+	return d, resp, nil
 }
