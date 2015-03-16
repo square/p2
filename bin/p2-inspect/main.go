@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/util/net"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v1"
 )
@@ -18,6 +19,7 @@ var (
 	filterNodeName = kingpin.Flag("node", "The node to inspect. By default, all nodes are shown.").String()
 	filterPodId    = kingpin.Flag("pod", "The pod manifest ID to inspect. By default, all pods are shown.").String()
 	consulToken    = kingpin.Flag("token", "The consul ACL token to use. Empty by default.").String()
+	headers        = kingpin.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
 )
 
 const (
@@ -44,9 +46,11 @@ func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 
+	httpc := net.NewHeaderClient(*headers)
 	store := kp.NewStore(kp.Options{
 		Address: *consulUrl,
 		Token:   *consulToken,
+		Client:  httpc,
 	})
 
 	intents, _, err := store.ListPods(kp.INTENT_TREE)
@@ -74,8 +78,9 @@ func main() {
 
 	// error is always nil
 	client, _ := api.NewClient(&api.Config{
-		Address: *consulUrl,
-		Token:   *consulToken, // this is not actually needed because /health endpoints are unACLed
+		Address:    *consulUrl,
+		Token:      *consulToken, // this is not actually needed because /health endpoints are unACLed
+		HttpClient: httpc,
 	})
 	for podId := range statusMap {
 		checks, _, err := client.Health().Checks(podId, nil)

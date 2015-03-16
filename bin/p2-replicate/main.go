@@ -13,6 +13,7 @@ import (
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/uri"
+	"github.com/square/p2/pkg/util/net"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v1"
 )
@@ -36,20 +37,24 @@ var (
 	consulUrl   = replicate.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
 	consulToken = replicate.Flag("token", "The ACL token to use for consul").String()
 	threshold   = replicate.Flag("threshold", "The minimum health level to treat as healthy. One of (in order) passing, warning, unknown, critical.").String()
+	headers     = replicate.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
 )
 
 func main() {
 	replicate.Version(version.VERSION)
 	replicate.Parse(os.Args[1:])
 
+	httpc := net.NewHeaderClient(*headers)
 	store := kp.NewStore(kp.Options{
 		Address: *consulUrl,
 		Token:   *consulToken,
+		Client:  httpc,
 	})
 
 	conf := api.DefaultConfig()
 	conf.Address = *consulUrl
 	conf.Token = *consulToken
+	conf.HttpClient = httpc
 
 	// the error is always nil
 	client, _ := api.NewClient(conf)

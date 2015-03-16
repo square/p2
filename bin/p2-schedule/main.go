@@ -8,6 +8,7 @@ import (
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/util/net"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v1"
 )
@@ -18,6 +19,7 @@ var (
 	hookTypeName  = kingpin.Flag("hook-type", "Schedule as a hook, not an intended pod, as the given hook type. Can be one of the hooks listed in hooks.go").String()
 	consulAddress = kingpin.Flag("consul", "The address of the consul node to use. Defaults to 0.0.0.0:8500").String()
 	consulToken   = kingpin.Flag("token", "The ACL to use for accessing consul.").String()
+	headers       = kingpin.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
 )
 
 func main() {
@@ -27,6 +29,7 @@ func main() {
 	store := kp.NewStore(kp.Options{
 		Address: *consulAddress,
 		Token:   *consulToken,
+		Client:  net.NewHeaderClient(*headers),
 	})
 
 	if *nodeName == "" {
