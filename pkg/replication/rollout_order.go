@@ -23,14 +23,6 @@ func (c compare) less() bool {
 	return c == lessThan
 }
 
-func compareFromBool(b bool) compare {
-	if b {
-		return lessThan
-	} else {
-		return greaterThan
-	}
-}
-
 type rolloutOrder struct {
 	nodes           []allocation.Node
 	referenceStatus *health.ServiceStatus
@@ -88,19 +80,19 @@ func (r *rolloutOrder) compareErrors(iErr, jErr error) compare {
 }
 
 func (r *rolloutOrder) compareHealth(iNode, jNode allocation.Node, iHealth, jHealth *health.ServiceNodeStatus) compare {
-	if iHealth.Healthy && !jHealth.Healthy {
-		return greaterThan
+	comp := health.Compare(iHealth.Health, jHealth.Health)
+	if comp == 0 {
+		if iNode.Name < jNode.Name {
+			return lessThan
+		} else {
+			if iNode.Name == jNode.Name {
+				return equal
+			} else {
+				return greaterThan
+			}
+		}
 	}
-	if iHealth.Healthy && jHealth.Healthy {
-		return compareFromBool(iNode.Name < jNode.Name)
-	}
-	if !iHealth.Healthy && jHealth.Healthy {
-		return lessThan
-	}
-	if !iHealth.Healthy && !jHealth.Healthy {
-		return compareFromBool(iNode.Name < jNode.Name)
-	}
-	return equal
+	return compare(comp)
 }
 
 func (r *rolloutOrder) Swap(i, j int) {

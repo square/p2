@@ -35,6 +35,7 @@ var (
 	minNodes    = replicate.Flag("min-nodes", "The minimum number of healthy nodes that must remain up while replicating.").Default("1").Short('m').Int()
 	consulUrl   = replicate.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
 	consulToken = replicate.Flag("token", "The ACL token to use for consul").String()
+	threshold   = replicate.Flag("threshold", "The minimum health level to treat as healthy. One of (in order) passing, warning, unknown, critical.").String()
 )
 
 func main() {
@@ -53,7 +54,14 @@ func main() {
 	// the error is always nil
 	client, _ := api.NewClient(conf)
 
-	healthChecker := health.NewConsulHealthChecker(*store, client.Health())
+	inner := health.NewConsulHealthChecker(*store, client.Health())
+	var healthChecker replication.ServiceChecker = inner
+	if *threshold != "" {
+		healthChecker = replication.ServiceUpgrader{
+			Inner:     inner,
+			Threshold: health.ToHealthState(*threshold),
+		}
+	}
 
 	// Fetch manifest (could be URI) into temp file
 	localMan, err := ioutil.TempFile("", "tempmanifest")

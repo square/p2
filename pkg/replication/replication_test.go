@@ -108,15 +108,15 @@ statuses:
   host1.domain:
     node: host1.domain
     version: abc123
-    healthy: true
+    health: passing
   host2.domain:
     node: host2.domain
     version: abc123
-    healthy: true
+    health: passing
   host3.domain:
     node: host3.domain
     version: abc123
-    healthy: true
+    health: passing
 `)
 	allocated := fakeAllocation("host1.domain", "host2.domain", "host3.domain")
 	manifest := podManifest(t, "foo", "def345")
@@ -131,7 +131,7 @@ statuses:
 		checker.resp.Statuses[node] = &health.ServiceNodeStatus{
 			Version: newManSha,
 			Node:    node,
-			Healthy: true,
+			Health:  health.Passing,
 		}
 	}
 
