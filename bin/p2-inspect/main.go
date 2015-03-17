@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/consul/api"
+	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v1"
@@ -26,13 +27,13 @@ const (
 )
 
 type NodePodStatus struct {
-	NodeName           string      `json:"node,omitempty"`
-	PodId              string      `json:"pod,omitempty"`
-	IntentManifestSHA  string      `json:"intent_manifest_sha"`
-	RealityManifestSHA string      `json:"reality_manifest_sha"`
-	IntentLocations    []string    `json:"intent_locations"`
-	RealityLocations   []string    `json:"reality_locations"`
-	Health             *NodeHealth `json:"health_check,omitempty"`
+	NodeName           string             `json:"node,omitempty"`
+	PodId              string             `json:"pod,omitempty"`
+	IntentManifestSHA  string             `json:"intent_manifest_sha"`
+	RealityManifestSHA string             `json:"reality_manifest_sha"`
+	IntentLocations    []string           `json:"intent_locations"`
+	RealityLocations   []string           `json:"reality_locations"`
+	Health             health.HealthState `json:"health,omitempty"`
 }
 
 type NodeHealth struct {
@@ -77,23 +78,21 @@ func main() {
 		Address: *consulUrl,
 		Token:   *consulToken, // this is not actually needed because /health endpoints are unACLed
 	})
+	hchecker := health.NewConsulHealthChecker(*store, client.Health())
 	for podId := range statusMap {
-		checks, _, err := client.Health().Checks(podId, nil)
+		serviceStat, err := hchecker.LookupHealth(podId)
 		if err != nil {
 			log.Fatalf("Could not retrieve health checks for pod %s: %s", podId, err)
 		}
 
-		for _, check := range checks {
-			if *filterNodeName != "" && check.Node != *filterNodeName {
+		for _, stat := range serviceStat.Statuses {
+			if *filterNodeName != "" && stat.Node != *filterNodeName {
 				continue
 			}
 
-			old := statusMap[podId][check.Node]
-			old.Health = &NodeHealth{
-				Status: check.Status,
-				Output: check.Output,
-			}
-			statusMap[podId][check.Node] = old
+			old := statusMap[podId][stat.Node]
+			old.Health = stat.Health
+			statusMap[podId][stat.Node] = old
 		}
 	}
 
