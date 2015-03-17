@@ -56,21 +56,20 @@ func main() {
 			log.Fatalf("Cannot get the current consul manifest: %s", err)
 		}
 	}
+
 	if err = VerifyConsulUp(*timeout); err != nil {
 		log.Fatalln(err)
 	}
 	time.Sleep(500 * time.Millisecond)
-	// TODO: uncomment this. We want to schedule the consul manifest to facilitate
-	// future rollouts. However, to achieve this as a general goal, we must have good
-	// failure+retry semantics baked into the preparer when doing both reads AND writes.
-	// err = ScheduleForThisHost(consulManifest)
-
+	// schedule consul in the reality store as well, to ensure the preparers do
+	// not all restart their consul agents simultaneously after bootstrapping
+	err = ScheduleForThisHost(consulManifest, true)
 	if err != nil {
 		log.Fatalf("Could not register consul in the intent store: %s", err)
 	}
 
 	log.Println("Registering base agent in consul")
-	err = ScheduleForThisHost(agentManifest)
+	err = ScheduleForThisHost(agentManifest, false)
 	if err != nil {
 		log.Fatalf("Could not register base agent with consul: %s", err)
 	}
@@ -126,7 +125,7 @@ func VerifyConsulUp(timeout string) error {
 	}
 }
 
-func ScheduleForThisHost(manifest *pods.Manifest) error {
+func ScheduleForThisHost(manifest *pods.Manifest, alsoReality bool) error {
 	store := kp.NewStore(kp.Options{
 		Token: *consulToken,
 	})
@@ -135,7 +134,15 @@ func ScheduleForThisHost(manifest *pods.Manifest) error {
 		return err
 	}
 	_, err = store.SetPod(kp.IntentPath(hostname, manifest.ID()), *manifest)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if alsoReality {
+		_, err = store.SetPod(kp.RealityPath(hostname, manifest.ID()), *manifest)
+		return err
+	}
+	return nil
 }
 
 func InstallBaseAgent(agentManifest *pods.Manifest) error {
