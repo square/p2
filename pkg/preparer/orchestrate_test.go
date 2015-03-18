@@ -17,6 +17,7 @@ import (
 	"github.com/square/p2/pkg/util"
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/clearsign"
+	"golang.org/x/crypto/openpgp/packet"
 )
 
 type TestPod struct {
@@ -72,8 +73,8 @@ func (t *TestPod) Path() string {
 }
 
 type fakeHooks struct {
-	beforeInstallErr, afterInstallErr, afterLaunchErr error
-	ranBeforeInstall, ranAfterLaunch, runAfterInstall bool
+	beforeInstallErr, afterInstallErr, afterLaunchErr, afterAuthFailErr error
+	ranBeforeInstall, ranAfterLaunch, ranAfterInstall, ranAfterAuthFail bool
 }
 
 func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest *pods.Manifest) error {
@@ -82,11 +83,14 @@ func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest
 		f.ranBeforeInstall = true
 		return f.beforeInstallErr
 	case hooks.AFTER_INSTALL:
-		f.runAfterInstall = true
+		f.ranAfterInstall = true
 		return f.afterInstallErr
 	case hooks.AFTER_LAUNCH:
 		f.ranAfterLaunch = true
 		return f.afterLaunchErr
+	case hooks.AFTER_AUTH_FAIL:
+		f.ranAfterAuthFail = true
+		return f.afterAuthFailErr
 	}
 	return util.Errorf("Invalid hook type configured in test: %s", hookType)
 }
@@ -100,19 +104,16 @@ func testManifest(t *testing.T) *pods.Manifest {
 	return manifest
 }
 
-// Use the same signer for all SignedManifests.
-// Otherwise, Travis may time out waiting for entropy.
-var cachedSigner *openpgp.Entity
+var fakeSigner *openpgp.Entity
 
 func testSignedManifest(t *testing.T, modify func(*pods.Manifest, *openpgp.Entity)) (*pods.Manifest, *openpgp.Entity) {
 	testManifest := testManifest(t)
 
-	if cachedSigner == nil {
+	if fakeSigner == nil {
 		var err error
-		cachedSigner, err = openpgp.NewEntity("p2", "p2-test", "p2@squareup.com", nil)
-		Assert(t).IsNil(err, "NewEntity error should have been nil")
+		fakeSigner, err = openpgp.ReadEntity(packet.NewReader(bytes.NewReader(fakeEntity)))
+		Assert(t).IsNil(err, "should have read entity")
 	}
-	fakeSigner := cachedSigner
 
 	if modify != nil {
 		modify(testManifest, fakeSigner)
