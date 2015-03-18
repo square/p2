@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/util"
 )
 
 type ServiceStatus struct {
@@ -83,7 +84,7 @@ func (s *ConsulHealthChecker) LookupHealth(serviceID string) (*ServiceStatus, er
 	options := api.QueryOptions{}
 	entries, _, err := s.Health.Service(serviceID, "", false, &options)
 	if err != nil {
-		return nil, err
+		return nil, util.Errorf("/health/service failed")
 	}
 	serviceStatus := ServiceStatus{
 		Statuses: make(map[string]*ServiceNodeStatus),
@@ -121,7 +122,7 @@ func (s *ConsulHealthChecker) WatchHealth(serviceID string, statusCh chan<- Serv
 				WaitIndex: curIndex,
 			})
 			if err != nil {
-				errCh <- err
+				errCh <- util.Errorf("/health/service failed")
 			} else {
 				curIndex = meta.LastIndex
 				for _, check := range checks {

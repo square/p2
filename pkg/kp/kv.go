@@ -4,6 +4,7 @@ package kp
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -37,6 +38,18 @@ func NewStore(opts Options) *Store {
 	return &Store{client: client}
 }
 
+// KVError encapsulates an error in a Store operation. Errors returned from the
+// Consul API cannot be exposed because they may contain the URL of the request,
+// which includes an ACL token as a query parameter.
+type KVError struct {
+	Op  string
+	Key string
+}
+
+func (err KVError) Error() string {
+	return fmt.Sprintf("%s failed for path %s", err.Op, err.Key)
+}
+
 // SetPod writes a pod manifest into the consul key-value store. The key should
 // not have a leading or trailing slash.
 func (s *Store) SetPod(key string, manifest pods.Manifest) (time.Duration, error) {
@@ -52,7 +65,7 @@ func (s *Store) SetPod(key string, manifest pods.Manifest) (time.Duration, error
 
 	writeMeta, err := s.client.KV().Put(keyPair, nil)
 	if writeMeta == nil {
-		return 0, err
+		return 0, KVError{Op: "set", Key: key}
 	}
 	return writeMeta.RequestTime, err
 }
@@ -63,7 +76,7 @@ func (s *Store) SetPod(key string, manifest pods.Manifest) (time.Duration, error
 func (s *Store) Pod(key string) (*pods.Manifest, time.Duration, error) {
 	kvPair, writeMeta, err := s.client.KV().Get(key, nil)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, KVError{Op: "get", Key: key}
 	}
 	if kvPair == nil {
 		return nil, writeMeta.RequestTime, pods.NoCurrentManifest
@@ -79,7 +92,7 @@ func (s *Store) Pod(key string) (*pods.Manifest, time.Duration, error) {
 func (s *Store) ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error) {
 	kvPairs, writeMeta, err := s.client.KV().List(keyPrefix, nil)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, KVError{Op: "list", Key: keyPrefix}
 	}
 	var ret []ManifestResult
 
@@ -117,7 +130,7 @@ func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan ch
 				WaitIndex: curIndex,
 			})
 			if err != nil {
-				errChan <- err
+				errChan <- KVError{Op: "list", Key: keyPrefix}
 			} else {
 				curIndex = meta.LastIndex
 				for _, pair := range pairs {
@@ -149,7 +162,7 @@ func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan ch
 func (s *Store) Ping() error {
 	_, qm, err := s.client.Catalog().Nodes(&api.QueryOptions{RequireConsistent: true})
 	if err != nil {
-		return err
+		return KVError{Op: "ping", Key: "/catalog/nodes"}
 	}
 	if qm == nil || !qm.KnownLeader {
 		return util.Errorf("No known leader")
