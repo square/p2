@@ -4,6 +4,7 @@ package kp
 
 import (
 	"bytes"
+	"net/http"
 	"time"
 
 	"github.com/hashicorp/consul/api"
@@ -18,6 +19,7 @@ type ManifestResult struct {
 type Options struct {
 	Token   string
 	Address string
+	Client  *http.Client
 }
 
 type Store struct {
@@ -28,6 +30,7 @@ func NewStore(opts Options) *Store {
 	conf := api.DefaultConfig()
 	conf.Address = opts.Address
 	conf.Token = opts.Token
+	conf.HttpClient = opts.Client
 
 	// the error is always nil
 	client, _ := api.NewClient(conf)
