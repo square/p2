@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/consul/api"
@@ -136,6 +137,7 @@ func addKVPToMap(result kp.ManifestResult, source int, filterNode, filterPod str
 		for _, launchable := range result.Manifest.LaunchableStanzas {
 			old.IntentLocations = append(old.IntentLocations, launchable.Location)
 		}
+		sort.Strings(old.IntentLocations)
 	case REALITY_SOURCE:
 		if old.RealityManifestSHA != "" {
 			return fmt.Errorf("Two reality manifests for node %s pod %s", nodeName, podId)
@@ -144,6 +146,7 @@ func addKVPToMap(result kp.ManifestResult, source int, filterNode, filterPod str
 		for _, launchable := range result.Manifest.LaunchableStanzas {
 			old.RealityLocations = append(old.RealityLocations, launchable.Location)
 		}
+		sort.Strings(old.RealityLocations)
 	}
 
 	statuses[podId][nodeName] = old
