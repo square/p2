@@ -7,8 +7,8 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
-			"Comment": "v0.6.4-12-g467d9d5",
-			"Rev": "467d9d55c2d2c17248441a8fc661561161f40d5e"
+			"Comment": "v0.7.1",
+			"Rev": "3fc34d061b9c78a70db853c7cb6b0576b6d4f32d"
 		},
 		{
 			"ImportPath": "github.com/alecthomas/units",
@@ -20,20 +20,20 @@
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
-			"Rev": "f7445b17d61953e333441674c2d11e91ae4559d3"
+			"Rev": "b7d6bf2c61544745a02f83dec90393985fc3a065"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp",
-			"Rev": "f7445b17d61953e333441674c2d11e91ae4559d3"
+			"Rev": "b7d6bf2c61544745a02f83dec90393985fc3a065"
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v1",
-			"Comment": "v1.3.5",
-			"Rev": "a1508bd4f5b75aaa7ce97f411fcdc72138434bbb"
+			"Comment": "v1.3.6",
+			"Rev": "55a69a226d28a43b913720f5d765706d49c8fa9e"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
-			"Rev": "5d6f7e02b7cdad63b06ab3877915532cd30073b4"
+			"Rev": "49c95bdc21843256fb6c4e0d370a05f24a0bf213"
 		}
 	]
 }
