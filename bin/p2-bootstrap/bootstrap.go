@@ -78,6 +78,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not install base agent: %s", err)
 	}
+	if err := VerifyReality(30*time.Second, consulManifest.ID(), agentManifest.ID()); err != nil {
+		log.Fatalln(err)
+	}
 	log.Println("Bootstrapping complete")
 }
 
@@ -121,6 +124,49 @@ func VerifyConsulUp(timeout string) error {
 	case <-time.After(timeoutDur):
 		return util.Errorf("Consul did not start or was not available after %v", timeoutDur)
 	case <-consulIsUp:
+		return nil
+	}
+}
+
+func VerifyReality(waitTime time.Duration, consulID, agentID string) error {
+	satisfied := make(chan struct{})
+	quit := make(chan struct{})
+	defer close(quit)
+	store := kp.NewStore(kp.Options{
+		Token: *consulToken,
+	})
+	hostname, _ := os.Hostname()
+	go func() {
+		for {
+			time.Sleep(100 * time.Millisecond)
+			hasConsul := false
+			hasPreparer := false
+			results, _, err := store.ListPods(kp.RealityPath(hostname))
+			if err != nil {
+				log.Printf("Error looking for pods: %s\n", err)
+				continue
+			}
+			for _, res := range results {
+				if res.Manifest.ID() == consulID {
+					hasConsul = true
+				} else if res.Manifest.ID() == agentID {
+					hasPreparer = true
+				}
+			}
+			select {
+			case <-quit:
+				return
+			default:
+			}
+			if hasConsul && hasPreparer {
+				satisfied <- struct{}{}
+			}
+		}
+	}()
+	select {
+	case <-time.After(waitTime):
+		return util.Errorf("Consul and/or Preparer weren't in the reality store within %s", waitTime)
+	case <-satisfied:
 		return nil
 	}
 }
