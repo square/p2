@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/util/net"
@@ -22,6 +21,7 @@ var (
 	filterPodId    = kingpin.Flag("pod", "The pod manifest ID to inspect. By default, all pods are shown.").String()
 	consulToken    = kingpin.Flag("token", "The consul ACL token to use. Empty by default.").String()
 	headers        = kingpin.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
+	https          = kingpin.Flag("https", "Use HTTPS").Bool()
 )
 
 const (
@@ -48,12 +48,13 @@ func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 
-	httpc := net.NewHeaderClient(*headers)
-	store := kp.NewStore(kp.Options{
+	opts := kp.Options{
 		Address: *consulUrl,
 		Token:   *consulToken,
-		Client:  httpc,
-	})
+		Client:  net.NewHeaderClient(*headers),
+		HTTPS:   *https,
+	}
+	store := kp.NewStore(opts)
 
 	intents, _, err := store.ListPods(kp.INTENT_TREE)
 	if err != nil {
@@ -78,13 +79,7 @@ func main() {
 		}
 	}
 
-	// error is always nil
-	client, _ := api.NewClient(&api.Config{
-		Address:    *consulUrl,
-		Token:      *consulToken, // this is not actually needed because /health endpoints are unACLed
-		HttpClient: httpc,
-	})
-	hchecker := health.NewConsulHealthChecker(*store, client.Health())
+	hchecker := health.NewConsulHealthChecker(opts)
 	for podId := range statusMap {
 		serviceStat, err := hchecker.LookupHealth(podId)
 		if err != nil {

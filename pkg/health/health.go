@@ -44,10 +44,11 @@ type ConsulHealthChecker struct {
 	Store  kp.Store
 }
 
-func NewConsulHealthChecker(store kp.Store, consulHealth *api.Health) *ConsulHealthChecker {
+func NewConsulHealthChecker(opts kp.Options) *ConsulHealthChecker {
+	client := kp.NewConsulClient(opts)
 	return &ConsulHealthChecker{
-		Health: consulHealth,
-		Store:  store,
+		Health: client.Health(),
+		Store:  *kp.NewStore(opts),
 	}
 }
 

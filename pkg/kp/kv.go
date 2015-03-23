@@ -5,7 +5,6 @@ package kp
 import (
 	"bytes"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/hashicorp/consul/api"
@@ -17,25 +16,13 @@ type ManifestResult struct {
 	Manifest pods.Manifest
 	Path     string
 }
-type Options struct {
-	Token   string
-	Address string
-	Client  *http.Client
-}
 
 type Store struct {
 	client *api.Client
 }
 
 func NewStore(opts Options) *Store {
-	conf := api.DefaultConfig()
-	conf.Address = opts.Address
-	conf.Token = opts.Token
-	conf.HttpClient = opts.Client
-
-	// the error is always nil
-	client, _ := api.NewClient(conf)
-	return &Store{client: client}
+	return &Store{client: NewConsulClient(opts)}
 }
 
 // KVError encapsulates an error in a Store operation. Errors returned from the
