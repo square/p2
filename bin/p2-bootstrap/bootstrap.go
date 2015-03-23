@@ -129,7 +129,6 @@ func VerifyConsulUp(timeout string) error {
 }
 
 func VerifyReality(waitTime time.Duration, consulID, agentID string) error {
-	satisfied := make(chan struct{})
 	quit := make(chan struct{})
 	defer close(quit)
 	store := kp.NewStore(kp.Options{
