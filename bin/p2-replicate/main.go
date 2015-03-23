@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/allocation"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
@@ -44,22 +43,14 @@ func main() {
 	replicate.Version(version.VERSION)
 	replicate.Parse(os.Args[1:])
 
-	httpc := net.NewHeaderClient(*headers)
-	store := kp.NewStore(kp.Options{
+	opts := kp.Options{
 		Address: *consulUrl,
 		Token:   *consulToken,
-		Client:  httpc,
-	})
+		Client:  net.NewHeaderClient(*headers),
+	}
+	store := kp.NewStore(opts)
 
-	conf := api.DefaultConfig()
-	conf.Address = *consulUrl
-	conf.Token = *consulToken
-	conf.HttpClient = httpc
-
-	// the error is always nil
-	client, _ := api.NewClient(conf)
-
-	inner := health.NewConsulHealthChecker(*store, client.Health())
+	inner := health.NewConsulHealthChecker(opts)
 	var healthChecker replication.ServiceChecker = inner
 	if *threshold != "" {
 		healthChecker = replication.ServiceUpgrader{

@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/util/net"
@@ -48,12 +47,12 @@ func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 
-	httpc := net.NewHeaderClient(*headers)
-	store := kp.NewStore(kp.Options{
+	opts := kp.Options{
 		Address: *consulUrl,
 		Token:   *consulToken,
-		Client:  httpc,
-	})
+		Client:  net.NewHeaderClient(*headers),
+	}
+	store := kp.NewStore(opts)
 
 	intents, _, err := store.ListPods(kp.INTENT_TREE)
 	if err != nil {
@@ -78,13 +77,7 @@ func main() {
 		}
 	}
 
-	// error is always nil
-	client, _ := api.NewClient(&api.Config{
-		Address:    *consulUrl,
-		Token:      *consulToken, // this is not actually needed because /health endpoints are unACLed
-		HttpClient: httpc,
-	})
-	hchecker := health.NewConsulHealthChecker(*store, client.Health())
+	hchecker := health.NewConsulHealthChecker(opts)
 	for podId := range statusMap {
 		serviceStat, err := hchecker.LookupHealth(podId)
 		if err != nil {
