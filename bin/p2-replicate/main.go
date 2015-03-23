@@ -37,6 +37,7 @@ var (
 	consulToken = replicate.Flag("token", "The ACL token to use for consul").String()
 	threshold   = replicate.Flag("threshold", "The minimum health level to treat as healthy. One of (in order) passing, warning, unknown, critical.").String()
 	headers     = replicate.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
+	https       = replicate.Flag("https", "Use HTTPS").Bool()
 )
 
 func main() {
@@ -47,6 +48,7 @@ func main() {
 		Address: *consulUrl,
 		Token:   *consulToken,
 		Client:  net.NewHeaderClient(*headers),
+		HTTPS:   *https,
 	}
 	store := kp.NewStore(opts)
 

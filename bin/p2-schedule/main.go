@@ -20,6 +20,7 @@ var (
 	consulAddress = kingpin.Flag("consul", "The address of the consul node to use. Defaults to 0.0.0.0:8500").String()
 	consulToken   = kingpin.Flag("token", "The ACL to use for accessing consul.").String()
 	headers       = kingpin.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
+	https         = kingpin.Flag("https", "Use HTTPS").Bool()
 )
 
 func main() {
@@ -30,6 +31,7 @@ func main() {
 		Address: *consulAddress,
 		Token:   *consulToken,
 		Client:  net.NewHeaderClient(*headers),
+		HTTPS:   *https,
 	})
 
 	if *nodeName == "" {

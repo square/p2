@@ -21,6 +21,7 @@ var (
 	filterPodId    = kingpin.Flag("pod", "The pod manifest ID to inspect. By default, all pods are shown.").String()
 	consulToken    = kingpin.Flag("token", "The consul ACL token to use. Empty by default.").String()
 	headers        = kingpin.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
+	https          = kingpin.Flag("https", "Use HTTPS").Bool()
 )
 
 const (
@@ -51,6 +52,7 @@ func main() {
 		Address: *consulUrl,
 		Token:   *consulToken,
 		Client:  net.NewHeaderClient(*headers),
+		HTTPS:   *https,
 	}
 	store := kp.NewStore(opts)
 
