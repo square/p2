@@ -136,9 +136,12 @@ func VerifyReality(waitTime time.Duration, consulID, agentID string) error {
 		Token: *consulToken,
 	})
 	hostname, _ := os.Hostname()
-	go func() {
-		for {
-			time.Sleep(100 * time.Millisecond)
+	waitChan := time.After(waitTime)
+	for {
+		select {
+		case <-waitChan:
+			return util.Errorf("Consul and/or Preparer weren't in the reality store within %s", waitTime)
+		case <-time.After(100 * time.Millisecond):
 			hasConsul := false
 			hasPreparer := false
 			results, _, err := store.ListPods(kp.RealityPath(hostname))
@@ -153,21 +156,10 @@ func VerifyReality(waitTime time.Duration, consulID, agentID string) error {
 					hasPreparer = true
 				}
 			}
-			select {
-			case <-quit:
-				return
-			default:
-			}
 			if hasConsul && hasPreparer {
-				satisfied <- struct{}{}
+				return nil
 			}
 		}
-	}()
-	select {
-	case <-time.After(waitTime):
-		return util.Errorf("Consul and/or Preparer weren't in the reality store within %s", waitTime)
-	case <-satisfied:
-		return nil
 	}
 }
 
