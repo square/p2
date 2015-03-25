@@ -77,6 +77,13 @@ func main() {
 		log.Fatalf("Invalid manifest: %s", err)
 	}
 
+	for _, host := range *hosts {
+		_, _, err := store.Pod(kp.RealityPath(host, "p2-preparer"))
+		if err != nil {
+			log.Fatalf("p2 is not running on host %s: %s", host, err)
+		}
+	}
+
 	allocated := allocation.NewAllocation(*hosts...)
 
 	replicator := replication.NewReplicator(*manifest, allocated)
