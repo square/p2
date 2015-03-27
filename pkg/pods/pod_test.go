@@ -103,6 +103,8 @@ config:
 		pod.RunAs = curUser.Username
 	}
 
+	Assert(t).IsNil(pod.EnsureHome(), "There shouldn't have been an error setting up the home directory")
+
 	err = pod.setupConfig(manifest)
 	Assert(t).IsNil(err, "There shouldn't have been an error setting up config")
 
