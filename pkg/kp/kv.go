@@ -51,10 +51,14 @@ func (s *Store) SetPod(key string, manifest pods.Manifest) (time.Duration, error
 	}
 
 	writeMeta, err := s.client.KV().Put(keyPair, nil)
-	if writeMeta == nil {
-		return 0, KVError{Op: "set", Key: key}
+	var retDur time.Duration
+	if writeMeta != nil {
+		retDur = writeMeta.RequestTime
 	}
-	return writeMeta.RequestTime, err
+	if err != nil {
+		err = KVError{Op: "set", Key: key}
+	}
+	return retDur, err
 }
 
 // Pod reads a pod manifest from the key-value store. If the given key does not
