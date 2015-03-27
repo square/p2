@@ -81,6 +81,26 @@ func (pod *Pod) Path() string {
 	return pod.path
 }
 
+func (pod *Pod) EnsureHome() error {
+	uid, gid, err := user.IDs(pod.RunAs)
+	if err != nil {
+		return util.Errorf("Could not get pod user %s: %s", pod.RunAs, err)
+	}
+	err = util.MkdirChownAll(pod.Path(), uid, gid, 0755)
+	if err != nil {
+		return util.Errorf("Could not create pod home: %s", err)
+	}
+	err = util.MkdirChownAll(pod.EnvDir(), uid, gid, 0755)
+	if err != nil {
+		return util.Errorf("Could not create the environment dir for pod %s: %s", pod.Id, err)
+	}
+	err = util.MkdirChownAll(pod.ConfigDir(), uid, gid, 0755)
+	if err != nil {
+		return util.Errorf("Could not create config directory for pod %s: %s", pod.Id, err)
+	}
+	return nil
+}
+
 func (pod *Pod) CurrentManifest() (*Manifest, error) {
 	currentManPath := pod.currentPodManifestPath()
 	if _, err := os.Stat(currentManPath); os.IsNotExist(err) {
@@ -317,17 +337,10 @@ func (pod *Pod) Uninstall() error {
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
 func (pod *Pod) Install(manifest *Manifest) error {
-	podHome := pod.path
-	uid, gid, err := user.IDs(pod.RunAs)
+	err := pod.EnsureHome()
 	if err != nil {
-		return util.Errorf("Could not determine pod UID/GID: %s", err)
+		return err
 	}
-
-	err = util.MkdirChownAll(podHome, uid, gid, 0755)
-	if err != nil {
-		return util.Errorf("Could not create pod home: %s", err)
-	}
-
 	// we may need to write config files to a unique directory per pod version, depending on restart semantics. Need
 	// to think about this more.
 	err = pod.setupConfig(manifest)
@@ -423,11 +436,6 @@ func (pod *Pod) setupConfig(manifest *Manifest) error {
 	if err != nil {
 		return util.Errorf("Could not determine pod UID/GID: %s", err)
 	}
-
-	err = util.MkdirChownAll(pod.ConfigDir(), uid, gid, 0755)
-	if err != nil {
-		return util.Errorf("Could not create config directory for pod %s: %s", manifest.ID(), err)
-	}
 	configFileName, err := manifest.ConfigFileName()
 	if err != nil {
 		return err
@@ -467,10 +475,6 @@ func (pod *Pod) setupConfig(manifest *Manifest) error {
 		return err
 	}
 
-	err = util.MkdirChownAll(pod.EnvDir(), uid, gid, 0755)
-	if err != nil {
-		return util.Errorf("Could not create the environment dir for pod %s: %s", manifest.ID(), err)
-	}
 	err = writeEnvFile(pod.EnvDir(), "CONFIG_PATH", configPath, uid, gid)
 	if err != nil {
 		return err

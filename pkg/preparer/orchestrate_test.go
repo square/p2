@@ -27,6 +27,10 @@ type TestPod struct {
 	configDir, envDir                                       string
 }
 
+func (t *TestPod) EnsureHome() error {
+	return nil
+}
+
 func (t *TestPod) ManifestSHA() (string, error) {
 	return "abc123", nil
 }

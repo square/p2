@@ -17,6 +17,7 @@ const POD_ID = "p2-preparer"
 
 type Pod interface {
 	hooks.Pod
+	EnsureHome() error
 	Launch(*pods.Manifest) (bool, error)
 	Install(*pods.Manifest) error
 	Verify(*pods.Manifest, openpgp.KeyRing) error
@@ -247,6 +248,14 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 	}
 
 	if newOrDifferent || problemReadingCurrentManifest {
+		// Ensure that directories exist before executing hooks that may
+		// write to those directories
+		err = pod.EnsureHome()
+		if err != nil {
+			logger.WithField("err", err).Errorln("Could not set up pod home")
+			return false
+		}
+
 		p.tryRunHooks(hooks.BEFORE_INSTALL, pod, newManifest, logger)
 
 		err = pod.Install(newManifest)
