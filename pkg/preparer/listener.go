@@ -52,12 +52,12 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 	for {
 		select {
 		case <-quit:
+			l.Logger.NoFields().Infoln("Terminating hook listener")
 			watcherQuit <- struct{}{}
 			return
 		case err := <-watcherErrCh:
 			l.Logger.WithField("err", err).Errorln("Error while watching pods")
 			errCh <- err
-			return
 		case result := <-podChan:
 			sub := l.Logger.SubLogger(logrus.Fields{
 				"pod":  result.Manifest.ID(),
