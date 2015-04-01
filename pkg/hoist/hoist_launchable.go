@@ -164,7 +164,7 @@ func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) 
 
 	for _, executable := range executables {
 		_, err := sv.Restart(&executable.Service)
-		if err != runit.SuperviseOkMissing {
+		if err != nil && err != runit.SuperviseOkMissing {
 			return err
 		}
 	}
