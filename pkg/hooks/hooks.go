@@ -61,6 +61,10 @@ func Hooks(dirpath string, logger *logging.Logger) *HookDir {
 
 func runDirectory(dirpath string, environment []string, logger logging.Logger) error {
 	entries, err := ioutil.ReadDir(dirpath)
+	if os.IsNotExist(err) {
+		logger.WithField("path", dirpath).Debugln("Hooks not set up")
+		return nil
+	}
 	if err != nil {
 		return err
 	}

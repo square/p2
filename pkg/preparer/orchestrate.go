@@ -140,9 +140,9 @@ func (p *Preparer) handlePods(podChan <-chan pods.Manifest, quit <-chan struct{}
 		case manifestToLaunch = <-podChan:
 			sha, err := manifestToLaunch.SHA()
 			manifestLogger = p.Logger.SubLogger(logrus.Fields{
-				"manifest": manifestToLaunch.ID(),
-				"sha":      sha,
-				"sha_err":  err,
+				"pod":     manifestToLaunch.ID(),
+				"sha":     sha,
+				"sha_err": err,
 			})
 			manifestLogger.NoFields().Debugln("New manifest received")
 
@@ -213,7 +213,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 	// do not remove the logger argument, it's not the same as p.Logger
 
 	if p.podIdForbidden(newManifest.ID()) {
-		logger.WithField("manifest", newManifest.ID()).Errorln("Cannot use this pod ID")
+		logger.WithField("pod", newManifest.ID()).Errorln("Cannot use this pod ID")
 		p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pod, newManifest, logger)
 		return false
 	}
@@ -231,9 +231,9 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 	newOrDifferent := err == pods.NoCurrentManifest || currentSHA != newSHA
 	if newOrDifferent {
 		logger.WithFields(logrus.Fields{
-			"old_sha":  currentSHA,
-			"sha":      newSHA,
-			"manifest": newManifest.ID(),
+			"old_sha": currentSHA,
+			"sha":     newSHA,
+			"pod":     newManifest.ID(),
 		}).Infoln("SHA is new or different from old, will update")
 	}
 
