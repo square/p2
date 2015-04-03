@@ -151,6 +151,14 @@ func (subsys Subsystems) Write(config Config) error {
 	return subsys.SetMemory(config.Name, config.Memory)
 }
 
+func (subsys Subsystems) AddPID(name string, pid int) error {
+	err := appendIntToFile(filepath.Join(subsys.Memory, name, "tasks"), pid)
+	if err != nil {
+		return err
+	}
+	return appendIntToFile(filepath.Join(subsys.CPU, name, "tasks"), pid)
+}
+
 func writeIfChanged(filename string, data []byte, perm os.FileMode) (bool, error) {
 	content, err := ioutil.ReadFile(filename)
 
@@ -170,4 +178,14 @@ func writeIfChanged(filename string, data []byte, perm os.FileMode) (bool, error
 		err = os.Chmod(filename, perm)
 	}
 	return true, err
+}
+
+func appendIntToFile(filename string, data int) error {
+	fd, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	defer fd.Close()
+	_, err = fd.WriteString(strconv.Itoa(data))
+	return err
 }
