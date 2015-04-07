@@ -199,18 +199,26 @@ func (hl *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]Execu
 	for _, service := range services {
 		serviceName := fmt.Sprintf("%s__%s", hl.Id, service.Name())
 
+		execCmd := []string{"/usr/bin/nolimit"}
+		if hl.Cgexec != "" {
+			execCmd = append(execCmd, hl.Cgexec)
+			execCmd = append(execCmd, hl.CgroupConfig.CgexecArgs()...)
+		}
+		execCmd = append(execCmd,
+			hl.Chpst,
+			"-u",
+			hl.RunAs+":"+hl.RunAs,
+			"-e",
+			hl.ConfigDir,
+			filepath.Join(serviceDir, service.Name()),
+		)
+
 		executables = append(executables, Executable{
 			Service: runit.Service{
 				Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
 				Name: serviceName,
 			},
-			ExecPath:     filepath.Join(serviceDir, service.Name()),
-			Chpst:        hl.Chpst,
-			Cgexec:       hl.Cgexec,
-			CgroupConfig: hl.CgroupConfig,
-			Nolimit:      "/usr/bin/nolimit",
-			RunAs:        hl.RunAs,
-			ConfigDir:    hl.ConfigDir,
+			Exec: execCmd,
 		})
 	}
 	return executables, nil

@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
-	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/runit"
 )
 
@@ -26,13 +25,15 @@ func TestExecutableWritesValidScript(t *testing.T) {
 	err = ioutil.WriteFile(path.Join(envdir, "SPECIALTESTVAR"), []byte("specialvalue"), 0644)
 	Assert(t).IsNil(err, "test setup failure - should not have failed to write an environment var")
 	executable := &Executable{
-		Service:   runit.Service{Name: "foo"},
-		Chpst:     runit.FakeChpst(),
-		Cgexec:    cgroups.FakeCgexec(),
-		Nolimit:   "",
-		ExecPath:  "/usr/bin/env",
-		RunAs:     user.Username,
-		ConfigDir: envdir,
+		Service: runit.Service{Name: "foo"},
+		Exec: []string{
+			runit.FakeChpst(),
+			"-u",
+			user.Username + ":" + user.Username,
+			"-e",
+			envdir,
+			"/usr/bin/env",
+		},
 	}
 	scriptPath := path.Join(scriptdir, "script")
 	scriptHandle, err := os.OpenFile(scriptPath, os.O_CREATE|os.O_WRONLY, 0744)

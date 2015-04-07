@@ -187,7 +187,7 @@ func (pod *Pod) buildRunitServices(launchables []hoist.Launchable) error {
 			return err
 		}
 		for _, executable := range executables {
-			sbTemplate.AddEntry(executable.Service.Name, executable.SBEntry())
+			sbTemplate.AddEntry(executable.Service.Name, executable.Exec)
 		}
 		if err != nil {
 			// Log the failure but continue

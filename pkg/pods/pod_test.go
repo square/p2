@@ -244,10 +244,10 @@ func TestBuildRunitServices(t *testing.T) {
 
 	expectedMap := map[string]interface{}{
 		executables[0].Service.Name: map[string]interface{}{
-			"run": executables[0].SBEntry(),
+			"run": executables[0].Exec,
 		},
 		executables[1].Service.Name: map[string]interface{}{
-			"run": executables[1].SBEntry(),
+			"run": executables[1].Exec,
 		},
 	}
 	expected, err := yaml.Marshal(expectedMap)
