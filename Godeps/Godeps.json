@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/square/p2",
-	"GoVersion": "go1.3",
+	"GoVersion": "go1.4.2",
 	"Packages": [
 		"./..."
 	],
@@ -17,6 +17,11 @@
 		{
 			"ImportPath": "github.com/anthonybishopric/gotcha",
 			"Rev": "584121597f0f6ea20dbd6b63ddf7440b86e379ed"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/consul/api",
+			"Comment": "v0.5.0-87-gd969655",
+			"Rev": "d969655cfa17b3758d60e0e6a3d75d2bdf0f93f2"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
