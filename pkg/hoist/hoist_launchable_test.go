@@ -1,7 +1,6 @@
 package hoist
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -9,9 +8,9 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
+	"gopkg.in/yaml.v2"
 
 	. "github.com/anthonybishopric/gotcha"
 )
@@ -34,8 +33,6 @@ func TestInstall(t *testing.T) {
 		ConfigDir:   launchableHome,
 		FetchToFile: fc.File,
 		RootDir:     launchableHome,
-		Chpst:       runit.FakeChpst(),
-		Cgexec:      cgroups.FakeCgexec(),
 	}
 
 	err = launchable.Install()
@@ -63,8 +60,6 @@ func TestInstallDir(t *testing.T) {
 		ConfigDir:   tempDir,
 		FetchToFile: new(FakeCurl).File,
 		RootDir:     tempDir,
-		Chpst:       "",
-		Cgexec:      "",
 	}
 
 	installDir := launchable.InstallDir()
@@ -200,35 +195,21 @@ func TestStart(t *testing.T) {
 	serviceBuilder := runit.FakeServiceBuilder()
 	sv := runit.FakeSV()
 	executables, err := hl.Executables(serviceBuilder)
-	sbContents := fmt.Sprintf(`%s:
-  run:
-  - /usr/bin/nolimit
-  - /usr/bin/chpst
-  - -u
-  - testPod:testPod
-  - -e
-  - %s
-  - %s
-%s:
-  run:
-  - /usr/bin/nolimit
-  - /usr/bin/chpst
-  - -u
-  - testPod:testPod
-  - -e
-  - %s
-  - %s
-`, executables[0].Service.Name,
-		hl.ConfigDir,
-		executables[0].ExecPath,
-		executables[1].Service.Name,
-		hl.ConfigDir,
-		executables[1].ExecPath)
-
 	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod__testLaunchable.yaml")
+
+	sbContentsMap := map[string]interface{}{
+		executables[0].Service.Name: map[string]interface{}{
+			"run": executables[0].Exec,
+		},
+		executables[1].Service.Name: map[string]interface{}{
+			"run": executables[1].Exec,
+		},
+	}
+	sbContents, err := yaml.Marshal(sbContentsMap)
+	Assert(t).IsNil(err, "should have no error marshalling servicebuilder map")
 	f, err := os.Open(outFilePath)
 	defer f.Close()
-	f.Write([]byte(sbContents))
+	f.Write(sbContents)
 
 	err = hl.start(serviceBuilder, sv)
 
@@ -244,34 +225,19 @@ func TestFailingStart(t *testing.T) {
 	executables, _ := hl.Executables(serviceBuilder)
 	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod__testLaunchable.yaml")
 
-	sbContents := fmt.Sprintf(`%s:
-  run:
-  - /usr/bin/nolimit
-  - /usr/bin/chpst
-  - -u
-  - testPod:testPod
-  - -e
-  - %s
-  - %s
-%s:
-  run:
-  - /usr/bin/nolimit
-  - /usr/bin/chpst
-  - -u
-  - testPod:testPod
-  - -e
-  - %s
-  - %s
-`, executables[0].Service.Name,
-		hl.ConfigDir,
-		executables[0].ExecPath,
-		executables[1].Service.Name,
-		hl.ConfigDir,
-		executables[1].ExecPath)
-
+	sbContentsMap := map[string]interface{}{
+		executables[0].Service.Name: map[string]interface{}{
+			"run": executables[0].Exec,
+		},
+		executables[1].Service.Name: map[string]interface{}{
+			"run": executables[1].Exec,
+		},
+	}
+	sbContents, err := yaml.Marshal(sbContentsMap)
+	Assert(t).IsNil(err, "should have no error marshalling servicebuilder map")
 	f, err := os.Open(outFilePath)
 	defer f.Close()
-	f.Write([]byte(sbContents))
+	f.Write(sbContents)
 
 	err = hl.start(serviceBuilder, sv)
 	Assert(t).IsNotNil(err, "Expected an error starting runit services")

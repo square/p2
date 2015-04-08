@@ -23,15 +23,15 @@ type Fetcher func(string, string) error
 
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type Launchable struct {
-	Location     string         // A URL where we can download the artifact from.
-	Id           string         // A unique identifier for this launchable, used when creating runit services
-	RunAs        string         // The user to assume when launching the executable
-	ConfigDir    string         // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
-	FetchToFile  Fetcher        // Callback that downloads the file from the remote location.
-	RootDir      string         // The root directory of the launchable, containing N:N>=1 installs.
-	Chpst        string         // The path to chpst
-	Cgexec       string         // The path to cgexec
-	CgroupConfig cgroups.Config // Cgroup parameters to use with cgexec
+	Location         string         // A URL where we can download the artifact from.
+	Id               string         // A unique identifier for this launchable, used when creating runit services
+	RunAs            string         // The user to assume when launching the executable
+	ConfigDir        string         // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
+	FetchToFile      Fetcher        // Callback that downloads the file from the remote location.
+	RootDir          string         // The root directory of the launchable, containing N:N>=1 installs.
+	P2exec           string         // The path to p2-exec
+	CgroupConfig     cgroups.Config // Cgroup parameters to use with p2-exec
+	CgroupConfigName string         // The string in PLATFORM_CONFIG to pass to p2-exec
 }
 
 func DefaultFetcher() Fetcher {
@@ -60,18 +60,8 @@ func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) e
 }
 
 func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-	cg, err := cgroups.Find()
-	if err != nil {
-		return util.Errorf("Could not find cgroups: %s", err)
-	}
-	err = cg.Write(hl.CgroupConfig)
-	if err != nil {
-		return util.Errorf("Could not configure cgroup %s: %s", hl.CgroupConfig.Name, err)
-	}
-
-	// Should probably do something with output at some point
 	// probably want to do something with output at some point
-	err = hl.start(serviceBuilder, sv)
+	err := hl.start(serviceBuilder, sv)
 	if err != nil {
 		return util.Errorf("Could not launch %s: %s", hl.Id, err)
 	}
@@ -121,7 +111,19 @@ func (hl *Launchable) invokeBinScript(script string) (string, error) {
 		return "", err
 	}
 
-	cmd := exec.Command(hl.Chpst, "-u", hl.RunAs, "-e", hl.ConfigDir, cmdPath)
+	cmd := exec.Command(
+		hl.P2exec,
+		"-n",
+		"-u",
+		hl.RunAs,
+		"-e",
+		hl.ConfigDir,
+		"-l",
+		hl.CgroupConfigName,
+		"-c",
+		hl.Id,
+		cmdPath,
+	)
 	buffer := bytes.Buffer{}
 	cmd.Stdout = &buffer
 	cmd.Stderr = &buffer
@@ -198,19 +200,26 @@ func (hl *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]Execu
 	var executables []Executable
 	for _, service := range services {
 		serviceName := fmt.Sprintf("%s__%s", hl.Id, service.Name())
+		execCmd := []string{
+			hl.P2exec,
+			"-n",
+			"-u",
+			hl.RunAs,
+			"-e",
+			hl.ConfigDir,
+			"-l",
+			hl.CgroupConfigName,
+			"-c",
+			hl.Id,
+			filepath.Join(serviceDir, service.Name()),
+		}
 
 		executables = append(executables, Executable{
 			Service: runit.Service{
 				Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
 				Name: serviceName,
 			},
-			ExecPath:     filepath.Join(serviceDir, service.Name()),
-			Chpst:        hl.Chpst,
-			Cgexec:       hl.Cgexec,
-			CgroupConfig: hl.CgroupConfig,
-			Nolimit:      "/usr/bin/nolimit",
-			RunAs:        hl.RunAs,
-			ConfigDir:    hl.ConfigDir,
+			Exec: execCmd,
 		})
 	}
 	return executables, nil

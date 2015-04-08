@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
@@ -225,12 +224,9 @@ func TestBuildRunitServices(t *testing.T) {
 		Id:             "testPod",
 		path:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
-		Chpst:          runit.FakeChpst(),
-		Cgexec:         cgroups.FakeCgexec(),
 	}
 	hl := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	hl.RunAs = "testPod"
-	hl.Cgexec = cgroups.FakeCgexec()
 	executables, err := hl.Executables(serviceBuilder)
 	outFilePath := filepath.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
@@ -244,10 +240,10 @@ func TestBuildRunitServices(t *testing.T) {
 
 	expectedMap := map[string]interface{}{
 		executables[0].Service.Name: map[string]interface{}{
-			"run": executables[0].SBEntry(),
+			"run": executables[0].Exec,
 		},
 		executables[1].Service.Name: map[string]interface{}{
-			"run": executables[1].SBEntry(),
+			"run": executables[1].Exec,
 		},
 	}
 	expected, err := yaml.Marshal(expectedMap)

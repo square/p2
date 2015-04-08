@@ -6,7 +6,6 @@ import (
 	"os/user"
 	"runtime"
 
-	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -33,7 +32,7 @@ func FakeHoistLaunchableForDir(dirName string) *Launchable {
 		ConfigDir:   tempDir,
 		FetchToFile: new(FakeCurl).File,
 		RootDir:     launchableInstallDir,
-		Chpst:       runit.FakeChpst(),
+		P2exec:      util.From(runtime.Caller(0)).ExpandPath("fake_p2-exec"),
 	}
 
 	curUser, err := user.Current()

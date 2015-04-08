@@ -97,7 +97,6 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 				runAs = hookPod.Id
 			}
 			hookPod.RunAs = runAs
-			hookPod.Cgexec = "" // do not use cgroups in a hook
 
 			// Figure out if we even need to install anything.
 			// Hooks aren't running services and so there isn't a need

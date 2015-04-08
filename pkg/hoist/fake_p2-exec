@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+
+options = {}
+OptionParser.new do |opts|
+  opts.on("-e", "--env ENV") { |e| }
+  opts.on("-u", "--user USER") { |u| }
+  opts.on("-l", "--launchbable LNAME") { |u| }
+  opts.on("-c", "--cgroup CGNAME") { |u| }
+  opts.on("-n", "--nolimit") { |u| }
+  opts.on("--clearenv") { |u| }
+end.parse!
+
+exec ARGV.join(" ")

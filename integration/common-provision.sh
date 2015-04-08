@@ -6,8 +6,8 @@
 set -ex
 
 # Install and setup Go
-curl https://storage.googleapis.com/golang/go1.3.3.linux-amd64.tar.gz > go1.3.3-linux-amd64.tar.gz
-sudo tar -C /usr/local -xvf go1.3.3-linux-amd64.tar.gz
+curl https://storage.googleapis.com/golang/go1.4.2.linux-amd64.tar.gz > go1.4.2-linux-amd64.tar.gz
+sudo tar -C /usr/local -xvf go1.4.2-linux-amd64.tar.gz
 sudo mkdir -p /usr/local/share/go
 sudo chown vagrant:vagrant /usr/local/share/go
 sudo sh -c 'echo "GOPATH=/usr/local/share/go" >> /etc/environment'
@@ -24,12 +24,10 @@ go get github.com/tools/godep
 # Build p2.
 cd $GOPATH/src/github.com/square/p2
 godep go install ./...
+cp $GOPATH/bin/p2-exec /usr/local/bin
 
 # Install ruby + rake
 sudo yum install -y ruby rubygem-rake
-
-# Install cgexec
-sudo yum install -y libcgroup libcgroup-tools
 
 # Install P2 test dependencies
 sudo yum -y --nogpgcheck localinstall $GOPATH/src/github.com/square/p2/integration/test-deps/*rpm
