@@ -24,12 +24,10 @@ go get github.com/tools/godep
 # Build p2.
 cd $GOPATH/src/github.com/square/p2
 godep go install ./...
+cp $GOPATH/bin/p2-exec /usr/local/bin
 
 # Install ruby + rake
 sudo yum install -y ruby rubygem-rake
-
-# Install cgexec
-sudo yum install -y libcgroup libcgroup-tools
 
 # Install P2 test dependencies
 sudo yum -y --nogpgcheck localinstall $GOPATH/src/github.com/square/p2/integration/test-deps/*rpm
