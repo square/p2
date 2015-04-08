@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/digest"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/logging"
@@ -27,6 +26,8 @@ var (
 
 const DEFAULT_PATH = "/data/pods"
 
+var DefaultP2Exec = "/usr/local/bin/p2-exec"
+
 func init() {
 	Log = logging.NewLogger(logrus.Fields{})
 }
@@ -42,8 +43,7 @@ type Pod struct {
 	logger         logging.Logger
 	SV             *runit.SV
 	ServiceBuilder *runit.ServiceBuilder
-	Chpst          string
-	Cgexec         string
+	P2exec         string
 }
 
 func NewPod(id string, path string) *Pod {
@@ -54,8 +54,7 @@ func NewPod(id string, path string) *Pod {
 		logger:         Log.SubLogger(logrus.Fields{"pod": id}),
 		SV:             runit.DefaultSV,
 		ServiceBuilder: runit.DefaultBuilder,
-		Chpst:          runit.DefaultChpst,
-		Cgexec:         cgroups.DefaultCgexec,
+		P2exec:         DefaultP2Exec,
 	}
 }
 
@@ -532,15 +531,15 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*hoist.Launcha
 		launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
 		ret := &hoist.Launchable{
-			Location:     launchableStanza.Location,
-			Id:           launchableId,
-			RunAs:        pod.RunAs,
-			ConfigDir:    pod.EnvDir(),
-			FetchToFile:  hoist.DefaultFetcher(),
-			RootDir:      launchableRootDir,
-			Chpst:        pod.Chpst,
-			Cgexec:       pod.Cgexec,
-			CgroupConfig: launchableStanza.CgroupConfig,
+			Location:         launchableStanza.Location,
+			Id:               launchableId,
+			RunAs:            pod.RunAs,
+			ConfigDir:        pod.EnvDir(),
+			FetchToFile:      hoist.DefaultFetcher(),
+			RootDir:          launchableRootDir,
+			P2exec:           pod.P2exec,
+			CgroupConfig:     launchableStanza.CgroupConfig,
+			CgroupConfigName: launchableStanza.LaunchableId,
 		}
 		ret.CgroupConfig.Name = ret.Id
 		return ret, nil

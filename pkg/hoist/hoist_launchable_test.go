@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
 	"gopkg.in/yaml.v2"
@@ -34,8 +33,6 @@ func TestInstall(t *testing.T) {
 		ConfigDir:   launchableHome,
 		FetchToFile: fc.File,
 		RootDir:     launchableHome,
-		Chpst:       runit.FakeChpst(),
-		Cgexec:      cgroups.FakeCgexec(),
 	}
 
 	err = launchable.Install()
@@ -63,8 +60,6 @@ func TestInstallDir(t *testing.T) {
 		ConfigDir:   tempDir,
 		FetchToFile: new(FakeCurl).File,
 		RootDir:     tempDir,
-		Chpst:       "",
-		Cgexec:      "",
 	}
 
 	installDir := launchable.InstallDir()
