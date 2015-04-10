@@ -1,1 +1,4 @@
 app: "multicurse"
+foomap:
+  a: b
+  c: d
