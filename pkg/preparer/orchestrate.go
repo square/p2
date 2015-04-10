@@ -1,6 +1,7 @@
 package preparer
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -181,7 +182,7 @@ func (p *Preparer) verifySignature(manifest pods.Manifest, logger logging.Logger
 
 	signer, err := manifest.Signer(p.keyring)
 	if signer != nil {
-		signerId := signer.PrimaryKey.KeyIdShortString()
+		signerId := fmt.Sprintf("%X", signer.PrimaryKey.Fingerprint)
 		logger.WithField("signer_key", signerId).Debugln("Resolved manifest signature")
 
 		// Hmm, some hacks here.
