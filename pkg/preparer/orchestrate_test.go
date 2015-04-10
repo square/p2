@@ -342,7 +342,7 @@ func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 	sig := ""
 	manifest, fakeSigner := testSignedManifest(t, func(m *pods.Manifest, e *openpgp.Entity) {
 		m.Id = POD_ID
-		sig = e.PrimaryKey.KeyIdShortString()
+		sig = fmt.Sprintf("%X", e.PrimaryKey.Fingerprint)
 	})
 
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
