@@ -44,3 +44,11 @@ func TestConfigCanBeReadFromEnvironment(t *testing.T) {
 	Assert(t).IsNil(err, "Expected app to be a valid key read by string")
 	Assert(t).AreEqual(app, "multicurse", "Expected environment-backed config to be able to read the app name")
 }
+
+func TestConfigDeterministicKeyOrdering(t *testing.T) {
+	conf, err := readTestFile().ReadMap("foomap")
+	Assert(t).IsNil(err, "foomap should be a map")
+	keys := conf.Keys()
+	Assert(t).AreEqual(keys[0], "a", "key a should have come first")
+	Assert(t).AreEqual(keys[1], "c", "key c should have come second")
+}

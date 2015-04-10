@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"sort"
 
 	"gopkg.in/yaml.v2"
 )
@@ -73,5 +74,6 @@ func (c *Config) Keys() []string {
 			keys = append(keys, strVal)
 		}
 	}
+	sort.Strings(keys)
 	return keys
 }
