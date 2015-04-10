@@ -88,3 +88,16 @@ func TestNilPodManifestHasEmptySHA(t *testing.T) {
 	Assert(t).AreEqual("", content, "the SHA should have been empty")
 	Assert(t).IsNotNil(err, "Should have had an error when attempting to read SHA from nil manifest")
 }
+
+func TestRunAs(t *testing.T) {
+	config := testPod()
+	manifest, err := ManifestFromBytes(bytes.NewBufferString(config).Bytes())
+	Assert(t).IsNil(err, "should not have erred when building manifest")
+
+	Assert(t).AreEqual(manifest.RunAsUser(), manifest.ID(), "RunAsUser() didn't match expectations")
+
+	config += `run_as: specialuser`
+	manifest, err = ManifestFromBytes(bytes.NewBufferString(config).Bytes())
+	Assert(t).IsNil(err, "should not have erred when building manifest")
+	Assert(t).AreEqual(manifest.RunAsUser(), "specialuser", "RunAsUser() didn't match expectations")
+}

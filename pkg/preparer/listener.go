@@ -10,7 +10,6 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/cgroups"
-	"github.com/square/p2/pkg/config"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
@@ -80,23 +79,6 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 			}
 
 			hookPod := pods.NewPod(result.Manifest.ID(), path.Join(l.DestinationDir, event, result.Manifest.ID()))
-
-			// Hooks may specify a user to run as - by default they will run as their pod ID.
-			topLevelConfig := config.LoadFromUnpacked(result.Manifest.Config)
-			hookConfig, err := topLevelConfig.ReadMap("hook")
-			if err != nil {
-				sub.WithField("err", err).Errorln("Hook configuration is invalid")
-				break
-			}
-			runAs, err := hookConfig.ReadString("run_as")
-			if err != nil {
-				sub.WithField("err", err).Errorln("Hook configuration is invalid")
-				break
-			}
-			if runAs == "" {
-				runAs = hookPod.Id
-			}
-			hookPod.RunAs = runAs
 
 			// Figure out if we even need to install anything.
 			// Hooks aren't running services and so there isn't a need

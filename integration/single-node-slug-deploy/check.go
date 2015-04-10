@@ -52,10 +52,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not execute bootstrap: %s", err)
 	}
-	// _, err = user.CreateUser("hello", pods.PodPath("hello"))
-	// if err != nil && err != user.AlreadyExists {
-	// 	log.Fatalf("Could not create user: %s", err)
-	// }
 	err = scheduleUserCreationHook(tempdir)
 	if err != nil {
 		log.Fatalf("Couldn't schedule the user creation hook: %s", err)
@@ -107,6 +103,7 @@ func generatePreparerPod(workdir string) (string, error) {
 	manifest.Config["preparer"] = map[string]interface{}{
 		"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
 	}
+	manifest.RunAs = "root"
 	f, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return "", err
@@ -143,9 +140,7 @@ mkdir -p $HOOKED_POD_HOME
 		return err
 	}
 
-	userHookManifest.Config["hook"] = map[interface{}]interface{}{
-		"run_as": "root",
-	}
+	userHookManifest.RunAs = "root"
 	contents, err := userHookManifest.Bytes()
 	if err != nil {
 		return err

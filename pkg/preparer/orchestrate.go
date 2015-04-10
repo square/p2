@@ -155,13 +155,6 @@ func (p *Preparer) handlePods(podChan <-chan pods.Manifest, quit <-chan struct{}
 			if working {
 				pod := pods.NewPod(manifestToLaunch.ID(), pods.PodPath(p.podRoot, manifestToLaunch.ID()))
 
-				// HACK ZONE. When we have better authz, rewrite.
-				// Still need to ensure that preparer launches correctly
-				// as root
-				if pod.Id == POD_ID {
-					pod.RunAs = "root"
-				}
-
 				ok := p.installAndLaunchPod(&manifestToLaunch, pod, manifestLogger)
 				if ok {
 					manifestToLaunch = pods.Manifest{}
@@ -213,8 +206,11 @@ func (p *Preparer) verifySignature(manifest pods.Manifest, logger logging.Logger
 func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logger logging.Logger) bool {
 	// do not remove the logger argument, it's not the same as p.Logger
 
-	if p.podIdForbidden(newManifest.ID()) {
-		logger.WithField("pod", newManifest.ID()).Errorln("Cannot use this pod ID")
+	if newManifest.ID() != POD_ID && p.podIdForbidden(newManifest.RunAsUser()) {
+		logger.WithFields(logrus.Fields{
+			"pod":    newManifest.ID(),
+			"run_as": newManifest.RunAsUser(),
+		}).Errorln("Invalid run_as user")
 		p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pod, newManifest, logger)
 		return false
 	}
@@ -229,7 +225,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 	newSHA, _ := newManifest.SHA()
 
 	// if new or the manifest is different, launch
-	newOrDifferent := err == pods.NoCurrentManifest || currentSHA != newSHA
+	newOrDifferent := (err == pods.NoCurrentManifest) || (currentSHA != newSHA)
 	if newOrDifferent {
 		logger.WithFields(logrus.Fields{
 			"old_sha": currentSHA,
