@@ -1,6 +1,9 @@
 package main
 
 import (
+	// #include <sys/resource.h>
+	"C"
+
 	"io/ioutil"
 	"log"
 	"os"
@@ -138,7 +141,7 @@ func loadEnvDir(dir string) error {
 //   cgroup:
 //     cpus: 4
 //     memory: 123456
-// and a cgroup name specification in this format: "<launchablename>:<cgroupname>"
+// and the <launchablename> and <cgroupname>
 // a cgroup with the name <cgroupname> will be created, using the parameters for
 // <launchablename> found in the platform configuration
 // then, the current PID will be added to that cgroup
@@ -171,4 +174,45 @@ func cgEnter(platconf, launchableName, cgroupName string) error {
 		return util.Errorf("Could not set cgroup parameters: %s", err)
 	}
 	return cg.AddPID(cgConfig.Name, os.Getpid())
+}
+
+// generalized code to remove rlimits on both darwin and linux
+func nolimit() error {
+	maxFDs, err := sysMaxFDs()
+	if err != nil {
+		return util.Errorf("Could not determine max FDs on system: %s", err)
+	}
+
+	ret, err := C.setrlimit(C.RLIMIT_NOFILE, maxFDs)
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not set RLIMIT_NOFILE (max FDs %v): %s", maxFDs, err)
+	}
+
+	unlimit := sysUnRlimit()
+	ret, err = C.setrlimit(C.RLIMIT_CPU, unlimit)
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not set RLIMIT_CPU: %s", err)
+	}
+	ret, err = C.setrlimit(C.RLIMIT_DATA, unlimit)
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not set RLIMIT_DATA: %s", err)
+	}
+	ret, err = C.setrlimit(C.RLIMIT_FSIZE, unlimit)
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not set RLIMIT_FSIZE: %s", err)
+	}
+
+	ret, err = C.setrlimit(C.RLIMIT_MEMLOCK, unlimit)
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not set RLIMIT_MEMLOCK: %s", err)
+	}
+	ret, err = C.setrlimit(C.RLIMIT_NPROC, unlimit)
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not set RLIMIT_NPROC: %s", err)
+	}
+	ret, err = C.setrlimit(C.RLIMIT_RSS, unlimit)
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not set RLIMIT_RSS: %s", err)
+	}
+	return nil
 }

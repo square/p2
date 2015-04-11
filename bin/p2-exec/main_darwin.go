@@ -15,43 +15,18 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-func nolimit() error {
-	maxFDs := C.OPEN_MAX
-	ret, err := C.setrlimit(C.RLIMIT_NOFILE, &C.struct_rlimit{C.rlim_t(maxFDs), C.rlim_t(maxFDs)})
-	if ret != 0 && err != nil {
-		return util.Errorf("Could not set RLIMIT_NOFILE (max FDs %v): %s", maxFDs, err)
-	}
+func sysMaxFDs() (*C.struct_rlimit, error) {
+	return &C.struct_rlimit{
+		C.rlim_t(C.OPEN_MAX),
+		C.rlim_t(C.OPEN_MAX),
+	}, nil
+}
 
-	unlimit := &C.struct_rlimit{
+func sysUnRlimit() *C.struct_rlimit {
+	return &C.struct_rlimit{
 		C.rlim_t(C.RLIM_INFINITY),
 		C.rlim_t(C.RLIM_INFINITY),
 	}
-	ret, err = C.setrlimit(C.RLIMIT_CPU, unlimit)
-	if ret != 0 && err != nil {
-		return util.Errorf("Could not set RLIMIT_CPU: %s", err)
-	}
-	ret, err = C.setrlimit(C.RLIMIT_DATA, unlimit)
-	if ret != 0 && err != nil {
-		return util.Errorf("Could not set RLIMIT_DATA: %s", err)
-	}
-	ret, err = C.setrlimit(C.RLIMIT_FSIZE, unlimit)
-	if ret != 0 && err != nil {
-		return util.Errorf("Could not set RLIMIT_FSIZE: %s", err)
-	}
-
-	ret, err = C.setrlimit(C.RLIMIT_MEMLOCK, unlimit)
-	if ret != 0 && err != nil {
-		return util.Errorf("Could not set RLIMIT_MEMLOCK: %s", err)
-	}
-	ret, err = C.setrlimit(C.RLIMIT_NPROC, unlimit)
-	if ret != 0 && err != nil {
-		return util.Errorf("Could not set RLIMIT_NPROC: %s", err)
-	}
-	ret, err = C.setrlimit(C.RLIMIT_RSS, unlimit)
-	if ret != 0 && err != nil {
-		return util.Errorf("Could not set RLIMIT_RSS: %s", err)
-	}
-	return nil
 }
 
 func changeUser(username string) error {
