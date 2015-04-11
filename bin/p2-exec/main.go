@@ -58,10 +58,14 @@ func main() {
 	if *launchableName != "" && *cgroupName == "" {
 		log.Fatalf("Specified launchable name %q, but no cgroup name was specified", *launchableName)
 	}
-	if platconf := os.Getenv("PLATFORM_CONFIG_PATH"); platconf != "" && *launchableName != "" && *cgroupName != "" {
-		err := cgEnter(platconf, *launchableName, *cgroupName)
-		if err != nil {
-			log.Fatal(err)
+	if *launchableName != "" && *cgroupName != "" {
+		if platconf := os.Getenv("PLATFORM_CONFIG_PATH"); platconf != "" {
+			err := cgEnter(platconf, *launchableName, *cgroupName)
+			if err != nil {
+				log.Fatal(err)
+			}
+		} else {
+			log.Fatal("No PLATFORM_CONFIG_PATH, cannot determine cgroup")
 		}
 	}
 
