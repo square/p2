@@ -26,8 +26,8 @@ func nolimit() error {
 		return err
 	}
 
-	_, err = C.setrlimit(C.RLIMIT_NOFILE, &C.struct_rlimit{C.rlim_t(maxFDs), C.rlim_t(maxFDs)})
-	if err != nil {
+	ret, err := C.setrlimit(C.RLIMIT_NOFILE, &C.struct_rlimit{C.rlim_t(maxFDs), C.rlim_t(maxFDs)})
+	if ret != 0 && err != nil {
 		return err
 	}
 
@@ -36,29 +36,29 @@ func nolimit() error {
 		C.rlim_t(inf),
 		C.rlim_t(inf),
 	}
-	_, err = C.setrlimit(C.RLIMIT_CPU, unlimit)
-	if err != nil {
+	ret, err = C.setrlimit(C.RLIMIT_CPU, unlimit)
+	if ret != 0 && err != nil {
 		return err
 	}
-	_, err = C.setrlimit(C.RLIMIT_DATA, unlimit)
-	if err != nil {
+	ret, err = C.setrlimit(C.RLIMIT_DATA, unlimit)
+	if ret != 0 && err != nil {
 		return err
 	}
-	_, err = C.setrlimit(C.RLIMIT_FSIZE, unlimit)
-	if err != nil {
+	ret, err = C.setrlimit(C.RLIMIT_FSIZE, unlimit)
+	if ret != 0 && err != nil {
 		return err
 	}
 
-	_, err = C.setrlimit(C.RLIMIT_MEMLOCK, unlimit)
-	if err != nil {
+	ret, err = C.setrlimit(C.RLIMIT_MEMLOCK, unlimit)
+	if ret != 0 && err != nil {
 		return err
 	}
-	_, err = C.setrlimit(C.RLIMIT_NPROC, unlimit)
-	if err != nil {
+	ret, err = C.setrlimit(C.RLIMIT_NPROC, unlimit)
+	if ret != 0 && err != nil {
 		return err
 	}
-	_, err = C.setrlimit(C.RLIMIT_RSS, unlimit)
-	if err != nil {
+	ret, err = C.setrlimit(C.RLIMIT_RSS, unlimit)
+	if ret != 0 && err != nil {
 		return err
 	}
 	return nil
@@ -73,16 +73,16 @@ func changeUser(username string) error {
 	userCstring := C.CString(username)
 	defer C.free(unsafe.Pointer(userCstring))
 
-	_, err = C.initgroups(userCstring, C.__gid_t(gid))
-	if err != nil {
+	ret, err := C.initgroups(userCstring, C.__gid_t(gid))
+	if ret != 0 && err != nil {
 		return err
 	}
-	_, err = C.setgid(C.__gid_t(gid))
-	if err != nil {
+	ret, err = C.setgid(C.__gid_t(gid))
+	if ret != 0 && err != nil {
 		return err
 	}
-	_, err = C.setuid(C.__uid_t(uid))
-	if err != nil {
+	ret, err = C.setuid(C.__uid_t(uid))
+	if ret != 0 && err != nil {
 		return err
 	}
 	return nil
