@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/util"
@@ -42,13 +41,6 @@ func main() {
 		}
 	}
 
-	if *nolim {
-		err := nolimit()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
 	if *launchableName == "" && *cgroupName != "" {
 		log.Fatal("Specified cgroup name %q, but no launchable name was specified", *cgroupName)
 	}
@@ -62,21 +54,15 @@ func main() {
 		}
 	}
 
-	if *username != "" {
-		err := changeUser(*username)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
 	binPath, err := exec.LookPath((*cmd)[0])
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = syscall.Exec(binPath, *cmd, os.Environ())
-	// should never be reached
+
+	err = rlimDropExec(*username, binPath, *cmd)
+	// unreachable
 	if err != nil {
-		log.Fatalf("Error executing command %q: %s", *cmd, err)
+		log.Fatal(err)
 	}
 }
 
