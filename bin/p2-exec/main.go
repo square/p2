@@ -1,6 +1,9 @@
 package main
 
 import (
+	// #include <sys/resource.h>
+	"C"
+
 	"io/ioutil"
 	"log"
 	"os"
@@ -50,15 +53,19 @@ func main() {
 	}
 
 	if *launchableName == "" && *cgroupName != "" {
-		log.Fatal("Specified cgroup name %q, but no launchable name was specified", *cgroupName)
+		log.Fatalf("Specified cgroup name %q, but no launchable name was specified", *cgroupName)
 	}
 	if *launchableName != "" && *cgroupName == "" {
-		log.Fatal("Specified launchable name %q, but no cgroup name was specified", *launchableName)
+		log.Fatalf("Specified launchable name %q, but no cgroup name was specified", *launchableName)
 	}
-	if platconf := os.Getenv("PLATFORM_CONFIG_PATH"); platconf != "" && *launchableName != "" && *cgroupName != "" {
-		err := cgEnter(platconf, *launchableName, *cgroupName)
-		if err != nil {
-			log.Fatal(err)
+	if *launchableName != "" && *cgroupName != "" {
+		if platconf := os.Getenv("PLATFORM_CONFIG_PATH"); platconf != "" {
+			err := cgEnter(platconf, *launchableName, *cgroupName)
+			if err != nil {
+				log.Fatal(err)
+			}
+		} else {
+			log.Fatal("No PLATFORM_CONFIG_PATH, cannot determine cgroup")
 		}
 	}
 
@@ -97,7 +104,7 @@ func loadEnvDir(dir string) error {
 		}
 		envBytes, err := ioutil.ReadFile(filepath.Join(dir, envFile.Name()))
 		if err != nil {
-			return err
+			return util.Errorf("Could not read %q: %s", filepath.Join(dir, envFile.Name()), err)
 		}
 		enval := string(envBytes)
 
@@ -105,7 +112,7 @@ func loadEnvDir(dir string) error {
 		if len(enval) == 0 {
 			err = os.Unsetenv(envFile.Name())
 			if err != nil {
-				return err
+				return util.Errorf("Could not unsetenv %q: %s", envFile.Name(), err)
 			}
 			continue
 		}
@@ -126,7 +133,7 @@ func loadEnvDir(dir string) error {
 
 		err = os.Setenv(envFile.Name(), enval)
 		if err != nil {
-			return err
+			return util.Errorf("Could not setenv %q to %q: %s", envFile.Name(), enval, err)
 		}
 	}
 
@@ -138,7 +145,7 @@ func loadEnvDir(dir string) error {
 //   cgroup:
 //     cpus: 4
 //     memory: 123456
-// and a cgroup name specification in this format: "<launchablename>:<cgroupname>"
+// and the <launchablename> and <cgroupname>
 // a cgroup with the name <cgroupname> will be created, using the parameters for
 // <launchablename> found in the platform configuration
 // then, the current PID will be added to that cgroup
@@ -164,11 +171,52 @@ func cgEnter(platconf, launchableName, cgroupName string) error {
 
 	cg, err := cgroups.Find()
 	if err != nil {
-		return err
+		return util.Errorf("Could not find cgroupfs mount point: %s", err)
 	}
 	err = cg.Write(cgConfig)
 	if err != nil {
-		return err
+		return util.Errorf("Could not set cgroup parameters: %s", err)
 	}
 	return cg.AddPID(cgConfig.Name, os.Getpid())
+}
+
+// generalized code to remove rlimits on both darwin and linux
+func nolimit() error {
+	maxFDs, err := sysMaxFDs()
+	if err != nil {
+		return util.Errorf("Could not determine max FDs on system: %s", err)
+	}
+
+	ret, err := C.setrlimit(C.RLIMIT_NOFILE, maxFDs)
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not set RLIMIT_NOFILE (max FDs %v): %s", maxFDs, err)
+	}
+
+	unlimit := sysUnRlimit()
+	ret, err = C.setrlimit(C.RLIMIT_CPU, unlimit)
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not set RLIMIT_CPU: %s", err)
+	}
+	ret, err = C.setrlimit(C.RLIMIT_DATA, unlimit)
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not set RLIMIT_DATA: %s", err)
+	}
+	ret, err = C.setrlimit(C.RLIMIT_FSIZE, unlimit)
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not set RLIMIT_FSIZE: %s", err)
+	}
+
+	ret, err = C.setrlimit(C.RLIMIT_MEMLOCK, unlimit)
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not set RLIMIT_MEMLOCK: %s", err)
+	}
+	ret, err = C.setrlimit(C.RLIMIT_NPROC, unlimit)
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not set RLIMIT_NPROC: %s", err)
+	}
+	ret, err = C.setrlimit(C.RLIMIT_RSS, unlimit)
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not set RLIMIT_RSS: %s", err)
+	}
+	return nil
 }

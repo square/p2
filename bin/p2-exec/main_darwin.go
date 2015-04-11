@@ -12,66 +12,43 @@ import (
 	"unsafe"
 
 	"github.com/square/p2/pkg/user"
+	"github.com/square/p2/pkg/util"
 )
 
-func nolimit() error {
-	maxFDs := C.OPEN_MAX
-	_, err := C.setrlimit(C.RLIMIT_NOFILE, &C.struct_rlimit{C.rlim_t(maxFDs), C.rlim_t(maxFDs)})
-	if err != nil {
-		return err
-	}
+func sysMaxFDs() (*C.struct_rlimit, error) {
+	return &C.struct_rlimit{
+		C.rlim_t(C.OPEN_MAX),
+		C.rlim_t(C.OPEN_MAX),
+	}, nil
+}
 
-	unlimit := &C.struct_rlimit{
+func sysUnRlimit() *C.struct_rlimit {
+	return &C.struct_rlimit{
 		C.rlim_t(C.RLIM_INFINITY),
 		C.rlim_t(C.RLIM_INFINITY),
 	}
-	_, err = C.setrlimit(C.RLIMIT_CPU, unlimit)
-	if err != nil {
-		return err
-	}
-	_, err = C.setrlimit(C.RLIMIT_DATA, unlimit)
-	if err != nil {
-		return err
-	}
-	_, err = C.setrlimit(C.RLIMIT_FSIZE, unlimit)
-	if err != nil {
-		return err
-	}
-	_, err = C.setrlimit(C.RLIMIT_MEMLOCK, unlimit)
-	if err != nil {
-		return err
-	}
-	_, err = C.setrlimit(C.RLIMIT_NPROC, unlimit)
-	if err != nil {
-		return err
-	}
-	_, err = C.setrlimit(C.RLIMIT_RSS, unlimit)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func changeUser(username string) error {
 	uid, gid, err := user.IDs(username)
 	if err != nil {
-		return err
+		return util.Errorf("Could not retrieve uid/gid for %q: %s", username, err)
 	}
 
 	userCstring := C.CString(username)
 	defer C.free(unsafe.Pointer(userCstring))
 
-	_, err = C.initgroups(userCstring, C.int(gid))
-	if err != nil {
-		return err
+	ret, err := C.initgroups(userCstring, C.int(gid))
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not initgroups for %q (primary gid %v): %s", username, gid, err)
 	}
-	_, err = C.setgid(C.gid_t(gid))
-	if err != nil {
-		return err
+	ret, err = C.setgid(C.gid_t(gid))
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not setgid %v: %s", gid, err)
 	}
-	_, err = C.setuid(C.uid_t(uid))
-	if err != nil {
-		return err
+	ret, err = C.setuid(C.uid_t(uid))
+	if ret != 0 && err != nil {
+		return util.Errorf("Could not setuid %v: %s", uid, err)
 	}
 	return nil
 }
