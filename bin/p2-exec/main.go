@@ -50,10 +50,10 @@ func main() {
 	}
 
 	if *launchableName == "" && *cgroupName != "" {
-		log.Fatal("Specified cgroup name %q, but no launchable name was specified", *cgroupName)
+		log.Fatalf("Specified cgroup name %q, but no launchable name was specified", *cgroupName)
 	}
 	if *launchableName != "" && *cgroupName == "" {
-		log.Fatal("Specified launchable name %q, but no cgroup name was specified", *launchableName)
+		log.Fatalf("Specified launchable name %q, but no cgroup name was specified", *launchableName)
 	}
 	if platconf := os.Getenv("PLATFORM_CONFIG_PATH"); platconf != "" && *launchableName != "" && *cgroupName != "" {
 		err := cgEnter(platconf, *launchableName, *cgroupName)
@@ -97,7 +97,7 @@ func loadEnvDir(dir string) error {
 		}
 		envBytes, err := ioutil.ReadFile(filepath.Join(dir, envFile.Name()))
 		if err != nil {
-			return err
+			return util.Errorf("Could not read %q: %s", filepath.Join(dir, envFile.Name()), err)
 		}
 		enval := string(envBytes)
 
@@ -105,7 +105,7 @@ func loadEnvDir(dir string) error {
 		if len(enval) == 0 {
 			err = os.Unsetenv(envFile.Name())
 			if err != nil {
-				return err
+				return util.Errorf("Could not unsetenv %q: %s", envFile.Name(), err)
 			}
 			continue
 		}
@@ -126,7 +126,7 @@ func loadEnvDir(dir string) error {
 
 		err = os.Setenv(envFile.Name(), enval)
 		if err != nil {
-			return err
+			return util.Errorf("Could not setenv %q to %q: %s", envFile.Name(), enval, err)
 		}
 	}
 
@@ -164,11 +164,11 @@ func cgEnter(platconf, launchableName, cgroupName string) error {
 
 	cg, err := cgroups.Find()
 	if err != nil {
-		return err
+		return util.Errorf("Could not find cgroupfs mount point: %s", err)
 	}
 	err = cg.Write(cgConfig)
 	if err != nil {
-		return err
+		return util.Errorf("Could not set cgroup parameters: %s", err)
 	}
 	return cg.AddPID(cgConfig.Name, os.Getpid())
 }
