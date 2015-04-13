@@ -507,20 +507,14 @@ func writeEnvFile(envDir, name, value string, uid, gid int) error {
 
 func (pod *Pod) Launchables(manifest *Manifest) ([]hoist.Launchable, error) {
 	launchableStanzas := manifest.LaunchableStanzas
-	if len(launchableStanzas) == 0 {
-		return nil, util.Errorf("Pod must provide at least one launchable, none found")
-	}
+	launchables := make([]hoist.Launchable, 0, len(launchableStanzas))
 
-	launchables := make([]hoist.Launchable, len(launchableStanzas))
-	var i int = 0
 	for _, launchableStanza := range launchableStanzas {
-
 		launchable, err := pod.getLaunchable(launchableStanza)
 		if err != nil {
 			return nil, err
 		}
-		launchables[i] = *launchable
-		i++
+		launchables = append(launchables, *launchable)
 	}
 
 	return launchables, nil
