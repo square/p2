@@ -52,7 +52,6 @@ func AsHookType(value string) (HookType, error) {
 	default:
 		return HookType(""), fmt.Errorf("%s is not a valid hook type", value)
 	}
-
 }
 
 func Hooks(dirpath string, logger *logging.Logger) *HookDir {

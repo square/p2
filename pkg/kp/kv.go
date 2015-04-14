@@ -134,7 +134,6 @@ func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan ch
 				}
 			}
 		}
-
 	}
 }
 

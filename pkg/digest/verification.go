@@ -19,6 +19,7 @@ const hashLength = sha256.Size * 2 // the length in hexadecimal for a sha256 has
 // not match, or if there are files missing (from the digest or the tree),
 // an error is returned.
 func VerifyDir(root string, digest map[string]string) error {
+	foundFiles := map[string]bool{}
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
 			return nil
@@ -43,7 +44,8 @@ func VerifyDir(root string, digest map[string]string) error {
 		if !ok {
 			return util.Errorf("File %s (full path %s) was not in digest", relPath, path)
 		}
-		delete(digest, relPath)
+		// `foundFiles` is always a subset of `digest`
+		foundFiles[relPath] = true
 
 		fd, err := os.Open(path)
 		if err != nil {
@@ -67,15 +69,17 @@ func VerifyDir(root string, digest map[string]string) error {
 	if err != nil {
 		return err
 	}
-	if len(digest) != 0 {
+	// By construction `foundFiles` is a subset of `digest`, so this
+	// is a faster check for equivalence.
+	if len(digest) != len(foundFiles) {
 		return util.Errorf("Not all files in the digest were found")
 	}
 	return nil
 }
 
 // Parses a sha256sum digest at the given digest path, with a detached PGP
-// signature at the given signature path. The signer's public key should be on
-// the given keyring.
+// signature at the given signature path. The given keyring should contain
+// public keys for all trusted signers.
 func ParseSignedDigestFiles(digestPath string, signaturePath string, keyring openpgp.KeyRing) (map[string]string, error) {
 	digest, err := os.Open(digestPath)
 	if err != nil {
@@ -103,9 +107,9 @@ func ParseSignedDigestFiles(digestPath string, signaturePath string, keyring ope
 	return ParseDigest(digest)
 }
 
-// Parses a sha256sum digest. Each line is a 64-character sha256 hash in
-// lowercase hexadecimal, followed by a space, followed by a space or
-// asterisk (indicating text or binary), followed by a filename.
+// Parses a sha256sum digest. Each line is a 64-character sha256 hash
+// in lowercase hexadecimal, followed by a space, followed by an
+// unused mode character, followed by a filename.
 func ParseDigest(r io.Reader) (map[string]string, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Split(bufio.ScanLines)

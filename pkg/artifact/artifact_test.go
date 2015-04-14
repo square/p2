@@ -28,3 +28,26 @@ func TestArtifactsCanReadAppManifests(t *testing.T) {
 	Assert(t).IsTrue(len(manifest.Ports) > 0, "Should have had more than one port")
 	Assert(t).AreEqual(manifest.Ports[43770][0], "http", "Should have retrieved port from app manifest")
 }
+
+func TestArtifactNaming(t *testing.T) {
+	Assert(t).IsTrue(
+		tarAppNameParse.MatchString("myapp_123.tar.gz"),
+		"myapp_123.tar.gz",
+	)
+	Assert(t).IsTrue(
+		tarAppNameParse.MatchString("myapp_123.tar"),
+		"myapp_123.tar",
+	)
+	Assert(t).IsTrue(
+		tarAppNameParse.MatchString("ab_cd_efg.tar"),
+		"ab_cd_efg.tar",
+	)
+	Assert(t).IsFalse(
+		tarAppNameParse.MatchString("myapp_123.tar.bz2"),
+		"myapp_123.tar.bz2",
+	)
+	Assert(t).IsFalse(
+		tarAppNameParse.MatchString("mÿapp_123.tar.gz"),
+		"mÿapp_123.tar.gz",
+	)
+}

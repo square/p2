@@ -33,7 +33,7 @@ func (err UnsupportedError) Error() string {
 // Find retrieves the mount points for all cgroup subsystems on the host. The
 // result of this operation should be cached if possible.
 func Find() (Subsystems, error) {
-	// refer to `man proc` or
+	// For details about how this file is structured, refer to `man proc` or
 	// https://www.kernel.org/doc/Documentation/filesystems/proc.txt section 3.5
 	mountInfo, err := os.Open("/proc/self/mountinfo")
 	if err != nil {
@@ -45,14 +45,20 @@ func Find() (Subsystems, error) {
 	scanner := bufio.NewScanner(mountInfo)
 	for scanner.Scan() {
 		lineSegs := strings.Fields(scanner.Text())
-		if lineSegs[len(lineSegs)-3] != "cgroup" {
+		nSegs := len(lineSegs)
+		if nSegs < 10 || lineSegs[nSegs-4] != "-" {
+			return Subsystems{}, fmt.Errorf("mountinfo: unrecognized format")
+		}
+		mountPoint := lineSegs[4]
+		fsType := lineSegs[nSegs-3]
+		superOptions := strings.Split(lineSegs[nSegs-1], ",")
+
+		if fsType != "cgroup" {
 			// filesystem type is not "cgroup", skip
 			continue
 		}
-		mountPoint := lineSegs[4]
 
-		cgroupSuperOpts := strings.Split(lineSegs[len(lineSegs)-1], ",")
-		for _, opt := range cgroupSuperOpts {
+		for _, opt := range superOptions {
 			switch opt {
 			case "cpu":
 				ret.CPU = mountPoint
@@ -86,12 +92,20 @@ func (subsys Subsystems) SetCPU(name string, cpus int) error {
 		return err
 	}
 
-	_, err = writeIfChanged(filepath.Join(subsys.CPU, name, "cpu.cfs_period_us"), []byte(strconv.Itoa(period)+"\n"), 0)
+	_, err = writeIfChanged(
+		filepath.Join(subsys.CPU, name, "cpu.cfs_period_us"),
+		[]byte(strconv.Itoa(period)+"\n"),
+		0,
+	)
 	if err != nil {
 		return err
 	}
 
-	_, err = writeIfChanged(filepath.Join(subsys.CPU, name, "cpu.cfs_quota_us"), []byte(strconv.Itoa(quota)+"\n"), 0)
+	_, err = writeIfChanged(
+		filepath.Join(subsys.CPU, name, "cpu.cfs_quota_us"),
+		[]byte(strconv.Itoa(quota)+"\n"),
+		0,
+	)
 	if err != nil {
 		return err
 	}
@@ -107,7 +121,11 @@ func (subsys Subsystems) SetMemory(name string, bytes int) error {
 	}
 
 	softLimit := bytes
-	hardLimit := bytes * 11 / 10
+	hardLimit := bytes + bytes/10
+	if hardLimit < softLimit {
+		// Deal with overflow
+		hardLimit = softLimit
+	}
 	if bytes == 0 {
 		softLimit = -1
 		hardLimit = -1

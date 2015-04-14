@@ -55,8 +55,8 @@ func (template *SBTemplate) Write(out io.Writer) error {
 	if err != nil {
 		return util.Errorf("Could not marshal servicebuilder template %s as YAML: %s", template.name, err)
 	}
-	out.Write(b)
-	return nil
+	_, err = out.Write(b)
+	return err
 }
 
 type ServiceBuilder struct {
@@ -87,10 +87,10 @@ func (b *ServiceBuilder) Write(template *SBTemplate) (string, error) {
 	}
 
 	f, err := os.OpenFile(yamlPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	defer f.Close()
 	if err != nil {
 		return "", util.Errorf("Could not write servicebuilder template %s: %s", template.name, err)
 	}
+	defer f.Close()
 
 	return yamlPath, template.Write(f)
 }

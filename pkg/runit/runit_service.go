@@ -48,8 +48,7 @@ func (sv *SV) Stop(service *Service) (string, error) {
 }
 
 func (sv *SV) Restart(service *Service) (string, error) {
-	out, err := sv.execOnService(service, "restart")
-	return convertToErr(out, err)
+	return convertToErr(sv.execOnService(service, "restart"))
 }
 
 func (sv *SV) Stat(service *Service) (string, error) {
