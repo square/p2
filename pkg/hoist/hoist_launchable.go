@@ -182,7 +182,9 @@ func (hl *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]Execu
 	binLaunchPath := filepath.Join(hl.InstallDir(), "bin", "launch")
 
 	binLaunchInfo, err := os.Stat(binLaunchPath)
-	if err != nil {
+	if os.IsNotExist(err) {
+		return []Executable{}, nil
+	} else if err != nil {
 		return nil, util.Errorf("%s", err)
 	}
 
