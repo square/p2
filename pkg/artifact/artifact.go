@@ -10,13 +10,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
 
 var (
-	tarAppNameParse = regexp.MustCompile("([a-zA-Z\\d\\-\\_]+)\\_([a-f0-9]+)\\.tar(\\.gz)?")
+	tarAppNameParse = regexp.MustCompile(`^([\w\-]+)_([a-zA-Z0-9]+)\.tar(\.gz)?$`)
 )
 
 type Artifact struct {
@@ -28,17 +28,18 @@ type Application struct {
 }
 
 func NewArtifact(path string) (*Artifact, error) {
-	if !tarAppNameParse.MatchString(path) {
-		return nil, fmt.Errorf("The path %s is not a valid path: it does ", path)
+	_, file := filepath.Split(path)
+	if !tarAppNameParse.MatchString(file) {
+		return nil, fmt.Errorf("%s: invalid artifact name", path)
 	}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil, fmt.Errorf("The path %s does not exist", path)
+		return nil, fmt.Errorf("%s: %s", path, err)
 	}
 	return &Artifact{path}, nil
 }
 
 func (a *Artifact) App() *Application {
-	_, tar := path.Split(a.Path)
+	_, tar := filepath.Split(a.Path)
 	splitUp := tarAppNameParse.FindStringSubmatch(tar)
 	return &Application{
 		Name: splitUp[1],
@@ -50,6 +51,7 @@ func (a *Artifact) AppManifest() (*AppManifest, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer reader.Close()
 	tarReader := tar.NewReader(reader)
 	for {
 		next, err := tarReader.Next()

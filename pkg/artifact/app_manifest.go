@@ -2,7 +2,6 @@ package artifact
 
 import (
 	"io/ioutil"
-	"os"
 
 	"gopkg.in/yaml.v2"
 )
@@ -14,11 +13,7 @@ type AppManifest struct {
 }
 
 func ManifestFromPath(path string) (*AppManifest, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	bytes, err := ioutil.ReadAll(f)
+	bytes, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
