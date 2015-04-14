@@ -2,17 +2,36 @@ package digest
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
 
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
-	"golang.org/x/crypto/openpgp"
 )
 
 const hashLength = sha256.Size * 2 // the length in hexadecimal for a sha256 hash
+
+type Digest struct {
+	// A map of file path -> hash
+	FileHashes map[string]string
+	plaintext  []byte
+	signature  []byte
+}
+
+func (digest Digest) SignatureData() (plaintext, signature []byte) {
+	if digest.signature == nil {
+		return nil, nil
+	}
+	return digest.plaintext, digest.signature
+}
+
+func (digest Digest) VerifyDir(root string) error {
+	return VerifyDir(root, digest.FileHashes)
+}
 
 // Walks an entire file tree and takes the sha256sum of every file, comparing it
 // to a digest containing all the expected sha256sums. If any file's hash does
@@ -77,41 +96,53 @@ func VerifyDir(root string, digest map[string]string) error {
 	return nil
 }
 
-// Parses a sha256sum digest at the given digest path, with a detached PGP
-// signature at the given signature path. The given keyring should contain
-// public keys for all trusted signers.
-func ParseSignedDigestFiles(digestPath string, signaturePath string, keyring openpgp.KeyRing) (map[string]string, error) {
-	digest, err := os.Open(digestPath)
+// Parses a sha256sum digest at the given digest URI, with a detached
+// PGP signature at the given signature URI. If the pod manifest does
+// not declare a signature path, use "".
+func ParseUris(
+	fetcher uri.Fetcher,
+	digestUri string,
+	signatureUri string,
+) (Digest, error) {
+	digest, err := fetcher.Open(digestUri)
 	if err != nil {
-		return nil, err
+		return Digest{}, err
 	}
 	defer digest.Close()
-	signature, err := os.Open(signaturePath)
-	if err != nil {
-		return nil, err
+	var signature io.ReadCloser
+	if signatureUri != "" {
+		signature, err = fetcher.Open(signatureUri)
+		if err != nil {
+			return Digest{}, err
+		}
+		defer signature.Close()
 	}
-	defer signature.Close()
-
-	signer, err := openpgp.CheckDetachedSignature(keyring, digest, signature)
-	if err != nil {
-		return nil, err
-	}
-	if signer == nil {
-		return nil, util.Errorf("Unsigned")
-	}
-
-	_, err = digest.Seek(0, os.SEEK_SET)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDigest(digest)
+	return Parse(digest, signature)
 }
 
 // Parses a sha256sum digest. Each line is a 64-character sha256 hash
 // in lowercase hexadecimal, followed by a space, followed by an
-// unused mode character, followed by a filename.
-func ParseDigest(r io.Reader) (map[string]string, error) {
-	scanner := bufio.NewScanner(r)
+// unused mode character, followed by a filename. The signature is
+// optional.
+func Parse(digestReader, signatureReader io.Reader) (Digest, error) {
+	// Keep a copy of the digest text and signature so the signature can be verified.
+	digestBuf := bytes.NewBuffer([]byte{})
+	_, err := digestBuf.ReadFrom(digestReader)
+	if err != nil {
+		return Digest{}, err
+	}
+	digest := digestBuf.Bytes()
+	var signature []byte
+	if signatureReader != nil {
+		sigBuf := bytes.NewBuffer([]byte{})
+		_, err := sigBuf.ReadFrom(signatureReader)
+		if err != nil {
+			return Digest{}, err
+		}
+		signature = sigBuf.Bytes()
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(digest))
 	scanner.Split(bufio.ScanLines)
 
 	ret := map[string]string{}
@@ -122,15 +153,15 @@ func ParseDigest(r io.Reader) (map[string]string, error) {
 		}
 		if len(line) <= hashLength+2 {
 			// this line could not have been produced by a sha1sum
-			return ret, util.Errorf("%q is not valid shasum output", line)
+			return Digest{}, util.Errorf("invalid shasum output: %q", line)
 		}
 
 		filename := line[hashLength+2:]
 		cleanname := filepath.Clean(filename)
 		if _, ok := ret[cleanname]; ok {
-			return ret, util.Errorf("Duplicate SHA for filename %q", filename)
+			return Digest{}, util.Errorf("duplicate filename: %q", filename)
 		}
 		ret[cleanname] = line[:hashLength]
 	}
-	return ret, nil
+	return Digest{ret, digest, signature}, nil
 }

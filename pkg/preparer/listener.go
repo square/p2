@@ -9,13 +9,13 @@ import (
 	"strings"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
-	"golang.org/x/crypto/openpgp"
 )
 
 var eventPrefix = regexp.MustCompile("/?([a-zA-Z\\_]+)\\/.+")
@@ -30,7 +30,7 @@ type HookListener struct {
 	DestinationDir string // The destination directory for downloaded pods that will act as hooks
 	ExecDir        string // The directory that will actually be executed by the HookDir
 	Logger         logging.Logger
-	Keyring        openpgp.KeyRing
+	authPolicy     auth.Policy
 }
 
 // Sync keeps manifests located at the hook pods in the intent store.
@@ -63,9 +63,13 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 				"dest": l.DestinationDir,
 			})
 
-			signer, _ := result.Manifest.Signer(l.Keyring)
-			if signer == nil {
-				sub.NoFields().Warnln("Hook is not signed")
+			err := l.authPolicy.AuthorizePod(&result.Manifest, sub)
+			if err != nil {
+				if err, ok := err.(auth.Error); ok {
+					sub.WithFields(err.Fields).Errorln(err)
+				} else {
+					sub.NoFields().Errorln(err)
+				}
 				break
 			}
 

@@ -15,7 +15,6 @@ import (
 
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/util"
-	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/clearsign"
 	"gopkg.in/yaml.v2"
 )
@@ -188,12 +187,11 @@ func (manifest *Manifest) PlatformConfigFileName() (string, error) {
 	return manifest.Id + "_" + sha + ".platform.yaml", nil
 }
 
-// Returns the entity that signed the manifest, if any. If there was no
-// signature, both returns are nil. If the signer is not in the given keyring,
-// an openpgp.ErrUnknownIssuer will be returned.
-func (manifest *Manifest) Signer(keyring openpgp.KeyRing) (*openpgp.Entity, error) {
+// Returns readers needed to verify the signature on the
+// manifest. These readers do not need closing.
+func (manifest Manifest) SignatureData() (plaintext, signature []byte) {
 	if manifest.signature == nil {
 		return nil, nil
 	}
-	return openpgp.CheckDetachedSignature(keyring, bytes.NewReader(manifest.plaintext), bytes.NewReader(manifest.signature))
+	return manifest.plaintext, manifest.signature
 }

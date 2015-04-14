@@ -7,12 +7,12 @@ import (
 	"strings"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
-	"golang.org/x/crypto/openpgp"
 	"gopkg.in/yaml.v2"
 )
 
@@ -65,28 +65,6 @@ func LoadPreparerConfig(configPath string) (*PreparerConfig, error) {
 	return &preparerConfig, nil
 }
 
-func loadKeyring(path string) (openpgp.KeyRing, error) {
-	if path == "" {
-		return nil, util.Errorf("No keyring configured")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	keyring, err := openpgp.ReadArmoredKeyRing(f)
-	if err != nil && err.Error() == "openpgp: invalid argument: no armored data found" {
-		offset, seekErr := f.Seek(0, os.SEEK_SET)
-		if offset != 0 || seekErr != nil {
-			return nil, util.Errorf("Couldn't seek to beginning, got %d %s", offset, seekErr)
-		}
-		keyring, err = openpgp.ReadKeyRing(f)
-	}
-
-	return keyring, err
-}
-
 func loadConsulToken(path string) (string, error) {
 	consulToken, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -116,12 +94,21 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	}
 
 	var err error
-	var keyring openpgp.KeyRing = nil
+	var authPolicy auth.Policy
 	if preparerConfig.KeyringPath != "" {
-		keyring, err = loadKeyring(preparerConfig.KeyringPath)
+		authPolicy, err = auth.LoadKeyringPolicy(
+			preparerConfig.KeyringPath,
+			map[string][]string{POD_ID: preparerConfig.AuthorizedDeployers},
+		)
 		if err != nil {
-			return nil, util.Errorf("The keyring at path %s was not valid: %s", preparerConfig.KeyringPath, err)
+			return nil, util.Errorf(
+				"%s: invalid keyring: %s",
+				preparerConfig.KeyringPath,
+				err,
+			)
 		}
+	} else {
+		authPolicy = auth.NullPolicy{}
 	}
 
 	consulToken := ""
@@ -143,7 +130,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		DestinationDir: path.Join(pods.DEFAULT_PATH, "hooks"),
 		ExecDir:        preparerConfig.HooksDirectory,
 		Logger:         logger,
-		Keyring:        keyring,
+		authPolicy:     authPolicy,
 	}
 
 	err = os.MkdirAll(preparerConfig.PodRoot, 0755)
@@ -157,15 +144,14 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	}
 
 	return &Preparer{
-		node:                preparerConfig.NodeName,
-		store:               store,
-		hooks:               hooks.Hooks(preparerConfig.HooksDirectory, &logger),
-		hookListener:        listener,
-		Logger:              logger,
-		keyring:             keyring,
-		podRoot:             preparerConfig.PodRoot,
-		authorizedDeployers: preparerConfig.AuthorizedDeployers,
-		forbiddenPodIds:     forbiddenPodIds,
-		caPath:              preparerConfig.CAPath,
+		node:            preparerConfig.NodeName,
+		store:           store,
+		hooks:           hooks.Hooks(preparerConfig.HooksDirectory, &logger),
+		hookListener:    listener,
+		Logger:          logger,
+		podRoot:         preparerConfig.PodRoot,
+		forbiddenPodIds: forbiddenPodIds,
+		authPolicy:      authPolicy,
+		caPath:          preparerConfig.CAPath,
 	}, nil
 }

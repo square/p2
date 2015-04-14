@@ -30,6 +30,7 @@ func main() {
 	if err != nil {
 		logger.WithField("inner_err", err).Fatalln("Could not initialize preparer")
 	}
+	defer prep.Close()
 
 	logger.WithFields(logrus.Fields{
 		"starting":  true,
