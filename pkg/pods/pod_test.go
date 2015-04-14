@@ -47,9 +47,10 @@ func TestGetLaunchable(t *testing.T) {
 	pod := getTestPod()
 	Assert(t).AreNotEqual(0, len(launchableStanzas), "Expected there to be at least one launchable stanza in the test manifest")
 	for _, stanza := range launchableStanzas {
-		launchable, _ := pod.getLaunchable(stanza)
+		launchable, _ := pod.getLaunchable(stanza, "foouser")
 		Assert(t).AreEqual("hello__hello", launchable.Id, "LaunchableId did not have expected value")
 		Assert(t).AreEqual("hoisted-hello_def456.tar.gz", launchable.Location, "Launchable location did not have expected value")
+		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
 	}
 }
 
@@ -90,17 +91,15 @@ launchables:
 config:
   ENVIRONMENT: staging
 `
+	currUser, err := user.Current()
+	Assert(t).IsNil(err, "Could not get the current user")
+	manifestStr += fmt.Sprintf("run_as: %s", currUser.Username)
 	manifest, err := ManifestFromBytes(bytes.NewBufferString(manifestStr).Bytes())
 	Assert(t).IsNil(err, "should not have erred reading the manifest")
 
 	podTemp, _ := ioutil.TempDir("", "pod")
 
 	pod := NewPod(manifest.ID(), PodPath(podTemp, manifest.ID()))
-
-	curUser, err := user.Current()
-	if err == nil {
-		pod.RunAs = curUser.Username
-	}
 
 	err = pod.setupConfig(manifest)
 	Assert(t).IsNil(err, "There shouldn't have been an error setting up config")
@@ -188,15 +187,15 @@ func TestLogInfo(t *testing.T) {
 
 func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 	existing := getTestPodManifest(t)
+	currUser, err := user.Current()
+	Assert(t).IsNil(err, "Could not get the current user")
+	existing.RunAs = currUser.Username
 	updated := getUpdatedManifest(t)
+	updated.RunAs = currUser.Username
 	poddir, err := ioutil.TempDir("", "poddir")
 	Assert(t).IsNil(err, "couldn't create tempdir")
 
 	pod := NewPod("testPod", poddir)
-	curUser, err := user.Current()
-	if err == nil {
-		pod.RunAs = curUser.Username
-	}
 
 	manifestContent, err := existing.Bytes()
 	Assert(t).IsNil(err, "couldn't get manifest bytes")
@@ -204,7 +203,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 	Assert(t).IsNil(err, "should have written current manifest")
 
 	oldPath, err := pod.WriteCurrentManifest(updated)
-	Assert(t).IsNil(err, "should have writtne the current manifest and linked the old one")
+	Assert(t).IsNil(err, "should have written the current manifest and linked the old one")
 
 	writtenOld, err := ManifestFromPath(oldPath)
 	Assert(t).IsNil(err, "should have written a manifest to the old path")

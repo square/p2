@@ -58,14 +58,9 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 
 	current, err := user.Current()
 	Assert(t).IsNil(err, "test setup: could not get the current user")
-
-	testConfig := make(map[interface{}]interface{})
-	testConfig["hook"] = map[string]interface{}{
-		"run_as": current.Username,
-	}
-
 	manifest := &pods.Manifest{
-		Id: "users",
+		Id:    "users",
+		RunAs: current.Username,
 		LaunchableStanzas: map[string]pods.LaunchableStanza{
 			"create": pods.LaunchableStanza{
 				Location:       util.From(runtime.Caller(0)).ExpandPath("hoisted-hello_def456.tar.gz"),
@@ -73,7 +68,6 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 				LaunchableId:   "create",
 			},
 		},
-		Config: testConfig,
 	}
 	manifestBytes, err := manifest.Bytes()
 	Assert(t).IsNil(err, "manifest bytes error should have been nil")

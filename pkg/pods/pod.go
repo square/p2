@@ -39,7 +39,6 @@ func PodPath(root, manifestId string) string {
 type Pod struct {
 	Id             string
 	path           string
-	RunAs          string
 	logger         logging.Logger
 	SV             *runit.SV
 	ServiceBuilder *runit.ServiceBuilder
@@ -50,7 +49,6 @@ func NewPod(id string, path string) *Pod {
 	return &Pod{
 		Id:             id,
 		path:           path,
-		RunAs:          id,
 		logger:         Log.SubLogger(logrus.Fields{"pod": id}),
 		SV:             runit.DefaultSV,
 		ServiceBuilder: runit.DefaultBuilder,
@@ -241,7 +239,7 @@ func (pod *Pod) WriteCurrentManifest(manifest *Manifest) (string, error) {
 		return "", err
 	}
 
-	uid, gid, err := user.IDs(pod.RunAs)
+	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
 		pod.logError(err, "Unable to find pod UID/GID")
 		// the write was still successful so we are not going to revert
@@ -317,7 +315,7 @@ func (pod *Pod) Uninstall() error {
 // supported currently, this will set up runit services.).
 func (pod *Pod) Install(manifest *Manifest) error {
 	podHome := pod.path
-	uid, gid, err := user.IDs(pod.RunAs)
+	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
 		return util.Errorf("Could not determine pod UID/GID: %s", err)
 	}
@@ -365,7 +363,7 @@ func (pod *Pod) Verify(manifest *Manifest, keyring openpgp.KeyRing) error {
 			continue
 		}
 
-		launchable, err := pod.getLaunchable(stanza)
+		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser())
 		if err != nil {
 			return err
 		}
@@ -418,7 +416,7 @@ func (pod *Pod) Verify(manifest *Manifest, keyring openpgp.KeyRing) error {
 // (as described in http://smarden.org/runit/chpst.8.html, with the -e option) and includes a
 // single file called CONFIG_PATH, which points at the file written in the "config" directory.
 func (pod *Pod) setupConfig(manifest *Manifest) error {
-	uid, gid, err := user.IDs(pod.RunAs)
+	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
 		return util.Errorf("Could not determine pod UID/GID: %s", err)
 	}
@@ -510,7 +508,7 @@ func (pod *Pod) Launchables(manifest *Manifest) ([]hoist.Launchable, error) {
 	launchables := make([]hoist.Launchable, 0, len(launchableStanzas))
 
 	for _, launchableStanza := range launchableStanzas {
-		launchable, err := pod.getLaunchable(launchableStanza)
+		launchable, err := pod.getLaunchable(launchableStanza, manifest.RunAsUser())
 		if err != nil {
 			return nil, err
 		}
@@ -520,14 +518,14 @@ func (pod *Pod) Launchables(manifest *Manifest) ([]hoist.Launchable, error) {
 	return launchables, nil
 }
 
-func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza) (*hoist.Launchable, error) {
+func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser string) (*hoist.Launchable, error) {
 	if launchableStanza.LaunchableType == "hoist" {
 		launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
 		ret := &hoist.Launchable{
 			Location:         launchableStanza.Location,
 			Id:               launchableId,
-			RunAs:            pod.RunAs,
+			RunAs:            runAsUser,
 			ConfigDir:        pod.EnvDir(),
 			FetchToFile:      hoist.DefaultFetcher(),
 			RootDir:          launchableRootDir,

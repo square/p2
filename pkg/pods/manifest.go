@@ -31,6 +31,7 @@ type LaunchableStanza struct {
 
 type Manifest struct {
 	Id                string                      `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
+	RunAs             string                      `yaml:"run_as,omitempty"`
 	LaunchableStanzas map[string]LaunchableStanza `yaml:"launchables"`
 	Config            map[interface{}]interface{} `yaml:"config"`
 	StatusPort        int                         `yaml:"status_port,omitempty"`
@@ -43,6 +44,13 @@ type Manifest struct {
 
 func (manifest *Manifest) ID() string {
 	return manifest.Id
+}
+
+func (manifest *Manifest) RunAsUser() string {
+	if manifest.RunAs != "" {
+		return manifest.RunAs
+	}
+	return manifest.ID()
 }
 
 func ManifestFromPath(path string) (*Manifest, error) {

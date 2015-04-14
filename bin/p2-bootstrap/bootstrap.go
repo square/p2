@@ -187,7 +187,6 @@ func ScheduleForThisHost(manifest *pods.Manifest, alsoReality bool) error {
 
 func InstallBaseAgent(agentManifest *pods.Manifest) error {
 	agentPod := pods.NewPod(agentManifest.ID(), pods.PodPath(*podRoot, agentManifest.ID()))
-	agentPod.RunAs = "root"
 	err := agentPod.Install(agentManifest)
 	if err != nil {
 		return err

@@ -163,10 +163,11 @@ func (f *FakeStore) WatchPods(string, <-chan struct{}, chan<- error, chan<- kp.M
 func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks, string) {
 	podRoot, _ := ioutil.TempDir("", "pod_root")
 	cfg := &PreparerConfig{
-		NodeName:       "hostname",
-		ConsulAddress:  "0.0.0.0",
-		HooksDirectory: util.From(runtime.Caller(0)).ExpandPath("test_hooks"),
-		PodRoot:        podRoot,
+		NodeName:        "hostname",
+		ConsulAddress:   "0.0.0.0",
+		HooksDirectory:  util.From(runtime.Caller(0)).ExpandPath("test_hooks"),
+		PodRoot:         podRoot,
+		ForbiddenPodIds: []string{"root"},
 	}
 	p, err := New(cfg, logging.DefaultLogger)
 	Assert(t).IsNil(err, "Test setup error: should not have erred when trying to load a fake preparer")
@@ -254,6 +255,46 @@ func TestPreparerWillNotInstallOrLaunchIfIdIsForbidden(t *testing.T) {
 	Assert(t).IsFalse(testPod.installed, "Should not have installed")
 	Assert(t).IsFalse(testPod.launched, "Should not have attempted to launch")
 	Assert(t).IsFalse(hooks.ranAfterLaunch, "Should not have run after_launch hooks")
+}
+
+func TestPreparerWillNotLaunchAnAppAsRoot(t *testing.T) {
+	illegalManifest := &pods.Manifest{Id: "foo", RunAs: "root"}
+	testPod := &TestPod{
+		launchSuccess:   true,
+		currentManifest: illegalManifest,
+	}
+
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer os.RemoveAll(fakePodRoot)
+
+	success := p.installAndLaunchPod(illegalManifest, testPod, logging.DefaultLogger)
+
+	Assert(t).IsFalse(success, "Running a pod as root should fail")
+	Assert(t).IsFalse(hooks.ranBeforeInstall, "Should not have run hooks prior to install")
+	Assert(t).IsFalse(testPod.installed, "Should not have installed")
+	Assert(t).IsFalse(testPod.launched, "Should not have attempted to launch")
+	Assert(t).IsFalse(hooks.ranAfterLaunch, "Should not have run after_launch hooks")
+	Assert(t).IsTrue(hooks.ranAfterAuthFail, "Should have run after_auth_fail hooks")
+}
+
+func TestPreparerWillLaunchPreparerAsRoot(t *testing.T) {
+	illegalManifest := &pods.Manifest{Id: POD_ID, RunAs: "root"}
+	testPod := &TestPod{
+		launchSuccess:   true,
+		currentManifest: illegalManifest,
+	}
+
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer os.RemoveAll(fakePodRoot)
+
+	success := p.installAndLaunchPod(illegalManifest, testPod, logging.DefaultLogger)
+
+	Assert(t).IsTrue(success, "Running preparer as root should succeed")
+	Assert(t).IsTrue(hooks.ranBeforeInstall, "Should have run hooks prior to install")
+	Assert(t).IsTrue(testPod.installed, "Should have installed")
+	Assert(t).IsTrue(testPod.launched, "Should have attempted to launch")
+	Assert(t).IsTrue(hooks.ranAfterLaunch, "Should have run after_launch hooks")
+	Assert(t).IsFalse(hooks.ranAfterAuthFail, "Should not have run after_auth_fail hooks")
 }
 
 func TestPreparerWillNotInstallOrLaunchIfSHAIsTheSame(t *testing.T) {
