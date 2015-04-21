@@ -196,3 +196,77 @@ func LoadKeyring(path string) (openpgp.EntityList, error) {
 
 // Assert that FixedKeyringPolicy is a Policy
 var _ Policy = FixedKeyringPolicy{}
+
+// FileKeyringPolicy has the same authorization policy as
+// FixedKeyringPolicy, but it always pulls its keyring from a file on
+// disk. Whenever the keyring is needed, the file is reloaded if it
+// has changed since the last time it was read (determined by
+// examining mtime).
+type FileKeyringPolicy struct {
+	KeyringFilename     string
+	AuthorizedDeployers map[string][]string
+	keyReqChan          chan<- (chan<- openpgp.KeyRing)
+}
+
+func NewFileKeyringPolicy(
+	keyringPath string,
+	authorizedDeployers map[string][]string,
+) (Policy, error) {
+	// Fail fast if it's an invalid file
+	info, err := os.Stat(keyringPath)
+	if err != nil {
+		return nil, err
+	}
+	keyring, err := LoadKeyring(keyringPath)
+	if err != nil {
+		return nil, err
+	}
+
+	reqChan := make(chan (chan<- openpgp.KeyRing))
+	go func() {
+		for repChan := range reqChan {
+			// If the keychain file is somehow removed or unreadably
+			// corrupted, it's better to return stale data than to lose
+			// the ability to deploy new software to the node.
+			newInfo, err := os.Stat(keyringPath)
+			if err == nil && info.ModTime() != newInfo.ModTime() {
+				// File has been modified! Reload it.
+				newKeyring, err := LoadKeyring(keyringPath)
+				if err == nil {
+					keyring = newKeyring
+					info = newInfo
+				}
+			}
+			repChan <- keyring
+		}
+	}()
+	return FileKeyringPolicy{keyringPath, authorizedDeployers, reqChan}, nil
+}
+
+func (p FileKeyringPolicy) getKeyringAsync() <-chan openpgp.KeyRing {
+	repChan := make(chan openpgp.KeyRing, 1)
+	p.keyReqChan <- repChan
+	return repChan
+}
+
+func (p FileKeyringPolicy) AuthorizePod(manifest Manifest, logger logging.Logger) error {
+	return FixedKeyringPolicy{
+		<-p.getKeyringAsync(),
+		p.AuthorizedDeployers,
+	}.AuthorizePod(manifest, logger)
+}
+
+func (p FileKeyringPolicy) CheckDigest(digest Digest) error {
+	return FixedKeyringPolicy{
+		<-p.getKeyringAsync(),
+		p.AuthorizedDeployers,
+	}.CheckDigest(digest)
+}
+
+func (p FileKeyringPolicy) Close() {
+	close(p.keyReqChan)
+	p.keyReqChan = nil
+}
+
+// Assert that FileKeyringPolicy is a Policy
+var _ Policy = FileKeyringPolicy{}

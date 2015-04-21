@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/armor"
@@ -158,5 +159,54 @@ func TestKeyring(t *testing.T) {
 	err = policy.AuthorizePod(TestSigned{"restricted", msg, sigs[0]}, logger)
 	if err == nil {
 		t.Error("accepted unauthorized signature")
+	}
+}
+
+// Test that FileKeyringPolicy can reload a keyring file when it
+// changes.
+func TestKeyAddition(t *testing.T) {
+	h := testHarness{}
+	msg := []byte("Testing 1, 2, 3")
+	// two entities
+	ents := h.loadEntities()[:2]
+	// that both sign the message
+	sigs := h.signMessage(msg, ents)
+	// and a temporary file to hold the keyring
+	keyfile := h.tempFile()
+	defer rm(t, keyfile)
+	h.saveKeys(ents[:1], keyfile)
+	if h.Err != nil {
+		t.Error(h.Err)
+		return
+	}
+
+	policy, err := NewFileKeyringPolicy(keyfile, nil)
+	if err != nil {
+		t.Errorf("%s: error loading keyring: %s", keyfile, err)
+		return
+	}
+	logger := logging.TestLogger()
+
+	// Keyring contains only ents[0]
+	err = policy.AuthorizePod(TestSigned{"test", msg, sigs[0]}, logger)
+	if err != nil {
+		t.Error("expected authorized, got error:", err)
+	}
+	err = policy.AuthorizePod(TestSigned{"test", msg, sigs[1]}, logger)
+	if err == nil {
+		t.Error("expected failure, got authorization")
+	}
+
+	// Update the keyring file with both keys. The sleep is needed to
+	// make it much more likely that the mtime on the file differs.
+	time.Sleep(time.Second)
+	h.saveKeys(ents, keyfile)
+	err = policy.AuthorizePod(TestSigned{"test", msg, sigs[0]}, logger)
+	if err != nil {
+		t.Error("expected authorized, got error:", err)
+	}
+	err = policy.AuthorizePod(TestSigned{"test", msg, sigs[1]}, logger)
+	if err != nil {
+		t.Error("expected authorized, got error:", err)
 	}
 }

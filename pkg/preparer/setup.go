@@ -96,7 +96,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	var err error
 	var authPolicy auth.Policy
 	if preparerConfig.KeyringPath != "" {
-		authPolicy, err = auth.LoadKeyringPolicy(
+		authPolicy, err = auth.NewFileKeyringPolicy(
 			preparerConfig.KeyringPath,
 			map[string][]string{POD_ID: preparerConfig.AuthorizedDeployers},
 		)
