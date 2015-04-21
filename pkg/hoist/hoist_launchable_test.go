@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 	"gopkg.in/yaml.v2"
 
@@ -16,7 +17,7 @@ import (
 )
 
 func TestInstall(t *testing.T) {
-	fc := new(FakeCurl)
+	fetcher := uri.NewLoggedFetcher(nil)
 	testContext := util.From(runtime.Caller(0))
 
 	currentUser, err := user.Current()
@@ -27,18 +28,22 @@ func TestInstall(t *testing.T) {
 	defer os.RemoveAll(launchableHome)
 
 	launchable := &Launchable{
-		Location:    testLocation,
-		Id:          "hello",
-		RunAs:       currentUser.Username,
-		ConfigDir:   launchableHome,
-		FetchToFile: fc.File,
-		RootDir:     launchableHome,
+		Location:  testLocation,
+		Id:        "hello",
+		RunAs:     currentUser.Username,
+		ConfigDir: launchableHome,
+		Fetcher:   fetcher,
+		RootDir:   launchableHome,
 	}
 
 	err = launchable.Install()
 	Assert(t).IsNil(err, "there should not have been an error when installing")
 
-	Assert(t).AreEqual(fc.url, testLocation, "The correct url wasn't set for the curl library")
+	Assert(t).AreEqual(
+		fetcher.SrcUri,
+		testLocation,
+		"The correct url wasn't set for the curl library",
+	)
 
 	hoistedHelloUnpacked := path.Join(launchableHome, "installs", "hoisted-hello_def456")
 	if info, err := os.Stat(hoistedHelloUnpacked); err != nil || !info.IsDir() {
@@ -54,12 +59,12 @@ func TestInstallDir(t *testing.T) {
 	tempDir := os.TempDir()
 	testLocation := "http://someserver/test_launchable_abc123.tar.gz"
 	launchable := &Launchable{
-		Location:    testLocation,
-		Id:          "testLaunchable",
-		RunAs:       "testuser",
-		ConfigDir:   tempDir,
-		FetchToFile: new(FakeCurl).File,
-		RootDir:     tempDir,
+		Location:  testLocation,
+		Id:        "testLaunchable",
+		RunAs:     "testuser",
+		ConfigDir: tempDir,
+		Fetcher:   uri.DefaultFetcher,
+		RootDir:   tempDir,
 	}
 
 	installDir := launchable.InstallDir()

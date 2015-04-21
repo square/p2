@@ -15,12 +15,21 @@ import (
 )
 
 func TestLeadingProtoRegexMatchesProto(t *testing.T) {
-	Assert(t).IsTrue(leadingProto.MatchString("file:///foo/bar/baz"), "Should have matched")
-	Assert(t).IsTrue(leadingProto.MatchString("http://www.com/foo/bar/baz"), "Should have matched")
+	Assert(t).IsTrue(
+		leadingScheme.MatchString("file:///foo/bar/baz"),
+		"Should have matched",
+	)
+	Assert(t).IsTrue(
+		leadingScheme.MatchString("http://www.com/foo/bar/baz"),
+		"Should have matched",
+	)
 }
 
 func TestLeadingProtoRegexDoesNotMatchPath(t *testing.T) {
-	Assert(t).IsFalse(leadingProto.MatchString("/foo/bar/baz"), "Should not have matched")
+	Assert(t).IsFalse(
+		leadingScheme.MatchString("/foo/bar/baz"),
+		"Should not have matched",
+	)
 }
 
 func TestURIWillCopyFilesCorrectly(t *testing.T) {
@@ -62,13 +71,19 @@ func TestCorrectlyPullsFilesOverHTTP(t *testing.T) {
 	caller := util.From(runtime.Caller(0))
 
 	ts := httptest.NewServer(http.FileServer(http.Dir(caller.Dirname())))
-	Assert(t).IsTrue(leadingProto.MatchString(ts.URL), fmt.Sprintf("the http test server generated an invalid url (%s)", ts.URL))
+	Assert(t).IsTrue(
+		leadingScheme.MatchString(ts.URL),
+		fmt.Sprintf("the http test server generated an invalid url (%s)", ts.URL),
+	)
 	defer ts.Close()
 
 	// Do not use path.Join for URLs. It will compress consecutive forward slashes.
 	// ie, http:// becomes http:/
 	source := fmt.Sprintf("%s/%s", ts.URL, path.Base(caller.Filename))
-	Assert(t).IsTrue(leadingProto.MatchString(source), fmt.Sprintf("The url %s should have had a proto", source))
+	Assert(t).IsTrue(
+		leadingScheme.MatchString(source),
+		fmt.Sprintf("The url %s should have had a proto", source),
+	)
 
 	err = URICopy(source, copied)
 	Assert(t).IsNil(err, "the file should have been downloaded")

@@ -371,7 +371,7 @@ func (pod *Pod) Verify(manifest *Manifest, keyring openpgp.KeyRing) error {
 		digestPath := filepath.Join(temp, launchable.Version()+".sum")
 		// TODO: the fetcher should eventually be configurable, passed to a
 		// launchable from the pod that instantiated it
-		err = launchable.FetchToFile(stanza.DigestLocation, digestPath)
+		err = launchable.Fetcher.CopyLocal(stanza.DigestLocation, digestPath)
 		if err != nil {
 			return err
 		}
@@ -391,7 +391,7 @@ func (pod *Pod) Verify(manifest *Manifest, keyring openpgp.KeyRing) error {
 			}
 		} else {
 			digestSigPath := filepath.Join(temp, launchable.Version()+".sum.sig")
-			err = launchable.FetchToFile(stanza.DigestSignatureLocation, digestSigPath)
+			err = launchable.Fetcher.CopyLocal(stanza.DigestSignatureLocation, digestSigPath)
 			if err != nil {
 				return err
 			}
@@ -527,7 +527,7 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 			Id:               launchableId,
 			RunAs:            runAsUser,
 			ConfigDir:        pod.EnvDir(),
-			FetchToFile:      hoist.DefaultFetcher(),
+			Fetcher:          uri.DefaultFetcher,
 			RootDir:          launchableRootDir,
 			P2exec:           pod.P2exec,
 			CgroupConfig:     launchableStanza.CgroupConfig,
