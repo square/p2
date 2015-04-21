@@ -108,7 +108,6 @@ func (s *Store) ListPods(keyPrefix string) ([]ManifestResult, time.Duration, err
 // caller's responsibility to filter out unchanged manifests.
 func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult) {
 	defer close(podChan)
-	defer close(errChan)
 
 	var curIndex uint64 = 0
 
