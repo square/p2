@@ -81,19 +81,19 @@ func main() {
 
 	hchecker := health.NewConsulHealthChecker(opts)
 	for podId := range statusMap {
-		serviceStat, err := hchecker.LookupHealth(podId)
+		resultMap, err := hchecker.Service(podId)
 		if err != nil {
 			log.Fatalf("Could not retrieve health checks for pod %s: %s", podId, err)
 		}
 
-		for _, stat := range serviceStat.Statuses {
-			if *filterNodeName != "" && stat.Node != *filterNodeName {
+		for node, results := range resultMap {
+			if *filterNodeName != "" && node != *filterNodeName {
 				continue
 			}
 
-			old := statusMap[podId][stat.Node]
-			old.Health = stat.Health
-			statusMap[podId][stat.Node] = old
+			old := statusMap[podId][node]
+			_, old.Health = health.FindWorst(results)
+			statusMap[podId][node] = old
 		}
 	}
 
