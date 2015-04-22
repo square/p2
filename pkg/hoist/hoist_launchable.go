@@ -19,23 +19,17 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-type Fetcher func(string, string) error
-
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type Launchable struct {
 	Location         string         // A URL where we can download the artifact from.
 	Id               string         // A unique identifier for this launchable, used when creating runit services
 	RunAs            string         // The user to assume when launching the executable
 	ConfigDir        string         // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
-	FetchToFile      Fetcher        // Callback that downloads the file from the remote location.
+	Fetcher          uri.Fetcher    // Callback that downloads the file from the remote location.
 	RootDir          string         // The root directory of the launchable, containing N:N>=1 installs.
 	P2exec           string         // The path to p2-exec
 	CgroupConfig     cgroups.Config // Cgroup parameters to use with p2-exec
 	CgroupConfigName string         // The string in PLATFORM_CONFIG to pass to p2-exec
-}
-
-func DefaultFetcher() Fetcher {
-	return uri.URICopy
 }
 
 func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
@@ -239,30 +233,12 @@ func (hl *Launchable) Install() error {
 		return nil
 	}
 
-	outDir, err := ioutil.TempDir("", hl.Version())
-	defer os.RemoveAll(outDir)
-	if err != nil {
-		return util.Errorf("Could not create temporary directory to install %s: %s", hl.Version(), err)
-	}
-
-	outPath := filepath.Join(outDir, hl.Version())
-
-	err = hl.FetchToFile(hl.Location, outPath)
+	data, err := hl.Fetcher.Open(hl.Location)
 	if err != nil {
 		return err
 	}
-
-	fd, err := os.Open(outPath)
-	if err != nil {
-		return err
-	}
-	defer fd.Close()
-
-	err = hl.extractTarGz(fd, hl.InstallDir())
-	if err != nil {
-		return err
-	}
-	return nil
+	defer data.Close()
+	return hl.extractTarGz(data, hl.Version(), hl.InstallDir())
 }
 
 // The version of the artifact is currently derived from the location, using
@@ -336,7 +312,7 @@ func (hl *Launchable) InstallDir() string {
 	return filepath.Join(hl.RootDir, "installs", launchableName)
 }
 
-func (hl *Launchable) extractTarGz(fp *os.File, dest string) (err error) {
+func (hl *Launchable) extractTarGz(fp io.Reader, fpName string, dest string) (err error) {
 	fz, err := gzip.NewReader(fp)
 	if err != nil {
 		return util.Errorf("Unable to create gzip reader: %s", err)
@@ -351,11 +327,22 @@ func (hl *Launchable) extractTarGz(fp *os.File, dest string) (err error) {
 
 	err = util.MkdirChownAll(dest, uid, gid, 0755)
 	if err != nil {
-		return util.Errorf("Unable to create root directory %s when unpacking %s: %s", dest, fp.Name(), err)
+		return util.Errorf(
+			"Unable to create root directory %s when unpacking %s: %s",
+			dest,
+			fpName,
+			err,
+		)
 	}
 	err = os.Chown(dest, uid, gid)
 	if err != nil {
-		return util.Errorf("Unable to chown root directory %s to %s when unpacking %s: %s", dest, hl.RunAs, fp.Name(), err)
+		return util.Errorf(
+			"Unable to chown root directory %s to %s when unpacking %s: %s",
+			dest,
+			hl.RunAs,
+			fpName,
+			err,
+		)
 	}
 
 	for {
@@ -364,7 +351,7 @@ func (hl *Launchable) extractTarGz(fp *os.File, dest string) (err error) {
 			break
 		}
 		if err != nil {
-			return util.Errorf("Unable to read %s: %s", fp.Name(), err)
+			return util.Errorf("Unable to read %s: %s", fpName, err)
 		}
 		fpath := filepath.Join(dest, hdr.Name)
 
@@ -372,50 +359,101 @@ func (hl *Launchable) extractTarGz(fp *os.File, dest string) (err error) {
 		case tar.TypeSymlink:
 			err = os.Symlink(hdr.Linkname, fpath)
 			if err != nil {
-				return util.Errorf("Unable to create destination symlink %s (to %s) when unpacking %s: %s", fpath, hdr.Linkname, fp.Name(), err)
+				return util.Errorf(
+					"Unable to create destination symlink %s (to %s) when unpacking %s: %s",
+					fpath,
+					hdr.Linkname,
+					fpName,
+					err,
+				)
 			}
 		case tar.TypeLink:
 			// hardlink paths are encoded relative to the tarball root, rather than
 			// the path of the link itself, so we need to resolve that path
 			linkTarget, err := filepath.Rel(filepath.Dir(hdr.Name), hdr.Linkname)
 			if err != nil {
-				return util.Errorf("Unable to resolve relative path for hardlink %s (to %s) when unpacking %s: %s", fpath, hdr.Linkname, fp.Name(), err)
+				return util.Errorf(
+					"Unable to resolve relative path for hardlink %s (to %s) when unpacking %s: %s",
+					fpath,
+					hdr.Linkname,
+					fpName,
+					err,
+				)
 			}
 			// we can't make the hardlink right away because the target might not
 			// exist, so we'll just make a symlink instead
 			err = os.Symlink(linkTarget, fpath)
 			if err != nil {
-				return util.Errorf("Unable to create destination symlink %s (resolved %s to %s) when unpacking %s: %s", fpath, linkTarget, hdr.Linkname, fp.Name(), err)
+				return util.Errorf(
+					"Unable to create destination symlink %s (resolved %s to %s) when unpacking %s: %s",
+					fpath,
+					linkTarget,
+					hdr.Linkname,
+					fpName,
+					err,
+				)
 			}
 		case tar.TypeDir:
 			err = os.Mkdir(fpath, hdr.FileInfo().Mode())
 			if err != nil && !os.IsExist(err) {
-				return util.Errorf("Unable to create destination directory %s when unpacking %s: %s", fpath, fp.Name(), err)
+				return util.Errorf(
+					"Unable to create destination directory %s when unpacking %s: %s",
+					fpath,
+					fpName,
+					err,
+				)
 			}
 
 			err = os.Chown(fpath, uid, gid)
 			if err != nil {
-				return util.Errorf("Unable to chown destination directory %s to %s when unpacking %s: %s", fpath, hl.RunAs, fp.Name(), err)
+				return util.Errorf(
+					"Unable to chown destination directory %s to %s when unpacking %s: %s",
+					fpath,
+					hl.RunAs,
+					fpName,
+					err,
+				)
 			}
 		case tar.TypeReg, tar.TypeRegA:
 			f, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, hdr.FileInfo().Mode())
 			if err != nil {
-				return util.Errorf("Unable to open destination file %s when unpacking %s: %s", fpath, fp.Name(), err)
+				return util.Errorf(
+					"Unable to open destination file %s when unpacking %s: %s",
+					fpath,
+					fpName,
+					err,
+				)
 			}
 			defer f.Close()
 
 			err = f.Chown(uid, gid) // this operation may cause tar unpacking to become significantly slower. Refactor as necessary.
 			if err != nil {
-				return util.Errorf("Unable to chown destination file %s to %s when unpacking %s: %s", fpath, hl.RunAs, fp.Name(), err)
+				return util.Errorf(
+					"Unable to chown destination file %s to %s when unpacking %s: %s",
+					fpath,
+					hl.RunAs,
+					fpName,
+					err,
+				)
 			}
 
 			_, err = io.Copy(f, tr)
 			if err != nil {
-				return util.Errorf("Unable to copy into destination file %s when unpacking %s: %s", fpath, fp.Name(), err)
+				return util.Errorf(
+					"Unable to copy into destination file %s when unpacking %s: %s",
+					fpath,
+					fpName,
+					err,
+				)
 			}
 			f.Close() // eagerly release file descriptors rather than letting them pile up
 		default:
-			return util.Errorf("Unhandled type flag %q (header %v) when unpacking %s", hdr.Typeflag, hdr, fp.Name())
+			return util.Errorf(
+				"Unhandled type flag %q (header %v) when unpacking %s",
+				hdr.Typeflag,
+				hdr,
+				fpName,
+			)
 		}
 	}
 	return nil
