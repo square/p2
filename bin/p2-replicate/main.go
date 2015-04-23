@@ -1,14 +1,19 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
+	"os/user"
+	"sort"
+	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/square/p2/pkg/allocation"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/uri"
@@ -51,15 +56,7 @@ func main() {
 		HTTPS:   *https,
 	}
 	store := kp.NewStore(opts)
-
-	inner := health.NewConsulHealthChecker(opts)
-	var healthChecker replication.ServiceChecker = inner
-	if *threshold != "" {
-		healthChecker = replication.ServiceUpgrader{
-			Inner:     inner,
-			Threshold: health.ToHealthState(*threshold),
-		}
-	}
+	healthChecker := health.NewConsulHealthChecker(opts)
 
 	// Fetch manifest (could be URI) into temp file
 	localMan, err := ioutil.TempFile("", "tempmanifest")
@@ -67,8 +64,7 @@ func main() {
 	if err != nil {
 		log.Fatalln("Couldn't create tempfile")
 	}
-	err = uri.URICopy(*manifestUri, localMan.Name())
-	if err != nil {
+	if err := uri.URICopy(*manifestUri, localMan.Name()); err != nil {
 		log.Fatalf("Could not fetch manifest: %s", err)
 	}
 
@@ -77,19 +73,85 @@ func main() {
 		log.Fatalf("Invalid manifest: %s", err)
 	}
 
-	for _, host := range *hosts {
-		_, _, err := store.Pod(kp.RealityPath(host, "p2-preparer"))
-		if err != nil {
-			log.Fatalf("p2 is not running on host %s: %s", host, err)
-		}
+	healthResults, err := healthChecker.Service(manifest.ID())
+	if err != nil {
+		log.Fatalf("Could not get initial health results: %s", err)
+	}
+	order := health.SortOrder{
+		Nodes:  *hosts,
+		Health: healthResults,
+	}
+	sort.Sort(order)
+
+	repl := replication.Replicator{
+		Manifest: *manifest,
+		Store:    store,
+		Health:   healthChecker,
+		Nodes:    *hosts, // sorted by the health.SortOrder
+		Active:   len(*hosts) - *minNodes,
+		Logger: logging.NewLogger(logrus.Fields{
+			"pod": manifest.ID(),
+		}),
+		Threshold: health.HealthState(*threshold),
+	}
+	repl.Logger.Logger.Formatter = &logrus.TextFormatter{
+		DisableTimestamp: false,
+		FullTimestamp:    true,
+		TimestampFormat:  "15:04:05.000",
 	}
 
-	allocated := allocation.NewAllocation(*hosts...)
+	if err := repl.CheckPreparers(); err != nil {
+		log.Fatalf("Preparer check failed: %s", err)
+	}
 
-	replicator := replication.NewReplicator(*manifest, allocated)
-	replicator.Logger.Logger.Formatter = new(logrus.TextFormatter)
-	replicator.MinimumNodes = *minNodes
+	// create a lock with a meaningful name and set up a renewal loop for it
+	thisHost, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("Could not retrieve hostname: %s", err)
+	}
+	thisUser, err := user.Current()
+	if err != nil {
+		log.Fatalf("Could not retrieve user: %s", err)
+	}
+	lock, err := store.NewLock(fmt.Sprintf("%q from %q at %q", thisUser.Username, thisHost, time.Now()))
+	if err != nil {
+		log.Fatalf("Could not generate lock: %s", err)
+	}
+	// deferring on main is not particularly useful, since os.Exit will skip
+	// the defer, so we have to manually destroy the lock at the right exit
+	// paths
+	go func() {
+		for range time.Tick(10 * time.Second) {
+			if err := lock.Renew(); err != nil {
+				// if the renewal failed, then either the lock is already dead
+				// or the consul agent cannot be reached
+				log.Fatalf("Lock could not be renewed: %s", err)
+			}
+		}
+	}()
+	if err := repl.LockHosts(lock); err != nil {
+		lock.Destroy()
+		log.Fatalf("Could not lock all hosts: %s", err)
+	}
 
-	stopChan := make(chan struct{})
-	replicator.Enact(store, healthChecker, stopChan)
+	// auto-drain this channel
+	errs := make(chan error)
+	go func() {
+		for range errs {
+		}
+	}()
+
+	quitch := make(chan struct{})
+	go func() {
+		// clear lock immediately on ctrl-C
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, os.Interrupt)
+		<-signals
+		close(quitch)
+		lock.Destroy()
+		os.Exit(1)
+	}()
+
+	repl.Enact(errs, quitch)
+	lock.Destroy()
 }
