@@ -18,51 +18,85 @@
 package runit
 
 import (
-	"bytes"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"os"
-	"os/exec"
-	"path"
+	"path/filepath"
 
 	"github.com/square/p2/pkg/util"
 
 	"gopkg.in/yaml.v2"
 )
 
-type SBTemplate struct {
-	name       string
-	runClauses map[string]map[string][]string
+type ServiceTemplate struct {
+	Run      []string `yaml:"run"`
+	Log      []string `yaml:"log,omitempty"`
+	Sleep    int      `yaml:"sleep,omitempty"`
+	LogSleep int      `yaml:"logsleep,omitempty"`
 }
 
-type SBTemplateEntry struct {
-	baseCmd []string
-}
-
-func NewSBTemplate(name string) *SBTemplate {
-	return &SBTemplate{
-		name:       name,
-		runClauses: make(map[string]map[string][]string),
+func (s ServiceTemplate) RunScript() ([]byte, error) {
+	if len(s.Run) == 0 {
+		return nil, util.Errorf("empty run script")
 	}
-}
 
-func (template *SBTemplate) AddEntry(app string, run []string) {
-	template.runClauses[app] = map[string][]string{"run": run}
-}
-
-func (template *SBTemplate) Write(out io.Writer) error {
-	b, err := yaml.Marshal(template.runClauses)
+	args, err := yaml.Marshal(s.Run)
 	if err != nil {
-		return util.Errorf("Could not marshal servicebuilder template %s as YAML: %s", template.name, err)
+		return nil, err
 	}
-	_, err = out.Write(b)
-	return err
+
+	// default sleep to reduce spinning on a broken run script
+	sleep := 2
+	if s.Sleep != 0 {
+		sleep = s.Sleep
+	}
+
+	ret := fmt.Sprintf(`#!/usr/bin/ruby
+$stderr.reopen(STDOUT)
+require 'yaml'
+sleep %v
+exec *YAML.load(DATA.read)
+__END__
+%s`, sleep, args)
+	return []byte(ret), nil
+}
+
+func (s ServiceTemplate) LogScript() ([]byte, error) {
+	if len(s.Log) == 0 {
+		// use a default log script that makes a logdir, chowns it and execs
+		// svlogd into it
+		return []byte(`#!/usr/bin/ruby
+require 'fileutils'
+FileUtils.mkdir_p('./main')
+FileUtils.chown('nobody', 'nobody', './main')
+sleep 2
+exec('chpst', '-unobody', 'svlogd', '-tt', './main')
+`), nil
+	}
+
+	args, err := yaml.Marshal(s.Log)
+	if err != nil {
+		return nil, err
+	}
+
+	sleep := 2
+	if s.LogSleep != 0 {
+		sleep = s.LogSleep
+	}
+
+	ret := fmt.Sprintf(`#!/usr/bin/ruby
+require 'yaml'
+sleep %v
+exec *YAML.load(DATA.read)
+__END__
+%s`, sleep, args)
+	return []byte(ret), nil
 }
 
 type ServiceBuilder struct {
-	ConfigRoot  string
-	StagingRoot string
-	RunitRoot   string
+	ConfigRoot  string // directory to generate YAML files
+	StagingRoot string // directory to place staged runit services
+	RunitRoot   string // directory of runsvdir
 	Bin         string
 }
 
@@ -75,52 +109,160 @@ var DefaultBuilder = &ServiceBuilder{
 
 var DefaultChpst = "/usr/bin/chpst"
 
-func (b *ServiceBuilder) serviceYamlPath(name string) string {
-	return path.Join(b.ConfigRoot, fmt.Sprintf("%s.yaml", name))
-}
-
-func (b *ServiceBuilder) Write(template *SBTemplate) (string, error) {
-	yamlPath := b.serviceYamlPath(template.name)
-	fileinfo, _ := os.Stat(yamlPath)
-	if fileinfo != nil && fileinfo.IsDir() {
-		return "", util.Errorf("%s is a directory, but should be empty or a file", yamlPath)
-	}
-
-	f, err := os.OpenFile(yamlPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return "", util.Errorf("Could not write servicebuilder template %s: %s", template.name, err)
-	}
-	defer f.Close()
-
-	return yamlPath, template.Write(f)
-}
-
-func (b *ServiceBuilder) Remove(template *SBTemplate) error {
-	yamlPath := b.serviceYamlPath(template.name)
-
-	err := os.Remove(yamlPath)
+// write a servicebuilder yaml file
+// in addition to backwards compat with the real servicebuilder, this file
+// stores the truth of what services are "supposed" to exist right now, which
+// is needed for pruning unused services later
+func (s *ServiceBuilder) write(path string, templates map[string]ServiceTemplate) error {
+	text, err := yaml.Marshal(templates)
 	if err != nil {
 		return err
+	}
+
+	return ioutil.WriteFile(path, text, 0644)
+}
+
+// convert the servicebuilder yaml file into a runit service directory
+func (s *ServiceBuilder) stage(templates map[string]ServiceTemplate) error {
+	for serviceName, template := range templates {
+		stageDir := filepath.Join(s.StagingRoot, serviceName)
+		// create the default log directory
+		err := os.MkdirAll(filepath.Join(stageDir, "log"), 0755)
+		if err != nil {
+			return err
+		}
+
+		runScript, err := template.RunScript()
+		if err != nil {
+			return err
+		}
+		if _, err := util.WriteIfChanged(filepath.Join(stageDir, "run"), runScript, 0755); err != nil {
+			return err
+		}
+
+		logScript, err := template.LogScript()
+		if err != nil {
+			return err
+		}
+		if _, err := util.WriteIfChanged(filepath.Join(stageDir, "log", "run"), logScript, 0755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// symlink the runit service directory into the actual directory being monitored
+// by runsvdir
+// runsvdir will automatically start a service for each new directory (unless a
+// down file exists)
+func (s *ServiceBuilder) activate(templates map[string]ServiceTemplate) error {
+	for serviceName := range templates {
+		linkPath := filepath.Join(s.RunitRoot, serviceName)
+		stageDir := filepath.Join(s.StagingRoot, serviceName)
+
+		info, err := os.Lstat(linkPath)
+		if err == nil {
+			// if it exists, make sure it is actually a symlink
+			if info.Mode()&os.ModeSymlink == 0 {
+				return util.Errorf("%s is not a symlink", linkPath)
+			}
+
+			// and that it points to the right place
+			target, err := os.Readlink(linkPath)
+			if err != nil {
+				return err
+			}
+			if target != stageDir {
+				return util.Errorf("%s is a symlink to %s (expected %s)", linkPath, target, stageDir)
+			}
+		} else if os.IsNotExist(err) {
+			if err = os.Symlink(stageDir, linkPath); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// public API to write, stage and activate a servicebuilder template
+func (s *ServiceBuilder) Activate(name string, templates map[string]ServiceTemplate) error {
+	if err := s.write(filepath.Join(s.ConfigRoot, name+".yaml"), templates); err != nil {
+		return err
+	}
+	if err := s.stage(templates); err != nil {
+		return err
+	}
+	return s.activate(templates)
+}
+
+// using the servicebuilder yaml files, find any extraneous runit services and
+// remove them
+// runsvdir automatically stops services that no longer exist, explicit stop is
+// not required
+func (s *ServiceBuilder) Prune() error {
+	configs, err := s.loadConfigDir()
+	if err != nil {
+		return err
+	}
+
+	links, err := ioutil.ReadDir(s.RunitRoot)
+	if err != nil {
+		return err
+	}
+	for _, link := range links {
+		if _, exists := configs[link.Name()]; !exists {
+			if err = os.Remove(filepath.Join(s.RunitRoot, link.Name())); err != nil {
+				return err
+			}
+		}
+	}
+
+	stages, err := ioutil.ReadDir(s.StagingRoot)
+	if err != nil {
+		return err
+	}
+	for _, stage := range stages {
+		if _, exists := configs[stage.Name()]; !exists {
+			if err = os.RemoveAll(filepath.Join(s.StagingRoot, stage.Name())); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
 }
 
-// Rebuild executes the servicebuilder binary with the given configuration. Any
-// templates written up to this point will be used to create or update existing services.
-// Servicebuilder will err if two or more services with the same name have been configured.
-func (b *ServiceBuilder) Rebuild() (string, error) {
-	return b.RebuildWithStreams(os.Stdin)
-}
+// loadConfigDir reads all the files in the ConfigRoot and converts them into a
+// single map of servicetemplates.
+func (s *ServiceBuilder) loadConfigDir() (map[string]ServiceTemplate, error) {
+	ret := make(map[string]ServiceTemplate)
 
-func (b *ServiceBuilder) RebuildWithStreams(stdin io.Reader) (string, error) {
-	cmd := exec.Command(b.Bin, "-c", b.ConfigRoot, "-s", b.StagingRoot, "-d", b.RunitRoot)
-	cmd.Stdin = stdin
-	buffer := bytes.Buffer{}
-	cmd.Stdout = &buffer
-	err := cmd.Run()
+	entries, err := ioutil.ReadDir(s.ConfigRoot)
 	if err != nil {
-		return "", util.Errorf("Could not run servicebuilder rebuild: %s", err)
+		return nil, err
 	}
-	return buffer.String(), nil
+
+	for _, entry := range entries {
+		entryContents, err := ioutil.ReadFile(filepath.Join(s.ConfigRoot, entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+
+		entryTemplate := make(map[string]ServiceTemplate)
+		err = yaml.Unmarshal(entryContents, entryTemplate)
+		if err != nil {
+			return nil, err
+		}
+
+		for name, template := range entryTemplate {
+			if _, exists := ret[name]; exists {
+				return nil, util.Errorf("service with name %s was defined twice (from %s)", name, entry.Name())
+			}
+			ret[name] = template
+		}
+	}
+
+	return ret, nil
 }
