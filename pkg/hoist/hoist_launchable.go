@@ -33,14 +33,23 @@ type Launchable struct {
 }
 
 func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-	// probably want to do something with output at some point
 	_, err := hl.disable()
 	if err != nil {
 		return err
 	}
 
-	// probably want to do something with output at some point
 	err = hl.stop(serviceBuilder, sv)
+	if err != nil {
+		return err
+	}
+
+	// send an empty list of templates, to clean up all the runit services for
+	// this launchable
+	err = serviceBuilder.Activate(hl.Id, map[string]runit.ServiceTemplate{})
+	if err != nil {
+		return err
+	}
+	err = serviceBuilder.Prune()
 	if err != nil {
 		return err
 	}
@@ -54,18 +63,44 @@ func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) e
 }
 
 func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-	// probably want to do something with output at some point
-	err := hl.start(serviceBuilder, sv)
-	if err != nil {
-		return util.Errorf("Could not launch %s: %s", hl.Id, err)
+	if err := hl.MakeCurrent(); err != nil {
+		return err
 	}
 
-	_, err = hl.enable()
+	if _, err := hl.postActivate(); err != nil {
+		return err
+	}
+
+	if err := hl.buildServices(serviceBuilder); err != nil {
+		return err
+	}
+
+	if err := hl.start(serviceBuilder, sv); err != nil {
+		return err
+	}
+
+	_, err := hl.enable()
 	return err
 }
 
-func (hl *Launchable) PostActivate() (string, error) {
-	// TODO: unexport this method (requires integrating BuildRunitServices into this API)
+func (hl *Launchable) buildServices(sb *runit.ServiceBuilder) error {
+	executables, err := hl.Executables(sb)
+	if err != nil {
+		return err
+	}
+
+	templates := make(map[string]runit.ServiceTemplate)
+	for _, executable := range executables {
+		if _, ok := templates[executable.Service.Name]; ok {
+			return util.Errorf("Duplicate executable name %s for launchable %s", executable.Service.Name, hl.Id)
+		}
+		templates[executable.Service.Name] = runit.ServiceTemplate{Run: executable.Exec}
+	}
+
+	return sb.Activate(hl.Id, templates)
+}
+
+func (hl *Launchable) postActivate() (string, error) {
 	output, err := hl.invokeBinScript("post-activate")
 
 	// providing a post-activate script is optional, ignore those errors
@@ -271,7 +306,7 @@ func (hl *Launchable) CurrentDir() string {
 }
 
 func (hl *Launchable) MakeCurrent() error {
-	// TODO: unexport this method (requires integrating BuildRunitServices into this API)
+	// TODO: unexport this method (hooks still use it)
 	return hl.flipSymlink(hl.CurrentDir())
 }
 
