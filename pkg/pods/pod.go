@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/digest"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/logging"
@@ -17,7 +18,6 @@ import (
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
-	"golang.org/x/crypto/openpgp"
 )
 
 var (
@@ -351,58 +351,34 @@ func (pod *Pod) Install(manifest *Manifest) error {
 	return nil
 }
 
-func (pod *Pod) Verify(manifest *Manifest, keyring openpgp.KeyRing) error {
-	temp, err := ioutil.TempDir("", manifest.ID())
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(temp)
-
+func (pod *Pod) Verify(manifest *Manifest, authPolicy auth.Policy) error {
 	for _, stanza := range manifest.LaunchableStanzas {
 		if stanza.DigestLocation == "" {
 			continue
 		}
-
 		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser())
 		if err != nil {
 			return err
 		}
 
-		digestPath := filepath.Join(temp, launchable.Version()+".sum")
-		// TODO: the fetcher should eventually be configurable, passed to a
-		// launchable from the pod that instantiated it
-		err = launchable.Fetcher.CopyLocal(stanza.DigestLocation, digestPath)
+		// Retrieve the digest data
+		launchableDigest, err := digest.ParseUris(
+			launchable.Fetcher,
+			stanza.DigestLocation,
+			stanza.DigestSignatureLocation,
+		)
 		if err != nil {
 			return err
 		}
 
-		var launchableDigest map[string]string
-
-		if stanza.DigestSignatureLocation == "" || keyring == nil {
-			fd, err := os.Open(digestPath)
-			if err != nil {
-				return err
-			}
-			defer fd.Close()
-
-			launchableDigest, err = digest.ParseDigest(fd)
-			if err != nil {
-				return err
-			}
-		} else {
-			digestSigPath := filepath.Join(temp, launchable.Version()+".sum.sig")
-			err = launchable.Fetcher.CopyLocal(stanza.DigestSignatureLocation, digestSigPath)
-			if err != nil {
-				return err
-			}
-
-			launchableDigest, err = digest.ParseSignedDigestFiles(digestPath, digestSigPath, keyring)
-			if err != nil {
-				return err
-			}
+		// Check that the digest is certified
+		err = authPolicy.CheckDigest(launchableDigest)
+		if err != nil {
+			return err
 		}
 
-		err = digest.VerifyDir(launchable.InstallDir(), launchableDigest)
+		// Check that the installed files match the digest
+		err = launchableDigest.VerifyDir(launchable.InstallDir())
 		if err != nil {
 			return err
 		}

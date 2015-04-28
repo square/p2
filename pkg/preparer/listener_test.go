@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
@@ -96,7 +97,7 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 		ExecDir:        execDir,
 		DestinationDir: destDir,
 		Logger:         logging.DefaultLogger,
-		Keyring:        openpgp.EntityList{fakeSigner},
+		authPolicy:     auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil},
 	}
 
 	errCh := make(chan error, 1)

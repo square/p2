@@ -10,6 +10,7 @@ import (
 	"time"
 
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
@@ -45,7 +46,7 @@ func (t *TestPod) Install(manifest *pods.Manifest) error {
 	return t.installErr
 }
 
-func (t *TestPod) Verify(manifest *pods.Manifest, keyring openpgp.KeyRing) error {
+func (t *TestPod) Verify(manifest *pods.Manifest, authPolicy auth.Policy) error {
 	return nil
 }
 
@@ -184,6 +185,7 @@ func TestPreparerLaunchesNewPodsThatArentInstalledYet(t *testing.T) {
 	newManifest := testManifest(t)
 
 	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
 
@@ -208,6 +210,7 @@ func TestPreparerLaunchesPodsThatHaveDifferentSHAs(t *testing.T) {
 	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{
 		currentManifest: existing,
 	})
+	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
 
@@ -226,6 +229,7 @@ func TestPreparerFailsIfInstallFails(t *testing.T) {
 	newManifest := testManifest(t)
 
 	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
 
@@ -244,6 +248,7 @@ func TestPreparerWillNotInstallOrLaunchIfIdIsForbidden(t *testing.T) {
 	}
 
 	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	p.forbiddenPodIds = make(map[string]struct{})
 	p.forbiddenPodIds[testManifest.ID()] = struct{}{}
@@ -265,6 +270,7 @@ func TestPreparerWillNotLaunchAnAppAsRoot(t *testing.T) {
 	}
 
 	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 
 	success := p.installAndLaunchPod(illegalManifest, testPod, logging.DefaultLogger)
@@ -285,6 +291,7 @@ func TestPreparerWillLaunchPreparerAsRoot(t *testing.T) {
 	}
 
 	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 
 	success := p.installAndLaunchPod(illegalManifest, testPod, logging.DefaultLogger)
@@ -306,6 +313,7 @@ func TestPreparerWillNotInstallOrLaunchIfSHAIsTheSame(t *testing.T) {
 	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{
 		currentManifest: testManifest,
 	})
+	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	success := p.installAndLaunchPod(testManifest, testPod, logging.DefaultLogger)
 
@@ -325,6 +333,7 @@ func TestPreparerWillLaunchIfRealityErrsOnRead(t *testing.T) {
 	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{
 		currentManifestError: fmt.Errorf("it erred"),
 	})
+	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	success := p.installAndLaunchPod(testManifest, testPod, logging.DefaultLogger)
 
@@ -338,8 +347,9 @@ func TestPreparerWillRequireSignatureWithKeyring(t *testing.T) {
 	manifest := testManifest(t)
 
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
-	p.keyring = openpgp.EntityList{}
+	p.authPolicy = auth.FixedKeyringPolicy{}
 
 	Assert(t).IsFalse(p.verifySignature(*manifest, logging.DefaultLogger), "should have accepted unsigned manifest")
 }
@@ -348,8 +358,9 @@ func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 	manifest, fakeSigner := testSignedManifest(t, nil)
 
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
-	p.keyring = openpgp.EntityList{fakeSigner}
+	p.authPolicy = auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil}
 
 	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "should have accepted signed manifest")
 }
@@ -360,8 +371,9 @@ func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *tes
 	})
 
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
-	p.keyring = openpgp.EntityList{fakeSigner}
+	p.authPolicy = auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil}
 
 	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "expected preparer to accept manifest (empty authorized deployers)")
 }
@@ -372,9 +384,12 @@ func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 	})
 
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
-	p.keyring = openpgp.EntityList{fakeSigner}
-	p.authorizedDeployers = []string{"nobodylol"}
+	p.authPolicy = auth.FixedKeyringPolicy{
+		Keyring:             openpgp.EntityList{fakeSigner},
+		AuthorizedDeployers: map[string][]string{POD_ID: {"nobodylol"}},
+	}
 
 	Assert(t).IsFalse(p.verifySignature(*manifest, logging.DefaultLogger), "expected preparer to reject manifest (unauthorized deployer)")
 }
@@ -387,9 +402,12 @@ func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 	})
 
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
-	p.keyring = openpgp.EntityList{fakeSigner}
-	p.authorizedDeployers = []string{sig}
+	p.authPolicy = auth.FixedKeyringPolicy{
+		Keyring:             openpgp.EntityList{fakeSigner},
+		AuthorizedDeployers: map[string][]string{POD_ID: {sig}},
+	}
 
 	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "expected preparer to accept manifest (authorized deployer)")
 }
@@ -397,7 +415,9 @@ func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 func TestPreparerWillAcceptSignatureWhenKeyringIsNil(t *testing.T) {
 	manifest := testManifest(t)
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
-	p.keyring = nil
+	// Use default p.authPolicy when no keyfile path is given
+
 	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "expected the preparer to verify the signature when no keyring given")
 }

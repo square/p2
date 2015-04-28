@@ -1,15 +1,14 @@
 package preparer
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
-	"golang.org/x/crypto/openpgp"
 )
 
 // The Pod ID of the preparer.
@@ -20,7 +19,7 @@ type Pod interface {
 	hooks.Pod
 	Launch(*pods.Manifest) (bool, error)
 	Install(*pods.Manifest) error
-	Verify(*pods.Manifest, openpgp.KeyRing) error
+	Verify(*pods.Manifest, auth.Policy) error
 	Halt(*pods.Manifest) (bool, error)
 }
 
@@ -36,16 +35,15 @@ type Store interface {
 }
 
 type Preparer struct {
-	node                string
-	store               Store
-	hooks               Hooks
-	hookListener        HookListener
-	Logger              logging.Logger
-	keyring             openpgp.KeyRing
-	podRoot             string
-	authorizedDeployers []string
-	forbiddenPodIds     map[string]struct{}
-	caPath              string
+	node            string
+	store           Store
+	hooks           Hooks
+	hookListener    HookListener
+	Logger          logging.Logger
+	podRoot         string
+	forbiddenPodIds map[string]struct{}
+	caPath          string
+	authPolicy      auth.Policy
 }
 
 func (p *Preparer) WatchForHooks(quit chan struct{}) {
@@ -167,40 +165,16 @@ func (p *Preparer) handlePods(podChan <-chan pods.Manifest, quit <-chan struct{}
 
 // check if a manifest satisfies the signature requirement of this preparer
 func (p *Preparer) verifySignature(manifest pods.Manifest, logger logging.Logger) bool {
-	// do not remove the logger argument, it's not the same as p.Logger
-	if p.keyring == nil {
-		// signature is fine if the preparer has not been required to have a keyring
-		return true
-	}
-
-	signer, err := manifest.Signer(p.keyring)
-	if signer != nil {
-		signerId := fmt.Sprintf("%X", signer.PrimaryKey.Fingerprint)
-		logger.WithField("signer_key", signerId).Debugln("Resolved manifest signature")
-
-		// Hmm, some hacks here.
-		if manifest.Id == POD_ID && len(p.authorizedDeployers) > 0 {
-			foundAuthorized := false
-			for _, authorized := range p.authorizedDeployers {
-				if authorized == signerId {
-					foundAuthorized = true
-				}
-			}
-			if !foundAuthorized {
-				logger.WithField("signer_key", signerId).Errorln("Not an authorized deployer of the preparer")
-				return false
-			}
+	err := p.authPolicy.AuthorizePod(&manifest, logger)
+	if err != nil {
+		if err, ok := err.(auth.Error); ok {
+			logger.WithFields(err.Fields).Errorln(err)
+		} else {
+			logger.NoFields().Errorln(err)
 		}
-
-		return true
+		return false
 	}
-
-	if err == nil {
-		logger.NoFields().Warnln("Received unsigned manifest (expected signature)")
-	} else {
-		logger.WithField("inner_err", err).Warnln("Error while resolving manifest signature")
-	}
-	return false
+	return true
 }
 
 func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logger logging.Logger) bool {
@@ -255,7 +229,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 			return false
 		}
 
-		err = pod.Verify(newManifest, p.keyring)
+		err = pod.Verify(newManifest, p.authPolicy)
 		if err != nil {
 			logger.WithField("err", err).Errorln("Pod digest verification failed")
 			p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pod, newManifest, logger)
@@ -300,4 +274,12 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 
 	// TODO: shut down removed launchables between pod versions.
 	return true
+}
+
+// Close() releases any resources held by a Preparer.
+func (p *Preparer) Close() {
+	p.authPolicy.Close()
+	// The same verifier is shared twice internally
+	p.hookListener.authPolicy = nil
+	p.authPolicy = nil
 }
