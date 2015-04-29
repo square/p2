@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"os/user"
@@ -52,7 +53,7 @@ func main() {
 	opts := kp.Options{
 		Address: *consulUrl,
 		Token:   *consulToken,
-		Client:  net.NewHeaderClient(*headers),
+		Client:  net.NewHeaderClient(*headers, http.DefaultTransport),
 		HTTPS:   *https,
 	}
 	store := kp.NewStore(opts)
