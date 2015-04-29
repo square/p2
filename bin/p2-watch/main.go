@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/square/p2/pkg/hooks"
@@ -30,7 +31,7 @@ func main() {
 	store := kp.NewStore(kp.Options{
 		Address: *consulAddress,
 		Token:   *consulToken,
-		Client:  net.NewHeaderClient(*headers),
+		Client:  net.NewHeaderClient(*headers, http.DefaultTransport),
 		HTTPS:   *https,
 	})
 
