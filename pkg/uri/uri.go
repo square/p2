@@ -60,6 +60,14 @@ func (f BasicFetcher) Open(srcUri string) (io.ReadCloser, error) {
 		if err != nil {
 			return nil, err
 		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, util.Errorf(
+				"%s: HTTP server returned status: %s",
+				srcUri,
+				resp.Status,
+			)
+		}
 		return resp.Body, nil
 	default:
 		return nil, util.Errorf("%s: unhandled URI scheme", srcUri)
