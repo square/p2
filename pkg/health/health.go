@@ -29,7 +29,7 @@ type Result struct {
 func (h ConsulHealthChecker) Service(serviceID string) (map[string][]Result, error) {
 	entries, _, err := h.client.Health().Service(serviceID, "", false, nil)
 	if err != nil {
-		return nil, util.Errorf("/health/service failed for %q", serviceID)
+		return nil, util.Errorf("/health/service failed for %q: %s", serviceID, err)
 	}
 
 	ret := make(map[string][]Result)
