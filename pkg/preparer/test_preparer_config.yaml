@@ -3,7 +3,9 @@ preparer:
   consul_address: 0.0.0.0
   consul_token_path: /etc/consul.token
   hooks_directory: /etc/p2/hooks
-  keyring: /etc/p2.keyring
+  auth:
+    type: keyring
+    keyring: /etc/p2.keyring
   extra_log_destinations:
   - type: socket
     path: /var/log/p2-socket.out

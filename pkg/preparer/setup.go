@@ -26,16 +26,22 @@ type LogDestination struct {
 }
 
 type PreparerConfig struct {
-	NodeName             string           `yaml:"node_name"`
-	ConsulAddress        string           `yaml:"consul_address"`
-	ConsulTokenPath      string           `yaml:"consul_token_path,omitempty"`
-	HooksDirectory       string           `yaml:"hooks_directory"`
-	KeyringPath          string           `yaml:"keyring,omitempty"`
-	CAPath               string           `yaml:"ca_path,omitempty"`
-	PodRoot              string           `yaml:"pod_root,omitempty"`
-	AuthorizedDeployers  []string         `yaml:"authorized_deployers,omitempty"`
-	ForbiddenPodIds      []string         `yaml:"forbidden_pod_ids,omitempty"`
-	ExtraLogDestinations []LogDestination `yaml:"extra_log_destinations,omitempty"`
+	NodeName             string            `yaml:"node_name"`
+	ConsulAddress        string            `yaml:"consul_address"`
+	ConsulTokenPath      string            `yaml:"consul_token_path,omitempty"`
+	HooksDirectory       string            `yaml:"hooks_directory"`
+	CAPath               string            `yaml:"ca_path,omitempty"`
+	PodRoot              string            `yaml:"pod_root,omitempty"`
+	Auth                 map[string]string `yaml:"auth,omitempty"`
+	ForbiddenPodIds      []string          `yaml:"forbidden_pod_ids,omitempty"`
+	ExtraLogDestinations []LogDestination  `yaml:"extra_log_destinations,omitempty"`
+}
+
+// Configuration fields for the "keyring" auth type
+type KeyringAuth struct {
+	Type                string
+	KeyringPath         string   `yaml:"keyring,omitempty"`
+	AuthorizedDeployers []string `yaml:"authorized_deployers,omitempty"`
 }
 
 func LoadPreparerConfig(configPath string) (*PreparerConfig, error) {
@@ -83,6 +89,16 @@ func addHooks(preparerConfig *PreparerConfig, logger logging.Logger) {
 	}
 }
 
+// castYaml() allows a YAML block to be reparsed into a struct type by
+// re-encoding it into YAML and re-parsing it.
+func castYaml(in map[string]string, out interface{}) error {
+	encoded, err := yaml.Marshal(in)
+	if err != nil {
+		return err
+	}
+	return yaml.Unmarshal(encoded, out)
+}
+
 func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, error) {
 	addHooks(preparerConfig, logger)
 
@@ -95,20 +111,29 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 
 	var err error
 	var authPolicy auth.Policy
-	if preparerConfig.KeyringPath != "" {
+	switch preparerConfig.Auth["type"] {
+	case "":
+		return nil, util.Errorf("must specify authorization policy type")
+	case "none":
+		authPolicy = auth.NullPolicy{}
+	case "keyring":
+		var authConfig KeyringAuth
+		err := castYaml(preparerConfig.Auth, &authConfig)
+		if err != nil {
+			return nil, util.Errorf("error configuring keyring auth: %s", err)
+		}
+		if authConfig.KeyringPath == "" {
+			return nil, util.Errorf("keyring auth must contain a path to the keyring")
+		}
 		authPolicy, err = auth.NewFileKeyringPolicy(
-			preparerConfig.KeyringPath,
-			map[string][]string{POD_ID: preparerConfig.AuthorizedDeployers},
+			authConfig.KeyringPath,
+			map[string][]string{POD_ID: authConfig.AuthorizedDeployers},
 		)
 		if err != nil {
-			return nil, util.Errorf(
-				"%s: invalid keyring: %s",
-				preparerConfig.KeyringPath,
-				err,
-			)
+			return nil, util.Errorf("error configuring keyring auth: %s", err)
 		}
-	} else {
-		authPolicy = auth.NullPolicy{}
+	default:
+		return nil, util.Errorf("unrecognized auth type: %s", preparerConfig.Auth["type"])
 	}
 
 	consulToken := ""
