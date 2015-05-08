@@ -44,6 +44,13 @@ type KeyringAuth struct {
 	AuthorizedDeployers []string `yaml:"authorized_deployers,omitempty"`
 }
 
+// Configuration fields for the "user" auth type
+type UserAuth struct {
+	Type             string
+	KeyringPath      string `yaml:"keyring"`
+	DeployPolicyPath string `yaml:"deploy_policy"`
+}
+
 func LoadPreparerConfig(configPath string) (*PreparerConfig, error) {
 	configBytes, err := ioutil.ReadFile(configPath)
 	if err != nil {
@@ -131,6 +138,25 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		)
 		if err != nil {
 			return nil, util.Errorf("error configuring keyring auth: %s", err)
+		}
+	case "user":
+		var userConfig UserAuth
+		err := castYaml(preparerConfig.Auth, &userConfig)
+		if err != nil {
+			return nil, util.Errorf("error configuring user auth: %s", err)
+		}
+		if userConfig.KeyringPath == "" {
+			return nil, util.Errorf("user auth must contain a path to the keyring")
+		}
+		if userConfig.DeployPolicyPath == "" {
+			return nil, util.Errorf("user auth must contain a path to the deploy policy")
+		}
+		authPolicy, err = auth.NewUserPolicy(
+			userConfig.KeyringPath,
+			userConfig.DeployPolicyPath,
+		)
+		if err != nil {
+			return nil, util.Errorf("error configuring user auth: %s", err)
 		}
 	default:
 		return nil, util.Errorf("unrecognized auth type: %s", preparerConfig.Auth["type"])

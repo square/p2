@@ -3,9 +3,12 @@ package auth
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"os"
 
 	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/errors"
+	"gopkg.in/yaml.v2"
 
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util"
@@ -244,3 +247,190 @@ func (p FileKeyringPolicy) Close() {
 
 // Assert that FileKeyringPolicy is a Policy
 var _ Policy = FileKeyringPolicy{}
+
+// A DeployPol lists all apps that are authorized to be deployed and
+// the set of users that are allowed to deploy each app. (This is the
+// deploy policy, but it isn't a `Policy` interface, so the name is
+// shortened.)
+//
+// The policy file should be a YAML-serialized object that conforms to
+// the layout of the `RawDeployPol` type. The data in the "groups" key
+// is a map: each entry's key defines a group's name and its value
+// defines the email addresses in the group. The name of the group is
+// not significant. The data in the "apps" key is also a map: each
+// entry's key is the name of an app, and its value is a list of
+// groups, each member of which is authorized to deploy the app.
+//
+// By separating apps from groups, it allows some flexibility in
+// managing the deployers for an app. Some possible organizations are:
+//
+// - Have one group that includes all deployers, and each app
+//   references that group
+// - Create one group for each app, explicitly listing all deployers
+//   for that app
+// - Create groups for each team, and let each app be deployed by the
+//   team that develops/manages it
+//
+// Example policy file:
+//   ---
+//   groups:
+//     teamA:
+//     - alice@my.org
+//     - bob@my.org
+//     admins:
+//     - carol@my.org
+//   apps:
+//     web:
+//     - teamA
+//     - admins
+//     db:
+//     - admins
+//
+type DeployPol struct {
+	Groups map[DpGroup]map[DpUserEmail]bool // Each group is a *set* of email addrs
+	Apps   map[string][]DpGroup             // Each app has a list of authorized groups
+}
+
+// Specialized types make code self-documenting
+type DpGroup string
+type DpUserEmail string
+
+type RawDeployPol struct {
+	Groups map[DpGroup][]DpUserEmail
+	Apps   map[string][]DpGroup
+}
+
+// Load a new DeployPol from a file.
+func LoadDeployPol(filename string) (DeployPol, error) {
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return DeployPol{}, err
+	}
+	var rawDp RawDeployPol
+	err = yaml.Unmarshal(data, &rawDp)
+	if err != nil {
+		return DeployPol{}, err
+	}
+	// Pre-process *lists of users* into *sets of users*
+	groups := make(map[DpGroup]map[DpUserEmail]bool)
+	for group, userList := range rawDp.Groups {
+		userSet := make(map[DpUserEmail]bool)
+		for _, user := range userList {
+			userSet[user] = true
+		}
+		groups[group] = userSet
+	}
+	return DeployPol{groups, rawDp.Apps}, nil
+}
+
+// Check if given user is authorized to act on the given app. The
+// default policy is to fail closed if no app is found.
+func (dp DeployPol) Authorized(app string, email string) bool {
+	for _, group := range dp.Apps[app] {
+		if dp.Groups[group][DpUserEmail(email)] {
+			return true
+		}
+	}
+	return false
+}
+
+// UserPolicy is a Policy that authorizes users' actions instead of
+// simply checking for the presence of a key. Users are identified by
+// the email addresses associated with their signing key. An external
+// policy defines every app and which addresses are allowed to deploy
+// it.
+//
+// The deploy policy file should be a YAML file as specified in the
+// comments for the `DeployPol` type. The given keyring file should
+// contain PGP keys with email addresses that match the emails in the
+// deploy policy.  The keyring used by this policy *must be validated*
+// to ensure that each key contains correct email addresses.
+type UserPolicy struct {
+	keyringWatcher util.FileWatcher
+	deployWatcher  util.FileWatcher
+}
+
+var _ Policy = UserPolicy{}
+
+func NewUserPolicy(
+	keyringPath string,
+	deployPolicyPath string,
+) (p Policy, err error) {
+	keyringWatcher, err := util.NewFileWatcher(
+		func(path string) (interface{}, error) {
+			return LoadKeyring(path)
+		},
+		keyringPath,
+	)
+	if err != nil {
+		return
+	}
+	defer func() {
+		if err != nil {
+			keyringWatcher.Close()
+		}
+	}()
+	deployWatcher, err := util.NewFileWatcher(
+		func(path string) (interface{}, error) {
+			return LoadDeployPol(path)
+		},
+		deployPolicyPath,
+	)
+	if err != nil {
+		return
+	}
+	p = UserPolicy{keyringWatcher, deployWatcher}
+	return
+}
+
+func (p UserPolicy) AuthorizePod(manifest Manifest, logger logging.Logger) error {
+	// Verify that the signature is valid
+	plaintext, signature := manifest.SignatureData()
+	if signature == nil {
+		return Error{util.Errorf("received unsigned manifest"), nil}
+	}
+	keyringChan := p.keyringWatcher.GetAsync()
+	dpolChan := p.deployWatcher.GetAsync()
+	keyring := (<-keyringChan).(openpgp.EntityList)
+	dpol := (<-dpolChan).(DeployPol)
+
+	signer, err := openpgp.CheckDetachedSignature(
+		keyring,
+		bytes.NewReader(plaintext),
+		bytes.NewReader(signature),
+	)
+	if err == errors.ErrUnknownIssuer {
+		return Error{
+			util.Errorf("unknown signer"),
+			map[string]interface{}{},
+		}
+	}
+	if err != nil {
+		return Error{
+			util.Errorf("error validating signature"),
+			map[string]interface{}{"inner_err": err},
+		}
+	}
+
+	// Check if any of the signer's identites is authorized
+	lastIdName := "(unknown)"
+	for name, id := range signer.Identities {
+		if dpol.Authorized(manifest.ID(), id.UserId.Email) {
+			return nil
+		}
+		lastIdName = name
+	}
+	return Error{util.Errorf("user not authorized to deploy app: %s", lastIdName), nil}
+}
+
+func (p UserPolicy) CheckDigest(digest Digest) error {
+	return FixedKeyringPolicy{
+		(<-p.keyringWatcher.GetAsync()).(openpgp.EntityList),
+		nil,
+	}.CheckDigest(digest)
+}
+
+func (p UserPolicy) Close() {
+	p.keyringWatcher.Close()
+	p.deployWatcher.Close()
+}
