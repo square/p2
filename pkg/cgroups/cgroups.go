@@ -28,7 +28,9 @@ var Default Subsystems = Subsystems{
 type UnsupportedError string
 
 func (err UnsupportedError) Error() string {
-	return fmt.Sprintf("subsystem %q is not available on this system", err)
+	// remember to cast to a string, otherwise %q invokes
+	// the Error function again (infinite recursion)
+	return fmt.Sprintf("subsystem %q is not available on this system", string(err))
 }
 
 // Find retrieves the mount points for all cgroup subsystems on the host. The
