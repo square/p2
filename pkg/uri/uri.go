@@ -3,15 +3,12 @@ package uri
 import (
 	"io"
 	"net/http"
+	"net/url"
 	"os"
-	"regexp"
-	"strings"
+	"path/filepath"
 
 	"github.com/square/p2/pkg/util"
 )
-
-// Internet Standard: STD 66
-var leadingScheme = regexp.MustCompile(`^([a-zA-Z][a-zA-Z0-9+\-.]*):`)
 
 // A UriFetcher presents simple methods for fetching URIs from
 // different schemes.
@@ -40,37 +37,33 @@ type BasicFetcher struct {
 }
 
 func (f BasicFetcher) Open(srcUri string) (io.ReadCloser, error) {
-	var scheme, opaque string
-	if matches := leadingScheme.FindStringSubmatch(srcUri); matches != nil {
-		scheme = strings.ToLower(matches[1])
-		opaque = srcUri[len(matches[0]):]
+	u, err := url.Parse(srcUri)
+	if err != nil {
+		return nil, err
 	}
-	switch scheme {
-	case "":
+	switch u.Scheme {
+	case "", "file":
 		// Assume a schemeless URI is a path to a local file
-		return os.Open(srcUri)
-	case "file":
-		// Only allow local, absolute file references
-		if !strings.HasPrefix(opaque, "///") {
-			return nil, util.Errorf("%s: invalid file URI", srcUri)
+		if !filepath.IsAbs(u.Path) {
+			return nil, util.Errorf("%q: not an absolute path", u.Path)
 		}
-		return os.Open(opaque[3:])
+		return os.Open(u.Path)
 	case "http", "https":
-		resp, err := f.Client.Get(srcUri)
+		resp, err := f.Client.Get(u.String())
 		if err != nil {
 			return nil, err
 		}
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
 			return nil, util.Errorf(
-				"%s: HTTP server returned status: %s",
-				srcUri,
+				"%q: HTTP server returned status: %s",
+				u.String(),
 				resp.Status,
 			)
 		}
 		return resp.Body, nil
 	default:
-		return nil, util.Errorf("%s: unhandled URI scheme", srcUri)
+		return nil, util.Errorf("%q: unknown scheme %s", u.String(), u.Scheme)
 	}
 }
 
