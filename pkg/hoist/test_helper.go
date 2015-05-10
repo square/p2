@@ -6,11 +6,12 @@ import (
 	"os/user"
 	"runtime"
 
+	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 )
 
-func FakeHoistLaunchableForDir(dirName string) *Launchable {
+func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuilder) {
 	tempDir, _ := ioutil.TempDir("", "fakeenv")
 	launchableInstallDir := util.From(runtime.Caller(0)).ExpandPath(dirName)
 
@@ -29,11 +30,24 @@ func FakeHoistLaunchableForDir(dirName string) *Launchable {
 		launchable.RunAs = curUser.Username
 	}
 
-	return launchable
+	sbTemp, _ := ioutil.TempDir("", "fakesvdir")
+	sb := &runit.ServiceBuilder{
+		RunitRoot: sbTemp,
+	}
+
+	executables, _ := launchable.Executables(sb)
+	for _, exe := range executables {
+		os.MkdirAll(exe.Service.Path, 0644)
+	}
+
+	return launchable, sb
 }
 
-func cleanupFakeLaunchable(h *Launchable) {
+func cleanupFakeLaunchable(h *Launchable, s *runit.ServiceBuilder) {
 	if os.TempDir() != h.ConfigDir {
 		os.RemoveAll(h.ConfigDir)
+	}
+	if os.TempDir() != s.RunitRoot {
+		os.RemoveAll(s.RunitRoot)
 	}
 }
