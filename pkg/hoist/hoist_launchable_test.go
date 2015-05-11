@@ -74,8 +74,8 @@ func TestInstallDir(t *testing.T) {
 }
 
 func TestMultipleExecutables(t *testing.T) {
-	fakeLaunchable := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
-	defer cleanupFakeLaunchable(fakeLaunchable)
+	fakeLaunchable, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(fakeLaunchable, sb)
 	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
 
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
@@ -87,8 +87,8 @@ func TestMultipleExecutables(t *testing.T) {
 }
 
 func TestSingleRunitService(t *testing.T) {
-	launchable := FakeHoistLaunchableForDir("single_script_test_hoist_launchable")
-	defer cleanupFakeLaunchable(launchable)
+	launchable, sb := FakeHoistLaunchableForDir("single_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(launchable, sb)
 	Assert(t).IsNil(launchable.MakeCurrent(), "Should have been made current")
 	executables, err := launchable.Executables(runit.DefaultBuilder)
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
@@ -99,8 +99,8 @@ func TestSingleRunitService(t *testing.T) {
 }
 
 func TestLaunchExecutableOnlyRunitService(t *testing.T) {
-	launchable := FakeHoistLaunchableForDir("launch_script_only_test_hoist_launchable")
-	defer cleanupFakeLaunchable(launchable)
+	launchable, sb := FakeHoistLaunchableForDir("launch_script_only_test_hoist_launchable")
+	defer CleanupFakeLaunchable(launchable, sb)
 	Assert(t).IsNil(launchable.MakeCurrent(), "Should have been made current")
 	executables, err := launchable.Executables(runit.DefaultBuilder)
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
@@ -111,8 +111,8 @@ func TestLaunchExecutableOnlyRunitService(t *testing.T) {
 }
 
 func TestDisable(t *testing.T) {
-	hl := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
-	defer cleanupFakeLaunchable(hl)
+	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
 
 	disableOutput, err := hl.disable()
 	Assert(t).IsNil(err, "Got an unexpected error when calling disable on the test hoist launchable")
@@ -123,8 +123,8 @@ func TestDisable(t *testing.T) {
 }
 
 func TestFailingDisable(t *testing.T) {
-	hl := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
-	defer cleanupFakeLaunchable(hl)
+	hl, sb := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
 
 	disableOutput, err := hl.disable()
 	Assert(t).IsNotNil(err, "Expected disable to fail for this test, but it didn't")
@@ -136,8 +136,8 @@ func TestFailingDisable(t *testing.T) {
 
 // providing a disable script is optional, make sure we don't error
 func TestNonexistentDisable(t *testing.T) {
-	hl := FakeHoistLaunchableForDir("nonexistent_scripts_test_hoist_launchable")
-	defer cleanupFakeLaunchable(hl)
+	hl, sb := FakeHoistLaunchableForDir("nonexistent_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
 
 	disableOutput, err := hl.disable()
 	Assert(t).IsNil(err, "Got an unexpected error when calling disable on the test hoist launchable")
@@ -148,8 +148,8 @@ func TestNonexistentDisable(t *testing.T) {
 }
 
 func TestEnable(t *testing.T) {
-	hl := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
-	defer cleanupFakeLaunchable(hl)
+	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
 
 	enableOutput, err := hl.enable()
 	Assert(t).IsNil(err, "Got an unexpected error when calling enable on the test hoist launchable")
@@ -160,8 +160,8 @@ func TestEnable(t *testing.T) {
 }
 
 func TestFailingEnable(t *testing.T) {
-	hl := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
-	defer cleanupFakeLaunchable(hl)
+	hl, sb := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
 
 	enableOutput, err := hl.enable()
 	Assert(t).IsNotNil(err, "Expected enable to fail for this test, but it didn't")
@@ -173,8 +173,8 @@ func TestFailingEnable(t *testing.T) {
 
 // providing an enable script is optional, make sure we don't error
 func TestNonexistentEnable(t *testing.T) {
-	hl := FakeHoistLaunchableForDir("nonexistent_scripts_test_hoist_launchable")
-	defer cleanupFakeLaunchable(hl)
+	hl, sb := FakeHoistLaunchableForDir("nonexistent_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
 
 	enableOutput, err := hl.enable()
 	Assert(t).IsNil(err, "Got an unexpected error when calling enable on the test hoist launchable")
@@ -185,22 +185,22 @@ func TestNonexistentEnable(t *testing.T) {
 }
 
 func TestFailingStop(t *testing.T) {
-	hl := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
-	defer cleanupFakeLaunchable(hl)
+	hl, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
 
 	sv := runit.ErringSV()
-	err := hl.stop(runit.DefaultBuilder, sv)
+
+	err := hl.stop(sb, sv)
 
 	Assert(t).IsNotNil(err, "Expected sv stop to fail for this test, but it didn't")
 }
 
 func TestStart(t *testing.T) {
-	hl := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
-	defer cleanupFakeLaunchable(hl)
-	serviceBuilder := runit.FakeServiceBuilder()
+	hl, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
 	sv := runit.FakeSV()
-	executables, err := hl.Executables(serviceBuilder)
-	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod__testLaunchable.yaml")
+	executables, err := hl.Executables(sb)
+	outFilePath := path.Join(sb.ConfigRoot, "testPod__testLaunchable.yaml")
 
 	sbContentsMap := map[string]interface{}{
 		executables[0].Service.Name: map[string]interface{}{
@@ -216,19 +216,19 @@ func TestStart(t *testing.T) {
 	defer f.Close()
 	f.Write(sbContents)
 
-	err = hl.start(serviceBuilder, sv)
+	err = hl.start(sb, sv)
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
 
 }
 
 func TestFailingStart(t *testing.T) {
-	hl := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
-	defer cleanupFakeLaunchable(hl)
-	serviceBuilder := runit.FakeServiceBuilder()
+	hl, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+
 	sv := runit.ErringSV()
-	executables, _ := hl.Executables(serviceBuilder)
-	outFilePath := path.Join(serviceBuilder.ConfigRoot, "testPod__testLaunchable.yaml")
+	executables, _ := hl.Executables(sb)
+	outFilePath := path.Join(sb.ConfigRoot, "testPod__testLaunchable.yaml")
 
 	sbContentsMap := map[string]interface{}{
 		executables[0].Service.Name: map[string]interface{}{
@@ -244,16 +244,16 @@ func TestFailingStart(t *testing.T) {
 	defer f.Close()
 	f.Write(sbContents)
 
-	err = hl.start(serviceBuilder, sv)
+	err = hl.start(sb, sv)
 	Assert(t).IsNotNil(err, "Expected an error starting runit services")
 }
 
 func TestStop(t *testing.T) {
-	hl := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
-	defer cleanupFakeLaunchable(hl)
+	hl, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
 
 	sv := runit.FakeSV()
-	err := hl.stop(runit.DefaultBuilder, sv)
+	err := hl.stop(sb, sv)
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to stop runit services")
 }

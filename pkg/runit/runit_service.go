@@ -3,8 +3,11 @@ package runit
 import (
 	"bytes"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/square/p2/pkg/util"
 )
@@ -27,12 +30,31 @@ var (
 	SuperviseOkMissing           = errors.New("The supervise/ok file is missing")
 )
 
+func (sv *SV) waitForSupervision(service *Service) error {
+	maxWait := time.After(10 * time.Second)
+	for {
+		if _, err := os.Stat(filepath.Join(service.Path, "supervise")); !os.IsNotExist(err) {
+			return nil
+		}
+		select {
+		case <-maxWait:
+			return NotRunning
+		case <-time.After(150 * time.Millisecond):
+			// no op
+		}
+	}
+}
+
 func (sv *SV) execOnService(service *Service, toRun string) (string, error) {
+	err := sv.waitForSupervision(service)
+	if err != nil {
+		return "", err
+	}
 	cmd := exec.Command(sv.Bin, toRun, service.Path)
 	buffer := bytes.Buffer{}
 	cmd.Stdout = &buffer
 	cmd.Stderr = &buffer
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		return buffer.String(), util.Errorf("Could not %s service %s: %s. Output: %s", toRun, service.Name, err, buffer.String())
 	}
