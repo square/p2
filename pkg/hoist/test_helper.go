@@ -43,7 +43,7 @@ func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuild
 	return launchable, sb
 }
 
-func cleanupFakeLaunchable(h *Launchable, s *runit.ServiceBuilder) {
+func CleanupFakeLaunchable(h *Launchable, s *runit.ServiceBuilder) {
 	if os.TempDir() != h.ConfigDir {
 		os.RemoveAll(h.ConfigDir)
 	}
