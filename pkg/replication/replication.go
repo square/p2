@@ -33,30 +33,52 @@ func (r Replicator) CheckPreparers() error {
 }
 
 // Attempts to claim a lock on every host being deployed to.
-func (r Replicator) LockHosts(lock kp.Lock) error {
+// if overrideLock is true, will destroy any session holding any of the keys we
+// wish to lock
+func (r Replicator) LockHosts(lock kp.Lock, overrideLock bool) error {
 	for _, host := range r.Nodes {
 		lockPath := kp.LockPath(host, r.Manifest.ID())
-		err := lock.Lock(lockPath)
+		err := r.lock(lock, lockPath, overrideLock)
 
-		if _, ok := err.(kp.AlreadyLockedError); ok {
-			holder, err := r.Store.LockHolder(lockPath)
-			if err != nil {
-				return util.Errorf("Lock already held for %q, could not determine holder due to error: %s", lockPath, err)
-			} else if holder == "" {
-				// we failed to acquire this lock, but there is no outstanding
-				// holder
-				// this indicates that the previous holder had a LockDelay,
-				// which prevents other parties from acquiring the lock for a
-				// limited time
-				return util.Errorf("Lock for %q is blocked due to delay by previous holder", lockPath)
-			} else {
-				return util.Errorf("Lock for %q already held by lock %q", lockPath, holder)
-			}
-		} else if err != nil {
+		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// Attempts to claim a lock. If the overrideLock is set, any existing lock holder
+// will be destroyed and one more attempt will be made to acquire the lock
+func (r Replicator) lock(lock kp.Lock, lockPath string, overrideLock bool) error {
+	err := lock.Lock(lockPath)
+
+	if _, ok := err.(kp.AlreadyLockedError); ok {
+		holder, id, err := r.Store.LockHolder(lockPath)
+		if err != nil {
+			return util.Errorf("Lock already held for %q, could not determine holder due to error: %s", lockPath, err)
+		} else if holder == "" {
+			// we failed to acquire this lock, but there is no outstanding
+			// holder
+			// this indicates that the previous holder had a LockDelay,
+			// which prevents other parties from acquiring the lock for a
+			// limited time
+			return util.Errorf("Lock for %q is blocked due to delay by previous holder", lockPath)
+		} else {
+			if overrideLock {
+				err = r.Store.DestroyLockHolder(id)
+				if err != nil {
+					return util.Errorf("Unable to destroy the current lock holder (%s) for %q: %s", holder, lockPath, err)
+				}
+
+				// try acquiring the lock again, but this time don't destroy holders so we don't try forever
+				return r.lock(lock, lockPath, false)
+			}
+
+			return util.Errorf("Lock for %q already held by lock %q", lockPath, holder)
+		}
+	}
+
+	return err
 }
 
 // Execute the replication.
