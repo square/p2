@@ -36,14 +36,15 @@ var (
 	nodes remain up at all times, according to p2's health checks.
 
 	`)
-	manifestUri = replicate.Arg("manifest", "a path or url to a pod manifest that will be replicated.").Required().String()
-	hosts       = replicate.Arg("hosts", "Hosts to replicate to").Required().Strings()
-	minNodes    = replicate.Flag("min-nodes", "The minimum number of healthy nodes that must remain up while replicating.").Default("1").Short('m').Int()
-	consulUrl   = replicate.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
-	consulToken = replicate.Flag("token", "The ACL token to use for consul").String()
-	threshold   = replicate.Flag("threshold", "The minimum health level to treat as healthy. One of (in order) passing, warning, unknown, critical.").String()
-	headers     = replicate.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
-	https       = replicate.Flag("https", "Use HTTPS").Bool()
+	manifestUri  = replicate.Arg("manifest", "a path or url to a pod manifest that will be replicated.").Required().String()
+	hosts        = replicate.Arg("hosts", "Hosts to replicate to").Required().Strings()
+	minNodes     = replicate.Flag("min-nodes", "The minimum number of healthy nodes that must remain up while replicating.").Default("1").Short('m').Int()
+	consulUrl    = replicate.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
+	consulToken  = replicate.Flag("token", "The ACL token to use for consul").String()
+	threshold    = replicate.Flag("threshold", "The minimum health level to treat as healthy. One of (in order) passing, warning, unknown, critical.").String()
+	headers      = replicate.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
+	https        = replicate.Flag("https", "Use HTTPS").Bool()
+	overrideLock = replicate.Flag("override-lock", "Override any lock holders").Bool()
 )
 
 func main() {
@@ -130,7 +131,7 @@ func main() {
 			}
 		}
 	}()
-	if err := repl.LockHosts(lock); err != nil {
+	if err := repl.LockHosts(lock, *overrideLock); err != nil {
 		lock.Destroy()
 		log.Fatalf("Could not lock all hosts: %s", err)
 	}

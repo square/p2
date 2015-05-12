@@ -45,21 +45,26 @@ func (s *Store) NewLock(name string) (Lock, error) {
 	}, nil
 }
 
-// determine the name of the session that is locking this key, if any
-func (s *Store) LockHolder(key string) (string, error) {
+// determine the name and ID of the session that is locking this key, if any
+func (s *Store) LockHolder(key string) (string, string, error) {
 	kvp, _, err := s.client.KV().Get(key, nil)
 	if err != nil {
-		return "", KVError{Op: "get", Key: key}
+		return "", "", KVError{Op: "get", Key: key}
 	}
 	if kvp == nil || kvp.Session == "" {
-		return "", nil
+		return "", "", nil
 	}
 
 	se, _, err := s.client.Session().Info(kvp.Session, nil)
 	if err != nil {
-		return "", util.Errorf("Could not get lock information for %q held by id %q", key, kvp.Session)
+		return "", "", util.Errorf("Could not get lock information for %q held by id %q", key, kvp.Session)
 	}
-	return se.Name, nil
+	return se.Name, se.ID, nil
+}
+
+func (s *Store) DestroyLockHolder(id string) error {
+	_, err := s.client.Session().Destroy(id, nil)
+	return err
 }
 
 // attempts to acquire the lock on the targeted key
