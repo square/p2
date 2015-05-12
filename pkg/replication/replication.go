@@ -63,17 +63,16 @@ func (r Replicator) lock(lock kp.Lock, lockPath string, overrideLock bool) error
 			// which prevents other parties from acquiring the lock for a
 			// limited time
 			return util.Errorf("Lock for %q is blocked due to delay by previous holder", lockPath)
-		} else {
-			if overrideLock {
-				err = r.Store.DestroyLockHolder(id)
-				if err != nil {
-					return util.Errorf("Unable to destroy the current lock holder (%s) for %q: %s", holder, lockPath, err)
-				}
-
-				// try acquiring the lock again, but this time don't destroy holders so we don't try forever
-				return r.lock(lock, lockPath, false)
+		} else if overrideLock {
+			err = r.Store.DestroyLockHolder(id)
+			if err != nil {
+				return util.Errorf("Unable to destroy the current lock holder (%s) for %q: %s", holder, lockPath, err)
 			}
 
+			// try acquiring the lock again, but this time don't destroy holders so we don't try forever
+			return r.lock(lock, lockPath, false)
+
+		} else {
 			return util.Errorf("Lock for %q already held by lock %q", lockPath, holder)
 		}
 	}
