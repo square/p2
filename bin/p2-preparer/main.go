@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -41,6 +43,12 @@ func main() {
 	quitHookUpdate := make(chan struct{})
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
 	go prep.WatchForHooks(quitHookUpdate)
+
+	http.HandleFunc("/_status",
+		func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintf(w, "p2-preparer OK")
+		})
+	go http.ListenAndServe(":8080", nil)
 
 	waitForTermination(logger, quitMainUpdate, quitHookUpdate)
 
