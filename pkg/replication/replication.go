@@ -8,6 +8,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -24,7 +25,7 @@ type Replicator struct {
 // Checks that the preparer is running on every host being deployed to.
 func (r Replicator) CheckPreparers() error {
 	for _, host := range r.Nodes {
-		_, _, err := r.Store.Pod(kp.RealityPath(host, "p2-preparer"))
+		_, _, err := r.Store.Pod(kp.RealityPath(host, preparer.POD_ID))
 		if err != nil {
 			return util.Errorf("Host %q does not have a preparer", host)
 		}
