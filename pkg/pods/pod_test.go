@@ -13,9 +13,9 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/hoist"
-	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
+	"gopkg.in/yaml.v2"
 
 	. "github.com/anthonybishopric/gotcha"
 )
@@ -214,6 +214,44 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 	manifestMustEqual(updated, writtenCurrent, t)
 }
 
+func TestBuildRunitServices(t *testing.T) {
+	serviceBuilder := runit.FakeServiceBuilder()
+	serviceBuilderDir, err := ioutil.TempDir("", "servicebuilderDir")
+	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
+	serviceBuilder.ConfigRoot = serviceBuilderDir
+	pod := Pod{
+		Id:             "testPod",
+		path:           "/data/pods/testPod",
+		ServiceBuilder: serviceBuilder,
+	}
+	hl, sb := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	defer hoist.CleanupFakeLaunchable(hl, sb)
+	hl.RunAs = "testPod"
+	executables, err := hl.Executables(serviceBuilder)
+	outFilePath := filepath.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
+
+	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
+
+	pod.buildRunitServices([]hoist.Launchable{*hl})
+	f, err := os.Open(outFilePath)
+	defer f.Close()
+	bytes, err := ioutil.ReadAll(f)
+	Assert(t).IsNil(err, "Got an unexpected error reading the servicebuilder yaml file")
+
+	expectedMap := map[string]interface{}{
+		executables[0].Service.Name: map[string]interface{}{
+			"run": executables[0].Exec,
+		},
+		executables[1].Service.Name: map[string]interface{}{
+			"run": executables[1].Exec,
+		},
+	}
+	expected, err := yaml.Marshal(expectedMap)
+	Assert(t).IsNil(err, "Got error marshalling expected map to yaml")
+
+	Assert(t).AreEqual(string(bytes), string(expected), "Servicebuilder yaml file didn't have expected contents")
+}
+
 func TestUninstall(t *testing.T) {
 	serviceBuilder := runit.FakeServiceBuilder()
 	serviceBuilderDir, err := ioutil.TempDir("", "servicebuilderDir")
@@ -225,7 +263,6 @@ func TestUninstall(t *testing.T) {
 		Id:             "testPod",
 		path:           testPodDir,
 		ServiceBuilder: serviceBuilder,
-		logger:         logging.DefaultLogger,
 	}
 	manifest := getTestPodManifest(t)
 	manifestContent, err := manifest.Bytes()
@@ -239,6 +276,8 @@ func TestUninstall(t *testing.T) {
 
 	err = pod.Uninstall()
 	Assert(t).IsNil(err, "Error uninstalling pod")
+	_, err = os.Stat(serviceBuilderFilePath)
+	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
 	_, err = os.Stat(pod.currentPodManifestPath())
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
 }

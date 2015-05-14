@@ -2,14 +2,13 @@ package cgroups
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/square/p2/pkg/util"
 )
 
 var DefaultCgexec = "/bin/cgexec"
@@ -93,7 +92,7 @@ func (subsys Subsystems) SetCPU(name string, cpus int) error {
 		return err
 	}
 
-	_, err = util.WriteIfChanged(
+	_, err = writeIfChanged(
 		filepath.Join(subsys.CPU, name, "cpu.cfs_period_us"),
 		[]byte(strconv.Itoa(period)+"\n"),
 		0,
@@ -102,7 +101,7 @@ func (subsys Subsystems) SetCPU(name string, cpus int) error {
 		return err
 	}
 
-	_, err = util.WriteIfChanged(
+	_, err = writeIfChanged(
 		filepath.Join(subsys.CPU, name, "cpu.cfs_quota_us"),
 		[]byte(strconv.Itoa(quota)+"\n"),
 		0,
@@ -144,17 +143,17 @@ func (subsys Subsystems) SetMemory(name string, bytes int) error {
 		return err
 	}
 
-	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.soft_limit_in_bytes"), []byte(strconv.Itoa(softLimit)+"\n"), 0)
+	_, err = writeIfChanged(filepath.Join(subsys.Memory, name, "memory.soft_limit_in_bytes"), []byte(strconv.Itoa(softLimit)+"\n"), 0)
 	if err != nil {
 		return err
 	}
 
-	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0)
+	_, err = writeIfChanged(filepath.Join(subsys.Memory, name, "memory.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0)
 	if err != nil {
 		return err
 	}
 
-	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.memsw.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0)
+	_, err = writeIfChanged(filepath.Join(subsys.Memory, name, "memory.memsw.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0)
 	if err != nil {
 		return err
 	}
@@ -176,6 +175,27 @@ func (subsys Subsystems) AddPID(name string, pid int) error {
 		return err
 	}
 	return appendIntToFile(filepath.Join(subsys.CPU, name, "tasks"), pid)
+}
+
+func writeIfChanged(filename string, data []byte, perm os.FileMode) (bool, error) {
+	content, err := ioutil.ReadFile(filename)
+
+	if !os.IsNotExist(err) && err != nil {
+		return false, err
+	}
+	if !os.IsNotExist(err) && bytes.Compare(content, data) == 0 {
+		return false, nil
+	}
+
+	err = ioutil.WriteFile(filename, data, perm)
+	if err != nil {
+		return true, err
+	}
+
+	if perm != 0 {
+		err = os.Chmod(filename, perm)
+	}
+	return true, err
 }
 
 func appendIntToFile(filename string, data int) error {

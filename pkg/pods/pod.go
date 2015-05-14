@@ -127,8 +127,35 @@ func (pod *Pod) Launch(manifest *Manifest) (bool, error) {
 		return false, err
 	}
 
-	success := true
+	var successes []bool
 	for _, launchable := range launchables {
+		err := launchable.MakeCurrent()
+		if err != nil {
+			// being unable to flip a symlink is a catastrophic error
+			return false, err
+		}
+
+		out, err := launchable.PostActivate()
+		if err != nil {
+			// if a launchable's post-activate fails, we probably can't
+			// launch it, but this does not break the entire pod
+			pod.logLaunchableError(launchable.Id, err, out)
+			successes = append(successes, false)
+		} else {
+			if out != "" {
+				pod.logInfo(out)
+			}
+			successes = append(successes, true)
+		}
+	}
+
+	err = pod.buildRunitServices(launchables)
+
+	success := true
+	for i, launchable := range launchables {
+		if !successes[i] {
+			continue
+		}
 		err = launchable.Launch(pod.ServiceBuilder, pod.SV) // TODO: make these configurable
 		if err != nil {
 			// Log the failure but continue
@@ -143,11 +170,37 @@ func (pod *Pod) Launch(manifest *Manifest) (bool, error) {
 		pod.logInfo("Launched pod but one or more services failed to start")
 	}
 
-	err = pod.ServiceBuilder.Prune()
-	if err != nil {
-		pod.logError(err, "Could not prune services")
+	return success, nil
+}
+
+// Write servicebuilder *.yaml file and run servicebuilder, which will register runit services for this
+// pod.
+func (pod *Pod) buildRunitServices(launchables []hoist.Launchable) error {
+	// if the service is new, building the runit services also starts them, making the sv start superfluous but harmless
+	sbTemplate := runit.NewSBTemplate(pod.Id)
+	for _, launchable := range launchables {
+		executables, err := launchable.Executables(pod.ServiceBuilder)
+		if err != nil {
+			return err
+		}
+		for _, executable := range executables {
+			sbTemplate.AddEntry(executable.Service.Name, executable.Exec)
+		}
+		if err != nil {
+			// Log the failure but continue
+			pod.logLaunchableError(launchable.Id, err, "Unable to launch launchable")
+		}
 	}
-	return success, err
+	_, err := pod.ServiceBuilder.Write(sbTemplate)
+	if err != nil {
+		return err
+	}
+
+	_, err = pod.ServiceBuilder.Rebuild()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (pod *Pod) WriteCurrentManifest(manifest *Manifest) (string, error) {
@@ -231,12 +284,24 @@ func (pod *Pod) Uninstall() error {
 		return err
 	}
 
-	// halt launchables and remove their runit services
+	// halt launchables
 	for _, launchable := range launchables {
 		err = launchable.Halt(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
 		if err != nil {
-			pod.logLaunchableError(launchable.Id, err, "could not halt launchable")
+			// log and continue
 		}
+	}
+
+	// remove runit services
+	sbTemplate := runit.NewSBTemplate(pod.Id)
+	err = pod.ServiceBuilder.Remove(sbTemplate)
+	if err != nil {
+		return err
+	}
+
+	_, err = pod.ServiceBuilder.Rebuild()
+	if err != nil {
+		return err
 	}
 
 	// remove pod home dir
