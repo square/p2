@@ -26,15 +26,15 @@ type LogDestination struct {
 }
 
 type PreparerConfig struct {
-	NodeName             string            `yaml:"node_name"`
-	ConsulAddress        string            `yaml:"consul_address"`
-	ConsulTokenPath      string            `yaml:"consul_token_path,omitempty"`
-	HooksDirectory       string            `yaml:"hooks_directory"`
-	CAPath               string            `yaml:"ca_path,omitempty"`
-	PodRoot              string            `yaml:"pod_root,omitempty"`
-	Auth                 map[string]string `yaml:"auth,omitempty"`
-	ForbiddenPodIds      []string          `yaml:"forbidden_pod_ids,omitempty"`
-	ExtraLogDestinations []LogDestination  `yaml:"extra_log_destinations,omitempty"`
+	NodeName             string                 `yaml:"node_name"`
+	ConsulAddress        string                 `yaml:"consul_address"`
+	ConsulTokenPath      string                 `yaml:"consul_token_path,omitempty"`
+	HooksDirectory       string                 `yaml:"hooks_directory"`
+	CAPath               string                 `yaml:"ca_path,omitempty"`
+	PodRoot              string                 `yaml:"pod_root,omitempty"`
+	Auth                 map[string]interface{} `yaml:"auth,omitempty"`
+	ForbiddenPodIds      []string               `yaml:"forbidden_pod_ids,omitempty"`
+	ExtraLogDestinations []LogDestination       `yaml:"extra_log_destinations,omitempty"`
 }
 
 // Configuration fields for the "keyring" auth type
@@ -98,7 +98,7 @@ func addHooks(preparerConfig *PreparerConfig, logger logging.Logger) {
 
 // castYaml() allows a YAML block to be reparsed into a struct type by
 // re-encoding it into YAML and re-parsing it.
-func castYaml(in map[string]string, out interface{}) error {
+func castYaml(in map[string]interface{}, out interface{}) error {
 	encoded, err := yaml.Marshal(in)
 	if err != nil {
 		return err
@@ -118,7 +118,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 
 	var err error
 	var authPolicy auth.Policy
-	switch preparerConfig.Auth["type"] {
+	switch t, _ := preparerConfig.Auth["type"].(string); t {
 	case "":
 		return nil, util.Errorf("must specify authorization policy type")
 	case "none":
@@ -159,7 +159,10 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 			return nil, util.Errorf("error configuring user auth: %s", err)
 		}
 	default:
-		return nil, util.Errorf("unrecognized auth type: %s", preparerConfig.Auth["type"])
+		if t, ok := preparerConfig.Auth["type"].(string); ok {
+			return nil, util.Errorf("unrecognized auth type: %s", t)
+		}
+		return nil, util.Errorf("unrecognized auth type")
 	}
 
 	consulToken := ""

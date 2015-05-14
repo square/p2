@@ -169,7 +169,7 @@ func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks, string) {
 		HooksDirectory:  util.From(runtime.Caller(0)).ExpandPath("test_hooks"),
 		PodRoot:         podRoot,
 		ForbiddenPodIds: []string{"root"},
-		Auth:            map[string]string{"type": "none"},
+		Auth:            map[string]interface{}{"type": "none"},
 	}
 	p, err := New(cfg, logging.DefaultLogger)
 	Assert(t).IsNil(err, "Test setup error: should not have erred when trying to load a fake preparer")
