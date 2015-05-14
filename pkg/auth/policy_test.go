@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/armor"
+	"gopkg.in/yaml.v2"
 
 	"github.com/square/p2/pkg/logging"
 )
@@ -112,6 +113,22 @@ func (h *testHarness) saveKeys(ents []*openpgp.Entity, filename string) {
 	}
 }
 
+func (h *testHarness) saveYaml(obj interface{}, filename string) {
+	if h.Err != nil {
+		return
+	}
+	objBytes, err := yaml.Marshal(obj)
+	if err != nil {
+		h.Err = fmt.Errorf("marshalling yaml: %s", err)
+		return
+	}
+	err = ioutil.WriteFile(filename, objBytes, 0)
+	if err != nil {
+		h.Err = fmt.Errorf("writing yaml: %s", err)
+		return
+	}
+}
+
 // Test that the KeyringPolicy can load a keyring
 func TestKeyring(t *testing.T) {
 	// Setup three entities, two of which are saved to a keyring file
@@ -209,4 +226,103 @@ func TestKeyAddition(t *testing.T) {
 	if err != nil {
 		t.Error("expected authorized, got error:", err)
 	}
+}
+
+// Test that deploy policy changes will be picked up.
+func TestDpolChanges(t *testing.T) {
+	h := testHarness{}
+	msg := []byte("Oh dear! Oh dear! I shall be too late!")
+	ents := h.loadEntities()
+	sigs := h.signMessage(msg, ents)
+	keyfile := h.tempFile()
+	defer rm(t, keyfile)
+	h.saveKeys(ents, keyfile)
+	polfile := h.tempFile()
+	defer rm(t, polfile)
+
+	// Initial policy
+	h.saveYaml(
+		RawDeployPol{
+			Groups: map[DpGroup][]DpUserEmail{
+				"a": {"test1@testing"},
+				"b": {"test1@testing", "test2@testing"},
+				"c": {"test3@testing"},
+			},
+			Apps: map[string][]DpGroup{
+				"foo": {"a"},
+				"bar": {"b"},
+				"baz": {"a", "c"},
+			},
+		},
+		polfile,
+	)
+
+	if h.Err != nil {
+		t.Error(h.Err)
+		return
+	}
+
+	policy, err := NewUserPolicy(keyfile, polfile)
+	if err != nil {
+		t.Error("error creating user policy: ", err)
+		return
+	}
+	logger := logging.TestLogger()
+
+	// Test every combination of app/user and check it against the expectation matrix
+	tester := func(expected map[string][3]bool) {
+		for app, results := range expected {
+			for signer := range results {
+				err = policy.AuthorizePod(TestSigned{app, msg, sigs[signer]}, logger)
+				if err != nil && results[signer] {
+					t.Errorf(
+						"app %s signer %d: expected authorized, got error: %s",
+						app,
+						signer,
+						err,
+					)
+				} else if err == nil && !results[signer] {
+					t.Errorf(
+						"app %s signer %d: expected failure, got authorization",
+						app,
+						signer,
+					)
+				}
+			}
+		}
+	}
+
+	tester(map[string][3]bool{
+		"foo": {true, false, false},
+		"bar": {true, true, false},
+		"baz": {true, false, true},
+		"ohi": {false, false, false},
+	})
+
+	// Change the policy
+	time.Sleep(time.Second)
+	h.saveYaml(
+		RawDeployPol{
+			Groups: map[DpGroup][]DpUserEmail{
+				"a": {"test1@testing", "test2@testing"},
+				"b": {"test1@testing"},
+				"c": {"test3@testing"},
+			},
+			Apps: map[string][]DpGroup{
+				"foo": {"a"},
+				"bar": {"b"},
+				"baz": {"c"},
+				"ohi": {"a", "b", "c"},
+			},
+		},
+		polfile,
+	)
+
+	tester(map[string][3]bool{
+		"foo": {true, true, false},
+		"bar": {true, false, false},
+		"baz": {false, false, true},
+		"ohi": {true, true, true},
+	})
+
 }

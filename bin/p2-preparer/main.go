@@ -22,10 +22,6 @@ func main() {
 		logger.WithField("inner_err", err).Fatalln("could not load preparer config")
 	}
 
-	if preparerConfig.KeyringPath == "" {
-		logger.NoFields().Fatalln("The preparer must be launched with a keyring")
-	}
-
 	prep, err := preparer.New(preparerConfig, logger)
 	if err != nil {
 		logger.WithField("inner_err", err).Fatalln("Could not initialize preparer")
@@ -37,7 +33,7 @@ func main() {
 		"node_name": preparerConfig.NodeName,
 		"consul":    preparerConfig.ConsulAddress,
 		"hooks_dir": preparerConfig.HooksDirectory,
-		"keyring":   preparerConfig.KeyringPath,
+		"keyring":   preparerConfig.Auth["keyring"],
 		"version":   version.VERSION,
 	}).Infoln("Preparer started successfully")
 
