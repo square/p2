@@ -31,12 +31,13 @@ func main() {
 	defer prep.Close()
 
 	logger.WithFields(logrus.Fields{
-		"starting":  true,
-		"node_name": preparerConfig.NodeName,
-		"consul":    preparerConfig.ConsulAddress,
-		"hooks_dir": preparerConfig.HooksDirectory,
-		"keyring":   preparerConfig.Auth["keyring"],
-		"version":   version.VERSION,
+		"starting":    true,
+		"node_name":   preparerConfig.NodeName,
+		"consul":      preparerConfig.ConsulAddress,
+		"hooks_dir":   preparerConfig.HooksDirectory,
+		"status_port": preparerConfig.StatusPort,
+		"keyring":     preparerConfig.Auth["keyring"],
+		"version":     version.VERSION,
 	}).Infoln("Preparer started successfully")
 
 	quitMainUpdate := make(chan struct{})
