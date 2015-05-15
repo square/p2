@@ -32,6 +32,7 @@ type PreparerConfig struct {
 	HooksDirectory       string                 `yaml:"hooks_directory"`
 	CAPath               string                 `yaml:"ca_path,omitempty"`
 	PodRoot              string                 `yaml:"pod_root,omitempty"`
+	StatusPort           int                    `yaml:"status_port"`
 	Auth                 map[string]interface{} `yaml:"auth,omitempty"`
 	ForbiddenPodIds      []string               `yaml:"forbidden_pod_ids,omitempty"`
 	ExtraLogDestinations []LogDestination       `yaml:"extra_log_destinations,omitempty"`

@@ -48,7 +48,7 @@ func main() {
 		func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "p2-preparer OK")
 		})
-	go http.ListenAndServe(":8080", nil)
+	go http.ListenAndServe(fmt.Sprintf(":%d", preparerConfig.StatusPort), nil)
 
 	waitForTermination(logger, quitMainUpdate, quitHookUpdate)
 
