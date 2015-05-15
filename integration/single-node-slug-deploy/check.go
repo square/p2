@@ -101,7 +101,10 @@ func generatePreparerPod(workdir string) (string, error) {
 		return "", err
 	}
 	manifest.Config["preparer"] = map[string]interface{}{
-		"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
+		"auth": map[string]string{
+			"type":    "keyring",
+			"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
+		},
 	}
 	manifest.RunAs = "root"
 	f, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
