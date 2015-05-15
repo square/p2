@@ -176,31 +176,31 @@ func (pod *Pod) Launch(manifest *Manifest) (bool, error) {
 // Write servicebuilder *.yaml file and run servicebuilder, which will register runit services for this
 // pod.
 func (pod *Pod) buildRunitServices(launchables []hoist.Launchable) error {
-	// if the service is new, building the runit services also starts them, making the sv start superfluous but harmless
-	sbTemplate := runit.NewSBTemplate(pod.Id)
+	// if the service is new, building the runit services also starts them
+	sbTemplate := make(map[string]runit.ServiceTemplate)
 	for _, launchable := range launchables {
 		executables, err := launchable.Executables(pod.ServiceBuilder)
 		if err != nil {
-			return err
+			pod.logLaunchableError(launchable.Id, err, "Unable to list executables")
+			continue
 		}
 		for _, executable := range executables {
-			sbTemplate.AddEntry(executable.Service.Name, executable.Exec)
-		}
-		if err != nil {
-			// Log the failure but continue
-			pod.logLaunchableError(launchable.Id, err, "Unable to launch launchable")
+			if _, ok := sbTemplate[executable.Service.Name]; ok {
+				return util.Errorf("Duplicate executable %q for launchable %q", executable.Service.Name, launchable.Id)
+			}
+			sbTemplate[executable.Service.Name] = runit.ServiceTemplate{
+				Run: executable.Exec,
+			}
 		}
 	}
-	_, err := pod.ServiceBuilder.Write(sbTemplate)
+	err := pod.ServiceBuilder.Activate(pod.Id, sbTemplate)
 	if err != nil {
 		return err
 	}
 
-	_, err = pod.ServiceBuilder.Rebuild()
-	if err != nil {
-		return err
-	}
-	return nil
+	// as with the original servicebuilder, prune after creating
+	// new services
+	return pod.ServiceBuilder.Prune()
 }
 
 func (pod *Pod) WriteCurrentManifest(manifest *Manifest) (string, error) {
@@ -292,14 +292,13 @@ func (pod *Pod) Uninstall() error {
 		}
 	}
 
-	// remove runit services
-	sbTemplate := runit.NewSBTemplate(pod.Id)
-	err = pod.ServiceBuilder.Remove(sbTemplate)
+	// remove services for this pod, then prune the old
+	// service dirs away
+	err = os.Remove(filepath.Join(pod.ServiceBuilder.ConfigRoot, pod.Id+".yaml"))
 	if err != nil {
 		return err
 	}
-
-	_, err = pod.ServiceBuilder.Rebuild()
+	err = pod.ServiceBuilder.Prune()
 	if err != nil {
 		return err
 	}
