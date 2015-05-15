@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/errors"
+	"golang.org/x/crypto/openpgp/packet"
 	"gopkg.in/yaml.v2"
 
 	"github.com/square/p2/pkg/logging"
@@ -115,16 +116,9 @@ func (p FixedKeyringPolicy) AuthorizePod(manifest Manifest, logger logging.Logge
 	if signature == nil {
 		return Error{util.Errorf("received unsigned manifest (expected signature)"), nil}
 	}
-	signer, err := openpgp.CheckDetachedSignature(
-		p.Keyring,
-		bytes.NewReader(plaintext),
-		bytes.NewReader(signature),
-	)
+	signer, err := checkDetachedSignature(p.Keyring, plaintext, signature)
 	if err != nil {
-		return Error{
-			util.Errorf("error validating signature"),
-			map[string]interface{}{"inner_err": err},
-		}
+		return err
 	}
 
 	signerId := fmt.Sprintf("%X", signer.PrimaryKey.Fingerprint)
@@ -156,18 +150,57 @@ func (p FixedKeyringPolicy) CheckDigest(digest Digest) error {
 	if signature == nil {
 		return nil
 	}
-	_, err := openpgp.CheckDetachedSignature(
-		p.Keyring,
-		bytes.NewReader(plaintext),
-		bytes.NewReader(signature),
-	)
-	if err != nil {
-		return Error{util.Errorf("error validating signature: %s", err), nil}
-	}
-	return nil
+	_, err := checkDetachedSignature(p.Keyring, plaintext, signature)
+	return err
 }
 
 func (p FixedKeyringPolicy) Close() {
+}
+
+// Returns the key ID used to sign a message. This method is extracted
+// from `openpgp.CheckDetachedSignature()`, which only reports that a
+// key wasn't found, not *which* key wasn't found.
+func signerKeyId(signature []byte) (uint64, error) {
+	p, err := packet.Read(bytes.NewReader(signature))
+	if err != nil {
+		return 0, err
+	}
+	switch sig := p.(type) {
+	case *packet.Signature:
+		if sig.IssuerKeyId == nil {
+			return 0, errors.StructuralError("signature doesn't have an issuer")
+		}
+		return *sig.IssuerKeyId, nil
+	case *packet.SignatureV3:
+		return sig.IssuerKeyId, nil
+	default:
+		return 0, errors.StructuralError("non signature packet found")
+	}
+}
+
+// Wrapper around openpgp.CheckDetachedSignature() that standardizes
+// the error messages.
+func checkDetachedSignature(
+	keyring openpgp.KeyRing,
+	signed []byte,
+	signature []byte,
+) (*openpgp.Entity, error) {
+	signer, err := openpgp.CheckDetachedSignature(
+		keyring,
+		bytes.NewReader(signed),
+		bytes.NewReader(signature),
+	)
+	if err == errors.ErrUnknownIssuer {
+		keyId, err := signerKeyId(signature)
+		if err != nil {
+			return nil, Error{util.Errorf("error validating signature: %s", err), nil}
+		}
+		return nil, Error{util.Errorf("unknown signer: %X", keyId), nil}
+	}
+	if err != nil {
+		return nil, Error{util.Errorf("error validating signature: %s", err), nil}
+	}
+	return signer, nil
 }
 
 func LoadKeyring(path string) (openpgp.EntityList, error) {
@@ -394,22 +427,9 @@ func (p UserPolicy) AuthorizePod(manifest Manifest, logger logging.Logger) error
 	keyring := (<-keyringChan).(openpgp.EntityList)
 	dpol := (<-dpolChan).(DeployPol)
 
-	signer, err := openpgp.CheckDetachedSignature(
-		keyring,
-		bytes.NewReader(plaintext),
-		bytes.NewReader(signature),
-	)
-	if err == errors.ErrUnknownIssuer {
-		return Error{
-			util.Errorf("unknown signer"),
-			map[string]interface{}{},
-		}
-	}
+	signer, err := checkDetachedSignature(keyring, plaintext, signature)
 	if err != nil {
-		return Error{
-			util.Errorf("error validating signature"),
-			map[string]interface{}{"inner_err": err},
-		}
+		return err
 	}
 
 	// Check if any of the signer's identites is authorized
