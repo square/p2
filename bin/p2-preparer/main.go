@@ -44,11 +44,13 @@ func main() {
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
 	go prep.WatchForHooks(quitHookUpdate)
 
-	http.HandleFunc("/_status",
-		func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprintf(w, "p2-preparer OK")
-		})
-	go http.ListenAndServe(fmt.Sprintf(":%d", preparerConfig.StatusPort), nil)
+	if preparerConfig.StatusPort != 0 {
+		http.HandleFunc("/_status",
+			func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, "p2-preparer OK")
+			})
+		go http.ListenAndServe(fmt.Sprintf(":%d", preparerConfig.StatusPort), nil)
+	}
 
 	waitForTermination(logger, quitMainUpdate, quitHookUpdate)
 
