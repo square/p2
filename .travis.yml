@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - 1.4
+  - 1.4.2
 
 before_install:
   - sudo apt-get update -qq
@@ -10,8 +10,8 @@ before_install:
 install:
   - gem install rake
   - go get github.com/tools/godep
-  - GOBINS=`ruby -e "puts ENV['GOPATH'].split(':').map{ |p| sprintf('%s/bin', p) }.join(':')"`
-  - export PATH=$PATH:$GOBINS
-  - rake build
+  - rake install
 
-script: rake test
+script:
+  - rake test
+  - integration/travis.sh

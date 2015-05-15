@@ -174,7 +174,12 @@ func cgEnter(platconf, launchableName, cgroupName string) error {
 		return util.Errorf("Could not find cgroupfs mount point: %s", err)
 	}
 	err = cg.Write(cgConfig)
-	if err != nil {
+	if _, ok := err.(cgroups.UnsupportedError); ok {
+		// if a subsystem is not supported, just log
+		// and carry on
+		log.Printf("Unsupported subsystem (%s), continuing\n", err)
+		return nil
+	} else if err != nil {
 		return util.Errorf("Could not set cgroup parameters: %s", err)
 	}
 	return cg.AddPID(cgConfig.Name, os.Getpid())
