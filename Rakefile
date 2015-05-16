@@ -44,21 +44,23 @@ end
 desc 'Package the installed P2 binaries into a Hoist artifact that runs as the preparer. The output tar is symlinked to builds/p2.tar.gz'
 task :package => :install do
   root = File.dirname(__FILE__)
-  builds_dir = File.join(root, "builds")
-
+  arch = `uname`.downcase.chomp
+  builds_dir = File.join(root, "builds", arch)
   version_tag = `git describe --tags`.chomp
+  build_base = "p2-#{version_tag}-#{arch}"
+
   abort("Could not get version_tag") unless version_tag && version_tag != ""
 
-  e "mkdir -p #{builds_dir}/p2-#{version_tag}/bin"
+  e "mkdir -p #{builds_dir}/#{build_base}/bin"
   Dir.glob(File.join(File.dirname(`which p2-preparer`.chomp), 'p2*')).each do |f|
-    e "cp #{f} #{builds_dir}/p2-#{version_tag}/bin"
+    e "cp #{f} #{builds_dir}/#{build_base}/bin"
   end
-  e "mv #{builds_dir}/p2-#{version_tag}/bin/p2-preparer #{builds_dir}/p2-#{version_tag}/bin/launch"
+  e "mv #{builds_dir}/#{build_base}/bin/p2-preparer #{builds_dir}/#{build_base}/bin/launch"
 
-  e "tar -czf #{builds_dir}/p2-#{version_tag}.tar.gz -C #{builds_dir}/p2-#{version_tag} ."
+  e "tar -czf #{builds_dir}/#{build_base}.tar.gz -C #{builds_dir}/#{build_base} ."
 
   e "rm -f #{builds_dir}/p2.tar.gz"
-  e "ln -s #{builds_dir}/p2-#{version_tag}.tar.gz #{builds_dir}/p2.tar.gz"
+  e "ln -s #{builds_dir}/#{build_base}.tar.gz #{builds_dir}/p2.tar.gz"
 end
 
 desc 'Run the vagrant integration tests. Will attempt to build first to save you some time.'
