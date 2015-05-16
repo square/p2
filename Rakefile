@@ -1,3 +1,5 @@
+require 'json'
+
 def e(cmd)
   puts cmd
   system(cmd) || abort("Error running `#{cmd}`")
@@ -39,22 +41,24 @@ task :install => :godep_check do
   e "godep go install -a -ldflags \"-X github.com/square/p2/pkg/version.VERSION $(git describe --tags)\" ./..."
 end
 
-desc 'Package the installed P2 binaries into a Hoist artifact that runs as the preparer'
+desc 'Package the installed P2 binaries into a Hoist artifact that runs as the preparer. The output tar is symlinked to builds/p2.tar.gz'
 task :package => :install do
   root = File.dirname(__FILE__)
   builds_dir = File.join(root, "builds")
 
-  sha = `git rev-parse --verify HEAD`.chomp
-  abort("Could not get sha") unless sha && sha != ""
+  version_tag = `git describe --tags`.chomp
+  abort("Could not get version_tag") unless version_tag && version_tag != ""
 
-  e "mkdir -p #{builds_dir}/p2-#{sha}/bin"
+  e "mkdir -p #{builds_dir}/p2-#{version_tag}/bin"
   Dir.glob(File.join(File.dirname(`which p2-preparer`.chomp), 'p2*')).each do |f|
-    e "cp #{f} #{builds_dir}/p2-#{sha}/bin"
+    e "cp #{f} #{builds_dir}/p2-#{version_tag}/bin"
   end
-  e "mv #{builds_dir}/p2-#{sha}/bin/p2-preparer #{builds_dir}/p2-#{sha}/bin/launch"
+  e "mv #{builds_dir}/p2-#{version_tag}/bin/p2-preparer #{builds_dir}/p2-#{version_tag}/bin/launch"
 
-  e "tar -czf #{builds_dir}/p2-#{sha}.tar.gz -C #{builds_dir}/p2-#{sha} ."
-  e "cp #{builds_dir}/p2-#{sha}.tar.gz #{builds_dir}/p2.tar.gz"
+  e "tar -czf #{builds_dir}/p2-#{version_tag}.tar.gz -C #{builds_dir}/p2-#{version_tag} ."
+
+  e "rm -f #{builds_dir}/p2.tar.gz"
+  e "ln -s #{builds_dir}/p2-#{version_tag}.tar.gz #{builds_dir}/p2.tar.gz"
 end
 
 desc 'Run the vagrant integration tests. Will attempt to build first to save you some time.'
