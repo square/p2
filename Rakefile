@@ -39,6 +39,24 @@ task :install => :godep_check do
   e "godep go install -a -ldflags \"-X github.com/square/p2/pkg/version.VERSION $(git describe --tags)\" ./..."
 end
 
+desc 'Package the installed P2 binaries into a Hoist artifact that runs as the preparer'
+task :package => :install do
+  root = File.dirname(__FILE__)
+  builds_dir = File.join(root, "builds")
+
+  sha = `git rev-parse --verify HEAD`.chomp
+  abort("Could not get sha") unless sha && sha != ""
+
+  e "mkdir -p #{builds_dir}/p2-#{sha}/bin"
+  Dir.glob(File.join(File.dirname(`which p2-preparer`.chomp), 'p2*')).each do |f|
+    e "cp #{f} #{builds_dir}/p2-#{sha}/bin"
+  end
+  e "mv #{builds_dir}/p2-#{sha}/bin/p2-preparer #{builds_dir}/p2-#{sha}/bin/launch"
+
+  e "tar -czf #{builds_dir}/p2-#{sha}.tar.gz -C #{builds_dir}/p2-#{sha} ."
+  e "cp #{builds_dir}/p2-#{sha}.tar.gz #{builds_dir}/p2.tar.gz"
+end
+
 desc 'Run the vagrant integration tests. Will attempt to build first to save you some time.'
 task :integration => :build do
   root = File.dirname(__FILE__)

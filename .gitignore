@@ -1,4 +1,5 @@
 .vagrant
+builds/*
 target/*
 /p2-preparer
 /p2-launch
