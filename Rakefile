@@ -1,5 +1,3 @@
-require 'json'
-
 def e(cmd)
   puts cmd
   system(cmd) || abort("Error running `#{cmd}`")
@@ -44,10 +42,11 @@ end
 desc 'Package the installed P2 binaries into a Hoist artifact that runs as the preparer. The output tar is symlinked to builds/p2.tar.gz'
 task :package => :install do
   root = File.dirname(__FILE__)
-  arch = `uname`.downcase.chomp
-  builds_dir = File.join(root, "builds", arch)
+  os = `uname`.downcase.chomp
+  arch = `uname -p`.downcase.chomp
+  builds_dir = File.join(root, "builds", os)
   version_tag = `git describe --tags`.chomp
-  build_base = "p2-#{version_tag}-#{arch}"
+  build_base = "p2-#{version_tag}-#{os}-#{arch}"
 
   abort("Could not get version_tag") unless version_tag && version_tag != ""
 
