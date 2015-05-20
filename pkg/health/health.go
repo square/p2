@@ -9,12 +9,14 @@ import (
 )
 
 type ConsulHealthChecker struct {
-	client *api.Client
+	client   *api.Client
+	WaitTime time.Duration
 }
 
 func NewConsulHealthChecker(opts kp.Options) ConsulHealthChecker {
 	return ConsulHealthChecker{
-		client: kp.NewConsulClient(opts),
+		client:   kp.NewConsulClient(opts),
+		WaitTime: 1 * time.Minute,
 	}
 }
 
@@ -55,6 +57,7 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 		case <-time.After(1 * time.Second):
 			checks, meta, err := h.client.Health().Node(nodename, &api.QueryOptions{
 				WaitIndex: curIndex,
+				WaitTime:  h.WaitTime,
 			})
 			if err != nil {
 				errCh <- err
