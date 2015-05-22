@@ -38,6 +38,18 @@ func LoadConfigFile(filepath string) (*Config, error) {
 	return config, nil
 }
 
+func (c *Config) ReadInt(key string) (int, error) {
+	readVal := c.Read(key)
+	if readVal == nil {
+		return 0, nil
+	}
+	intVal, ok := readVal.(int)
+	if !ok {
+		return 0, fmt.Errorf("%s is not an int value", key)
+	}
+	return intVal, nil
+}
+
 func (c *Config) ReadString(key string) (string, error) {
 	readVal := c.Read(key)
 	if readVal == nil {

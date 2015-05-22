@@ -72,11 +72,7 @@ Dir.glob(File.join(path, '*/')).each do |test_dir|
       puts "#{test_name} #{'SUCCEEDED'.green}"
     ensure
       if options[:vm_maintenance] && succeeded
-        puts "Halting VM".yellow
-        unless system("vagrant halt")
-          puts "Tried to halt #{test_name} but it failed".red
-        end
-        puts "Halted VM"
+        
       end
     end
   end if options[:regex].match(test_name)

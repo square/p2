@@ -1,0 +1,134 @@
+package balancer
+
+import (
+	"math"
+	"net"
+	"sync"
+	"time"
+
+	"github.com/square/p2/pkg/util"
+)
+
+type lcBackend struct {
+	conns    int
+	disabled bool
+}
+
+type LeastConnections struct {
+	backends map[string]*lcBackend
+	mapMux   sync.Mutex
+}
+
+func NewLeastConnectionsStrategy(initialAddresses []string) (*LeastConnections, error) {
+	l := &LeastConnections{backends: make(map[string]*lcBackend)}
+	for _, addr := range initialAddresses {
+		err := l.AddAddress(addr)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return l, nil
+}
+
+func (l *LeastConnections) Route(fn Handle) error {
+	address, err := l.acquireNext()
+	defer l.releaseAddress(address)
+	if err != nil {
+		return util.Errorf("Could acquire %s: %s", address, err)
+	}
+	outbound, err := net.Dial("tcp", address)
+	if err != nil {
+		return util.Errorf("Could not dial %s: %s", address, err)
+	}
+	defer outbound.Close()
+	err = fn(outbound)
+	if err != nil {
+		return util.Errorf("Could not handle connection to %s: %s", address, err)
+	}
+	return nil
+}
+
+func (l *LeastConnections) RemoveAddress(address string) error {
+	l.mapMux.Lock()
+	defer l.mapMux.Unlock()
+	backend, ok := l.backends[address]
+	if !ok {
+		return nil
+	}
+	// disabling allows us to gracefully release connections without assigning
+	// new connections to the backend.
+	backend.disabled = true
+	return nil
+}
+
+func (l *LeastConnections) AddAddress(address string) error {
+	l.mapMux.Lock()
+	defer l.mapMux.Unlock()
+	if backend, ok := l.backends[address]; ok {
+		backend.disabled = false
+		return nil
+	}
+	l.backends[address] = &lcBackend{
+		0,
+		false,
+	}
+	return nil
+}
+
+func (l *LeastConnections) acquireNext() (string, error) {
+	l.mapMux.Lock()
+	defer l.mapMux.Unlock()
+	minHost := ""
+	minCount := math.MaxInt32
+	for host, backend := range l.backends {
+		if backend.conns < minCount && !backend.disabled {
+			minCount = backend.conns
+			minHost = host
+		}
+	}
+	if minHost == "" {
+		return "", util.Errorf("Could not find suitable backend. No backends were available")
+	}
+	l.backends[minHost].conns = minCount + 1
+	return minHost, nil
+}
+
+func (l *LeastConnections) releaseAddress(address string) error {
+	l.mapMux.Lock()
+	defer l.mapMux.Unlock()
+
+	backend, ok := l.backends[address]
+	if !ok {
+		return util.Errorf("Address %s not in set, cannot release", address)
+	}
+	backend.conns--
+	return nil
+}
+
+// least connections is routable as long as there is at least one non-disabled
+// backend
+func (l *LeastConnections) Routable(quit <-chan struct{}) <-chan struct{} {
+	res := make(chan struct{})
+	go func() {
+		for {
+			l.mapMux.Lock()
+			for _, backend := range l.backends {
+				if !backend.disabled {
+					l.mapMux.Unlock()
+					select {
+					case res <- struct{}{}:
+					case <-quit:
+					}
+					return
+				}
+			}
+			l.mapMux.Unlock()
+			select {
+			case <-time.After(100 * time.Millisecond):
+			case <-quit:
+				return
+			}
+		}
+	}()
+	return res
+}
