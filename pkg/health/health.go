@@ -36,9 +36,10 @@ func (h ConsulHealthChecker) Service(serviceID string) (map[string][]Result, err
 
 	ret := make(map[string][]Result)
 	for _, entry := range entries {
+
 		ret[entry.Node.Node] = make([]Result, 0, len(entry.Checks))
 		for _, check := range entry.Checks {
-			ret[entry.Node.Node] = append(ret[entry.Node.Node], consulCheckToResult(*check))
+			ret[entry.Node.Node] = append(ret[entry.Node.Node], consulCheckToResult(check))
 		}
 	}
 
@@ -65,7 +66,7 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 				curIndex = meta.LastIndex
 				out := make([]Result, 0)
 				for _, check := range checks {
-					outResult := consulCheckToResult(*check)
+					outResult := consulCheckToResult(check)
 					// only retain checks if they're for this service, or for the
 					// entire node
 					if outResult.Service != serviceID && outResult.Service != "" {
@@ -79,7 +80,7 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 	}
 }
 
-func consulCheckToResult(c api.HealthCheck) Result {
+func consulCheckToResult(c *api.HealthCheck) Result {
 	return Result{
 		ID:      c.CheckID,
 		Node:    c.Node,

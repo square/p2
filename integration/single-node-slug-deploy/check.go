@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/user"
@@ -229,6 +230,8 @@ func postHelloManifest(dir string) error {
 		LaunchableType: "hoist",
 		Location:       hello,
 	}
+	manifest.StatusPort = 43770
+	manifest.StatusHTTP = true
 	manifest.LaunchableStanzas = map[string]pods.LaunchableStanza{
 		"hello": stanza,
 	}
@@ -288,6 +291,16 @@ func verifyHelloRunning() error {
 		preparerT.Run()
 		return fmt.Errorf("Couldn't start hello after 15 seconds: \n\n hello tail: \n%s\n\n preparer tail: \n%s", helloTail.String(), preparerTail.String())
 	case <-helloPidAppeared:
+		log.Println("Hello PID appeared, letting start up and then checking for responsiveness")
+		<-time.After(10 * time.Second)
+		resp, err := http.Get("http://localhost:43770/_status")
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode != http.StatusOK {
+			body, _ := ioutil.ReadAll(resp.Body)
+			return util.Errorf("Did not OK response from hello: %s %s", resp.Status, string(body))
+		}
 		return nil
 	}
 }
