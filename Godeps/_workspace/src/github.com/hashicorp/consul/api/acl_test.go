@@ -13,11 +13,12 @@ func init() {
 }
 
 func TestACL_CreateDestroy(t *testing.T) {
+	t.Parallel()
 	if CONSUL_ROOT == "" {
 		t.SkipNow()
 	}
 	c, s := makeClient(t)
-	defer s.stop()
+	defer s.Stop()
 
 	c.config.Token = CONSUL_ROOT
 	acl := c.ACL()
@@ -61,11 +62,12 @@ func TestACL_CreateDestroy(t *testing.T) {
 }
 
 func TestACL_CloneDestroy(t *testing.T) {
+	t.Parallel()
 	if CONSUL_ROOT == "" {
 		t.SkipNow()
 	}
 	c, s := makeClient(t)
-	defer s.stop()
+	defer s.Stop()
 
 	c.config.Token = CONSUL_ROOT
 	acl := c.ACL()
@@ -94,11 +96,12 @@ func TestACL_CloneDestroy(t *testing.T) {
 }
 
 func TestACL_Info(t *testing.T) {
+	t.Parallel()
 	if CONSUL_ROOT == "" {
 		t.SkipNow()
 	}
 	c, s := makeClient(t)
-	defer s.stop()
+	defer s.Stop()
 
 	c.config.Token = CONSUL_ROOT
 	acl := c.ACL()
@@ -121,11 +124,12 @@ func TestACL_Info(t *testing.T) {
 }
 
 func TestACL_List(t *testing.T) {
+	t.Parallel()
 	if CONSUL_ROOT == "" {
 		t.SkipNow()
 	}
 	c, s := makeClient(t)
-	defer s.stop()
+	defer s.Stop()
 
 	c.config.Token = CONSUL_ROOT
 	acl := c.ACL()
