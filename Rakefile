@@ -31,7 +31,7 @@ end
 desc 'Update all dependencies'
 task :update => :godep_check do
   e "go get -u -t -v ./..."
-  e "godep update .../..."
+  e "godep update github.com/square/p2/..."
 end
 
 desc 'Install all built binaries'

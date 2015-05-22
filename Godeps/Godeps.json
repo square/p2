@@ -2,7 +2,7 @@
 	"ImportPath": "github.com/square/p2",
 	"GoVersion": "go1.4.2",
 	"Packages": [
-		"./..."
+		"github.com/square/p2/..."
 	],
 	"Deps": [
 		{
@@ -22,6 +22,10 @@
 			"ImportPath": "github.com/hashicorp/consul/api",
 			"Comment": "v0.5.2-12-g0949790",
 			"Rev": "0949790a2fef577e2468a8542137b1102de87d55"
+		},
+		{
+			"ImportPath": "github.com/inconshreveable/go-vhost",
+			"Rev": "8cbc5089df5ba3e44644d39e8d1ec375d6d842f9"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
