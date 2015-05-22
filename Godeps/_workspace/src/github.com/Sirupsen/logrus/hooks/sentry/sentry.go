@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"net/http"
 
 	"github.com/getsentry/raven-go"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
