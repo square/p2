@@ -63,7 +63,8 @@ func (m *VhostServer) determineStrategy(service string) (Strategy, error) {
 	defer m.strategyMux.Unlock()
 	strategy, ok := m.muxed[service]
 	if !ok {
-		strategy, err := NewLeastConnectionsStrategy([]string{})
+		var err error
+		strategy, err = NewLeastConnectionsStrategy([]string{})
 		if err != nil {
 			return nil, err
 		}
@@ -80,5 +81,6 @@ func (m *VhostServer) determineStrategy(service string) (Strategy, error) {
 			m.muxed[service] = strategy
 		}
 	}
+
 	return strategy, nil
 }
