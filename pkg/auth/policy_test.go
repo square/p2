@@ -114,11 +114,13 @@ func (h *testHarness) saveKeys(ents []*openpgp.Entity, filename string) {
 }
 
 func (h *testHarness) backdate(filename string, backBy time.Duration) {
+	if h.Err != nil {
+		return
+	}
 	back := time.Now().Add(-backBy)
 	err := os.Chtimes(filename, back, back)
 	if err != nil {
 		h.Err = err
-		return
 	}
 }
 
@@ -201,11 +203,11 @@ func TestKeyAddition(t *testing.T) {
 	keyfile := h.tempFile()
 	defer rm(t, keyfile)
 	h.saveKeys(ents[:1], keyfile)
+	h.backdate(keyfile, time.Minute)
 	if h.Err != nil {
 		t.Error(h.Err)
 		return
 	}
-	h.backdate(keyfile, 1*time.Minute)
 
 	policy, err := NewFileKeyringPolicy(keyfile, nil)
 	if err != nil {
@@ -265,12 +267,6 @@ func TestDpolChanges(t *testing.T) {
 		},
 		polfile,
 	)
-
-	if h.Err != nil {
-		t.Error(h.Err)
-		return
-	}
-
 	h.backdate(polfile, time.Minute)
 
 	if h.Err != nil {
