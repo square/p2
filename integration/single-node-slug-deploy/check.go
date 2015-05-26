@@ -79,8 +79,8 @@ func signManifest(manifestPath string, workdir string) (string, error) {
 }
 
 func generatePreparerPod(workdir string) (string, error) {
-	// build the artifact from HEAD
-	err := exec.Command("go", "build", "github.com/square/p2/bin/p2-preparer").Run()
+	// build the artifact with -race to check for race conditions
+	err := exec.Command("go", "build", "-race", "github.com/square/p2/bin/p2-preparer").Run()
 	if err != nil {
 		return "", util.Errorf("Couldn't build preparer: %s", err)
 	}
