@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -29,18 +31,27 @@ func main() {
 	defer prep.Close()
 
 	logger.WithFields(logrus.Fields{
-		"starting":  true,
-		"node_name": preparerConfig.NodeName,
-		"consul":    preparerConfig.ConsulAddress,
-		"hooks_dir": preparerConfig.HooksDirectory,
-		"keyring":   preparerConfig.Auth["keyring"],
-		"version":   version.VERSION,
+		"starting":    true,
+		"node_name":   preparerConfig.NodeName,
+		"consul":      preparerConfig.ConsulAddress,
+		"hooks_dir":   preparerConfig.HooksDirectory,
+		"status_port": preparerConfig.StatusPort,
+		"keyring":     preparerConfig.Auth["keyring"],
+		"version":     version.VERSION,
 	}).Infoln("Preparer started successfully")
 
 	quitMainUpdate := make(chan struct{})
 	quitHookUpdate := make(chan struct{})
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
 	go prep.WatchForHooks(quitHookUpdate)
+
+	if preparerConfig.StatusPort != 0 {
+		http.HandleFunc("/_status",
+			func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, "p2-preparer OK")
+			})
+		go http.ListenAndServe(fmt.Sprintf(":%d", preparerConfig.StatusPort), nil)
+	}
 
 	waitForTermination(logger, quitMainUpdate, quitHookUpdate)
 
