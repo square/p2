@@ -113,6 +113,15 @@ func (h *testHarness) saveKeys(ents []*openpgp.Entity, filename string) {
 	}
 }
 
+func (h *testHarness) backdate(filename string, backBy time.Duration) {
+	back := time.Now().Add(-backBy)
+	err := os.Chtimes(filename, back, back)
+	if err != nil {
+		h.Err = err
+		return
+	}
+}
+
 func (h *testHarness) saveYaml(obj interface{}, filename string) {
 	if h.Err != nil {
 		return
@@ -196,6 +205,7 @@ func TestKeyAddition(t *testing.T) {
 		t.Error(h.Err)
 		return
 	}
+	h.backdate(keyfile, 1*time.Minute)
 
 	policy, err := NewFileKeyringPolicy(keyfile, nil)
 	if err != nil {
@@ -214,9 +224,8 @@ func TestKeyAddition(t *testing.T) {
 		t.Error("expected failure, got authorization")
 	}
 
-	// Update the keyring file with both keys. The sleep is needed to
-	// make it much more likely that the mtime on the file differs.
-	time.Sleep(time.Second)
+	// Update the keyring file with both keys. The mtime is updated
+	// because we backdated the previous version.
 	h.saveKeys(ents, keyfile)
 	err = policy.AuthorizePod(TestSigned{"test", msg, sigs[0]}, logger)
 	if err != nil {
@@ -262,6 +271,13 @@ func TestDpolChanges(t *testing.T) {
 		return
 	}
 
+	h.backdate(polfile, time.Minute)
+
+	if h.Err != nil {
+		t.Error(h.Err)
+		return
+	}
+
 	policy, err := NewUserPolicy(keyfile, polfile)
 	if err != nil {
 		t.Error("error creating user policy: ", err)
@@ -300,7 +316,6 @@ func TestDpolChanges(t *testing.T) {
 	})
 
 	// Change the policy
-	time.Sleep(time.Second)
 	h.saveYaml(
 		RawDeployPol{
 			Groups: map[DpGroup][]DpUserEmail{
