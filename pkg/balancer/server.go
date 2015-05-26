@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util"
@@ -16,7 +17,7 @@ type Strategy interface {
 	Route(fn Handle) error
 	AddAddress(addr string) error
 	RemoveAddress(addr string) error
-	Routable(quit <-chan struct{}) <-chan struct{}
+	Routable(wait time.Duration) error
 }
 
 type Monitor interface {

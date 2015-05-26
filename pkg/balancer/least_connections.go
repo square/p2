@@ -31,7 +31,7 @@ func NewLeastConnectionsStrategy(initialAddresses []string) (*LeastConnections, 
 }
 
 func (l *LeastConnections) Route(fn Handle) error {
-	address, err := l.acquireNext()
+	address, err := l.acquireAddress()
 	defer l.releaseAddress(address)
 	if err != nil {
 		return util.Errorf("Could acquire %s: %s", address, err)
@@ -75,7 +75,7 @@ func (l *LeastConnections) AddAddress(address string) error {
 	return nil
 }
 
-func (l *LeastConnections) acquireNext() (string, error) {
+func (l *LeastConnections) acquireAddress() (string, error) {
 	l.mapMux.Lock()
 	defer l.mapMux.Unlock()
 	minHost := ""
@@ -107,28 +107,22 @@ func (l *LeastConnections) releaseAddress(address string) error {
 
 // least connections is routable as long as there is at least one non-disabled
 // backend
-func (l *LeastConnections) Routable(quit <-chan struct{}) <-chan struct{} {
-	res := make(chan struct{})
-	go func() {
-		for {
-			l.mapMux.Lock()
-			for _, backend := range l.backends {
-				if !backend.disabled {
-					l.mapMux.Unlock()
-					select {
-					case res <- struct{}{}:
-					case <-quit:
-					}
-					return
-				}
-			}
-			l.mapMux.Unlock()
-			select {
-			case <-time.After(100 * time.Millisecond):
-			case <-quit:
-				return
+func (l *LeastConnections) Routable(duration time.Duration) error {
+	after := time.After(duration)
+	for {
+		l.mapMux.Lock()
+		for _, backend := range l.backends {
+			if !backend.disabled {
+				l.mapMux.Unlock()
+				return nil
 			}
 		}
-	}()
-	return res
+		l.mapMux.Unlock()
+		select {
+		case <-time.After(50 * time.Millisecond):
+		case <-after:
+			return util.Errorf("Exceeded timeout %v waiting for routability", duration)
+		}
+	}
+	return nil
 }
