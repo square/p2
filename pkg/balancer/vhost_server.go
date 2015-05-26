@@ -58,6 +58,7 @@ func (m *VhostServer) handleConnection(conn net.Conn) {
 	}
 }
 
+// Find an existing strategy or initialize a new one for the given service
 func (m *VhostServer) determineStrategy(service string) (Strategy, error) {
 	m.strategyMux.Lock()
 	defer m.strategyMux.Unlock()
@@ -68,15 +69,24 @@ func (m *VhostServer) determineStrategy(service string) (Strategy, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Wait for 15 seconds for routability while starting the monitoring process
 		monitorQuitCh := make(chan struct{})
-		routableQuitCh := make(chan struct{})
+		routableCh := make(chan struct{})
+		routableErrCh := make(chan error)
+		go func() {
+			err := strategy.Routable(15 * time.Second)
+			if err != nil {
+				routableErrCh <- err
+			} else {
+				routableCh <- struct{}{}
+			}
+		}()
 		go m.monitor.MonitorHosts(service, strategy, monitorQuitCh)
 		select {
-		case <-time.After(time.Second * 15):
+		case err = <-routableErrCh:
 			monitorQuitCh <- struct{}{}
-			routableQuitCh <- struct{}{}
-			return nil, util.Errorf("Could not find routable backend to %s within timeout", service)
-		case <-strategy.Routable(routableQuitCh):
+			return nil, util.Errorf("Could not find routable backend to %s: %s", service, err)
+		case <-routableCh:
 			m.toQuit = append(m.toQuit, monitorQuitCh)
 			m.muxed[service] = strategy
 		}
