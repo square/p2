@@ -371,6 +371,7 @@ func verifyHelloRunning() error {
 		if err != nil {
 			return err
 		}
+		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			body, _ := ioutil.ReadAll(resp.Body)
 			return util.Errorf("Did not OK response from hello: %s %s", resp.Status, string(body))

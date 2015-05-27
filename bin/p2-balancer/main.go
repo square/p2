@@ -20,15 +20,18 @@ func main() {
 	logger := logging.DefaultLogger
 
 	if err != nil {
-		logger.NoFields().Fatalf("Could not init serpro: %s", err)
+		logger.WithField("err", err).Fatalf("Could not load configuration for p2-balancer")
 	}
 
 	service, err := cfg.ReadString("service_to_proxy")
 	if err != nil {
-		logger.WithField("err", err).Fatalln("Could not get the service to proxy")
+		logger.WithField("err", err).Fatalln("Could not read the service_to_proxy the field from config")
 	}
 
 	vhost, err := cfg.ReadString("vhost")
+	if err != nil {
+		logger.WithField("err", err).Fatalln("Could not read the vhost field from config")
+	}
 
 	if service == "" && vhost == "" {
 		logger.NoFields().Fatalln("Did not specify a service or vhost key in config")
@@ -90,6 +93,7 @@ func doVhost(port int, signalCh chan os.Signal, monitor balancer.Monitor) error 
 	})
 	logger.WithField("port", port).Infoln("Serving TLS traffic for all registered services")
 	vhostServer := balancer.NewVhostServer(monitor, &logger)
+	defer vhostServer.Cleanup()
 	errCh := make(chan error)
 	go func() {
 		err := vhostServer.Serve(port)

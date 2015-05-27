@@ -10,49 +10,49 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-type Handle func(outbound net.Conn) error
+type Handler func(outbound net.Conn) error
 
 type Strategy interface {
 	// Route is expected to synchronously call the given Handle with an outbound connection.
-	Route(fn Handle) error
+	Route(fn Handler) error
 	AddAddress(addr string) error
 	RemoveAddress(addr string) error
-	Routable(wait time.Duration) error
+	WaitRoutable(wait time.Duration) error
 }
 
 type Monitor interface {
 	MonitorHosts(service string, strategy Strategy, quitCh <-chan struct{})
 }
 
-type Server struct {
+type server struct {
 	logger  *logging.Logger
 	monitor Monitor
 }
 
-func DuplexConnection(inbound net.Conn) Handle {
+func DuplexConnection(inbound net.Conn) Handler {
 	return func(outbound net.Conn) error {
 		done := make(chan struct{})
+		defer inbound.Close()
+		defer outbound.Close()
+
 		go func() {
 			io.Copy(outbound, inbound)
-			outbound.Close()
 			close(done)
 		}()
 		io.Copy(inbound, outbound)
-		inbound.Close()
 		<-done
 		return nil
 	}
-
 }
 
-func NewServer(monitor Monitor, logger *logging.Logger) *Server {
-	return &Server{
+func NewServer(monitor Monitor, logger *logging.Logger) *server {
+	return &server{
 		logger:  logger,
 		monitor: monitor,
 	}
 }
 
-func (s *Server) Serve(service string, port int, strategy Strategy) error {
+func (s *server) Serve(service string, port int, strategy Strategy) error {
 	quitMonitoring := make(chan struct{})
 	go s.monitor.MonitorHosts(service, strategy, quitMonitoring)
 	defer func() {
@@ -73,9 +73,9 @@ func (s *Server) Serve(service string, port int, strategy Strategy) error {
 	}
 }
 
-func (s *Server) handleConnection(inbound net.Conn, strategy Strategy) {
+func (s *server) handleConnection(inbound net.Conn, strategy Strategy) {
 	defer inbound.Close()
-	err := strategy.Route(DuplexConnection(inbound))
+	err := strategy.Route(DuplexConnection(inbound.(*net.TCPConn)))
 	if err != nil {
 		s.logger.WithField("err", err).Errorln("Error routing request: %s", err)
 	}

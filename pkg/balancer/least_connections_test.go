@@ -11,7 +11,7 @@ func TestLeastConnectionsRoutableWithEnabledHosts(t *testing.T) {
 	l, err := NewLeastConnectionsStrategy([]string{"127.0.0.1:8080"})
 	Assert(t).IsNil(err, "Should not have erred setting up the strategy")
 
-	Assert(t).IsNil(l.Routable(time.Millisecond), "Should have been routable")
+	Assert(t).IsNil(l.WaitRoutable(time.Millisecond), "Should have been routable")
 }
 
 func TestLeastConnectionsNotRoutableWithDisabledHosts(t *testing.T) {
@@ -20,7 +20,7 @@ func TestLeastConnectionsNotRoutableWithDisabledHosts(t *testing.T) {
 
 	Assert(t).IsNil(l.RemoveAddress("127.0.0.1:8080"), "should not have failed to disable the address")
 
-	Assert(t).IsNotNil(l.Routable(time.Millisecond), "should not have been routable with every host disabled")
+	Assert(t).IsNotNil(l.WaitRoutable(time.Millisecond), "should not have been routable with every host disabled")
 
 	_, err = l.acquireAddress()
 	Assert(t).IsNotNil(err, "should have failed to acquire a new address")

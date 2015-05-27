@@ -10,7 +10,10 @@ import (
 )
 
 type lcBackend struct {
-	conns    int
+	conns int
+
+	// disabling allows us to gracefully release connections without assigning
+	// new connections to the backend.
 	disabled bool
 }
 
@@ -30,18 +33,18 @@ func NewLeastConnectionsStrategy(initialAddresses []string) (*LeastConnections, 
 	return l, nil
 }
 
-func (l *LeastConnections) Route(fn Handle) error {
+func (l *LeastConnections) Route(fn Handler) error {
 	address, err := l.acquireAddress()
-	defer l.releaseAddress(address)
 	if err != nil {
-		return util.Errorf("Could acquire %s: %s", address, err)
+		return util.Errorf("Could not acquire %s: %s", address, err)
 	}
+	defer l.releaseAddress(address)
 	outbound, err := net.Dial("tcp", address)
 	if err != nil {
 		return util.Errorf("Could not dial %s: %s", address, err)
 	}
 	defer outbound.Close()
-	err = fn(outbound)
+	err = fn(outbound.(*net.TCPConn))
 	if err != nil {
 		return util.Errorf("Could not handle connection to %s: %s", address, err)
 	}
@@ -55,8 +58,6 @@ func (l *LeastConnections) RemoveAddress(address string) error {
 	if !ok {
 		return nil
 	}
-	// disabling allows us to gracefully release connections without assigning
-	// new connections to the backend.
 	backend.disabled = true
 	return nil
 }
@@ -107,7 +108,7 @@ func (l *LeastConnections) releaseAddress(address string) error {
 
 // least connections is routable as long as there is at least one non-disabled
 // backend
-func (l *LeastConnections) Routable(duration time.Duration) error {
+func (l *LeastConnections) WaitRoutable(duration time.Duration) error {
 	after := time.After(duration)
 	for {
 		l.mapMux.Lock()

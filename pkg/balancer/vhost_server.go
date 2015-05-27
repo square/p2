@@ -11,9 +11,9 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-// VhostServer uses TLS virtual hosting using SNI to direct requests to
+// vhostServer uses TLS virtual hosting using SNI to direct requests to
 // an appropriate backend.
-type VhostServer struct {
+type vhostServer struct {
 	muxed       map[string]Strategy
 	monitor     Monitor
 	logger      *logging.Logger
@@ -21,15 +21,12 @@ type VhostServer struct {
 	strategyMux sync.Mutex
 }
 
-func NewVhostServer(monitor Monitor, logger *logging.Logger) *VhostServer {
-	return &VhostServer{make(map[string]Strategy), monitor, logger, make([]chan struct{}, 0), sync.Mutex{}}
+func NewVhostServer(monitor Monitor, logger *logging.Logger) *vhostServer {
+	return &vhostServer{make(map[string]Strategy), monitor, logger, make([]chan struct{}, 0), sync.Mutex{}}
 }
 
-func (m *VhostServer) Serve(port int) error {
+func (m *vhostServer) Serve(port int) error {
 	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-	if err != nil {
-		return util.Errorf("Could begin listening: %s", err)
-	}
 	if err != nil {
 		return util.Errorf("Could not init muxer on port %d: %s", port, err)
 	}
@@ -37,12 +34,19 @@ func (m *VhostServer) Serve(port int) error {
 		conn, err := l.Accept()
 		if err != nil {
 			m.logger.WithField("err", err).Warnln("Connection failed")
+			continue
 		}
 		go m.handleConnection(conn)
 	}
 }
 
-func (m *VhostServer) handleConnection(conn net.Conn) {
+func (m *vhostServer) Cleanup() {
+	for _, q := range m.toQuit {
+		close(q)
+	}
+}
+
+func (m *vhostServer) handleConnection(conn net.Conn) {
 	defer conn.Close()
 	tlsConn, err := vhost.TLS(conn)
 	if err != nil {
@@ -59,7 +63,7 @@ func (m *VhostServer) handleConnection(conn net.Conn) {
 }
 
 // Find an existing strategy or initialize a new one for the given service
-func (m *VhostServer) determineStrategy(service string) (Strategy, error) {
+func (m *vhostServer) determineStrategy(service string) (Strategy, error) {
 	m.strategyMux.Lock()
 	defer m.strategyMux.Unlock()
 	strategy, ok := m.muxed[service]
@@ -74,7 +78,7 @@ func (m *VhostServer) determineStrategy(service string) (Strategy, error) {
 		routableCh := make(chan struct{})
 		routableErrCh := make(chan error)
 		go func() {
-			err := strategy.Routable(15 * time.Second)
+			err := strategy.WaitRoutable(15 * time.Second)
 			if err != nil {
 				routableErrCh <- err
 			} else {
