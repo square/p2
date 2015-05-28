@@ -18,6 +18,8 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
+const preparerStatusPort = 32170
+
 func main() {
 	// 1. Generate pod for preparer in this code version (`rake artifact:prepare`)
 	// 2. Locate manifests for preparer pod, premade consul pod
@@ -105,8 +107,11 @@ func generatePreparerPod(workdir string) (string, error) {
 			"type":    "keyring",
 			"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
 		},
+		"status_port": preparerStatusPort,
 	}
 	manifest.RunAs = "root"
+	manifest.StatusPort = preparerStatusPort
+	manifest.StatusHTTP = true
 	f, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return "", err
