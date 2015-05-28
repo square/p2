@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/user"
@@ -17,6 +18,8 @@ import (
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
 )
+
+const preparerStatusPort = 32170
 
 func main() {
 	// 1. Generate pod for preparer in this code version (`rake artifact:prepare`)
@@ -52,6 +55,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not execute bootstrap: %s", err)
 	}
+
+	// Wait a bit for preparer's http server to be ready
+	<-time.After(2 * time.Second)
+	err = checkStatus(preparerStatusPort, "preparer")
+	if err != nil {
+		log.Fatalf("Couldn't check preparer status: %s", err)
+	}
+
 	err = scheduleUserCreationHook(tempdir)
 	if err != nil {
 		log.Fatalf("Couldn't schedule the user creation hook: %s", err)
@@ -105,8 +116,11 @@ func generatePreparerPod(workdir string) (string, error) {
 			"type":    "keyring",
 			"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
 		},
+		"status_port": preparerStatusPort,
 	}
 	manifest.RunAs = "root"
+	manifest.StatusPort = preparerStatusPort
+	manifest.StatusHTTP = true
 	f, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return "", err
@@ -118,6 +132,26 @@ func generatePreparerPod(workdir string) (string, error) {
 	}
 
 	return manifestPath, err
+}
+
+func checkStatus(statusPort int, pod string) error {
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/_status", statusPort))
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return util.Errorf("Did not get OK response from %s: %s %s", pod, resp.Status, string(body))
+	} else {
+		log.Printf("Status of %s: %s", pod, string(body))
+	}
+	return nil
 }
 
 func scheduleUserCreationHook(tmpdir string) error {
@@ -280,10 +314,10 @@ func verifyHelloRunning() error {
 	select {
 	case <-time.After(20 * time.Second):
 		var helloTail, preparerTail bytes.Buffer
-		helloT := exec.Command("tail", "/var/service/hello__hello/log/main/current")
+		helloT := exec.Command("tail", "/var/service/hello__hello__launch/log/main/current")
 		helloT.Stdout = &helloTail
 		helloT.Run()
-		preparerT := exec.Command("tail", "/var/service/preparer__preparer/log/main/current")
+		preparerT := exec.Command("tail", "/var/service/p2-preparer__p2-preparer__launch/log/main/current")
 		preparerT.Stdout = &preparerTail
 		preparerT.Run()
 		return fmt.Errorf("Couldn't start hello after 15 seconds: \n\n hello tail: \n%s\n\n preparer tail: \n%s", helloTail.String(), preparerTail.String())
