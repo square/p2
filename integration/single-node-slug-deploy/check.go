@@ -55,6 +55,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not execute bootstrap: %s", err)
 	}
+
+	// Wait a bit for preparer's http server to be ready
+	<-time.After(2 * time.Second)
+	err = checkStatus(preparerStatusPort, "preparer")
+	if err != nil {
+		log.Fatalf("Couldn't check preparer status: %s", err)
+	}
+
 	err = scheduleUserCreationHook(tempdir)
 	if err != nil {
 		log.Fatalf("Couldn't schedule the user creation hook: %s", err)
