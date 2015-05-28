@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/user"
@@ -123,6 +124,26 @@ func generatePreparerPod(workdir string) (string, error) {
 	}
 
 	return manifestPath, err
+}
+
+func checkStatus(statusPort int, pod string) error {
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/_status", statusPort))
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return util.Errorf("Did not get OK response from %s: %s %s", pod, resp.Status, string(body))
+	} else {
+		log.Printf("Status of %s: %s", pod, string(body))
+	}
+	return nil
 }
 
 func scheduleUserCreationHook(tmpdir string) error {
