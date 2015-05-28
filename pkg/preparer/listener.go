@@ -63,7 +63,7 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 				"dest": l.DestinationDir,
 			})
 
-			err := l.authPolicy.AuthorizePod(&result.Manifest, sub)
+			err := l.authPolicy.AuthorizeHook(&result.Manifest, sub)
 			if err != nil {
 				if err, ok := err.(auth.Error); ok {
 					sub.WithFields(err.Fields).Errorln(err)

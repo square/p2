@@ -165,7 +165,7 @@ func (p *Preparer) handlePods(podChan <-chan pods.Manifest, quit <-chan struct{}
 
 // check if a manifest satisfies the signature requirement of this preparer
 func (p *Preparer) verifySignature(manifest pods.Manifest, logger logging.Logger) bool {
-	err := p.authPolicy.AuthorizePod(&manifest, logger)
+	err := p.authPolicy.AuthorizeApp(&manifest, logger)
 	if err != nil {
 		if err, ok := err.(auth.Error); ok {
 			logger.WithFields(err.Fields).Errorln(err)
