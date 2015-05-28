@@ -314,10 +314,10 @@ func verifyHelloRunning() error {
 	select {
 	case <-time.After(20 * time.Second):
 		var helloTail, preparerTail bytes.Buffer
-		helloT := exec.Command("tail", "/var/service/hello__hello/log/main/current")
+		helloT := exec.Command("tail", "/var/service/hello__hello__launch/log/main/current")
 		helloT.Stdout = &helloTail
 		helloT.Run()
-		preparerT := exec.Command("tail", "/var/service/preparer__preparer/log/main/current")
+		preparerT := exec.Command("tail", "/var/service/p2-preparer__p2-preparer__launch/log/main/current")
 		preparerT.Stdout = &preparerTail
 		preparerT.Run()
 		return fmt.Errorf("Couldn't start hello after 15 seconds: \n\n hello tail: \n%s\n\n preparer tail: \n%s", helloTail.String(), preparerTail.String())
