@@ -155,6 +155,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		authPolicy, err = auth.NewUserPolicy(
 			userConfig.KeyringPath,
 			userConfig.DeployPolicyPath,
+			POD_ID,
 		)
 		if err != nil {
 			return nil, util.Errorf("error configuring user auth: %s", err)

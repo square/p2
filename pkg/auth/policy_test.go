@@ -168,23 +168,23 @@ func TestKeyring(t *testing.T) {
 	logger := logging.TestLogger()
 
 	// Key in keyring signs the message
-	err = policy.AuthorizePod(TestSigned{"foo", msg, sigs[0]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"foo", msg, sigs[0]}, logger)
 	if err != nil {
 		t.Error("error authorizing pod manifest:", err)
 	}
 
 	// Key not in keyring signs the message
-	err = policy.AuthorizePod(TestSigned{"foo", msg, sigs[2]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"foo", msg, sigs[2]}, logger)
 	if err == nil {
 		t.Error("accepted unauthorized signature")
 	}
 
 	// Verify preparer authorization policy
-	err = policy.AuthorizePod(TestSigned{"restricted", msg, sigs[1]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"restricted", msg, sigs[1]}, logger)
 	if err != nil {
 		t.Error("error authorizing pod manifest:", err)
 	}
-	err = policy.AuthorizePod(TestSigned{"restricted", msg, sigs[0]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"restricted", msg, sigs[0]}, logger)
 	if err == nil {
 		t.Error("accepted unauthorized signature")
 	}
@@ -217,11 +217,11 @@ func TestKeyAddition(t *testing.T) {
 	logger := logging.TestLogger()
 
 	// Keyring contains only ents[0]
-	err = policy.AuthorizePod(TestSigned{"test", msg, sigs[0]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"test", msg, sigs[0]}, logger)
 	if err != nil {
 		t.Error("expected authorized, got error:", err)
 	}
-	err = policy.AuthorizePod(TestSigned{"test", msg, sigs[1]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"test", msg, sigs[1]}, logger)
 	if err == nil {
 		t.Error("expected failure, got authorization")
 	}
@@ -229,11 +229,11 @@ func TestKeyAddition(t *testing.T) {
 	// Update the keyring file with both keys. The mtime is updated
 	// because we backdated the previous version.
 	h.saveKeys(ents, keyfile)
-	err = policy.AuthorizePod(TestSigned{"test", msg, sigs[0]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"test", msg, sigs[0]}, logger)
 	if err != nil {
 		t.Error("expected authorized, got error:", err)
 	}
-	err = policy.AuthorizePod(TestSigned{"test", msg, sigs[1]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"test", msg, sigs[1]}, logger)
 	if err != nil {
 		t.Error("expected authorized, got error:", err)
 	}
@@ -274,7 +274,7 @@ func TestDpolChanges(t *testing.T) {
 		return
 	}
 
-	policy, err := NewUserPolicy(keyfile, polfile)
+	policy, err := NewUserPolicy(keyfile, polfile, "preparer")
 	if err != nil {
 		t.Error("error creating user policy: ", err)
 		return
@@ -285,7 +285,7 @@ func TestDpolChanges(t *testing.T) {
 	tester := func(expected map[string][3]bool) {
 		for app, results := range expected {
 			for signer := range results {
-				err = policy.AuthorizePod(TestSigned{app, msg, sigs[signer]}, logger)
+				err = policy.AuthorizeApp(TestSigned{app, msg, sigs[signer]}, logger)
 				if err != nil && results[signer] {
 					t.Errorf(
 						"app %s signer %d: expected authorized, got error: %s",
@@ -335,5 +335,63 @@ func TestDpolChanges(t *testing.T) {
 		"baz": {false, false, true},
 		"ohi": {true, true, true},
 	})
+}
 
+// Check that the authorization policy of hooks follows that of the
+// preparer, not their own name
+func TestDpolHooks(t *testing.T) {
+	h := testHarness{}
+	msg := []byte("Once, I was a real Turtle.")
+	ents := h.loadEntities()
+	sigs := h.signMessage(msg, ents)
+	keyfile := h.tempFile()
+	defer rm(t, keyfile)
+	h.saveKeys(ents, keyfile)
+	polfile := h.tempFile()
+	defer rm(t, polfile)
+	userSig := sigs[0]
+	adminSig := sigs[1]
+	h.saveYaml(
+		RawDeployPol{
+			Groups: map[DpGroup][]DpUserEmail{
+				"users":  {"test1@testing"},
+				"admins": {"test2@testing"},
+			},
+			Apps: map[string][]DpGroup{
+				// Hooks should be treated like the preparer
+				"preparer": {"admins"},
+				// ...even if there is an app with the same name as a hook
+				"myhook": {"users"},
+			},
+		},
+		polfile,
+	)
+	if h.Err != nil {
+		t.Error(h.Err)
+		return
+	}
+	policy, err := NewUserPolicy(keyfile, polfile, "preparer")
+	if err != nil {
+		t.Error("error creating user policy: ", err)
+		return
+	}
+	logger := logging.TestLogger()
+
+	// Admins, not users, should be able to deploy the preparer + hooks.
+	err = policy.AuthorizeApp(TestSigned{"preparer", msg, adminSig}, logger)
+	if err != nil {
+		t.Error("expected authorized, got error: ", err)
+	}
+	err = policy.AuthorizeHook(TestSigned{"myhook", msg, adminSig}, logger)
+	if err != nil {
+		t.Error("expected authorized, got error: ", err)
+	}
+	err = policy.AuthorizeApp(TestSigned{"preparer", msg, userSig}, logger)
+	if err == nil {
+		t.Error("expected failure, got authorization")
+	}
+	err = policy.AuthorizeHook(TestSigned{"myhook", msg, userSig}, logger)
+	if err == nil {
+		t.Error("expected failure, got authorization")
+	}
 }

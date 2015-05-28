@@ -20,11 +20,18 @@ import (
 // services for these behaviors, so these calls may be slow or
 // transiently fail.
 type Policy interface {
-	// Check if a pod is authorized to be installed and run on this
-	// node. This involves checking that the pod has a valid signature
-	// and that the signer is authorized to install/run the pod. If
-	// the action is authorized, `nil` will be returned.
-	AuthorizePod(manifest Manifest, logger logging.Logger) error
+	// Check if an App is authorized to be installed and run on this
+	// node. This involves checking that the app's pod manifest has a
+	// valid signature and that the signer is authorized to
+	// install/run the app. If the action is authorized, `nil` will be
+	// returned.
+	AuthorizeApp(manifest Manifest, logger logging.Logger) error
+
+	// Check if a hook is authorized to be used on this node. A hook
+	// is distributed as a pod, but they are extensions of P2 itself,
+	// so they are treated differently than user-deployed Apps. If the
+	// action is authorized, `nil` will be returned.
+	AuthorizeHook(manifest Manifest, logger logging.Logger) error
 
 	// Check if a file digest has a valid signature and that the
 	// signer is authorized to certify the digest. The caller must
@@ -72,7 +79,11 @@ func (e Error) Error() string {
 // The NullPolicy never disallows anything. Everything is safe!
 type NullPolicy struct{}
 
-func (p NullPolicy) AuthorizePod(manifest Manifest, logger logging.Logger) error {
+func (p NullPolicy) AuthorizeApp(manifest Manifest, logger logging.Logger) error {
+	return nil
+}
+
+func (p NullPolicy) AuthorizeHook(manifest Manifest, logger logging.Logger) error {
 	return nil
 }
 
@@ -111,7 +122,7 @@ func LoadKeyringPolicy(
 	return FixedKeyringPolicy{keyring, authorizedDeployers}, nil
 }
 
-func (p FixedKeyringPolicy) AuthorizePod(manifest Manifest, logger logging.Logger) error {
+func (p FixedKeyringPolicy) AuthorizeApp(manifest Manifest, logger logging.Logger) error {
 	plaintext, signature := manifest.SignatureData()
 	if signature == nil {
 		return Error{util.Errorf("received unsigned manifest (expected signature)"), nil}
@@ -143,6 +154,10 @@ func (p FixedKeyringPolicy) AuthorizePod(manifest Manifest, logger logging.Logge
 	}
 
 	return nil
+}
+
+func (p FixedKeyringPolicy) AuthorizeHook(manifest Manifest, logger logging.Logger) error {
+	return p.AuthorizeApp(manifest, logger)
 }
 
 func (p FixedKeyringPolicy) CheckDigest(digest Digest) error {
@@ -260,11 +275,15 @@ func NewFileKeyringPolicy(
 	return FileKeyringPolicy{keyringPath, authorizedDeployers, watcher}, nil
 }
 
-func (p FileKeyringPolicy) AuthorizePod(manifest Manifest, logger logging.Logger) error {
+func (p FileKeyringPolicy) AuthorizeApp(manifest Manifest, logger logging.Logger) error {
 	return FixedKeyringPolicy{
 		(<-p.keyringWatcher.GetAsync()).(openpgp.EntityList),
 		p.AuthorizedDeployers,
-	}.AuthorizePod(manifest, logger)
+	}.AuthorizeApp(manifest, logger)
+}
+
+func (p FileKeyringPolicy) AuthorizeHook(manifest Manifest, logger logging.Logger) error {
+	return p.AuthorizeApp(manifest, logger)
 }
 
 func (p FileKeyringPolicy) CheckDigest(digest Digest) error {
@@ -373,6 +392,10 @@ func (dp DeployPol) Authorized(app string, email string) bool {
 // policy defines every app and which addresses are allowed to deploy
 // it.
 //
+// Hooks, being extensions of the preparer itself, should be
+// authorized using the preparer's name. That name is a configuration
+// parameter.
+//
 // The deploy policy file should be a YAML file as specified in the
 // comments for the `DeployPol` type. The given keyring file should
 // contain PGP keys with email addresses that match the emails in the
@@ -381,6 +404,7 @@ func (dp DeployPol) Authorized(app string, email string) bool {
 type UserPolicy struct {
 	keyringWatcher util.FileWatcher
 	deployWatcher  util.FileWatcher
+	preparerName   string
 }
 
 var _ Policy = UserPolicy{}
@@ -388,6 +412,7 @@ var _ Policy = UserPolicy{}
 func NewUserPolicy(
 	keyringPath string,
 	deployPolicyPath string,
+	preparerName string,
 ) (p Policy, err error) {
 	keyringWatcher, err := util.NewFileWatcher(
 		func(path string) (interface{}, error) {
@@ -412,11 +437,11 @@ func NewUserPolicy(
 	if err != nil {
 		return
 	}
-	p = UserPolicy{keyringWatcher, deployWatcher}
+	p = UserPolicy{keyringWatcher, deployWatcher, preparerName}
 	return
 }
 
-func (p UserPolicy) AuthorizePod(manifest Manifest, logger logging.Logger) error {
+func (p UserPolicy) AuthorizePod(podName string, manifest Signed, logger logging.Logger) error {
 	// Verify that the signature is valid
 	plaintext, signature := manifest.SignatureData()
 	if signature == nil {
@@ -435,12 +460,20 @@ func (p UserPolicy) AuthorizePod(manifest Manifest, logger logging.Logger) error
 	// Check if any of the signer's identites is authorized
 	lastIdName := "(unknown)"
 	for name, id := range signer.Identities {
-		if dpol.Authorized(manifest.ID(), id.UserId.Email) {
+		if dpol.Authorized(podName, id.UserId.Email) {
 			return nil
 		}
 		lastIdName = name
 	}
 	return Error{util.Errorf("user not authorized to deploy app: %s", lastIdName), nil}
+}
+
+func (p UserPolicy) AuthorizeApp(manifest Manifest, logger logging.Logger) error {
+	return p.AuthorizePod(manifest.ID(), manifest, logger)
+}
+
+func (p UserPolicy) AuthorizeHook(manifest Manifest, logger logging.Logger) error {
+	return p.AuthorizePod(p.preparerName, manifest, logger)
 }
 
 func (p UserPolicy) CheckDigest(digest Digest) error {

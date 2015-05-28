@@ -36,6 +36,7 @@ func main() {
 		"consul":      preparerConfig.ConsulAddress,
 		"hooks_dir":   preparerConfig.HooksDirectory,
 		"status_port": preparerConfig.StatusPort,
+		"auth_type":   preparerConfig.Auth["type"],
 		"keyring":     preparerConfig.Auth["keyring"],
 		"version":     version.VERSION,
 	}).Infoln("Preparer started successfully")
