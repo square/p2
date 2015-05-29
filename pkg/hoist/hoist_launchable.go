@@ -81,7 +81,7 @@ func (hl *Launchable) disable() (string, error) {
 
 	// providing a disable script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
-		return output, err
+		return output, util.Errorf("Could not disable %s: %s", hl.Id, err)
 	}
 
 	return output, nil
@@ -92,7 +92,7 @@ func (hl *Launchable) enable() (string, error) {
 
 	// providing an enable script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
-		return output, err
+		return output, util.Errorf("Could not enable %s: %s", hl.Id, err)
 	}
 
 	return output, nil
