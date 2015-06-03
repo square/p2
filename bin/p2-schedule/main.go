@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -51,8 +50,7 @@ func main() {
 	for _, manifestPath := range *manifests {
 		manifest, err := pods.ManifestFromPath(manifestPath)
 		if err != nil {
-			os.Stderr.WriteString(fmt.Sprintf("Could not read manifest at %s: %s\n", manifestPath, err))
-			continue
+			log.Fatalf("Could not read manifest at %s: %s\n", manifestPath, err)
 		}
 		path := kp.IntentPath(*nodeName, manifest.ID())
 		if *hookTypeName != "" {
@@ -64,9 +62,8 @@ func main() {
 		}
 		duration, err := store.SetPod(path, *manifest)
 		if err != nil {
-			os.Stderr.WriteString(fmt.Sprintf("Could not write manifest %s to intent store: %s\n", manifest.ID(), err))
-			continue
+			log.Fatalf("Could not write manifest %s to intent store: %s\n", manifest.ID(), err)
 		}
-		log.Printf("Scheduling %s took %s", manifest.ID(), duration)
+		log.Printf("Scheduling %s took %s\n", manifest.ID(), duration)
 	}
 }

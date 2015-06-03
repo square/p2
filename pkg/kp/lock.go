@@ -49,7 +49,7 @@ func (s *Store) NewLock(name string) (Lock, error) {
 func (s *Store) LockHolder(key string) (string, string, error) {
 	kvp, _, err := s.client.KV().Get(key, nil)
 	if err != nil {
-		return "", "", KVError{Op: "get", Key: key}
+		return "", "", KVError{Op: "get", Key: key, UnsafeError: err}
 	}
 	if kvp == nil || kvp.Session == "" {
 		return "", "", nil
