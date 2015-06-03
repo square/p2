@@ -29,8 +29,9 @@ func NewStore(opts Options) *Store {
 // Consul API cannot be exposed because they may contain the URL of the request,
 // which includes an ACL token as a query parameter.
 type KVError struct {
-	Op  string
-	Key string
+	Op          string
+	Key         string
+	UnsafeError error
 }
 
 func (err KVError) Error() string {
@@ -56,9 +57,9 @@ func (s *Store) SetPod(key string, manifest pods.Manifest) (time.Duration, error
 		retDur = writeMeta.RequestTime
 	}
 	if err != nil {
-		err = KVError{Op: "set", Key: key}
+		return retDur, KVError{Op: "set", Key: key, UnsafeError: err}
 	}
-	return retDur, err
+	return retDur, nil
 }
 
 // Pod reads a pod manifest from the key-value store. If the given key does not
@@ -67,7 +68,7 @@ func (s *Store) SetPod(key string, manifest pods.Manifest) (time.Duration, error
 func (s *Store) Pod(key string) (*pods.Manifest, time.Duration, error) {
 	kvPair, writeMeta, err := s.client.KV().Get(key, nil)
 	if err != nil {
-		return nil, 0, KVError{Op: "get", Key: key}
+		return nil, 0, KVError{Op: "get", Key: key, UnsafeError: err}
 	}
 	if kvPair == nil {
 		return nil, writeMeta.RequestTime, pods.NoCurrentManifest
@@ -83,7 +84,7 @@ func (s *Store) Pod(key string) (*pods.Manifest, time.Duration, error) {
 func (s *Store) ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error) {
 	kvPairs, writeMeta, err := s.client.KV().List(keyPrefix, nil)
 	if err != nil {
-		return nil, 0, KVError{Op: "list", Key: keyPrefix}
+		return nil, 0, KVError{Op: "list", Key: keyPrefix, UnsafeError: err}
 	}
 	var ret []ManifestResult
 
@@ -120,7 +121,7 @@ func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan ch
 				WaitIndex: curIndex,
 			})
 			if err != nil {
-				errChan <- KVError{Op: "list", Key: keyPrefix}
+				errChan <- KVError{Op: "list", Key: keyPrefix, UnsafeError: err}
 			} else {
 				curIndex = meta.LastIndex
 				for _, pair := range pairs {
@@ -151,7 +152,7 @@ func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan ch
 func (s *Store) Ping() error {
 	_, qm, err := s.client.Catalog().Nodes(&api.QueryOptions{RequireConsistent: true})
 	if err != nil {
-		return KVError{Op: "ping", Key: "/catalog/nodes"}
+		return KVError{Op: "ping", Key: "/catalog/nodes", UnsafeError: err}
 	}
 	if qm == nil || !qm.KnownLeader {
 		return util.Errorf("No known leader")
