@@ -59,11 +59,21 @@ func main() {
 
 	intents, _, err := store.ListPods(kp.INTENT_TREE)
 	if err != nil {
-		log.Fatalf("Could not list intent kvpairs: %s", err.(kp.KVError).UnsafeError)
+		message := "Could not list intent kvpairs: %s"
+		if kvErr, ok := err.(kp.KVError); ok {
+			log.Fatalf(message, kvErr.UnsafeError)
+		} else {
+			log.Fatalf(message, err)
+		}
 	}
 	realities, _, err := store.ListPods(kp.REALITY_TREE)
 	if err != nil {
-		log.Fatalf("Could not list reality kvpairs: %s", err.(kp.KVError).UnsafeError)
+		message := "Could not list reality kvpairs: %s"
+		if kvErr, ok := err.(kp.KVError); ok {
+			log.Fatalf(message, kvErr.UnsafeError)
+		} else {
+			log.Fatalf(message, err)
+		}
 	}
 
 	statusMap := make(map[string]map[string]NodePodStatus)
