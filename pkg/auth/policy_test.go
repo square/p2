@@ -19,6 +19,7 @@ import (
 // TestSigned is a stand-in for an auth.Manifest or auth.Digest.
 type TestSigned struct {
 	Id        string
+	User      string
 	Plaintext []byte
 	Signature []byte
 }
@@ -27,8 +28,17 @@ func (s TestSigned) ID() string {
 	return s.Id
 }
 
+func (s TestSigned) RunAsUser() string {
+	return s.User
+}
+
 func (s TestSigned) SignatureData() ([]byte, []byte) {
 	return s.Plaintext, s.Signature
+}
+
+// Constructs a new UserPolicy with fixed preparer names
+func NewTestUserPolicy(keyringPath string, deployPolicyPath string) (Policy, error) {
+	return NewUserPolicy(keyringPath, deployPolicyPath, "preparer", "preparer")
 }
 
 // The testHarness groups setup functions together to reduce error
@@ -168,23 +178,23 @@ func TestKeyring(t *testing.T) {
 	logger := logging.TestLogger()
 
 	// Key in keyring signs the message
-	err = policy.AuthorizeApp(TestSigned{"foo", msg, sigs[0]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"foo", "foo", msg, sigs[0]}, logger)
 	if err != nil {
 		t.Error("error authorizing pod manifest:", err)
 	}
 
 	// Key not in keyring signs the message
-	err = policy.AuthorizeApp(TestSigned{"foo", msg, sigs[2]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"foo", "foo", msg, sigs[2]}, logger)
 	if err == nil {
 		t.Error("accepted unauthorized signature")
 	}
 
 	// Verify preparer authorization policy
-	err = policy.AuthorizeApp(TestSigned{"restricted", msg, sigs[1]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"restricted", "restricted", msg, sigs[1]}, logger)
 	if err != nil {
 		t.Error("error authorizing pod manifest:", err)
 	}
-	err = policy.AuthorizeApp(TestSigned{"restricted", msg, sigs[0]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"restricted", "restricted", msg, sigs[0]}, logger)
 	if err == nil {
 		t.Error("accepted unauthorized signature")
 	}
@@ -217,11 +227,11 @@ func TestKeyAddition(t *testing.T) {
 	logger := logging.TestLogger()
 
 	// Keyring contains only ents[0]
-	err = policy.AuthorizeApp(TestSigned{"test", msg, sigs[0]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"test", "test", msg, sigs[0]}, logger)
 	if err != nil {
 		t.Error("expected authorized, got error:", err)
 	}
-	err = policy.AuthorizeApp(TestSigned{"test", msg, sigs[1]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"test", "test", msg, sigs[1]}, logger)
 	if err == nil {
 		t.Error("expected failure, got authorization")
 	}
@@ -229,11 +239,11 @@ func TestKeyAddition(t *testing.T) {
 	// Update the keyring file with both keys. The mtime is updated
 	// because we backdated the previous version.
 	h.saveKeys(ents, keyfile)
-	err = policy.AuthorizeApp(TestSigned{"test", msg, sigs[0]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"test", "test", msg, sigs[0]}, logger)
 	if err != nil {
 		t.Error("expected authorized, got error:", err)
 	}
-	err = policy.AuthorizeApp(TestSigned{"test", msg, sigs[1]}, logger)
+	err = policy.AuthorizeApp(TestSigned{"test", "test", msg, sigs[1]}, logger)
 	if err != nil {
 		t.Error("expected authorized, got error:", err)
 	}
@@ -274,7 +284,7 @@ func TestDpolChanges(t *testing.T) {
 		return
 	}
 
-	policy, err := NewUserPolicy(keyfile, polfile, "preparer")
+	policy, err := NewTestUserPolicy(keyfile, polfile)
 	if err != nil {
 		t.Error("error creating user policy: ", err)
 		return
@@ -285,7 +295,7 @@ func TestDpolChanges(t *testing.T) {
 	tester := func(expected map[string][3]bool) {
 		for app, results := range expected {
 			for signer := range results {
-				err = policy.AuthorizeApp(TestSigned{app, msg, sigs[signer]}, logger)
+				err = policy.AuthorizeApp(TestSigned{app, app, msg, sigs[signer]}, logger)
 				if err != nil && results[signer] {
 					t.Errorf(
 						"app %s signer %d: expected authorized, got error: %s",
@@ -361,7 +371,8 @@ func TestDpolHooks(t *testing.T) {
 				// Hooks should be treated like the preparer
 				"preparer": {"admins"},
 				// ...even if there is an app with the same name as a hook
-				"myhook": {"users"},
+				"myhook":  {"users"},
+				"someapp": {"users"},
 			},
 		},
 		polfile,
@@ -370,27 +381,45 @@ func TestDpolHooks(t *testing.T) {
 		t.Error(h.Err)
 		return
 	}
-	policy, err := NewUserPolicy(keyfile, polfile, "preparer")
+	policy, err := NewTestUserPolicy(keyfile, polfile)
 	if err != nil {
 		t.Error("error creating user policy: ", err)
 		return
 	}
 	logger := logging.TestLogger()
 
-	// Admins, not users, should be able to deploy the preparer + hooks.
-	err = policy.AuthorizeApp(TestSigned{"preparer", msg, adminSig}, logger)
+	// P2 admins should be able to deploy the preparer and its hooks.
+	err = policy.AuthorizeApp(TestSigned{"preparer", "preparer", msg, adminSig}, logger)
 	if err != nil {
 		t.Error("expected authorized, got error: ", err)
 	}
-	err = policy.AuthorizeHook(TestSigned{"myhook", msg, adminSig}, logger)
+	err = policy.AuthorizeApp(TestSigned{"preparer", "root", msg, adminSig}, logger)
 	if err != nil {
 		t.Error("expected authorized, got error: ", err)
 	}
-	err = policy.AuthorizeApp(TestSigned{"preparer", msg, userSig}, logger)
+	err = policy.AuthorizeHook(TestSigned{"myhook", "myhook", msg, adminSig}, logger)
+	if err != nil {
+		t.Error("expected authorized, got error: ", err)
+	}
+
+	// Users should not be able to modify the preparer or run hooks
+	err = policy.AuthorizeApp(TestSigned{"preparer", "preparer", msg, userSig}, logger)
 	if err == nil {
 		t.Error("expected failure, got authorization")
 	}
-	err = policy.AuthorizeHook(TestSigned{"myhook", msg, userSig}, logger)
+	err = policy.AuthorizeApp(TestSigned{"preparer", "root", msg, userSig}, logger)
+	if err == nil {
+		t.Error("expected failure, got authorization")
+	}
+	err = policy.AuthorizeApp(TestSigned{"preparer", "someapp", msg, userSig}, logger)
+	if err == nil {
+		t.Error("expected failure, got authorization")
+	}
+	err = policy.AuthorizeHook(TestSigned{"myhook", "myhook", msg, userSig}, logger)
+	if err == nil {
+		t.Error("expected failure, got authorization")
+	}
+	err = policy.AuthorizeHook(TestSigned{"myhook", "preparer", msg, userSig}, logger)
 	if err == nil {
 		t.Error("expected failure, got authorization")
 	}

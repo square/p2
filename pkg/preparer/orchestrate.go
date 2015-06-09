@@ -35,15 +35,15 @@ type Store interface {
 }
 
 type Preparer struct {
-	node            string
-	store           Store
-	hooks           Hooks
-	hookListener    HookListener
-	Logger          logging.Logger
-	podRoot         string
-	forbiddenPodIds map[string]struct{}
-	caPath          string
-	authPolicy      auth.Policy
+	node           string
+	store          Store
+	hooks          Hooks
+	hookListener   HookListener
+	Logger         logging.Logger
+	podRoot        string
+	forbiddenUsers map[string]bool
+	caPath         string
+	authPolicy     auth.Policy
 }
 
 func (p *Preparer) WatchForHooks(quit chan struct{}) {
@@ -107,11 +107,6 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	}
 }
 
-func (p *Preparer) podIdForbidden(id string) bool {
-	_, forbidden := p.forbiddenPodIds[id]
-	return forbidden
-}
-
 func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest *pods.Manifest, logger logging.Logger) {
 	err := p.hooks.RunHookType(hookType, pod, manifest)
 	if err != nil {
@@ -145,7 +140,7 @@ func (p *Preparer) handlePods(podChan <-chan pods.Manifest, quit <-chan struct{}
 			})
 			manifestLogger.NoFields().Debugln("New manifest received")
 
-			working = p.verifySignature(manifestToLaunch, manifestLogger)
+			working = p.authorize(manifestToLaunch, manifestLogger)
 			if !working {
 				p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pods.NewPod(manifestToLaunch.ID(), pods.PodPath(p.podRoot, manifestToLaunch.ID())), &manifestToLaunch, manifestLogger)
 			}
@@ -163,8 +158,8 @@ func (p *Preparer) handlePods(podChan <-chan pods.Manifest, quit <-chan struct{}
 	}
 }
 
-// check if a manifest satisfies the signature requirement of this preparer
-func (p *Preparer) verifySignature(manifest pods.Manifest, logger logging.Logger) bool {
+// check if a manifest satisfies the authorization requirement of this preparer
+func (p *Preparer) authorize(manifest pods.Manifest, logger logging.Logger) bool {
 	err := p.authPolicy.AuthorizeApp(&manifest, logger)
 	if err != nil {
 		if err, ok := err.(auth.Error); ok {
@@ -174,20 +169,22 @@ func (p *Preparer) verifySignature(manifest pods.Manifest, logger logging.Logger
 		}
 		return false
 	}
+
+	// Even if the authorization policy allows it, apply another
+	// filter to keep apps from being deployed as system users.
+	if manifest.ID() != POD_ID && p.forbiddenUsers[manifest.RunAsUser()] {
+		logger.WithFields(logrus.Fields{
+			"pod":    manifest.ID(),
+			"run_as": manifest.RunAsUser(),
+		}).Errorln("Invalid run_as user")
+		return false
+	}
+
 	return true
 }
 
 func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logger logging.Logger) bool {
 	// do not remove the logger argument, it's not the same as p.Logger
-
-	if newManifest.ID() != POD_ID && p.podIdForbidden(newManifest.RunAsUser()) {
-		logger.WithFields(logrus.Fields{
-			"pod":    newManifest.ID(),
-			"run_as": newManifest.RunAsUser(),
-		}).Errorln("Invalid run_as user")
-		p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pod, newManifest, logger)
-		return false
-	}
 
 	// get currently running pod to compare with the new pod
 	realityPath := kp.RealityPath(p.node, newManifest.ID())
