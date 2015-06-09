@@ -27,7 +27,7 @@ func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 
-	store := kp.NewStore(kp.Options{
+	store := kp.NewConsulStore(kp.Options{
 		Address: *consulAddress,
 		Token:   *consulToken,
 		Client:  net.NewHeaderClient(*headers, http.DefaultTransport),
