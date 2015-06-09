@@ -91,7 +91,7 @@ func runDirectory(dirpath string, environment []string, logger logging.Logger) e
 			logger.WithFields(logrus.Fields{
 				"path":   fullpath,
 				"output": hookOut.String(),
-			}).Infoln("Executed hook")
+			}).Infof("Executed %s", path.Base(fullpath))
 		}
 	}
 
