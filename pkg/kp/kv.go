@@ -17,12 +17,24 @@ type ManifestResult struct {
 	Path     string
 }
 
-type Store struct {
+type Store interface {
+	SetPod(key string, manifest pods.Manifest) (time.Duration, error)
+	Pod(key string) (*pods.Manifest, time.Duration, error)
+	WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
+	RegisterService(pods.Manifest, string) error
+	Ping() error
+	ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error)
+	LockHolder(key string) (string, string, error)
+	DestroyLockHolder(id string) error
+	NewLock(name string) (Lock, error)
+}
+
+type consulStore struct {
 	client *api.Client
 }
 
-func NewStore(opts Options) *Store {
-	return &Store{client: NewConsulClient(opts)}
+func NewConsulStore(opts Options) Store {
+	return &consulStore{client: NewConsulClient(opts)}
 }
 
 // KVError encapsulates an error in a Store operation. Errors returned from the
@@ -40,7 +52,7 @@ func (err KVError) Error() string {
 
 // SetPod writes a pod manifest into the consul key-value store. The key should
 // not have a leading or trailing slash.
-func (s *Store) SetPod(key string, manifest pods.Manifest) (time.Duration, error) {
+func (c consulStore) SetPod(key string, manifest pods.Manifest) (time.Duration, error) {
 	buf := bytes.Buffer{}
 	err := manifest.Write(&buf)
 	if err != nil {
@@ -51,7 +63,7 @@ func (s *Store) SetPod(key string, manifest pods.Manifest) (time.Duration, error
 		Value: buf.Bytes(),
 	}
 
-	writeMeta, err := s.client.KV().Put(keyPair, nil)
+	writeMeta, err := c.client.KV().Put(keyPair, nil)
 	var retDur time.Duration
 	if writeMeta != nil {
 		retDur = writeMeta.RequestTime
@@ -65,8 +77,8 @@ func (s *Store) SetPod(key string, manifest pods.Manifest) (time.Duration, error
 // Pod reads a pod manifest from the key-value store. If the given key does not
 // exist, a nil *PodManifest will be returned, along with a pods.NoCurrentManifest
 // error.
-func (s *Store) Pod(key string) (*pods.Manifest, time.Duration, error) {
-	kvPair, writeMeta, err := s.client.KV().Get(key, nil)
+func (c consulStore) Pod(key string) (*pods.Manifest, time.Duration, error) {
+	kvPair, writeMeta, err := c.client.KV().Get(key, nil)
 	if err != nil {
 		return nil, 0, KVError{Op: "get", Key: key, UnsafeError: err}
 	}
@@ -81,8 +93,8 @@ func (s *Store) Pod(key string) (*pods.Manifest, time.Duration, error) {
 // key prefix. In the event of an error, the nil slice is returned.
 //
 // All the values under the given key prefix must be pod manifests.
-func (s *Store) ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error) {
-	kvPairs, writeMeta, err := s.client.KV().List(keyPrefix, nil)
+func (c consulStore) ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error) {
+	kvPairs, writeMeta, err := c.client.KV().List(keyPrefix, nil)
 	if err != nil {
 		return nil, 0, KVError{Op: "list", Key: keyPrefix, UnsafeError: err}
 	}
@@ -107,7 +119,7 @@ func (s *Store) ListPods(keyPrefix string) ([]ManifestResult, time.Duration, err
 // All the values under the given key prefix must be pod manifests. Emitted
 // manifests might be unchanged from the last time they were read. It is the
 // caller's responsibility to filter out unchanged manifests.
-func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult) {
+func (c consulStore) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult) {
 	defer close(podChan)
 
 	var curIndex uint64 = 0
@@ -117,7 +129,7 @@ func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan ch
 		case <-quitChan:
 			return
 		case <-time.After(1 * time.Second):
-			pairs, meta, err := s.client.KV().List(keyPrefix, &api.QueryOptions{
+			pairs, meta, err := c.client.KV().List(keyPrefix, &api.QueryOptions{
 				WaitIndex: curIndex,
 			})
 			if err != nil {
@@ -149,8 +161,8 @@ func (s *Store) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan ch
 // If a cluster is starting for the first time, it may report a leader just
 // before beginning raft replication, thus rejecting requests made at that
 // exact moment.
-func (s *Store) Ping() error {
-	_, qm, err := s.client.Catalog().Nodes(&api.QueryOptions{RequireConsistent: true})
+func (c consulStore) Ping() error {
+	_, qm, err := c.client.Catalog().Nodes(&api.QueryOptions{RequireConsistent: true})
 	if err != nil {
 		return KVError{Op: "ping", Key: "/catalog/nodes", UnsafeError: err}
 	}

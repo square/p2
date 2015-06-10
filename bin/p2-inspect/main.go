@@ -55,7 +55,7 @@ func main() {
 		Client:  net.NewHeaderClient(*headers, http.DefaultTransport),
 		HTTPS:   *https,
 	}
-	store := kp.NewStore(opts)
+	store := kp.NewConsulStore(opts)
 
 	intents, _, err := store.ListPods(kp.INTENT_TREE)
 	if err != nil {

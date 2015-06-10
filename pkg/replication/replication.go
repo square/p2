@@ -17,7 +17,7 @@ type Replicator struct {
 	Logger    logging.Logger
 	Nodes     []string
 	Active    int // maximum number of nodes to update concurrently
-	Store     *kp.Store
+	Store     kp.Store
 	Health    health.ConsulHealthChecker
 	Threshold health.HealthState // minimum state to treat as "healthy"
 }

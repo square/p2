@@ -57,7 +57,7 @@ func main() {
 		Client:  net.NewHeaderClient(*headers, http.DefaultTransport),
 		HTTPS:   *https,
 	}
-	store := kp.NewStore(opts)
+	store := kp.NewConsulStore(opts)
 	healthChecker := health.NewConsulHealthChecker(opts)
 
 	// Fetch manifest (could be URI) into temp file

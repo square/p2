@@ -22,8 +22,8 @@ func (err AlreadyLockedError) Error() string {
 	return fmt.Sprintf("Key %q is already locked", err.Key)
 }
 
-func (s *Store) NewLock(name string) (Lock, error) {
-	session, _, err := s.client.Session().CreateNoChecks(&api.SessionEntry{
+func (c consulStore) NewLock(name string) (Lock, error) {
+	session, _, err := c.client.Session().CreateNoChecks(&api.SessionEntry{
 		Name: name,
 		// if the lock delay is zero, it becomes the default value, which is 15s
 		// we want to release locks right away (so that a losing process does
@@ -39,15 +39,15 @@ func (s *Store) NewLock(name string) (Lock, error) {
 		return Lock{}, util.Errorf("Could not create lock")
 	}
 	return Lock{
-		client:  s.client,
+		client:  c.client,
 		session: session,
 		name:    name,
 	}, nil
 }
 
 // determine the name and ID of the session that is locking this key, if any
-func (s *Store) LockHolder(key string) (string, string, error) {
-	kvp, _, err := s.client.KV().Get(key, nil)
+func (c consulStore) LockHolder(key string) (string, string, error) {
+	kvp, _, err := c.client.KV().Get(key, nil)
 	if err != nil {
 		return "", "", KVError{Op: "get", Key: key, UnsafeError: err}
 	}
@@ -55,15 +55,15 @@ func (s *Store) LockHolder(key string) (string, string, error) {
 		return "", "", nil
 	}
 
-	se, _, err := s.client.Session().Info(kvp.Session, nil)
+	se, _, err := c.client.Session().Info(kvp.Session, nil)
 	if err != nil {
 		return "", "", util.Errorf("Could not get lock information for %q held by id %q", key, kvp.Session)
 	}
 	return se.Name, se.ID, nil
 }
 
-func (s *Store) DestroyLockHolder(id string) error {
-	_, err := s.client.Session().Destroy(id, nil)
+func (c consulStore) DestroyLockHolder(id string) error {
+	_, err := c.client.Session().Destroy(id, nil)
 	return err
 }
 

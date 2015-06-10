@@ -175,7 +175,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		}
 	}
 
-	store := kp.NewStore(kp.Options{
+	store := kp.NewConsulStore(kp.Options{
 		Address: preparerConfig.ConsulAddress,
 		Token:   consulToken,
 	})
