@@ -164,12 +164,12 @@ func (f *FakeStore) WatchPods(string, <-chan struct{}, chan<- error, chan<- kp.M
 func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks, string) {
 	podRoot, _ := ioutil.TempDir("", "pod_root")
 	cfg := &PreparerConfig{
-		NodeName:        "hostname",
-		ConsulAddress:   "0.0.0.0",
-		HooksDirectory:  util.From(runtime.Caller(0)).ExpandPath("test_hooks"),
-		PodRoot:         podRoot,
-		ForbiddenPodIds: []string{"root"},
-		Auth:            map[string]interface{}{"type": "none"},
+		NodeName:       "hostname",
+		ConsulAddress:  "0.0.0.0",
+		HooksDirectory: util.From(runtime.Caller(0)).ExpandPath("test_hooks"),
+		PodRoot:        podRoot,
+		ForbiddenUsers: []string{"root"},
+		Auth:           map[string]interface{}{"type": "none"},
 	}
 	p, err := New(cfg, logging.DefaultLogger)
 	Assert(t).IsNil(err, "Test setup error: should not have erred when trying to load a fake preparer")
@@ -251,12 +251,12 @@ func TestPreparerWillNotInstallOrLaunchIfIdIsForbidden(t *testing.T) {
 	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
-	p.forbiddenPodIds = make(map[string]struct{})
-	p.forbiddenPodIds[testManifest.ID()] = struct{}{}
+	p.forbiddenUsers = map[string]bool{testManifest.ID(): true}
 
-	success := p.installAndLaunchPod(testManifest, testPod, logging.DefaultLogger)
-
-	Assert(t).IsFalse(success, "Installing a forbidden ID should not succeed")
+	Assert(t).IsFalse(
+		p.authorize(*testManifest, logging.DefaultLogger),
+		"A forbidden user should not authorize",
+	)
 	Assert(t).IsFalse(hooks.ranBeforeInstall, "Should not have run hooks prior to install")
 	Assert(t).IsFalse(testPod.installed, "Should not have installed")
 	Assert(t).IsFalse(testPod.launched, "Should not have attempted to launch")
@@ -274,14 +274,14 @@ func TestPreparerWillNotLaunchAnAppAsRoot(t *testing.T) {
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 
-	success := p.installAndLaunchPod(illegalManifest, testPod, logging.DefaultLogger)
-
-	Assert(t).IsFalse(success, "Running a pod as root should fail")
+	Assert(t).IsFalse(
+		p.authorize(*illegalManifest, logging.DefaultLogger),
+		"Should not have run app as root",
+	)
 	Assert(t).IsFalse(hooks.ranBeforeInstall, "Should not have run hooks prior to install")
 	Assert(t).IsFalse(testPod.installed, "Should not have installed")
 	Assert(t).IsFalse(testPod.launched, "Should not have attempted to launch")
 	Assert(t).IsFalse(hooks.ranAfterLaunch, "Should not have run after_launch hooks")
-	Assert(t).IsTrue(hooks.ranAfterAuthFail, "Should have run after_auth_fail hooks")
 }
 
 func TestPreparerWillLaunchPreparerAsRoot(t *testing.T) {
@@ -352,7 +352,10 @@ func TestPreparerWillRequireSignatureWithKeyring(t *testing.T) {
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{}
 
-	Assert(t).IsFalse(p.verifySignature(*manifest, logging.DefaultLogger), "should have accepted unsigned manifest")
+	Assert(t).IsFalse(
+		p.authorize(*manifest, logging.DefaultLogger),
+		"should have accepted unsigned manifest",
+	)
 }
 
 func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
@@ -363,7 +366,10 @@ func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil}
 
-	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "should have accepted signed manifest")
+	Assert(t).IsTrue(
+		p.authorize(*manifest, logging.DefaultLogger),
+		"should have accepted signed manifest",
+	)
 }
 
 func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *testing.T) {
@@ -376,7 +382,10 @@ func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *tes
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil}
 
-	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "expected preparer to accept manifest (empty authorized deployers)")
+	Assert(t).IsTrue(
+		p.authorize(*manifest, logging.DefaultLogger),
+		"expected preparer to accept manifest (empty authorized deployers)",
+	)
 }
 
 func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
@@ -392,7 +401,10 @@ func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 		AuthorizedDeployers: map[string][]string{POD_ID: {"nobodylol"}},
 	}
 
-	Assert(t).IsFalse(p.verifySignature(*manifest, logging.DefaultLogger), "expected preparer to reject manifest (unauthorized deployer)")
+	Assert(t).IsFalse(
+		p.authorize(*manifest, logging.DefaultLogger),
+		"expected preparer to reject manifest (unauthorized deployer)",
+	)
 }
 
 func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
@@ -410,7 +422,10 @@ func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 		AuthorizedDeployers: map[string][]string{POD_ID: {sig}},
 	}
 
-	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "expected preparer to accept manifest (authorized deployer)")
+	Assert(t).IsTrue(
+		p.authorize(*manifest, logging.DefaultLogger),
+		"expected preparer to accept manifest (authorized deployer)",
+	)
 }
 
 func TestPreparerWillAcceptSignatureWhenKeyringIsNil(t *testing.T) {
@@ -420,5 +435,8 @@ func TestPreparerWillAcceptSignatureWhenKeyringIsNil(t *testing.T) {
 	defer os.RemoveAll(fakePodRoot)
 	// Use default p.authPolicy when no keyfile path is given
 
-	Assert(t).IsTrue(p.verifySignature(*manifest, logging.DefaultLogger), "expected the preparer to verify the signature when no keyring given")
+	Assert(t).IsTrue(
+		p.authorize(*manifest, logging.DefaultLogger),
+		"expected the preparer to verify the signature when no keyring given",
+	)
 }

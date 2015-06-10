@@ -47,6 +47,7 @@ type Policy interface {
 // accessors that auth logic cares about.
 type Manifest interface {
 	ID() string
+	RunAsUser() string
 	Signed
 }
 
@@ -300,28 +301,34 @@ func (p FileKeyringPolicy) Close() {
 // Assert that FileKeyringPolicy is a Policy
 var _ Policy = FileKeyringPolicy{}
 
-// A DeployPol lists all apps that are authorized to be deployed and
-// the set of users that are allowed to deploy each app. (This is the
-// deploy policy, but it isn't a `Policy` interface, so the name is
-// shortened.)
+// A DeployPol lists all app users that apps can run as and the set of
+// users (humans or other apps) that are allowed to deploy to each app
+// user. (This is the deploy policy, but it isn't a `Policy`
+// interface, so the name is shortened.)
+//
+// This policy is applicable when an app's security policy is centered
+// around the Unix user that the app runs as. Similar to "sudo",
+// authorization grants one user the ability to run commands (apps) as
+// another user.
 //
 // The policy file should be a YAML-serialized object that conforms to
 // the layout of the `RawDeployPol` type. The data in the "groups" key
 // is a map: each entry's key defines a group's name and its value
 // defines the email addresses in the group. The name of the group is
 // not significant. The data in the "apps" key is also a map: each
-// entry's key is the name of an app, and its value is a list of
-// groups, each member of which is authorized to deploy the app.
+// entry's key is the name of an app user, and its value is a list of
+// groups, each member of which is authorized to deploy apps that will
+// run as the app user.
 //
 // By separating apps from groups, it allows some flexibility in
 // managing the deployers for an app. Some possible organizations are:
 //
-// - Have one group that includes all deployers, and each app
+// - Have one group that includes all deployers, and each app user
 //   references that group
-// - Create one group for each app, explicitly listing all deployers
-//   for that app
-// - Create groups for each team, and let each app be deployed by the
-//   team that develops/manages it
+// - Create one group for each app user, explicitly listing all
+//   deployers for that app
+// - Create groups for each team, and let each app user be deployed by
+//   the team that develops/manages it
 //
 // Example policy file:
 //   ---
@@ -338,6 +345,12 @@ var _ Policy = FileKeyringPolicy{}
 //     db:
 //     - admins
 //
+// In this example, "alice" is authorized to deploy a pod named "api"
+// that runs as the Unix user "web". Alice cannot however deploy the
+// pod named "mysql" which runs as the "db" user.  Note that Alice
+// *is* permitted to deploy "mysql" running as the user "web"--it is
+// beyond the scope of this policy to ensure that only the "db" user
+// is actually capable of serving database traffic.
 type DeployPol struct {
 	Groups map[DpGroup]map[DpUserEmail]bool // Each group is a *set* of email addrs
 	Apps   map[string][]DpGroup             // Each app has a list of authorized groups
@@ -375,10 +388,10 @@ func LoadDeployPol(filename string) (DeployPol, error) {
 	return DeployPol{groups, rawDp.Apps}, nil
 }
 
-// Check if given user is authorized to act on the given app. The
-// default policy is to fail closed if no app is found.
-func (dp DeployPol) Authorized(app string, email string) bool {
-	for _, group := range dp.Apps[app] {
+// Check if given user is authorized to act as the given app user. The
+// default policy is to fail closed if no app user is found.
+func (dp DeployPol) Authorized(appUser string, email string) bool {
+	for _, group := range dp.Apps[appUser] {
 		if dp.Groups[group][DpUserEmail(email)] {
 			return true
 		}
@@ -389,12 +402,13 @@ func (dp DeployPol) Authorized(app string, email string) bool {
 // UserPolicy is a Policy that authorizes users' actions instead of
 // simply checking for the presence of a key. Users are identified by
 // the email addresses associated with their signing key. An external
-// policy defines every app and which addresses are allowed to deploy
-// it.
+// policy defines every app user and which email addresses are allowed
+// to act as that app user.
 //
-// Hooks, being extensions of the preparer itself, should be
-// authorized using the preparer's name. That name is a configuration
-// parameter.
+// The P2 preparer has special authorization check: apps with the
+// preparer's name are checked with a different effective app
+// user. Hooks, being extensions of the preparer itself, are always
+// authorized the same as the preparer.
 //
 // The deploy policy file should be a YAML file as specified in the
 // comments for the `DeployPol` type. The given keyring file should
@@ -404,7 +418,8 @@ func (dp DeployPol) Authorized(app string, email string) bool {
 type UserPolicy struct {
 	keyringWatcher util.FileWatcher
 	deployWatcher  util.FileWatcher
-	preparerName   string
+	preparerApp    string
+	preparerUser   string
 }
 
 var _ Policy = UserPolicy{}
@@ -412,7 +427,8 @@ var _ Policy = UserPolicy{}
 func NewUserPolicy(
 	keyringPath string,
 	deployPolicyPath string,
-	preparerName string,
+	preparerApp string,
+	preparerUser string,
 ) (p Policy, err error) {
 	keyringWatcher, err := util.NewFileWatcher(
 		func(path string) (interface{}, error) {
@@ -437,11 +453,11 @@ func NewUserPolicy(
 	if err != nil {
 		return
 	}
-	p = UserPolicy{keyringWatcher, deployWatcher, preparerName}
+	p = UserPolicy{keyringWatcher, deployWatcher, preparerApp, preparerUser}
 	return
 }
 
-func (p UserPolicy) AuthorizePod(podName string, manifest Signed, logger logging.Logger) error {
+func (p UserPolicy) AuthorizePod(podUser string, manifest Signed, logger logging.Logger) error {
 	// Verify that the signature is valid
 	plaintext, signature := manifest.SignatureData()
 	if signature == nil {
@@ -460,7 +476,7 @@ func (p UserPolicy) AuthorizePod(podName string, manifest Signed, logger logging
 	// Check if any of the signer's identites is authorized
 	lastIdName := "(unknown)"
 	for name, id := range signer.Identities {
-		if dpol.Authorized(podName, id.UserId.Email) {
+		if dpol.Authorized(podUser, id.UserId.Email) {
 			return nil
 		}
 		lastIdName = name
@@ -469,11 +485,15 @@ func (p UserPolicy) AuthorizePod(podName string, manifest Signed, logger logging
 }
 
 func (p UserPolicy) AuthorizeApp(manifest Manifest, logger logging.Logger) error {
-	return p.AuthorizePod(manifest.ID(), manifest, logger)
+	user := manifest.RunAsUser()
+	if manifest.ID() == p.preparerApp {
+		user = p.preparerUser
+	}
+	return p.AuthorizePod(user, manifest, logger)
 }
 
 func (p UserPolicy) AuthorizeHook(manifest Manifest, logger logging.Logger) error {
-	return p.AuthorizePod(p.preparerName, manifest, logger)
+	return p.AuthorizePod(p.preparerUser, manifest, logger)
 }
 
 func (p UserPolicy) CheckDigest(digest Digest) error {
