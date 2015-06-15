@@ -10,7 +10,7 @@ useradd -D -d /data/pods/$POD_ID $POD_ID
 ' > ensure_user
 $ chmod o+x ensure_user
 $ MANIFEST=$(p2-bin2pod ensure_user | jq '.["manifest_path"]')
-$ p2-hook schedule $MANIFEST before_install
+$ p2-schedule --hook-type before_install $MANIFEST
 ```
 
 This hook establishes that the user running your application is present on the host before any launchable begins.
