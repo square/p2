@@ -74,6 +74,11 @@ func ManifestFromString(str string) (*Manifest, error) {
 func ManifestFromBytes(bytes []byte) (*Manifest, error) {
 	manifest := &Manifest{}
 
+	// Preserve the raw manifest so that manifest.Bytes() returns bytes in
+	// the same order that they were passed to this function
+	manifest.raw = make([]byte, len(bytes))
+	copy(manifest.raw, bytes)
+
 	signed, _ := clearsign.Decode(bytes)
 	if signed != nil {
 		signature, err := ioutil.ReadAll(signed.ArmoredSignature.Body)
@@ -81,9 +86,6 @@ func ManifestFromBytes(bytes []byte) (*Manifest, error) {
 			return nil, fmt.Errorf("Could not read signature from pod manifest: %s", err)
 		}
 		manifest.signature = signature
-
-		manifest.raw = make([]byte, len(bytes))
-		copy(manifest.raw, bytes)
 
 		// the original plaintext is in signed.Plaintext, but the signature
 		// corresponds to signed.Bytes, so that's what we need to save
@@ -100,7 +102,7 @@ func ManifestFromBytes(bytes []byte) (*Manifest, error) {
 }
 
 func (manifest *Manifest) Write(out io.Writer) error {
-	bytes, err := manifest.Bytes()
+	bytes, err := manifest.OriginalBytes()
 	if err != nil {
 		return util.Errorf("Could not write manifest for %s: %s", manifest.ID(), err)
 	}
@@ -111,7 +113,10 @@ func (manifest *Manifest) Write(out io.Writer) error {
 	return nil
 }
 
-func (manifest *Manifest) Bytes() ([]byte, error) {
+// OriginalBytes() always returns the bytes from the original manifest file
+// that was passed to ManifestFromBytes(). Any mutations to the struct will not
+// appear in the returned bytes. If mutations are desired, use Marshal()
+func (manifest *Manifest) OriginalBytes() ([]byte, error) {
 	if manifest.raw != nil {
 		// if it's signed, we must recycle the original content to preserve the
 		// signature's validity. remarshaling it might change the exact text of
@@ -120,6 +125,13 @@ func (manifest *Manifest) Bytes() ([]byte, error) {
 		copy(ret, manifest.raw)
 		return ret, nil
 	}
+	return yaml.Marshal(manifest)
+}
+
+// Returns bytes correlating to the (potentially mutated) struct, unlike
+// Bytes() which guarantees that the bytes returned will be the same bytes the
+// manifest struct was built from
+func (manifest *Manifest) Marshal() ([]byte, error) {
 	return yaml.Marshal(manifest)
 }
 

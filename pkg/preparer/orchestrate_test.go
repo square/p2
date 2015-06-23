@@ -120,7 +120,7 @@ func testSignedManifest(t *testing.T, modify func(*pods.Manifest, *openpgp.Entit
 		modify(testManifest, fakeSigner)
 	}
 
-	manifestBytes, err := testManifest.Bytes()
+	manifestBytes, err := testManifest.Marshal()
 	Assert(t).IsNil(err, "manifest bytes error should have been nil")
 
 	var buf bytes.Buffer

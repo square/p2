@@ -57,8 +57,7 @@ func main() {
 	}
 
 	// Wait a bit for preparer's http server to be ready
-	<-time.After(2 * time.Second)
-	err = checkStatus(preparerStatusPort, "preparer")
+	err = waitForStatus(preparerStatusPort, "preparer", 10*time.Second)
 	if err != nil {
 		log.Fatalf("Couldn't check preparer status: %s", err)
 	}
@@ -121,12 +120,13 @@ func generatePreparerPod(workdir string) (string, error) {
 	manifest.RunAs = "root"
 	manifest.StatusPort = preparerStatusPort
 	manifest.StatusHTTP = true
-	f, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+
+	manifestBytes, err := manifest.Marshal()
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
-	err = manifest.Write(f)
+
+	err = ioutil.WriteFile(manifestPath, manifestBytes, 0644)
 	if err != nil {
 		return "", err
 	}
@@ -154,6 +154,29 @@ func checkStatus(statusPort int, pod string) error {
 	return nil
 }
 
+func waitForStatus(statusPort int, pod string, waitTime time.Duration) error {
+	successCh := make(chan struct{})
+
+	var err error
+
+	go func() {
+		for range time.Tick(1 * time.Second) {
+			err = checkStatus(statusPort, pod)
+			if err != nil {
+				close(successCh)
+				break
+			}
+		}
+	}()
+
+	select {
+	case <-time.After(waitTime):
+		return err
+	case <-successCh:
+		return nil
+	}
+}
+
 func scheduleUserCreationHook(tmpdir string) error {
 	createUserPath := path.Join(tmpdir, "create_user")
 	script := `#!/usr/bin/env bash
@@ -178,7 +201,7 @@ mkdir -p $HOOKED_POD_HOME
 	}
 
 	userHookManifest.RunAs = "root"
-	contents, err := userHookManifest.Bytes()
+	contents, err := userHookManifest.Marshal()
 	if err != nil {
 		return err
 	}
