@@ -19,6 +19,13 @@ func (ht headerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return ht.inner.RoundTrip(r)
 }
 
+func GetTransport(extras map[string]string, rt http.RoundTripper) *headerTransport {
+	return &headerTransport{
+		inner:  rt,
+		extras: extras,
+	}
+}
+
 // NewHeaderClient returns an http.Client. It has the same behavior as
 // DefaultClient, except that the key-value pairs in extras are added as headers
 // on every request.
@@ -28,9 +35,6 @@ func NewHeaderClient(extras map[string]string, rt http.RoundTripper) *http.Clien
 	}
 
 	return &http.Client{
-		Transport: headerTransport{
-			inner:  rt,
-			extras: extras,
-		},
+		Transport: GetTransport(extras, rt),
 	}
 }
