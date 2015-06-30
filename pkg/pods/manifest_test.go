@@ -42,7 +42,6 @@ func TestPodManifestCanBeWritten(t *testing.T) {
 	manifest := Manifest{
 		Id:                "thepod",
 		LaunchableStanzas: make(map[string]LaunchableStanza),
-		Config:            make(map[interface{}]interface{}),
 	}
 	launchable := LaunchableStanza{
 		LaunchableType: "hoist",

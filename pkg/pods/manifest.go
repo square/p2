@@ -32,7 +32,7 @@ type Manifest struct {
 	Id                string                      `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
 	RunAs             string                      `yaml:"run_as,omitempty"`
 	LaunchableStanzas map[string]LaunchableStanza `yaml:"launchables"`
-	Config            map[interface{}]interface{} `yaml:"config"`
+	Config            interface{}                 `yaml:"config"`
 	StatusPort        int                         `yaml:"status_port,omitempty"`
 	StatusHTTP        bool                        `yaml:"status_http,omitempty"`
 	// these fields are required to track the original text if it was signed
