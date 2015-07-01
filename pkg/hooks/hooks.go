@@ -86,12 +86,12 @@ func runDirectory(dirpath string, environment []string, logger logging.Logger) e
 				"err":    err,
 				"path":   fullpath,
 				"output": hookOut.String(),
-			}).Warnln("Could not execute hook")
+			}).Warnf("Could not execute hook %s", f.Name())
 		} else {
 			logger.WithFields(logrus.Fields{
 				"path":   fullpath,
 				"output": hookOut.String(),
-			}).Infof("Executed %s", path.Base(fullpath))
+			}).Infof("Executed %s", f.Name())
 		}
 	}
 
