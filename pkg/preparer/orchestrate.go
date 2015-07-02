@@ -35,15 +35,14 @@ type Store interface {
 }
 
 type Preparer struct {
-	node           string
-	store          Store
-	hooks          Hooks
-	hookListener   HookListener
-	Logger         logging.Logger
-	podRoot        string
-	forbiddenUsers map[string]bool
-	caPath         string
-	authPolicy     auth.Policy
+	node         string
+	store        Store
+	hooks        Hooks
+	hookListener HookListener
+	Logger       logging.Logger
+	podRoot      string
+	caPath       string
+	authPolicy   auth.Policy
 }
 
 func (p *Preparer) WatchForHooks(quit chan struct{}) {
@@ -169,17 +168,6 @@ func (p *Preparer) authorize(manifest pods.Manifest, logger logging.Logger) bool
 		}
 		return false
 	}
-
-	// Even if the authorization policy allows it, apply another
-	// filter to keep apps from being deployed as system users.
-	if manifest.ID() != POD_ID && p.forbiddenUsers[manifest.RunAsUser()] {
-		logger.WithFields(logrus.Fields{
-			"pod":    manifest.ID(),
-			"run_as": manifest.RunAsUser(),
-		}).Errorln("Invalid run_as user")
-		return false
-	}
-
 	return true
 }
 

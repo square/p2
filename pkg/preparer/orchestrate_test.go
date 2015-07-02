@@ -168,7 +168,6 @@ func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks, string) {
 		ConsulAddress:  "0.0.0.0",
 		HooksDirectory: util.From(runtime.Caller(0)).ExpandPath("test_hooks"),
 		PodRoot:        podRoot,
-		ForbiddenUsers: []string{"root"},
 		Auth:           map[string]interface{}{"type": "none"},
 	}
 	p, err := New(cfg, logging.DefaultLogger)
@@ -239,49 +238,6 @@ func TestPreparerFailsIfInstallFails(t *testing.T) {
 	Assert(t).IsTrue(testPod.installed, "Install should have been attempted")
 	Assert(t).IsFalse(testPod.launched, "Launch should not have happened")
 	Assert(t).IsFalse(hooks.ranAfterLaunch, "should not have run after_launch hooks")
-}
-
-func TestPreparerWillNotInstallOrLaunchIfIdIsForbidden(t *testing.T) {
-	testManifest := testManifest(t)
-	testPod := &TestPod{
-		launchSuccess:   true,
-		currentManifest: testManifest,
-	}
-
-	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
-	defer p.Close()
-	defer os.RemoveAll(fakePodRoot)
-	p.forbiddenUsers = map[string]bool{testManifest.ID(): true}
-
-	Assert(t).IsFalse(
-		p.authorize(*testManifest, logging.DefaultLogger),
-		"A forbidden user should not authorize",
-	)
-	Assert(t).IsFalse(hooks.ranBeforeInstall, "Should not have run hooks prior to install")
-	Assert(t).IsFalse(testPod.installed, "Should not have installed")
-	Assert(t).IsFalse(testPod.launched, "Should not have attempted to launch")
-	Assert(t).IsFalse(hooks.ranAfterLaunch, "Should not have run after_launch hooks")
-}
-
-func TestPreparerWillNotLaunchAnAppAsRoot(t *testing.T) {
-	illegalManifest := &pods.Manifest{Id: "foo", RunAs: "root"}
-	testPod := &TestPod{
-		launchSuccess:   true,
-		currentManifest: illegalManifest,
-	}
-
-	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
-	defer p.Close()
-	defer os.RemoveAll(fakePodRoot)
-
-	Assert(t).IsFalse(
-		p.authorize(*illegalManifest, logging.DefaultLogger),
-		"Should not have run app as root",
-	)
-	Assert(t).IsFalse(hooks.ranBeforeInstall, "Should not have run hooks prior to install")
-	Assert(t).IsFalse(testPod.installed, "Should not have installed")
-	Assert(t).IsFalse(testPod.launched, "Should not have attempted to launch")
-	Assert(t).IsFalse(hooks.ranAfterLaunch, "Should not have run after_launch hooks")
 }
 
 func TestPreparerWillLaunchPreparerAsRoot(t *testing.T) {
