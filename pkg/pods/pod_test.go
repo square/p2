@@ -187,23 +187,34 @@ func TestLogInfo(t *testing.T) {
 
 func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 	existing := getTestPodManifest(t)
-	currUser, err := user.Current()
-	Assert(t).IsNil(err, "Could not get the current user")
-	existing.RunAs = currUser.Username
 	updated := getUpdatedManifest(t)
-	updated.RunAs = currUser.Username
+
 	poddir, err := ioutil.TempDir("", "poddir")
 	Assert(t).IsNil(err, "couldn't create tempdir")
-
 	pod := NewPod("testPod", poddir)
 
-	manifestContent, err := existing.Bytes()
-	Assert(t).IsNil(err, "couldn't get manifest bytes")
-	err = ioutil.WriteFile(pod.currentPodManifestPath(), manifestContent, 0744)
-	Assert(t).IsNil(err, "should have written current manifest")
+	// set the RunAs user to the user running the test, because when we
+	// write files we need an owner. Unset them after the write so that the
+	// manifests match the manifests on disk
+	oldPath := func() string {
+		currUser, err := user.Current()
+		Assert(t).IsNil(err, "Could not get the current user")
+		existing.RunAs = currUser.Username
+		defer func() { existing.RunAs = "" }()
+		updated.RunAs = currUser.Username
+		defer func() { updated.RunAs = "" }()
 
-	oldPath, err := pod.WriteCurrentManifest(updated)
-	Assert(t).IsNil(err, "should have written the current manifest and linked the old one")
+		manifestContent, err := existing.OriginalBytes()
+		Assert(t).IsNil(err, "couldn't get manifest bytes")
+		err = ioutil.WriteFile(pod.currentPodManifestPath(), manifestContent, 0744)
+		Assert(t).IsNil(err, "should have written current manifest")
+
+		oldPath, err := pod.WriteCurrentManifest(updated)
+		Assert(t).IsNil(err, "should have written the current manifest and linked the old one")
+		return oldPath
+	}()
+	existing.RunAs = ""
+	updated.RunAs = ""
 
 	writtenOld, err := ManifestFromPath(oldPath)
 	Assert(t).IsNil(err, "should have written a manifest to the old path")
@@ -265,7 +276,7 @@ func TestUninstall(t *testing.T) {
 		ServiceBuilder: serviceBuilder,
 	}
 	manifest := getTestPodManifest(t)
-	manifestContent, err := manifest.Bytes()
+	manifestContent, err := manifest.OriginalBytes()
 	Assert(t).IsNil(err, "couldn't get manifest bytes")
 	err = ioutil.WriteFile(pod.currentPodManifestPath(), manifestContent, 0744)
 	Assert(t).IsNil(err, "should have written current manifest")
@@ -287,9 +298,9 @@ func manifestMustEqual(expected, actual *Manifest, t *testing.T) {
 	Assert(t).IsNil(err, "should have gotten SHA from old manifest")
 	expectedSha, err := expected.SHA()
 	Assert(t).IsNil(err, "should have gotten SHA from known old manifest")
-	manifestBytes, err := expected.Bytes()
+	manifestBytes, err := expected.OriginalBytes()
 	Assert(t).IsNil(err, "should have gotten bytes from manifest")
-	actualBytes, err := actual.Bytes()
+	actualBytes, err := actual.OriginalBytes()
 	Assert(t).IsNil(err, "should have gotten bytes from writtenOld")
 	Assert(t).AreEqual(expectedSha, actualSha, fmt.Sprintf("known: \n\n%s\n\nactual:\n\n%s\n", string(manifestBytes), string(actualBytes)))
 }

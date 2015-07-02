@@ -70,7 +70,7 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 			},
 		},
 	}
-	manifestBytes, err := manifest.Bytes()
+	manifestBytes, err := manifest.OriginalBytes()
 	Assert(t).IsNil(err, "manifest bytes error should have been nil")
 
 	fakeSigner, err := openpgp.NewEntity("p2", "p2-test", "p2@squareup.com", nil)

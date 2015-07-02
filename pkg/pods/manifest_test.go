@@ -25,6 +25,9 @@ func TestPodManifestCanBeRead(t *testing.T) {
 	Assert(t).IsTrue(len(hoptoad) == 3, "Should have read the hoptoad value from the config stanza")
 }
 
+// Some tests will break if the order of these keys changes (such as
+// TestPodManifestCanBeWritten) because it manually creates a struct and does
+// not control the order in which manifest.Write() decides to marshal the yaml
 func testPod() string {
 	return `id: thepod
 launchables:
@@ -100,4 +103,25 @@ func TestRunAs(t *testing.T) {
 	manifest, err = ManifestFromBytes(bytes.NewBufferString(config).Bytes())
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 	Assert(t).AreEqual(manifest.RunAsUser(), "specialuser", "RunAsUser() didn't match expectations")
+}
+
+func TestByteOrderPreserved(t *testing.T) {
+	// The yaml keys here are intentionally ordered in a way that without special
+	// care, the bytes returned by manifest.Bytes() would be in a different order
+	// than the bytes passed in to ManifestFromBytes()
+	manifestBytes := []byte(`id: thepod
+launchables:
+  my-app:
+    launchable_type: hoist
+    launchable_id: web
+    location: https://localhost:4444/foo/bar/baz.tar.gz
+status_port: 8000
+config:
+  ENVIRONMENT: staging
+`)
+	manifest, err := ManifestFromBytes(manifestBytes)
+	Assert(t).IsNil(err, "should not have erred constructing manifest from bytes")
+	outBytes, err := manifest.OriginalBytes()
+	Assert(t).IsNil(err, "should not have erred extracting manifest struct to bytes")
+	Assert(t).AreEqual(string(outBytes), string(manifestBytes), "Byte order should not have changed when unmarshaling and remarshaling a manifest")
 }
