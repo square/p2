@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/version"
+	"github.com/square/p2/pkg/watch"
 )
 
 func main() {
@@ -43,8 +44,13 @@ func main() {
 
 	quitMainUpdate := make(chan struct{})
 	quitHookUpdate := make(chan struct{})
+	quitWatch := make(chan struct{})
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
 	go prep.WatchForHooks(quitHookUpdate)
+	go watch.WatchHealth(preparerConfig.NodeName,
+		preparerConfig.ConsulAddress,
+		preparerConfig.Auth["keyring"],
+		quitWatch)
 
 	if preparerConfig.StatusPort != 0 {
 		http.HandleFunc("/_status",
@@ -66,5 +72,6 @@ func waitForTermination(logger logging.Logger, quitMainUpdate, quitHookUpdate ch
 	logger.WithField("signal", received.String()).Infoln("Stopping work")
 	quitHookUpdate <- struct{}{}
 	quitMainUpdate <- struct{}{}
+	quitWatch <- struct{}{}
 	<-quitMainUpdate // acknowledgement
 }

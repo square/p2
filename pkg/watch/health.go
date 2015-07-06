@@ -1,9 +1,13 @@
 package watch
 
 import (
+	"bytes"
+	"fmt"
 	"net/http"
+	"os/exec"
 	"time"
 
+	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/util/net"
 )
@@ -35,14 +39,11 @@ type PodWatch struct {
 // runs a CheckHealth routine to monitor the health of each
 // service and kills routines for services that should no
 // longer be running.
-func WatchHealth(node, authtoken string) error {
+func WatchHealth(consul, authtoken string, shutdownCh chan struct{}) error {
 	tochan := make(chan bool)
-	// node is the address of the node whos services are
-	// being watched. the node string is used to construct
-	// curl commands that get status information for a service
 	pods := []*PodWatch{}
 	store := kp.NewConsulStore(kp.Options{
-		Address: node,
+		Address: consul,
 		HTTPS:   true,
 		Token:   authtoken,
 		Client:  net.NewHeaderClient(nil, http.DefaultTransport),
@@ -52,33 +53,81 @@ func WatchHealth(node, authtoken string) error {
 	for {
 		select {
 		case _ = <-tochan:
-			err := updateHealthMonitors(store, pods, node)
+			err := updateHealthMonitors(store, pods, consul)
 			if err != nil {
 				return err
 			}
 			// start timer again
 			go startTimer(tochan, TIMEOUT)
+		case _ = <-shutdownCh:
+			return nil
 		}
 	}
-	return nil
 }
 
-func (p *PodWatch) MonitorHealth(node string) {
+// Monitor Health is a go routine that runs as long as the
+// service it is monitoring. Every HEALTHCHECK_INTERVAL it
+// performs a health check and writes that information to
+// consul
+func (p *PodWatch) MonitorHealth(node string, store kp.Store) {
+	check := fmt.Sprintf(kp.HttpsStatusCheck, p.manifest.Manifest.StatusPort)
 	tochan := make(chan bool)
+
 	go startTimer(tochan, HEALTHCHECK_INTERVAL)
 	for {
 		select {
 		case _ = <-tochan:
-			go checkHealth(node, p.manifest.Manifest.Id)
+			go p.checkHealth(check, node, store)
 			go startTimer(tochan, HEALTHCHECK_INTERVAL)
 		}
 	}
 }
 
-// TODO performs health check for service and writes result to consul
-func checkHealth(node, service string) {
+func (p *PodWatch) checkHealth(healthCheck, node string, store kp.Store) {
+	healthstate, res, _ := check(healthCheck) // TODO stop ignoring this error
+	health := health.Result{
+		ID:     p.manifest.Manifest.Id,
+		Node:   node,
+		Status: healthstate,
+		Output: res,
+	}
+	writeToConsul(health, store)
+}
+
+// check is invoked periodically and runs the health check
+// string c as a shell script
+func check(c string) (health.HealthState, string, error) {
+	output := new(bytes.Buffer)
+	cmd, err := RunScript(c)
+
+	cmd.Stdout = output
+	cmd.Stderr = output
+	err = cmd.Start()
+	if err != nil {
+		return "", "", err
+	}
+	err = cmd.Wait()
+	if err != nil {
+		return "", "", err
+	}
+
+	if cmd.ProcessState.Success() == true {
+		return health.Passing, output.String(), nil
+	} else {
+		return health.Critical, output.String(), nil
+	}
+}
+
+// TODO once we get health data we need to make a put request
+// to consul to put the data in the KV Store
+func writeToConsul(health health.Result, store kp.Store) {
+	// write to /service/node/result
 
 }
+
+//
+// Methods for tracking pods that should be monitored
+//
 
 func updateHealthMonitors(store kp.Store, pods []*PodWatch, node string) error {
 	reality, _, err := store.ListPods(node)
@@ -89,7 +138,7 @@ func updateHealthMonitors(store kp.Store, pods []*PodWatch, node string) error {
 	pods = updatePods(pods, reality)
 	for _, pod := range pods {
 		if pod.hasMonitor == false {
-			go pod.MonitorHealth(node)
+			go pod.MonitorHealth(node, store)
 		}
 	}
 	return nil
@@ -140,8 +189,52 @@ func updatePods(current []*PodWatch, reality []kp.ManifestResult) []*PodWatch {
 	return newCurrent
 }
 
+// After milliInterval milliseconds elapse a true value is placed in toChan.
+// By waiting for a value in tochan (ie via a select statement), actions
+// can be triggered on a given interval.
 func startTimer(toChan chan bool, milliInterval time.Duration) {
 	to := milliInterval * time.Millisecond
 	time.Sleep(to)
 	toChan <- true
 }
+
+func RunScript(script string) (*exec.Cmd, error) {
+	shell := "/bin/sh"
+	flag := "-c"
+	cmd := exec.Command(shell, flag, script)
+	return cmd, nil
+}
+
+//	resp, err := client.Do(req)
+//	if err != nil {
+//		return "", "", err
+//	}
+//	defer resp.Body.Close()
+//
+//	// Format the response body
+//	body, err := ioutil.ReadAll(resp.Body)
+//	if err != nil {
+//		body = []byte{}
+//	}
+//	result := fmt.Sprintf("HTTP GET %s: %s Output: %s", c, resp.Status, body)
+//
+//	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
+//		// PASSING (2xx)
+//		return health.Passing, result, nil
+//
+//	} else if resp.StatusCode == 429 {
+//		// WARNING
+//		// 429 Too Many Requests (RFC 6585)
+//		// The user has sent too many requests in a given amount of time.
+//		return health.Warning, result, nil
+//
+//	} else {
+//		// CRITICAL
+//		return health.Critical, result, nil
+//	}
+//	return "", "", nil
+//
+//	req, err := http.NewRequest("GET", c, nil)
+//	if err != nil {
+//		return "", "", err
+//	}
