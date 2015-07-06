@@ -34,7 +34,6 @@ type PreparerConfig struct {
 	PodRoot              string                 `yaml:"pod_root,omitempty"`
 	StatusPort           int                    `yaml:"status_port"`
 	Auth                 map[string]interface{} `yaml:"auth,omitempty"`
-	ForbiddenUsers       []string               `yaml:"forbidden_users,omitempty"`
 	ExtraLogDestinations []LogDestination       `yaml:"extra_log_destinations,omitempty"`
 }
 
@@ -195,20 +194,14 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		return nil, util.Errorf("Could not create preparer pod directory: %s", err)
 	}
 
-	forbiddenUsers := make(map[string]bool)
-	for _, forbidden := range preparerConfig.ForbiddenUsers {
-		forbiddenUsers[forbidden] = true
-	}
-
 	return &Preparer{
-		node:           preparerConfig.NodeName,
-		store:          store,
-		hooks:          hooks.Hooks(preparerConfig.HooksDirectory, &logger),
-		hookListener:   listener,
-		Logger:         logger,
-		podRoot:        preparerConfig.PodRoot,
-		forbiddenUsers: forbiddenUsers,
-		authPolicy:     authPolicy,
-		caPath:         preparerConfig.CAPath,
+		node:         preparerConfig.NodeName,
+		store:        store,
+		hooks:        hooks.Hooks(preparerConfig.HooksDirectory, &logger),
+		hookListener: listener,
+		Logger:       logger,
+		podRoot:      preparerConfig.PodRoot,
+		authPolicy:   authPolicy,
+		caPath:       preparerConfig.CAPath,
 	}, nil
 }
