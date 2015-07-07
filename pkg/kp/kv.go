@@ -21,6 +21,7 @@ type Store interface {
 	SetPod(key string, manifest pods.Manifest) (time.Duration, error)
 	Pod(key string) (*pods.Manifest, time.Duration, error)
 	Put(key, value string) (time.Duration, error)
+	Get(key string) (string, error)
 	WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
 	RegisterService(pods.Manifest, string) error
 	Ping() error
@@ -67,6 +68,14 @@ func (c consulStore) Put(key, value string) (time.Duration, error) {
 		return retDur, KVError{Op: "set", Key: key, UnsafeError: err}
 	}
 	return retDur, nil
+}
+
+func (c consulStore) Get(key string) (string, error) {
+	res, _, err := c.client.KV().Get(key, nil)
+	if err != nil {
+		return "", KVError{Op: "get", Key: key, UnsafeError: err}
+	}
+	return string(res.Value), nil
 }
 
 // SetPod writes a pod manifest into the consul key-value store. The key should

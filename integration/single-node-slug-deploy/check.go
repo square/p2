@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -15,7 +16,9 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -36,11 +39,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not generate preparer pod: %s\n", err)
 	}
+	preparerConfig, err := ioutil.ReadFile(preparerManifest)
+	if err != nil {
+		log.Fatalf("Could not load preparer config: %s\n", err)
+	}
+	config, err := preparer.MarshalConfig(preparerConfig)
+	if err != nil {
+		log.Fatalf("could not unmarshal config: %s\n", err)
+	}
+
 	consulManifest, err := getConsulManifest(tempdir)
 	if err != nil {
 		log.Fatalf("Could not generate consul pod: %s\n", err)
 	}
-
 	signedPreparerManifest, err := signManifest(preparerManifest, tempdir)
 	if err != nil {
 		log.Fatalf("Could not sign preparer manifest: %s\n", err)
@@ -73,6 +84,11 @@ func main() {
 	err = verifyHelloRunning()
 	if err != nil {
 		log.Fatalf("Couldn't get hello running: %s", err)
+	}
+
+	err = verifyHealthChecks(config)
+	if err != nil {
+		log.Fatalf("Could not get health check info from consul: %s", err)
 	}
 }
 
@@ -347,4 +363,46 @@ func verifyHelloRunning() error {
 	case <-helloPidAppeared:
 		return nil
 	}
+}
+
+func verifyHealthChecks(config *preparer.PreparerConfig) error {
+	// do consulGet: key = hello
+	opts := kp.Options{
+		Address: config.ConsulAddress,
+		HTTPS:   false,
+	}
+	store := kp.NewConsulStore(opts)
+
+	// consul kvs sanity check
+	_, err := store.Put("testkey", "seamus")
+	if err != nil {
+		return err
+	}
+	time.Sleep(1 * time.Second)
+	t, err := store.Get("testkey")
+	if err != nil {
+		fmt.Println(t)
+		return err
+	}
+
+	man, _, err := store.ListPods("reality/localhost.localdomain")
+	if err != nil {
+		return err
+	}
+	fmt.Println(man)
+	//////////////////////////
+
+	res, err := store.Get("consul")
+	if err != nil {
+		return err
+	} else if res == nil {
+		err = errors.New("no results for hello")
+	} else {
+		fmt.Println("Got value!!!")
+		fmt.Println(string(res.Value))
+	}
+
+	// if it reaches here it means health checks
+	// are being written to the KV store properly
+	return nil
 }

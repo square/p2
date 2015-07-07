@@ -15,6 +15,7 @@ import (
 )
 
 func main() {
+	var token string
 	logger := logging.NewLogger(logrus.Fields{})
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
@@ -45,9 +46,13 @@ func main() {
 	quitMainUpdate := make(chan struct{})
 	quitHookUpdate := make(chan struct{})
 	quitWatchHealth := make(chan struct{})
-	token, err := preparer.LoadConsulToken(preparerConfig.ConsulTokenPath)
-	if err != nil {
-		logger.WithField("inner_err", err).Fatalln("Could not load consul token")
+	if preparerConfig.ConsulTokenPath != "" {
+		token, err = preparer.LoadConsulToken(preparerConfig.ConsulTokenPath)
+		if err != nil {
+			logger.WithField("inner_err", err).Fatalln("Could not load consul token")
+		}
+	} else {
+		token = ""
 	}
 
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
@@ -55,7 +60,7 @@ func main() {
 
 	// Launch health checking watch. This watch tracks health of
 	// all pods on this host and writes the information to consul
-	go watch.WatchHealth(preparerConfig.NodeName,
+	go watch.WatchHealth("localhost:8500",
 		preparerConfig.ConsulAddress,
 		token,
 		&logger,
