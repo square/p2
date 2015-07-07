@@ -58,6 +58,7 @@ func main() {
 	go watch.WatchHealth(preparerConfig.NodeName,
 		preparerConfig.ConsulAddress,
 		token,
+		&logger,
 		quitWatchHealth)
 
 	if preparerConfig.StatusPort != 0 {

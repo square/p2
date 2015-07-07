@@ -9,6 +9,7 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util/net"
 )
 
@@ -31,6 +32,7 @@ type PodWatch struct {
 	manifest   kp.ManifestResult
 	shutdownCh chan bool
 	hasMonitor bool // indicates whether this pod is being monitored
+	logger     *logging.Logger
 }
 
 // WatchHealth is meant to be a long running go routine.
@@ -39,7 +41,7 @@ type PodWatch struct {
 // runs a CheckHealth routine to monitor the health of each
 // service and kills routines for services that should no
 // longer be running.
-func WatchHealth(node, consul, authtoken string, shutdownCh chan struct{}) error {
+func WatchHealth(node, consul, authtoken string, logger *logging.Logger, shutdownCh chan struct{}) {
 	tochan := make(chan bool)
 	pods := []*PodWatch{}
 	store := kp.NewConsulStore(kp.Options{
@@ -53,14 +55,17 @@ func WatchHealth(node, consul, authtoken string, shutdownCh chan struct{}) error
 	for {
 		select {
 		case _ = <-tochan:
-			err := updateHealthMonitors(store, pods, node)
+			// check if pods have been added or removed
+			// starts monitor routine for new pods
+			// kills monitor routine for removed pods
+			err := updateHealthMonitors(store, pods, node, logger)
 			if err != nil {
-				return err
+				logger.WithField("inner_err", err).Fatalln("failed to update monitors")
 			}
 			// start timer again
 			go startTimer(tochan, POLL_KV_FOR_PODS)
 		case _ = <-shutdownCh:
-			return nil
+			return
 		}
 	}
 }
@@ -86,7 +91,7 @@ func (p *PodWatch) MonitorHealth(node string, store kp.Store) {
 func (p *PodWatch) checkHealth(healthCheck, node string, store kp.Store) {
 	healthstate, res, err := check(healthCheck)
 	if err != nil {
-		// TODO
+		p.logger.WithField("inner_err", err).Fatalln("failed to check health")
 	}
 	health := health.Result{
 		ID:      p.manifest.Manifest.Id,
@@ -97,7 +102,7 @@ func (p *PodWatch) checkHealth(healthCheck, node string, store kp.Store) {
 	}
 	err = writeToConsul(health, store)
 	if err != nil {
-		// TODO
+		p.logger.WithField("inner_err", err).Fatalln("failed to write health data to consul")
 	}
 }
 
@@ -149,7 +154,7 @@ func writeToConsul(res health.Result, store kp.Store) error {
 // Methods for tracking pods that should be monitored
 //
 
-func updateHealthMonitors(store kp.Store, pods []*PodWatch, node string) error {
+func updateHealthMonitors(store kp.Store, pods []*PodWatch, node string, logger *logging.Logger) error {
 	reality, _, err := store.ListPods(node) // TODO ensure path (node) is correct
 	if err != nil {
 		return err
@@ -157,6 +162,9 @@ func updateHealthMonitors(store kp.Store, pods []*PodWatch, node string) error {
 	// update list of pods to be monitored
 	pods = updatePods(pods, reality)
 	for _, pod := range pods {
+		if pod.logger == nil {
+			pod.logger = logger
+		}
 		if pod.hasMonitor == false {
 			go pod.MonitorHealth(node, store)
 		}
