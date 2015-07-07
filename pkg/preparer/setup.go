@@ -78,7 +78,7 @@ func LoadPreparerConfig(configPath string) (*PreparerConfig, error) {
 	return &preparerConfig, nil
 }
 
-func loadConsulToken(path string) (string, error) {
+func LoadConsulToken(path string) (string, error) {
 	consulToken, err := ioutil.ReadFile(path)
 	if err != nil {
 		return "", util.Errorf("Could not read Consul token at path %s: %s", path, err)
@@ -169,7 +169,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 
 	consulToken := ""
 	if preparerConfig.ConsulTokenPath != "" {
-		consulToken, err = loadConsulToken(preparerConfig.ConsulTokenPath)
+		consulToken, err = LoadConsulToken(preparerConfig.ConsulTokenPath)
 		if err != nil {
 			return nil, err
 		}

@@ -39,7 +39,7 @@ type PodWatch struct {
 // runs a CheckHealth routine to monitor the health of each
 // service and kills routines for services that should no
 // longer be running.
-func WatchHealth(consul, authtoken string, shutdownCh chan struct{}) error {
+func WatchHealth(node, consul, authtoken string, shutdownCh chan struct{}) error {
 	tochan := make(chan bool)
 	pods := []*PodWatch{}
 	store := kp.NewConsulStore(kp.Options{
@@ -53,7 +53,7 @@ func WatchHealth(consul, authtoken string, shutdownCh chan struct{}) error {
 	for {
 		select {
 		case _ = <-tochan:
-			err := updateHealthMonitors(store, pods, consul)
+			err := updateHealthMonitors(store, pods, node)
 			if err != nil {
 				return err
 			}

@@ -44,13 +44,21 @@ func main() {
 
 	quitMainUpdate := make(chan struct{})
 	quitHookUpdate := make(chan struct{})
-	quitWatch := make(chan struct{})
+	quitWatchHealth := make(chan struct{})
+	token, err := preparer.LoadConsulToken(preparerConfig.ConsulTokenPath)
+	if err != nil {
+		logger.WithField("inner_err", err).Fatalln("Could not load consul token")
+	}
+
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
 	go prep.WatchForHooks(quitHookUpdate)
+
+	// Launch health checking watch. This watch tracks health of
+	// all pods on this host and writes the information to consul
 	go watch.WatchHealth(preparerConfig.NodeName,
 		preparerConfig.ConsulAddress,
-		preparerConfig.Auth["keyring"],
-		quitWatch)
+		token,
+		quitWatchHealth)
 
 	if preparerConfig.StatusPort != 0 {
 		http.HandleFunc("/_status",
@@ -60,18 +68,18 @@ func main() {
 		go http.ListenAndServe(fmt.Sprintf(":%d", preparerConfig.StatusPort), nil)
 	}
 
-	waitForTermination(logger, quitMainUpdate, quitHookUpdate)
+	waitForTermination(logger, quitMainUpdate, quitHookUpdate, quitWatchHealth)
 
 	logger.NoFields().Infoln("Terminating")
 }
 
-func waitForTermination(logger logging.Logger, quitMainUpdate, quitHookUpdate chan struct{}) {
+func waitForTermination(logger logging.Logger, quitMainUpdate, quitHookUpdate chan struct{}, quitWatchHealth chan struct{}) {
 	signalCh := make(chan os.Signal, 2)
 	signal.Notify(signalCh, syscall.SIGTERM, os.Interrupt)
 	received := <-signalCh
 	logger.WithField("signal", received.String()).Infoln("Stopping work")
 	quitHookUpdate <- struct{}{}
 	quitMainUpdate <- struct{}{}
-	quitWatch <- struct{}{}
+	quitWatchHealth <- struct{}{}
 	<-quitMainUpdate // acknowledgement
 }
