@@ -9,12 +9,16 @@ import (
 
 var (
 	// prints the HTTP response on stderr, while exiting 0 if the status code is 200
-	HttpStatusCheck  = `if [[ $(curl http://$(hostname):%v/_status -s -o /dev/stderr -w "%%{http_code}") == "200" ]] ; then exit 0 ; else exit 2; fi`
-	HttpsStatusCheck = `if [[ $(curl https://$(hostname):%v/_status -s -o /dev/stderr -w "%%{http_code}" --cacert '%s') == "200" ]] ; then exit 0 ; else exit 2; fi`
+	httpStatusCheck  = `if [[ $(curl http://$(hostname):%v/_status -s -o /dev/stderr -w "%%{http_code}") == "200" ]] ; then exit 0 ; else exit 2; fi`
+	httpsStatusCheck = `if [[ $(curl https://$(hostname):%v/_status -s -o /dev/stderr -w "%%{http_code}" --cacert '%s') == "200" ]] ; then exit 0 ; else exit 2; fi`
 
 	// Defines how frequently the service should be checked
 	checkInterval = "5s"
 )
+
+func GetStatusCheck() string {
+	return httpsStatusCheck
+}
 
 // RegisterService creates a consul service for the given pod manifest. If the
 // manifest specifies a status port, the resulting consul service will also
@@ -30,9 +34,9 @@ func (c consulStore) RegisterService(manifest pods.Manifest, caPath string) erro
 			Interval: checkInterval,
 		}
 		if manifest.StatusHTTP {
-			podService.Check.Script = fmt.Sprintf(HttpStatusCheck, manifest.StatusPort)
+			podService.Check.Script = fmt.Sprintf(httpStatusCheck, manifest.StatusPort)
 		} else {
-			podService.Check.Script = fmt.Sprintf(HttpsStatusCheck, manifest.StatusPort, caPath)
+			podService.Check.Script = fmt.Sprintf(httpsStatusCheck, manifest.StatusPort, caPath)
 		}
 	}
 

@@ -20,6 +20,7 @@ type ManifestResult struct {
 type Store interface {
 	SetPod(key string, manifest pods.Manifest) (time.Duration, error)
 	Pod(key string) (*pods.Manifest, time.Duration, error)
+	Put(key, value string) (time.Duration, error)
 	WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
 	RegisterService(pods.Manifest, string) error
 	Ping() error
@@ -48,6 +49,24 @@ type KVError struct {
 
 func (err KVError) Error() string {
 	return fmt.Sprintf("%s failed for path %s", err.Op, err.Key)
+}
+
+func (c consulStore) Put(key, value string) (time.Duration, error) {
+	value = appendTimeStamp(value)
+	keyPair := &api.KVPair{
+		Key:   key,
+		Value: []byte(value),
+	}
+
+	writeMeta, err := c.client.KV().Put(keyPair, nil)
+	var retDur time.Duration
+	if writeMeta != nil {
+		retDur = writeMeta.RequestTime
+	}
+	if err != nil {
+		return retDur, KVError{Op: "set", Key: key, UnsafeError: err}
+	}
+	return retDur, nil
 }
 
 // SetPod writes a pod manifest into the consul key-value store. The key should
@@ -170,4 +189,15 @@ func (c consulStore) Ping() error {
 		return util.Errorf("No known leader")
 	}
 	return nil
+}
+
+// appends / and timestamp to value being stored in consul
+// output: "value/2015-07-07 10:27:12.023769533 -0700 PDT"
+func appendTimeStamp(value string) string {
+	var buf bytes.Buffer
+	buf.WriteString(value)
+	buf.WriteString("/")
+	currentTime := time.Now()
+	buf.WriteString(currentTime.String())
+	return buf.String()
 }

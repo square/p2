@@ -13,7 +13,7 @@ import (
 )
 
 // number of milliseconds between reality store checks
-const TIMEOUT = 1000
+const POLL_KV_FOR_PODS = 2000
 
 // number of milliseconds between health checks
 const HEALTHCHECK_INTERVAL = 2000
@@ -49,7 +49,7 @@ func WatchHealth(consul, authtoken string, shutdownCh chan struct{}) error {
 		Client:  net.NewHeaderClient(nil, http.DefaultTransport),
 	})
 
-	go startTimer(tochan, TIMEOUT)
+	go startTimer(tochan, POLL_KV_FOR_PODS)
 	for {
 		select {
 		case _ = <-tochan:
@@ -58,7 +58,7 @@ func WatchHealth(consul, authtoken string, shutdownCh chan struct{}) error {
 				return err
 			}
 			// start timer again
-			go startTimer(tochan, TIMEOUT)
+			go startTimer(tochan, POLL_KV_FOR_PODS)
 		case _ = <-shutdownCh:
 			return nil
 		}
@@ -70,28 +70,35 @@ func WatchHealth(consul, authtoken string, shutdownCh chan struct{}) error {
 // performs a health check and writes that information to
 // consul
 func (p *PodWatch) MonitorHealth(node string, store kp.Store) {
-	check := fmt.Sprintf(kp.HttpsStatusCheck, p.manifest.Manifest.StatusPort)
+	statusCheck := fmt.Sprintf(kp.GetStatusCheck(), p.manifest.Manifest.StatusPort)
 	tochan := make(chan bool)
 
 	go startTimer(tochan, HEALTHCHECK_INTERVAL)
 	for {
 		select {
 		case _ = <-tochan:
-			go p.checkHealth(check, node, store)
+			go p.checkHealth(statusCheck, node, store)
 			go startTimer(tochan, HEALTHCHECK_INTERVAL)
 		}
 	}
 }
 
 func (p *PodWatch) checkHealth(healthCheck, node string, store kp.Store) {
-	healthstate, res, _ := check(healthCheck) // TODO stop ignoring this error
-	health := health.Result{
-		ID:     p.manifest.Manifest.Id,
-		Node:   node,
-		Status: healthstate,
-		Output: res,
+	healthstate, res, err := check(healthCheck)
+	if err != nil {
+		// TODO
 	}
-	writeToConsul(health, store)
+	health := health.Result{
+		ID:      p.manifest.Manifest.Id,
+		Node:    node,
+		Service: p.manifest.Manifest.Id,
+		Status:  healthstate,
+		Output:  res,
+	}
+	err = writeToConsul(health, store)
+	if err != nil {
+		// TODO
+	}
 }
 
 // check is invoked periodically and runs the health check
@@ -118,11 +125,24 @@ func check(c string) (health.HealthState, string, error) {
 	}
 }
 
-// TODO once we get health data we need to make a put request
+// once we get health data we need to make a put request
 // to consul to put the data in the KV Store
-func writeToConsul(health health.Result, store kp.Store) {
-	// write to /service/node/result
-
+func writeToConsul(res health.Result, store kp.Store) error {
+	var value string
+	// key =  service/node
+	// if status == passing: value = status
+	// else: values = health.Status/health.Output
+	key := fmt.Sprintf("%s/%s", res.Service, res.Node)
+	if res.Status == health.Passing {
+		value = "passing"
+	} else {
+		value = fmt.Sprintf("%s/%s", res.Status, res.Output)
+	}
+	_, err := store.Put(key, value)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 //
@@ -130,7 +150,7 @@ func writeToConsul(health health.Result, store kp.Store) {
 //
 
 func updateHealthMonitors(store kp.Store, pods []*PodWatch, node string) error {
-	reality, _, err := store.ListPods(node)
+	reality, _, err := store.ListPods(node) // TODO ensure path (node) is correct
 	if err != nil {
 		return err
 	}
@@ -204,37 +224,3 @@ func RunScript(script string) (*exec.Cmd, error) {
 	cmd := exec.Command(shell, flag, script)
 	return cmd, nil
 }
-
-//	resp, err := client.Do(req)
-//	if err != nil {
-//		return "", "", err
-//	}
-//	defer resp.Body.Close()
-//
-//	// Format the response body
-//	body, err := ioutil.ReadAll(resp.Body)
-//	if err != nil {
-//		body = []byte{}
-//	}
-//	result := fmt.Sprintf("HTTP GET %s: %s Output: %s", c, resp.Status, body)
-//
-//	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
-//		// PASSING (2xx)
-//		return health.Passing, result, nil
-//
-//	} else if resp.StatusCode == 429 {
-//		// WARNING
-//		// 429 Too Many Requests (RFC 6585)
-//		// The user has sent too many requests in a given amount of time.
-//		return health.Warning, result, nil
-//
-//	} else {
-//		// CRITICAL
-//		return health.Critical, result, nil
-//	}
-//	return "", "", nil
-//
-//	req, err := http.NewRequest("GET", c, nil)
-//	if err != nil {
-//		return "", "", err
-//	}
