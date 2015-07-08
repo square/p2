@@ -17,7 +17,7 @@ var (
 )
 
 func GetStatusCheck() string {
-	return httpsStatusCheck
+	return httpStatusCheck
 }
 
 // RegisterService creates a consul service for the given pod manifest. If the

@@ -20,8 +20,8 @@ type ManifestResult struct {
 type Store interface {
 	SetPod(key string, manifest pods.Manifest) (time.Duration, error)
 	Pod(key string) (*pods.Manifest, time.Duration, error)
-	Put(key, value string) (time.Duration, error)
-	Get(key string) (string, error)
+	PutHealth(service, node, value string) (time.Duration, error)
+	GetHealth(service, node string) (string, error)
 	WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
 	RegisterService(pods.Manifest, string) error
 	Ping() error
@@ -52,7 +52,8 @@ func (err KVError) Error() string {
 	return fmt.Sprintf("%s failed for path %s", err.Op, err.Key)
 }
 
-func (c consulStore) Put(key, value string) (time.Duration, error) {
+func (c consulStore) PutHealth(service, node, value string) (time.Duration, error) {
+	key := fmt.Sprintf("%s/%s", service, node)
 	value = appendTimeStamp(value)
 	keyPair := &api.KVPair{
 		Key:   key,
@@ -65,12 +66,13 @@ func (c consulStore) Put(key, value string) (time.Duration, error) {
 		retDur = writeMeta.RequestTime
 	}
 	if err != nil {
-		return retDur, KVError{Op: "set", Key: key, UnsafeError: err}
+		return retDur, err
 	}
 	return retDur, nil
 }
 
-func (c consulStore) Get(key string) (string, error) {
+func (c consulStore) GetHealth(service, node string) (string, error) {
+	key := fmt.Sprintf("%s/%s", service, node)
 	res, _, err := c.client.KV().Get(key, nil)
 	if err != nil {
 		return "", KVError{Op: "get", Key: key, UnsafeError: err}

@@ -103,6 +103,9 @@ func MarshalConfig(config []byte) (*PreparerConfig, error) {
 }
 
 func LoadConsulToken(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
 	consulToken, err := ioutil.ReadFile(path)
 	if err != nil {
 		return "", util.Errorf("Could not read Consul token at path %s: %s", path, err)

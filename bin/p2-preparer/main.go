@@ -46,25 +46,14 @@ func main() {
 	quitMainUpdate := make(chan struct{})
 	quitHookUpdate := make(chan struct{})
 	quitWatchHealth := make(chan struct{})
-	if preparerConfig.ConsulTokenPath != "" {
-		token, err = preparer.LoadConsulToken(preparerConfig.ConsulTokenPath)
-		if err != nil {
-			logger.WithField("inner_err", err).Fatalln("Could not load consul token")
-		}
-	} else {
-		token = ""
+
+	token, err = preparer.LoadConsulToken(preparerConfig.ConsulTokenPath)
+	if err != nil {
+		logger.WithField("inner_err", err).Fatalln("Could not load consul token")
 	}
 
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
 	go prep.WatchForHooks(quitHookUpdate)
-
-	// Launch health checking watch. This watch tracks health of
-	// all pods on this host and writes the information to consul
-	go watch.WatchHealth("localhost:8500",
-		preparerConfig.ConsulAddress,
-		token,
-		&logger,
-		quitWatchHealth)
 
 	if preparerConfig.StatusPort != 0 {
 		http.HandleFunc("/_status",
@@ -73,6 +62,14 @@ func main() {
 			})
 		go http.ListenAndServe(fmt.Sprintf(":%d", preparerConfig.StatusPort), nil)
 	}
+
+	// Launch health checking watch. This watch tracks health of
+	// all pods on this host and writes the information to consul
+	go watch.WatchHealth(preparerConfig.NodeName,
+		preparerConfig.ConsulAddress,
+		token,
+		&logger,
+		quitWatchHealth)
 
 	waitForTermination(logger, quitMainUpdate, quitHookUpdate, quitWatchHealth)
 

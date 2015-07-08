@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -30,6 +29,9 @@ func main() {
 	// 3. Execute bootstrap with premade consul pod and preparer pod
 	// 4. Deploy hello pod manifest by pushing to intent store
 	// 5. Verify that hello is running (listen to syslog? verify Runit PIDs? Both?)
+
+	// list of services running on integration test host
+	services := []string{"consul", "p2-preparer", "hello"}
 	tempdir, err := ioutil.TempDir("", "single-node-check")
 	log.Printf("Putting test manifests in %s\n", tempdir)
 	if err != nil {
@@ -85,8 +87,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Couldn't get hello running: %s", err)
 	}
-
-	err = verifyHealthChecks(config)
+	err = verifyHealthChecks(config, services)
 	if err != nil {
 		log.Fatalf("Could not get health check info from consul: %s", err)
 	}
@@ -365,7 +366,7 @@ func verifyHelloRunning() error {
 	}
 }
 
-func verifyHealthChecks(config *preparer.PreparerConfig) error {
+func verifyHealthChecks(config *preparer.PreparerConfig, services []string) error {
 	// do consulGet: key = hello
 	opts := kp.Options{
 		Address: config.ConsulAddress,
@@ -373,33 +374,28 @@ func verifyHealthChecks(config *preparer.PreparerConfig) error {
 	}
 	store := kp.NewConsulStore(opts)
 
-	// consul kvs sanity check
-	_, err := store.Put("testkey", "seamus")
+	// consul kvs sanity check (probably not necessary...)
+	_, err := store.PutHealth("testsv", "testNode", "seamus")
 	if err != nil {
 		return err
 	}
-	time.Sleep(1 * time.Second)
-	t, err := store.Get("testkey")
+	t, err := store.GetHealth("testsv", "testNode")
 	if err != nil {
 		fmt.Println(t)
 		return err
 	}
 
-	man, _, err := store.ListPods("reality/localhost.localdomain")
-	if err != nil {
-		return err
-	}
-	fmt.Println(man)
-	//////////////////////////
-
-	res, err := store.Get("consul")
-	if err != nil {
-		return err
-	} else if res == nil {
-		err = errors.New("no results for hello")
-	} else {
-		fmt.Println("Got value!!!")
-		fmt.Println(string(res.Value))
+	time.Sleep(2)
+	// check consul for health information for each app
+	for _, sv := range services {
+		res, err := store.GetHealth(sv, "localhost.localdomain")
+		if err != nil {
+			return err
+		} else if res == "" {
+			fmt.Errorf("No results for %s", sv)
+		} else {
+			fmt.Println(res)
+		}
 	}
 
 	// if it reaches here it means health checks

@@ -14,15 +14,16 @@ import (
 )
 
 // number of milliseconds between reality store checks
-const POLL_KV_FOR_PODS = 2000
+const POLL_KV_FOR_PODS = 4000
 
 // number of milliseconds between health checks
-const HEALTHCHECK_INTERVAL = 2000
+const HEALTHCHECK_INTERVAL = 200
 
 // Contains method for watching the consul reality store to
-// track services running on a node. Also contains manager
-// method that performs health checks on the services the
-// watch method indicates shoudl be running on the node
+// track services running on a node. A manager method:
+// WatchHealth tracks the reality store and manages
+// a health checking go routine for each service in the
+// reality store
 
 // PodWatch houses a pod's manifest, a channel to kill the
 // pod's goroutine if the pod is removed from the reality
@@ -42,28 +43,29 @@ type PodWatch struct {
 // service and kills routines for services that should no
 // longer be running.
 func WatchHealth(node, consul, authtoken string, logger *logging.Logger, shutdownCh chan struct{}) {
-	tochan := make(chan bool)
+	var store kp.Store
 	pods := []*PodWatch{}
-	store := kp.NewConsulStore(kp.Options{
-		Address: consul,
-		HTTPS:   true,
-		Token:   authtoken,
-		Client:  net.NewHeaderClient(nil, http.DefaultTransport),
-	})
-
-	go startTimer(tochan, POLL_KV_FOR_PODS)
+	if authtoken != "" {
+		store = kp.NewConsulStore(kp.Options{
+			Address: consul,
+			HTTPS:   false,
+			Token:   authtoken,
+			Client:  net.NewHeaderClient(nil, http.DefaultTransport),
+		})
+	} else {
+		store = kp.NewConsulStore(kp.Options{
+			Address: consul,
+			HTTPS:   false,
+			Client:  net.NewHeaderClient(nil, http.DefaultTransport),
+		})
+	}
 	for {
 		select {
-		case _ = <-tochan:
+		case _ = <-time.After(POLL_KV_FOR_PODS):
 			// check if pods have been added or removed
 			// starts monitor routine for new pods
 			// kills monitor routine for removed pods
-			err := updateHealthMonitors(store, pods, node, logger)
-			if err != nil {
-				logger.WithField("inner_err", err).Fatalln("failed to update monitors")
-			}
-			// start timer again
-			go startTimer(tochan, POLL_KV_FOR_PODS)
+			pods = updateHealthMonitors(store, pods, node, logger)
 		case _ = <-shutdownCh:
 			return
 		}
@@ -74,25 +76,20 @@ func WatchHealth(node, consul, authtoken string, logger *logging.Logger, shutdow
 // service it is monitoring. Every HEALTHCHECK_INTERVAL it
 // performs a health check and writes that information to
 // consul
-func (p *PodWatch) MonitorHealth(node string, store kp.Store) {
+func (p *PodWatch) MonitorHealth(node string, store kp.Store, shutdownCh chan bool) {
 	statusCheck := fmt.Sprintf(kp.GetStatusCheck(), p.manifest.Manifest.StatusPort)
-	tochan := make(chan bool)
-
-	go startTimer(tochan, HEALTHCHECK_INTERVAL)
 	for {
 		select {
-		case _ = <-tochan:
-			go p.checkHealth(statusCheck, node, store)
-			go startTimer(tochan, HEALTHCHECK_INTERVAL)
+		case _ = <-time.After(POLL_KV_FOR_PODS):
+			p.checkHealth(statusCheck, node, store)
+		case _ = <-shutdownCh:
+			return
 		}
 	}
 }
 
 func (p *PodWatch) checkHealth(healthCheck, node string, store kp.Store) {
 	healthstate, res, err := check(healthCheck)
-	if err != nil {
-		p.logger.WithField("inner_err", err).Fatalln("failed to check health")
-	}
 	health := health.Result{
 		ID:      p.manifest.Manifest.Id,
 		Node:    node,
@@ -100,9 +97,10 @@ func (p *PodWatch) checkHealth(healthCheck, node string, store kp.Store) {
 		Status:  healthstate,
 		Output:  res,
 	}
+
 	err = writeToConsul(health, store)
 	if err != nil {
-		p.logger.WithField("inner_err", err).Fatalln("failed to write health data to consul")
+		p.logger.WithField("CONSUL WRITE ERROR", err).Fatalln("failed to write health data to consul")
 	}
 }
 
@@ -115,18 +113,11 @@ func check(c string) (health.HealthState, string, error) {
 	cmd.Stdout = output
 	cmd.Stderr = output
 	err = cmd.Start()
-	if err != nil {
-		return "", "", err
-	}
-	err = cmd.Wait()
-	if err != nil {
-		return "", "", err
-	}
-
+	_ = cmd.Wait()
 	if cmd.ProcessState.Success() == true {
-		return health.Passing, output.String(), nil
+		return health.Passing, output.String(), err
 	} else {
-		return health.Critical, output.String(), nil
+		return health.Critical, output.String(), err
 	}
 }
 
@@ -137,50 +128,49 @@ func writeToConsul(res health.Result, store kp.Store) error {
 	// key =  service/node
 	// if status == passing: value = status
 	// else: values = health.Status/health.Output
-	key := fmt.Sprintf("%s/%s", res.Service, res.Node)
 	if res.Status == health.Passing {
 		value = "passing"
 	} else {
 		value = fmt.Sprintf("%s/%s", res.Status, res.Output)
 	}
-	_, err := store.Put(key, value)
-	if err != nil {
-		return err
-	}
-	return nil
+	_, err := store.PutHealth(res.Service, res.Node, value)
+	return err
 }
 
 //
 // Methods for tracking pods that should be monitored
 //
 
-func updateHealthMonitors(store kp.Store, pods []*PodWatch, node string, logger *logging.Logger) error {
-	reality, _, err := store.ListPods(node) // TODO ensure path (node) is correct
+func updateHealthMonitors(store kp.Store, watchedPods []*PodWatch, node string, logger *logging.Logger) []*PodWatch {
+	path := kp.RealityPath(node)
+	reality, _, err := store.ListPods(path)
 	if err != nil {
-		return err
+		logger.WithField("inner_err", err).Warningln("failed to get pods from reality store")
 	}
+
 	// update list of pods to be monitored
-	pods = updatePods(pods, reality)
-	for _, pod := range pods {
+	watchedPods = updatePods(watchedPods, reality, logger)
+	for _, pod := range watchedPods {
 		if pod.logger == nil {
 			pod.logger = logger
 		}
 		if pod.hasMonitor == false {
-			go pod.MonitorHealth(node, store)
+			go pod.MonitorHealth(node, store, pod.shutdownCh)
 		}
 	}
-	return nil
+
+	return watchedPods
 }
 
 // compares services being monitored with services that
 // need to be monitored.
-func updatePods(current []*PodWatch, reality []kp.ManifestResult) []*PodWatch {
+func updatePods(current []*PodWatch, reality []kp.ManifestResult, logger *logging.Logger) []*PodWatch {
 	newCurrent := []*PodWatch{}
 	// for pod in current if pod not in reality: kill
 	for _, pod := range current {
 		inReality := false
 		for _, man := range reality {
-			if pod.manifest.Path == man.Path {
+			if man.Manifest.Id == pod.manifest.Manifest.Id {
 				inReality = true
 				break
 			}
@@ -191,6 +181,7 @@ func updatePods(current []*PodWatch, reality []kp.ManifestResult) []*PodWatch {
 		if inReality == false {
 			pod.shutdownCh <- true
 		} else {
+			pod.hasMonitor = true
 			newCurrent = append(newCurrent, pod)
 		}
 	}
@@ -198,9 +189,10 @@ func updatePods(current []*PodWatch, reality []kp.ManifestResult) []*PodWatch {
 	// append to current
 	for _, man := range reality {
 		missing := true
-		for _, pod := range current {
-			if man.Path == pod.manifest.Path {
+		for _, pod := range newCurrent {
+			if man.Manifest.Id == pod.manifest.Manifest.Id {
 				missing = false
+				break
 			}
 		}
 
