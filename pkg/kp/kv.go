@@ -4,6 +4,7 @@ package kp
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -20,7 +21,7 @@ type ManifestResult struct {
 type Store interface {
 	SetPod(key string, manifest pods.Manifest) (time.Duration, error)
 	Pod(key string) (*pods.Manifest, time.Duration, error)
-	PutHealth(service, node, value string) (time.Time, time.Duration, error)
+	PutHealth(res map[string]string) (time.Time, time.Duration, error)
 	GetHealth(service, node string) (string, error)
 	WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
 	RegisterService(pods.Manifest, string) error
@@ -52,13 +53,17 @@ func (err KVError) Error() string {
 	return fmt.Sprintf("%s failed for path %s", err.Op, err.Key)
 }
 
-func (c consulStore) PutHealth(service, node, value string) (time.Time, time.Duration, error) {
-	key := fmt.Sprintf("%s/%s", service, node)
+func (c consulStore) PutHealth(res map[string]string) (time.Time, time.Duration, error) {
+	key := fmt.Sprintf("%s/%s", res["service"], res["node"])
 
-	t, value := appendTimeStamp(value)
+	t, value := addTimeStamp(res)
+	data, err := json.Marshal(value)
+	if err != nil {
+		return time.Time{}, 0, err
+	}
 	keyPair := &api.KVPair{
 		Key:   key,
-		Value: []byte(value),
+		Value: data,
 	}
 
 	writeMeta, err := c.client.KV().Put(keyPair, nil)
@@ -203,13 +208,9 @@ func (c consulStore) Ping() error {
 	return nil
 }
 
-// appends / and timestamp to value being stored in consul
-// output: "value/2015-07-07 10:27:12.023769533 -0700 PDT"
-func appendTimeStamp(value string) (time.Time, string) {
-	var buf bytes.Buffer
-	buf.WriteString(value)
-	buf.WriteString("/")
+func addTimeStamp(value map[string]string) (time.Time, map[string]string) {
 	currentTime := time.Now()
-	buf.WriteString(currentTime.String())
-	return currentTime, buf.String()
+	value["time"] = currentTime.String()
+
+	return currentTime, value
 }

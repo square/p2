@@ -374,17 +374,6 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 	}
 	store := kp.NewConsulStore(opts)
 
-	// consul kvs sanity check (probably not necessary...)
-	_, _, err := store.PutHealth("testsv", "testNode", "seamus")
-	if err != nil {
-		return err
-	}
-	t, err := store.GetHealth("testsv", "testNode")
-	if err != nil {
-		fmt.Println(t)
-		return err
-	}
-
 	time.Sleep(2)
 	// check consul for health information for each app
 	for _, sv := range services {
