@@ -13,11 +13,17 @@ import (
 	"github.com/square/p2/pkg/util/net"
 )
 
+// These constants should probably all be something the p2 user can set
+// in their preparer config...
+
 // number of milliseconds between reality store checks
 const POLL_KV_FOR_PODS = 4000
 
 // number of milliseconds between health checks
 const HEALTHCHECK_INTERVAL = 200
+
+// TTL on healthchecks in seconds
+const TTL = 120
 
 // Contains method for watching the consul reality store to
 // track services running on a node. A manager method:
@@ -30,10 +36,20 @@ const HEALTHCHECK_INTERVAL = 200
 // tree, and a bool that indicates whether or not the pod
 // has a running MonitorHealth go routine
 type PodWatch struct {
-	manifest   kp.ManifestResult
+	manifest kp.ManifestResult
+
+	// For tracking/controlling the go routine that performs health checks
+	// on the pod associated with this PodWatch
 	shutdownCh chan bool
 	hasMonitor bool // indicates whether this pod is being monitored
-	logger     *logging.Logger
+
+	// the fields are provided so it can be determined if new health checks
+	// actually need to be sent to consul. If newT - oldT << TTL and status
+	// has not changed there is no reason to update consul
+	lastCheck  time.Time          // time of last health check
+	lastStatus health.HealthState // status of last health check
+
+	logger *logging.Logger
 }
 
 // WatchHealth is meant to be a long running go routine.
@@ -98,9 +114,12 @@ func (p *PodWatch) checkHealth(healthCheck, node string, store kp.Store) {
 		Output:  res,
 	}
 
-	err = writeToConsul(health, store)
-	if err != nil {
-		p.logger.WithField("CONSUL WRITE ERROR", err).Fatalln("failed to write health data to consul")
+	if p.updateNeeded(health) == true {
+		p.lastCheck, err = writeToConsul(health, store)
+		p.lastStatus = health.Status
+		if err != nil {
+			p.logger.WithField("err", err).Fatalln("failed to write health data to consul")
+		}
 	}
 }
 
@@ -123,7 +142,7 @@ func check(c string) (health.HealthState, string, error) {
 
 // once we get health data we need to make a put request
 // to consul to put the data in the KV Store
-func writeToConsul(res health.Result, store kp.Store) error {
+func writeToConsul(res health.Result, store kp.Store) (time.Time, error) {
 	var value string
 	// key =  service/node
 	// if status == passing: value = status
@@ -133,8 +152,22 @@ func writeToConsul(res health.Result, store kp.Store) error {
 	} else {
 		value = fmt.Sprintf("%s/%s", res.Status, res.Output)
 	}
-	_, err := store.PutHealth(res.Service, res.Node, value)
-	return err
+	timeOfPut, _, err := store.PutHealth(res.Service, res.Node, value)
+	return timeOfPut, err
+}
+
+func (p *PodWatch) updateNeeded(res health.Result) bool {
+	// if status has changed indicate that consul needs to be updated
+	if p.lastStatus != res.Status {
+		return true
+	}
+	// if more than TTL / 4 seconds have elapsed since previous check
+	// indicate that consul needs to be updated
+	if time.Since(p.lastCheck) > TTL/4*time.Second {
+		return true
+	}
+
+	return false
 }
 
 //

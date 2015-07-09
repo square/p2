@@ -375,7 +375,7 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 	store := kp.NewConsulStore(opts)
 
 	// consul kvs sanity check (probably not necessary...)
-	_, err := store.PutHealth("testsv", "testNode", "seamus")
+	_, _, err := store.PutHealth("testsv", "testNode", "seamus")
 	if err != nil {
 		return err
 	}
