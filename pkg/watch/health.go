@@ -3,6 +3,7 @@ package watch
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os/exec"
 	"time"
@@ -93,26 +94,28 @@ func WatchHealth(node, consul, authtoken string, logger *logging.Logger, shutdow
 // performs a health check and writes that information to
 // consul
 func (p *PodWatch) MonitorHealth(node string, store kp.Store, shutdownCh chan bool) {
-	statusCheck := fmt.Sprintf(kp.GetStatusCheck(), p.manifest.Manifest.StatusPort)
 	for {
 		select {
 		case _ = <-time.After(POLL_KV_FOR_PODS):
-			p.checkHealth(statusCheck, node, store)
+			p.checkHealth(node, p.manifest.Manifest.StatusPort, store)
 		case _ = <-shutdownCh:
 			return
 		}
 	}
 }
 
-func (p *PodWatch) checkHealth(healthCheck, node string, store kp.Store) {
-	healthstate, res, err := check(healthCheck)
-	health := health.Result{
-		ID:      p.manifest.Manifest.Id,
-		Node:    node,
-		Service: p.manifest.Manifest.Id,
-		Status:  healthstate,
-		Output:  res,
+func (p *PodWatch) checkHealth(node string, port int, store kp.Store) {
+	resp, err := kp.HttpStatusCheck(node, port)
+	if err != nil {
+		p.logger.WithField("err", err).Warningln("Status check failed")
 	}
+	health, err := resultFromCheck(resp)
+	if err != nil {
+		p.logger.WithField("err", err).Warningln("Failed to read status check response")
+	}
+	health.ID = p.manifest.Manifest.Id
+	health.Node = node
+	health.Service = p.manifest.Manifest.Id
 
 	if p.updateNeeded(health) == true {
 		p.lastCheck, err = writeToConsul(health, store)
@@ -123,21 +126,28 @@ func (p *PodWatch) checkHealth(healthCheck, node string, store kp.Store) {
 	}
 }
 
-// check is invoked periodically and runs the health check
-// string c as a shell script
-func check(c string) (health.HealthState, string, error) {
-	output := new(bytes.Buffer)
-	cmd, err := RunScript(c)
-
-	cmd.Stdout = output
-	cmd.Stderr = output
-	err = cmd.Start()
-	_ = cmd.Wait()
-	if cmd.ProcessState.Success() == true {
-		return health.Passing, output.String(), err
+func resultFromCheck(resp *http.Response) (health.Result, error) {
+	var err error
+	res := health.Result{}
+	if resp.StatusCode == 200 {
+		res.Status = health.Passing
+	} else if resp.StatusCode > 200 && resp.StatusCode < 300 {
+		res.Status = health.Warning
+		res.Output, err = getBody(resp)
 	} else {
-		return health.Critical, output.String(), err
+		res.Status = health.Critical
+		res.Output, err = getBody(resp)
 	}
+	return res, err
+}
+
+func getBody(resp *http.Response) (string, error) {
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
 }
 
 // once we get health data we need to make a put request
@@ -168,6 +178,23 @@ func (p *PodWatch) updateNeeded(res health.Result) bool {
 	}
 
 	return false
+}
+
+// check is invoked periodically and runs the health check
+// string c as a shell script
+func check(c string) (health.HealthState, string, error) {
+	output := new(bytes.Buffer)
+	cmd, err := RunScript(c)
+
+	cmd.Stdout = output
+	cmd.Stderr = output
+	err = cmd.Start()
+	_ = cmd.Wait()
+	if cmd.ProcessState.Success() == true {
+		return health.Passing, output.String(), err
+	} else {
+		return health.Critical, output.String(), err
+	}
 }
 
 //

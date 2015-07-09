@@ -2,6 +2,7 @@ package kp
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/pods"
@@ -41,4 +42,23 @@ func (c consulStore) RegisterService(manifest pods.Manifest, caPath string) erro
 	}
 
 	return c.client.Agent().ServiceRegister(podService)
+}
+
+// Go version of http status check
+func HttpStatusCheck(node string, port int) (*http.Response, error) {
+	url := fmt.Sprintf("http://%s:%s/_status", node, port)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	return resp, err
+}
+
+func HttpsStatusCheck(node string, port int) (*http.Response, error) {
+	url := fmt.Sprintf("https://%s:%s/_status", node, port)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	return resp, err
 }
