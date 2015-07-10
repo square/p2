@@ -54,7 +54,7 @@ func (err KVError) Error() string {
 }
 
 func (c consulStore) PutHealth(res map[string]string) (time.Time, time.Duration, error) {
-	key := fmt.Sprintf("%s/%s", res["service"], res["node"])
+	key := fmt.Sprintf("%s%s/%s", res["service"], "Health", res["node"])
 
 	t, value := addTimeStamp(res)
 	data, err := json.Marshal(value)
@@ -78,7 +78,7 @@ func (c consulStore) PutHealth(res map[string]string) (time.Time, time.Duration,
 }
 
 func (c consulStore) GetHealth(service, node string) (string, error) {
-	key := fmt.Sprintf("%s/%s", service, node)
+	key := fmt.Sprintf("%s%s/%s", service, "Health", node)
 	res, _, err := c.client.KV().Get(key, nil)
 	if err != nil {
 		return "", KVError{Op: "get", Key: key, UnsafeError: err}
