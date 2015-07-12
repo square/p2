@@ -367,21 +367,25 @@ func verifyHelloRunning() error {
 }
 
 func verifyHealthChecks(config *preparer.PreparerConfig, services []string) error {
-	// do consulGet: key = hello
 	opts := kp.Options{
 		Address: config.ConsulAddress,
 		HTTPS:   false,
 	}
 	store := kp.NewConsulStore(opts)
 
-	time.Sleep(2)
+	time.Sleep(5 * time.Second)
 	// check consul for health information for each app
+	name, err := os.Hostname()
+	if err != nil {
+		return err
+	}
 	for _, sv := range services {
-		res, err := store.GetHealth(sv, "localhost.localdomain")
+		res, err := store.GetHealth(sv, name)
 		if err != nil {
 			return err
-		} else if res == "" {
-			fmt.Errorf("No results for %s", sv)
+		} else if (res == kp.WatchResult{}) {
+			err = fmt.Errorf("No results for %s", sv)
+			return err
 		} else {
 			fmt.Println(res)
 		}

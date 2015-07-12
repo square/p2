@@ -17,10 +17,6 @@ var (
 	checkInterval = "5s"
 )
 
-func GetStatusCheck() string {
-	return httpStatusCheck
-}
-
 // RegisterService creates a consul service for the given pod manifest. If the
 // manifest specifies a status port, the resulting consul service will also
 // include a health check for that port.
@@ -46,19 +42,11 @@ func (c consulStore) RegisterService(manifest pods.Manifest, caPath string) erro
 
 // Go version of http status check
 func HttpStatusCheck(node string, port int) (*http.Response, error) {
-	url := fmt.Sprintf("http://%s:%s/_status", node, port)
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	return resp, err
+	url := fmt.Sprintf("http://%s:%d/_status", node, port)
+	return http.Get(url)
 }
 
 func HttpsStatusCheck(node string, port int) (*http.Response, error) {
-	url := fmt.Sprintf("https://%s:%s/_status", node, port)
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	return resp, err
+	url := fmt.Sprintf("https://%s:%d/_status", node, port)
+	return http.Get(url)
 }
