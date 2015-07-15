@@ -15,7 +15,9 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -27,6 +29,9 @@ func main() {
 	// 3. Execute bootstrap with premade consul pod and preparer pod
 	// 4. Deploy hello pod manifest by pushing to intent store
 	// 5. Verify that hello is running (listen to syslog? verify Runit PIDs? Both?)
+
+	// list of services running on integration test host
+	services := []string{"consul", "p2-preparer", "hello"}
 	tempdir, err := ioutil.TempDir("", "single-node-check")
 	log.Printf("Putting test manifests in %s\n", tempdir)
 	if err != nil {
@@ -36,11 +41,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not generate preparer pod: %s\n", err)
 	}
+	preparerConfig, err := ioutil.ReadFile(preparerManifest)
+	if err != nil {
+		log.Fatalf("Could not load preparer config: %s\n", err)
+	}
+	config, err := preparer.MarshalConfig(preparerConfig)
+	if err != nil {
+		log.Fatalf("could not unmarshal config: %s\n", err)
+	}
+
 	consulManifest, err := getConsulManifest(tempdir)
 	if err != nil {
 		log.Fatalf("Could not generate consul pod: %s\n", err)
 	}
-
 	signedPreparerManifest, err := signManifest(preparerManifest, tempdir)
 	if err != nil {
 		log.Fatalf("Could not sign preparer manifest: %s\n", err)
@@ -73,6 +86,10 @@ func main() {
 	err = verifyHelloRunning()
 	if err != nil {
 		log.Fatalf("Couldn't get hello running: %s", err)
+	}
+	err = verifyHealthChecks(config, services)
+	if err != nil {
+		log.Fatalf("Could not get health check info from consul: %s", err)
 	}
 }
 
@@ -347,4 +364,34 @@ func verifyHelloRunning() error {
 	case <-helloPidAppeared:
 		return nil
 	}
+}
+
+func verifyHealthChecks(config *preparer.PreparerConfig, services []string) error {
+	opts := kp.Options{
+		Address: config.ConsulAddress,
+		HTTPS:   false,
+	}
+	store := kp.NewConsulStore(opts)
+
+	time.Sleep(5 * time.Second)
+	// check consul for health information for each app
+	name, err := os.Hostname()
+	if err != nil {
+		return err
+	}
+	for _, sv := range services {
+		res, err := store.GetHealth(sv, name)
+		if err != nil {
+			return err
+		} else if (res == kp.WatchResult{}) {
+			err = fmt.Errorf("No results for %s", sv)
+			return err
+		} else {
+			fmt.Println(res)
+		}
+	}
+
+	// if it reaches here it means health checks
+	// are being written to the KV store properly
+	return nil
 }

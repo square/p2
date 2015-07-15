@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/version"
+	"github.com/square/p2/pkg/watch"
 )
 
 func main() {
@@ -43,6 +44,8 @@ func main() {
 
 	quitMainUpdate := make(chan struct{})
 	quitHookUpdate := make(chan struct{})
+	quitMonitorPodHealth := make(chan struct{})
+
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
 	go prep.WatchForHooks(quitHookUpdate)
 
@@ -54,17 +57,22 @@ func main() {
 		go http.ListenAndServe(fmt.Sprintf(":%d", preparerConfig.StatusPort), nil)
 	}
 
-	waitForTermination(logger, quitMainUpdate, quitHookUpdate)
+	// Launch health checking watch. This watch tracks health of
+	// all pods on this host and writes the information to consul
+	go watch.MonitorPodHealth(preparerConfig, &logger, quitMonitorPodHealth)
+
+	waitForTermination(logger, quitMainUpdate, quitHookUpdate, quitMonitorPodHealth)
 
 	logger.NoFields().Infoln("Terminating")
 }
 
-func waitForTermination(logger logging.Logger, quitMainUpdate, quitHookUpdate chan struct{}) {
+func waitForTermination(logger logging.Logger, quitMainUpdate, quitHookUpdate chan struct{}, quitMonitorPodHealth chan struct{}) {
 	signalCh := make(chan os.Signal, 2)
 	signal.Notify(signalCh, syscall.SIGTERM, os.Interrupt)
 	received := <-signalCh
 	logger.WithField("signal", received.String()).Infoln("Stopping work")
 	quitHookUpdate <- struct{}{}
 	quitMainUpdate <- struct{}{}
+	quitMonitorPodHealth <- struct{}{}
 	<-quitMainUpdate // acknowledgement
 }

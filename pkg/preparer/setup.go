@@ -78,7 +78,34 @@ func LoadPreparerConfig(configPath string) (*PreparerConfig, error) {
 	return &preparerConfig, nil
 }
 
-func loadConsulToken(path string) (string, error) {
+func MarshalConfig(config []byte) (*PreparerConfig, error) {
+	appConfig := AppConfig{}
+	err := yaml.Unmarshal(config, &appConfig)
+	preparerConfig := appConfig.P2PreparerConfig
+	if err != nil {
+		return nil, util.Errorf("The config file %s was malformatted - %s", config, err)
+	}
+
+	if preparerConfig.NodeName == "" {
+		preparerConfig.NodeName, _ = os.Hostname()
+	}
+	if preparerConfig.ConsulAddress == "" {
+		preparerConfig.ConsulAddress = "127.0.0.1:8500"
+	}
+	if preparerConfig.HooksDirectory == "" {
+		preparerConfig.HooksDirectory = hooks.DEFAULT_PATH
+	}
+	if preparerConfig.PodRoot == "" {
+		preparerConfig.PodRoot = pods.DEFAULT_PATH
+	}
+	return &preparerConfig, nil
+
+}
+
+func LoadConsulToken(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
 	consulToken, err := ioutil.ReadFile(path)
 	if err != nil {
 		return "", util.Errorf("Could not read Consul token at path %s: %s", path, err)
@@ -169,7 +196,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 
 	consulToken := ""
 	if preparerConfig.ConsulTokenPath != "" {
-		consulToken, err = loadConsulToken(preparerConfig.ConsulTokenPath)
+		consulToken, err = LoadConsulToken(preparerConfig.ConsulTokenPath)
 		if err != nil {
 			return nil, err
 		}

@@ -4,6 +4,7 @@ package kp
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -20,6 +21,8 @@ type ManifestResult struct {
 type Store interface {
 	SetPod(key string, manifest pods.Manifest) (time.Duration, error)
 	Pod(key string) (*pods.Manifest, time.Duration, error)
+	PutHealth(res WatchResult) (time.Time, time.Duration, error)
+	GetHealth(service, node string) (WatchResult, error)
 	WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
 	RegisterService(pods.Manifest, string) error
 	Ping() error
@@ -27,6 +30,15 @@ type Store interface {
 	LockHolder(key string) (string, string, error)
 	DestroyLockHolder(id string) error
 	NewLock(name string) (Lock, error)
+}
+
+type WatchResult struct {
+	Id      string
+	Node    string
+	Service string
+	Status  string
+	Output  string
+	Time    string
 }
 
 type consulStore struct {
@@ -48,6 +60,45 @@ type KVError struct {
 
 func (err KVError) Error() string {
 	return fmt.Sprintf("%s failed for path %s", err.Op, err.Key)
+}
+
+func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error) {
+	key := healthPath(res.Service, res.Node)
+
+	t, value := addTimeStamp(res)
+	data, err := json.Marshal(value)
+	if err != nil {
+		return time.Time{}, 0, err
+	}
+	keyPair := &api.KVPair{
+		Key:   key,
+		Value: data,
+	}
+
+	writeMeta, err := c.client.KV().Put(keyPair, nil)
+	var retDur time.Duration
+	if writeMeta != nil {
+		retDur = writeMeta.RequestTime
+	}
+	if err != nil {
+		return t, retDur, KVError{Op: "get", Key: key, UnsafeError: err}
+	}
+	return t, retDur, nil
+}
+
+func (c consulStore) GetHealth(service, node string) (WatchResult, error) {
+	healthRes := &WatchResult{}
+	key := healthPath(service, node)
+	res, _, err := c.client.KV().Get(key, nil)
+	if err != nil || res == nil {
+		return WatchResult{}, KVError{Op: "get", Key: key, UnsafeError: err}
+	}
+	err = json.Unmarshal(res.Value, healthRes)
+	if err != nil {
+		return WatchResult{}, KVError{Op: "get", Key: key, UnsafeError: err}
+	}
+
+	return *healthRes, nil
 }
 
 // SetPod writes a pod manifest into the consul key-value store. The key should
@@ -170,4 +221,17 @@ func (c consulStore) Ping() error {
 		return util.Errorf("No known leader")
 	}
 	return nil
+}
+
+func addTimeStamp(value WatchResult) (time.Time, WatchResult) {
+	currentTime := time.Now()
+	if value.Time == "" {
+		value.Time = currentTime.String()
+	}
+
+	return currentTime, value
+}
+
+func healthPath(service, node string) string {
+	return fmt.Sprintf("%s/%s/%s", "health", service, node)
 }
