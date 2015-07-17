@@ -81,7 +81,7 @@ func main() {
 			}
 
 			old := statusMap[podId][node]
-			_, old.Health = health.FindWorst(results)
+			_, old.Health = health.GetMultisourceResult(results)
 			statusMap[podId][node] = old
 		}
 	}
