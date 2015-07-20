@@ -30,33 +30,41 @@ type Result struct {
 	Output  string
 }
 
-func (h ConsulHealthChecker) Service(serviceID string) (map[string][][]Result, error) {
+func (h ConsulHealthChecker) Service(serviceID string) (map[string]Result, error) {
 	catalogEntries, _, err := h.client.Health().Service(serviceID, "", false, nil)
 	if err != nil {
 		return nil, util.Errorf("/health/service failed for %q: %s", serviceID, err)
 	}
+	// return map[nodenames (string)] to kp.WatchResult
+	// get health of all instances of a service with 1 query
+	kvEntries, err := h.consulStore.GetServiceHealth(serviceID)
+	if err != nil {
+		return nil, util.Errorf("/health/service failed for %q: %s", serviceID, err)
+	}
 
-	ret := make(map[string][][]Result)
+	ret := make(map[string]Result)
 	for _, entry := range catalogEntries {
-		// get entry in KV store for this service/node
-		kvEntry, err := h.consulStore.GetHealth(serviceID, entry.Node.Node)
-		if err != nil {
-			return nil, util.Errorf("/health/service failed for %q on node %s: %s", serviceID, entry.Node.Node, err)
-		}
-
 		res := make([]Result, 0, len(entry.Checks))
 		for _, check := range entry.Checks {
 			res = append(res, consulCheckToResult(*check))
 		}
-		kvRes := []Result{consulWatchToResult(kvEntry)}
-		// place worst result from catalog and result from KV store in map
-		ret[entry.Node.Node] = [][]Result{kvRes, res}
+		ret[entry.Node.Node] = findWorstResult(res)
+	}
+
+	for _, entry := range kvEntries {
+		res := consulWatchToResult(entry)
+		// if entry already exists for this service take the best of kv store and catalog
+		if _, ok := ret[entry.Node]; ok {
+			ret[entry.Node] = findBestResult([]Result{res, ret[entry.Node]})
+		} else {
+			ret[entry.Node] = res
+		}
 	}
 
 	return ret, nil
 }
 
-func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string, resultCh chan<- [][]Result, errCh chan<- error, quitCh <-chan struct{}) {
+func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string, resultCh chan<- Result, errCh chan<- error, quitCh <-chan struct{}) {
 	defer close(resultCh)
 
 	var curIndex uint64 = 0
@@ -78,7 +86,6 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 				errCh <- err
 			} else {
 				curIndex = meta.LastIndex
-				out := make([][]Result, 0)
 				catalogResults := make([]Result, 0)
 				for _, check := range checks {
 					outResult := consulCheckToResult(*check)
@@ -89,9 +96,9 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 					}
 					catalogResults = append(catalogResults, outResult)
 				}
-				out = append(out, []Result{consulWatchToResult(kvCheck)})
-				out = append(out, catalogResults)
-				resultCh <- out
+				kv := consulWatchToResult(kvCheck)
+				catalog := findWorstResult(catalogResults)
+				resultCh <- findBestResult([]Result{kv, catalog})
 			}
 		}
 	}
@@ -117,23 +124,6 @@ func consulWatchToResult(w kp.WatchResult) Result {
 	}
 }
 
-// each list in results is the health results from a given source
-// this method gets the worst value for each source then returns the
-// best of those worst values. Its the multi-source equivalent of
-// FindWorst
-func GetMultisourceResult(results [][]Result) (string, HealthState) {
-	id := ""
-	healthRes := Critical
-	for _, value := range results {
-		res := findWorstResult(value)
-		if Compare(res.Status, healthRes) == 1 {
-			healthRes = res.Status
-			id = res.ID
-		}
-	}
-	return id, healthRes
-}
-
 // Returns the poorest status of all checks in the given list, plus the check
 // ID of one of those checks.
 func FindWorst(results []Result) (string, HealthState) {
@@ -144,6 +134,23 @@ func FindWorst(results []Result) (string, HealthState) {
 func FindBest(results []Result) (string, HealthState) {
 	best := findBestResult(results)
 	return best.ID, best.Status
+}
+
+// each list in results is the health results from a given source
+// this method gets the worst value for each source then returns the
+// best of those worst values. Its the multi-source equivalent of
+// FindWorst
+func findBestSource(results [][]Result) Result {
+	var out Result
+	healthRes := Critical
+	for _, value := range results {
+		res := findWorstResult(value)
+		if Compare(res.Status, healthRes) == 1 {
+			healthRes = res.Status
+			out = res
+		}
+	}
+	return out
 }
 
 func findWorstResult(results []Result) Result {

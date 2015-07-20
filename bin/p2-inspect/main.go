@@ -75,13 +75,13 @@ func main() {
 			log.Fatalf("Could not retrieve health checks for pod %s: %s", podId, err)
 		}
 
-		for node, results := range resultMap {
+		for node, result := range resultMap {
 			if *filterNodeName != "" && node != *filterNodeName {
 				continue
 			}
 
 			old := statusMap[podId][node]
-			_, old.Health = health.GetMultisourceResult(results)
+			old.Health = result.Status
 			statusMap[podId][node] = old
 		}
 	}

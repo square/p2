@@ -163,7 +163,7 @@ REALITY_LOOP:
 	}
 	nodeLogger.NoFields().Infoln("Node is current")
 
-	healthResults := make(chan [][]health.Result)
+	healthResults := make(chan health.Result)
 	healthErr := make(chan error)
 	healthQuit := make(chan struct{})
 	defer close(healthQuit)
@@ -177,7 +177,8 @@ HEALTH_LOOP:
 			nodeLogger.WithField("err", err).Errorln("Could not read health check")
 			errCh <- err
 		case res := <-healthResults:
-			id, status := health.GetMultisourceResult(res)
+			id := res.ID
+			status := res.Status
 			// treat an empty threshold as "passing"
 			threshold := health.Passing
 			if r.Threshold != "" {
