@@ -30,40 +30,6 @@ type Result struct {
 	Output  string
 }
 
-func (h ConsulHealthChecker) Service(serviceID string) (map[string]Result, error) {
-	catalogEntries, _, err := h.client.Health().Service(serviceID, "", false, nil)
-	if err != nil {
-		return nil, util.Errorf("/health/service failed for %q: %s", serviceID, err)
-	}
-	// return map[nodenames (string)] to kp.WatchResult
-	// get health of all instances of a service with 1 query
-	kvEntries, err := h.consulStore.GetServiceHealth(serviceID)
-	if err != nil {
-		return nil, util.Errorf("/health/service failed for %q: %s", serviceID, err)
-	}
-
-	ret := make(map[string]Result)
-	for _, entry := range catalogEntries {
-		res := make([]Result, 0, len(entry.Checks))
-		for _, check := range entry.Checks {
-			res = append(res, consulCheckToResult(*check))
-		}
-		ret[entry.Node.Node] = findWorstResult(res)
-	}
-
-	for _, entry := range kvEntries {
-		res := consulWatchToResult(entry)
-		// if entry already exists for this service take the best of kv store and catalog
-		if _, ok := ret[entry.Node]; ok {
-			ret[entry.Node] = findBestResult([]Result{res, ret[entry.Node]})
-		} else {
-			ret[entry.Node] = res
-		}
-	}
-
-	return ret, nil
-}
-
 func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string, resultCh chan<- Result, errCh chan<- error, quitCh <-chan struct{}) {
 	defer close(resultCh)
 
@@ -104,6 +70,48 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 	}
 }
 
+// Service returns a map where values are individual results (keys are nodes)
+// The result is selected by choosing the best of all the worst results each source
+// returned. If there is one source (or other sources are unavailable) the value returned
+// will just be the worst result.
+func (h ConsulHealthChecker) Service(serviceID string) (map[string]Result, error) {
+	catalogEntries, _, err := h.client.Health().Service(serviceID, "", false, nil)
+	if err != nil {
+		return nil, util.Errorf("/health/service failed for %q: %s", serviceID, err)
+	}
+	// return map[nodenames (string)] to kp.WatchResult
+	// get health of all instances of a service with 1 query
+	kvEntries, err := h.consulStore.GetServiceHealth(serviceID)
+	if err != nil {
+		return nil, util.Errorf("/health/service failed for %q: %s", serviceID, err)
+	}
+
+	return selectResult(catalogEntries, kvEntries)
+}
+
+func selectResult(catalogEntries []*api.ServiceEntry, kvEntries map[string]kp.WatchResult) (map[string]Result, error) {
+	ret := make(map[string]Result)
+	for _, entry := range catalogEntries {
+		res := make([]Result, 0, len(entry.Checks))
+		for _, check := range entry.Checks {
+			res = append(res, consulCheckToResult(*check))
+		}
+		ret[entry.Node.Node] = findWorstResult(res)
+	}
+
+	for _, kvEntry := range kvEntries {
+		res := consulWatchToResult(kvEntry)
+		// if kvEntry already exists for this service take the best of kv store and catalog
+		if _, ok := ret[kvEntry.Node]; ok {
+			ret[kvEntry.Node] = findBestResult([]Result{res, ret[kvEntry.Node]})
+		} else {
+			ret[kvEntry.Node] = res
+		}
+	}
+
+	return ret, nil
+}
+
 func consulCheckToResult(c api.HealthCheck) Result {
 	return Result{
 		ID:      c.CheckID,
@@ -134,23 +142,6 @@ func FindWorst(results []Result) (string, HealthState) {
 func FindBest(results []Result) (string, HealthState) {
 	best := findBestResult(results)
 	return best.ID, best.Status
-}
-
-// each list in results is the health results from a given source
-// this method gets the worst value for each source then returns the
-// best of those worst values. Its the multi-source equivalent of
-// FindWorst
-func findBestSource(results [][]Result) Result {
-	var out Result
-	healthRes := Critical
-	for _, value := range results {
-		res := findWorstResult(value)
-		if Compare(res.Status, healthRes) == 1 {
-			healthRes = res.Status
-			out = res
-		}
-	}
-	return out
 }
 
 func findWorstResult(results []Result) Result {
