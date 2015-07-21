@@ -62,9 +62,9 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 					}
 					catalogResults = append(catalogResults, outResult)
 				}
-				kv := consulWatchToResult(kvCheck)
-				catalog := findWorstResult(catalogResults)
-				resultCh <- findBestResult([]Result{kv, catalog})
+				kvCheckResult := consulWatchToResult(kvCheck)
+				catalogCheckResult := findWorstResult(catalogResults)
+				resultCh <- findBestResult([]Result{kvCheckResult, catalogCheckResult})
 			}
 		}
 	}

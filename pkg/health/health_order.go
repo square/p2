@@ -18,12 +18,12 @@ func (s SortOrder) Swap(i, j int) {
 
 func (s SortOrder) Less(i, j int) bool {
 	iHealth := Unknown
-	if res, ok := s.Health[s.Nodes[i]]; ok && &res != nil {
+	if res, ok := s.Health[s.Nodes[i]]; ok {
 		iHealth = res.Status
 	}
 
 	jHealth := Unknown
-	if res, ok := s.Health[s.Nodes[j]]; ok && &res != nil {
+	if res, ok := s.Health[s.Nodes[j]]; ok {
 		jHealth = res.Status
 	}
 
