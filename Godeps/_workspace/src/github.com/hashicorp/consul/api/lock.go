@@ -165,28 +165,45 @@ WAIT:
 	if pair != nil && pair.Flags != LockFlagValue {
 		return nil, ErrLockConflict
 	}
+	locked := false
+	if pair != nil && pair.Session == l.lockSession {
+		goto HELD
+	}
 	if pair != nil && pair.Session != "" {
 		qOpts.WaitIndex = meta.LastIndex
 		goto WAIT
 	}
 
 	// Try to acquire the lock
-	lockEnt := l.lockEntry(l.lockSession)
-	locked, _, err := kv.Acquire(lockEnt, nil)
+	pair = l.lockEntry(l.lockSession)
+	locked, _, err = kv.Acquire(pair, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire lock: %v", err)
 	}
 
 	// Handle the case of not getting the lock
 	if !locked {
-		select {
-		case <-time.After(DefaultLockRetryTime):
+		// Determine why the lock failed
+		qOpts.WaitIndex = 0
+		pair, meta, err = kv.Get(l.opts.Key, qOpts)
+		if pair != nil && pair.Session != "" {
+			//If the session is not null, this means that a wait can safely happen
+			//using a long poll
+			qOpts.WaitIndex = meta.LastIndex
 			goto WAIT
-		case <-stopCh:
-			return nil, nil
+		} else {
+			// If the session is empty and the lock failed to acquire, then it means
+			// a lock-delay is in effect and a timed wait must be used
+			select {
+			case <-time.After(DefaultLockRetryTime):
+				goto WAIT
+			case <-stopCh:
+				return nil, nil
+			}
 		}
 	}
 
+HELD:
 	// Watch to ensure we maintain leadership
 	leaderCh := make(chan struct{})
 	go l.monitorLock(l.lockSession, leaderCh)

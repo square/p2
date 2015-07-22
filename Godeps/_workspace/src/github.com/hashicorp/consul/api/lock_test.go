@@ -8,8 +8,9 @@ import (
 )
 
 func TestLock_LockUnlock(t *testing.T) {
+	t.Parallel()
 	c, s := makeClient(t)
-	defer s.stop()
+	defer s.Stop()
 
 	lock, err := c.LockKey("test/lock")
 	if err != nil {
@@ -65,8 +66,9 @@ func TestLock_LockUnlock(t *testing.T) {
 }
 
 func TestLock_ForceInvalidate(t *testing.T) {
+	t.Parallel()
 	c, s := makeClient(t)
-	defer s.stop()
+	defer s.Stop()
 
 	lock, err := c.LockKey("test/lock")
 	if err != nil {
@@ -99,8 +101,9 @@ func TestLock_ForceInvalidate(t *testing.T) {
 }
 
 func TestLock_DeleteKey(t *testing.T) {
+	t.Parallel()
 	c, s := makeClient(t)
-	defer s.stop()
+	defer s.Stop()
 
 	lock, err := c.LockKey("test/lock")
 	if err != nil {
@@ -132,8 +135,9 @@ func TestLock_DeleteKey(t *testing.T) {
 }
 
 func TestLock_Contend(t *testing.T) {
+	t.Parallel()
 	c, s := makeClient(t)
-	defer s.stop()
+	defer s.Stop()
 
 	wg := &sync.WaitGroup{}
 	acquired := make([]bool, 3)
@@ -184,8 +188,9 @@ func TestLock_Contend(t *testing.T) {
 }
 
 func TestLock_Destroy(t *testing.T) {
+	t.Parallel()
 	c, s := makeClient(t)
-	defer s.stop()
+	defer s.Stop()
 
 	lock, err := c.LockKey("test/lock")
 	if err != nil {
@@ -252,8 +257,9 @@ func TestLock_Destroy(t *testing.T) {
 }
 
 func TestLock_Conflict(t *testing.T) {
+	t.Parallel()
 	c, s := makeClient(t)
-	defer s.stop()
+	defer s.Stop()
 
 	sema, err := c.SemaphorePrefix("test/lock/", 2)
 	if err != nil {
@@ -285,5 +291,73 @@ func TestLock_Conflict(t *testing.T) {
 	err = lock.Destroy()
 	if err != ErrLockConflict {
 		t.Fatalf("err: %v", err)
+	}
+}
+
+func TestLock_ReclaimLock(t *testing.T) {
+	t.Parallel()
+	c, s := makeClient(t)
+	defer s.Stop()
+
+	session, _, err := c.Session().Create(&SessionEntry{}, nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	lock, err := c.LockOpts(&LockOptions{Key: "test/lock", Session: session})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// Should work
+	leaderCh, err := lock.Lock(nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if leaderCh == nil {
+		t.Fatalf("not leader")
+	}
+	defer lock.Unlock()
+
+	l2, err := c.LockOpts(&LockOptions{Key: "test/lock", Session: session})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	reclaimed := make(chan (<-chan struct{}), 1)
+	go func() {
+		l2Ch, err := l2.Lock(nil)
+		if err != nil {
+			t.Fatalf("not locked: %v", err)
+		}
+		reclaimed <- l2Ch
+	}()
+
+	// Should reclaim the lock
+	var leader2Ch <-chan struct{}
+
+	select {
+	case leader2Ch = <-reclaimed:
+	case <-time.After(time.Second):
+		t.Fatalf("should have locked")
+	}
+
+	// unlock should work
+	err = l2.Unlock()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	//Both locks should see the unlock
+	select {
+	case <-leader2Ch:
+	case <-time.After(time.Second):
+		t.Fatalf("should not be leader")
+	}
+
+	select {
+	case <-leaderCh:
+	case <-time.After(time.Second):
+		t.Fatalf("should not be leader")
 	}
 }

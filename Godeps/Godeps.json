@@ -7,8 +7,8 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
-			"Comment": "v0.7.3",
-			"Rev": "55eb11d21d2a31a3cc93838241d04800f52e823d"
+			"Comment": "v0.8.4",
+			"Rev": "3cb248e9df77413d58a6330dde84236d04c197d5"
 		},
 		{
 			"ImportPath": "github.com/alecthomas/units",
@@ -19,26 +19,61 @@
 			"Rev": "584121597f0f6ea20dbd6b63ddf7440b86e379ed"
 		},
 		{
+			"ImportPath": "github.com/armon/go-radix",
+			"Rev": "fbd82e84e2b13651f3abc5ffd26b65ba71bc8f93"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/consul/acl",
+			"Comment": "v0.5.2-161-g3e9e575",
+			"Rev": "3e9e575dee31f517b5e000729b3cb759267d2442"
+		},
+		{
 			"ImportPath": "github.com/hashicorp/consul/api",
-			"Comment": "v0.5.0-87-gd969655",
-			"Rev": "d969655cfa17b3758d60e0e6a3d75d2bdf0f93f2"
+			"Comment": "v0.5.2-161-g3e9e575",
+			"Rev": "3e9e575dee31f517b5e000729b3cb759267d2442"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/consul/consul/structs",
+			"Comment": "v0.5.2-161-g3e9e575",
+			"Rev": "3e9e575dee31f517b5e000729b3cb759267d2442"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/consul/testutil",
+			"Comment": "v0.5.2-161-g3e9e575",
+			"Rev": "3e9e575dee31f517b5e000729b3cb759267d2442"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/go-msgpack/codec",
+			"Rev": "fa3f63826f7c23912c15263591e65d54d080b458"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/go-multierror",
+			"Rev": "56912fb08d85084aa318edcf2bba735b97cf35c5"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/golang-lru",
+			"Rev": "7f9ef20a0256f494e24126014135cf893ab71e9e"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/hcl",
+			"Rev": "54864211433d45cb780682431585b3e573b49e4a"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
-			"Rev": "b7d6bf2c61544745a02f83dec90393985fc3a065"
+			"Rev": "7d5b0be716b9d6d4269afdaae10032bb296d3cdf"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp",
-			"Rev": "b7d6bf2c61544745a02f83dec90393985fc3a065"
+			"Rev": "7d5b0be716b9d6d4269afdaae10032bb296d3cdf"
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v1",
-			"Comment": "v1.3.6",
-			"Rev": "55a69a226d28a43b913720f5d765706d49c8fa9e"
+			"Comment": "v1.3.7",
+			"Rev": "45f9714aa86a9624491adeaab1e9df1baf84dd38"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
-			"Rev": "49c95bdc21843256fb6c4e0d370a05f24a0bf213"
+			"Rev": "7ad95dd0798a40da1ccdff6dff35fd177b5edf40"
 		}
 	]
 }
