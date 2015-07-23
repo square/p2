@@ -56,8 +56,11 @@ $stderr.reopen(STDOUT)
 require 'yaml'
 sleep %v
 exec *YAML.load(DATA.read)
+sleep %v
 __END__
-%s`, sleep, args)
+--- 
+%s
+`, sleep, sleep, args)
 	return []byte(ret), nil
 }
 
@@ -66,11 +69,18 @@ func (s ServiceTemplate) LogScript() ([]byte, error) {
 		// use a default log script that makes a logdir, chowns it and execs
 		// svlogd into it
 		return []byte(`#!/usr/bin/ruby
-require 'fileutils'
-FileUtils.mkdir_p('./main')
-FileUtils.chown('nobody', 'nobody', './main')
+require 'yaml'
 sleep 2
-exec('chpst', '-unobody', 'svlogd', '-tt', './main')
+exec *YAML.load(DATA.read)
+sleep 2
+__END__
+--- 
+- chpst
+- -unobody
+- svlogd
+- -tt
+- ./main
+
 `), nil
 	}
 
@@ -88,8 +98,11 @@ exec('chpst', '-unobody', 'svlogd', '-tt', './main')
 require 'yaml'
 sleep %v
 exec *YAML.load(DATA.read)
+sleep %v
 __END__
-%s`, sleep, args)
+--- 
+%s
+`, sleep, sleep, args)
 	return []byte(ret), nil
 }
 
