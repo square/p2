@@ -117,7 +117,7 @@ func (p *PodWatch) checkHealth(node string, port int, store kp.Store) {
 		p.lastCheck, err = writeToConsul(health, store)
 		p.lastStatus = health.Status
 		if err != nil {
-			p.logger.WithField("err", err).Warningln("failed to write health data to consul")
+			p.logger.WithField("inner_err", err).Warningln("failed to write to consul")
 		}
 	}
 }
@@ -230,6 +230,7 @@ func updatePods(current []PodWatch, reality []kp.ManifestResult, logger *logging
 			newPod := PodWatch{
 				manifest:   man.Manifest,
 				shutdownCh: make(chan bool, 1),
+				logger:     logger,
 			}
 			go newPod.MonitorHealth(node, store, newPod.shutdownCh)
 			newCurrent = append(newCurrent, newPod)

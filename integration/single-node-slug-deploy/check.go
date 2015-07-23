@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
@@ -31,7 +32,7 @@ func main() {
 	// 5. Verify that hello is running (listen to syslog? verify Runit PIDs? Both?)
 
 	// list of services running on integration test host
-	services := []string{"consul", "p2-preparer", "hello"}
+	services := []string{"p2-preparer", "hello"}
 	tempdir, err := ioutil.TempDir("", "single-node-check")
 	log.Printf("Putting test manifests in %s\n", tempdir)
 	if err != nil {
@@ -298,6 +299,8 @@ func postHelloManifest(dir string) error {
 	hello := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-hello_def456.tar.gz"))
 	manifest := &pods.Manifest{}
 	manifest.Id = "hello"
+	manifest.StatusPort = 43770
+	manifest.StatusHTTP = true
 	stanza := pods.LaunchableStanza{
 		LaunchableId:   "hello",
 		LaunchableType: "hoist",
@@ -384,21 +387,24 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 		if err != nil {
 			return err
 		} else if (res == kp.WatchResult{}) {
-			err = fmt.Errorf("No results for %s", sv)
-			return err
+			return fmt.Errorf("No results for %s", sv)
+		} else if res.Status != string(health.Passing) {
+			return fmt.Errorf("%s did not pass health check", sv)
 		} else {
 			fmt.Println(res)
 		}
 	}
 
-	res, err := store.GetServiceHealth(services[1])
-	getres, _ := store.GetHealth(services[1], name)
-	if err != nil {
-		return err
-	}
-	val := res[kp.HealthPath(services[1], name)]
-	if getres.Id != val.Id || getres.Service != val.Service || getres.Status != val.Status {
-		return fmt.Errorf("GetServiceHealth failed %+v", res)
+	for _, sv := range services {
+		res, err := store.GetServiceHealth(sv)
+		getres, _ := store.GetHealth(sv, name)
+		if err != nil {
+			return err
+		}
+		val := res[kp.HealthPath(sv, name)]
+		if getres.Id != val.Id || getres.Service != val.Service || getres.Status != val.Status {
+			return fmt.Errorf("GetServiceHealth failed %+v", res)
+		}
 	}
 
 	// if it reaches here it means health checks
