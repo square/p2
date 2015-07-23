@@ -23,6 +23,7 @@ type Store interface {
 	Pod(key string) (*pods.Manifest, time.Duration, error)
 	PutHealth(res WatchResult) (time.Time, time.Duration, error)
 	GetHealth(service, node string) (WatchResult, error)
+	GetServiceHealth(service string) (map[string]WatchResult, error)
 	WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
 	RegisterService(pods.Manifest, string) error
 	Ping() error
@@ -63,7 +64,7 @@ func (err KVError) Error() string {
 }
 
 func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error) {
-	key := healthPath(res.Service, res.Node)
+	key := HealthPath(res.Service, res.Node)
 
 	t, value := addTimeStamp(res)
 	data, err := json.Marshal(value)
@@ -88,10 +89,12 @@ func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error
 
 func (c consulStore) GetHealth(service, node string) (WatchResult, error) {
 	healthRes := &WatchResult{}
-	key := healthPath(service, node)
+	key := HealthPath(service, node)
 	res, _, err := c.client.KV().Get(key, nil)
-	if err != nil || res == nil {
+	if err != nil {
 		return WatchResult{}, KVError{Op: "get", Key: key, UnsafeError: err}
+	} else if res == nil {
+		return WatchResult{}, nil
 	}
 	err = json.Unmarshal(res.Value, healthRes)
 	if err != nil {
@@ -99,6 +102,28 @@ func (c consulStore) GetHealth(service, node string) (WatchResult, error) {
 	}
 
 	return *healthRes, nil
+}
+
+func (c consulStore) GetServiceHealth(service string) (map[string]WatchResult, error) {
+	healthRes := make(map[string]WatchResult)
+	key := HealthPath(service, "")
+	res, _, err := c.client.KV().List(key, nil)
+	if err != nil {
+		return healthRes, KVError{Op: "get", Key: key, UnsafeError: err}
+	} else if res == nil {
+		return healthRes, nil
+	}
+	for _, kvp := range res {
+		watch := &WatchResult{}
+		err = json.Unmarshal(kvp.Value, watch)
+		if err != nil {
+			return healthRes, KVError{Op: "get", Key: key, UnsafeError: err}
+		}
+		// maps key to result (eg /health/hello/nodename)
+		healthRes[kvp.Key] = *watch
+	}
+
+	return healthRes, nil
 }
 
 // SetPod writes a pod manifest into the consul key-value store. The key should
@@ -232,6 +257,9 @@ func addTimeStamp(value WatchResult) (time.Time, WatchResult) {
 	return currentTime, value
 }
 
-func healthPath(service, node string) string {
+func HealthPath(service, node string) string {
+	if node == "" {
+		return fmt.Sprintf("%s/%s", "health", service)
+	}
 	return fmt.Sprintf("%s/%s/%s", "health", service, node)
 }

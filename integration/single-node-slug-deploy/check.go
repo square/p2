@@ -391,6 +391,16 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 		}
 	}
 
+	res, err := store.GetServiceHealth(services[1])
+	getres, _ := store.GetHealth(services[1], name)
+	if err != nil {
+		return err
+	}
+	val := res[kp.HealthPath(services[1], name)]
+	if getres.Id != val.Id || getres.Service != val.Service || getres.Status != val.Status {
+		return fmt.Errorf("GetServiceHealth failed %+v", res)
+	}
+
 	// if it reaches here it means health checks
 	// are being written to the KV store properly
 	return nil
