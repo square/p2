@@ -180,7 +180,6 @@ func ScheduleForThisHost(manifest *pods.Manifest, alsoReality bool) error {
 		if err != nil {
 			return err
 		}
-		return store.RegisterService(*manifest, "")
 	}
 	return nil
 }
