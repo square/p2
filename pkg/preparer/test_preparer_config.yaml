@@ -1,6 +1,7 @@
 preparer:
   node_name: foohost
   consul_address: 0.0.0.0
+  consul_https: true
   consul_token_path: /etc/consul.token
   hooks_directory: /etc/p2/hooks
   auth:
