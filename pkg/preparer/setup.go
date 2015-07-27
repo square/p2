@@ -28,6 +28,7 @@ type LogDestination struct {
 type PreparerConfig struct {
 	NodeName             string                 `yaml:"node_name"`
 	ConsulAddress        string                 `yaml:"consul_address"`
+	ConsulHttps          bool                   `yaml:"consul_https,omitempty"`
 	ConsulTokenPath      string                 `yaml:"consul_token_path,omitempty"`
 	HooksDirectory       string                 `yaml:"hooks_directory"`
 	CAPath               string                 `yaml:"ca_path,omitempty"`
@@ -204,6 +205,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 
 	store := kp.NewConsulStore(kp.Options{
 		Address: preparerConfig.ConsulAddress,
+		HTTPS:   preparerConfig.ConsulHttps,
 		Token:   consulToken,
 	})
 

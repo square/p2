@@ -16,6 +16,7 @@ func TestLoadConfigWillMarshalYaml(t *testing.T) {
 
 	Assert(t).AreEqual("foohost", preparerConfig.NodeName, "did not read the node name correctly")
 	Assert(t).AreEqual("0.0.0.0", preparerConfig.ConsulAddress, "did not read the consul address correctly")
+	Assert(t).IsTrue(preparerConfig.ConsulHttps, "did not read consul HTTPS correctly (should be true)")
 	Assert(t).AreEqual("/etc/p2/hooks", preparerConfig.HooksDirectory, "did not read the hooks directory correctly")
 	Assert(t).AreEqual("/etc/p2.keyring", preparerConfig.Auth["keyring"], "did not read the keyring path correctly")
 	Assert(t).AreEqual(1, len(preparerConfig.ExtraLogDestinations), "should have picked up 1 log destination")
