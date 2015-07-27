@@ -41,7 +41,7 @@ func TestPickServiceResult(t *testing.T) {
 	testMap := getResult([]*api.ServiceEntry{t1, t2, t3})
 	catalog := []*api.ServiceEntry{t1, t2, t3}
 	res, err := selectResult(catalog, nil)
-	Assert(t).AreEqual(err, nil, "catalog is health, kv not present and selectResult returned err")
+	Assert(t).AreEqual(err, nil, "catalog is healthy, kv not present and selectResult returned err")
 	for key, value := range testMap {
 		Assert(t).AreEqual(res[key], value, "catalog is healthy, kv not present, selectResult did not match what was expected")
 	}
@@ -49,7 +49,7 @@ func TestPickServiceResult(t *testing.T) {
 	// Catalog is healthy but KV is not
 	watchRes := mockWatchResult(catalog, Critical)
 	res, err = selectResult(catalog, watchRes)
-	Assert(t).AreEqual(err, nil, "catalog is health but kv is not and selectResult returned err")
+	Assert(t).AreEqual(err, nil, "catalog is healthy but kv is not and selectResult returned err")
 	for key, value := range testMap {
 		Assert(t).AreEqual(res[key], value, "catalog is healthy, kv is not, selectResult did not match what was expected")
 	}

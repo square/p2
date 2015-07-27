@@ -60,8 +60,11 @@ func TestUpdateNeeded(t *testing.T) {
 }
 
 func TestResultFromCheck(t *testing.T) {
+	http.HandleFunc("/_status", statusHandler)
+	go http.ListenAndServe(":8080", nil)
 	client := http.DefaultClient
-	resp, _ := client.Get("http://ifconfig.co/all.json")
+
+	resp, _ := client.Get("http://localhost:8080/_status")
 	val, _ := resultFromCheck(resp, nil)
 	Assert(t).AreEqual(health.Passing, val.Status, "200 should correspond to health.Passing")
 
@@ -94,7 +97,13 @@ func newWatch(id string) *PodWatch {
 func newManifestResult(id string) kp.ManifestResult {
 	return kp.ManifestResult{
 		Manifest: pods.Manifest{
-			Id: id,
+			Id:         id,
+			StatusPort: 1, // StatusPort must != 0 for updatePods to use it
 		},
 	}
+}
+
+func statusHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Handler: statusHandler")
+	fmt.Fprintf(w, "ok")
 }

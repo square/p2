@@ -226,7 +226,7 @@ func updatePods(current []PodWatch, reality []kp.ManifestResult, logger *logging
 
 		// if a manifest is in reality but not current a podwatch is created
 		// with that manifest and added to newCurrent
-		if missing == true {
+		if missing && man.Manifest.StatusPort != 0 {
 			newPod := PodWatch{
 				manifest:   man.Manifest,
 				shutdownCh: make(chan bool, 1),
