@@ -70,7 +70,7 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 
 	store = kp.NewConsulStore(kp.Options{
 		Address: consul,
-		HTTPS:   false,
+		HTTPS:   config.ConsulHttps,
 		Token:   authtoken,
 		Client:  net.NewHeaderClient(nil, http.DefaultTransport),
 	})
