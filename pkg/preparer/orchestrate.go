@@ -40,7 +40,6 @@ type Preparer struct {
 	hookListener HookListener
 	Logger       logging.Logger
 	podRoot      string
-	caPath       string
 	authPolicy   auth.Policy
 }
 
