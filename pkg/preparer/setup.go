@@ -1,7 +1,10 @@
 package preparer
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -31,7 +34,9 @@ type PreparerConfig struct {
 	ConsulHttps          bool                   `yaml:"consul_https,omitempty"`
 	ConsulTokenPath      string                 `yaml:"consul_token_path,omitempty"`
 	HooksDirectory       string                 `yaml:"hooks_directory"`
-	CAPath               string                 `yaml:"ca_path,omitempty"`
+	CAFile               string                 `yaml:"ca_file,omitempty"`
+	CertFile             string                 `yaml:"cert_file,omitempty"`
+	KeyFile              string                 `yaml:"key_file,omitempty"`
 	PodRoot              string                 `yaml:"pod_root,omitempty"`
 	StatusPort           int                    `yaml:"status_port"`
 	Auth                 map[string]interface{} `yaml:"auth,omitempty"`
@@ -112,6 +117,40 @@ func LoadConsulToken(path string) (string, error) {
 		return "", util.Errorf("Could not read Consul token at path %s: %s", path, err)
 	}
 	return strings.TrimSpace(string(consulToken)), nil
+}
+
+func loadTLS(c *PreparerConfig) (*http.Client, error) {
+	var certs []tls.Certificate
+	if c.CertFile != "" || c.KeyFile != "" {
+		if c.CertFile == "" || c.KeyFile == "" {
+			return nil, util.Errorf("TLS client requires both cert_file and key_file")
+		}
+		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
+		if err != nil {
+			return nil, err
+		}
+		certs = append(certs, cert)
+	}
+
+	var cas *x509.CertPool
+	if c.CAFile != "" {
+		cas = x509.NewCertPool()
+		caBytes, err := ioutil.ReadFile(c.CAFile)
+		if err != nil {
+			return nil, err
+		}
+		ok := cas.AppendCertsFromPEM(caBytes)
+		if !ok {
+			return nil, util.Errorf("Could not parse certificate file: %s", c.CAFile)
+		}
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: certs,
+		ClientCAs:    cas,
+		RootCAs:      cas,
+	}
+	return &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}, nil
 }
 
 func addHooks(preparerConfig *PreparerConfig, logger logging.Logger) {
@@ -203,10 +242,21 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		}
 	}
 
+	var client *http.Client
+	if preparerConfig.CertFile != "" ||
+		preparerConfig.KeyFile != "" ||
+		preparerConfig.CAFile != "" {
+		client, err = loadTLS(preparerConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	store := kp.NewConsulStore(kp.Options{
 		Address: preparerConfig.ConsulAddress,
 		HTTPS:   preparerConfig.ConsulHttps,
 		Token:   consulToken,
+		Client:  client,
 	})
 
 	listener := HookListener{
@@ -231,6 +281,5 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		Logger:       logger,
 		podRoot:      preparerConfig.PodRoot,
 		authPolicy:   authPolicy,
-		caPath:       preparerConfig.CAPath,
 	}, nil
 }
