@@ -1,10 +1,12 @@
 package runit
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -19,9 +21,7 @@ var fakeTemplate map[string]ServiceTemplate = map[string]ServiceTemplate{
 
 func TestWriteTemplate(t *testing.T) {
 	sb := FakeServiceBuilder()
-	defer os.RemoveAll(sb.ConfigRoot)
-	defer os.RemoveAll(sb.StagingRoot)
-	defer os.RemoveAll(sb.RunitRoot)
+	defer sb.Cleanup()
 
 	fakePath := filepath.Join(sb.ConfigRoot, "test.yaml")
 	err := sb.write(fakePath, fakeTemplate)
@@ -39,9 +39,7 @@ func TestWriteTemplate(t *testing.T) {
 
 func TestStagedContents(t *testing.T) {
 	sb := FakeServiceBuilder()
-	defer os.RemoveAll(sb.ConfigRoot)
-	defer os.RemoveAll(sb.StagingRoot)
-	defer os.RemoveAll(sb.RunitRoot)
+	defer sb.Cleanup()
 
 	err := sb.stage(fakeTemplate)
 	Assert(t).IsNil(err, "should have staged")
@@ -63,13 +61,38 @@ func TestStagedContents(t *testing.T) {
 	Assert(t).IsNil(err, "should have statted staging log run")
 	Assert(t).IsFalse(info.IsDir(), "staging log run should have been a file")
 	Assert(t).IsTrue(info.Mode()&0100 == 0100, "staging log run should have been executable")
+
+	info, err = os.Stat(filepath.Join(sb.StagingRoot, "foo", "log", "main"))
+	Assert(t).IsNil(err, "should have statted staging log main")
+	Assert(t).IsTrue(info.IsDir(), "staging log main should have been a dir")
+}
+
+func verifyRuby18(t *testing.T, filename, displayName string) {
+	binData, err := ioutil.ReadFile(filename)
+	Assert(t).IsNil(err, fmt.Sprintf("should have been able to read %s", displayName))
+	data := string(binData)
+
+	if strings.Contains(data, "\n---\n") {
+		t.Errorf("trailing space was removed from \"--- \" in %s", displayName)
+	} else if !strings.Contains(data, "\n--- \n") {
+		t.Errorf("expected \"--- \" YAML separator in %s", displayName)
+	}
+}
+
+func TestRuby18Yaml(t *testing.T) {
+	sb := FakeServiceBuilder()
+	defer sb.Cleanup()
+
+	err := sb.stage(fakeTemplate)
+	Assert(t).IsNil(err, "should have staged")
+
+	verifyRuby18(t, filepath.Join(sb.StagingRoot, "foo", "run"), "run script")
+	verifyRuby18(t, filepath.Join(sb.StagingRoot, "foo", "log", "run"), "log/run script")
 }
 
 func TestActivateSucceedsTwice(t *testing.T) {
 	sb := FakeServiceBuilder()
-	defer os.RemoveAll(sb.ConfigRoot)
-	defer os.RemoveAll(sb.StagingRoot)
-	defer os.RemoveAll(sb.RunitRoot)
+	defer sb.Cleanup()
 
 	err := sb.activate(fakeTemplate)
 	Assert(t).IsNil(err, "should have activated service")
@@ -87,9 +110,7 @@ func TestActivateSucceedsTwice(t *testing.T) {
 
 func TestPrune(t *testing.T) {
 	sb := FakeServiceBuilder()
-	defer os.RemoveAll(sb.ConfigRoot)
-	defer os.RemoveAll(sb.StagingRoot)
-	defer os.RemoveAll(sb.RunitRoot)
+	defer sb.Cleanup()
 
 	// first create the service
 	err := sb.Activate("foo", fakeTemplate)
