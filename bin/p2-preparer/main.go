@@ -8,6 +8,8 @@ import (
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
+	"gopkg.in/alecthomas/kingpin.v1"
+
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/version"
@@ -15,6 +17,9 @@ import (
 )
 
 func main() {
+	// Other packages define flags, and they need parsing here.
+	kingpin.Parse()
+
 	logger := logging.NewLogger(logrus.Fields{})
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {

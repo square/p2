@@ -9,9 +9,16 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
+	"gopkg.in/alecthomas/kingpin.v1"
+
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
 )
+
+var showConsulErrors = kingpin.Flag(
+	"show-consul-errors-unsafe",
+	"Show detailed error messages from Consul (use only when debugging)",
+).Default("false").Bool()
 
 type ManifestResult struct {
 	Manifest pods.Manifest
@@ -59,7 +66,11 @@ type KVError struct {
 }
 
 func (err KVError) Error() string {
-	return fmt.Sprintf("%s failed for path %s", err.Op, err.Key)
+	cerr := ""
+	if *showConsulErrors {
+		cerr = fmt.Sprintf(": %s", err.UnsafeError)
+	}
+	return fmt.Sprintf("%s failed for path %s%s", err.Op, err.Key, cerr)
 }
 
 func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error) {
@@ -81,7 +92,7 @@ func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error
 		retDur = writeMeta.RequestTime
 	}
 	if err != nil {
-		return t, retDur, KVError{Op: "get", Key: key, UnsafeError: err}
+		return t, retDur, KVError{Op: "put", Key: key, UnsafeError: err}
 	}
 	return t, retDur, nil
 }
@@ -108,7 +119,7 @@ func (c consulStore) GetServiceHealth(service string) (map[string]WatchResult, e
 	key := HealthPath(service, "")
 	res, _, err := c.client.KV().List(key, nil)
 	if err != nil {
-		return healthRes, KVError{Op: "get", Key: key, UnsafeError: err}
+		return healthRes, KVError{Op: "list", Key: key, UnsafeError: err}
 	} else if res == nil {
 		return healthRes, nil
 	}
@@ -144,7 +155,7 @@ func (c consulStore) SetPod(key string, manifest pods.Manifest) (time.Duration, 
 		retDur = writeMeta.RequestTime
 	}
 	if err != nil {
-		return retDur, KVError{Op: "set", Key: key, UnsafeError: err}
+		return retDur, KVError{Op: "put", Key: key, UnsafeError: err}
 	}
 	return retDur, nil
 }
