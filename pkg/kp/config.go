@@ -2,6 +2,7 @@ package kp
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/hashicorp/consul/api"
 )
@@ -17,6 +18,10 @@ type Options struct {
 	Token string
 	// If non-nil, this http.Client will be used for Consul communication.
 	Client *http.Client
+	// If provided, the wait time to be used on queries from this client.
+	// See the "wait" parameter:
+	// https://consul.io/intro/getting-started/kv.html
+	WaitTime time.Duration
 }
 
 func NewConsulClient(opts Options) *api.Client {
@@ -31,6 +36,9 @@ func NewConsulClient(opts Options) *api.Client {
 		conf.Scheme = "https"
 	}
 	conf.Token = opts.Token
+	if opts.WaitTime != 0 {
+		conf.WaitTime = opts.WaitTime
+	}
 
 	// error is always nil
 	ret, _ := api.NewClient(conf)
