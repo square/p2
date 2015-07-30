@@ -21,18 +21,24 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 
 	"github.com/square/p2/pkg/util"
 
 	"gopkg.in/yaml.v2"
 )
 
+// To maintain compatibility with Ruby1.8's YAML serializer, a document separator with a
+// trailing space must be used.
+const yamlSeparator = "--- "
+
 type ServiceTemplate struct {
 	Run      []string `yaml:"run"`
 	Log      []string `yaml:"log,omitempty"`
-	Sleep    int      `yaml:"sleep,omitempty"`
-	LogSleep int      `yaml:"logsleep,omitempty"`
+	Sleep    *int     `yaml:"sleep,omitempty"`
+	LogSleep *int     `yaml:"logsleep,omitempty"`
 }
 
 func (s ServiceTemplate) RunScript() ([]byte, error) {
@@ -47,62 +53,50 @@ func (s ServiceTemplate) RunScript() ([]byte, error) {
 
 	// default sleep to reduce spinning on a broken run script
 	sleep := 2
-	if s.Sleep != 0 {
-		sleep = s.Sleep
+	if s.Sleep != nil && *s.Sleep >= 0 {
+		sleep = *s.Sleep
 	}
 
 	ret := fmt.Sprintf(`#!/usr/bin/ruby
 $stderr.reopen(STDOUT)
 require 'yaml'
-sleep %v
+sleep %d
 exec *YAML.load(DATA.read)
-sleep %v
+sleep 2
 __END__
---- 
 %s
-`, sleep, sleep, args)
+%s
+`, sleep, yamlSeparator, args)
 	return []byte(ret), nil
 }
 
 func (s ServiceTemplate) LogScript() ([]byte, error) {
-	if len(s.Log) == 0 {
-		// use a default log script that makes a logdir, chowns it and execs
-		// svlogd into it
-		return []byte(`#!/usr/bin/ruby
-require 'yaml'
-sleep 2
-exec *YAML.load(DATA.read)
-sleep 2
-__END__
---- 
-- chpst
-- -unobody
-- svlogd
-- -tt
-- ./main
-
-`), nil
+	sleep := 2
+	if s.LogSleep != nil && *s.LogSleep >= 0 {
+		sleep = *s.LogSleep
 	}
 
-	args, err := yaml.Marshal(s.Log)
+	log := s.Log
+	if len(log) == 0 {
+		// use a default log script that makes a logdir, chowns it and execs
+		// svlogd into it
+		log = []string{"chpst", "-unobody", "svlogd", "-tt", "./main"}
+	}
+
+	args, err := yaml.Marshal(log)
 	if err != nil {
 		return nil, err
 	}
 
-	sleep := 2
-	if s.LogSleep != 0 {
-		sleep = s.LogSleep
-	}
-
 	ret := fmt.Sprintf(`#!/usr/bin/ruby
 require 'yaml'
-sleep %v
+sleep %d
 exec *YAML.load(DATA.read)
-sleep %v
+sleep 2
 __END__
---- 
 %s
-`, sleep, sleep, args)
+%s
+`, sleep, yamlSeparator, args)
 	return []byte(ret), nil
 }
 
@@ -111,6 +105,11 @@ type ServiceBuilder struct {
 	StagingRoot string // directory to place staged runit services
 	RunitRoot   string // directory of runsvdir
 	Bin         string
+
+	// testingNoChown should be set during unit tests to prevent the chown() operation when
+	// staging a service. Unit tests run as normal users, not root, so the chown() will fail
+	// without allowing for any tests to run.
+	testingNoChown bool
 }
 
 var DefaultBuilder = &ServiceBuilder{
@@ -137,11 +136,39 @@ func (s *ServiceBuilder) write(path string, templates map[string]ServiceTemplate
 
 // convert the servicebuilder yaml file into a runit service directory
 func (s *ServiceBuilder) stage(templates map[string]ServiceTemplate) error {
+	nobody, err := user.Lookup("nobody")
+	if err != nil {
+		return err
+	}
+	nobodyUid, err := strconv.ParseInt(nobody.Uid, 10, 64)
+	if err != nil {
+		return err
+	}
+	nobodyGid, err := strconv.ParseInt(nobody.Gid, 10, 64)
+	if err != nil {
+		return err
+	}
+
 	for serviceName, template := range templates {
 		stageDir := filepath.Join(s.StagingRoot, serviceName)
 		// create the default log directory
-		err := os.MkdirAll(filepath.Join(stageDir, "log"), 0755)
+		logDir := filepath.Join(stageDir, "log")
+		err := os.MkdirAll(logDir, 0755)
 		if err != nil {
+			return err
+		}
+
+		// create a place for the logs to go
+		logMainDir := filepath.Join(logDir, "main")
+		err = os.Mkdir(logMainDir, 0755)
+		if err == nil {
+			if !s.testingNoChown {
+				err = os.Chown(logMainDir, int(nobodyUid), int(nobodyGid))
+				if err != nil {
+					return err
+				}
+			}
+		} else if !os.IsExist(err) {
 			return err
 		}
 

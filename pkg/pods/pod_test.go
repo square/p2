@@ -226,10 +226,10 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 }
 
 func TestBuildRunitServices(t *testing.T) {
-	serviceBuilder := runit.FakeServiceBuilder()
-	serviceBuilderDir, err := ioutil.TempDir("", "servicebuilderDir")
-	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
-	serviceBuilder.ConfigRoot = serviceBuilderDir
+	fakeSB := runit.FakeServiceBuilder()
+	defer fakeSB.Cleanup()
+	serviceBuilder := &fakeSB.ServiceBuilder
+
 	pod := Pod{
 		Id:             "testPod",
 		path:           "/data/pods/testPod",
@@ -264,10 +264,10 @@ func TestBuildRunitServices(t *testing.T) {
 }
 
 func TestUninstall(t *testing.T) {
-	serviceBuilder := runit.FakeServiceBuilder()
-	serviceBuilderDir, err := ioutil.TempDir("", "servicebuilderDir")
-	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
-	serviceBuilder.ConfigRoot = serviceBuilderDir
+	fakeSB := runit.FakeServiceBuilder()
+	defer fakeSB.Cleanup()
+	serviceBuilder := &fakeSB.ServiceBuilder
+
 	testPodDir, err := ioutil.TempDir("", "testPodDir")
 	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
 	pod := Pod{
