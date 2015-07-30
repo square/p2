@@ -78,7 +78,7 @@ func (l Lock) Lock(key string) error {
 	}, nil)
 
 	if err != nil {
-		return util.Errorf("Could not acquire lock on %s", key)
+		return KVError{Op: "acquire lock", Key: key, UnsafeError: err}
 	}
 	if success {
 		return nil
