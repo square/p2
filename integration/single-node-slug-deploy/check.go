@@ -42,11 +42,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not generate preparer pod: %s\n", err)
 	}
-	preparerConfig, err := ioutil.ReadFile(preparerManifest)
-	if err != nil {
-		log.Fatalf("Could not load preparer config: %s\n", err)
-	}
-	config, err := preparer.MarshalConfig(preparerConfig)
+	config, err := preparer.LoadConfig(preparerManifest)
 	if err != nil {
 		log.Fatalf("could not unmarshal config: %s\n", err)
 	}
@@ -370,11 +366,10 @@ func verifyHelloRunning() error {
 }
 
 func verifyHealthChecks(config *preparer.PreparerConfig, services []string) error {
-	opts := kp.Options{
-		Address: config.ConsulAddress,
-		HTTPS:   false,
+	store, err := config.GetStore()
+	if err != nil {
+		return err
 	}
-	store := kp.NewConsulStore(opts)
 
 	time.Sleep(5 * time.Second)
 	// check consul for health information for each app
