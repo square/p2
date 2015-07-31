@@ -25,7 +25,7 @@ func main() {
 	if configPath == "" {
 		logger.NoFields().Fatalln("No CONFIG_PATH variable was given")
 	}
-	preparerConfig, err := preparer.LoadPreparerConfig(configPath)
+	preparerConfig, err := preparer.LoadConfig(configPath)
 	if err != nil {
 		logger.WithField("inner_err", err).Fatalln("could not load preparer config")
 	}

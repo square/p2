@@ -11,7 +11,7 @@ import (
 
 func TestLoadConfigWillMarshalYaml(t *testing.T) {
 	configPath := util.From(runtime.Caller(0)).ExpandPath("test_preparer_config.yaml")
-	preparerConfig, err := LoadPreparerConfig(configPath)
+	preparerConfig, err := LoadConfig(configPath)
 	Assert(t).IsNil(err, "should have read config correctly")
 
 	Assert(t).AreEqual("foohost", preparerConfig.NodeName, "did not read the node name correctly")

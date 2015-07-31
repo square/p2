@@ -19,6 +19,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// DefaultConsulAddress is the default location for Consul when none is configured.
+// TODO: IPv6
+const DefaultConsulAddress = "127.0.0.1:8500"
+
 type AppConfig struct {
 	P2PreparerConfig PreparerConfig `yaml:"preparer"`
 }
@@ -57,34 +61,17 @@ type UserAuth struct {
 	DeployPolicyPath string `yaml:"deploy_policy"`
 }
 
-func LoadPreparerConfig(configPath string) (*PreparerConfig, error) {
+// LoadConfig reads the preparer's configuration from a file.
+func LoadConfig(configPath string) (*PreparerConfig, error) {
 	configBytes, err := ioutil.ReadFile(configPath)
 	if err != nil {
-		return nil, util.Errorf("Could not read the config file %s - %s", configPath, err)
+		return nil, util.Errorf("reading config file: %s", err)
 	}
-	appConfig := AppConfig{}
-	err = yaml.Unmarshal(configBytes, &appConfig)
-	preparerConfig := appConfig.P2PreparerConfig
-	if err != nil {
-		return nil, util.Errorf("The config file %s was malformatted - %s", configPath, err)
-	}
-
-	if preparerConfig.NodeName == "" {
-		preparerConfig.NodeName, _ = os.Hostname()
-	}
-	if preparerConfig.ConsulAddress == "" {
-		preparerConfig.ConsulAddress = "127.0.0.1:8500"
-	}
-	if preparerConfig.HooksDirectory == "" {
-		preparerConfig.HooksDirectory = hooks.DEFAULT_PATH
-	}
-	if preparerConfig.PodRoot == "" {
-		preparerConfig.PodRoot = pods.DEFAULT_PATH
-	}
-	return &preparerConfig, nil
+	return UnmarshalConfig(configBytes)
 }
 
-func MarshalConfig(config []byte) (*PreparerConfig, error) {
+// UnmarshalConfig reads the preparer's configuration from its bytes.
+func UnmarshalConfig(config []byte) (*PreparerConfig, error) {
 	appConfig := AppConfig{}
 	err := yaml.Unmarshal(config, &appConfig)
 	preparerConfig := appConfig.P2PreparerConfig
@@ -96,7 +83,7 @@ func MarshalConfig(config []byte) (*PreparerConfig, error) {
 		preparerConfig.NodeName, _ = os.Hostname()
 	}
 	if preparerConfig.ConsulAddress == "" {
-		preparerConfig.ConsulAddress = "127.0.0.1:8500"
+		preparerConfig.ConsulAddress = DefaultConsulAddress
 	}
 	if preparerConfig.HooksDirectory == "" {
 		preparerConfig.HooksDirectory = hooks.DEFAULT_PATH
@@ -108,24 +95,27 @@ func MarshalConfig(config []byte) (*PreparerConfig, error) {
 
 }
 
-func LoadConsulToken(path string) (string, error) {
+// loadToken reads the file at the given path and trims its contents for use as a Consul
+// token.
+func loadToken(path string) (string, error) {
 	if path == "" {
 		return "", nil
 	}
-	consulToken, err := ioutil.ReadFile(path)
+	token, err := ioutil.ReadFile(path)
 	if err != nil {
-		return "", util.Errorf("Could not read Consul token at path %s: %s", path, err)
+		return "", util.Errorf("reading Consul token: %s", err)
 	}
-	return strings.TrimSpace(string(consulToken)), nil
+	return strings.TrimSpace(string(token)), nil
 }
 
-func loadTLS(c *PreparerConfig) (*http.Client, error) {
+// getTLSClient constructs an HTTP client that uses keys/certificates in the given files.
+func getTLSClient(certFile, keyFile, caFile string) (*http.Client, error) {
 	var certs []tls.Certificate
-	if c.CertFile != "" || c.KeyFile != "" {
-		if c.CertFile == "" || c.KeyFile == "" {
-			return nil, util.Errorf("TLS client requires both cert_file and key_file")
+	if certFile != "" || keyFile != "" {
+		if certFile == "" || keyFile == "" {
+			return nil, util.Errorf("TLS client requires both cert file and key file")
 		}
-		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 		if err != nil {
 			return nil, err
 		}
@@ -133,16 +123,20 @@ func loadTLS(c *PreparerConfig) (*http.Client, error) {
 	}
 
 	var cas *x509.CertPool
-	if c.CAFile != "" {
+	if caFile != "" {
 		cas = x509.NewCertPool()
-		caBytes, err := ioutil.ReadFile(c.CAFile)
+		caBytes, err := ioutil.ReadFile(caFile)
 		if err != nil {
 			return nil, err
 		}
 		ok := cas.AppendCertsFromPEM(caBytes)
 		if !ok {
-			return nil, util.Errorf("Could not parse certificate file: %s", c.CAFile)
+			return nil, util.Errorf("Could not parse certificate file: %s", caFile)
 		}
+	}
+
+	if len(certs) == 0 && cas == nil {
+		return http.DefaultClient, nil
 	}
 
 	tlsConfig := &tls.Config{
@@ -151,6 +145,26 @@ func loadTLS(c *PreparerConfig) (*http.Client, error) {
 		RootCAs:      cas,
 	}
 	return &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}, nil
+}
+
+// GetStore constructs a key-value store from the given configuration.
+func (c *PreparerConfig) GetStore() (kp.Store, error) {
+	token, err := loadToken(c.ConsulTokenPath)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := getTLSClient(c.CertFile, c.KeyFile, c.CAFile)
+	if err != nil {
+		return nil, err
+	}
+
+	return kp.NewConsulStore(kp.Options{
+		Address: c.ConsulAddress,
+		HTTPS:   c.ConsulHttps,
+		Token:   token,
+		Client:  client,
+	}), nil
 }
 
 func addHooks(preparerConfig *PreparerConfig, logger logging.Logger) {
@@ -234,30 +248,10 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		return nil, util.Errorf("unrecognized auth type")
 	}
 
-	consulToken := ""
-	if preparerConfig.ConsulTokenPath != "" {
-		consulToken, err = LoadConsulToken(preparerConfig.ConsulTokenPath)
-		if err != nil {
-			return nil, err
-		}
+	store, err := preparerConfig.GetStore()
+	if err != nil {
+		return nil, err
 	}
-
-	var client *http.Client
-	if preparerConfig.CertFile != "" ||
-		preparerConfig.KeyFile != "" ||
-		preparerConfig.CAFile != "" {
-		client, err = loadTLS(preparerConfig)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	store := kp.NewConsulStore(kp.Options{
-		Address: preparerConfig.ConsulAddress,
-		HTTPS:   preparerConfig.ConsulHttps,
-		Token:   consulToken,
-		Client:  client,
-	})
 
 	listener := HookListener{
 		Intent:         store,

@@ -10,7 +10,6 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
-	"github.com/square/p2/pkg/util/net"
 )
 
 // These constants should probably all be something the p2 user can set
@@ -58,22 +57,16 @@ type PodWatch struct {
 // service and kills routines for services that should no
 // longer be running.
 func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, shutdownCh chan struct{}) {
-	var store kp.Store
-
-	consul := config.ConsulAddress
-	node := config.NodeName
-	pods := []PodWatch{}
-	authtoken, err := preparer.LoadConsulToken(config.ConsulTokenPath)
+	store, err := config.GetStore()
 	if err != nil {
-		logger.WithField("inner_err", err).Warningln("Could not load consul token")
+		// A bad config should have already produced a nice, user-friendly error message.
+		logger.
+			WithField("inner_err", err).
+			Fatalf("error creating health monitor KV store")
 	}
 
-	store = kp.NewConsulStore(kp.Options{
-		Address: consul,
-		HTTPS:   config.ConsulHttps,
-		Token:   authtoken,
-		Client:  net.NewHeaderClient(nil, http.DefaultTransport),
-	})
+	node := config.NodeName
+	pods := []PodWatch{}
 	pods = updateHealthMonitors(store, pods, node, logger)
 	for {
 		select {
