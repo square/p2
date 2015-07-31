@@ -1,7 +1,6 @@
 package kp
 
 import (
-	"net/http"
 	"testing"
 
 	"github.com/hashicorp/consul/testutil"
@@ -54,19 +53,10 @@ func TestGetHealthWithEntry(t *testing.T) {
 }
 
 func makeStore(t *testing.T) (Store, *testutil.TestServer) {
-	// Make client config
-	store := defaultStore()
-
 	// Create server
 	server := testutil.NewTestServerConfig(t, nil)
-
-	return store, server
-}
-
-func defaultStore() Store {
-	return NewConsulStore(Options{
-		Address: "localhost:8500",
-		HTTPS:   false,
-		Client:  http.DefaultClient,
+	store := NewConsulStore(Options{
+		Address: server.HTTPAddr,
 	})
+	return store, server
 }
