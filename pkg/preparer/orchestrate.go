@@ -30,6 +30,7 @@ type Hooks interface {
 type Store interface {
 	Pod(string) (*pods.Manifest, time.Duration, error)
 	SetPod(string, pods.Manifest) (time.Duration, error)
+	RegisterService(pods.Manifest, string) error
 	WatchPods(string, <-chan struct{}, chan<- error, chan<- kp.ManifestResult)
 }
 
@@ -40,6 +41,7 @@ type Preparer struct {
 	hookListener HookListener
 	Logger       logging.Logger
 	podRoot      string
+	caFile       string
 	authPolicy   auth.Policy
 }
 
@@ -220,6 +222,12 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 		}
 
 		p.tryRunHooks(hooks.AFTER_INSTALL, pod, newManifest, logger)
+
+		err = p.store.RegisterService(*newManifest, p.caFile)
+		if err != nil {
+			logger.WithField("err", err).Errorln("Service registration failed")
+			return false
+		}
 
 		if currentManifest != nil {
 			success, err := pod.Halt(currentManifest)
