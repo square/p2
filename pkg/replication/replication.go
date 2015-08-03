@@ -27,7 +27,7 @@ func (r Replicator) CheckPreparers() error {
 	for _, host := range r.Nodes {
 		_, _, err := r.Store.Pod(kp.RealityPath(host, preparer.POD_ID))
 		if err != nil {
-			return util.Errorf("Host %q does not have a preparer", host)
+			return util.Errorf("Could not verify %v state on %q: %v", preparer.POD_ID, host, err)
 		}
 	}
 	return nil
