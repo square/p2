@@ -35,7 +35,7 @@ func TestUpdatePods(t *testing.T) {
 	// ids for pods: 1, 2, test
 	// 0, 3 should have values in their shutdownCh
 	logger := logging.NewLogger(logrus.Fields{})
-	pods := updatePods(current, reality, &logger, nil, "")
+	pods := updatePods(nil, nil, current, reality, "", &logger)
 	Assert(t).AreEqual(true, <-current[0].shutdownCh, "this PodWatch should have been shutdown")
 	Assert(t).AreEqual(true, <-current[3].shutdownCh, "this PodWatch should have been shutdown")
 

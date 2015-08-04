@@ -36,6 +36,7 @@ const TTL = 60 * time.Second
 // has a running MonitorHealth go routine
 type PodWatch struct {
 	manifest pods.Manifest
+	client   *http.Client
 
 	// For tracking/controlling the go routine that performs health checks
 	// on the pod associated with this PodWatch
@@ -64,17 +65,24 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 			WithField("inner_err", err).
 			Fatalf("error creating health monitor KV store")
 	}
+	client, err := config.GetClient()
+	if err != nil {
+		logger.
+			WithField("inner_err", err).
+			Fatalf("failed to get http client for this preparer")
+
+	}
 
 	node := config.NodeName
 	pods := []PodWatch{}
-	pods = updateHealthMonitors(store, pods, node, logger)
+	pods = updateHealthMonitors(store, client, pods, node, logger)
 	for {
 		select {
 		case <-time.After(POLL_KV_FOR_PODS):
 			// check if pods have been added or removed
 			// starts monitor routine for new pods
 			// kills monitor routine for removed pods
-			pods = updateHealthMonitors(store, pods, node, logger)
+			pods = updateHealthMonitors(store, client, pods, node, logger)
 		case <-shutdownCh:
 			return
 		}
@@ -85,19 +93,25 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 // service it is monitoring. Every HEALTHCHECK_INTERVAL it
 // performs a health check and writes that information to
 // consul
-func (p *PodWatch) MonitorHealth(node string, store kp.Store, shutdownCh chan bool) {
+func (p *PodWatch) MonitorHealth(store kp.Store, node string, shutdownCh chan bool) {
 	for {
 		select {
 		case <-time.After(HEALTHCHECK_INTERVAL):
-			p.checkHealth(node, p.manifest.StatusPort, store)
+			p.checkHealth(store, node, p.manifest.StatusPort)
 		case <-shutdownCh:
 			return
 		}
 	}
 }
 
-func (p *PodWatch) checkHealth(node string, port int, store kp.Store) {
-	resp, err := kp.HttpStatusCheck(node, port)
+func (p *PodWatch) checkHealth(store kp.Store, node string, port int) {
+	var resp *http.Response
+	var err error
+	if p.manifest.StatusHTTP == true {
+		resp, err = kp.HttpsStatusCheck(p.client, node, port)
+	} else {
+		resp, err = kp.HttpStatusCheck(node, port)
+	}
 	health, err := resultFromCheck(resp, err)
 	if err != nil {
 		return
@@ -115,14 +129,14 @@ func (p *PodWatch) checkHealth(node string, port int, store kp.Store) {
 	}
 }
 
-func updateHealthMonitors(store kp.Store, watchedPods []PodWatch, node string, logger *logging.Logger) []PodWatch {
+func updateHealthMonitors(store kp.Store, client *http.Client, watchedPods []PodWatch, node string, logger *logging.Logger) []PodWatch {
 	path := kp.RealityPath(node)
 	reality, _, err := store.ListPods(path)
 	if err != nil {
 		logger.WithField("inner_err", err).Warningln("failed to get pods from reality store")
 	}
 
-	return updatePods(watchedPods, reality, logger, store, node)
+	return updatePods(store, client, watchedPods, reality, node, logger)
 }
 
 func resultFromCheck(resp *http.Response, err error) (health.Result, error) {
@@ -186,7 +200,7 @@ func (p *PodWatch) updateNeeded(res health.Result, ttl time.Duration) bool {
 
 // compares services being monitored with services that
 // need to be monitored.
-func updatePods(current []PodWatch, reality []kp.ManifestResult, logger *logging.Logger, store kp.Store, node string) []PodWatch {
+func updatePods(store kp.Store, client *http.Client, current []PodWatch, reality []kp.ManifestResult, node string, logger *logging.Logger) []PodWatch {
 	newCurrent := []PodWatch{}
 	// for pod in current if pod not in reality: kill
 	for _, pod := range current {
@@ -222,10 +236,11 @@ func updatePods(current []PodWatch, reality []kp.ManifestResult, logger *logging
 		if missing && man.Manifest.StatusPort != 0 {
 			newPod := PodWatch{
 				manifest:   man.Manifest,
+				client:     client,
 				shutdownCh: make(chan bool, 1),
 				logger:     logger,
 			}
-			go newPod.MonitorHealth(node, store, newPod.shutdownCh)
+			go newPod.MonitorHealth(store, node, newPod.shutdownCh)
 			newCurrent = append(newCurrent, newPod)
 		}
 	}

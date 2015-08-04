@@ -133,7 +133,7 @@ func generatePreparerPod(workdir string) (string, error) {
 	}
 	manifest.RunAs = "root"
 	manifest.StatusPort = preparerStatusPort
-	manifest.StatusHTTP = true
+	manifest.StatusHTTP = false
 
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {
@@ -296,7 +296,7 @@ func postHelloManifest(dir string) error {
 	manifest := &pods.Manifest{}
 	manifest.Id = "hello"
 	manifest.StatusPort = 43770
-	manifest.StatusHTTP = true
+	manifest.StatusHTTP = false
 	stanza := pods.LaunchableStanza{
 		LaunchableId:   "hello",
 		LaunchableType: "hoist",

@@ -60,7 +60,7 @@ func HttpStatusCheck(node string, port int) (*http.Response, error) {
 	return http.Get(url)
 }
 
-func HttpsStatusCheck(node string, port int) (*http.Response, error) {
+func HttpsStatusCheck(client *http.Client, node string, port int) (*http.Response, error) {
 	url := fmt.Sprintf("https://%s:%d/_status", node, port)
-	return http.Get(url)
+	return client.Get(url)
 }
