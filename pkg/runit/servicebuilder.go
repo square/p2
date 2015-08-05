@@ -126,6 +126,16 @@ var DefaultChpst = "/usr/bin/chpst"
 // stores the truth of what services are "supposed" to exist right now, which
 // is needed for pruning unused services later
 func (s *ServiceBuilder) write(path string, templates map[string]ServiceTemplate) error {
+	if len(templates) == 0 {
+		// only write non-empty servicebuilder files
+		if _, err := os.Stat(path); err == nil {
+			if err = os.Remove(path); err != nil {
+				return util.Errorf("Could not remove old servicebuilder template when new path should have no services: %s", err)
+			}
+		}
+		return nil
+	}
+
 	text, err := yaml.Marshal(templates)
 	if err != nil {
 		return err

@@ -35,6 +35,20 @@ func TestWriteTemplate(t *testing.T) {
 	Assert(t).IsNil(err, "should have parsed templates")
 
 	Assert(t).IsTrue(reflect.DeepEqual(test, fakeTemplate), "should have been equal")
+
+	// write an empty template, the file should disappear
+	err = sb.write(fakePath, map[string]ServiceTemplate{})
+	Assert(t).IsNil(err, "should not erred when writing empty template")
+
+	_, err = os.Stat(fakePath)
+	Assert(t).IsTrue(os.IsNotExist(err), "The empty template should have removed the servicebuilder file")
+
+	// if the file doesn't exist, no-op
+	err = sb.write(fakePath, map[string]ServiceTemplate{})
+	Assert(t).IsNil(err, "should not erred when writing empty template")
+
+	_, err = os.Stat(fakePath)
+	Assert(t).IsTrue(os.IsNotExist(err), "The empty template should have removed the servicebuilder file")
 }
 
 func TestStagedContents(t *testing.T) {
