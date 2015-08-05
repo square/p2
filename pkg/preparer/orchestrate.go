@@ -43,6 +43,7 @@ type Preparer struct {
 	podRoot      string
 	caFile       string
 	authPolicy   auth.Policy
+	consulHealth bool
 }
 
 func (p *Preparer) WatchForHooks(quit chan struct{}) {
@@ -223,10 +224,12 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 
 		p.tryRunHooks(hooks.AFTER_INSTALL, pod, newManifest, logger)
 
-		err = p.store.RegisterService(*newManifest, p.caFile)
-		if err != nil {
-			logger.WithField("err", err).Errorln("Service registration failed")
-			return false
+		if p.consulHealth {
+			err = p.store.RegisterService(*newManifest, p.caFile)
+			if err != nil {
+				logger.WithField("err", err).Errorln("Service registration failed")
+				return false
+			}
 		}
 
 		if currentManifest != nil {
