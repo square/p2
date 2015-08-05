@@ -37,14 +37,14 @@ func (c consulStore) RegisterService(manifest pods.Manifest, caPath string) erro
 		}
 		if manifest.StatusHTTP {
 			podService.Check.Script = fmt.Sprintf(
-				hostname,
 				httpStatusCheck,
+				hostname,
 				manifest.StatusPort,
 			)
 		} else {
 			podService.Check.Script = fmt.Sprintf(
-				hostname,
 				httpsStatusCheck,
+				hostname,
 				manifest.StatusPort,
 				caPath,
 			)
