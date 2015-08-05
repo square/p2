@@ -5,3 +5,4 @@ target/*
 /p2-launch
 /p2-bootstrap
 /p2-bin2pod
+/integration/single-slug-deploy/certs

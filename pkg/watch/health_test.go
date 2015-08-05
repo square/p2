@@ -45,18 +45,18 @@ func TestUpdatePods(t *testing.T) {
 }
 
 func TestUpdateNeeded(t *testing.T) {
-	p := newWatch("test")
+	sc := StatusCheck{}
 	ti := time.Now()
-	p.lastCheck = ti
-	p.lastStatus = health.Passing
+	sc.lastCheck = ti
+	sc.lastStatus = health.Passing
 	res := health.Result{
 		Status: health.Critical,
 	}
-	Assert(t).AreEqual(true, p.updateNeeded(res, 1000), "should need update since Result.Status changed")
+	Assert(t).AreEqual(true, sc.updateNeeded(res, 1000), "should need update since Result.Status changed")
 
 	res.Status = health.Passing
-	Assert(t).AreEqual(true, p.updateNeeded(res, 0), "TTL is 0 so should always need update")
-	Assert(t).AreEqual(false, p.updateNeeded(res, 1000), "TTL is >> than time since ti was created and status is unchanged")
+	Assert(t).AreEqual(true, sc.updateNeeded(res, 0), "TTL is 0 so should always need update")
+	Assert(t).AreEqual(false, sc.updateNeeded(res, 1000), "TTL is >> than time since ti was created and status is unchanged")
 }
 
 func TestResultFromCheck(t *testing.T) {

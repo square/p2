@@ -56,12 +56,12 @@ func (c consulStore) RegisterService(manifest pods.Manifest, caPath string) erro
 }
 
 // Go version of http status check
-func HttpStatusCheck(client *http.Client, node string, port int) (*http.Response, error) {
-	url := fmt.Sprintf("http://%s:%d/_status", node, port)
+func HttpStatusCheck(client *http.Client, uri string) (*http.Response, error) {
+	url := fmt.Sprintf("http://%s/_status", uri)
 	return client.Get(url)
 }
 
-func HttpsStatusCheck(client *http.Client, node string, port int) (*http.Response, error) {
-	url := fmt.Sprintf("https://%s:%d/_status", node, port)
+func HttpsStatusCheck(client *http.Client, uri string) (*http.Response, error) {
+	url := fmt.Sprintf("https://%s/_status", uri)
 	return client.Get(url)
 }

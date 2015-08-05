@@ -1,6 +1,7 @@
 package watch
 
 import (
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -36,11 +37,20 @@ const TTL = 60 * time.Second
 // has a running MonitorHealth go routine
 type PodWatch struct {
 	manifest pods.Manifest
-	client   *http.Client
 
 	// For tracking/controlling the go routine that performs health checks
 	// on the pod associated with this PodWatch
 	shutdownCh chan bool
+
+	logger *logging.Logger
+}
+
+type StatusCheck struct {
+	ID     string
+	Node   string
+	URI    string
+	HTTP   bool
+	Client *http.Client
 
 	// the fields are provided so it can be determined if new health checks
 	// actually need to be sent to consul. If newT - oldT << TTL and status
@@ -48,7 +58,6 @@ type PodWatch struct {
 	lastCheck  time.Time          // time of last health check
 	lastStatus health.HealthState // status of last health check
 
-	logger *logging.Logger
 }
 
 // MonitorPodHealth is meant to be a long running go routine.
@@ -93,43 +102,41 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 // service it is monitoring. Every HEALTHCHECK_INTERVAL it
 // performs a health check and writes that information to
 // consul
-func (p *PodWatch) MonitorHealth(store kp.Store, node string, shutdownCh chan bool) {
+func (p *PodWatch) MonitorHealth(store kp.Store, statusChecker StatusCheck, shutdownCh chan bool) {
 	for {
 		select {
 		case <-time.After(HEALTHCHECK_INTERVAL):
-			p.checkHealth(store, node, p.manifest.StatusPort)
+			p.checkHealth(store, statusChecker)
 		case <-shutdownCh:
 			return
 		}
 	}
 }
 
-func (p *PodWatch) checkHealth(store kp.Store, node string, port int) {
-	var resp *http.Response
-	var err error
-	if p.manifest.StatusHTTP == true {
-		resp, err = kp.HttpsStatusCheck(p.client, node, port)
-	} else {
-		resp, err = kp.HttpStatusCheck(p.client, node, port)
-	}
+func (p *PodWatch) checkHealth(store kp.Store, sc StatusCheck) {
+	resp, err := sc.Check()
 	health, err := resultFromCheck(resp, err)
 	if err != nil {
 		return
 	}
-	health.ID = p.manifest.Id
-	health.Node = node
-	health.Service = p.manifest.Id
+	health.ID = sc.ID
+	health.Node = sc.Node
+	health.Service = sc.ID
 
-	if p.updateNeeded(health, TTL) {
-		p.lastCheck, err = writeToConsul(health, store)
-		p.lastStatus = health.Status
+	if sc.updateNeeded(health, TTL) {
+		sc.lastCheck, err = writeToConsul(health, store)
+		sc.lastStatus = health.Status
 		if err != nil {
 			p.logger.WithField("inner_err", err).Warningln("failed to write to consul")
 		}
 	}
 }
 
-func updateHealthMonitors(store kp.Store, client *http.Client, watchedPods []PodWatch, node string, logger *logging.Logger) []PodWatch {
+func updateHealthMonitors(store kp.Store,
+	client *http.Client,
+	watchedPods []PodWatch,
+	node string,
+	logger *logging.Logger) []PodWatch {
 	path := kp.RealityPath(node)
 	reality, _, err := store.ListPods(path)
 	if err != nil {
@@ -184,20 +191,6 @@ func resToKPRes(res health.Result) kp.WatchResult {
 	}
 }
 
-func (p *PodWatch) updateNeeded(res health.Result, ttl time.Duration) bool {
-	// if status has changed indicate that consul needs to be updated
-	if p.lastStatus != res.Status {
-		return true
-	}
-	// if more than TTL / 4 seconds have elapsed since previous check
-	// indicate that consul needs to be updated
-	if time.Since(p.lastCheck) > time.Duration(ttl/4)*time.Second {
-		return true
-	}
-
-	return false
-}
-
 // compares services being monitored with services that
 // need to be monitored.
 func updatePods(store kp.Store,
@@ -241,13 +234,42 @@ func updatePods(store kp.Store,
 		if missing && man.Manifest.StatusPort != 0 {
 			newPod := PodWatch{
 				manifest:   man.Manifest,
-				client:     client,
 				shutdownCh: make(chan bool, 1),
 				logger:     logger,
 			}
-			go newPod.MonitorHealth(store, node, newPod.shutdownCh)
+
+			// Each health monitor will have its own statusChecker
+			sc := StatusCheck{
+				ID:     newPod.manifest.Id,
+				Node:   node,
+				URI:    fmt.Sprintf("%s:%d", node, newPod.manifest.StatusPort),
+				Client: client,
+				HTTP:   newPod.manifest.StatusHTTP,
+			}
+			go newPod.MonitorHealth(store, sc, newPod.shutdownCh)
 			newCurrent = append(newCurrent, newPod)
 		}
 	}
 	return newCurrent
+}
+
+func (sc *StatusCheck) updateNeeded(res health.Result, ttl time.Duration) bool {
+	// if status has changed indicate that consul needs to be updated
+	if sc.lastStatus != res.Status {
+		return true
+	}
+	// if more than TTL / 4 seconds have elapsed since previous check
+	// indicate that consul needs to be updated
+	if time.Since(sc.lastCheck) > time.Duration(ttl/4)*time.Second {
+		return true
+	}
+
+	return false
+}
+
+func (sc *StatusCheck) Check() (*http.Response, error) {
+	if sc.HTTP {
+		return kp.HttpsStatusCheck(sc.Client, sc.URI)
+	}
+	return kp.HttpStatusCheck(sc.Client, sc.URI)
 }
