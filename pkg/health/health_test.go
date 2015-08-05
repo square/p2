@@ -1,6 +1,7 @@
 package health
 
 import (
+	"fmt"
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -33,9 +34,9 @@ func TestFindWorst(t *testing.T) {
 }
 
 func TestPickServiceResult(t *testing.T) {
-	t1 := mockServiceEntry("1", "passing")
-	t2 := mockServiceEntry("2", "passing")
-	t3 := mockServiceEntry("3", "passing")
+	t1 := mockServiceEntry("1", Passing)
+	t2 := mockServiceEntry("2", Passing)
+	t3 := mockServiceEntry("3", Passing)
 
 	// Catalog is healthy but KV is not present
 	testMap := getResult([]*api.ServiceEntry{t1, t2, t3})
@@ -62,9 +63,9 @@ func TestPickServiceResult(t *testing.T) {
 		Assert(t).AreEqual(consulWatchToResult(kv[key]), value, "kv is healthy, catalog not present, selectResult did not match what was expected")
 	}
 
-	t1 = mockServiceEntry("1", "critical")
-	t2 = mockServiceEntry("2", "critical")
-	t3 = mockServiceEntry("3", "critical")
+	t1 = mockServiceEntry("1", Critical)
+	t2 = mockServiceEntry("2", Critical)
+	t3 = mockServiceEntry("3", Critical)
 	catalog = []*api.ServiceEntry{t1, t2, t3}
 
 	// KV is healthy but catalog is not
@@ -73,6 +74,41 @@ func TestPickServiceResult(t *testing.T) {
 	for key, value := range testMap {
 		Assert(t).AreEqual(consulWatchToResult(kv[key]), value, "kv is healthy, catalog is not and selectResult did not match what was expected")
 	}
+}
+
+type fakeNodeChecker struct {
+	checks []*api.HealthCheck
+	meta   *api.QueryMeta
+	err    error
+}
+
+func (f fakeNodeChecker) Node(_ string, _ *api.QueryOptions) ([]*api.HealthCheck, *api.QueryMeta, error) {
+	return f.checks, f.meta, f.err
+}
+
+func TestFetchHealth(t *testing.T) {
+	passingCheck := []*api.HealthCheck{fakeAPICheck("s", Passing)}
+	passingChecker := ConsulHealthChecker{health: fakeNodeChecker{
+		passingCheck,
+		&api.QueryMeta{LastIndex: 1337},
+		nil,
+	},
+	}
+
+	_, index, err := passingChecker.fetchNodeHealth("", 0)
+	Assert(t).AreEqual(uint64(1337), index, "Should have received the new index")
+	Assert(t).IsNil(err, "Should not have received an error")
+
+	erringChecker := ConsulHealthChecker{health: fakeNodeChecker{
+		nil,
+		nil,
+		fmt.Errorf("It messed up!"),
+	},
+	}
+
+	_, index, err = erringChecker.fetchNodeHealth("", 1337)
+	Assert(t).IsNotNil(err, "Should have been an error from the checker")
+	Assert(t).AreEqual(uint64(1337), index, "Should have assigned the index to the old index value due to error")
 }
 
 func mockWatchResult(entries []*api.ServiceEntry, st HealthState) map[string]kp.WatchResult {
@@ -102,13 +138,13 @@ func getResult(entries []*api.ServiceEntry) map[string]Result {
 	return res
 }
 
-func mockServiceEntry(s, st string) *api.ServiceEntry {
+func mockServiceEntry(s string, st HealthState) *api.ServiceEntry {
 	ret := &api.ServiceEntry{
 		Node: newAPINode(s),
 	}
-	h1 := newAPICheck(s+"1", st)
-	h2 := newAPICheck(s+"2", st)
-	h3 := newAPICheck(s+"3", st)
+	h1 := fakeAPICheck(s+"1", st)
+	h2 := fakeAPICheck(s+"2", st)
+	h3 := fakeAPICheck(s+"3", st)
 
 	ret.Checks = []*api.HealthCheck{h1, h2, h3}
 	return ret
@@ -120,11 +156,11 @@ func newAPINode(s string) *api.Node {
 	}
 }
 
-func newAPICheck(s, st string) *api.HealthCheck {
+func fakeAPICheck(s string, st HealthState) *api.HealthCheck {
 	return &api.HealthCheck{
 		CheckID:   "test" + s,
 		Node:      "node" + s,
 		ServiceID: "service" + s,
-		Status:    st,
+		Status:    string(st),
 	}
 }

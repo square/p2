@@ -10,13 +10,20 @@ import (
 
 type ConsulHealthChecker struct {
 	client      *api.Client
+	health      consulHealth
 	consulStore kp.Store
 	WaitTime    time.Duration
 }
 
+type consulHealth interface {
+	Node(string, *api.QueryOptions) ([]*api.HealthCheck, *api.QueryMeta, error)
+}
+
 func NewConsulHealthChecker(opts kp.Options) ConsulHealthChecker {
+	client := kp.NewConsulClient(opts)
 	return ConsulHealthChecker{
-		client:      kp.NewConsulClient(opts),
+		client:      client,
+		health:      client.Health(),
 		consulStore: kp.NewConsulStore(opts),
 		WaitTime:    1 * time.Minute,
 	}
@@ -40,10 +47,9 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 		case <-quitCh:
 			return
 		case <-time.After(1 * time.Second):
-			checks, meta, err := h.client.Health().Node(nodename, &api.QueryOptions{
-				WaitIndex: curIndex,
-				WaitTime:  h.WaitTime,
-			})
+			var err error
+			var checks []*api.HealthCheck
+			checks, curIndex, err = h.fetchNodeHealth(nodename, curIndex)
 			if err != nil {
 				errCh <- err
 			}
@@ -51,7 +57,6 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 			if err != nil {
 				errCh <- err
 			} else {
-				curIndex = meta.LastIndex
 				catalogResults := make([]Result, 0)
 				for _, check := range checks {
 					outResult := consulCheckToResult(*check)
@@ -68,6 +73,18 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 			}
 		}
 	}
+}
+
+func (h ConsulHealthChecker) fetchNodeHealth(nodename string, curIndex uint64) ([]*api.HealthCheck, uint64, error) {
+	checks, meta, err := h.health.Node(nodename, &api.QueryOptions{
+		WaitIndex: curIndex,
+		WaitTime:  h.WaitTime,
+	})
+	if err != nil {
+		// return the current index, since there was an error
+		return nil, curIndex, err
+	}
+	return checks, meta.LastIndex, nil
 }
 
 // Service returns a map where values are individual results (keys are nodes)
