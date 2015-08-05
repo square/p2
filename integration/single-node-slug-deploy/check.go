@@ -129,11 +129,13 @@ func generatePreparerPod(workdir string) (string, error) {
 			"type":    "keyring",
 			"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
 		},
+		"ca_file":     "/usr/local/share/go/src/github.com/square/p2/integration/single-node-slug-deploy/certs/cert2.pem",
+		"cert_file":   "/usr/local/share/go/src/github.com/square/p2/integration/single-node-slug-deploy/certs/cert.pem",
+		"key_file":    "/usr/local/share/go/src/github.com/square/p2/integration/single-node-slug-deploy/certs/key.pem",
 		"status_port": preparerStatusPort,
 	}
 	manifest.RunAs = "root"
 	manifest.StatusPort = preparerStatusPort
-	manifest.StatusHTTP = false
 
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {
@@ -296,7 +298,7 @@ func postHelloManifest(dir string) error {
 	manifest := &pods.Manifest{}
 	manifest.Id = "hello"
 	manifest.StatusPort = 43770
-	manifest.StatusHTTP = false
+	manifest.StatusHTTP = true
 	stanza := pods.LaunchableStanza{
 		LaunchableId:   "hello",
 		LaunchableType: "hoist",
