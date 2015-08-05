@@ -110,7 +110,7 @@ func (p *PodWatch) checkHealth(store kp.Store, node string, port int) {
 	if p.manifest.StatusHTTP == true {
 		resp, err = kp.HttpsStatusCheck(p.client, node, port)
 	} else {
-		resp, err = kp.HttpStatusCheck(node, port)
+		resp, err = kp.HttpStatusCheck(p.client, node, port)
 	}
 	health, err := resultFromCheck(resp, err)
 	if err != nil {
@@ -200,7 +200,12 @@ func (p *PodWatch) updateNeeded(res health.Result, ttl time.Duration) bool {
 
 // compares services being monitored with services that
 // need to be monitored.
-func updatePods(store kp.Store, client *http.Client, current []PodWatch, reality []kp.ManifestResult, node string, logger *logging.Logger) []PodWatch {
+func updatePods(store kp.Store,
+	client *http.Client,
+	current []PodWatch,
+	reality []kp.ManifestResult,
+	node string,
+	logger *logging.Logger) []PodWatch {
 	newCurrent := []PodWatch{}
 	// for pod in current if pod not in reality: kill
 	for _, pod := range current {

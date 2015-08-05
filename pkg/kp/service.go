@@ -42,6 +42,7 @@ func (c consulStore) RegisterService(manifest pods.Manifest, caPath string) erro
 				manifest.StatusPort,
 			)
 		} else {
+			fmt.Println("saklfdhsdakfjashfkjasdfhs ", caPath, "    ", manifest.ID())
 			podService.Check.Script = fmt.Sprintf(
 				hostname,
 				httpsStatusCheck,
@@ -55,9 +56,9 @@ func (c consulStore) RegisterService(manifest pods.Manifest, caPath string) erro
 }
 
 // Go version of http status check
-func HttpStatusCheck(node string, port int) (*http.Response, error) {
+func HttpStatusCheck(client *http.Client, node string, port int) (*http.Response, error) {
 	url := fmt.Sprintf("http://%s:%d/_status", node, port)
-	return http.Get(url)
+	return client.Get(url)
 }
 
 func HttpsStatusCheck(client *http.Client, node string, port int) (*http.Response, error) {
