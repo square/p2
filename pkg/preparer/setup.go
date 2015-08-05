@@ -41,6 +41,7 @@ type PreparerConfig struct {
 	CAFile               string                 `yaml:"ca_file,omitempty"`
 	CertFile             string                 `yaml:"cert_file,omitempty"`
 	KeyFile              string                 `yaml:"key_file,omitempty"`
+	ConsulCAFile         string                 `yaml:"consul_ca_file,omitempty"`
 	PodRoot              string                 `yaml:"pod_root,omitempty"`
 	StatusPort           int                    `yaml:"status_port"`
 	Auth                 map[string]interface{} `yaml:"auth,omitempty"`
@@ -267,6 +268,11 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		return nil, util.Errorf("Could not create preparer pod directory: %s", err)
 	}
 
+	consulCAFile := preparerConfig.ConsulCAFile
+	if consulCAFile == "" {
+		consulCAFile = preparerConfig.CAFile
+	}
+
 	return &Preparer{
 		node:         preparerConfig.NodeName,
 		store:        store,
@@ -275,5 +281,6 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		Logger:       logger,
 		podRoot:      preparerConfig.PodRoot,
 		authPolicy:   authPolicy,
+		caFile:       consulCAFile,
 	}, nil
 }
