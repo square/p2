@@ -7,8 +7,8 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
-			"Comment": "v0.8.4",
-			"Rev": "3cb248e9df77413d58a6330dde84236d04c197d5"
+			"Comment": "v0.8.6-1-g8bca266",
+			"Rev": "8bca2664072173a3c71db4c28ca8d304079b1787"
 		},
 		{
 			"ImportPath": "github.com/alecthomas/units",
@@ -24,23 +24,23 @@
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/acl",
-			"Comment": "v0.5.2-161-g3e9e575",
-			"Rev": "3e9e575dee31f517b5e000729b3cb759267d2442"
+			"Comment": "v0.5.2-198-g3846dea",
+			"Rev": "3846dea3706fbf79090b73e447b0dde3b5ac1959"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/api",
-			"Comment": "v0.5.2-161-g3e9e575",
-			"Rev": "3e9e575dee31f517b5e000729b3cb759267d2442"
+			"Comment": "v0.5.2-198-g3846dea",
+			"Rev": "3846dea3706fbf79090b73e447b0dde3b5ac1959"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/consul/structs",
-			"Comment": "v0.5.2-161-g3e9e575",
-			"Rev": "3e9e575dee31f517b5e000729b3cb759267d2442"
+			"Comment": "v0.5.2-198-g3846dea",
+			"Rev": "3846dea3706fbf79090b73e447b0dde3b5ac1959"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/testutil",
-			"Comment": "v0.5.2-161-g3e9e575",
-			"Rev": "3e9e575dee31f517b5e000729b3cb759267d2442"
+			"Comment": "v0.5.2-198-g3846dea",
+			"Rev": "3846dea3706fbf79090b73e447b0dde3b5ac1959"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/go-msgpack/codec",
@@ -60,11 +60,11 @@
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
-			"Rev": "7d5b0be716b9d6d4269afdaae10032bb296d3cdf"
+			"Rev": "2f3083f6163ef51179ad42ed523a18c9a1141467"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp",
-			"Rev": "7d5b0be716b9d6d4269afdaae10032bb296d3cdf"
+			"Rev": "2f3083f6163ef51179ad42ed523a18c9a1141467"
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v1",
