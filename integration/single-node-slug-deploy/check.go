@@ -23,6 +23,7 @@ import (
 )
 
 const preparerStatusPort = 32170
+const certpath = "/var/tmp/certs"
 
 func main() {
 	// 1. Generate pod for preparer in this code version (`rake artifact:prepare`)
@@ -63,6 +64,7 @@ func main() {
 	fmt.Println("Executing bootstrap")
 	err = executeBootstrap(signedPreparerManifest, signedConsulManifest)
 	if err != nil {
+
 		log.Fatalf("Could not execute bootstrap: %s", err)
 	}
 
@@ -129,9 +131,9 @@ func generatePreparerPod(workdir string) (string, error) {
 			"type":    "keyring",
 			"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
 		},
-		"ca_file":     "/usr/local/share/go/src/github.com/square/p2/integration/single-node-slug-deploy/certs/cert2.pem",
-		"cert_file":   "/usr/local/share/go/src/github.com/square/p2/integration/single-node-slug-deploy/certs/cert.pem",
-		"key_file":    "/usr/local/share/go/src/github.com/square/p2/integration/single-node-slug-deploy/certs/key.pem",
+		"ca_file":     certpath + "/cert2.pem",
+		"cert_file":   certpath + "/cert.pem",
+		"key_file":    certpath + "/key.pem",
 		"status_port": preparerStatusPort,
 	}
 	manifest.RunAs = "root"

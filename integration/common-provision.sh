@@ -26,8 +26,9 @@ organizationalUnitName=Vel
 emailAddress=doesntmatter@something.edu
 "
 
-CERPATH=$GOPATH/src/github.com/square/p2/integration/single-slug-deploy/certs
-openssl req -x509 -newkey rsa:2048 -keyout $CERTPATH/key.pem -out $CERTPATH/cert.pem -days XXX -subj "$(echo -n "$subj" | tr "\n" "/")"
+CERTPATH=/var/tmp/certs
+mkdir -p $CERTPATH
+openssl req -x509 -newkey rsa:2048 -keyout $CERTPATH/key.pem -out $CERTPATH/cert.pem -nodes -days 300 -subj "$(echo -n "$subj" | tr "\n" "/")"
 cp $CERTPATH/cert.pem $CERTPATH/cert2.pem
 
 go version

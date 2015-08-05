@@ -78,8 +78,7 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 	if err != nil {
 		logger.
 			WithField("inner_err", err).
-			Fatalf("failed to get http client for this preparer")
-
+			Warningln("failed to get http client for this preparer")
 	}
 
 	node := config.NodeName

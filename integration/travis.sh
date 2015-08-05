@@ -12,4 +12,19 @@ sudo mkdir -p /etc/servicebuilder.d /var/service-stage /var/service
 
 sudo cp $GOPATH/bin/p2-exec /usr/local/bin
 
+# make ssl certs
+subj="
+C=US
+ST=CA
+O=SQ
+localityName=SF
+commonName=$HOSTNAME
+organizationalUnitName=Vel
+emailAddress=doesntmatter@something.edu
+"
+CERTPATH=/var/tmp/certs
+mkdir -p $CERTPATH
+openssl req -x509 -newkey rsa:2048 -keyout $CERTPATH/key.pem -out $CERTPATH/cert.pem -nodes -days 300 -subj "$(echo -n "$subj" | tr "\n" "/")"
+cp $CERTPATH/cert.pem $CERTPATH/cert2.pem
+
 sudo env PATH=$PATH GOPATH=$GOPATH GOROOT=$GOROOT godep go run integration/single-node-slug-deploy/check.go
