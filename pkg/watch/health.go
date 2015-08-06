@@ -70,8 +70,7 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 	store, err := config.GetStore()
 	if err != nil {
 		// A bad config should have already produced a nice, user-friendly error message.
-		logger.
-			WithField("inner_err", err).
+		logger.WithError(err).
 			Fatalf("error creating health monitor KV store")
 	}
 	// if GetClient fails it means the certfile/keyfile/cafile were
@@ -217,7 +216,7 @@ func (p *PodWatch) writeToConsul(res health.Result) {
 	p.lastCheck, _, err = p.store.PutHealth(resToKPRes(res))
 	p.lastStatus = res.Status
 	if err != nil {
-		p.logger.WithField("inner_err", err).Warningln("failed to write to consul")
+		p.logger.WithError(err).Warningln("failed to write to consul")
 	}
 }
 func (p *PodWatch) updateNeeded(res health.Result, ttl time.Duration) bool {

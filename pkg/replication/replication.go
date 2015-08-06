@@ -133,7 +133,7 @@ func (r Replicator) updateOne(node string, done chan<- string, errCh chan<- erro
 
 	_, err := r.Store.SetPod(kp.IntentPath(node, r.Manifest.ID()), r.Manifest)
 	for err != nil {
-		nodeLogger.WithField("err", err).Errorln("Could not write intent store")
+		nodeLogger.WithError(err).Errorln("Could not write intent store")
 		errCh <- err
 		time.Sleep(1 * time.Second)
 		_, err = r.Store.SetPod(kp.IntentPath(node, r.Manifest.ID()), r.Manifest)
@@ -150,7 +150,7 @@ REALITY_LOOP:
 		case <-quitCh:
 			return
 		case err := <-realityErr:
-			nodeLogger.WithField("err", err).Errorln("Could not read reality store")
+			nodeLogger.WithError(err).Errorln("Could not read reality store")
 			errCh <- err
 		case mResult := <-realityResults:
 			receivedSHA, _ := mResult.Manifest.SHA()
@@ -174,7 +174,7 @@ HEALTH_LOOP:
 		case <-quitCh:
 			return
 		case err := <-healthErr:
-			nodeLogger.WithField("err", err).Errorln("Could not read health check")
+			nodeLogger.WithError(err).Errorln("Could not read health check")
 			errCh <- err
 		case res := <-healthResults:
 			id := res.ID

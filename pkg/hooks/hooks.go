@@ -82,8 +82,7 @@ func runDirectory(dirpath string, environment []string, logger logging.Logger) e
 		cmd.Env = environment
 		err := cmd.Run()
 		if err != nil {
-			logger.WithFields(logrus.Fields{
-				"err":    err,
+			logger.WithError(err).WithFields(logrus.Fields{
 				"path":   fullpath,
 				"output": hookOut.String(),
 			}).Warnf("Could not execute hook %s", f.Name())
@@ -114,14 +113,16 @@ func (h *HookDir) runHooks(dirpath string, pod Pod, podManifest *pods.Manifest) 
 	// Write manifest to a file so hooks can read it.
 	tmpManifestFile, err := ioutil.TempFile("", fmt.Sprintf("%s-manifest.yaml", podManifest.Id))
 	if err != nil {
-		logger.WithField("err", err).Warnln("Unable to open manifest file for hooks")
+		logger.WithError(err).
+			Warnln("Unable to open manifest file for hooks")
 		return err
 	}
 	defer os.Remove(tmpManifestFile.Name())
 
 	err = podManifest.Write(tmpManifestFile)
 	if err != nil {
-		logger.WithField("err", err).Warnln("Unable to write manifest file for hooks")
+		logger.WithError(err).
+			Warnln("Unable to write manifest file for hooks")
 		return err
 	}
 

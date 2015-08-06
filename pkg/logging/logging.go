@@ -60,6 +60,21 @@ func (l *Logger) NoFields() *logrus.Entry {
 	return l.WithFields(logrus.Fields{})
 }
 
+func (l *Logger) WithError(err error) *logrus.Entry {
+	fields := logrus.Fields{
+		"err": err.Error(),
+	}
+	// if err conforms to the util.CallsiteError interface, add some fields to
+	// the log message that can be used for exception reporting by a buddy
+	// launchable (e.g. to bugsnag or airbrake)
+	if stackErr, ok := err.(util.CallsiteError); ok {
+		fields["line_number"] = stackErr.LineNumber()
+		fields["filename"] = stackErr.Filename()
+		fields["function"] = stackErr.Function()
+	}
+	return l.Logger.WithFields(fields)
+}
+
 func (l *Logger) WithFields(fields logrus.Fields) *logrus.Entry {
 	return l.Logger.WithFields(Merge(Merge(l.baseFields, fields), processCounter.Fields()))
 }

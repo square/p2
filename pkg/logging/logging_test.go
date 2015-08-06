@@ -2,6 +2,7 @@ package logging
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/pkg/util"
 )
 
 func TestLoggingCanMergeFields(t *testing.T) {
@@ -65,6 +67,41 @@ func TestWithFieldsCombinesBaseFieldsAndGiven(t *testing.T) {
 
 	Assert(t).AreEqual("a", entry.Data["foo"], "should have kept foo")
 	Assert(t).AreEqual("c", entry.Data["baz"], "should have merged baz")
+}
+
+type fakeStackError struct {
+	lineNumber int
+	filename   string
+	function   string
+}
+
+func (f *fakeStackError) LineNumber() int {
+	return f.lineNumber
+}
+func (f *fakeStackError) Filename() string {
+	return f.filename
+}
+func (f *fakeStackError) Function() string {
+	return f.function
+}
+func (f *fakeStackError) Error() string {
+	return "error message"
+}
+
+func TestWithError(t *testing.T) {
+	var fakeError util.CallsiteError
+	fakeError = &fakeStackError{
+		lineNumber: 45,
+		filename:   "foo.go",
+		function:   "foo.New",
+	}
+
+	logger := NewLogger(logrus.Fields{})
+	entry := logger.WithError(fakeError)
+
+	Assert(t).AreEqual(entry.Data["line_number"], 45, fmt.Sprintf("Expected line number to be 45, was %d", entry.Data["line_number"]))
+	Assert(t).AreEqual(entry.Data["filename"], "foo.go", fmt.Sprintf("Expected filename to be foo.go, was %s", entry.Data["filename"]))
+	Assert(t).AreEqual(entry.Data["function"], "foo.New", fmt.Sprintf("Expected function to be foo.New, was %s", entry.Data["function"]))
 }
 
 func TestAddSocketHook(t *testing.T) {

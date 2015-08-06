@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/hashicorp/consul/api"
@@ -67,14 +69,50 @@ type KVError struct {
 	Op          string
 	Key         string
 	UnsafeError error
+	filename    string
+	function    string
+	lineNumber  int
 }
+
+var _ util.CallsiteError = KVError{}
+
+const KVErrorFormat = "%s failed for path %s%s"
 
 func (err KVError) Error() string {
 	cerr := ""
 	if *showConsulErrors {
 		cerr = fmt.Sprintf(": %s", err.UnsafeError)
 	}
-	return fmt.Sprintf("%s failed for path %s%s", err.Op, err.Key, cerr)
+	return fmt.Sprintf(KVErrorFormat, err.Op, err.Key, cerr)
+}
+
+func (err KVError) Filename() string {
+	return err.filename
+}
+
+func (err KVError) Function() string {
+	return err.function
+}
+
+func (err KVError) LineNumber() int {
+	return err.lineNumber
+}
+
+func NewKVError(op string, key string, unsafeError error) KVError {
+	var function string
+	// Skip one stack frame to get the file & line number of caller.
+	pc, file, line, ok := runtime.Caller(1)
+	if ok {
+		function = runtime.FuncForPC(pc).Name()
+	}
+	return KVError{
+		Op:          op,
+		Key:         key,
+		UnsafeError: unsafeError,
+		filename:    filepath.Base(file),
+		function:    function,
+		lineNumber:  line,
+	}
 }
 
 func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error) {
@@ -96,7 +134,7 @@ func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error
 		retDur = writeMeta.RequestTime
 	}
 	if err != nil {
-		return t, retDur, KVError{Op: "put", Key: key, UnsafeError: err}
+		return t, retDur, NewKVError("put", key, err)
 	}
 	return t, retDur, nil
 }

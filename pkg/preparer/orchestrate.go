@@ -57,7 +57,7 @@ func (p *Preparer) WatchForHooks(quit chan struct{}) {
 			hookQuitCh <- struct{}{}
 			return
 		case err := <-hookErrCh:
-			p.Logger.WithField("err", err).Errorln("Error updating hooks")
+			p.Logger.WithError(err).Errorln("Error updating hooks")
 		}
 	}
 }
@@ -82,9 +82,8 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	for {
 		select {
 		case err := <-errChan:
-			p.Logger.WithFields(logrus.Fields{
-				"inner_err": err,
-			}).Errorln("there was an error reading the manifest")
+			p.Logger.WithError(err).
+				Errorln("there was an error reading the manifest")
 		case result := <-podChan:
 			podId := result.Manifest.ID()
 			if podChanMap[podId] == nil {
@@ -110,10 +109,8 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest *pods.Manifest, logger logging.Logger) {
 	err := p.hooks.RunHookType(hookType, pod, manifest)
 	if err != nil {
-		logger.WithFields(logrus.Fields{
-			"err":   err,
-			"hooks": hookType,
-		}).Warnln("Could not run hooks")
+		logger.WithError(err).
+			WithField("hooks", hookType).Warnln("Could not run hooks")
 	}
 }
 
@@ -197,10 +194,8 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 	// if the old manifest is corrupted somehow, re-launch since we don't know if this is an update.
 	problemReadingCurrentManifest := (err != nil && err != pods.NoCurrentManifest)
 	if problemReadingCurrentManifest {
-		logger.WithFields(logrus.Fields{
-			"sha":       newSHA,
-			"inner_err": err,
-		}).Errorln("Current manifest not readable, will relaunch")
+		logger.WithError(err).WithField("sha", newSHA).
+			Errorln("Current manifest not readable, will relaunch")
 	}
 
 	if newOrDifferent || problemReadingCurrentManifest {
@@ -209,15 +204,14 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 		err = pod.Install(newManifest)
 		if err != nil {
 			// install failed, abort and retry
-			logger.WithFields(logrus.Fields{
-				"err": err,
-			}).Errorln("Install failed")
+			logger.WithError(err).Errorln("Install failed")
 			return false
 		}
 
 		err = pod.Verify(newManifest, p.authPolicy)
 		if err != nil {
-			logger.WithField("err", err).Errorln("Pod digest verification failed")
+			logger.WithError(err).
+				Errorln("Pod digest verification failed")
 			p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pod, newManifest, logger)
 			return false
 		}
@@ -227,7 +221,7 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 		if p.consulHealth {
 			err = p.store.RegisterService(*newManifest, p.caFile)
 			if err != nil {
-				logger.WithField("err", err).Errorln("Service registration failed")
+				logger.WithError(err).Errorln("Service registration failed")
 				return false
 			}
 		}
@@ -235,7 +229,8 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 		if currentManifest != nil {
 			success, err := pod.Halt(currentManifest)
 			if err != nil {
-				logger.WithField("err", err).Errorln("Pod halt failed")
+				logger.WithError(err).
+					Errorln("Pod halt failed")
 			} else if !success {
 				logger.NoFields().Warnln("One or more launchables did not halt successfully")
 			}
@@ -243,16 +238,13 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 
 		ok, err := pod.Launch(newManifest)
 		if err != nil {
-			logger.WithFields(logrus.Fields{
-				"err": err,
-			}).Errorln("Launch failed")
+			logger.WithError(err).
+				Errorln("Launch failed")
 		} else {
 			duration, err := p.store.SetPod(realityPath, *newManifest)
 			if err != nil {
-				logger.WithFields(logrus.Fields{
-					"err":      err,
-					"duration": duration,
-				}).Errorln("Could not set pod in reality store")
+				logger.WithError(err).WithField("duration", duration).
+					Errorln("Could not set pod in reality store")
 			}
 
 			p.tryRunHooks(hooks.AFTER_LAUNCH, pod, newManifest, logger)

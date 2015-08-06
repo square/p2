@@ -11,13 +11,16 @@ const fileLinePrefixFormat string = "%s:%d: "
 
 // StackError represents an error with an associated stack trace.
 type StackError interface {
-	error
+	CallsiteError
 	Stack() []byte
 }
 
 type stackError struct {
-	Message string
-	stack   []byte
+	Message    string
+	filename   string
+	function   string
+	lineNumber int
+	stack      []byte
 }
 
 func (e *stackError) Error() string {
@@ -28,14 +31,35 @@ func (e *stackError) Stack() []byte {
 	return e.stack
 }
 
+func (e *stackError) LineNumber() int {
+	return e.lineNumber
+}
+
+func (e *stackError) Filename() string {
+	return e.filename
+}
+
+func (e *stackError) Function() string {
+	return e.function
+}
+
 // Errorf formats according to fmt.Errorf, but prefixes the error
 // message with filename and line number.
 func Errorf(format string, a ...interface{}) error {
+	var function string
 	// Skip one stack frame to get the file & line number of caller.
-	if _, file, line, ok := runtime.Caller(1); ok {
+	pc, file, line, ok := runtime.Caller(1)
+	if ok {
 		format = fmt.Sprintf(fileLinePrefixFormat, filepath.Base(file), line) + format
+		function = runtime.FuncForPC(pc).Name()
 	}
-	return &stackError{fmt.Sprintf(format, a...), stack(1)}
+	return &stackError{
+		Message:    fmt.Sprintf(format, a...),
+		filename:   filepath.Base(file),
+		function:   function,
+		lineNumber: line,
+		stack:      stack(1),
+	}
 }
 
 // trimLine returns a subslice of b by slicing off the bytes up to and
