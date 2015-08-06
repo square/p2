@@ -159,7 +159,7 @@ func (c *PreparerConfig) GetStore() (kp.Store, error) {
 }
 
 func (c *PreparerConfig) getOpts() (kp.Options, error) {
-	client := &http.Client{}
+	client := http.DefaultClient
 	token, err := loadToken(c.ConsulTokenPath)
 	if err != nil {
 		return kp.Options{}, err
@@ -181,11 +181,7 @@ func (c *PreparerConfig) getOpts() (kp.Options, error) {
 }
 
 func (c *PreparerConfig) GetClient() (*http.Client, error) {
-	client, err := getTLSClient(c.CertFile, c.KeyFile, c.CAFile)
-	if err != nil {
-		return nil, err
-	}
-	return client, nil
+	return getTLSClient(c.CertFile, c.KeyFile, c.CAFile)
 }
 
 func addHooks(preparerConfig *PreparerConfig, logger logging.Logger) {

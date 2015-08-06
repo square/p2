@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -64,7 +65,6 @@ func main() {
 	fmt.Println("Executing bootstrap")
 	err = executeBootstrap(signedPreparerManifest, signedConsulManifest)
 	if err != nil {
-
 		log.Fatalf("Could not execute bootstrap: %s", err)
 	}
 
@@ -131,9 +131,9 @@ func generatePreparerPod(workdir string) (string, error) {
 			"type":    "keyring",
 			"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
 		},
-		"ca_file":     certpath + "/cert2.pem",
-		"cert_file":   certpath + "/cert.pem",
-		"key_file":    certpath + "/key.pem",
+		"ca_file":     filepath.Join(certpath, "cert.pem"),
+		"cert_file":   filepath.Join(certpath, "cert.pem"),
+		"key_file":    filepath.Join(certpath, "key.pem"),
 		"status_port": preparerStatusPort,
 	}
 	manifest.RunAs = "root"

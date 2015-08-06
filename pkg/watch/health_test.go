@@ -45,44 +45,48 @@ func TestUpdatePods(t *testing.T) {
 }
 
 func TestUpdateNeeded(t *testing.T) {
-	sc := StatusCheck{}
-	ti := time.Now()
-	sc.lastCheck = ti
-	sc.lastStatus = health.Passing
+	p := PodWatch{
+		lastCheck:  time.Now(),
+		lastStatus: health.Passing,
+	}
 	res := health.Result{
 		Status: health.Critical,
 	}
-	Assert(t).AreEqual(true, sc.updateNeeded(res, 1000), "should need update since Result.Status changed")
+	Assert(t).AreEqual(true, p.updateNeeded(res, 1000), "should need update since Result.Status changed")
 
 	res.Status = health.Passing
-	Assert(t).AreEqual(true, sc.updateNeeded(res, 0), "TTL is 0 so should always need update")
-	Assert(t).AreEqual(false, sc.updateNeeded(res, 1000), "TTL is >> than time since ti was created and status is unchanged")
+	Assert(t).AreEqual(true, p.updateNeeded(res, 0), "TTL is 0 so should always need update")
+	Assert(t).AreEqual(false, p.updateNeeded(res, 1000), "TTL is >> than time since ti was created and status is unchanged")
 }
 
 func TestResultFromCheck(t *testing.T) {
 	http.HandleFunc("/_status", statusHandler)
 	go http.ListenAndServe(":8080", nil)
 	client := http.DefaultClient
+	sc := StatusChecker{
+		ID:   "hello",
+		Node: "localhost:8080",
+	}
 
 	resp, _ := client.Get("http://localhost:8080/_status")
-	val, _ := resultFromCheck(resp, nil)
+	val, _ := sc.resultFromCheck(resp, nil)
 	Assert(t).AreEqual(health.Passing, val.Status, "200 should correspond to health.Passing")
 
 	resp.StatusCode = 282
-	val, _ = resultFromCheck(resp, nil)
+	val, _ = sc.resultFromCheck(resp, nil)
 	Assert(t).AreEqual(health.Passing, val.Status, "2** should correspond to health.Passing")
 
 	resp.StatusCode = 1000000
-	val, _ = resultFromCheck(resp, nil)
+	val, _ = sc.resultFromCheck(resp, nil)
 	Assert(t).AreEqual(health.Critical, val.Status, "!2** should correspond to health.Critical")
 
 	resp.StatusCode = 400
-	val, _ = resultFromCheck(nil, nil)
+	val, _ = sc.resultFromCheck(nil, nil)
 	Assert(t).AreEqual(health.Critical, val.Status, "resp == nil should correspond to health.Critical")
 
 	resp.StatusCode = 400
 	err := fmt.Errorf("an error")
-	val, _ = resultFromCheck(nil, err)
+	val, _ = sc.resultFromCheck(nil, err)
 	Assert(t).AreEqual(health.Critical, val.Status, "err != nil should correspond to health.Critical")
 }
 

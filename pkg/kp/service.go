@@ -2,7 +2,6 @@ package kp
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/hashicorp/consul/api"
@@ -42,7 +41,6 @@ func (c consulStore) RegisterService(manifest pods.Manifest, caPath string) erro
 				manifest.StatusPort,
 			)
 		} else {
-			fmt.Println("saklfdhsdakfjashfkjasdfhs ", caPath, "    ", manifest.ID())
 			podService.Check.Script = fmt.Sprintf(
 				hostname,
 				httpsStatusCheck,
@@ -53,15 +51,4 @@ func (c consulStore) RegisterService(manifest pods.Manifest, caPath string) erro
 	}
 
 	return c.client.Agent().ServiceRegister(podService)
-}
-
-// Go version of http status check
-func HttpStatusCheck(client *http.Client, uri string) (*http.Response, error) {
-	url := fmt.Sprintf("http://%s/_status", uri)
-	return client.Get(url)
-}
-
-func HttpsStatusCheck(client *http.Client, uri string) (*http.Response, error) {
-	url := fmt.Sprintf("https://%s/_status", uri)
-	return client.Get(url)
 }

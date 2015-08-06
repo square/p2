@@ -36,21 +36,13 @@ const TTL = 60 * time.Second
 // tree, and a bool that indicates whether or not the pod
 // has a running MonitorHealth go routine
 type PodWatch struct {
-	manifest pods.Manifest
+	manifest      pods.Manifest
+	store         kp.Store
+	statusChecker StatusChecker
 
 	// For tracking/controlling the go routine that performs health checks
 	// on the pod associated with this PodWatch
 	shutdownCh chan bool
-
-	logger *logging.Logger
-}
-
-type StatusCheck struct {
-	ID     string
-	Node   string
-	URI    string
-	HTTP   bool
-	Client *http.Client
 
 	// the fields are provided so it can be determined if new health checks
 	// actually need to be sent to consul. If newT - oldT << TTL and status
@@ -58,6 +50,17 @@ type StatusCheck struct {
 	lastCheck  time.Time          // time of last health check
 	lastStatus health.HealthState // status of last health check
 
+	logger *logging.Logger
+}
+
+// StatusChecker holds all the data required to perform
+// a status check on a particular service (ID corresponds
+// to service name to be consistent with pods.Manifest).
+type StatusChecker struct {
+	ID     string
+	Node   string
+	URI    string
+	Client *http.Client
 }
 
 // MonitorPodHealth is meant to be a long running go routine.
@@ -74,11 +77,13 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 			WithField("inner_err", err).
 			Fatalf("error creating health monitor KV store")
 	}
+	// if GetClient fails it means the certfile/keyfile/cafile were
+	// invalid or did not exist. It makes sense to throw a fatal error
 	client, err := config.GetClient()
 	if err != nil {
 		logger.
 			WithField("inner_err", err).
-			Warningln("failed to get http client for this preparer")
+			Fatalln("failed to get http client for this preparer")
 	}
 
 	node := config.NodeName
@@ -97,40 +102,9 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 	}
 }
 
-// Monitor Health is a go routine that runs as long as the
-// service it is monitoring. Every HEALTHCHECK_INTERVAL it
-// performs a health check and writes that information to
-// consul
-func (p *PodWatch) MonitorHealth(store kp.Store, statusChecker StatusCheck, shutdownCh chan bool) {
-	for {
-		select {
-		case <-time.After(HEALTHCHECK_INTERVAL):
-			p.checkHealth(store, statusChecker)
-		case <-shutdownCh:
-			return
-		}
-	}
-}
-
-func (p *PodWatch) checkHealth(store kp.Store, sc StatusCheck) {
-	resp, err := sc.Check()
-	health, err := resultFromCheck(resp, err)
-	if err != nil {
-		return
-	}
-	health.ID = sc.ID
-	health.Node = sc.Node
-	health.Service = sc.ID
-
-	if sc.updateNeeded(health, TTL) {
-		sc.lastCheck, err = writeToConsul(health, store)
-		sc.lastStatus = health.Status
-		if err != nil {
-			p.logger.WithField("inner_err", err).Warningln("failed to write to consul")
-		}
-	}
-}
-
+// Determines what pods should be running (by checking reality store)
+// Creates new PodWatch for any pod not being monitored and kills
+// PodWatches of pods that have been removed from the reality store
 func updateHealthMonitors(store kp.Store,
 	client *http.Client,
 	watchedPods []PodWatch,
@@ -143,51 +117,6 @@ func updateHealthMonitors(store kp.Store,
 	}
 
 	return updatePods(store, client, watchedPods, reality, node, logger)
-}
-
-func resultFromCheck(resp *http.Response, err error) (health.Result, error) {
-	res := health.Result{}
-	if err != nil || resp == nil {
-		res.Status = health.Critical
-		if err != nil {
-			res.Output = err.Error()
-		}
-		return res, nil
-	}
-
-	res.Output, err = getBody(resp)
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		res.Status = health.Passing
-	} else {
-		res.Status = health.Critical
-	}
-	return res, err
-}
-
-func getBody(resp *http.Response) (string, error) {
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	return string(body), nil
-}
-
-// once we get health data we need to make a put request
-// to consul to put the data in the KV Store
-func writeToConsul(res health.Result, store kp.Store) (time.Time, error) {
-	timeOfPut, _, err := store.PutHealth(resToKPRes(res))
-	return timeOfPut, err
-}
-
-func resToKPRes(res health.Result) kp.WatchResult {
-	return kp.WatchResult{
-		Service: res.Service,
-		Node:    res.Node,
-		Id:      res.ID,
-		Status:  string(res.Status),
-		Output:  res.Output,
-	}
 }
 
 // compares services being monitored with services that
@@ -231,44 +160,132 @@ func updatePods(store kp.Store,
 		// if a manifest is in reality but not current a podwatch is created
 		// with that manifest and added to newCurrent
 		if missing && man.Manifest.StatusPort != 0 {
+			sc := StatusChecker{
+				ID:     man.Manifest.Id,
+				Node:   node,
+				Client: client,
+			}
+			if man.Manifest.StatusHTTP {
+				sc.URI = fmt.Sprintf("https://%s:%d/_status", node, man.Manifest.StatusPort)
+			} else {
+				sc.URI = fmt.Sprintf("http://%s:%d/_status", node, man.Manifest.StatusPort)
+			}
 			newPod := PodWatch{
-				manifest:   man.Manifest,
-				shutdownCh: make(chan bool, 1),
-				logger:     logger,
+				manifest:      man.Manifest,
+				store:         store,
+				statusChecker: sc,
+				shutdownCh:    make(chan bool, 1),
+				logger:        logger,
 			}
 
 			// Each health monitor will have its own statusChecker
-			sc := StatusCheck{
-				ID:     newPod.manifest.Id,
-				Node:   node,
-				URI:    fmt.Sprintf("%s:%d", node, newPod.manifest.StatusPort),
-				Client: client,
-				HTTP:   newPod.manifest.StatusHTTP,
-			}
-			go newPod.MonitorHealth(store, sc, newPod.shutdownCh)
+			go newPod.MonitorHealth()
 			newCurrent = append(newCurrent, newPod)
 		}
 	}
 	return newCurrent
 }
 
-func (sc *StatusCheck) updateNeeded(res health.Result, ttl time.Duration) bool {
+// Monitor Health is a go routine that runs as long as the
+// service it is monitoring. Every HEALTHCHECK_INTERVAL it
+// performs a health check and writes that information to
+// consul
+func (p *PodWatch) MonitorHealth() {
+	for {
+		select {
+		case <-time.After(HEALTHCHECK_INTERVAL):
+			p.checkHealth()
+		case <-p.shutdownCh:
+			return
+		}
+	}
+}
+
+func (p *PodWatch) checkHealth() {
+	health, err := p.statusChecker.Check()
+	if err != nil {
+		p.logger.WithField("inner_err", err).Warningln("health check failed")
+		return
+	}
+
+	if p.updateNeeded(health, TTL) {
+		p.writeToConsul(health)
+	}
+}
+
+// once we get health data we need to make a put request
+// to consul to put the data in the KV Store
+func (p *PodWatch) writeToConsul(res health.Result) {
+	var err error
+	p.lastCheck, _, err = p.store.PutHealth(resToKPRes(res))
+	p.lastStatus = res.Status
+	if err != nil {
+		p.logger.WithField("inner_err", err).Warningln("failed to write to consul")
+	}
+}
+func (p *PodWatch) updateNeeded(res health.Result, ttl time.Duration) bool {
 	// if status has changed indicate that consul needs to be updated
-	if sc.lastStatus != res.Status {
+	if p.lastStatus != res.Status {
 		return true
 	}
 	// if more than TTL / 4 seconds have elapsed since previous check
 	// indicate that consul needs to be updated
-	if time.Since(sc.lastCheck) > time.Duration(ttl/4)*time.Second {
+	if time.Since(p.lastCheck) > time.Duration(ttl/4)*time.Second {
 		return true
 	}
 
 	return false
 }
 
-func (sc *StatusCheck) Check() (*http.Response, error) {
-	if sc.HTTP {
-		return kp.HttpsStatusCheck(sc.Client, sc.URI)
+// Given the result of a status check this method
+// creates a health.Result for that node/service/result
+func (sc *StatusChecker) Check() (health.Result, error) {
+	return sc.resultFromCheck(sc.StatusCheck())
+}
+
+func (sc *StatusChecker) resultFromCheck(resp *http.Response, err error) (health.Result, error) {
+	res := health.Result{
+		ID:      sc.ID,
+		Node:    sc.Node,
+		Service: sc.ID,
 	}
-	return kp.HttpStatusCheck(sc.Client, sc.URI)
+	if err != nil || resp == nil {
+		res.Status = health.Critical
+		if err != nil {
+			res.Output = err.Error()
+		}
+		return res, nil
+	}
+
+	res.Output, err = getBody(resp)
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		res.Status = health.Passing
+	} else {
+		res.Status = health.Critical
+	}
+	return res, err
+}
+
+// Go version of http status check
+func (sc *StatusChecker) StatusCheck() (*http.Response, error) {
+	return sc.Client.Get(sc.URI)
+}
+
+func getBody(resp *http.Response) (string, error) {
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+func resToKPRes(res health.Result) kp.WatchResult {
+	return kp.WatchResult{
+		Service: res.Service,
+		Node:    res.Node,
+		Id:      res.ID,
+		Status:  string(res.Status),
+		Output:  res.Output,
+	}
 }
