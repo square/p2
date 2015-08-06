@@ -37,6 +37,14 @@ type Result struct {
 	Output  string
 }
 
+type HealthEmpty struct {
+	Res string
+}
+
+func (h *HealthEmpty) Error() string {
+	return h.Res
+}
+
 func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string, resultCh chan<- Result, errCh chan<- error, quitCh <-chan struct{}) {
 	defer close(resultCh)
 
@@ -68,8 +76,16 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 					catalogResults = append(catalogResults, outResult)
 				}
 				kvCheckResult := consulWatchToResult(kvCheck)
-				catalogCheckResult := findWorstResult(catalogResults)
-				resultCh <- findBestResult([]Result{kvCheckResult, catalogCheckResult})
+				catalogCheckResult, HEErr := findWorstResult(catalogResults)
+				if HEErr != nil {
+					errCh <- HEErr
+				}
+				best, HEErr := findBestResult([]Result{kvCheckResult, catalogCheckResult})
+				if HEErr != nil {
+					errCh <- HEErr
+				} else {
+					resultCh <- best
+				}
 			}
 		}
 	}
@@ -103,30 +119,37 @@ func (h ConsulHealthChecker) Service(serviceID string) (map[string]Result, error
 		return nil, util.Errorf("/health/service failed for %q: %s", serviceID, err)
 	}
 
-	return selectResult(catalogEntries, kvEntries)
+	return selectResult(catalogEntries, kvEntries), nil
 }
 
-func selectResult(catalogEntries []*api.ServiceEntry, kvEntries map[string]kp.WatchResult) (map[string]Result, error) {
+func selectResult(catalogEntries []*api.ServiceEntry, kvEntries map[string]kp.WatchResult) map[string]Result {
 	ret := make(map[string]Result)
+
 	for _, entry := range catalogEntries {
 		res := make([]Result, 0, len(entry.Checks))
 		for _, check := range entry.Checks {
 			res = append(res, consulCheckToResult(*check))
 		}
-		ret[entry.Node.Node] = findWorstResult(res)
+		val, HEErr := findWorstResult(res)
+		if HEErr == nil {
+			ret[entry.Node.Node] = val
+		}
 	}
 
 	for _, kvEntry := range kvEntries {
 		res := consulWatchToResult(kvEntry)
 		// if kvEntry already exists for this service take the best of kv store and catalog
 		if _, ok := ret[kvEntry.Node]; ok {
-			ret[kvEntry.Node] = findBestResult([]Result{res, ret[kvEntry.Node]})
+			val, HEErr := findBestResult([]Result{res, ret[kvEntry.Node]})
+			if HEErr == nil {
+				ret[kvEntry.Node] = val
+			}
 		} else {
 			ret[kvEntry.Node] = res
 		}
 	}
 
-	return ret, nil
+	return ret
 }
 
 func consulCheckToResult(c api.HealthCheck) Result {
@@ -151,17 +174,38 @@ func consulWatchToResult(w kp.WatchResult) Result {
 
 // Returns the poorest status of all checks in the given list, plus the check
 // ID of one of those checks.
-func FindWorst(results []Result) (string, HealthState) {
-	worst := findWorstResult(results)
-	return worst.ID, worst.Status
+func FindWorst(results []Result) (string, HealthState, *HealthEmpty) {
+	if len(results) == 0 {
+		return "", Critical, &HealthEmpty{
+			Res: "no results were passed to FindWorst",
+		}
+	}
+	worst, HEErr := findWorstResult(results)
+	if HEErr != nil {
+		return "", Critical, HEErr
+	}
+	return worst.ID, worst.Status, HEErr
 }
 
-func FindBest(results []Result) (string, HealthState) {
-	best := findBestResult(results)
-	return best.ID, best.Status
+func FindBest(results []Result) (string, HealthState, *HealthEmpty) {
+	if len(results) == 0 {
+		return "", Critical, &HealthEmpty{
+			Res: "no results were passed to FindBest",
+		}
+	}
+	best, HEErr := findBestResult(results)
+	if HEErr != nil {
+		return "", Critical, HEErr
+	}
+	return best.ID, best.Status, HEErr
 }
 
-func findWorstResult(results []Result) Result {
+func findWorstResult(results []Result) (Result, *HealthEmpty) {
+	if len(results) == 0 {
+		return Result{Status: Critical}, &HealthEmpty{
+			Res: "no results were passed to findWorstResult",
+		}
+	}
 	ret := Passing
 	retVal := results[0]
 	for _, res := range results {
@@ -170,10 +214,15 @@ func findWorstResult(results []Result) Result {
 			retVal = res
 		}
 	}
-	return retVal
+	return retVal, nil
 }
 
-func findBestResult(results []Result) Result {
+func findBestResult(results []Result) (Result, *HealthEmpty) {
+	if len(results) == 0 {
+		return Result{Status: Critical}, &HealthEmpty{
+			Res: "no results were passed to findBestResult",
+		}
+	}
 	ret := Critical
 	retVal := results[0]
 	for _, res := range results {
@@ -182,5 +231,5 @@ func findBestResult(results []Result) Result {
 			retVal = res
 		}
 	}
-	return retVal
+	return retVal, nil
 }
