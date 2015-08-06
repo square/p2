@@ -151,22 +151,37 @@ func getTLSClient(certFile, keyFile, caFile string) (*http.Client, error) {
 
 // GetStore constructs a key-value store from the given configuration.
 func (c *PreparerConfig) GetStore() (kp.Store, error) {
+	opts, err := c.getOpts()
+	if err != nil {
+		return nil, err
+	}
+	return kp.NewConsulStore(opts), nil
+}
+
+func (c *PreparerConfig) getOpts() (kp.Options, error) {
+	client := http.DefaultClient
 	token, err := loadToken(c.ConsulTokenPath)
 	if err != nil {
-		return nil, err
+		return kp.Options{}, err
 	}
 
-	client, err := getTLSClient(c.CertFile, c.KeyFile, c.CAFile)
-	if err != nil {
-		return nil, err
+	if c.ConsulHttps {
+		client, err = c.GetClient()
+		if err != nil {
+			return kp.Options{}, err
+		}
 	}
 
-	return kp.NewConsulStore(kp.Options{
+	return kp.Options{
 		Address: c.ConsulAddress,
 		HTTPS:   c.ConsulHttps,
 		Token:   token,
 		Client:  client,
-	}), nil
+	}, err
+}
+
+func (c *PreparerConfig) GetClient() (*http.Client, error) {
+	return getTLSClient(c.CertFile, c.KeyFile, c.CAFile)
 }
 
 func addHooks(preparerConfig *PreparerConfig, logger logging.Logger) {

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 )
 
 const preparerStatusPort = 32170
+const certpath = "/var/tmp/certs"
 
 func main() {
 	// 1. Generate pod for preparer in this code version (`rake artifact:prepare`)
@@ -129,11 +131,13 @@ func generatePreparerPod(workdir string) (string, error) {
 			"type":    "keyring",
 			"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
 		},
+		"ca_file":     filepath.Join(certpath, "cert.pem"),
+		"cert_file":   filepath.Join(certpath, "cert.pem"),
+		"key_file":    filepath.Join(certpath, "key.pem"),
 		"status_port": preparerStatusPort,
 	}
 	manifest.RunAs = "root"
 	manifest.StatusPort = preparerStatusPort
-	manifest.StatusHTTP = true
 
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {

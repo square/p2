@@ -35,7 +35,7 @@ func TestUpdatePods(t *testing.T) {
 	// ids for pods: 1, 2, test
 	// 0, 3 should have values in their shutdownCh
 	logger := logging.NewLogger(logrus.Fields{})
-	pods := updatePods(current, reality, &logger, nil, "")
+	pods := updatePods(nil, nil, current, reality, "", &logger)
 	Assert(t).AreEqual(true, <-current[0].shutdownCh, "this PodWatch should have been shutdown")
 	Assert(t).AreEqual(true, <-current[3].shutdownCh, "this PodWatch should have been shutdown")
 
@@ -45,10 +45,10 @@ func TestUpdatePods(t *testing.T) {
 }
 
 func TestUpdateNeeded(t *testing.T) {
-	p := newWatch("test")
-	ti := time.Now()
-	p.lastCheck = ti
-	p.lastStatus = health.Passing
+	p := PodWatch{
+		lastCheck:  time.Now(),
+		lastStatus: health.Passing,
+	}
 	res := health.Result{
 		Status: health.Critical,
 	}
@@ -63,26 +63,30 @@ func TestResultFromCheck(t *testing.T) {
 	http.HandleFunc("/_status", statusHandler)
 	go http.ListenAndServe(":8080", nil)
 	client := http.DefaultClient
+	sc := StatusChecker{
+		ID:   "hello",
+		Node: "localhost:8080",
+	}
 
 	resp, _ := client.Get("http://localhost:8080/_status")
-	val, _ := resultFromCheck(resp, nil)
+	val, _ := sc.resultFromCheck(resp, nil)
 	Assert(t).AreEqual(health.Passing, val.Status, "200 should correspond to health.Passing")
 
 	resp.StatusCode = 282
-	val, _ = resultFromCheck(resp, nil)
+	val, _ = sc.resultFromCheck(resp, nil)
 	Assert(t).AreEqual(health.Passing, val.Status, "2** should correspond to health.Passing")
 
 	resp.StatusCode = 1000000
-	val, _ = resultFromCheck(resp, nil)
+	val, _ = sc.resultFromCheck(resp, nil)
 	Assert(t).AreEqual(health.Critical, val.Status, "!2** should correspond to health.Critical")
 
 	resp.StatusCode = 400
-	val, _ = resultFromCheck(nil, nil)
+	val, _ = sc.resultFromCheck(nil, nil)
 	Assert(t).AreEqual(health.Critical, val.Status, "resp == nil should correspond to health.Critical")
 
 	resp.StatusCode = 400
 	err := fmt.Errorf("an error")
-	val, _ = resultFromCheck(nil, err)
+	val, _ = sc.resultFromCheck(nil, err)
 	Assert(t).AreEqual(health.Critical, val.Status, "err != nil should correspond to health.Critical")
 }
 

@@ -15,6 +15,21 @@ export GOPATH=/usr/local/share/go
 export PATH="/usr/local/go/bin:/usr/local/share/go/bin:$PATH"
 sudo sh -c "echo 'export PATH=$PATH' > /etc/profile.d/gopath.sh"
 
+# make ssl certs
+subj="
+C=US
+ST=CA
+O=SQ
+localityName=SF
+commonName=$HOSTNAME
+organizationalUnitName=Vel
+emailAddress=doesntmatter@something.edu
+"
+
+CERTPATH=/var/tmp/certs
+mkdir -p $CERTPATH
+openssl req -x509 -newkey rsa:2048 -keyout $CERTPATH/key.pem -out $CERTPATH/cert.pem -nodes -days 300 -subj "$(echo -n "$subj" | tr "\n" "/")"
+
 go version
 
 # Install Godep
@@ -33,4 +48,3 @@ sudo yum install -y ruby rubygem-rake
 sudo yum -y --nogpgcheck localinstall $GOPATH/src/github.com/square/p2/integration/test-deps/*rpm
 sudo mkdir -p /etc/servicebuilder.d
 sudo mkdir -p /var/service-stage
-
