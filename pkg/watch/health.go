@@ -166,9 +166,9 @@ func updatePods(store kp.Store,
 				Client: client,
 			}
 			if man.Manifest.StatusHTTP {
-				sc.URI = fmt.Sprintf("https://%s:%d/_status", node, man.Manifest.StatusPort)
-			} else {
 				sc.URI = fmt.Sprintf("http://%s:%d/_status", node, man.Manifest.StatusPort)
+			} else {
+				sc.URI = fmt.Sprintf("https://%s:%d/_status", node, man.Manifest.StatusPort)
 			}
 			newPod := PodWatch{
 				manifest:      man.Manifest,
