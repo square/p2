@@ -9,6 +9,45 @@ import (
 	"github.com/square/p2/pkg/kp"
 )
 
+func TestPickHealthResult(t *testing.T) {
+	catalogResults := []Result{Result{Status: Passing}}
+	kvCheck := kp.WatchResult{Status: string(Critical)}
+	errCh := make(chan error)
+	resultCh := make(chan Result)
+
+	go pickHealthResult([]Result{}, kp.WatchResult{}, fmt.Errorf("no kvCheck"), resultCh, errCh)
+	select {
+	case _ = <-resultCh:
+		t.Fatal("pickhealthresult was passed no results but did not return an error")
+	case err := <-errCh:
+		Assert(t).AreNotEqual(err, nil, "err should not have been nil")
+	}
+
+	go pickHealthResult([]Result{}, kvCheck, nil, resultCh, errCh)
+	select {
+	case res := <-resultCh:
+		Assert(t).AreEqual(res, Result{Status: Critical}, "pick health result did not return the correct kv result")
+	case err := <-errCh:
+		t.Fatal(fmt.Sprintf("pickhealthresult returned an error: %s, but was passed a valid kvCheck", err))
+	}
+
+	go pickHealthResult(catalogResults, kp.WatchResult{}, fmt.Errorf("no kvCheck"), resultCh, errCh)
+	select {
+	case res := <-resultCh:
+		Assert(t).AreEqual(res, Result{Status: Passing}, "pick health result did not return the correct kv result")
+	case err := <-errCh:
+		t.Fatal(fmt.Sprintf("pickhealthresult returned an error: %s, but was passed a valid catalogue check", err))
+	}
+
+	go pickHealthResult(catalogResults, kvCheck, nil, resultCh, errCh)
+	select {
+	case res := <-resultCh:
+		Assert(t).AreEqual(res, Result{Status: Passing}, "pick health result did not return the correct kv result")
+	case err := <-errCh:
+		t.Fatal(fmt.Sprintf("pickhealthresult returned an error: %s, but was passed a valid checks from both sources", err))
+	}
+}
+
 func TestFindWorst(t *testing.T) {
 	a := Result{
 		ID:     "testcrit",
@@ -23,14 +62,17 @@ func TestFindWorst(t *testing.T) {
 		Status: Passing,
 	}
 
-	id, _ := FindWorst([]Result{a, b})
+	id, _, _ := FindWorst([]Result{a, b})
 	Assert(t).AreEqual(id, a.ID, "FindWorst between critical and warning should have returned testcrit")
 
-	id, _ = FindWorst([]Result{b, c})
+	id, _, _ = FindWorst([]Result{b, c})
 	Assert(t).AreEqual(id, b.ID, "FindWorst between warning and passing should have returned testwarn")
 
-	id, _ = FindWorst([]Result{c, c})
+	id, _, _ = FindWorst([]Result{c, c})
 	Assert(t).AreEqual(id, c.ID, "FindWorst between two passing results should have returned testpass")
+
+	id, _, err := FindWorst([]Result{})
+	Assert(t).AreNotEqual(err, nil, "FindWorst did not return error for empty result slice")
 }
 
 func TestPickServiceResult(t *testing.T) {
@@ -39,26 +81,24 @@ func TestPickServiceResult(t *testing.T) {
 	t3 := mockServiceEntry("3", Passing)
 
 	// Catalog is healthy but KV is not present
-	testMap := getResult([]*api.ServiceEntry{t1, t2, t3})
+	testMap, err := getResult([]*api.ServiceEntry{t1, t2, t3})
+	Assert(t).AreEqual(err, nil, "getResult failed")
 	catalog := []*api.ServiceEntry{t1, t2, t3}
-	res, err := selectResult(catalog, nil)
-	Assert(t).AreEqual(err, nil, "catalog is healthy, kv not present and selectResult returned err")
+	res := selectResult(catalog, nil)
 	for key, value := range testMap {
 		Assert(t).AreEqual(res[key], value, "catalog is healthy, kv not present, selectResult did not match what was expected")
 	}
 
 	// Catalog is healthy but KV is not
 	watchRes := mockWatchResult(catalog, Critical)
-	res, err = selectResult(catalog, watchRes)
-	Assert(t).AreEqual(err, nil, "catalog is healthy but kv is not and selectResult returned err")
+	res = selectResult(catalog, watchRes)
 	for key, value := range testMap {
 		Assert(t).AreEqual(res[key], value, "catalog is healthy, kv is not, selectResult did not match what was expected")
 	}
 
 	// KV is healthy but catalog is not present
 	kv := mockWatchResult(catalog, Passing)
-	res, err = selectResult(nil, kv)
-	Assert(t).AreEqual(err, nil, "kv is healthy, catalog not present and selectResult returned err")
+	res = selectResult(nil, kv)
 	for key, value := range testMap {
 		Assert(t).AreEqual(consulWatchToResult(kv[key]), value, "kv is healthy, catalog not present, selectResult did not match what was expected")
 	}
@@ -69,8 +109,7 @@ func TestPickServiceResult(t *testing.T) {
 	catalog = []*api.ServiceEntry{t1, t2, t3}
 
 	// KV is healthy but catalog is not
-	res, err = selectResult(catalog, kv)
-	Assert(t).AreEqual(err, nil, "kv is healthy, catalog is not and selectResult returned err")
+	res = selectResult(catalog, kv)
 	for key, value := range testMap {
 		Assert(t).AreEqual(consulWatchToResult(kv[key]), value, "kv is healthy, catalog is not and selectResult did not match what was expected")
 	}
@@ -125,17 +164,21 @@ func mockWatchResult(entries []*api.ServiceEntry, st HealthState) map[string]kp.
 	return ret
 }
 
-func getResult(entries []*api.ServiceEntry) map[string]Result {
+func getResult(entries []*api.ServiceEntry) (map[string]Result, error) {
+	var HEErr *HealthEmpty
 	res := make(map[string]Result)
 	for _, entry := range entries {
 		val := make([]Result, 0, len(entry.Checks))
 		for _, check := range entry.Checks {
 			val = append(val, consulCheckToResult(*check))
 		}
-		res[entry.Node.Node] = findWorstResult(val)
+		res[entry.Node.Node], HEErr = findWorstResult(val)
+		if HEErr != nil {
+			return res, HEErr
+		}
 	}
 
-	return res
+	return res, nil
 }
 
 func mockServiceEntry(s string, st HealthState) *api.ServiceEntry {

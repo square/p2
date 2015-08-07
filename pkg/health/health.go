@@ -1,6 +1,7 @@
 package health
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/hashicorp/consul/api"
@@ -37,6 +38,14 @@ type Result struct {
 	Output  string
 }
 
+type HealthEmpty struct {
+	Res string
+}
+
+func (h *HealthEmpty) Error() string {
+	return h.Res
+}
+
 func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string, resultCh chan<- Result, errCh chan<- error, quitCh <-chan struct{}) {
 	defer close(resultCh)
 
@@ -53,24 +62,47 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 			if err != nil {
 				errCh <- err
 			}
-			kvCheck, err := h.consulStore.GetHealth(nodename, serviceID)
-			if err != nil {
-				errCh <- err
-			} else {
-				catalogResults := make([]Result, 0)
-				for _, check := range checks {
-					outResult := consulCheckToResult(*check)
-					// only retain checks if they're for this service, or for the
-					// entire node
-					if outResult.Service != serviceID && outResult.Service != "" {
-						continue
-					}
-					catalogResults = append(catalogResults, outResult)
+			catalogResults := make([]Result, 0)
+			for _, check := range checks {
+				outResult := consulCheckToResult(*check)
+				// only retain checks if they're for this service, or for the
+				// entire node
+				if outResult.Service != serviceID && outResult.Service != "" {
+					continue
 				}
-				kvCheckResult := consulWatchToResult(kvCheck)
-				catalogCheckResult := findWorstResult(catalogResults)
-				resultCh <- findBestResult([]Result{kvCheckResult, catalogCheckResult})
+				catalogResults = append(catalogResults, outResult)
 			}
+			// GetHealth will fail if there are no kv results
+			kvCheck, err := h.consulStore.GetHealth(nodename, serviceID)
+			pickHealthResult(catalogResults, kvCheck, err, resultCh, errCh)
+		}
+	}
+}
+
+// if there are no health results available will place error in errCh then return
+func pickHealthResult(catalogResults []Result, kvCheck kp.WatchResult, kvCheckError error, resultCh chan<- Result, errCh chan<- error) {
+	if kvCheckError != nil {
+		// if there are neither kv nor catalog results
+		if len(catalogResults) == 0 {
+			fmt.Println(kvCheckError)
+			errCh <- kvCheckError
+			return
+		} else {
+			// there are no kv results but there are catalog results
+			catalogCheckResult, _ := findWorstResult(catalogResults)
+			resultCh <- catalogCheckResult
+		}
+	} else {
+		// there are kv checks
+		kvCheckResult := consulWatchToResult(kvCheck)
+		if len(catalogResults) == 0 {
+			// there are kv results but not catalog results
+			resultCh <- kvCheckResult
+		} else {
+			// there are both kv and catalog results
+			catalogCheckResult, _ := findWorstResult(catalogResults)
+			best, _ := findBestResult([]Result{kvCheckResult, catalogCheckResult})
+			resultCh <- best
 		}
 	}
 }
@@ -103,30 +135,37 @@ func (h ConsulHealthChecker) Service(serviceID string) (map[string]Result, error
 		return nil, util.Errorf("/health/service failed for %q: %s", serviceID, err)
 	}
 
-	return selectResult(catalogEntries, kvEntries)
+	return selectResult(catalogEntries, kvEntries), nil
 }
 
-func selectResult(catalogEntries []*api.ServiceEntry, kvEntries map[string]kp.WatchResult) (map[string]Result, error) {
+func selectResult(catalogEntries []*api.ServiceEntry, kvEntries map[string]kp.WatchResult) map[string]Result {
 	ret := make(map[string]Result)
+
 	for _, entry := range catalogEntries {
 		res := make([]Result, 0, len(entry.Checks))
 		for _, check := range entry.Checks {
 			res = append(res, consulCheckToResult(*check))
 		}
-		ret[entry.Node.Node] = findWorstResult(res)
+		val, HEErr := findWorstResult(res)
+		if HEErr == nil {
+			ret[entry.Node.Node] = val
+		}
 	}
 
 	for _, kvEntry := range kvEntries {
 		res := consulWatchToResult(kvEntry)
 		// if kvEntry already exists for this service take the best of kv store and catalog
 		if _, ok := ret[kvEntry.Node]; ok {
-			ret[kvEntry.Node] = findBestResult([]Result{res, ret[kvEntry.Node]})
+			val, HEErr := findBestResult([]Result{res, ret[kvEntry.Node]})
+			if HEErr == nil {
+				ret[kvEntry.Node] = val
+			}
 		} else {
 			ret[kvEntry.Node] = res
 		}
 	}
 
-	return ret, nil
+	return ret
 }
 
 func consulCheckToResult(c api.HealthCheck) Result {
@@ -151,17 +190,38 @@ func consulWatchToResult(w kp.WatchResult) Result {
 
 // Returns the poorest status of all checks in the given list, plus the check
 // ID of one of those checks.
-func FindWorst(results []Result) (string, HealthState) {
-	worst := findWorstResult(results)
-	return worst.ID, worst.Status
+func FindWorst(results []Result) (string, HealthState, *HealthEmpty) {
+	if len(results) == 0 {
+		return "", Critical, &HealthEmpty{
+			Res: "no results were passed to FindWorst",
+		}
+	}
+	worst, HEErr := findWorstResult(results)
+	if HEErr != nil {
+		return "", Critical, HEErr
+	}
+	return worst.ID, worst.Status, HEErr
 }
 
-func FindBest(results []Result) (string, HealthState) {
-	best := findBestResult(results)
-	return best.ID, best.Status
+func FindBest(results []Result) (string, HealthState, *HealthEmpty) {
+	if len(results) == 0 {
+		return "", Critical, &HealthEmpty{
+			Res: "no results were passed to FindBest",
+		}
+	}
+	best, HEErr := findBestResult(results)
+	if HEErr != nil {
+		return "", Critical, HEErr
+	}
+	return best.ID, best.Status, HEErr
 }
 
-func findWorstResult(results []Result) Result {
+func findWorstResult(results []Result) (Result, *HealthEmpty) {
+	if len(results) == 0 {
+		return Result{Status: Critical}, &HealthEmpty{
+			Res: "no results were passed to findWorstResult",
+		}
+	}
 	ret := Passing
 	retVal := results[0]
 	for _, res := range results {
@@ -170,10 +230,15 @@ func findWorstResult(results []Result) Result {
 			retVal = res
 		}
 	}
-	return retVal
+	return retVal, nil
 }
 
-func findBestResult(results []Result) Result {
+func findBestResult(results []Result) (Result, *HealthEmpty) {
+	if len(results) == 0 {
+		return Result{Status: Critical}, &HealthEmpty{
+			Res: "no results were passed to findBestResult",
+		}
+	}
 	ret := Critical
 	retVal := results[0]
 	for _, res := range results {
@@ -182,5 +247,5 @@ func findBestResult(results []Result) Result {
 			retVal = res
 		}
 	}
-	return retVal
+	return retVal, nil
 }

@@ -15,6 +15,9 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
+// Healthcheck TTL
+const TTL = 60 * time.Second
+
 var showConsulErrors = kingpin.Flag(
 	"show-consul-errors-unsafe",
 	"Show detailed error messages from Consul (use only when debugging)",
@@ -46,7 +49,7 @@ type WatchResult struct {
 	Service string
 	Status  string
 	Output  string
-	Time    string
+	Time    time.Time
 }
 
 type consulStore struct {
@@ -111,7 +114,10 @@ func (c consulStore) GetHealth(service, node string) (WatchResult, error) {
 	if err != nil {
 		return WatchResult{}, KVError{Op: "get", Key: key, UnsafeError: err}
 	}
-
+	stale := isStale(*healthRes)
+	if stale {
+		return *healthRes, KVError{Op: "get", Key: key, UnsafeError: fmt.Errorf("stale health entry")}
+	}
 	return *healthRes, nil
 }
 
@@ -260,12 +266,8 @@ func (c consulStore) Ping() error {
 }
 
 func addTimeStamp(value WatchResult) (time.Time, WatchResult) {
-	currentTime := time.Now()
-	if value.Time == "" {
-		value.Time = currentTime.String()
-	}
-
-	return currentTime, value
+	value.Time = time.Now()
+	return value.Time, value
 }
 
 func HealthPath(service, node string) string {
@@ -273,4 +275,8 @@ func HealthPath(service, node string) string {
 		return fmt.Sprintf("%s/%s", "health", service)
 	}
 	return fmt.Sprintf("%s/%s/%s", "health", service, node)
+}
+
+func isStale(res WatchResult) bool {
+	return time.Since(res.Time) > TTL
 }
