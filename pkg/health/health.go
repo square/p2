@@ -78,13 +78,14 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 				kvCheckResult := consulWatchToResult(kvCheck)
 				catalogCheckResult, HEErr := findWorstResult(catalogResults)
 				if HEErr != nil {
-					errCh <- HEErr
-				}
-				best, HEErr := findBestResult([]Result{kvCheckResult, catalogCheckResult})
-				if HEErr != nil {
-					errCh <- HEErr
+					resultCh <- kvCheckResult
 				} else {
-					resultCh <- best
+					best, HEErr := findBestResult([]Result{kvCheckResult, catalogCheckResult})
+					if HEErr != nil {
+						errCh <- HEErr
+					} else {
+						resultCh <- best
+					}
 				}
 			}
 		}

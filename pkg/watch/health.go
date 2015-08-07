@@ -22,9 +22,6 @@ const POLL_KV_FOR_PODS = 3 * time.Second
 // Duration between health checks
 const HEALTHCHECK_INTERVAL = 1 * time.Second
 
-// Healthcheck TTL
-const TTL = 60 * time.Second
-
 // Contains method for watching the consul reality store to
 // track services running on a node. A manager method:
 // MonitorPodHealth tracks the reality store and manages
@@ -208,7 +205,7 @@ func (p *PodWatch) checkHealth() {
 		return
 	}
 
-	if p.updateNeeded(health, TTL) {
+	if p.updateNeeded(health, kp.TTL) {
 		p.writeToConsul(health)
 	}
 }
