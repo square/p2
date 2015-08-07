@@ -9,6 +9,45 @@ import (
 	"github.com/square/p2/pkg/kp"
 )
 
+func TestPickHealthResult(t *testing.T) {
+	catalogResults := []Result{Result{Status: Passing}}
+	kvCheck := kp.WatchResult{Status: string(Critical)}
+	errCh := make(chan error)
+	resultCh := make(chan Result)
+
+	go pickHealthResult([]Result{}, kp.WatchResult{}, fmt.Errorf("no kvCheck"), resultCh, errCh)
+	select {
+	case _ = <-resultCh:
+		t.Fatal("pickhealthresult was passed no results but did not return an error")
+	case err := <-errCh:
+		Assert(t).AreNotEqual(err, nil, "err should not have been nil")
+	}
+
+	go pickHealthResult([]Result{}, kvCheck, nil, resultCh, errCh)
+	select {
+	case res := <-resultCh:
+		Assert(t).AreEqual(res, Result{Status: Critical}, "pick health result did not return the correct kv result")
+	case err := <-errCh:
+		t.Fatal(fmt.Sprintf("pickhealthresult returned an error: %s, but was passed a valid kvCheck", err))
+	}
+
+	go pickHealthResult(catalogResults, kp.WatchResult{}, fmt.Errorf("no kvCheck"), resultCh, errCh)
+	select {
+	case res := <-resultCh:
+		Assert(t).AreEqual(res, Result{Status: Passing}, "pick health result did not return the correct kv result")
+	case err := <-errCh:
+		t.Fatal(fmt.Sprintf("pickhealthresult returned an error: %s, but was passed a valid catalogue check", err))
+	}
+
+	go pickHealthResult(catalogResults, kvCheck, nil, resultCh, errCh)
+	select {
+	case res := <-resultCh:
+		Assert(t).AreEqual(res, Result{Status: Passing}, "pick health result did not return the correct kv result")
+	case err := <-errCh:
+		t.Fatal(fmt.Sprintf("pickhealthresult returned an error: %s, but was passed a valid checks from both sources", err))
+	}
+}
+
 func TestFindWorst(t *testing.T) {
 	a := Result{
 		ID:     "testcrit",

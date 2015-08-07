@@ -1,6 +1,7 @@
 package health
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/hashicorp/consul/api"
@@ -61,33 +62,47 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 			if err != nil {
 				errCh <- err
 			}
-			kvCheck, err := h.consulStore.GetHealth(nodename, serviceID)
-			if err != nil {
-				errCh <- err
-			} else {
-				catalogResults := make([]Result, 0)
-				for _, check := range checks {
-					outResult := consulCheckToResult(*check)
-					// only retain checks if they're for this service, or for the
-					// entire node
-					if outResult.Service != serviceID && outResult.Service != "" {
-						continue
-					}
-					catalogResults = append(catalogResults, outResult)
+			catalogResults := make([]Result, 0)
+			for _, check := range checks {
+				outResult := consulCheckToResult(*check)
+				// only retain checks if they're for this service, or for the
+				// entire node
+				if outResult.Service != serviceID && outResult.Service != "" {
+					continue
 				}
-				kvCheckResult := consulWatchToResult(kvCheck)
-				catalogCheckResult, HEErr := findWorstResult(catalogResults)
-				if HEErr != nil {
-					resultCh <- kvCheckResult
-				} else {
-					best, HEErr := findBestResult([]Result{kvCheckResult, catalogCheckResult})
-					if HEErr != nil {
-						errCh <- HEErr
-					} else {
-						resultCh <- best
-					}
-				}
+				catalogResults = append(catalogResults, outResult)
 			}
+			// GetHealth will fail if there are no kv results
+			kvCheck, err := h.consulStore.GetHealth(nodename, serviceID)
+			pickHealthResult(catalogResults, kvCheck, err, resultCh, errCh)
+		}
+	}
+}
+
+// if there are no health results available will place error in errCh then return
+func pickHealthResult(catalogResults []Result, kvCheck kp.WatchResult, kvCheckError error, resultCh chan<- Result, errCh chan<- error) {
+	if kvCheckError != nil {
+		// if there are neither kv nor catalog results
+		if len(catalogResults) == 0 {
+			fmt.Println(kvCheckError)
+			errCh <- kvCheckError
+			return
+		} else {
+			// there are no kv results but there are catalog results
+			catalogCheckResult, _ := findWorstResult(catalogResults)
+			resultCh <- catalogCheckResult
+		}
+	} else {
+		// there are kv checks
+		kvCheckResult := consulWatchToResult(kvCheck)
+		if len(catalogResults) == 0 {
+			// there are kv results but not catalog results
+			resultCh <- kvCheckResult
+		} else {
+			// there are both kv and catalog results
+			catalogCheckResult, _ := findWorstResult(catalogResults)
+			best, _ := findBestResult([]Result{kvCheckResult, catalogCheckResult})
+			resultCh <- best
 		}
 	}
 }
