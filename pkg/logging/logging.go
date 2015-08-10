@@ -72,11 +72,19 @@ func (l *Logger) WithError(err error) *logrus.Entry {
 		fields["filename"] = stackErr.Filename()
 		fields["function"] = stackErr.Function()
 	}
-	return l.Logger.WithFields(fields)
+	return l.WithFields(fields)
 }
 
 func (l *Logger) WithFields(fields logrus.Fields) *logrus.Entry {
 	return l.Logger.WithFields(Merge(Merge(l.baseFields, fields), processCounter.Fields()))
+}
+
+func (l *Logger) WithErrorAndFields(err error, fields logrus.Fields) *logrus.Entry {
+	errorFields := l.WithError(err).Data
+	return l.WithFields(Merge(
+		errorFields,
+		fields,
+	))
 }
 
 func (l *Logger) WithField(key string, value interface{}) *logrus.Entry {

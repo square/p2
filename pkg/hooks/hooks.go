@@ -82,7 +82,7 @@ func runDirectory(dirpath string, environment []string, logger logging.Logger) e
 		cmd.Env = environment
 		err := cmd.Run()
 		if err != nil {
-			logger.WithError(err).WithFields(logrus.Fields{
+			logger.WithErrorAndFields(err, logrus.Fields{
 				"path":   fullpath,
 				"output": hookOut.String(),
 			}).Warnf("Could not execute hook %s", f.Name())

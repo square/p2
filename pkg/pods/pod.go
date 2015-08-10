@@ -523,8 +523,8 @@ func (p *Pod) logError(err error, message string) {
 }
 
 func (p *Pod) logLaunchableError(launchableId string, err error, message string) {
-	p.logger.WithError(err).
-		WithField("launchable", launchableId).Error(message)
+	p.logger.WithErrorAndFields(err, logrus.Fields{
+		"launchable": launchableId}).Error(message)
 }
 
 func (p *Pod) logInfo(message string) {

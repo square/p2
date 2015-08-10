@@ -109,8 +109,8 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest *pods.Manifest, logger logging.Logger) {
 	err := p.hooks.RunHookType(hookType, pod, manifest)
 	if err != nil {
-		logger.WithError(err).
-			WithField("hooks", hookType).Warnln("Could not run hooks")
+		logger.WithErrorAndFields(err, logrus.Fields{
+			"hooks": hookType}).Warnln("Could not run hooks")
 	}
 }
 
@@ -194,7 +194,8 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 	// if the old manifest is corrupted somehow, re-launch since we don't know if this is an update.
 	problemReadingCurrentManifest := (err != nil && err != pods.NoCurrentManifest)
 	if problemReadingCurrentManifest {
-		logger.WithError(err).WithField("sha", newSHA).
+		logger.WithErrorAndFields(err, logrus.Fields{
+			"sha": newSHA}).
 			Errorln("Current manifest not readable, will relaunch")
 	}
 
@@ -243,7 +244,8 @@ func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logg
 		} else {
 			duration, err := p.store.SetPod(realityPath, *newManifest)
 			if err != nil {
-				logger.WithError(err).WithField("duration", duration).
+				logger.WithErrorAndFields(err, logrus.Fields{
+					"duration": duration}).
 					Errorln("Could not set pod in reality store")
 			}
 
