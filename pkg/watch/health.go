@@ -93,6 +93,9 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 			// kills monitor routine for removed pods
 			pods = updateHealthMonitors(store, client, pods, node, logger)
 		case <-shutdownCh:
+			for _, pod := range pods {
+				pod.shutdownCh <- true
+			}
 			return
 		}
 	}
