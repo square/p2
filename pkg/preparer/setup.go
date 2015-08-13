@@ -47,6 +47,7 @@ type PreparerConfig struct {
 	StatusPort           int                    `yaml:"status_port"`
 	Auth                 map[string]interface{} `yaml:"auth,omitempty"`
 	ExtraLogDestinations []LogDestination       `yaml:"extra_log_destinations,omitempty"`
+	WriteKVHealth        bool                   `yaml:"write_kv_health,omitempty"`
 }
 
 // Configuration fields for the "keyring" auth type

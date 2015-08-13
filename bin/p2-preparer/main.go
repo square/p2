@@ -49,7 +49,7 @@ func main() {
 
 	quitMainUpdate := make(chan struct{})
 	quitHookUpdate := make(chan struct{})
-	quitMonitorPodHealth := make(chan struct{})
+	quitChans := []chan struct{}{quitHookUpdate}
 
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
 	go prep.WatchForHooks(quitHookUpdate)
@@ -64,20 +64,25 @@ func main() {
 
 	// Launch health checking watch. This watch tracks health of
 	// all pods on this host and writes the information to consul
-	go watch.MonitorPodHealth(preparerConfig, &logger, quitMonitorPodHealth)
+	if preparerConfig.WriteKVHealth {
+		quitMonitorPodHealth := make(chan struct{})
+		go watch.MonitorPodHealth(preparerConfig, &logger, quitMonitorPodHealth)
+		quitChans = append(quitChans, quitMonitorPodHealth)
+	}
 
-	waitForTermination(logger, quitMainUpdate, quitHookUpdate, quitMonitorPodHealth)
+	waitForTermination(logger, quitMainUpdate, quitChans)
 
 	logger.NoFields().Infoln("Terminating")
 }
 
-func waitForTermination(logger logging.Logger, quitMainUpdate, quitHookUpdate chan struct{}, quitMonitorPodHealth chan struct{}) {
+func waitForTermination(logger logging.Logger, quitMainUpdate chan struct{}, quitChans []chan struct{}) {
 	signalCh := make(chan os.Signal, 2)
 	signal.Notify(signalCh, syscall.SIGTERM, os.Interrupt)
 	received := <-signalCh
 	logger.WithField("signal", received.String()).Infoln("Stopping work")
-	quitHookUpdate <- struct{}{}
+	for _, quitCh := range quitChans {
+		quitCh <- struct{}{}
+	}
 	quitMainUpdate <- struct{}{}
-	quitMonitorPodHealth <- struct{}{}
 	<-quitMainUpdate // acknowledgement
 }
