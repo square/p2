@@ -55,7 +55,7 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 			watcherQuit <- struct{}{}
 			return
 		case err := <-watcherErrCh:
-			l.Logger.WithField("err", err).Errorln("Error while watching pods")
+			l.Logger.WithError(err).Errorln("Error while watching pods")
 			errCh <- err
 		case result := <-podChan:
 			sub := l.Logger.SubLogger(logrus.Fields{
@@ -78,7 +78,7 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 			// event is called "before_install"
 			event, err := l.determineEvent(result.Path)
 			if err != nil {
-				sub.WithField("err", err).Errorln("Couldn't determine hook path")
+				sub.WithError(err).Errorln("Couldn't determine hook path")
 				break
 			}
 
@@ -106,14 +106,14 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 			// The manifest is new, go ahead and install
 			err = hookPod.Install(&result.Manifest)
 			if err != nil {
-				sub.WithField("err", err).Errorln("Could not install hook")
+				sub.WithError(err).Errorln("Could not install hook")
 				errCh <- err
 				break
 			}
 
 			_, err = hookPod.WriteCurrentManifest(&result.Manifest)
 			if err != nil {
-				sub.WithField("err", err).Errorln("Could not write current manifest")
+				sub.WithError(err).Errorln("Could not write current manifest")
 				errCh <- err
 				break
 			}
@@ -121,7 +121,7 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 			// Now that the pod is installed, link it up to the exec dir.
 			err = l.writeHook(event, hookPod, &result.Manifest)
 			if err != nil {
-				sub.WithField("err", err).Errorln("Could not write hook link")
+				sub.WithError(err).Errorln("Could not write hook link")
 			} else {
 				sub.NoFields().Infoln("Updated hook")
 			}
@@ -165,7 +165,7 @@ func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods
 	for _, match := range matches {
 		err = os.Remove(match)
 		if err != nil {
-			l.Logger.WithField("err", err).Warnln("Could not remove old hook")
+			l.Logger.WithError(err).Warnln("Could not remove old hook")
 		}
 	}
 
@@ -189,18 +189,18 @@ func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods
 			file, err := os.OpenFile(scriptPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0744)
 			defer file.Close()
 			if err != nil {
-				l.Logger.WithField("err", err).Errorln("Could not write to event dir path")
+				l.Logger.WithError(err).Errorln("Could not write to event dir path")
 			}
 			err = executable.WriteExecutor(file)
 			if err != nil {
-				l.Logger.WithField("err", err).Errorln("Could not install new hook")
+				l.Logger.WithError(err).Errorln("Could not install new hook")
 			}
 		}
 		// for convenience as we do with regular launchables, make these ones
 		// current under the launchable directory
 		err = launchable.MakeCurrent()
 		if err != nil {
-			l.Logger.WithField("err", err).Errorln("Could not update the current hook")
+			l.Logger.WithError(err).Errorln("Could not update the current hook")
 		}
 	}
 	return nil

@@ -27,12 +27,12 @@ func main() {
 	}
 	preparerConfig, err := preparer.LoadConfig(configPath)
 	if err != nil {
-		logger.WithField("inner_err", err).Fatalln("could not load preparer config")
+		logger.WithError(err).Fatalln("could not load preparer config")
 	}
 
 	prep, err := preparer.New(preparerConfig, logger)
 	if err != nil {
-		logger.WithField("inner_err", err).Fatalln("Could not initialize preparer")
+		logger.WithError(err).Fatalln("Could not initialize preparer")
 	}
 	defer prep.Close()
 
