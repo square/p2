@@ -1,6 +1,7 @@
 package kp
 
 import (
+	"io/ioutil"
 	"testing"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/testutil"
@@ -62,7 +63,12 @@ func makeStore(t *testing.T) (Store, *testutil.TestServer) {
 	}()
 
 	// Create server
-	server := testutil.NewTestServerConfig(t, nil)
+	server := testutil.NewTestServerConfig(t, func(c *testutil.TestServerConfig) {
+		// consul output in test output is noisy
+		c.Stdout = ioutil.Discard
+		c.Stderr = ioutil.Discard
+	})
+
 	store := NewConsulStore(Options{
 		Address: server.HTTPAddr,
 	})

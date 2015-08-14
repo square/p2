@@ -12,17 +12,33 @@ type Lock struct {
 	client  *api.Client
 	session string
 	name    string
+
+	// Coordination channels
+	//
+	// signals that continual renewal of lock should stop
+	quitCh chan struct{}
+
+	// communicates any error occuring during renewal
+	renewalErrCh chan error
+
+	// signals when a renewal on the consul lock should be performed
+	renewalCh <-chan time.Time
 }
 
 type AlreadyLockedError struct {
 	Key string
 }
 
+const (
+	lockTTL         = "15s"
+	renewalInterval = 10 * time.Second
+)
+
 func (err AlreadyLockedError) Error() string {
 	return fmt.Sprintf("Key %q is already locked", err.Key)
 }
 
-func (c consulStore) NewLock(name string) (Lock, error) {
+func (c consulStore) NewLock(name string, renewalCh <-chan time.Time) (Lock, chan error, error) {
 	session, _, err := c.client.Session().CreateNoChecks(&api.SessionEntry{
 		Name: name,
 		// if the lock delay is zero, it becomes the default value, which is 15s
@@ -32,17 +48,32 @@ func (c consulStore) NewLock(name string) (Lock, error) {
 		LockDelay: 1 * time.Nanosecond,
 		// locks should only be used with ephemeral keys
 		Behavior: api.SessionBehaviorDelete,
-		TTL:      "15s",
+		TTL:      lockTTL,
 	}, nil)
 
 	if err != nil {
-		return Lock{}, util.Errorf("Could not create lock")
+		return Lock{}, nil, util.Errorf("Could not create lock")
 	}
-	return Lock{
-		client:  c.client,
-		session: session,
-		name:    name,
-	}, nil
+
+	if renewalCh == nil {
+		renewalCh = time.NewTicker(renewalInterval).C
+	}
+
+	quitCh := make(chan struct{})
+	renewalErrCh := make(chan error, 1)
+	lock := Lock{
+		client:       c.client,
+		session:      session,
+		name:         name,
+		quitCh:       quitCh,
+		renewalErrCh: renewalErrCh,
+		renewalCh:    renewalCh,
+	}
+
+	// Could explore using c.client.Session().RenewPeriodic() instead, but
+	// specifying a renewalCh is nice for testing
+	go lock.continuallyRenew()
+	return lock, renewalErrCh, nil
 }
 
 // determine the name and ID of the session that is locking this key, if any
@@ -86,6 +117,23 @@ func (l Lock) Lock(key string) error {
 	return AlreadyLockedError{Key: key}
 }
 
+func (l Lock) continuallyRenew() {
+	for {
+		select {
+		case <-l.renewalCh:
+			err := l.Renew()
+			if err != nil {
+				l.renewalErrCh <- err
+				l.Destroy()
+				return
+			}
+		case <-l.quitCh:
+			close(l.renewalErrCh)
+			return
+		}
+	}
+}
+
 // refresh the TTL on this lock
 func (l Lock) Renew() error {
 	_, _, err := l.client.Session().Renew(l.session, nil)
@@ -97,6 +145,11 @@ func (l Lock) Renew() error {
 
 // destroy a lock, releasing and deleting all the keys it holds
 func (l Lock) Destroy() error {
+	l.quitCh <- struct{}{}
+
+	// There is a race here if (lockTTL - renewalInterval) time passes and
+	// the lock is destroyed automatically before we do it explicitly. In
+	// practice that shouldn't be an issue
 	_, err := l.client.Session().Destroy(l.session, nil)
 	if err != nil {
 		return util.Errorf("Could not destroy lock")

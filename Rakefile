@@ -23,9 +23,14 @@ task :build do
   e "go build -v ./..."
 end
 
-desc 'Test all projects'
+desc 'Test all projects (short only)'
 task :test => [:build] do
-  e "go test -timeout 10s ./..."
+  e "go test -short -timeout 10s ./..."
+end
+
+desc 'Test all projects'
+task :test_all => [:build] do
+  e "go test -timeout 120s ./..."
 end
 
 desc 'Update all dependencies'
