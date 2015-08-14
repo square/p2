@@ -16,5 +16,5 @@ install:
   - sudo mv consul /usr/bin/
 
 script:
-  - rake test
+  - rake test_all
   - integration/travis.sh
