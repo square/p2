@@ -32,13 +32,9 @@ openssl req -x509 -newkey rsa:2048 -keyout $CERTPATH/key.pem -out $CERTPATH/cert
 
 go version
 
-# Install Godep
-sudo yum install -y mercurial
-go get github.com/tools/godep
-
 # Build p2.
 cd $GOPATH/src/github.com/square/p2
-godep go install ./...
+go install ./...
 cp $GOPATH/bin/p2-exec /usr/local/bin
 
 # Install ruby + rake
