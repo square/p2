@@ -26,4 +26,7 @@ CERTPATH=/var/tmp/certs
 mkdir -p $CERTPATH
 openssl req -x509 -newkey rsa:2048 -keyout $CERTPATH/key.pem -out $CERTPATH/cert.pem -nodes -days 300 -subj "$(echo -n "$subj" | tr "\n" "/")"
 
+sudo wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
+sudo unzip 0.5.2_linux_amd64.zip
+sudo mv consul /usr/bin/
 sudo env PATH=$PATH GOPATH=$GOPATH GOROOT=$GOROOT go run integration/single-node-slug-deploy/check.go
