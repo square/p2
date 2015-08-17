@@ -19,24 +19,24 @@ task :deps => :godep_check do
 end
 
 desc 'Build all projects'
-task :build => :godep_check do
-  e "godep go build -v ./..."
+task :build do
+  e "go build -v ./..."
 end
 
 desc 'Test all projects'
-task :test => [:godep_check, :build] do
-  e "godep go test -timeout 10s ./..."
+task :test => [:build] do
+  e "go test -timeout 10s ./..."
 end
 
 desc 'Update all dependencies'
 task :update => :godep_check do
   e "go get -u -t -v ./..."
-  e "godep update .../..."
+  e "godep update -r .../..."
 end
 
 desc 'Install all built binaries'
-task :install => :godep_check do
-  e "godep go install -a -ldflags \"-X github.com/square/p2/pkg/version.VERSION $(git describe --tags)\" ./..."
+task :install do
+  e "go install -a -ldflags \"-X github.com/square/p2/pkg/version.VERSION $(git describe --tags)\" ./..."
 end
 
 desc 'Package the installed P2 binaries into a Hoist artifact that runs as the preparer. The output tar is symlinked to builds/p2.tar.gz'
