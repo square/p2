@@ -53,6 +53,14 @@ func TestGetHealthWithEntry(t *testing.T) {
 }
 
 func makeStore(t *testing.T) (Store, *testutil.TestServer) {
+	// Detect if the test gets skipped by testutil.NewTestServerConfig.
+	// This happens if 'consul' isn't in $PATH
+	defer func() {
+		if t.Skipped() {
+			t.Fatal("failing skipped test")
+		}
+	}()
+
 	// Create server
 	server := testutil.NewTestServerConfig(t, nil)
 	store := NewConsulStore(Options{
