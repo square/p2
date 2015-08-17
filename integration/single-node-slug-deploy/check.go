@@ -34,7 +34,7 @@ func main() {
 	// 5. Verify that hello is running (listen to syslog? verify Runit PIDs? Both?)
 
 	// list of services running on integration test host
-	services := []string{"p2-preparer", "hello"}
+	//services := []string{"p2-preparer", "hello"}
 	tempdir, err := ioutil.TempDir("", "single-node-check")
 	log.Printf("Putting test manifests in %s\n", tempdir)
 	if err != nil {
@@ -44,7 +44,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not generate preparer pod: %s\n", err)
 	}
-	config, err := preparer.LoadConfig(preparerManifest)
+	_, err = preparer.LoadConfig(preparerManifest)
 	if err != nil {
 		log.Fatalf("could not unmarshal config: %s\n", err)
 	}
@@ -85,10 +85,6 @@ func main() {
 	err = verifyHelloRunning()
 	if err != nil {
 		log.Fatalf("Couldn't get hello running: %s", err)
-	}
-	err = verifyHealthChecks(config, services)
-	if err != nil {
-		log.Fatalf("Could not get health check info from consul: %s", err)
 	}
 }
 
