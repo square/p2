@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/hashicorp/hcl/hcl"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/hcl/hcl"
 )
 
 //line parse.y:15

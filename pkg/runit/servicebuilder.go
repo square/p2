@@ -27,7 +27,7 @@ import (
 
 	"github.com/square/p2/pkg/util"
 
-	"gopkg.in/yaml.v2"
+	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
 )
 
 // To maintain compatibility with Ruby1.8's YAML serializer, a document separator with a

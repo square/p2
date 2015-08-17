@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hashicorp/consul/acl"
-	"github.com/hashicorp/go-msgpack/codec"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/acl"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/go-msgpack/codec"
 )
 
 var (

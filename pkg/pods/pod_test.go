@@ -12,12 +12,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
-	"gopkg.in/yaml.v2"
 
-	. "github.com/anthonybishopric/gotcha"
+	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 )
 
 func getTestPod() *Pod {

@@ -1,7 +1,7 @@
 package testutil
 
 import (
-	"github.com/hashicorp/consul/consul/structs"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/consul/structs"
 	"testing"
 	"time"
 )

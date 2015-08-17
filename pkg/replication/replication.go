@@ -3,7 +3,7 @@ package replication
 import (
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"

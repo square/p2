@@ -13,10 +13,10 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp/clearsign"
+	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/util"
-	"golang.org/x/crypto/openpgp/clearsign"
-	"gopkg.in/yaml.v2"
 )
 
 type LaunchableStanza struct {

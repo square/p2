@@ -10,8 +10,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/hashicorp/consul/api"
-	"gopkg.in/alecthomas/kingpin.v1"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
+	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v1"
 
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"

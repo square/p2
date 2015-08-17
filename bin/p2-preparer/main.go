@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Sirupsen/logrus"
-	"gopkg.in/alecthomas/kingpin.v1"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v1"
 
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/preparer"

@@ -4,7 +4,7 @@ import (
 	"crypto/md5"
 	"fmt"
 
-	"github.com/hashicorp/golang-lru"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/golang-lru"
 )
 
 // FaultFunc is a function used to fault in the parent,
