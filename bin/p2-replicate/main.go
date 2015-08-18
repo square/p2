@@ -11,7 +11,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v1"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
@@ -20,7 +21,6 @@ import (
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util/net"
 	"github.com/square/p2/pkg/version"
-	"gopkg.in/alecthomas/kingpin.v1"
 )
 
 var (

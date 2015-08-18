@@ -6,10 +6,10 @@ import (
 	"io/ioutil"
 	"os"
 
-	"golang.org/x/crypto/openpgp"
-	"golang.org/x/crypto/openpgp/errors"
-	"golang.org/x/crypto/openpgp/packet"
-	"gopkg.in/yaml.v2"
+	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp"
+	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp/errors"
+	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp/packet"
+	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
 
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util"

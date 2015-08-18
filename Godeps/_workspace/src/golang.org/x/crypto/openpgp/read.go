@@ -3,14 +3,14 @@
 // license that can be found in the LICENSE file.
 
 // Package openpgp implements high level operations on OpenPGP messages.
-package openpgp // import "golang.org/x/crypto/openpgp"
+package openpgp
 
 import (
 	"crypto"
 	_ "crypto/sha256"
-	"golang.org/x/crypto/openpgp/armor"
-	"golang.org/x/crypto/openpgp/errors"
-	"golang.org/x/crypto/openpgp/packet"
+	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp/armor"
+	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp/errors"
+	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp/packet"
 	"hash"
 	"io"
 	"strconv"

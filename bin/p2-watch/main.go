@@ -10,8 +10,8 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/util/net"
 
+	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v1"
 	"github.com/square/p2/pkg/version"
-	"gopkg.in/alecthomas/kingpin.v1"
 )
 
 var (

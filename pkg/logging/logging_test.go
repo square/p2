@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Sirupsen/logrus"
-	. "github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/util"
 )
 

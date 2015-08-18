@@ -1,7 +1,7 @@
 package acl
 
 import (
-	"github.com/armon/go-radix"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/armon/go-radix"
 )
 
 var (

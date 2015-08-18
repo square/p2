@@ -6,7 +6,7 @@ Tests have one or more (possibly para-)virtualized machines made accessible with
 
 * Installing the current version of Go
 * Setting up important Go variables
-* Installing godep and all p2 binaries
+* Installing all p2 binaries
 
 ## Test layout
 

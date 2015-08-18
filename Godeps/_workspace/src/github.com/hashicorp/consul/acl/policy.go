@@ -3,7 +3,7 @@ package acl
 import (
 	"fmt"
 
-	"github.com/hashicorp/hcl"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/hcl"
 )
 
 const (

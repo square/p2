@@ -6,7 +6,7 @@ import (
 	"path"
 	"testing"
 
-	. "github.com/anthonybishopric/gotcha"
+	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 )

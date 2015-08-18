@@ -3,7 +3,7 @@ package preparer
 import (
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"

@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/alecthomas/units"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/alecthomas/units"
 )
 
 type Settings interface {

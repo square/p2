@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/consul/testutil"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/testutil"
 )
 
 type configCallback func(c *Config)
