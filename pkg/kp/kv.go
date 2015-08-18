@@ -52,6 +52,26 @@ type WatchResult struct {
 	Status  string
 	Output  string
 	Time    time.Time
+	Expires time.Time `json:"Expires,omitempty"`
+}
+
+// ValueEquiv returns true if the value of the WatchResult--everything except the
+// timestamps--is equivalent to another WatchResult.
+func (r WatchResult) ValueEquiv(s WatchResult) bool {
+	return r.Id == s.Id &&
+		r.Node == s.Node &&
+		r.Service == s.Service &&
+		r.Status == s.Status &&
+		r.Output == s.Output
+}
+
+// IsStale returns true when the result is stale according to the local clock.
+func (r WatchResult) IsStale() bool {
+	expires := r.Expires
+	if expires.IsZero() {
+		expires = r.Time.Add(TTL)
+	}
+	return time.Now().After(expires)
 }
 
 type consulStore struct {
@@ -116,8 +136,10 @@ func NewKVError(op string, key string, unsafeError error) KVError {
 func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error) {
 	key := HealthPath(res.Service, res.Node)
 
-	t, value := addTimeStamp(res)
-	data, err := json.Marshal(value)
+	now := time.Now()
+	res.Time = now
+	res.Expires = now.Add(TTL)
+	data, err := json.Marshal(res)
 	if err != nil {
 		return time.Time{}, 0, err
 	}
@@ -132,9 +154,9 @@ func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error
 		retDur = writeMeta.RequestTime
 	}
 	if err != nil {
-		return t, retDur, NewKVError("put", key, err)
+		return now, retDur, NewKVError("put", key, err)
 	}
-	return t, retDur, nil
+	return now, retDur, nil
 }
 
 func (c consulStore) GetHealth(service, node string) (WatchResult, error) {
@@ -150,8 +172,7 @@ func (c consulStore) GetHealth(service, node string) (WatchResult, error) {
 	if err != nil {
 		return WatchResult{}, NewKVError("get", key, err)
 	}
-	stale := isStale(*healthRes)
-	if stale {
+	if healthRes.IsStale() {
 		return *healthRes, NewKVError("get", key, fmt.Errorf("stale health entry"))
 	}
 	return *healthRes, nil
@@ -301,18 +322,9 @@ func (c consulStore) Ping() error {
 	return nil
 }
 
-func addTimeStamp(value WatchResult) (time.Time, WatchResult) {
-	value.Time = time.Now()
-	return value.Time, value
-}
-
 func HealthPath(service, node string) string {
 	if node == "" {
 		return fmt.Sprintf("%s/%s", "health", service)
 	}
 	return fmt.Sprintf("%s/%s/%s", "health", service, node)
-}
-
-func isStale(res WatchResult) bool {
-	return time.Since(res.Time) > TTL
 }
