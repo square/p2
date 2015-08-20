@@ -131,11 +131,12 @@ func generatePreparerPod(workdir string) (string, error) {
 			"type":    "keyring",
 			"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
 		},
-		"ca_file":         filepath.Join(certpath, "cert.pem"),
-		"cert_file":       filepath.Join(certpath, "cert.pem"),
-		"key_file":        filepath.Join(certpath, "key.pem"),
-		"status_port":     preparerStatusPort,
-		"write_kv_health": true,
+		"ca_file":            filepath.Join(certpath, "cert.pem"),
+		"cert_file":          filepath.Join(certpath, "cert.pem"),
+		"key_file":           filepath.Join(certpath, "key.pem"),
+		"status_port":        preparerStatusPort,
+		"write_kv_health":    true,
+		"use_session_health": true,
 	}
 	manifest.RunAs = "root"
 	manifest.StatusPort = preparerStatusPort

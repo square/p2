@@ -99,11 +99,15 @@ func (r WatchResult) IsStale() bool {
 }
 
 type consulStore struct {
-	client *api.Client
+	client           *api.Client
+	UseSessionHealth bool
 }
 
 func NewConsulStore(opts Options) Store {
-	return &consulStore{client: NewConsulClient(opts)}
+	return &consulStore{
+		client:           NewConsulClient(opts),
+		UseSessionHealth: opts.UseSessionHealth,
+	}
 }
 
 // KVError encapsulates an error in a Store operation. Errors returned from the
@@ -354,5 +358,8 @@ func HealthPath(service, node string) string {
 }
 
 func (c consulStore) NewHealthManager(node string, logger logging.Logger) HealthManager {
+	if c.UseSessionHealth {
+		return c.newSessionHealthManager(node, logger)
+	}
 	return c.newSimpleHealthManager(node, logger)
 }
