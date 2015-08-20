@@ -1,7 +1,6 @@
 package health
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
@@ -9,11 +8,16 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-type ConsulHealthChecker struct {
+type consulHealthChecker struct {
 	client      *api.Client
 	health      consulHealth
 	consulStore kp.Store
 	WaitTime    time.Duration
+}
+
+type ConsulHealthChecker interface {
+	WatchNodeService(nodename string, serviceID string, resultCh chan<- Result, errCh chan<- error, quitCh <-chan struct{})
+	Service(serviceID string) (map[string]Result, error)
 }
 
 type consulHealth interface {
@@ -22,7 +26,7 @@ type consulHealth interface {
 
 func NewConsulHealthChecker(opts kp.Options) ConsulHealthChecker {
 	client := kp.NewConsulClient(opts)
-	return ConsulHealthChecker{
+	return consulHealthChecker{
 		client:      client,
 		health:      client.Health(),
 		consulStore: kp.NewConsulStore(opts),
@@ -46,7 +50,7 @@ func (h *HealthEmpty) Error() string {
 	return h.Res
 }
 
-func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string, resultCh chan<- Result, errCh chan<- error, quitCh <-chan struct{}) {
+func (c consulHealthChecker) WatchNodeService(nodename string, serviceID string, resultCh chan<- Result, errCh chan<- error, quitCh <-chan struct{}) {
 	defer close(resultCh)
 
 	var curIndex uint64 = 0
@@ -58,7 +62,7 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 		case <-time.After(1 * time.Second):
 			var err error
 			var checks []*api.HealthCheck
-			checks, curIndex, err = h.fetchNodeHealth(nodename, curIndex)
+			checks, curIndex, err = c.fetchNodeHealth(nodename, curIndex)
 			if err != nil {
 				errCh <- err
 			}
@@ -73,7 +77,7 @@ func (h ConsulHealthChecker) WatchNodeService(nodename string, serviceID string,
 				catalogResults = append(catalogResults, outResult)
 			}
 			// GetHealth will fail if there are no kv results
-			kvCheck, err := h.consulStore.GetHealth(nodename, serviceID)
+			kvCheck, err := c.consulStore.GetHealth(nodename, serviceID)
 			pickHealthResult(catalogResults, kvCheck, err, resultCh, errCh)
 		}
 	}
@@ -84,7 +88,6 @@ func pickHealthResult(catalogResults []Result, kvCheck kp.WatchResult, kvCheckEr
 	if kvCheckError != nil {
 		// if there are neither kv nor catalog results
 		if len(catalogResults) == 0 {
-			fmt.Println(kvCheckError)
 			errCh <- kvCheckError
 			return
 		} else {
@@ -107,10 +110,10 @@ func pickHealthResult(catalogResults []Result, kvCheck kp.WatchResult, kvCheckEr
 	}
 }
 
-func (h ConsulHealthChecker) fetchNodeHealth(nodename string, curIndex uint64) ([]*api.HealthCheck, uint64, error) {
-	checks, meta, err := h.health.Node(nodename, &api.QueryOptions{
+func (c consulHealthChecker) fetchNodeHealth(nodename string, curIndex uint64) ([]*api.HealthCheck, uint64, error) {
+	checks, meta, err := c.health.Node(nodename, &api.QueryOptions{
 		WaitIndex: curIndex,
-		WaitTime:  h.WaitTime,
+		WaitTime:  c.WaitTime,
 	})
 	if err != nil {
 		// return the current index, since there was an error
@@ -123,14 +126,14 @@ func (h ConsulHealthChecker) fetchNodeHealth(nodename string, curIndex uint64) (
 // The result is selected by choosing the best of all the worst results each source
 // returned. If there is one source (or other sources are unavailable) the value returned
 // will just be the worst result.
-func (h ConsulHealthChecker) Service(serviceID string) (map[string]Result, error) {
-	catalogEntries, _, err := h.client.Health().Service(serviceID, "", false, nil)
+func (c consulHealthChecker) Service(serviceID string) (map[string]Result, error) {
+	catalogEntries, _, err := c.client.Health().Service(serviceID, "", false, nil)
 	if err != nil {
 		return nil, util.Errorf("/health/service failed for %q: %s", serviceID, err)
 	}
 	// return map[nodenames (string)] to kp.WatchResult
 	// get health of all instances of a service with 1 query
-	kvEntries, err := h.consulStore.GetServiceHealth(serviceID)
+	kvEntries, err := c.consulStore.GetServiceHealth(serviceID)
 	if err != nil {
 		return nil, util.Errorf("/health/service failed for %q: %s", serviceID, err)
 	}

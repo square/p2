@@ -42,7 +42,7 @@ type Store interface {
 	ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error)
 	LockHolder(key string) (string, string, error)
 	DestroyLockHolder(id string) error
-	NewLock(name string) (Lock, error)
+	NewLock(name string, renewalCh <-chan time.Time) (Lock, chan error, error)
 }
 
 type WatchResult struct {
