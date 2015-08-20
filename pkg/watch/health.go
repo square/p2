@@ -34,18 +34,12 @@ const HEALTHCHECK_INTERVAL = 1 * time.Second
 // has a running MonitorHealth go routine
 type PodWatch struct {
 	manifest      pods.Manifest
-	store         kp.Store
+	updater       kp.HealthUpdater
 	statusChecker StatusChecker
 
 	// For tracking/controlling the go routine that performs health checks
 	// on the pod associated with this PodWatch
 	shutdownCh chan bool
-
-	// the fields are provided so it can be determined if new health checks
-	// actually need to be sent to consul. If newT - oldT << TTL and status
-	// has not changed there is no reason to update consul
-	lastCheck  time.Time          // time of last health check
-	lastStatus health.HealthState // status of last health check
 
 	logger *logging.Logger
 }
@@ -72,6 +66,7 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 		// A bad config should have already produced a nice, user-friendly error message.
 		logger.WithError(err).Fatalln("error creating health monitor KV store")
 	}
+	healthManager := store.NewHealthManager(config.NodeName, *logger)
 	// if GetClient fails it means the certfile/keyfile/cafile were
 	// invalid or did not exist. It makes sense to throw a fatal error
 	client, err := config.GetClient()
@@ -81,18 +76,19 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 
 	node := config.NodeName
 	pods := []PodWatch{}
-	pods = updateHealthMonitors(store, client, pods, node, logger)
+	pods = updateHealthMonitors(store, healthManager, client, pods, node, logger)
 	for {
 		select {
 		case <-time.After(POLL_KV_FOR_PODS):
 			// check if pods have been added or removed
 			// starts monitor routine for new pods
 			// kills monitor routine for removed pods
-			pods = updateHealthMonitors(store, client, pods, node, logger)
+			pods = updateHealthMonitors(store, healthManager, client, pods, node, logger)
 		case <-shutdownCh:
 			for _, pod := range pods {
 				pod.shutdownCh <- true
 			}
+			healthManager.Close()
 			return
 		}
 	}
@@ -101,28 +97,33 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 // Determines what pods should be running (by checking reality store)
 // Creates new PodWatch for any pod not being monitored and kills
 // PodWatches of pods that have been removed from the reality store
-func updateHealthMonitors(store kp.Store,
+func updateHealthMonitors(
+	store kp.Store,
+	healthManager kp.HealthManager,
 	client *http.Client,
 	watchedPods []PodWatch,
 	node string,
-	logger *logging.Logger) []PodWatch {
+	logger *logging.Logger,
+) []PodWatch {
 	path := kp.RealityPath(node)
 	reality, _, err := store.ListPods(path)
 	if err != nil {
 		logger.WithError(err).Warningln("failed to get pods from reality store")
 	}
 
-	return updatePods(store, client, watchedPods, reality, node, logger)
+	return updatePods(healthManager, client, watchedPods, reality, node, logger)
 }
 
 // compares services being monitored with services that
 // need to be monitored.
-func updatePods(store kp.Store,
+func updatePods(
+	healthManager kp.HealthManager,
 	client *http.Client,
 	current []PodWatch,
 	reality []kp.ManifestResult,
 	node string,
-	logger *logging.Logger) []PodWatch {
+	logger *logging.Logger,
+) []PodWatch {
 	newCurrent := []PodWatch{}
 	// for pod in current if pod not in reality: kill
 	for _, pod := range current {
@@ -168,7 +169,7 @@ func updatePods(store kp.Store,
 			}
 			newPod := PodWatch{
 				manifest:      man.Manifest,
-				store:         store,
+				updater:       healthManager.NewUpdater(man.Manifest.Id, man.Manifest.Id),
 				statusChecker: sc,
 				shutdownCh:    make(chan bool, 1),
 				logger:        logger,
@@ -192,6 +193,7 @@ func (p *PodWatch) MonitorHealth() {
 		case <-time.After(HEALTHCHECK_INTERVAL):
 			p.checkHealth()
 		case <-p.shutdownCh:
+			p.updater.Close()
 			return
 		}
 	}
@@ -204,33 +206,7 @@ func (p *PodWatch) checkHealth() {
 		return
 	}
 
-	if p.updateNeeded(health, kp.TTL) {
-		p.writeToConsul(health)
-	}
-}
-
-// once we get health data we need to make a put request
-// to consul to put the data in the KV Store
-func (p *PodWatch) writeToConsul(res health.Result) {
-	var err error
-	p.lastCheck, _, err = p.store.PutHealth(resToKPRes(res))
-	p.lastStatus = res.Status
-	if err != nil {
-		p.logger.WithError(err).Warningln("failed to write to consul")
-	}
-}
-func (p *PodWatch) updateNeeded(res health.Result, ttl time.Duration) bool {
-	// if status has changed indicate that consul needs to be updated
-	if p.lastStatus != res.Status {
-		return true
-	}
-	// if more than TTL / 4 seconds have elapsed since previous check
-	// indicate that consul needs to be updated
-	if time.Since(p.lastCheck) > time.Duration(ttl/4)*time.Second {
-		return true
-	}
-
-	return false
+	p.updater.PutHealth(resToKPRes(health))
 }
 
 // Given the result of a status check this method

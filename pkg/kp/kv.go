@@ -13,6 +13,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v1"
 
+	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
 )
@@ -43,6 +44,29 @@ type Store interface {
 	LockHolder(key string) (string, string, error)
 	DestroyLockHolder(id string) error
 	NewLock(name string, renewalCh <-chan time.Time) (Lock, chan error, error)
+	NewHealthManager(node string, logger logging.Logger) HealthManager
+}
+
+// HealthManager manages a collection of health checks that share configuration and
+// resources.
+type HealthManager interface {
+	// NewUpdater creates a new object for publishing a single service's health. Each
+	// service should have its own updater.
+	NewUpdater(pod, service string) HealthUpdater
+
+	// Close removes all published health statuses and releases all manager resources.
+	Close()
+}
+
+// HealthUpdater allows an app's health to be updated.
+type HealthUpdater interface {
+	// PutHealth updates the health status of the app. Checkers are free to call it after
+	// every health check or other status change.
+	PutHealth(health WatchResult) error
+
+	// Close removes a service's health check and releases all updater resources. Call this
+	// when no more health statuses will be published.
+	Close()
 }
 
 type WatchResult struct {
@@ -327,4 +351,8 @@ func HealthPath(service, node string) string {
 		return fmt.Sprintf("%s/%s", "health", service)
 	}
 	return fmt.Sprintf("%s/%s/%s", "health", service, node)
+}
+
+func (c consulStore) NewHealthManager(node string, logger logging.Logger) HealthManager {
+	return c.newSimpleHealthManager(node, logger)
 }

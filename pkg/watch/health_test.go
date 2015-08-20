@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
@@ -14,6 +13,18 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 )
+
+type EmptyHealthManager struct{}
+
+func (m EmptyHealthManager) NewUpdater(pod, service string) kp.HealthUpdater {
+	return m
+}
+
+func (m EmptyHealthManager) PutHealth(health kp.WatchResult) error {
+	return fmt.Errorf("PutHealth() not implemented")
+}
+
+func (EmptyHealthManager) Close() {}
 
 // UpdatePods looks at the pods currently being monitored and
 // compares that to what the reality store indicates should be
@@ -35,28 +46,13 @@ func TestUpdatePods(t *testing.T) {
 	// ids for pods: 1, 2, test
 	// 0, 3 should have values in their shutdownCh
 	logger := logging.NewLogger(logrus.Fields{})
-	pods := updatePods(nil, nil, current, reality, "", &logger)
+	pods := updatePods(EmptyHealthManager{}, nil, current, reality, "", &logger)
 	Assert(t).AreEqual(true, <-current[0].shutdownCh, "this PodWatch should have been shutdown")
 	Assert(t).AreEqual(true, <-current[3].shutdownCh, "this PodWatch should have been shutdown")
 
 	Assert(t).AreEqual(current[1].manifest.Id, pods[0].manifest.Id, "pod with id:1 should have been returned")
 	Assert(t).AreEqual(current[2].manifest.Id, pods[1].manifest.Id, "pod with id:1 should have been returned")
 	Assert(t).AreEqual("test", pods[2].manifest.Id, "should have added pod with id:test to list")
-}
-
-func TestUpdateNeeded(t *testing.T) {
-	p := PodWatch{
-		lastCheck:  time.Now(),
-		lastStatus: health.Passing,
-	}
-	res := health.Result{
-		Status: health.Critical,
-	}
-	Assert(t).AreEqual(true, p.updateNeeded(res, 1000), "should need update since Result.Status changed")
-
-	res.Status = health.Passing
-	Assert(t).AreEqual(true, p.updateNeeded(res, 0), "TTL is 0 so should always need update")
-	Assert(t).AreEqual(false, p.updateNeeded(res, 1000), "TTL is >> than time since ti was created and status is unchanged")
 }
 
 func TestResultFromCheck(t *testing.T) {
