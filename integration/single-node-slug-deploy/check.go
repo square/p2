@@ -252,7 +252,10 @@ func executeBin2Pod(cmd *exec.Cmd) (string, error) {
 }
 
 func getConsulManifest(dir string) (string, error) {
-	consulTar := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-consul_abc123.tar.gz"))
+	consulTar := fmt.Sprintf(
+		"file://%s",
+		util.From(runtime.Caller(0)).ExpandPath("../hoisted-consul_052.tar.gz"),
+	)
 	manifest := &pods.Manifest{}
 	manifest.Id = "consul"
 	stanza := pods.LaunchableStanza{
