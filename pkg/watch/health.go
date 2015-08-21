@@ -70,16 +70,13 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 	store, err := config.GetStore()
 	if err != nil {
 		// A bad config should have already produced a nice, user-friendly error message.
-		logger.WithError(err).
-			Fatalf("error creating health monitor KV store")
+		logger.WithError(err).Fatalln("error creating health monitor KV store")
 	}
 	// if GetClient fails it means the certfile/keyfile/cafile were
 	// invalid or did not exist. It makes sense to throw a fatal error
 	client, err := config.GetClient()
 	if err != nil {
-		logger.
-			WithField("inner_err", err).
-			Fatalln("failed to get http client for this preparer")
+		logger.WithError(err).Fatalln("failed to get http client for this preparer")
 	}
 
 	node := config.NodeName
@@ -93,6 +90,9 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 			// kills monitor routine for removed pods
 			pods = updateHealthMonitors(store, client, pods, node, logger)
 		case <-shutdownCh:
+			for _, pod := range pods {
+				pod.shutdownCh <- true
+			}
 			return
 		}
 	}
@@ -109,7 +109,7 @@ func updateHealthMonitors(store kp.Store,
 	path := kp.RealityPath(node)
 	reality, _, err := store.ListPods(path)
 	if err != nil {
-		logger.WithField("inner_err", err).Warningln("failed to get pods from reality store")
+		logger.WithError(err).Warningln("failed to get pods from reality store")
 	}
 
 	return updatePods(store, client, watchedPods, reality, node, logger)
@@ -200,7 +200,7 @@ func (p *PodWatch) MonitorHealth() {
 func (p *PodWatch) checkHealth() {
 	health, err := p.statusChecker.Check()
 	if err != nil {
-		p.logger.WithField("inner_err", err).Warningln("health check failed")
+		p.logger.WithError(err).Warningln("health check failed")
 		return
 	}
 

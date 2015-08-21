@@ -49,7 +49,7 @@ func (c consulStore) NewLock(name string) (Lock, error) {
 func (c consulStore) LockHolder(key string) (string, string, error) {
 	kvp, _, err := c.client.KV().Get(key, nil)
 	if err != nil {
-		return "", "", KVError{Op: "get", Key: key, UnsafeError: err}
+		return "", "", NewKVError("get", key, err)
 	}
 	if kvp == nil || kvp.Session == "" {
 		return "", "", nil
@@ -78,7 +78,7 @@ func (l Lock) Lock(key string) error {
 	}, nil)
 
 	if err != nil {
-		return KVError{Op: "acquire lock", Key: key, UnsafeError: err}
+		return NewKVError("acquire lock", key, err)
 	}
 	if success {
 		return nil

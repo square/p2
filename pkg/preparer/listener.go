@@ -90,7 +90,7 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 			// we just compare to the manifest on disk.
 			current, err := hookPod.CurrentManifest()
 			if err != nil && err != pods.NoCurrentManifest {
-				l.Logger.WithField("err", err).Errorln("Could not check current manifest")
+				l.Logger.WithError(err).Errorln("Could not check current manifest")
 				errCh <- err
 				break
 			}

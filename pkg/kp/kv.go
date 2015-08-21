@@ -52,6 +52,26 @@ type WatchResult struct {
 	Status  string
 	Output  string
 	Time    time.Time
+	Expires time.Time `json:"Expires,omitempty"`
+}
+
+// ValueEquiv returns true if the value of the WatchResult--everything except the
+// timestamps--is equivalent to another WatchResult.
+func (r WatchResult) ValueEquiv(s WatchResult) bool {
+	return r.Id == s.Id &&
+		r.Node == s.Node &&
+		r.Service == s.Service &&
+		r.Status == s.Status &&
+		r.Output == s.Output
+}
+
+// IsStale returns true when the result is stale according to the local clock.
+func (r WatchResult) IsStale() bool {
+	expires := r.Expires
+	if expires.IsZero() {
+		expires = r.Time.Add(TTL)
+	}
+	return time.Now().After(expires)
 }
 
 type consulStore struct {
@@ -76,14 +96,12 @@ type KVError struct {
 
 var _ util.CallsiteError = KVError{}
 
-const KVErrorFormat = "%s failed for path %s%s"
-
 func (err KVError) Error() string {
 	cerr := ""
 	if *showConsulErrors {
 		cerr = fmt.Sprintf(": %s", err.UnsafeError)
 	}
-	return fmt.Sprintf(KVErrorFormat, err.Op, err.Key, cerr)
+	return fmt.Sprintf("%s failed for path %s%s", err.Op, err.Key, cerr)
 }
 
 func (err KVError) Filename() string {
@@ -118,8 +136,10 @@ func NewKVError(op string, key string, unsafeError error) KVError {
 func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error) {
 	key := HealthPath(res.Service, res.Node)
 
-	t, value := addTimeStamp(res)
-	data, err := json.Marshal(value)
+	now := time.Now()
+	res.Time = now
+	res.Expires = now.Add(TTL)
+	data, err := json.Marshal(res)
 	if err != nil {
 		return time.Time{}, 0, err
 	}
@@ -134,9 +154,9 @@ func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error
 		retDur = writeMeta.RequestTime
 	}
 	if err != nil {
-		return t, retDur, NewKVError("put", key, err)
+		return now, retDur, NewKVError("put", key, err)
 	}
-	return t, retDur, nil
+	return now, retDur, nil
 }
 
 func (c consulStore) GetHealth(service, node string) (WatchResult, error) {
@@ -144,17 +164,16 @@ func (c consulStore) GetHealth(service, node string) (WatchResult, error) {
 	key := HealthPath(service, node)
 	res, _, err := c.client.KV().Get(key, nil)
 	if err != nil {
-		return WatchResult{}, KVError{Op: "get", Key: key, UnsafeError: err}
+		return WatchResult{}, NewKVError("get", key, err)
 	} else if res == nil {
 		return WatchResult{}, nil
 	}
 	err = json.Unmarshal(res.Value, healthRes)
 	if err != nil {
-		return WatchResult{}, KVError{Op: "get", Key: key, UnsafeError: err}
+		return WatchResult{}, NewKVError("get", key, err)
 	}
-	stale := isStale(*healthRes)
-	if stale {
-		return *healthRes, KVError{Op: "get", Key: key, UnsafeError: fmt.Errorf("stale health entry")}
+	if healthRes.IsStale() {
+		return *healthRes, NewKVError("get", key, fmt.Errorf("stale health entry"))
 	}
 	return *healthRes, nil
 }
@@ -164,7 +183,7 @@ func (c consulStore) GetServiceHealth(service string) (map[string]WatchResult, e
 	key := HealthPath(service, "")
 	res, _, err := c.client.KV().List(key, nil)
 	if err != nil {
-		return healthRes, KVError{Op: "list", Key: key, UnsafeError: err}
+		return healthRes, NewKVError("list", key, err)
 	} else if res == nil {
 		return healthRes, nil
 	}
@@ -172,7 +191,7 @@ func (c consulStore) GetServiceHealth(service string) (map[string]WatchResult, e
 		watch := &WatchResult{}
 		err = json.Unmarshal(kvp.Value, watch)
 		if err != nil {
-			return healthRes, KVError{Op: "get", Key: key, UnsafeError: err}
+			return healthRes, NewKVError("get", key, err)
 		}
 		// maps key to result (eg /health/hello/nodename)
 		healthRes[kvp.Key] = *watch
@@ -200,7 +219,7 @@ func (c consulStore) SetPod(key string, manifest pods.Manifest) (time.Duration, 
 		retDur = writeMeta.RequestTime
 	}
 	if err != nil {
-		return retDur, KVError{Op: "put", Key: key, UnsafeError: err}
+		return retDur, NewKVError("put", key, err)
 	}
 	return retDur, nil
 }
@@ -211,7 +230,7 @@ func (c consulStore) SetPod(key string, manifest pods.Manifest) (time.Duration, 
 func (c consulStore) Pod(key string) (*pods.Manifest, time.Duration, error) {
 	kvPair, writeMeta, err := c.client.KV().Get(key, nil)
 	if err != nil {
-		return nil, 0, KVError{Op: "get", Key: key, UnsafeError: err}
+		return nil, 0, NewKVError("get", key, err)
 	}
 	if kvPair == nil {
 		return nil, writeMeta.RequestTime, pods.NoCurrentManifest
@@ -227,7 +246,7 @@ func (c consulStore) Pod(key string) (*pods.Manifest, time.Duration, error) {
 func (c consulStore) ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error) {
 	kvPairs, writeMeta, err := c.client.KV().List(keyPrefix, nil)
 	if err != nil {
-		return nil, 0, KVError{Op: "list", Key: keyPrefix, UnsafeError: err}
+		return nil, 0, NewKVError("list", keyPrefix, err)
 	}
 	var ret []ManifestResult
 
@@ -264,7 +283,7 @@ func (c consulStore) WatchPods(keyPrefix string, quitChan <-chan struct{}, errCh
 				WaitIndex: curIndex,
 			})
 			if err != nil {
-				errChan <- KVError{Op: "list", Key: keyPrefix, UnsafeError: err}
+				errChan <- NewKVError("list", keyPrefix, err)
 			} else {
 				curIndex = meta.LastIndex
 				for _, pair := range pairs {
@@ -295,7 +314,7 @@ func (c consulStore) WatchPods(keyPrefix string, quitChan <-chan struct{}, errCh
 func (c consulStore) Ping() error {
 	_, qm, err := c.client.Catalog().Nodes(&api.QueryOptions{RequireConsistent: true})
 	if err != nil {
-		return KVError{Op: "ping", Key: "/catalog/nodes", UnsafeError: err}
+		return NewKVError("ping", "/catalog/nodes", err)
 	}
 	if qm == nil || !qm.KnownLeader {
 		return util.Errorf("No known leader")
@@ -303,18 +322,9 @@ func (c consulStore) Ping() error {
 	return nil
 }
 
-func addTimeStamp(value WatchResult) (time.Time, WatchResult) {
-	value.Time = time.Now()
-	return value.Time, value
-}
-
 func HealthPath(service, node string) string {
 	if node == "" {
 		return fmt.Sprintf("%s/%s", "health", service)
 	}
 	return fmt.Sprintf("%s/%s/%s", "health", service, node)
-}
-
-func isStale(res WatchResult) bool {
-	return time.Since(res.Time) > TTL
 }
