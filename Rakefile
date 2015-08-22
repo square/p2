@@ -25,7 +25,7 @@ end
 
 desc 'Test all projects'
 task :test => [:build] do
-  e "go test -timeout 10s ./..."
+  e "go test -timeout 20s ./..."
 end
 
 desc 'Update all dependencies'
