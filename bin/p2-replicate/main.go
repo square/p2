@@ -115,7 +115,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not retrieve user: %s", err)
 	}
-	lock, err := store.NewLock(fmt.Sprintf("%q from %q at %q", thisUser.Username, thisHost, time.Now()))
+	lockMessage := fmt.Sprintf("%q from %q at %q", thisUser.Username, thisHost, time.Now())
+	lock, errCh, err := store.NewLock(lockMessage, nil)
 	if err != nil {
 		log.Fatalf("Could not generate lock: %s", err)
 	}
@@ -123,12 +124,10 @@ func main() {
 	// the defer, so we have to manually destroy the lock at the right exit
 	// paths
 	go func() {
-		for range time.Tick(10 * time.Second) {
-			if err := lock.Renew(); err != nil {
-				// if the renewal failed, then either the lock is already dead
-				// or the consul agent cannot be reached
-				log.Fatalf("Lock could not be renewed: %s", err)
-			}
+		for err := range errCh {
+			// if the renewal failed, then either the lock is already dead
+			// or the consul agent cannot be reached
+			log.Fatalf("Lock could not be renewed: %s", err)
 		}
 	}()
 	if err := repl.LockHosts(lock, *overrideLock); err != nil {
