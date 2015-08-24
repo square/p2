@@ -127,7 +127,7 @@ func (f fakeNodeChecker) Node(_ string, _ *api.QueryOptions) ([]*api.HealthCheck
 
 func TestFetchHealth(t *testing.T) {
 	passingCheck := []*api.HealthCheck{fakeAPICheck("s", Passing)}
-	passingChecker := ConsulHealthChecker{health: fakeNodeChecker{
+	passingChecker := consulHealthChecker{health: fakeNodeChecker{
 		passingCheck,
 		&api.QueryMeta{LastIndex: 1337},
 		nil,
@@ -138,7 +138,7 @@ func TestFetchHealth(t *testing.T) {
 	Assert(t).AreEqual(uint64(1337), index, "Should have received the new index")
 	Assert(t).IsNil(err, "Should not have received an error")
 
-	erringChecker := ConsulHealthChecker{health: fakeNodeChecker{
+	erringChecker := consulHealthChecker{health: fakeNodeChecker{
 		nil,
 		nil,
 		fmt.Errorf("It messed up!"),
