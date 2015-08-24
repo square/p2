@@ -28,6 +28,7 @@ func flush(c <-chan string) int {
 // the values received and whether the channel is still open.
 func receiveAll(c <-chan string, done <-chan struct{}) (values []string, ok bool) {
 	var val string
+	values = make([]string, 0)
 	ok = true
 	for {
 		select {
@@ -247,7 +248,9 @@ func TestUnsubscribeIndependence(t *testing.T) {
 	if !reflect.DeepEqual(v1, expected) {
 		t.Error("sub1 got unexpected sequence:", v1)
 	}
-	if !(1 <= len(v2) && len(v2) <= 2) || !reflect.DeepEqual(v2, expected[:len(v2)]) {
+	// Receives are asynchronous. The only error is receiving a value whose send happened
+	// after the unsubscribe.
+	if len(v2) > 2 || !reflect.DeepEqual(v2, expected[:len(v2)]) {
 		t.Error("sub2 got unexpected sequence:", v2)
 	}
 	if !reflect.DeepEqual(v3, expected) {
