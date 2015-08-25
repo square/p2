@@ -46,7 +46,7 @@ func TestUpdatePods(t *testing.T) {
 	}
 	// ids for reality: 1, 2, test
 	for i := 1; i < 3; i++ {
-		reality = append(reality, newManifestResult(current[i].manifest.Id))
+		reality = append(reality, newManifestResult(current[i].manifest.ID()))
 	}
 	reality = append(reality, newManifestResult("test"))
 
@@ -57,9 +57,9 @@ func TestUpdatePods(t *testing.T) {
 	Assert(t).AreEqual(true, <-current[0].shutdownCh, "this PodWatch should have been shutdown")
 	Assert(t).AreEqual(true, <-current[3].shutdownCh, "this PodWatch should have been shutdown")
 
-	Assert(t).AreEqual(current[1].manifest.Id, pods[0].manifest.Id, "pod with id:1 should have been returned")
-	Assert(t).AreEqual(current[2].manifest.Id, pods[1].manifest.Id, "pod with id:1 should have been returned")
-	Assert(t).AreEqual("test", pods[2].manifest.Id, "should have added pod with id:test to list")
+	Assert(t).AreEqual(current[1].manifest.ID(), pods[0].manifest.ID(), "pod with id:1 should have been returned")
+	Assert(t).AreEqual(current[2].manifest.ID(), pods[1].manifest.ID(), "pod with id:1 should have been returned")
+	Assert(t).AreEqual("test", pods[2].manifest.ID(), "should have added pod with id:test to list")
 }
 
 func TestUpdateStatus(t *testing.T) {
@@ -73,7 +73,9 @@ func TestUpdateStatus(t *testing.T) {
 
 	// Change the status port, expect one pod to change
 	healthManager.Reset()
-	reality[0].Manifest.StatusPort = 2
+	builder := reality[0].Manifest.GetBuilder()
+	builder.SetStatusPort(2)
+	reality[0].Manifest = builder.GetManifest()
 	pods2 := updatePods(healthManager, nil, pods1, reality, "", &logger)
 	Assert(t).AreEqual(2, len(pods2), "updatePods() changed the number of pods")
 	Assert(t).AreEqual(1, healthManager.UpdaterCreated, "one pod should have been refreshed")
@@ -119,11 +121,11 @@ func newWatch(id string) *PodWatch {
 }
 
 func newManifestResult(id string) kp.ManifestResult {
+	builder := pods.NewManifestBuilder()
+	builder.SetID(id)
+	builder.SetStatusPort(1) // StatusPort must != 0 for updatePods to use it
 	return kp.ManifestResult{
-		Manifest: pods.Manifest{
-			Id:         id,
-			StatusPort: 1, // StatusPort must != 0 for updatePods to use it
-		},
+		Manifest: builder.GetManifest(),
 	}
 }
 

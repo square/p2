@@ -11,8 +11,8 @@ type ManifestPair struct {
 	// save the ID in a separate field, so that the user of this object doesn't
 	// have to check both manifests
 	ID      string
-	Intent  *pods.Manifest
-	Reality *pods.Manifest
+	Intent  pods.Manifest
+	Reality pods.Manifest
 }
 
 // Given two lists of ManifestResults, group them into pairs based on their
@@ -41,21 +41,21 @@ func ZipResultSets(intent, reality []kp.ManifestResult) (ret []ManifestPair) {
 			// the loop, therefore intentIndex must be in range
 			ret = append(ret, ManifestPair{
 				ID:     iID,
-				Intent: &intent[intentIndex].Manifest,
+				Intent: intent[intentIndex].Manifest,
 			})
 			intentIndex++
 		} else if iID == "" || rID < iID {
 			// and vice versa
 			ret = append(ret, ManifestPair{
 				ID:      rID,
-				Reality: &reality[realityIndex].Manifest,
+				Reality: reality[realityIndex].Manifest,
 			})
 			realityIndex++
 		} else {
 			ret = append(ret, ManifestPair{
 				ID:      rID,
-				Intent:  &intent[intentIndex].Manifest,
-				Reality: &reality[realityIndex].Manifest,
+				Intent:  intent[intentIndex].Manifest,
+				Reality: reality[realityIndex].Manifest,
 			})
 			intentIndex++
 			realityIndex++

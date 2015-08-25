@@ -7,7 +7,6 @@ package pods
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -29,33 +28,136 @@ type LaunchableStanza struct {
 	CgroupConfig            cgroups.Config `yaml:"cgroup,omitempty"`
 }
 
-type Manifest struct {
+type ManifestBuilder interface {
+	GetManifest() Manifest
+	SetID(string)
+	SetConfig(config map[interface{}]interface{})
+	SetRunAsUser(user string)
+	SetStatusPort(port int)
+	SetStatusHTTP(statusHTTP bool)
+	SetLaunchables(launchableStanzas map[string]LaunchableStanza)
+}
+
+var _ ManifestBuilder = manifestBuilder{}
+
+func NewManifestBuilder() ManifestBuilder {
+	return manifestBuilder{&manifest{}}
+}
+
+func (m manifestBuilder) GetManifest() Manifest {
+	return m.manifest
+}
+
+type manifestBuilder struct {
+	*manifest
+}
+
+// Read-only immutable interface for manifests. To programatically build a
+// manifest, use ManifestBuilder
+type Manifest interface {
+	ID() string
+	RunAsUser() string
+	Write(out io.Writer) error
+	ConfigFileName() (string, error)
+	WriteConfig(out io.Writer) error
+	PlatformConfigFileName() (string, error)
+	WritePlatformConfig(out io.Writer) error
+	GetLaunchableStanzas() map[string]LaunchableStanza
+	GetConfig() map[interface{}]interface{}
+	SHA() (string, error)
+	GetStatusPort() int
+	GetStatusHTTP() bool
+	Marshal() ([]byte, error)
+	SignatureData() (plaintext, signature []byte)
+
+	GetBuilder() ManifestBuilder
+}
+
+// assert manifest implements Manifest and UnsignedManifest
+var _ Manifest = &manifest{}
+
+type manifest struct {
 	Id                string                      `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
 	RunAs             string                      `yaml:"run_as,omitempty"`
 	LaunchableStanzas map[string]LaunchableStanza `yaml:"launchables"`
 	Config            map[interface{}]interface{} `yaml:"config"`
 	StatusPort        int                         `yaml:"status_port,omitempty"`
 	StatusHTTP        bool                        `yaml:"status_http,omitempty"`
-	// these fields are required to track the original text if it was signed
-	raw       []byte
+
+	// Used to track the original bytes so that we don't reorder them when
+	// doing a yaml.Unmarshal and a yaml.Marshal in succession
+	raw []byte
+
+	// Signature related fields, may be empty if manifest is not signed
 	plaintext []byte
 	signature []byte
 }
 
-func (manifest *Manifest) ID() string {
+func (m *manifest) GetBuilder() ManifestBuilder {
+	builder := manifestBuilder{
+		&manifest{},
+	}
+	*builder.manifest = *m
+	builder.manifest.plaintext = nil
+	builder.manifest.signature = nil
+	builder.manifest.raw = nil
+	return builder
+}
+
+func (manifest *manifest) ID() string {
 	return manifest.Id
 }
 
-func (manifest *Manifest) RunAsUser() string {
+func (m manifestBuilder) SetID(id string) {
+	m.manifest.Id = id
+}
+
+func (manifest *manifest) GetLaunchableStanzas() map[string]LaunchableStanza {
+	return manifest.LaunchableStanzas
+}
+
+func (manifest *manifest) SetLaunchables(launchableStanzas map[string]LaunchableStanza) {
+	manifest.LaunchableStanzas = launchableStanzas
+}
+
+func (manifest *manifest) GetConfig() map[interface{}]interface{} {
+	return manifest.Config
+}
+
+func (m manifestBuilder) SetConfig(config map[interface{}]interface{}) {
+	m.Config = config
+}
+
+func (manifest *manifest) GetStatusPort() int {
+	return manifest.StatusPort
+}
+
+func (manifest *manifest) SetStatusPort(port int) {
+	manifest.StatusPort = port
+}
+
+func (manifest *manifest) GetStatusHTTP() bool {
+	return manifest.StatusHTTP
+}
+
+func (manifest *manifest) SetStatusHTTP(statusHTTP bool) {
+	manifest.StatusHTTP = statusHTTP
+}
+
+func (manifest *manifest) RunAsUser() string {
 	if manifest.RunAs != "" {
 		return manifest.RunAs
 	}
 	return manifest.ID()
 }
 
+func (mb manifestBuilder) SetRunAsUser(user string) {
+	mb.manifest.RunAs = user
+}
+
 // ManifestFromPath constructs a Manifest from a local file. This function is a helper for
 // ManifestFromBytes().
-func ManifestFromPath(path string) (*Manifest, error) {
+func ManifestFromPath(path string) (Manifest, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -66,7 +168,7 @@ func ManifestFromPath(path string) (*Manifest, error) {
 
 // ManifestFromURI constructs a Manifest from data located at a URI. This function is a
 // helper for ManifestFromBytes().
-func ManifestFromURI(manifestUri string) (*Manifest, error) {
+func ManifestFromURI(manifestUri string) (Manifest, error) {
 	f, err := uri.DefaultFetcher.Open(manifestUri)
 	if err != nil {
 		return nil, err
@@ -78,7 +180,7 @@ func ManifestFromURI(manifestUri string) (*Manifest, error) {
 // ManifestFromReader constructs a Manifest from an open Reader. All bytes will be read
 // from the Reader. The caller is responsible for closing the Reader, if necessary. This
 // function is a helper for ManifestFromBytes().
-func ManifestFromReader(reader io.Reader) (*Manifest, error) {
+func ManifestFromReader(reader io.Reader) (Manifest, error) {
 	bytes, err := ioutil.ReadAll(reader)
 	if err != nil {
 		return nil, err
@@ -89,8 +191,8 @@ func ManifestFromReader(reader io.Reader) (*Manifest, error) {
 // ManifestFromBytes constructs a Manifest by parsing its serialized representation. The
 // manifest can be a raw YAML document or a PGP clearsigned YAML document. If signed, the
 // signature components will be stored inside the Manifest instance.
-func ManifestFromBytes(bytes []byte) (*Manifest, error) {
-	manifest := &Manifest{}
+func ManifestFromBytes(bytes []byte) (Manifest, error) {
+	manifest := &manifest{}
 
 	// Preserve the raw manifest so that manifest.Bytes() returns bytes in
 	// the same order that they were passed to this function
@@ -101,7 +203,7 @@ func ManifestFromBytes(bytes []byte) (*Manifest, error) {
 	if signed != nil {
 		signature, err := ioutil.ReadAll(signed.ArmoredSignature.Body)
 		if err != nil {
-			return nil, fmt.Errorf("Could not read signature from pod manifest: %s", err)
+			return nil, util.Errorf("Could not read signature from pod manifest: %s", err)
 		}
 		manifest.signature = signature
 
@@ -114,13 +216,13 @@ func ManifestFromBytes(bytes []byte) (*Manifest, error) {
 	}
 
 	if err := yaml.Unmarshal(bytes, manifest); err != nil {
-		return nil, fmt.Errorf("Could not read pod manifest: %s", err)
+		return nil, util.Errorf("Could not read pod manifest: %s", err)
 	}
 	return manifest, nil
 }
 
-func (manifest *Manifest) Write(out io.Writer) error {
-	bytes, err := manifest.OriginalBytes()
+func (manifest *manifest) Write(out io.Writer) error {
+	bytes, err := manifest.Marshal()
 	if err != nil {
 		return util.Errorf("Could not write manifest for %s: %s", manifest.ID(), err)
 	}
@@ -131,10 +233,10 @@ func (manifest *Manifest) Write(out io.Writer) error {
 	return nil
 }
 
-// OriginalBytes() always returns the bytes from the original manifest file
-// that was passed to ManifestFromBytes(). Any mutations to the struct will not
-// appear in the returned bytes. If mutations are desired, use Marshal()
-func (manifest *Manifest) OriginalBytes() ([]byte, error) {
+func (manifest *manifest) Marshal() ([]byte, error) {
+	// if it's signed, we must recycle the original content to preserve the
+	// signature's validity. remarshaling it might change the exact text of
+	// the YAML, which would invalidate the signature.
 	if manifest.raw != nil {
 		// if it's signed, we must recycle the original content to preserve the
 		// signature's validity. remarshaling it might change the exact text of
@@ -146,14 +248,7 @@ func (manifest *Manifest) OriginalBytes() ([]byte, error) {
 	return yaml.Marshal(manifest)
 }
 
-// Returns bytes correlating to the (potentially mutated) struct, unlike
-// Bytes() which guarantees that the bytes returned will be the same bytes the
-// manifest struct was built from
-func (manifest *Manifest) Marshal() ([]byte, error) {
-	return yaml.Marshal(manifest)
-}
-
-func (manifest *Manifest) WriteConfig(out io.Writer) error {
+func (manifest *manifest) WriteConfig(out io.Writer) error {
 	bytes, err := yaml.Marshal(manifest.Config)
 	if err != nil {
 		return util.Errorf("Could not write config for %s: %s", manifest.ID(), err)
@@ -165,7 +260,7 @@ func (manifest *Manifest) WriteConfig(out io.Writer) error {
 	return nil
 }
 
-func (manifest *Manifest) WritePlatformConfig(out io.Writer) error {
+func (manifest *manifest) WritePlatformConfig(out io.Writer) error {
 	platConf := make(map[string]interface{})
 	for _, stanza := range manifest.LaunchableStanzas {
 		platConf[stanza.LaunchableId] = map[string]interface{}{
@@ -188,7 +283,7 @@ func (manifest *Manifest) WritePlatformConfig(out io.Writer) error {
 // manifest's contents. The contents are normalized, such that all equivalent
 // YAML structures have the same SHA (despite differences in comments,
 // indentation, etc).
-func (manifest *Manifest) SHA() (string, error) {
+func (manifest *manifest) SHA() (string, error) {
 	if manifest == nil {
 		return "", util.Errorf("the manifest is nil")
 	}
@@ -201,7 +296,7 @@ func (manifest *Manifest) SHA() (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-func (manifest *Manifest) ConfigFileName() (string, error) {
+func (manifest *manifest) ConfigFileName() (string, error) {
 	sha, err := manifest.SHA()
 	if err != nil {
 		return "", err
@@ -209,7 +304,7 @@ func (manifest *Manifest) ConfigFileName() (string, error) {
 	return manifest.Id + "_" + sha + ".yaml", nil
 }
 
-func (manifest *Manifest) PlatformConfigFileName() (string, error) {
+func (manifest *manifest) PlatformConfigFileName() (string, error) {
 	sha, err := manifest.SHA()
 	if err != nil {
 		return "", err
@@ -219,9 +314,9 @@ func (manifest *Manifest) PlatformConfigFileName() (string, error) {
 
 // Returns readers needed to verify the signature on the
 // manifest. These readers do not need closing.
-func (manifest Manifest) SignatureData() (plaintext, signature []byte) {
-	if manifest.signature == nil {
+func (m manifest) SignatureData() (plaintext, signature []byte) {
+	if m.signature == nil {
 		return nil, nil
 	}
-	return manifest.plaintext, manifest.signature
+	return m.plaintext, m.signature
 }

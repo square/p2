@@ -126,21 +126,27 @@ func generatePreparerPod(workdir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	manifest.Config["preparer"] = map[string]interface{}{
-		"auth": map[string]string{
-			"type":    "keyring",
-			"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
+	builder := manifest.GetBuilder()
+	builder.SetID("p2-preparer")
+	builder.SetConfig(map[interface{}]interface{}{
+		"preparer": map[interface{}]interface{}{
+			"auth": map[string]string{
+				"type":    "keyring",
+				"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
+			},
+			"ca_file":            filepath.Join(certpath, "cert.pem"),
+			"cert_file":          filepath.Join(certpath, "cert.pem"),
+			"key_file":           filepath.Join(certpath, "key.pem"),
+			"status_port":        preparerStatusPort,
+			"write_kv_health":    true,
+			"use_session_health": true,
 		},
-		"ca_file":            filepath.Join(certpath, "cert.pem"),
-		"cert_file":          filepath.Join(certpath, "cert.pem"),
-		"key_file":           filepath.Join(certpath, "key.pem"),
-		"status_port":        preparerStatusPort,
-		"write_kv_health":    true,
-		"use_session_health": true,
-	}
-	manifest.RunAs = "root"
-	manifest.StatusPort = preparerStatusPort
-	manifest.StatusHTTP = true
+	})
+	builder.SetRunAsUser("root")
+	builder.SetStatusPort(preparerStatusPort)
+	builder.SetStatusHTTP(true)
+
+	manifest = builder.GetManifest()
 
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {
@@ -221,7 +227,10 @@ mkdir -p $HOOKED_POD_HOME
 		return err
 	}
 
-	userHookManifest.RunAs = "root"
+	builder := userHookManifest.GetBuilder()
+
+	builder.SetRunAsUser("root")
+	userHookManifest = builder.GetManifest()
 	contents, err := userHookManifest.Marshal()
 	if err != nil {
 		return err
@@ -257,22 +266,25 @@ func getConsulManifest(dir string) (string, error) {
 		"file://%s",
 		util.From(runtime.Caller(0)).ExpandPath("../hoisted-consul_052.tar.gz"),
 	)
-	manifest := &pods.Manifest{}
-	manifest.Id = "consul"
-	stanza := pods.LaunchableStanza{
-		LaunchableId:   "consul",
-		LaunchableType: "hoist",
-		Location:       consulTar,
+	builder := pods.NewManifestBuilder()
+	builder.SetID("consul")
+	stanzas := map[string]pods.LaunchableStanza{
+		"consul": {
+			LaunchableId:   "consul",
+			LaunchableType: "hoist",
+			Location:       consulTar,
+		},
 	}
-	manifest.LaunchableStanzas = map[string]pods.LaunchableStanza{
-		"consul": stanza,
-	}
+	builder.SetLaunchables(stanzas)
+	manifest := builder.GetManifest()
+
 	consulPath := path.Join(dir, "consul.yaml")
 	f, err := os.OpenFile(consulPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
+
 	err = manifest.Write(f)
 	if err != nil {
 		return "", err
@@ -303,17 +315,18 @@ func executeBootstrap(preparerManifest, consulManifest string) error {
 
 func postHelloManifest(dir string) error {
 	hello := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-hello_def456.tar.gz"))
-	manifest := &pods.Manifest{}
-	manifest.Id = "hello"
-	manifest.StatusPort = 43770
-	stanza := pods.LaunchableStanza{
-		LaunchableId:   "hello",
-		LaunchableType: "hoist",
-		Location:       hello,
+	builder := pods.NewManifestBuilder()
+	builder.SetID("hello")
+	builder.SetStatusPort(43770)
+	stanzas := map[string]pods.LaunchableStanza{
+		"hello": {
+			LaunchableId:   "hello",
+			LaunchableType: "hoist",
+			Location:       hello,
+		},
 	}
-	manifest.LaunchableStanzas = map[string]pods.LaunchableStanza{
-		"hello": stanza,
-	}
+	builder.SetLaunchables(stanzas)
+	manifest := builder.GetManifest()
 	manifestPath := path.Join(dir, "hello.yaml")
 
 	f, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)

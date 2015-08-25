@@ -16,12 +16,12 @@ func TestPodManifestCanBeRead(t *testing.T) {
 	manifest, err := ManifestFromPath(testPath)
 	Assert(t).IsNil(err, "Should not have failed to get pod manifest.")
 	Assert(t).AreEqual("hello", manifest.ID(), "Id read from manifest didn't have expected value")
-	Assert(t).AreEqual(manifest.LaunchableStanzas["app"].Location, "hoisted-hello_def456.tar.gz", "Location read from manifest didn't have expected value")
-	Assert(t).AreEqual("hoist", manifest.LaunchableStanzas["app"].LaunchableType, "LaunchableType read from manifest didn't have expected value")
-	Assert(t).AreEqual("hello", manifest.LaunchableStanzas["app"].LaunchableId, "LaunchableId read from manifest didn't have expected value")
+	Assert(t).AreEqual(manifest.GetLaunchableStanzas()["app"].Location, "hoisted-hello_def456.tar.gz", "Location read from manifest didn't have expected value")
+	Assert(t).AreEqual("hoist", manifest.GetLaunchableStanzas()["app"].LaunchableType, "LaunchableType read from manifest didn't have expected value")
+	Assert(t).AreEqual("hello", manifest.GetLaunchableStanzas()["app"].LaunchableId, "LaunchableId read from manifest didn't have expected value")
 
-	Assert(t).AreEqual("staging", manifest.Config["ENVIRONMENT"], "Should have read the ENVIRONMENT from the config stanza")
-	hoptoad := manifest.Config["hoptoad"].(map[interface{}]interface{})
+	Assert(t).AreEqual("staging", manifest.GetConfig()["ENVIRONMENT"], "Should have read the ENVIRONMENT from the config stanza")
+	hoptoad := manifest.GetConfig()["hoptoad"].(map[interface{}]interface{})
 	Assert(t).IsTrue(len(hoptoad) == 3, "Should have read the hoptoad value from the config stanza")
 }
 
@@ -41,27 +41,56 @@ status_port: 8000
 `
 }
 
-func TestPodManifestCanBeWritten(t *testing.T) {
-	manifest := Manifest{
-		Id:                "thepod",
-		LaunchableStanzas: make(map[string]LaunchableStanza),
-		Config:            make(map[interface{}]interface{}),
-	}
-	launchable := LaunchableStanza{
-		LaunchableType: "hoist",
-		LaunchableId:   "web",
-		Location:       "https://localhost:4444/foo/bar/baz.tar.gz",
-	}
-	manifest.LaunchableStanzas["my-app"] = launchable
-	manifest.Config["ENVIRONMENT"] = "staging"
+func testSignedPod() string {
+	return `
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA256
 
-	manifest.StatusPort = 8000
+id: thepod
+launchables:
+  my-app:
+    launchable_type: hoist
+    launchable_id: web
+    location: https://localhost:4444/foo/bar/baz.tar.gz
+status_port: 8000
+config:
+  ENVIRONMENT: staging
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v2
+
+iQEcBAEBCAAGBQJV3LVOAAoJEFvqkbrdatOH63cH/3NiqIBRA+dI7k4KT2CtUQrk
+QX4aYfmTvqcf/PqeilJiVWL+fWfP/EAM/cNSsg4rRylmnRyxG2BDL4wn12oWEDe5
+jmv/XGEb7vBgOZfOTeFLiorViMMKFYqXFqQZp2jwAdEUgzF4AiLyg9+MX2B19mOV
+c6o8YRrhIMGiWIA6rTDX53ruk93p7z/axKGJ0nonxJG3u7Be2MsPlYEavZLtKAg1
+0GyjcFe676Kqz8i1RiyelA/+zp8qaS+jWemrKRrDwmMxAY5j5eFxPFk2mxRems6J
+QyB184dCJQnFbcQslyXDSR4Lal12NPvxbtK/4YYXZZVwf4hKCfVqvmG2zgwINDc=
+=IMbK
+-----END PGP SIGNATURE-----`
+}
+
+func TestPodManifestCanBeWritten(t *testing.T) {
+	builder := NewManifestBuilder()
+	builder.SetID("thepod")
+	launchables := map[string]LaunchableStanza{
+		"my-app": {
+			LaunchableType: "hoist",
+			LaunchableId:   "web",
+			Location:       "https://localhost:4444/foo/bar/baz.tar.gz",
+		},
+	}
+	builder.SetLaunchables(launchables)
+	builder.SetConfig(map[interface{}]interface{}{
+		"ENVIRONMENT": "staging",
+	})
+	builder.SetStatusPort(8000)
+
+	manifest := builder.GetManifest()
 
 	buff := bytes.Buffer{}
 	manifest.Write(&buff)
 
 	expected := testPod()
-	Assert(t).AreEqual(expected, buff.String(), "Expected the manifest to marshal to the given yaml")
+	Assert(t).AreEqual(buff.String(), expected, "Expected the manifest to marshal to the given yaml")
 }
 
 func TestPodManifestCanWriteItsConfigStanzaSeparately(t *testing.T) {
@@ -73,7 +102,7 @@ func TestPodManifestCanWriteItsConfigStanzaSeparately(t *testing.T) {
 	err = manifest.WriteConfig(&buff)
 	Assert(t).IsNil(err, "should not have erred when writing the config")
 	expected := "ENVIRONMENT: staging\n"
-	Assert(t).AreEqual(expected, buff.String(), "config should have been written")
+	Assert(t).AreEqual(buff.String(), expected, "config should have been written")
 }
 
 func TestPodManifestCanReportItsSHA(t *testing.T) {
@@ -86,10 +115,10 @@ func TestPodManifestCanReportItsSHA(t *testing.T) {
 }
 
 func TestNilPodManifestHasEmptySHA(t *testing.T) {
-	var manifest *Manifest
+	var manifest *manifest
 	content, err := manifest.SHA()
-	Assert(t).AreEqual("", content, "the SHA should have been empty")
 	Assert(t).IsNotNil(err, "Should have had an error when attempting to read SHA from nil manifest")
+	Assert(t).AreEqual(content, "", "the SHA should have been empty")
 }
 
 func TestRunAs(t *testing.T) {
@@ -121,7 +150,50 @@ config:
 `)
 	manifest, err := ManifestFromBytes(manifestBytes)
 	Assert(t).IsNil(err, "should not have erred constructing manifest from bytes")
-	outBytes, err := manifest.OriginalBytes()
+	outBytes, err := manifest.Marshal()
 	Assert(t).IsNil(err, "should not have erred extracting manifest struct to bytes")
 	Assert(t).AreEqual(string(outBytes), string(manifestBytes), "Byte order should not have changed when unmarshaling and remarshaling a manifest")
+}
+
+func TestManifestBuilder(t *testing.T) {
+	builder := NewManifestBuilder()
+	builder.SetID("testpod")
+	manifest := builder.GetManifest()
+
+	Assert(t).AreEqual(manifest.ID(), "testpod", "id of built manifest did not match expected")
+}
+
+func TestManifestBuilderStripsFields(t *testing.T) {
+	podManifest := manifest{
+		raw:       []byte("foo"),
+		signature: []byte("bar"),
+		plaintext: []byte("baz"),
+	}
+
+	builder := podManifest.GetBuilder()
+	builder.SetID("testpod")
+	builtManifest := builder.GetManifest()
+
+	plaintext, signature := builtManifest.SignatureData()
+	Assert(t).AreEqual(len(plaintext), 0, "Expected plaintext to be zeroed when manifest is built")
+	Assert(t).AreEqual(len(signature), 0, "Expected signature to be zeroed when manifest is built")
+}
+
+func TestBuilderHasOriginalFields(t *testing.T) {
+	manifestBytes := []byte(`id: thepod
+launchables:
+  my-app:
+    launchable_type: hoist
+    launchable_id: web
+    location: https://localhost:4444/foo/bar/baz.tar.gz
+status_port: 8000
+config:
+  ENVIRONMENT: staging
+`)
+	manifest, err := ManifestFromBytes(manifestBytes)
+	Assert(t).IsNil(err, "should not have erred constructing manifest from bytes")
+
+	builder := manifest.GetBuilder()
+	builtManifest := builder.GetManifest()
+	Assert(t).AreEqual(builtManifest.ID(), "thepod", "Expected manifest ID to be preserved when converted to ManifestBuilder and back")
 }

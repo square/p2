@@ -24,14 +24,14 @@ func getTestPod() *Pod {
 	return NewPod("hello", "/data/pods/test")
 }
 
-func getTestPodManifest(t *testing.T) *Manifest {
+func getTestPodManifest(t *testing.T) Manifest {
 	testPath := util.From(runtime.Caller(0)).ExpandPath("test_manifest.yaml")
 	pod, err := ManifestFromPath(testPath)
 	Assert(t).IsNil(err, "couldn't read test manifest")
 	return pod
 }
 
-func getUpdatedManifest(t *testing.T) *Manifest {
+func getUpdatedManifest(t *testing.T) Manifest {
 	podPath := util.From(runtime.Caller(0)).ExpandPath("updated_manifest.yaml")
 	pod, err := ManifestFromPath(podPath)
 	Assert(t).IsNil(err, "couldn't read test manifest")
@@ -39,7 +39,7 @@ func getUpdatedManifest(t *testing.T) *Manifest {
 }
 
 func getLaunchableStanzasFromTestManifest(t *testing.T) map[string]LaunchableStanza {
-	return getTestPodManifest(t).LaunchableStanzas
+	return getTestPodManifest(t).GetLaunchableStanzas()
 }
 
 func TestGetLaunchable(t *testing.T) {
@@ -141,7 +141,7 @@ func TestLogLaunchableError(t *testing.T) {
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
-	pod := PodFromManifestId(testManifest.Id)
+	pod := PodFromManifestId(testManifest.ID())
 	pod.logLaunchableError(testLaunchable.Id, testErr, message)
 
 	output, err := ioutil.ReadAll(&out)
@@ -159,7 +159,7 @@ func TestLogError(t *testing.T) {
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
-	pod := PodFromManifestId(testManifest.Id)
+	pod := PodFromManifestId(testManifest.ID())
 	pod.logError(testErr, message)
 
 	output, err := ioutil.ReadAll(&out)
@@ -174,7 +174,7 @@ func TestLogInfo(t *testing.T) {
 	Log.SetLogOut(&out)
 
 	testManifest := getTestPodManifest(t)
-	pod := PodFromManifestId(testManifest.Id)
+	pod := PodFromManifestId(testManifest.ID())
 	message := "Pod did something good"
 	pod.logInfo(message)
 
@@ -186,8 +186,8 @@ func TestLogInfo(t *testing.T) {
 }
 
 func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
-	existing := getTestPodManifest(t)
-	updated := getUpdatedManifest(t)
+	existing := getTestPodManifest(t).(*manifest)
+	updated := getUpdatedManifest(t).(*manifest)
 
 	poddir, err := ioutil.TempDir("", "poddir")
 	Assert(t).IsNil(err, "couldn't create tempdir")
@@ -204,7 +204,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 		updated.RunAs = currUser.Username
 		defer func() { updated.RunAs = "" }()
 
-		manifestContent, err := existing.OriginalBytes()
+		manifestContent, err := existing.Marshal()
 		Assert(t).IsNil(err, "couldn't get manifest bytes")
 		err = ioutil.WriteFile(pod.currentPodManifestPath(), manifestContent, 0744)
 		Assert(t).IsNil(err, "should have written current manifest")
@@ -276,7 +276,7 @@ func TestUninstall(t *testing.T) {
 		ServiceBuilder: serviceBuilder,
 	}
 	manifest := getTestPodManifest(t)
-	manifestContent, err := manifest.OriginalBytes()
+	manifestContent, err := manifest.Marshal()
 	Assert(t).IsNil(err, "couldn't get manifest bytes")
 	err = ioutil.WriteFile(pod.currentPodManifestPath(), manifestContent, 0744)
 	Assert(t).IsNil(err, "should have written current manifest")
@@ -293,14 +293,14 @@ func TestUninstall(t *testing.T) {
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
 }
 
-func manifestMustEqual(expected, actual *Manifest, t *testing.T) {
+func manifestMustEqual(expected, actual Manifest, t *testing.T) {
 	actualSha, err := actual.SHA()
 	Assert(t).IsNil(err, "should have gotten SHA from old manifest")
 	expectedSha, err := expected.SHA()
 	Assert(t).IsNil(err, "should have gotten SHA from known old manifest")
-	manifestBytes, err := expected.OriginalBytes()
+	manifestBytes, err := expected.Marshal()
 	Assert(t).IsNil(err, "should have gotten bytes from manifest")
-	actualBytes, err := actual.OriginalBytes()
+	actualBytes, err := actual.Marshal()
 	Assert(t).IsNil(err, "should have gotten bytes from writtenOld")
 	Assert(t).AreEqual(expectedSha, actualSha, fmt.Sprintf("known: \n\n%s\n\nactual:\n\n%s\n", string(manifestBytes), string(actualBytes)))
 }

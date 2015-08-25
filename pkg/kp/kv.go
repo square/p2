@@ -33,7 +33,7 @@ type ManifestResult struct {
 
 type Store interface {
 	SetPod(key string, manifest pods.Manifest) (time.Duration, error)
-	Pod(key string) (*pods.Manifest, time.Duration, error)
+	Pod(key string) (pods.Manifest, time.Duration, error)
 	DeletePod(key string) (time.Duration, error)
 	PutHealth(res WatchResult) (time.Time, time.Duration, error)
 	GetHealth(service, node string) (WatchResult, error)
@@ -266,7 +266,7 @@ func (c consulStore) DeletePod(key string) (time.Duration, error) {
 // Pod reads a pod manifest from the key-value store. If the given key does not
 // exist, a nil *PodManifest will be returned, along with a pods.NoCurrentManifest
 // error.
-func (c consulStore) Pod(key string) (*pods.Manifest, time.Duration, error) {
+func (c consulStore) Pod(key string) (pods.Manifest, time.Duration, error) {
 	kvPair, writeMeta, err := c.client.KV().Get(key, nil)
 	if err != nil {
 		return nil, 0, NewKVError("get", key, err)
@@ -294,7 +294,7 @@ func (c consulStore) ListPods(keyPrefix string) ([]ManifestResult, time.Duration
 		if err != nil {
 			return nil, writeMeta.RequestTime, err
 		}
-		ret = append(ret, ManifestResult{*manifest, kvp.Key})
+		ret = append(ret, ManifestResult{manifest, kvp.Key})
 	}
 
 	return ret, writeMeta.RequestTime, nil
@@ -331,7 +331,7 @@ func (c consulStore) WatchPods(keyPrefix string, quitChan <-chan struct{}, errCh
 					if err != nil {
 						errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value)
 					} else {
-						next = append(next, ManifestResult{*manifest, pair.Key})
+						next = append(next, ManifestResult{manifest, pair.Key})
 					}
 				}
 				podChan <- next

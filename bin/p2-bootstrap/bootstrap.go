@@ -33,7 +33,7 @@ func main() {
 	log.Println("Installing and launching consul")
 
 	var consulPod *pods.Pod
-	var consulManifest *pods.Manifest
+	var consulManifest pods.Manifest
 	if *existingConsul == "" {
 		consulManifest, err = pods.ManifestFromPath(*consulManifestPath)
 		if err != nil {
@@ -84,7 +84,7 @@ func main() {
 	log.Println("Bootstrapping complete")
 }
 
-func InstallConsul(consulPod *pods.Pod, consulManifest *pods.Manifest) error {
+func InstallConsul(consulPod *pods.Pod, consulManifest pods.Manifest) error {
 	// Inject servicebuilder?
 	err := consulPod.Install(consulManifest)
 	if err != nil {
@@ -136,13 +136,15 @@ func VerifyReality(waitTime time.Duration, consulID, agentID string) error {
 	})
 	hostname, _ := os.Hostname()
 	waitChan := time.After(waitTime)
+	hasConsul := false
+	hasPreparer := false
 	for {
 		select {
 		case <-waitChan:
-			return util.Errorf("Consul and/or Preparer weren't in the reality store within %s", waitTime)
+			return util.Errorf(
+				"Consul and/or Preparer weren't in the reality store within %s (consul=%t, preparer=%t)",
+				waitTime, hasConsul, hasPreparer)
 		case <-time.After(100 * time.Millisecond):
-			hasConsul := false
-			hasPreparer := false
 			results, _, err := store.ListPods(kp.RealityPath(hostname))
 			if err != nil {
 				log.Printf("Error looking for pods: %s\n", err)
@@ -162,7 +164,7 @@ func VerifyReality(waitTime time.Duration, consulID, agentID string) error {
 	}
 }
 
-func ScheduleForThisHost(manifest *pods.Manifest, alsoReality bool) error {
+func ScheduleForThisHost(manifest pods.Manifest, alsoReality bool) error {
 	store := kp.NewConsulStore(kp.Options{
 		Token: *consulToken,
 	})
@@ -170,22 +172,22 @@ func ScheduleForThisHost(manifest *pods.Manifest, alsoReality bool) error {
 	if err != nil {
 		return err
 	}
-	_, err = store.SetPod(kp.IntentPath(hostname, manifest.ID()), *manifest)
+	_, err = store.SetPod(kp.IntentPath(hostname, manifest.ID()), manifest)
 	if err != nil {
 		return err
 	}
 
 	if alsoReality {
-		_, err = store.SetPod(kp.RealityPath(hostname, manifest.ID()), *manifest)
+		_, err = store.SetPod(kp.RealityPath(hostname, manifest.ID()), manifest)
 		if err != nil {
 			return err
 		}
-		return store.RegisterService(*manifest, "")
+		return store.RegisterService(manifest, "")
 	}
 	return nil
 }
 
-func InstallBaseAgent(agentManifest *pods.Manifest) error {
+func InstallBaseAgent(agentManifest pods.Manifest) error {
 	agentPod := pods.NewPod(agentManifest.ID(), pods.PodPath(*podRoot, agentManifest.ID()))
 	err := agentPod.Install(agentManifest)
 	if err != nil {
