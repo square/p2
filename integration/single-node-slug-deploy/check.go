@@ -131,11 +131,12 @@ func generatePreparerPod(workdir string) (string, error) {
 			"type":    "keyring",
 			"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
 		},
-		"ca_file":         filepath.Join(certpath, "cert.pem"),
-		"cert_file":       filepath.Join(certpath, "cert.pem"),
-		"key_file":        filepath.Join(certpath, "key.pem"),
-		"status_port":     preparerStatusPort,
-		"write_kv_health": true,
+		"ca_file":            filepath.Join(certpath, "cert.pem"),
+		"cert_file":          filepath.Join(certpath, "cert.pem"),
+		"key_file":           filepath.Join(certpath, "key.pem"),
+		"status_port":        preparerStatusPort,
+		"write_kv_health":    true,
+		"use_session_health": true,
 	}
 	manifest.RunAs = "root"
 	manifest.StatusPort = preparerStatusPort
@@ -252,7 +253,10 @@ func executeBin2Pod(cmd *exec.Cmd) (string, error) {
 }
 
 func getConsulManifest(dir string) (string, error) {
-	consulTar := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-consul_abc123.tar.gz"))
+	consulTar := fmt.Sprintf(
+		"file://%s",
+		util.From(runtime.Caller(0)).ExpandPath("../hoisted-consul_052.tar.gz"),
+	)
 	manifest := &pods.Manifest{}
 	manifest.Id = "consul"
 	stanza := pods.LaunchableStanza{
