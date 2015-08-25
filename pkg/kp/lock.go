@@ -125,7 +125,7 @@ func (l Lock) continuallyRenew() {
 			err := l.Renew()
 			if err != nil {
 				l.renewalErrCh <- err
-				l.Destroy()
+				l.client.Session().Destroy(l.session, nil)
 				return
 			}
 		case <-l.quitCh:
