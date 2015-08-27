@@ -77,7 +77,7 @@ func (c consulHealthChecker) WatchNodeService(nodename string, serviceID string,
 				catalogResults = append(catalogResults, outResult)
 			}
 			// GetHealth will fail if there are no kv results
-			kvCheck, err := c.consulStore.GetHealth(nodename, serviceID)
+			kvCheck, err := c.consulStore.GetHealth(serviceID, nodename)
 			pickHealthResult(catalogResults, kvCheck, err, resultCh, errCh)
 		}
 	}
