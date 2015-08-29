@@ -334,7 +334,7 @@ func processHealthUpdater(
 // Helper to processHealthUpdater()
 func healthEquiv(x *WatchResult, y *WatchResult) bool {
 	return x == nil && y == nil ||
-		x != nil && y != nil && x.ValueEquiv(*y)
+		x != nil && y != nil && x.Status == y.Status
 }
 
 // Helper to processHealthUpdater()
