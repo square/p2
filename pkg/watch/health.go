@@ -156,13 +156,15 @@ func updatePods(
 
 		// if a manifest is in reality but not current a podwatch is created
 		// with that manifest and added to newCurrent
-		if missing && man.Manifest.StatusPort != 0 {
+		if missing {
 			sc := StatusChecker{
 				ID:     man.Manifest.Id,
 				Node:   node,
 				Client: client,
 			}
-			if man.Manifest.StatusHTTP {
+			if man.Manifest.StatusPort == 0 {
+				sc.URI = ""
+			} else if man.Manifest.StatusHTTP {
 				sc.URI = fmt.Sprintf("http://%s:%d/_status", node, man.Manifest.StatusPort)
 			} else {
 				sc.URI = fmt.Sprintf("https://%s:%d/_status", node, man.Manifest.StatusPort)
@@ -212,7 +214,25 @@ func (p *PodWatch) checkHealth() {
 // Given the result of a status check this method
 // creates a health.Result for that node/service/result
 func (sc *StatusChecker) Check() (health.Result, error) {
-	return sc.resultFromCheck(sc.StatusCheck())
+	if sc.URI != "" {
+		return sc.resultFromCheck(sc.StatusCheck())
+	} else {
+		// "unknown" is probably more accurate, but automated tools can't handle an app that is
+		// always non-"passing". For instance, p2-replicate by default waits for a node to
+		// become "passing" before it considers the deployment a success.
+		//
+		// TODO: P2 has the capacity to check whether the app's process is running. This would
+		// make a great default status check! However, that information isn't easily accessible
+		// over here in the watch package. It would take a lot of refactoring to make this
+		// happen.
+		return health.Result{
+			ID:      sc.ID,
+			Node:    sc.Node,
+			Service: sc.ID,
+			Status:  health.Passing,
+			Output:  "(no health check defined)",
+		}, nil
+	}
 }
 
 func (sc *StatusChecker) resultFromCheck(resp *http.Response, err error) (health.Result, error) {
