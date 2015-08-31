@@ -60,11 +60,11 @@
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
-			"Rev": "2f3083f6163ef51179ad42ed523a18c9a1141467"
+			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp",
-			"Rev": "2f3083f6163ef51179ad42ed523a18c9a1141467"
+			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v1",
