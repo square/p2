@@ -5,6 +5,7 @@ import (
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/health"
+	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
@@ -18,7 +19,7 @@ type Replicator struct {
 	Nodes     []string
 	Active    int // maximum number of nodes to update concurrently
 	Store     kp.Store
-	Health    health.ConsulHealthChecker
+	Health    checker.ConsulHealthChecker
 	Threshold health.HealthState // minimum state to treat as "healthy"
 }
 

@@ -7,7 +7,8 @@ import (
 	"os"
 
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v1"
-	"github.com/square/p2/pkg/health"
+
+	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/inspect"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/util/net"
@@ -68,7 +69,7 @@ func main() {
 		}
 	}
 
-	hchecker := health.NewConsulHealthChecker(opts)
+	hchecker := checker.NewConsulHealthChecker(opts)
 	for podId := range statusMap {
 		resultMap, err := hchecker.Service(podId)
 		if err != nil {
