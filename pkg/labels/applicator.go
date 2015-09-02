@@ -54,5 +54,5 @@ type Applicator interface {
 	GetLabels(labelType Type, id string) (Labeled, error)
 
 	// Return all objects of the given type that match the given selector
-	GetMatches(selector klabels.LabelSelector, labelType Type) ([]Labeled, error)
+	GetMatches(selector klabels.Selector, labelType Type) ([]Labeled, error)
 }

@@ -63,7 +63,7 @@ func (c *consulApplicator) GetLabels(labelType Type, id string) (Labeled, error)
 	return l, err
 }
 
-func (c *consulApplicator) GetMatches(selector klabels.LabelSelector, labelType Type) ([]Labeled, error) {
+func (c *consulApplicator) GetMatches(selector klabels.Selector, labelType Type) ([]Labeled, error) {
 	// TODO: Label selector result caching
 	allMatches, _, err := c.kv.List(path.Join(labelRoot, labelType.String()), nil)
 	if err != nil {
