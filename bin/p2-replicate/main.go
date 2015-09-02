@@ -13,7 +13,9 @@ import (
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v1"
+
 	"github.com/square/p2/pkg/health"
+	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
@@ -58,7 +60,7 @@ func main() {
 		HTTPS:   *https,
 	}
 	store := kp.NewConsulStore(opts)
-	healthChecker := health.NewConsulHealthChecker(opts)
+	healthChecker := checker.NewConsulHealthChecker(opts)
 
 	// Fetch manifest (could be URI) into temp file
 	localMan, err := ioutil.TempFile("", "tempmanifest")
