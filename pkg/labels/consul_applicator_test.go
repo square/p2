@@ -8,7 +8,6 @@ import (
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
-	kutil "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/util"
 	"github.com/square/p2/pkg/logging"
 )
 
@@ -94,19 +93,15 @@ func TestBasicMatch(t *testing.T) {
 
 	Assert(t).IsNil(c.SetLabel(POD, "object", "label", "value"), "should have had nil error when setting label")
 
-	req, err := klabels.NewRequirement("label", klabels.EqualsOperator, kutil.NewStringSet("value"))
-	Assert(t).IsNil(err, "should have had nil error creating positive requirement")
-	matches, err := c.GetMatches(klabels.LabelSelector{*req}, POD)
+	matches, err := c.GetMatches(klabels.Everything().Add("label", klabels.EqualsOperator, []string{"value"}), POD)
 	Assert(t).IsNil(err, "should have had nil error fetching positive matches")
 	Assert(t).AreEqual(len(matches), 1, "should have had exactly one positive match")
 
-	matches, err = c.GetMatches(klabels.LabelSelector{*req}, NODE)
+	matches, err = c.GetMatches(klabels.Everything().Add("label", klabels.EqualsOperator, []string{"value"}), NODE)
 	Assert(t).IsNil(err, "should have had nil error fetching positive matches for wrong type")
 	Assert(t).AreEqual(len(matches), 0, "should have had exactly zero mistyped matches")
 
-	req, err = klabels.NewRequirement("label", klabels.NotInOperator, kutil.NewStringSet("value"))
-	Assert(t).IsNil(err, "should have had nil error creating negative requirement")
-	matches, err = c.GetMatches(klabels.LabelSelector{*req}, POD)
+	matches, err = c.GetMatches(klabels.Everything().Add("label", klabels.NotInOperator, []string{"value"}), POD)
 	Assert(t).IsNil(err, "should have had nil error fetching negative matches")
 	Assert(t).AreEqual(len(matches), 0, "should have had exactly zero negative matches")
 }
