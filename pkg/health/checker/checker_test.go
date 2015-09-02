@@ -12,12 +12,12 @@ import (
 )
 
 func TestPickHealthResult(t *testing.T) {
-	catalogResults := []health.Result{health.Result{Status: health.Passing}}
+	catalogResults := health.ResultList{health.Result{Status: health.Passing}}
 	kvCheck := kp.WatchResult{Status: string(health.Critical)}
 	errCh := make(chan error)
 	resultCh := make(chan health.Result)
 
-	go pickHealthResult([]health.Result{}, kp.WatchResult{}, fmt.Errorf("no kvCheck"), resultCh, errCh)
+	go pickHealthResult(health.ResultList{}, kp.WatchResult{}, fmt.Errorf("no kvCheck"), resultCh, errCh)
 	select {
 	case _ = <-resultCh:
 		t.Fatal("pickhealthresult was passed no results but did not return an error")
@@ -25,7 +25,7 @@ func TestPickHealthResult(t *testing.T) {
 		Assert(t).AreNotEqual(err, nil, "err should not have been nil")
 	}
 
-	go pickHealthResult([]health.Result{}, kvCheck, nil, resultCh, errCh)
+	go pickHealthResult(health.ResultList{}, kvCheck, nil, resultCh, errCh)
 	select {
 	case res := <-resultCh:
 		Assert(t).AreEqual(res, health.Result{Status: health.Critical}, "pick health result did not return the correct kv result")
@@ -140,17 +140,18 @@ func mockWatchResult(entries []*api.ServiceEntry, st health.HealthState) map[str
 }
 
 func getResult(entries []*api.ServiceEntry) (map[string]health.Result, error) {
-	var HEErr *health.HealthEmpty
 	res := make(map[string]health.Result)
 	for _, entry := range entries {
-		val := make([]health.Result, 0, len(entry.Checks))
+		val := make(health.ResultList, 0, len(entry.Checks))
 		for _, check := range entry.Checks {
 			val = append(val, consulCheckToResult(*check))
 		}
-		res[entry.Node.Node], HEErr = health.FindWorstResult(val)
-		if HEErr != nil {
-			return res, HEErr
+		r := val.MinValue()
+		if r == nil {
+			res[entry.Node.Node] = health.Result{Status: health.Critical}
+			return res, fmt.Errorf("no results were passed to findWorstResult")
 		}
+		res[entry.Node.Node] = *r
 	}
 
 	return res, nil
