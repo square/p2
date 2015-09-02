@@ -14,17 +14,24 @@ import (
 	"github.com/square/p2/pkg/pods"
 )
 
-type EmptyHealthManager struct{}
+type MockHealthManager struct {
+	UpdaterCreated int
+}
 
-func (m EmptyHealthManager) NewUpdater(pod, service string) kp.HealthUpdater {
+func (m *MockHealthManager) Reset() {
+	*m = MockHealthManager{}
+}
+
+func (m *MockHealthManager) NewUpdater(pod, service string) kp.HealthUpdater {
+	m.UpdaterCreated += 1
 	return m
 }
 
-func (m EmptyHealthManager) PutHealth(health kp.WatchResult) error {
+func (m *MockHealthManager) PutHealth(health kp.WatchResult) error {
 	return fmt.Errorf("PutHealth() not implemented")
 }
 
-func (EmptyHealthManager) Close() {}
+func (*MockHealthManager) Close() {}
 
 // UpdatePods looks at the pods currently being monitored and
 // compares that to what the reality store indicates should be
@@ -46,13 +53,30 @@ func TestUpdatePods(t *testing.T) {
 	// ids for pods: 1, 2, test
 	// 0, 3 should have values in their shutdownCh
 	logger := logging.NewLogger(logrus.Fields{})
-	pods := updatePods(EmptyHealthManager{}, nil, current, reality, "", &logger)
+	pods := updatePods(&MockHealthManager{}, nil, current, reality, "", &logger)
 	Assert(t).AreEqual(true, <-current[0].shutdownCh, "this PodWatch should have been shutdown")
 	Assert(t).AreEqual(true, <-current[3].shutdownCh, "this PodWatch should have been shutdown")
 
 	Assert(t).AreEqual(current[1].manifest.Id, pods[0].manifest.Id, "pod with id:1 should have been returned")
 	Assert(t).AreEqual(current[2].manifest.Id, pods[1].manifest.Id, "pod with id:1 should have been returned")
 	Assert(t).AreEqual("test", pods[2].manifest.Id, "should have added pod with id:test to list")
+}
+
+func TestUpdateStatus(t *testing.T) {
+	logger := logging.TestLogger()
+	healthManager := &MockHealthManager{}
+
+	reality := []kp.ManifestResult{newManifestResult("foo"), newManifestResult("bar")}
+	pods1 := updatePods(healthManager, nil, []PodWatch{}, reality, "", &logger)
+	Assert(t).AreEqual(2, len(pods1), "new pods were not added")
+	Assert(t).AreEqual(2, healthManager.UpdaterCreated, "new pods did not create an updaters")
+
+	// Change the status port, expect one pod to change
+	healthManager.Reset()
+	reality[0].Manifest.StatusPort = 2
+	pods2 := updatePods(healthManager, nil, pods1, reality, "", &logger)
+	Assert(t).AreEqual(2, len(pods2), "updatePods() changed the number of pods")
+	Assert(t).AreEqual(1, healthManager.UpdaterCreated, "one pod should have been refreshed")
 }
 
 func TestResultFromCheck(t *testing.T) {

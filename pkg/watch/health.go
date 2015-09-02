@@ -129,7 +129,9 @@ func updatePods(
 	for _, pod := range current {
 		inReality := false
 		for _, man := range reality {
-			if man.Manifest.Id == pod.manifest.Id {
+			if man.Manifest.Id == pod.manifest.Id &&
+				man.Manifest.StatusHTTP == pod.manifest.StatusHTTP &&
+				man.Manifest.StatusPort == pod.manifest.StatusPort {
 				inReality = true
 				break
 			}
