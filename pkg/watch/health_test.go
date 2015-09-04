@@ -81,7 +81,7 @@ func TestUpdateStatus(t *testing.T) {
 
 func TestResultFromCheck(t *testing.T) {
 	http.HandleFunc("/_status", statusHandler)
-	go http.ListenAndServe(":8080", nil)
+	go http.ListenAndServe("localhost:8080", nil)
 	client := http.DefaultClient
 	sc := StatusChecker{
 		ID:   "hello",
