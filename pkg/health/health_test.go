@@ -20,15 +20,15 @@ func TestFindWorst(t *testing.T) {
 		Status: Passing,
 	}
 
-	id, _, _ := FindWorst([]Result{a, b})
-	Assert(t).AreEqual(id, a.ID, "FindWorst between critical and warning should have returned testcrit")
+	m := MinResult(a, b)
+	Assert(t).AreEqual(m.ID, a.ID, "MinValue between critical and warning should have returned testcrit")
 
-	id, _, _ = FindWorst([]Result{b, c})
-	Assert(t).AreEqual(id, b.ID, "FindWorst between warning and passing should have returned testwarn")
+	m = MinResult(c, b)
+	Assert(t).AreEqual(m.ID, b.ID, "MinValue between warning and passing should have returned testwarn")
 
-	id, _, _ = FindWorst([]Result{c, c})
-	Assert(t).AreEqual(id, c.ID, "FindWorst between two passing results should have returned testpass")
+	m = MinResult(c, c)
+	Assert(t).AreEqual(m.ID, c.ID, "MinValue between two passing results should have returned testpass")
 
-	id, _, err := FindWorst([]Result{})
-	Assert(t).AreNotEqual(err, nil, "FindWorst did not return error for empty result slice")
+	mp := ResultList{}.MinValue()
+	Assert(t).AreEqual(mp, (*Result)(nil), "MinValue found a min value for empty result slice")
 }

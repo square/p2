@@ -64,7 +64,7 @@ func (c consulHealthChecker) WatchNodeService(
 			if err != nil {
 				errCh <- err
 			}
-			catalogResults := make([]health.Result, 0)
+			catalogResults := make(health.ResultList, 0)
 			for _, check := range checks {
 				outResult := consulCheckToResult(*check)
 				// only retain checks if they're for this service, or for the
@@ -83,7 +83,7 @@ func (c consulHealthChecker) WatchNodeService(
 
 // if there are no health results available will place error in errCh then return
 func pickHealthResult(
-	catalogResults []health.Result,
+	catalogResults health.ResultList,
 	kvCheck kp.WatchResult,
 	kvCheckError error,
 	resultCh chan<- health.Result,
@@ -96,7 +96,7 @@ func pickHealthResult(
 			return
 		} else {
 			// there are no kv results but there are catalog results
-			catalogCheckResult, _ := health.FindWorstResult(catalogResults)
+			catalogCheckResult := *catalogResults.MinValue()
 			resultCh <- catalogCheckResult
 		}
 	} else {
@@ -107,8 +107,8 @@ func pickHealthResult(
 			resultCh <- kvCheckResult
 		} else {
 			// there are both kv and catalog results
-			catalogCheckResult, _ := health.FindWorstResult(catalogResults)
-			best, _ := health.FindBestResult([]health.Result{kvCheckResult, catalogCheckResult})
+			catalogCheckResult := *catalogResults.MinValue()
+			best := health.MaxResult(kvCheckResult, catalogCheckResult)
 			resultCh <- best
 		}
 	}
@@ -155,13 +155,13 @@ func selectResult(
 	ret := make(map[string]health.Result)
 
 	for _, entry := range catalogEntries {
-		res := make([]health.Result, 0, len(entry.Checks))
+		res := make(health.ResultList, 0, len(entry.Checks))
 		for _, check := range entry.Checks {
 			res = append(res, consulCheckToResult(*check))
 		}
-		val, HEErr := health.FindWorstResult(res)
-		if HEErr == nil {
-			ret[entry.Node.Node] = val
+		val := res.MinValue()
+		if val != nil {
+			ret[entry.Node.Node] = *val
 		}
 	}
 
@@ -169,10 +169,8 @@ func selectResult(
 		res := consulWatchToResult(kvEntry)
 		// if kvEntry already exists for this service take the best of kv store and catalog
 		if _, ok := ret[kvEntry.Node]; ok {
-			val, HEErr := health.FindBestResult([]health.Result{res, ret[kvEntry.Node]})
-			if HEErr == nil {
-				ret[kvEntry.Node] = val
-			}
+			val := health.MaxResult(res, ret[kvEntry.Node])
+			ret[kvEntry.Node] = val
 		} else {
 			ret[kvEntry.Node] = res
 		}

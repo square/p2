@@ -11,9 +11,7 @@ func (s SortOrder) Len() int {
 }
 
 func (s SortOrder) Swap(i, j int) {
-	tmp := s.Nodes[i]
-	s.Nodes[i] = s.Nodes[j]
-	s.Nodes[j] = tmp
+	s.Nodes[i], s.Nodes[j] = s.Nodes[j], s.Nodes[i]
 }
 
 func (s SortOrder) Less(i, j int) bool {

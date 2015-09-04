@@ -1,63 +1,54 @@
 package health
 
-import (
-	"fmt"
-)
-
 type HealthState string
 
+// String representations of the canonical health states
 var (
-	Passing  = HealthState("passing")
+	Critical = HealthState("critical")
 	Unknown  = HealthState("unknown")
 	Warning  = HealthState("warning")
-	Critical = HealthState("critical")
-
-	NoStatusGiven = fmt.Errorf("No status given")
+	Passing  = HealthState("passing")
 )
 
-func ToHealthState(v string) HealthState {
-	if v == "passing" {
-		return Passing
-	}
-	if v == "unknown" {
+// Integer enum representations of the canonical health states. These are not guaranteed
+// to be consistent across versions. Only externalize the strings! The enum value is used
+// to order HealthStates.
+const (
+	criticalInt = iota
+	unknownInt
+	warningInt
+	passingInt
+)
+
+// ToHealthState converts a string to its corresponding HealthState value. Unrecognized
+// values become Unknown.
+func ToHealthState(str string) HealthState {
+	switch s := HealthState(str); s {
+	case Critical, Unknown, Warning, Passing:
+		return s
+	default:
 		return Unknown
 	}
-	if v == "warning" {
-		return Warning
-	}
-	if v == "critical" {
-		return Critical
-	}
-	return Unknown
 }
 
-// Compare two HealthStates. Return 0 if equal, -1 if a<b and +1 if a>b.
-// The ordering is Passing>Warning>Unknown>Critical.
+// Int converts a HealthState to an enum representation suitable for comparisons.
+func (s HealthState) Int() int {
+	switch s {
+	case Critical:
+		return criticalInt
+	case Unknown:
+		return unknownInt
+	case Warning:
+		return warningInt
+	case Passing:
+		return passingInt
+	default:
+		return criticalInt
+	}
+}
+
+// Compare two HealthStates. Return 0 if equal, a value less than 0 if a < b and a value
+// greater than 0 if a > b. The ordering is Passing > Warning > Unknown > Critical.
 func Compare(a, b HealthState) int {
-	if a == b {
-		return 0
-	}
-
-	if a == Passing {
-		return 1
-	}
-	if b == Passing {
-		return -1
-	}
-
-	if a == Warning {
-		return 1
-	}
-	if b == Warning {
-		return -1
-	}
-
-	if a == Unknown {
-		return 1
-	}
-	if b == Unknown {
-		return -1
-	}
-
-	return 0
+	return a.Int() - b.Int()
 }
