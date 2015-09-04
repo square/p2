@@ -124,7 +124,7 @@ func (subsys Subsystems) SetMemory(name string, bytes int) error {
 	}
 
 	softLimit := bytes
-	hardLimit := bytes + bytes/10
+	hardLimit := 2 * bytes
 	if hardLimit < softLimit {
 		// Deal with overflow
 		hardLimit = softLimit
