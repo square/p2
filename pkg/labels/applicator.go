@@ -2,8 +2,6 @@ package labels
 
 import (
 	"errors"
-
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 )
 
 // the type of the object being labeled.
@@ -34,7 +32,7 @@ func AsType(v string) (Type, error) {
 type Labeled struct {
 	LabelType Type
 	ID        string
-	Labels    klabels.Set
+	Labels    Set
 }
 
 func (l Labeled) SameAs(o Labeled) bool {
@@ -54,5 +52,5 @@ type Applicator interface {
 	GetLabels(labelType Type, id string) (Labeled, error)
 
 	// Return all objects of the given type that match the given selector
-	GetMatches(selector klabels.Selector, labelType Type) ([]Labeled, error)
+	GetMatches(selector Selector, labelType Type) ([]Labeled, error)
 }
