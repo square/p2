@@ -7,7 +7,6 @@ import (
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 )
 
@@ -61,7 +60,7 @@ func TestBasicSetGetRemove(t *testing.T) {
 
 	labeledObject, err := c.GetLabels(POD, "object")
 	Assert(t).IsNil(err, "should have had nil error when getting labels")
-	Assert(t).IsTrue(reflect.DeepEqual(labeledObject.Labels, klabels.Set{
+	Assert(t).IsTrue(reflect.DeepEqual(labeledObject.Labels, Set{
 		"label": "value",
 	}), "should have had matching label map {\"label\": \"value\"}")
 
@@ -69,7 +68,7 @@ func TestBasicSetGetRemove(t *testing.T) {
 
 	labeledObject, err = c.GetLabels(POD, "object")
 	Assert(t).IsNil(err, "should have had nil error when getting labels")
-	Assert(t).IsTrue(reflect.DeepEqual(labeledObject.Labels, klabels.Set{}), "should have had empty label map")
+	Assert(t).IsTrue(reflect.DeepEqual(labeledObject.Labels, Set{}), "should have had empty label map")
 }
 
 func TestEmptyGetRemove(t *testing.T) {
@@ -80,7 +79,7 @@ func TestEmptyGetRemove(t *testing.T) {
 
 	labeledObject, err := c.GetLabels(POD, "object")
 	Assert(t).IsNil(err, "should have had nil error when getting labels")
-	Assert(t).IsTrue(reflect.DeepEqual(labeledObject.Labels, klabels.Set{}), "should have had empty label map")
+	Assert(t).IsTrue(reflect.DeepEqual(labeledObject.Labels, Set{}), "should have had empty label map")
 
 	Assert(t).IsNil(c.RemoveLabel(POD, "object", "label"), "no error when removing nonexistent label or object")
 }
@@ -93,15 +92,15 @@ func TestBasicMatch(t *testing.T) {
 
 	Assert(t).IsNil(c.SetLabel(POD, "object", "label", "value"), "should have had nil error when setting label")
 
-	matches, err := c.GetMatches(klabels.Everything().Add("label", klabels.EqualsOperator, []string{"value"}), POD)
+	matches, err := c.GetMatches(Everything().Add("label", EqualsOperator, []string{"value"}), POD)
 	Assert(t).IsNil(err, "should have had nil error fetching positive matches")
 	Assert(t).AreEqual(len(matches), 1, "should have had exactly one positive match")
 
-	matches, err = c.GetMatches(klabels.Everything().Add("label", klabels.EqualsOperator, []string{"value"}), NODE)
+	matches, err = c.GetMatches(Everything().Add("label", EqualsOperator, []string{"value"}), NODE)
 	Assert(t).IsNil(err, "should have had nil error fetching positive matches for wrong type")
 	Assert(t).AreEqual(len(matches), 0, "should have had exactly zero mistyped matches")
 
-	matches, err = c.GetMatches(klabels.Everything().Add("label", klabels.NotInOperator, []string{"value"}), POD)
+	matches, err = c.GetMatches(Everything().Add("label", NotInOperator, []string{"value"}), POD)
 	Assert(t).IsNil(err, "should have had nil error fetching negative matches")
 	Assert(t).AreEqual(len(matches), 0, "should have had exactly zero negative matches")
 }
