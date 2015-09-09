@@ -6,11 +6,6 @@
 	],
 	"Deps": [
 		{
-			"ImportPath": "bitbucket.org/ww/goautoneg",
-			"Comment": "null-5",
-			"Rev": "75cd24fc2f2c2a2088577d12123ddee5f54e0675"
-		},
-		{
 			"ImportPath": "github.com/Sirupsen/logrus",
 			"Comment": "v0.8.6-1-g8bca266",
 			"Rev": "8bca2664072173a3c71db4c28ca8d304079b1787"
@@ -26,51 +21,6 @@
 		{
 			"ImportPath": "github.com/armon/go-radix",
 			"Rev": "fbd82e84e2b13651f3abc5ffd26b65ba71bc8f93"
-		},
-		{
-			"ImportPath": "github.com/beorn7/perks/quantile",
-			"Rev": "b965b613227fddccbfffe13eae360ed3fa822f8d"
-		},
-		{
-			"ImportPath": "github.com/davecgh/go-spew/spew",
-			"Rev": "2df174808ee097f90d259e432cc04442cf60be21"
-		},
-		{
-			"ImportPath": "github.com/docker/docker/pkg/mount",
-			"Comment": "v1.4.1-5944-g82415ad",
-			"Rev": "82415adc81df05d616c83c949d8d398a0d4ff3ed"
-		},
-		{
-			"ImportPath": "github.com/docker/docker/pkg/units",
-			"Comment": "v1.4.1-5944-g82415ad",
-			"Rev": "82415adc81df05d616c83c949d8d398a0d4ff3ed"
-		},
-		{
-			"ImportPath": "github.com/docker/libcontainer/cgroups",
-			"Comment": "v2.2.1-23-g83a102c",
-			"Rev": "83a102cc68a09d890cce3b6c2e5c14c49e6373a0"
-		},
-		{
-			"ImportPath": "github.com/docker/libcontainer/configs",
-			"Comment": "v2.2.1-23-g83a102c",
-			"Rev": "83a102cc68a09d890cce3b6c2e5c14c49e6373a0"
-		},
-		{
-			"ImportPath": "github.com/docker/libcontainer/system",
-			"Comment": "v2.2.1-23-g83a102c",
-			"Rev": "83a102cc68a09d890cce3b6c2e5c14c49e6373a0"
-		},
-		{
-			"ImportPath": "github.com/golang/glog",
-			"Rev": "fca8c8854093a154ff1eb580aae10276ad6b1b5f"
-		},
-		{
-			"ImportPath": "github.com/golang/protobuf/proto",
-			"Rev": "59b73b37c1e45995477aae817e4a653c89a858db"
-		},
-		{
-			"ImportPath": "github.com/google/gofuzz",
-			"Rev": "bbcb9da2d746f8bdbd6a936686a0a6067ada0ec5"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/acl",
@@ -109,59 +59,11 @@
 			"Rev": "54864211433d45cb780682431585b3e573b49e4a"
 		},
 		{
-			"ImportPath": "github.com/juju/ratelimit",
-			"Rev": "772f5c38e468398c4511514f4f6aa9a4185bc0a0"
-		},
-		{
-			"ImportPath": "github.com/matttproud/golang_protobuf_extensions/pbutil",
-			"Rev": "fc2b8d3a73c4867e51861bbdd5ae3c1f0869dd6a"
-		},
-		{
-			"ImportPath": "github.com/pborman/uuid",
-			"Rev": "cccd189d45f7ac3368a0d127efb7f4d08ae0b655"
-		},
-		{
-			"ImportPath": "github.com/prometheus/client_golang/model",
-			"Comment": "0.7.0-32-g29939ec",
-			"Rev": "29939ec9083b296e28284e29a9ab473a87ae981d"
-		},
-		{
-			"ImportPath": "github.com/prometheus/client_golang/prometheus",
-			"Comment": "0.7.0-32-g29939ec",
-			"Rev": "29939ec9083b296e28284e29a9ab473a87ae981d"
-		},
-		{
-			"ImportPath": "github.com/prometheus/client_golang/text",
-			"Comment": "0.7.0-32-g29939ec",
-			"Rev": "29939ec9083b296e28284e29a9ab473a87ae981d"
-		},
-		{
-			"ImportPath": "github.com/prometheus/client_model/go",
-			"Comment": "model-0.0.2-12-gfa8ad6f",
-			"Rev": "fa8ad6fec33561be4280a8f0514318c79d7f6cb6"
-		},
-		{
-			"ImportPath": "github.com/prometheus/procfs",
-			"Rev": "c91d8eefde16bd047416409eb56353ea84a186e4"
-		},
-		{
-			"ImportPath": "github.com/spf13/pflag",
-			"Rev": "8e7dc108ab3a1ab6ce6d922bbaff5657b88e8e49"
-		},
-		{
 			"ImportPath": "golang.org/x/crypto/cast5",
 			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
 		},
 		{
-			"ImportPath": "golang.org/x/crypto/curve25519",
-			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
-		},
-		{
 			"ImportPath": "golang.org/x/crypto/openpgp",
-			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
-		},
-		{
-			"ImportPath": "golang.org/x/crypto/ssh",
 			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
 		},
 		{
@@ -172,21 +74,6 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "7ad95dd0798a40da1ccdff6dff35fd177b5edf40"
-		},
-		{
-			"ImportPath": "k8s.io/kubernetes/pkg/labels",
-			"Comment": "v1.1.0-alpha.1-46-g9379b0b",
-			"Rev": "9379b0b7d988029faaf9c56d5d337634b79d66f9"
-		},
-		{
-			"ImportPath": "k8s.io/kubernetes/pkg/types",
-			"Comment": "v1.1.0-alpha.1-46-g9379b0b",
-			"Rev": "9379b0b7d988029faaf9c56d5d337634b79d66f9"
-		},
-		{
-			"ImportPath": "k8s.io/kubernetes/pkg/util",
-			"Comment": "v1.1.0-alpha.1-46-g9379b0b",
-			"Rev": "9379b0b7d988029faaf9c56d5d337634b79d66f9"
 		}
 	]
 }
