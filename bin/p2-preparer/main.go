@@ -59,7 +59,10 @@ func main() {
 			func(w http.ResponseWriter, r *http.Request) {
 				fmt.Fprintf(w, "p2-preparer OK")
 			})
-		go http.ListenAndServe(fmt.Sprintf(":%d", preparerConfig.StatusPort), nil)
+		go func() {
+			err := http.ListenAndServe(fmt.Sprintf(":%d", preparerConfig.StatusPort), nil)
+			logger.WithError(err).Fatalln("status server exited")
+		}()
 	}
 
 	// Launch health checking watch. This watch tracks health of
