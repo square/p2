@@ -34,6 +34,7 @@ type ManifestResult struct {
 type Store interface {
 	SetPod(key string, manifest pods.Manifest) (time.Duration, error)
 	Pod(key string) (*pods.Manifest, time.Duration, error)
+	DeletePod(key string) (time.Duration, error)
 	PutHealth(res WatchResult) (time.Time, time.Duration, error)
 	GetHealth(service, node string) (WatchResult, error)
 	GetServiceHealth(service string) (map[string]WatchResult, error)
@@ -250,6 +251,16 @@ func (c consulStore) SetPod(key string, manifest pods.Manifest) (time.Duration, 
 		return retDur, NewKVError("put", key, err)
 	}
 	return retDur, nil
+}
+
+// DeletePod deletes a pod manifest from the key-value store. No error will be
+// returned if the key didn't exist.
+func (c consulStore) DeletePod(key string) (time.Duration, error) {
+	writeMeta, err := c.client.KV().Delete(key, nil)
+	if err != nil {
+		return 0, NewKVError("delete", key, err)
+	}
+	return writeMeta.RequestTime, nil
 }
 
 // Pod reads a pod manifest from the key-value store. If the given key does not
