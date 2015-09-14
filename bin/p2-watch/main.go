@@ -57,13 +57,15 @@ func main() {
 
 	quit := make(chan struct{})
 	errChan := make(chan error)
-	podCh := make(chan kp.ManifestResult)
+	podCh := make(chan []kp.ManifestResult)
 	go store.WatchPods(path, quit, errChan, podCh)
 	for {
 		select {
-		case result := <-podCh:
-			fmt.Println("")
-			result.Manifest.Write(os.Stdout)
+		case results := <-podCh:
+			for _, result := range results {
+				fmt.Println("")
+				result.Manifest.Write(os.Stdout)
+			}
 		case err := <-errChan:
 			log.Fatalf("Error occurred while listening to pods: %s", err)
 		}

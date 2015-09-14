@@ -31,7 +31,7 @@ type Store interface {
 	Pod(string) (*pods.Manifest, time.Duration, error)
 	SetPod(string, pods.Manifest) (time.Duration, error)
 	RegisterService(pods.Manifest, string) error
-	WatchPods(string, <-chan struct{}, chan<- error, chan<- kp.ManifestResult)
+	WatchPods(string, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult)
 }
 
 type Preparer struct {
@@ -69,7 +69,7 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	// This allows us to signal the goroutine watching consul to quit
 	watcherQuit := make(<-chan struct{})
 	errChan := make(chan error)
-	podChan := make(chan kp.ManifestResult)
+	podChan := make(chan []kp.ManifestResult)
 
 	go p.store.WatchPods(path, watcherQuit, errChan, podChan)
 
@@ -84,15 +84,17 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 		case err := <-errChan:
 			p.Logger.WithError(err).
 				Errorln("there was an error reading the manifest")
-		case result := <-podChan:
-			podId := result.Manifest.ID()
-			if podChanMap[podId] == nil {
-				// No goroutine is servicing this app currently, let's start one
-				podChanMap[podId] = make(chan pods.Manifest)
-				quitChanMap[podId] = make(chan struct{})
-				go p.handlePods(podChanMap[podId], quitChanMap[podId])
+		case results := <-podChan:
+			for _, result := range results {
+				podId := result.Manifest.ID()
+				if podChanMap[podId] == nil {
+					// No goroutine is servicing this app currently, let's start one
+					podChanMap[podId] = make(chan pods.Manifest)
+					quitChanMap[podId] = make(chan struct{})
+					go p.handlePods(podChanMap[podId], quitChanMap[podId])
+				}
+				podChanMap[podId] <- result.Manifest
 			}
-			podChanMap[podId] <- result.Manifest
 		case <-quitAndAck:
 			for podToQuit, quitCh := range quitChanMap {
 				p.Logger.WithField("pod", podToQuit).Infoln("Quitting...")

@@ -37,7 +37,7 @@ type Store interface {
 	PutHealth(res WatchResult) (time.Time, time.Duration, error)
 	GetHealth(service, node string) (WatchResult, error)
 	GetServiceHealth(service string) (map[string]WatchResult, error)
-	WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
+	WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult)
 	RegisterService(pods.Manifest, string) error
 	Ping() error
 	ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error)
@@ -297,7 +297,7 @@ func (c consulStore) ListPods(keyPrefix string) ([]ManifestResult, time.Duration
 // All the values under the given key prefix must be pod manifests. Emitted
 // manifests might be unchanged from the last time they were read. It is the
 // caller's responsibility to filter out unchanged manifests.
-func (c consulStore) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult) {
+func (c consulStore) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult) {
 	defer close(podChan)
 
 	var curIndex uint64 = 0
@@ -314,14 +314,16 @@ func (c consulStore) WatchPods(keyPrefix string, quitChan <-chan struct{}, errCh
 				errChan <- NewKVError("list", keyPrefix, err)
 			} else {
 				curIndex = meta.LastIndex
+				next := make([]ManifestResult, 0, len(pairs))
 				for _, pair := range pairs {
 					manifest, err := pods.ManifestFromBytes(pair.Value)
 					if err != nil {
 						errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value)
 					} else {
-						podChan <- ManifestResult{*manifest, pair.Key}
+						next = append(next, ManifestResult{*manifest, pair.Key})
 					}
 				}
+				podChan <- next
 			}
 		}
 	}
