@@ -140,7 +140,7 @@ func (r Replicator) updateOne(node string, done chan<- string, errCh chan<- erro
 		_, err = r.Store.SetPod(kp.IntentPath(node, r.Manifest.ID()), r.Manifest)
 	}
 
-	realityResults := make(chan kp.ManifestResult)
+	realityResults := make(chan []kp.ManifestResult)
 	realityErr := make(chan error)
 	realityQuit := make(chan struct{})
 	defer close(realityQuit)
@@ -154,7 +154,10 @@ REALITY_LOOP:
 			nodeLogger.WithError(err).Errorln("Could not read reality store")
 			errCh <- err
 		case mResult := <-realityResults:
-			receivedSHA, _ := mResult.Manifest.SHA()
+			if len(mResult) != 1 {
+				nodeLogger.WithField("n", len(mResult)).Errorln("Got unexpected number of results when watching reality")
+			}
+			receivedSHA, _ := mResult[0].Manifest.SHA()
 			if receivedSHA == targetSHA {
 				break REALITY_LOOP
 			} else {

@@ -21,7 +21,7 @@ import (
 var eventPrefix = regexp.MustCompile("/?([a-zA-Z\\_]+)\\/.+")
 
 type IntentStore interface {
-	WatchPods(watchPath string, quit <-chan struct{}, errCh chan<- error, manifests chan<- kp.ManifestResult)
+	WatchPods(watchPath string, quit <-chan struct{}, errCh chan<- error, manifests chan<- []kp.ManifestResult)
 }
 
 type HookListener struct {
@@ -44,7 +44,7 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 
 	watcherQuit := make(chan struct{})
 	watcherErrCh := make(chan error)
-	podChan := make(chan kp.ManifestResult)
+	podChan := make(chan []kp.ManifestResult)
 
 	go l.Intent.WatchPods(watchPath, watcherQuit, watcherErrCh, podChan)
 
@@ -57,76 +57,83 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 		case err := <-watcherErrCh:
 			l.Logger.WithError(err).Errorln("Error while watching pods")
 			errCh <- err
-		case result := <-podChan:
-			sub := l.Logger.SubLogger(logrus.Fields{
-				"pod":  result.Manifest.ID(),
-				"dest": l.DestinationDir,
-			})
-
-			err := l.authPolicy.AuthorizeHook(&result.Manifest, sub)
-			if err != nil {
-				if err, ok := err.(auth.Error); ok {
-					sub.WithFields(err.Fields).Errorln(err)
-				} else {
-					sub.NoFields().Errorln(err)
+		case results := <-podChan:
+			for _, result := range results {
+				err := l.installHook(result)
+				if err != nil {
+					errCh <- err
 				}
-				break
-			}
-
-			// Figure out what event we're setting a hook pod for. For example,
-			// if we find a pod at /hooks/before_install/usercreate, then the
-			// event is called "before_install"
-			event, err := l.determineEvent(result.Path)
-			if err != nil {
-				sub.WithError(err).Errorln("Couldn't determine hook path")
-				break
-			}
-
-			hookPod := pods.NewPod(result.Manifest.ID(), path.Join(l.DestinationDir, event, result.Manifest.ID()))
-
-			// Figure out if we even need to install anything.
-			// Hooks aren't running services and so there isn't a need
-			// to write the current manifest to the reality store. Instead
-			// we just compare to the manifest on disk.
-			current, err := hookPod.CurrentManifest()
-			if err != nil && err != pods.NoCurrentManifest {
-				l.Logger.WithError(err).Errorln("Could not check current manifest")
-				errCh <- err
-				break
-			}
-
-			currentSHA, _ := current.SHA()
-			newSHA, _ := result.Manifest.SHA()
-
-			if err != pods.NoCurrentManifest && currentSHA == newSHA {
-				// we are up-to-date, continue
-				break
-			}
-
-			// The manifest is new, go ahead and install
-			err = hookPod.Install(&result.Manifest)
-			if err != nil {
-				sub.WithError(err).Errorln("Could not install hook")
-				errCh <- err
-				break
-			}
-
-			_, err = hookPod.WriteCurrentManifest(&result.Manifest)
-			if err != nil {
-				sub.WithError(err).Errorln("Could not write current manifest")
-				errCh <- err
-				break
-			}
-
-			// Now that the pod is installed, link it up to the exec dir.
-			err = l.writeHook(event, hookPod, &result.Manifest)
-			if err != nil {
-				sub.WithError(err).Errorln("Could not write hook link")
-			} else {
-				sub.NoFields().Infoln("Updated hook")
 			}
 		}
 	}
+}
+
+func (l *HookListener) installHook(result kp.ManifestResult) error {
+	sub := l.Logger.SubLogger(logrus.Fields{
+		"pod":  result.Manifest.ID(),
+		"dest": l.DestinationDir,
+	})
+
+	err := l.authPolicy.AuthorizeHook(&result.Manifest, sub)
+	if err != nil {
+		if err, ok := err.(auth.Error); ok {
+			sub.WithFields(err.Fields).Errorln(err)
+		} else {
+			sub.NoFields().Errorln(err)
+		}
+		return err
+	}
+
+	// Figure out what event we're setting a hook pod for. For example,
+	// if we find a pod at /hooks/before_install/usercreate, then the
+	// event is called "before_install"
+	event, err := l.determineEvent(result.Path)
+	if err != nil {
+		sub.WithError(err).Errorln("Couldn't determine hook path")
+		return err
+	}
+
+	hookPod := pods.NewPod(result.Manifest.ID(), path.Join(l.DestinationDir, event, result.Manifest.ID()))
+
+	// Figure out if we even need to install anything.
+	// Hooks aren't running services and so there isn't a need
+	// to write the current manifest to the reality store. Instead
+	// we just compare to the manifest on disk.
+	current, err := hookPod.CurrentManifest()
+	if err != nil && err != pods.NoCurrentManifest {
+		l.Logger.WithError(err).Errorln("Could not check current manifest")
+		return err
+	}
+
+	currentSHA, _ := current.SHA()
+	newSHA, _ := result.Manifest.SHA()
+
+	if err != pods.NoCurrentManifest && currentSHA == newSHA {
+		// we are up-to-date, continue
+		return nil
+	}
+
+	// The manifest is new, go ahead and install
+	err = hookPod.Install(&result.Manifest)
+	if err != nil {
+		sub.WithError(err).Errorln("Could not install hook")
+		return err
+	}
+
+	_, err = hookPod.WriteCurrentManifest(&result.Manifest)
+	if err != nil {
+		sub.WithError(err).Errorln("Could not write current manifest")
+		return err
+	}
+
+	// Now that the pod is installed, link it up to the exec dir.
+	err = l.writeHook(event, hookPod, &result.Manifest)
+	if err != nil {
+		sub.WithError(err).Errorln("Could not write hook link")
+		return err
+	}
+	sub.NoFields().Infoln("Updated hook")
+	return nil
 }
 
 func (l *HookListener) determineEvent(pathInIntent string) (string, error) {
