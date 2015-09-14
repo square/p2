@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 )
@@ -36,4 +37,14 @@ func TestErrorReturnedIfRunitServiceBails(t *testing.T) {
 	service := &Service{tmpdir, "foo"}
 	_, err = sv.Start(service)
 	Assert(t).IsNotNil(err, "There should have been an error starting the service")
+}
+
+func TestOutToStatResultCorrectlyParsesPIDs(t *testing.T) {
+	statRes, err := outToStatResult("run: /var/service/hoist__artifact-cleanup3/: (pid 22807) 2599s; run: log: (pid 1748) 8269291s")
+	Assert(t).IsNil(err, "should not have failed to parse stat output")
+
+	Assert(t).AreEqual(uint64(22807), statRes.ChildPID, "Should have found the correct child PID")
+	Assert(t).AreEqual(2599*time.Second, statRes.ChildUptime, "Should have found the correct child PID uptime")
+	Assert(t).AreEqual(uint64(1748), statRes.LogPID, "Should have found the correct log PID")
+	Assert(t).AreEqual(8269291*time.Second, statRes.LogUptime, "Should have found the correct log PID uptime")
 }

@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,9 +20,18 @@ type SV struct {
 
 var DefaultSV = &SV{"/usr/bin/sv"}
 
+var statOutput = regexp.MustCompile(`run: ([/\w\_\-\.]+): \(pid ([\d]+)\) (\d+s); run: log: \(pid ([\d]+)\) (\d+s)`)
+
 type Service struct {
 	Path string
 	Name string
+}
+
+type StatResult struct {
+	ChildPID    uint64
+	ChildUptime time.Duration
+	LogPID      uint64
+	LogUptime   time.Duration
 }
 
 type StatError error
@@ -73,8 +84,36 @@ func (sv *SV) Restart(service *Service) (string, error) {
 	return convertToErr(sv.execOnService(service, "restart"))
 }
 
-func (sv *SV) Stat(service *Service) (string, error) {
-	return convertToErr(sv.execOnService(service, "stat"))
+func (sv *SV) Stat(service *Service) (*StatResult, error) {
+	out, err := convertToErr(sv.execOnService(service, "stat"))
+	if err != nil {
+		return nil, err
+	}
+	return outToStatResult(out)
+}
+
+func outToStatResult(out string) (*StatResult, error) {
+	matches := statOutput.FindStringSubmatch(out)
+	if matches == nil || len(matches) < 6 {
+		return nil, util.Errorf("Could not find matching run output for service: %q", matches)
+	}
+	childPID, err := strconv.ParseUint(matches[2], 0, 32)
+	if err != nil {
+		return nil, util.Errorf("Could not parse child PID from %s: %v", matches[2], err)
+	}
+	childUptime, err := time.ParseDuration(matches[3])
+	if err != nil {
+		return nil, util.Errorf("Could not parse child uptime from %s: %v", matches[3], err)
+	}
+	logPID, err := strconv.ParseUint(matches[4], 0, 32)
+	if err != nil {
+		return nil, util.Errorf("Could not parse log PID from %s: %v", matches[4], err)
+	}
+	logUptime, err := time.ParseDuration(matches[5])
+	if err != nil {
+		return nil, util.Errorf("Could not parse log uptime from %s: %v", matches[5], err)
+	}
+	return &StatResult{childPID, childUptime, logPID, logUptime}, nil
 }
 
 func convertToErr(msg string, original error) (string, error) {
