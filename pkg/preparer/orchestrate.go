@@ -147,6 +147,11 @@ func (p *Preparer) handlePods(podChan <-chan pods.Manifest, quit <-chan struct{}
 			if working {
 				pod := pods.NewPod(manifestToLaunch.ID(), pods.PodPath(p.podRoot, manifestToLaunch.ID()))
 
+				// TODO better solution: force the preparer to have a 0s default timeout, prevent KILLs
+				if pod.Id == POD_ID {
+					pod.DefaultTimeout = time.Duration(0)
+				}
+
 				ok := p.installAndLaunchPod(&manifestToLaunch, pod, manifestLogger)
 				if ok {
 					manifestToLaunch = pods.Manifest{}

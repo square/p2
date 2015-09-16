@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
 	"regexp"
 	"strconv"
 	"strings"
@@ -56,20 +57,24 @@ func (sv *SV) waitForSupervision(service *Service) error {
 	}
 }
 
-func (sv *SV) execOnService(service *Service, toRun string) (string, error) {
+func (sv *SV) execCmdOnService(service *Service, cmd *exec.Cmd) (string, error) {
 	err := sv.waitForSupervision(service)
 	if err != nil {
 		return "", err
 	}
-	cmd := exec.Command(sv.Bin, toRun, service.Path)
 	buffer := bytes.Buffer{}
 	cmd.Stdout = &buffer
 	cmd.Stderr = &buffer
 	err = cmd.Run()
 	if err != nil {
-		return buffer.String(), util.Errorf("Could not %s service %s: %s. Output: %s", toRun, service.Name, err, buffer.String())
+		return buffer.String(), util.Errorf("Could not run %v - Error: %s, Output: %s", cmd.Args, err, buffer.String())
 	}
 	return buffer.String(), nil
+}
+
+func (sv *SV) execOnService(service *Service, svVerb string) (string, error) {
+	cmd := exec.Command(sv.Bin, svVerb, service.Path)
+	return sv.execCmdOnService(service, cmd)
 }
 
 func (sv *SV) Start(service *Service) (string, error) {
@@ -80,16 +85,24 @@ func (sv *SV) Stop(service *Service) (string, error) {
 	return convertToErr(sv.execOnService(service, "stop"))
 }
 
-func (sv *SV) Restart(service *Service) (string, error) {
-	return convertToErr(sv.execOnService(service, "restart"))
-}
-
 func (sv *SV) Stat(service *Service) (*StatResult, error) {
 	out, err := convertToErr(sv.execOnService(service, "stat"))
 	if err != nil {
 		return nil, err
 	}
 	return outToStatResult(out)
+}
+
+// If timeout is passed, will use the force-restart command to send a kill. If no timeout
+// is provided, will just send a TERM.
+func (sv *SV) Restart(service *Service, timeout time.Duration) (string, error) {
+	var cmd *exec.Cmd
+	if timeout > 0 {
+		cmd = exec.Command(sv.Bin, "-w", strconv.FormatInt(int64(timeout.Seconds()), 10), "force-restart", service.Path)
+	} else {
+		cmd = exec.Command(sv.Bin, "restart", service.Path)
+	}
+	return convertToErr(sv.execCmdOnService(service, cmd))
 }
 
 func outToStatResult(out string) (*StatResult, error) {
