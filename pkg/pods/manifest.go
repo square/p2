@@ -25,6 +25,7 @@ type LaunchableStanza struct {
 	Location                string         `yaml:"location"`
 	DigestLocation          string         `yaml:"digest_location,omitempty"`
 	DigestSignatureLocation string         `yaml:"digest_signature_location,omitempty"`
+	RestartTimeout          string         `yaml:"restart_timeout,omitempty"`
 	CgroupConfig            cgroups.Config `yaml:"cgroup,omitempty"`
 }
 

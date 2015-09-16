@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/cgroups"
@@ -29,6 +30,7 @@ type Launchable struct {
 	P2exec           string         // The path to p2-exec
 	CgroupConfig     cgroups.Config // Cgroup parameters to use with p2-exec
 	CgroupConfigName string         // The string in PLATFORM_CONFIG to pass to p2-exec
+	RestartTimeout   time.Duration  // How long to wait when restarting the services in this launchable.
 }
 
 func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
@@ -158,7 +160,7 @@ func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) 
 	}
 
 	for _, executable := range executables {
-		_, err := sv.Restart(&executable.Service)
+		_, err := sv.Restart(&executable.Service, hl.RestartTimeout)
 		if err != nil && err != runit.SuperviseOkMissing {
 			return err
 		}

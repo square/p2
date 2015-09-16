@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/digest"
@@ -43,6 +44,7 @@ type Pod struct {
 	SV             *runit.SV
 	ServiceBuilder *runit.ServiceBuilder
 	P2exec         string
+	DefaultTimeout time.Duration // this is the default timeout for stopping and restarting services in this pod
 }
 
 func NewPod(id string, path string) *Pod {
@@ -53,6 +55,7 @@ func NewPod(id string, path string) *Pod {
 		SV:             runit.DefaultSV,
 		ServiceBuilder: runit.DefaultBuilder,
 		P2exec:         DefaultP2Exec,
+		DefaultTimeout: 60 * time.Second,
 	}
 }
 
@@ -497,6 +500,18 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 	if launchableStanza.LaunchableType == "hoist" {
 		launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
+
+		restartTimeout := pod.DefaultTimeout
+
+		if launchableStanza.RestartTimeout != "" {
+			possibleTimeout, err := time.ParseDuration(launchableStanza.RestartTimeout)
+			if err != nil {
+				pod.logger.WithError(err).Errorf("%v is not a valid restart timeout - must be parseable by time.ParseDuration(). Using default time %v", launchableStanza.RestartTimeout, restartTimeout)
+			} else {
+				restartTimeout = possibleTimeout
+			}
+		}
+
 		ret := &hoist.Launchable{
 			Location:         launchableStanza.Location,
 			Id:               launchableId,
@@ -505,6 +520,7 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 			Fetcher:          uri.DefaultFetcher,
 			RootDir:          launchableRootDir,
 			P2exec:           pod.P2exec,
+			RestartTimeout:   restartTimeout,
 			CgroupConfig:     launchableStanza.CgroupConfig,
 			CgroupConfigName: launchableStanza.LaunchableId,
 		}
