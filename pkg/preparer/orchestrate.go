@@ -298,6 +298,8 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 		logger.NoFields().Warnln("One or more launchables did not halt successfully")
 	}
 
+	p.tryRunHooks(hooks.BEFORE_UNINSTALL, pod, pair.Reality, logger)
+
 	err = pod.Uninstall()
 	if err != nil {
 		logger.WithError(err).Errorln("Uninstall failed")

@@ -79,8 +79,8 @@ func (t *TestPod) Path() string {
 }
 
 type fakeHooks struct {
-	beforeInstallErr, afterInstallErr, afterLaunchErr, afterAuthFailErr error
-	ranBeforeInstall, ranAfterLaunch, ranAfterInstall, ranAfterAuthFail bool
+	beforeInstallErr, beforeUninstallErr, afterInstallErr, afterLaunchErr, afterAuthFailErr error
+	ranBeforeInstall, ranBeforeUninstall, ranAfterLaunch, ranAfterInstall, ranAfterAuthFail bool
 }
 
 func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest *pods.Manifest) error {
@@ -91,6 +91,9 @@ func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest
 	case hooks.AFTER_INSTALL:
 		f.ranAfterInstall = true
 		return f.afterInstallErr
+	case hooks.BEFORE_UNINSTALL:
+		f.ranBeforeUninstall = true
+		return f.beforeUninstallErr
 	case hooks.AFTER_LAUNCH:
 		f.ranAfterLaunch = true
 		return f.afterLaunchErr
@@ -320,7 +323,7 @@ func TestPreparerWillRemoveIfManifestDisappears(t *testing.T) {
 		currentManifest: testManifest,
 	}
 
-	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	success := p.resolvePair(newPair, testPod, logging.DefaultLogger)
@@ -328,6 +331,7 @@ func TestPreparerWillRemoveIfManifestDisappears(t *testing.T) {
 	Assert(t).IsTrue(success, "Should have successfully removed pod")
 	Assert(t).IsTrue(testPod.uninstalled, "Should have uninstalled pod")
 	Assert(t).IsTrue(testPod.halted, "Should have halted pod")
+	Assert(t).IsTrue(hooks.ranBeforeUninstall, "Should have ran uninstall hooks")
 }
 
 func TestPreparerWillRequireSignatureWithKeyring(t *testing.T) {
