@@ -43,9 +43,21 @@ func VerifyDir(root string, digest map[string]string) error {
 		if info.IsDir() {
 			return nil
 		}
-		// walk does not follow links, so if this is a symlink to a directory,
-		// we should skip that
 		if info.Mode()&os.ModeSymlink != 0 {
+			// some particularly misbehaved tarballs contain absolute symlinks
+			linkTarget, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			if filepath.IsAbs(linkTarget) {
+				// we can't fix them at this point, and statting them will blow
+				// up, so let's bail for now
+				return nil
+			}
+
+			// walk does not follow links, so this symlink might actually point
+			// to a directory
+			// we want to skip that
 			linkInfo, err := os.Stat(path)
 			if err != nil {
 				return err
