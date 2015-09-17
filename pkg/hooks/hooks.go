@@ -33,10 +33,11 @@ func (hookType HookType) String() string {
 }
 
 var (
-	BEFORE_INSTALL  = HookType("before_install")
-	AFTER_INSTALL   = HookType("after_install")
-	AFTER_LAUNCH    = HookType("after_launch")
-	AFTER_AUTH_FAIL = HookType("after_auth_fail")
+	BEFORE_INSTALL   = HookType("before_install")
+	AFTER_INSTALL    = HookType("after_install")
+	BEFORE_UNINSTALL = HookType("before_uninstall")
+	AFTER_LAUNCH     = HookType("after_launch")
+	AFTER_AUTH_FAIL  = HookType("after_auth_fail")
 )
 
 func AsHookType(value string) (HookType, error) {
@@ -45,6 +46,8 @@ func AsHookType(value string) (HookType, error) {
 		return BEFORE_INSTALL, nil
 	case AFTER_INSTALL.String():
 		return AFTER_INSTALL, nil
+	case BEFORE_UNINSTALL.String():
+		return BEFORE_UNINSTALL, nil
 	case AFTER_LAUNCH.String():
 		return AFTER_LAUNCH, nil
 	case AFTER_AUTH_FAIL.String():
@@ -97,7 +100,7 @@ func runDirectory(dirpath string, environment []string, logger logging.Logger) e
 	return nil
 }
 
-func (h *HookDir) runHooks(dirpath string, pod Pod, podManifest *pods.Manifest) error {
+func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest *pods.Manifest) error {
 
 	logger := h.logger.SubLogger(logrus.Fields{
 		"hook":     dirpath,
@@ -128,6 +131,7 @@ func (h *HookDir) runHooks(dirpath string, pod Pod, podManifest *pods.Manifest) 
 
 	hookEnvironment := []string{
 		fmt.Sprintf("HOOK=%s", path.Base(dirpath)),
+		fmt.Sprintf("HOOK_EVENT=%s", hType.String()),
 		fmt.Sprintf("HOOKED_POD_ID=%s", podManifest.Id),
 		fmt.Sprintf("HOOKED_POD_HOME=%s", pod.Path()),
 		fmt.Sprintf("HOOKED_POD_MANIFEST=%s", tmpManifestFile.Name()),
@@ -140,5 +144,5 @@ func (h *HookDir) runHooks(dirpath string, pod Pod, podManifest *pods.Manifest) 
 
 func (h *HookDir) RunHookType(hookType HookType, pod Pod, manifest *pods.Manifest) error {
 	dirpath := path.Join(h.dirpath, hookType.String())
-	return h.runHooks(dirpath, pod, manifest)
+	return h.runHooks(dirpath, hookType, pod, manifest)
 }

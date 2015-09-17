@@ -19,6 +19,7 @@ type Pod interface {
 	hooks.Pod
 	Launch(*pods.Manifest) (bool, error)
 	Install(*pods.Manifest) error
+	Uninstall() error
 	Verify(*pods.Manifest, auth.Policy) error
 	Halt(*pods.Manifest) (bool, error)
 }
@@ -28,8 +29,9 @@ type Hooks interface {
 }
 
 type Store interface {
-	Pod(string) (*pods.Manifest, time.Duration, error)
+	ListPods(keyPrefix string) ([]kp.ManifestResult, time.Duration, error)
 	SetPod(string, pods.Manifest) (time.Duration, error)
+	DeletePod(key string) (time.Duration, error)
 	RegisterService(pods.Manifest, string) error
 	WatchPods(string, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult)
 }
@@ -67,16 +69,20 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	path := kp.IntentPath(p.node)
 
 	// This allows us to signal the goroutine watching consul to quit
-	watcherQuit := make(<-chan struct{})
+	quitChan := make(chan struct{})
 	errChan := make(chan error)
 	podChan := make(chan []kp.ManifestResult)
 
-	go p.store.WatchPods(path, watcherQuit, errChan, podChan)
+	go p.store.WatchPods(path, quitChan, errChan, podChan)
 
 	// we will have one long running goroutine for each app installed on this
 	// host. We keep a map of podId => podChan so we can send the new manifests
 	// that come in to the appropriate goroutine
-	podChanMap := make(map[string]chan pods.Manifest)
+	podChanMap := make(map[string]chan ManifestPair)
+	// we can't use a shared quit channel for all the goroutines - otherwise,
+	// we would exit the program before the goroutines actually accepted the
+	// quit signal. to be sure that each goroutine is done, we have to block and
+	// wait for it to receive the signal
 	quitChanMap := make(map[string]chan struct{})
 
 	for {
@@ -84,22 +90,34 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 		case err := <-errChan:
 			p.Logger.WithError(err).
 				Errorln("there was an error reading the manifest")
-		case results := <-podChan:
-			for _, result := range results {
-				podId := result.Manifest.ID()
-				if podChanMap[podId] == nil {
-					// No goroutine is servicing this app currently, let's start one
-					podChanMap[podId] = make(chan pods.Manifest)
-					quitChanMap[podId] = make(chan struct{})
-					go p.handlePods(podChanMap[podId], quitChanMap[podId])
+		case intentResults := <-podChan:
+			realityResults, _, err := p.store.ListPods(kp.RealityPath(p.node))
+			if err != nil {
+				errChan <- err
+			} else {
+				// if the preparer's own ID is missing from the intent set, we
+				// assume it was damaged and discard it
+				if !checkResultsForID(intentResults, POD_ID) {
+					p.Logger.NoFields().Errorln("Intent results set did not contain p2-preparer pod ID, consul data may be corrupted")
+				} else {
+					resultPairs := ZipResultSets(intentResults, realityResults)
+					for _, pair := range resultPairs {
+						if _, ok := podChanMap[pair.ID]; !ok {
+							// spin goroutine for this pod
+							podChanMap[pair.ID] = make(chan ManifestPair)
+							quitChanMap[pair.ID] = make(chan struct{})
+							go p.handlePods(podChanMap[pair.ID], quitChanMap[pair.ID])
+						}
+						podChanMap[pair.ID] <- pair
+					}
 				}
-				podChanMap[podId] <- result.Manifest
 			}
 		case <-quitAndAck:
 			for podToQuit, quitCh := range quitChanMap {
 				p.Logger.WithField("pod", podToQuit).Infoln("Quitting...")
 				quitCh <- struct{}{}
 			}
+			close(quitChan)
 			p.Logger.NoFields().Infoln("Done, acknowledging quit")
 			quitAndAck <- struct{}{} // acknowledge quit
 			return
@@ -118,9 +136,9 @@ func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest 
 
 // no return value, no output channels. This should do everything it needs to do
 // without outside intervention (other than being signalled to quit)
-func (p *Preparer) handlePods(podChan <-chan pods.Manifest, quit <-chan struct{}) {
+func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{}) {
 	// install new launchables
-	var manifestToLaunch pods.Manifest
+	var nextLaunch ManifestPair
 
 	// used to track if we have work to do (i.e. pod manifest came through channel
 	// and we have yet to operate on it)
@@ -130,31 +148,42 @@ func (p *Preparer) handlePods(podChan <-chan pods.Manifest, quit <-chan struct{}
 		select {
 		case <-quit:
 			return
-		case manifestToLaunch = <-podChan:
-			sha, err := manifestToLaunch.SHA()
+		case nextLaunch = <-podChan:
+			var sha string
+			if nextLaunch.Intent != nil {
+				sha, _ = nextLaunch.Intent.SHA()
+			} else {
+				sha, _ = nextLaunch.Reality.SHA()
+			}
 			manifestLogger = p.Logger.SubLogger(logrus.Fields{
-				"pod":     manifestToLaunch.ID(),
-				"sha":     sha,
-				"sha_err": err,
+				"pod": nextLaunch.ID,
+				"sha": sha,
 			})
 			manifestLogger.NoFields().Debugln("New manifest received")
 
-			working = p.authorize(manifestToLaunch, manifestLogger)
-			if !working {
-				p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pods.NewPod(manifestToLaunch.ID(), pods.PodPath(p.podRoot, manifestToLaunch.ID())), &manifestToLaunch, manifestLogger)
+			if nextLaunch.Intent == nil {
+				// if intent=nil then reality!=nil and we need to delete the pod
+				// therefore we must set working=true here
+				working = true
+			} else {
+				// non-nil intent manifests need to be authorized first
+				working = p.authorize(*nextLaunch.Intent, manifestLogger)
+				if !working {
+					p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pods.NewPod(nextLaunch.ID, pods.PodPath(p.podRoot, nextLaunch.ID)), nextLaunch.Intent, manifestLogger)
+				}
 			}
 		case <-time.After(1 * time.Second):
 			if working {
-				pod := pods.NewPod(manifestToLaunch.ID(), pods.PodPath(p.podRoot, manifestToLaunch.ID()))
+				pod := pods.NewPod(nextLaunch.ID, pods.PodPath(p.podRoot, nextLaunch.ID))
 
 				// TODO better solution: force the preparer to have a 0s default timeout, prevent KILLs
 				if pod.Id == POD_ID {
 					pod.DefaultTimeout = time.Duration(0)
 				}
 
-				ok := p.installAndLaunchPod(&manifestToLaunch, pod, manifestLogger)
+				ok := p.resolvePair(nextLaunch, pod, manifestLogger)
 				if ok {
-					manifestToLaunch = pods.Manifest{}
+					nextLaunch = ManifestPair{}
 					working = false
 				}
 			}
@@ -176,92 +205,113 @@ func (p *Preparer) authorize(manifest pods.Manifest, logger logging.Logger) bool
 	return true
 }
 
-func (p *Preparer) installAndLaunchPod(newManifest *pods.Manifest, pod Pod, logger logging.Logger) bool {
+func (p *Preparer) resolvePair(pair ManifestPair, pod Pod, logger logging.Logger) bool {
 	// do not remove the logger argument, it's not the same as p.Logger
-
-	// get currently running pod to compare with the new pod
-	realityPath := kp.RealityPath(p.node, newManifest.ID())
-	currentManifest, _, err := p.store.Pod(realityPath)
-	currentSHA := ""
-	if currentManifest != nil {
-		currentSHA, _ = currentManifest.SHA()
+	var oldSHA, newSHA string
+	if pair.Reality != nil {
+		oldSHA, _ = pair.Reality.SHA()
 	}
-	newSHA, _ := newManifest.SHA()
-
-	// if new or the manifest is different, launch
-	newOrDifferent := (err == pods.NoCurrentManifest) || (currentSHA != newSHA)
-	if newOrDifferent {
-		logger.WithFields(logrus.Fields{
-			"old_sha": currentSHA,
-			"sha":     newSHA,
-			"pod":     newManifest.ID(),
-		}).Infoln("SHA is new or different from old, will update")
+	if pair.Intent != nil {
+		newSHA, _ = pair.Intent.SHA()
 	}
 
-	// if the old manifest is corrupted somehow, re-launch since we don't know if this is an update.
-	problemReadingCurrentManifest := (err != nil && err != pods.NoCurrentManifest)
-	if problemReadingCurrentManifest {
-		logger.WithErrorAndFields(err, logrus.Fields{
-			"sha": newSHA}).
-			Errorln("Current manifest not readable, will relaunch")
+	if oldSHA == "" {
+		logger.NoFields().Infoln("manifest is new, will update")
+		return p.installAndLaunchPod(pair, pod, logger)
 	}
 
-	if newOrDifferent || problemReadingCurrentManifest {
-		p.tryRunHooks(hooks.BEFORE_INSTALL, pod, newManifest, logger)
+	if newSHA == "" {
+		logger.NoFields().Infoln("manifest was deleted from intent, will remove")
+		return p.stopAndUninstallPod(pair, pod, logger)
+	}
 
-		err = pod.Install(newManifest)
+	if oldSHA == newSHA {
+		logger.NoFields().Debugln("manifest is unchanged, no action required")
+		return true
+	}
+
+	logger.WithField("old_sha", oldSHA).Infoln("manifest SHA has changed, will update")
+	return p.installAndLaunchPod(pair, pod, logger)
+
+}
+
+func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger logging.Logger) bool {
+	p.tryRunHooks(hooks.BEFORE_INSTALL, pod, pair.Intent, logger)
+
+	err := pod.Install(pair.Intent)
+	if err != nil {
+		// install failed, abort and retry
+		logger.WithError(err).Errorln("Install failed")
+		return false
+	}
+
+	err = pod.Verify(pair.Intent, p.authPolicy)
+	if err != nil {
+		logger.WithError(err).
+			Errorln("Pod digest verification failed")
+		p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pod, pair.Intent, logger)
+		return false
+	}
+
+	p.tryRunHooks(hooks.AFTER_INSTALL, pod, pair.Intent, logger)
+
+	if p.consulHealth {
+		err = p.store.RegisterService(*pair.Intent, p.caFile)
 		if err != nil {
-			// install failed, abort and retry
-			logger.WithError(err).Errorln("Install failed")
+			logger.WithError(err).Errorln("Service registration failed")
 			return false
 		}
-
-		err = pod.Verify(newManifest, p.authPolicy)
-		if err != nil {
-			logger.WithError(err).
-				Errorln("Pod digest verification failed")
-			p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pod, newManifest, logger)
-			return false
-		}
-
-		p.tryRunHooks(hooks.AFTER_INSTALL, pod, newManifest, logger)
-
-		if p.consulHealth {
-			err = p.store.RegisterService(*newManifest, p.caFile)
-			if err != nil {
-				logger.WithError(err).Errorln("Service registration failed")
-				return false
-			}
-		}
-
-		if currentManifest != nil {
-			success, err := pod.Halt(currentManifest)
-			if err != nil {
-				logger.WithError(err).
-					Errorln("Pod halt failed")
-			} else if !success {
-				logger.NoFields().Warnln("One or more launchables did not halt successfully")
-			}
-		}
-
-		ok, err := pod.Launch(newManifest)
-		if err != nil {
-			logger.WithError(err).
-				Errorln("Launch failed")
-		} else {
-			duration, err := p.store.SetPod(realityPath, *newManifest)
-			if err != nil {
-				logger.WithErrorAndFields(err, logrus.Fields{
-					"duration": duration}).
-					Errorln("Could not set pod in reality store")
-			}
-
-			p.tryRunHooks(hooks.AFTER_LAUNCH, pod, newManifest, logger)
-		}
-		return err == nil && ok
 	}
 
-	// TODO: shut down removed launchables between pod versions.
+	if pair.Reality != nil {
+		success, err := pod.Halt(pair.Reality)
+		if err != nil {
+			logger.WithError(err).
+				Errorln("Pod halt failed")
+		} else if !success {
+			logger.NoFields().Warnln("One or more launchables did not halt successfully")
+		}
+	}
+
+	ok, err := pod.Launch(pair.Intent)
+	if err != nil {
+		logger.WithError(err).
+			Errorln("Launch failed")
+	} else {
+		duration, err := p.store.SetPod(kp.RealityPath(p.node, pair.ID), *pair.Intent)
+		if err != nil {
+			logger.WithErrorAndFields(err, logrus.Fields{
+				"duration": duration}).
+				Errorln("Could not set pod in reality store")
+		}
+
+		p.tryRunHooks(hooks.AFTER_LAUNCH, pod, pair.Intent, logger)
+	}
+	return err == nil && ok
+}
+
+func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger logging.Logger) bool {
+	success, err := pod.Halt(pair.Reality)
+	if err != nil {
+		logger.WithError(err).Errorln("Pod halt failed")
+	} else if !success {
+		logger.NoFields().Warnln("One or more launchables did not halt successfully")
+	}
+
+	p.tryRunHooks(hooks.BEFORE_UNINSTALL, pod, pair.Reality, logger)
+
+	err = pod.Uninstall()
+	if err != nil {
+		logger.WithError(err).Errorln("Uninstall failed")
+		return false
+	}
+	logger.NoFields().Infoln("Successfully uninstalled")
+
+	dur, err := p.store.DeletePod(kp.RealityPath(p.node, pair.ID))
+	if err != nil {
+		logger.WithErrorAndFields(err, logrus.Fields{"duration": dur}).
+			Errorln("Could not delete pod from reality store")
+	}
 	return true
 }
 

@@ -22,10 +22,10 @@ import (
 )
 
 type TestPod struct {
-	currentManifest                                         *pods.Manifest
-	installed, launched, launchSuccess, halted, haltSuccess bool
-	installErr, launchErr, haltError, currentManifestError  error
-	configDir, envDir                                       string
+	currentManifest                                                      *pods.Manifest
+	installed, uninstalled, launched, launchSuccess, halted, haltSuccess bool
+	installErr, uninstallErr, launchErr, haltError, currentManifestError error
+	configDir, envDir                                                    string
 }
 
 func (t *TestPod) ManifestSHA() (string, error) {
@@ -44,6 +44,11 @@ func (t *TestPod) Launch(manifest *pods.Manifest) (bool, error) {
 func (t *TestPod) Install(manifest *pods.Manifest) error {
 	t.installed = true
 	return t.installErr
+}
+
+func (t *TestPod) Uninstall() error {
+	t.uninstalled = true
+	return t.uninstallErr
 }
 
 func (t *TestPod) Verify(manifest *pods.Manifest, authPolicy auth.Policy) error {
@@ -74,8 +79,8 @@ func (t *TestPod) Path() string {
 }
 
 type fakeHooks struct {
-	beforeInstallErr, afterInstallErr, afterLaunchErr, afterAuthFailErr error
-	ranBeforeInstall, ranAfterLaunch, ranAfterInstall, ranAfterAuthFail bool
+	beforeInstallErr, beforeUninstallErr, afterInstallErr, afterLaunchErr, afterAuthFailErr error
+	ranBeforeInstall, ranBeforeUninstall, ranAfterLaunch, ranAfterInstall, ranAfterAuthFail bool
 }
 
 func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest *pods.Manifest) error {
@@ -86,6 +91,9 @@ func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest
 	case hooks.AFTER_INSTALL:
 		f.ranAfterInstall = true
 		return f.afterInstallErr
+	case hooks.BEFORE_UNINSTALL:
+		f.ranBeforeUninstall = true
+		return f.beforeUninstallErr
 	case hooks.AFTER_LAUNCH:
 		f.ranAfterLaunch = true
 		return f.afterLaunchErr
@@ -141,17 +149,23 @@ type FakeStore struct {
 	currentManifestError error
 }
 
-func (f *FakeStore) Pod(string) (*pods.Manifest, time.Duration, error) {
+func (f *FakeStore) ListPods(string) ([]kp.ManifestResult, time.Duration, error) {
 	if f.currentManifest == nil {
-		return nil, 0, pods.NoCurrentManifest
+		return nil, 0, nil
 	}
 	if f.currentManifestError != nil {
 		return nil, 0, f.currentManifestError
 	}
-	return f.currentManifest, 0, nil
+	return []kp.ManifestResult{
+		{Manifest: *f.currentManifest},
+	}, 0, nil
 }
 
 func (f *FakeStore) SetPod(string, pods.Manifest) (time.Duration, error) {
+	return 0, nil
+}
+
+func (f *FakeStore) DeletePod(string) (time.Duration, error) {
 	return 0, nil
 }
 
@@ -183,11 +197,15 @@ func TestPreparerLaunchesNewPodsThatArentInstalledYet(t *testing.T) {
 		launchSuccess: true,
 	}
 	newManifest := testManifest(t)
+	newPair := ManifestPair{
+		ID:     newManifest.ID(),
+		Intent: newManifest,
+	}
 
 	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
-	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
+	success := p.resolvePair(newPair, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "should have succeeded")
 	Assert(t).IsTrue(testPod.launched, "Should have launched")
@@ -198,7 +216,7 @@ func TestPreparerLaunchesNewPodsThatArentInstalledYet(t *testing.T) {
 
 func TestPreparerLaunchesPodsThatHaveDifferentSHAs(t *testing.T) {
 	existing := &pods.Manifest{}
-	existing.Id = "different"
+	existing.Id = "hello"
 
 	testPod := &TestPod{
 		launchSuccess:   true,
@@ -206,13 +224,16 @@ func TestPreparerLaunchesPodsThatHaveDifferentSHAs(t *testing.T) {
 		currentManifest: existing,
 	}
 	newManifest := testManifest(t)
+	newPair := ManifestPair{
+		ID:      newManifest.ID(),
+		Reality: existing,
+		Intent:  newManifest,
+	}
 
-	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{
-		currentManifest: existing,
-	})
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
-	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
+	success := p.resolvePair(newPair, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "should have succeeded")
 	Assert(t).IsTrue(testPod.installed, "should have installed")
@@ -227,11 +248,15 @@ func TestPreparerFailsIfInstallFails(t *testing.T) {
 		installErr: fmt.Errorf("There was an error installing"),
 	}
 	newManifest := testManifest(t)
+	newPair := ManifestPair{
+		ID:     newManifest.ID(),
+		Intent: newManifest,
+	}
 
 	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
-	success := p.installAndLaunchPod(newManifest, testPod, logging.DefaultLogger)
+	success := p.resolvePair(newPair, testPod, logging.DefaultLogger)
 
 	Assert(t).IsFalse(success, "The deploy should have failed")
 	Assert(t).IsTrue(hooks.ranBeforeInstall, "should have ran before_install hooks")
@@ -242,6 +267,10 @@ func TestPreparerFailsIfInstallFails(t *testing.T) {
 
 func TestPreparerWillLaunchPreparerAsRoot(t *testing.T) {
 	illegalManifest := &pods.Manifest{Id: POD_ID, RunAs: "root"}
+	newPair := ManifestPair{
+		ID:     illegalManifest.ID(),
+		Intent: illegalManifest,
+	}
 	testPod := &TestPod{
 		launchSuccess:   true,
 		currentManifest: illegalManifest,
@@ -251,7 +280,7 @@ func TestPreparerWillLaunchPreparerAsRoot(t *testing.T) {
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 
-	success := p.installAndLaunchPod(illegalManifest, testPod, logging.DefaultLogger)
+	success := p.resolvePair(newPair, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "Running preparer as root should succeed")
 	Assert(t).IsTrue(hooks.ranBeforeInstall, "Should have run hooks prior to install")
@@ -263,16 +292,19 @@ func TestPreparerWillLaunchPreparerAsRoot(t *testing.T) {
 
 func TestPreparerWillNotInstallOrLaunchIfSHAIsTheSame(t *testing.T) {
 	testManifest := testManifest(t)
+	newPair := ManifestPair{
+		ID:      testManifest.ID(),
+		Intent:  testManifest,
+		Reality: testManifest,
+	}
 	testPod := &TestPod{
 		currentManifest: testManifest,
 	}
 
-	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{
-		currentManifest: testManifest,
-	})
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
-	success := p.installAndLaunchPod(testManifest, testPod, logging.DefaultLogger)
+	success := p.resolvePair(newPair, testPod, logging.DefaultLogger)
 
 	Assert(t).IsTrue(success, "Should have been a success to prevent retries")
 	Assert(t).IsFalse(hooks.ranBeforeInstall, "Should not have run hooks prior to install")
@@ -281,23 +313,25 @@ func TestPreparerWillNotInstallOrLaunchIfSHAIsTheSame(t *testing.T) {
 	Assert(t).IsFalse(hooks.ranAfterLaunch, "Should not have run after_launch hooks")
 }
 
-func TestPreparerWillLaunchIfRealityErrsOnRead(t *testing.T) {
+func TestPreparerWillRemoveIfManifestDisappears(t *testing.T) {
 	testManifest := testManifest(t)
+	newPair := ManifestPair{
+		ID:      testManifest.ID(),
+		Reality: testManifest,
+	}
 	testPod := &TestPod{
-		launchSuccess: true,
+		currentManifest: testManifest,
 	}
 
-	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{
-		currentManifestError: fmt.Errorf("it erred"),
-	})
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
-	success := p.installAndLaunchPod(testManifest, testPod, logging.DefaultLogger)
+	success := p.resolvePair(newPair, testPod, logging.DefaultLogger)
 
-	Assert(t).IsTrue(success, "should have attempted to install following corrupt current manifest")
-	Assert(t).IsTrue(testPod.launched, "Should have launched the new manifest")
-	Assert(t).IsTrue(hooks.ranAfterLaunch, "Should have run after_launch hooks")
-	Assert(t).AreEqual(testManifest, testPod.currentManifest, "The manifest passed was wrong")
+	Assert(t).IsTrue(success, "Should have successfully removed pod")
+	Assert(t).IsTrue(testPod.uninstalled, "Should have uninstalled pod")
+	Assert(t).IsTrue(testPod.halted, "Should have halted pod")
+	Assert(t).IsTrue(hooks.ranBeforeUninstall, "Should have ran uninstall hooks")
 }
 
 func TestPreparerWillRequireSignatureWithKeyring(t *testing.T) {
