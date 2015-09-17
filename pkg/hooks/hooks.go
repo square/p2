@@ -78,6 +78,9 @@ func runDirectory(dirpath string, environment []string, logger logging.Logger) e
 			logger.WithField("path", fullpath).Warnln("Could not execute hook - file is not executable")
 			continue
 		}
+		if f.IsDir() {
+			continue
+		}
 		cmd := exec.Command(fullpath)
 		hookOut := &bytes.Buffer{}
 		cmd.Stdout = hookOut
@@ -143,6 +146,10 @@ func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest 
 }
 
 func (h *HookDir) RunHookType(hookType HookType, pod Pod, manifest *pods.Manifest) error {
-	dirpath := path.Join(h.dirpath, hookType.String())
-	return h.runHooks(dirpath, hookType, pod, manifest)
+	typedPath := path.Join(h.dirpath, hookType.String())
+	if err := h.runHooks(typedPath, hookType, pod, manifest); err != nil {
+		return err
+	}
+	// run global hooks as well
+	return h.runHooks(h.dirpath, hookType, pod, manifest)
 }
