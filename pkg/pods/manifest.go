@@ -5,7 +5,6 @@
 package pods
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -54,25 +53,42 @@ func (manifest *Manifest) RunAsUser() string {
 	return manifest.ID()
 }
 
+// ManifestFromPath constructs a Manifest from a local file. This function is a helper for
+// ManifestFromBytes().
 func ManifestFromPath(path string) (*Manifest, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+	return ManifestFromReader(f)
+}
 
-	bytes, err := ioutil.ReadAll(f)
+// ManifestFromURI constructs a Manifest from data located at a URI. This function is a
+// helper for ManifestFromBytes().
+func ManifestFromURI(manifestUri string) (*Manifest, error) {
+	f, err := uri.DefaultFetcher.Open(manifestUri)
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
+	return ManifestFromReader(f)
+}
 
+// ManifestFromReader constructs a Manifest from an open Reader. All bytes will be read
+// from the Reader. The caller is responsible for closing the Reader, if necessary. This
+// function is a helper for ManifestFromBytes().
+func ManifestFromReader(reader io.Reader) (*Manifest, error) {
+	bytes, err := ioutil.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
 	return ManifestFromBytes(bytes)
 }
 
-func ManifestFromString(str string) (*Manifest, error) {
-	return ManifestFromBytes(bytes.NewBufferString(str).Bytes())
-}
-
+// ManifestFromBytes constructs a Manifest by parsing its serialized representation. The
+// manifest can be a raw YAML document or a PGP clearsigned YAML document. If signed, the
+// signature components will be stored inside the Manifest instance.
 func ManifestFromBytes(bytes []byte) (*Manifest, error) {
 	manifest := &Manifest{}
 
@@ -101,21 +117,6 @@ func ManifestFromBytes(bytes []byte) (*Manifest, error) {
 		return nil, fmt.Errorf("Could not read pod manifest: %s", err)
 	}
 	return manifest, nil
-}
-
-func ManifestFromURI(manifestUri string) (*Manifest, error) {
-	// Fetch manifest (could be URI) into temp file
-	localMan, err := ioutil.TempFile("", "tempmanifest")
-	defer os.Remove(localMan.Name())
-
-	if err != nil {
-		return nil, util.Errorf("Couldn't create tempfile: %s", err)
-	}
-	if err := uri.URICopy(manifestUri, localMan.Name()); err != nil {
-		return nil, util.Errorf("Could not fetch manifest: %s", err)
-	}
-
-	return ManifestFromPath(localMan.Name())
 }
 
 func (manifest *Manifest) Write(out io.Writer) error {
