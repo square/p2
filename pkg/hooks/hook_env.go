@@ -40,3 +40,7 @@ func (h *HookEnv) Pod() (*pods.Pod, error) {
 func (h *HookEnv) Config() (*config.Config, error) {
 	return config.LoadConfigFile(os.Getenv("HOOKED_CONFIG_PATH"))
 }
+
+func (h *HookEnv) Event() (HookType, error) {
+	return AsHookType(os.Getenv("HOOK_EVENT"))
+}

@@ -97,7 +97,7 @@ func runDirectory(dirpath string, environment []string, logger logging.Logger) e
 	return nil
 }
 
-func (h *HookDir) runHooks(dirpath string, pod Pod, podManifest *pods.Manifest) error {
+func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest *pods.Manifest) error {
 
 	logger := h.logger.SubLogger(logrus.Fields{
 		"hook":     dirpath,
@@ -128,6 +128,7 @@ func (h *HookDir) runHooks(dirpath string, pod Pod, podManifest *pods.Manifest) 
 
 	hookEnvironment := []string{
 		fmt.Sprintf("HOOK=%s", path.Base(dirpath)),
+		fmt.Sprintf("HOOK_EVENT=%s", hType.String()),
 		fmt.Sprintf("HOOKED_POD_ID=%s", podManifest.Id),
 		fmt.Sprintf("HOOKED_POD_HOME=%s", pod.Path()),
 		fmt.Sprintf("HOOKED_POD_MANIFEST=%s", tmpManifestFile.Name()),
@@ -140,5 +141,5 @@ func (h *HookDir) runHooks(dirpath string, pod Pod, podManifest *pods.Manifest) 
 
 func (h *HookDir) RunHookType(hookType HookType, pod Pod, manifest *pods.Manifest) error {
 	dirpath := path.Join(h.dirpath, hookType.String())
-	return h.runHooks(dirpath, pod, manifest)
+	return h.runHooks(dirpath, hookType, pod, manifest)
 }
