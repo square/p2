@@ -72,6 +72,16 @@ func (sv *SV) execCmdOnService(service *Service, cmd *exec.Cmd) (string, error) 
 	return buffer.String(), nil
 }
 
+func (sv *SV) execCmdOrTimeout(service *Service, nonTimeoutCmd, timeoutCmd string, timeout time.Duration) (string, error) {
+	var cmd *exec.Cmd
+	if timeout > 0 {
+		cmd = exec.Command(sv.Bin, "-w", strconv.FormatInt(int64(timeout.Seconds()), 10), timeoutCmd, service.Path)
+	} else {
+		cmd = exec.Command(sv.Bin, nonTimeoutCmd, service.Path)
+	}
+	return convertToErr(sv.execCmdOnService(service, cmd))
+}
+
 func (sv *SV) execOnService(service *Service, svVerb string) (string, error) {
 	cmd := exec.Command(sv.Bin, svVerb, service.Path)
 	return sv.execCmdOnService(service, cmd)
@@ -81,8 +91,8 @@ func (sv *SV) Start(service *Service) (string, error) {
 	return convertToErr(sv.execOnService(service, "start"))
 }
 
-func (sv *SV) Stop(service *Service) (string, error) {
-	return convertToErr(sv.execOnService(service, "stop"))
+func (sv *SV) Stop(service *Service, timeout time.Duration) (string, error) {
+	return sv.execCmdOrTimeout(service, "stop", "force-stop", timeout)
 }
 
 func (sv *SV) Stat(service *Service) (*StatResult, error) {
@@ -96,13 +106,7 @@ func (sv *SV) Stat(service *Service) (*StatResult, error) {
 // If timeout is passed, will use the force-restart command to send a kill. If no timeout
 // is provided, will just send a TERM.
 func (sv *SV) Restart(service *Service, timeout time.Duration) (string, error) {
-	var cmd *exec.Cmd
-	if timeout > 0 {
-		cmd = exec.Command(sv.Bin, "-w", strconv.FormatInt(int64(timeout.Seconds()), 10), "force-restart", service.Path)
-	} else {
-		cmd = exec.Command(sv.Bin, "restart", service.Path)
-	}
-	return convertToErr(sv.execCmdOnService(service, cmd))
+	return sv.execCmdOrTimeout(service, "restart", "force-restart", timeout)
 }
 
 func outToStatResult(out string) (*StatResult, error) {
