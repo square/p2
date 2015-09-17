@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -20,7 +19,6 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/replication"
-	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util/net"
 	"github.com/square/p2/pkg/version"
 )
@@ -62,19 +60,9 @@ func main() {
 	store := kp.NewConsulStore(opts)
 	healthChecker := checker.NewConsulHealthChecker(opts)
 
-	// Fetch manifest (could be URI) into temp file
-	localMan, err := ioutil.TempFile("", "tempmanifest")
-	defer os.Remove(localMan.Name())
+	manifest, err := pods.ManifestFromURI(*manifestUri)
 	if err != nil {
-		log.Fatalln("Couldn't create tempfile")
-	}
-	if err := uri.URICopy(*manifestUri, localMan.Name()); err != nil {
-		log.Fatalf("Could not fetch manifest: %s", err)
-	}
-
-	manifest, err := pods.ManifestFromPath(localMan.Name())
-	if err != nil {
-		log.Fatalf("Invalid manifest: %s", err)
+		log.Fatalf("%s", err)
 	}
 
 	healthResults, err := healthChecker.Service(manifest.ID())

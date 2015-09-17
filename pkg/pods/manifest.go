@@ -16,6 +16,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp/clearsign"
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
 	"github.com/square/p2/pkg/cgroups"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -100,6 +101,21 @@ func ManifestFromBytes(bytes []byte) (*Manifest, error) {
 		return nil, fmt.Errorf("Could not read pod manifest: %s", err)
 	}
 	return manifest, nil
+}
+
+func ManifestFromURI(manifestUri string) (*Manifest, error) {
+	// Fetch manifest (could be URI) into temp file
+	localMan, err := ioutil.TempFile("", "tempmanifest")
+	defer os.Remove(localMan.Name())
+
+	if err != nil {
+		return nil, util.Errorf("Couldn't create tempfile: %s", err)
+	}
+	if err := uri.URICopy(manifestUri, localMan.Name()); err != nil {
+		return nil, util.Errorf("Could not fetch manifest: %s", err)
+	}
+
+	return ManifestFromPath(localMan.Name())
 }
 
 func (manifest *Manifest) Write(out io.Writer) error {

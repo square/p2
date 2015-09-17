@@ -1,13 +1,10 @@
 package main
 
 import (
-	"io/ioutil"
 	"log"
-	"os"
 
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v1"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -19,19 +16,10 @@ var (
 func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
-	localMan, err := ioutil.TempFile("", "tempmanifest")
-	defer os.Remove(localMan.Name())
-	if err != nil {
-		log.Fatalln("Couldn't create tempfile")
-	}
 
-	err = uri.URICopy(*manifestURI, localMan.Name())
+	manifest, err := pods.ManifestFromURI(*manifestURI)
 	if err != nil {
-		log.Fatalf("Could not fetch manifest: %s", err)
-	}
-	manifest, err := pods.ManifestFromPath(localMan.Name())
-	if err != nil {
-		log.Fatalf("Invalid manifest: %s", err)
+		log.Fatalf("%s", err)
 	}
 
 	pod := pods.NewPod(manifest.ID(), pods.PodPath(*podRoot, manifest.ID()))
