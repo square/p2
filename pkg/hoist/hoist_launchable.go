@@ -137,10 +137,7 @@ func (hl *Launchable) stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) e
 	}
 
 	for _, executable := range executables {
-		// if we use sv -w to wait for the service to stop and then SIGKILL, we
-		// will also kill the preparer itself before it can restart. do not use
-		// sv -w yet.
-		_, err := sv.Stop(&executable.Service)
+		_, err := sv.Stop(&executable.Service, hl.RestartTimeout)
 		if err != nil {
 			// TODO: FAILURE SCENARIO (what should we do here?)
 			// 1) does `sv stop` ever exit nonzero?

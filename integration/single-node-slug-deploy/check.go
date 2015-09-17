@@ -361,17 +361,21 @@ func verifyHelloRunning() error {
 	}()
 	select {
 	case <-time.After(20 * time.Second):
-		var helloTail, preparerTail bytes.Buffer
-		helloT := exec.Command("tail", "/var/service/hello__hello__launch/log/main/current")
-		helloT.Stdout = &helloTail
-		helloT.Run()
-		preparerT := exec.Command("tail", "/var/service/p2-preparer__p2-preparer__launch/log/main/current")
-		preparerT.Stdout = &preparerTail
-		preparerT.Run()
-		return fmt.Errorf("Couldn't start hello after 15 seconds: \n\n hello tail: \n%s\n\n preparer tail: \n%s", helloTail.String(), preparerTail.String())
+		return fmt.Errorf("Couldn't start hello after 15 seconds:\n\n %s", targetLogs())
 	case <-helloPidAppeared:
 		return nil
 	}
+}
+
+func targetLogs() string {
+	var helloTail, preparerTail bytes.Buffer
+	helloT := exec.Command("tail", "/var/service/hello__hello__launch/log/main/current")
+	helloT.Stdout = &helloTail
+	helloT.Run()
+	preparerT := exec.Command("tail", "/var/service/p2-preparer__p2-preparer__launch/log/main/current")
+	preparerT.Stdout = &preparerTail
+	preparerT.Run()
+	return fmt.Sprintf("hello tail: \n%s\n\n preparer tail: \n%s", helloTail.String(), preparerTail.String())
 }
 
 func verifyHealthChecks(config *preparer.PreparerConfig, services []string) error {
@@ -391,9 +395,9 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 		if err != nil {
 			return err
 		} else if (res == kp.WatchResult{}) {
-			return fmt.Errorf("No results for %s", sv)
+			return fmt.Errorf("No results for %s: \n\n %s", sv, targetLogs())
 		} else if res.Status != string(health.Passing) {
-			return fmt.Errorf("%s did not pass health check", sv)
+			return fmt.Errorf("%s did not pass health check: \n\n %s", sv, targetLogs())
 		} else {
 			fmt.Println(res)
 		}
@@ -407,7 +411,7 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 		}
 		val := res[kp.HealthPath(sv, name)]
 		if getres.Id != val.Id || getres.Service != val.Service || getres.Status != val.Status {
-			return fmt.Errorf("GetServiceHealth failed %+v", res)
+			return fmt.Errorf("GetServiceHealth failed %+v: \n\n%s", res, targetLogs())
 		}
 	}
 
