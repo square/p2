@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"strings"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/util"
 )
 
 const labelRoot = "labels"
@@ -143,14 +145,20 @@ func (c *consulApplicator) RemoveLabel(labelType Type, id, label string) error {
 
 // kvp must be non-nil
 func convertKVPToLabeled(kvp *api.KVPair) (Labeled, error) {
+	// /<root>/<type>/<id>
+	// We need to split instead of using path.Base, path.Dir.
+	// This is because <id> could contain "/"
+	parts := strings.SplitN(kvp.Key, "/", 3)
+	if len(parts) < 3 {
+		return Labeled{}, util.Errorf("Malformed label key %s", kvp.Key)
+	}
+
 	ret := Labeled{
-		ID:     path.Base(kvp.Key),
+		ID:     parts[2],
 		Labels: Set{},
 	}
 
-	// /<root>/<type>/<id>
-	typeStr := path.Base(path.Dir(kvp.Key))
-	labelType, err := AsType(typeStr)
+	labelType, err := AsType(parts[1])
 	if err != nil {
 		return ret, err
 	}
