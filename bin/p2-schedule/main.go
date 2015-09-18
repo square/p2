@@ -14,9 +14,11 @@ import (
 )
 
 var (
-	manifests     = kingpin.Arg("manifests", "one or more manifest files to schedule in the intent store").Strings()
-	nodeName      = kingpin.Flag("node", "The node to do the scheduling on. Uses the hostname by default.").String()
-	hookTypeName  = kingpin.Flag("hook-type", "Schedule as a hook, not an intended pod, as the given hook type. Can be one of the hooks listed in hooks.go").String()
+	manifests    = kingpin.Arg("manifests", "one or more manifest files to schedule in the intent store").Strings()
+	nodeName     = kingpin.Flag("node", "The node to do the scheduling on. Uses the hostname by default.").String()
+	hookTypeName = kingpin.Flag("hook-type", "Schedule as a hook, not an intended pod, as the given hook type. Can be one of the hooks listed in hooks.go, or the word \"global\"").String()
+	// unhide this flag when typed hooks are removed
+	hookGlobal    = kingpin.Flag("hook", "Schedule as a global hook.").Hidden().Bool()
 	consulAddress = kingpin.Flag("consul", "The address of the consul node to use. Defaults to 0.0.0.0:8500").String()
 	consulToken   = kingpin.Flag("token", "The ACL to use for accessing consul.").String()
 	headers       = kingpin.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
@@ -53,12 +55,14 @@ func main() {
 			log.Fatalf("Could not read manifest at %s: %s\n", manifestPath, err)
 		}
 		path := kp.IntentPath(*nodeName, manifest.ID())
-		if *hookTypeName != "" {
+		if *hookTypeName == "global" || *hookGlobal {
+			path = kp.HookPath(manifest.ID())
+		} else if *hookTypeName != "" {
 			hookType, err := hooks.AsHookType(*hookTypeName)
 			if err != nil {
 				log.Fatalln(err)
 			}
-			path = kp.HookPath(hookType, manifest.ID())
+			path = kp.HookPath(hookType.String(), manifest.ID())
 		}
 		duration, err := store.SetPod(path, *manifest)
 		if err != nil {

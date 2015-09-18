@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/cgroups"
+	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
@@ -91,8 +92,17 @@ func (l *HookListener) installHook(result kp.ManifestResult) error {
 	if err != nil {
 		sub.WithError(err).Errorln("Couldn't determine hook path")
 		return err
+	} else if event == "" {
+		if _, err := hooks.AsHookType(result.Manifest.ID()); err == nil {
+			// this manifest's ID is actually a hook type! since it's a global
+			// hook, it would be installed into a directory that contained other
+			// hooks. we have to bail
+			sub.NoFields().Errorln("Global hook pod's ID collides with hook type")
+			return util.Errorf("Global hook pod %s would overwrite hook type directory", result.Manifest.ID())
+		}
 	}
 
+	// a global hook has event="", which will be cleaned out of the path afterwards
 	hookPod := pods.NewPod(result.Manifest.ID(), path.Join(l.DestinationDir, event, result.Manifest.ID()))
 
 	// Figure out if we even need to install anything.
@@ -146,12 +156,14 @@ func (l *HookListener) determineEvent(pathInIntent string) (string, error) {
 	tail := strings.Join(split[1:], "")
 	matches := eventPrefix.FindStringSubmatch(tail)
 	if len(matches) == 0 {
-		return "", util.Errorf("%s did not match regex %s", tail, eventPrefix.String())
+		return "", nil // no event, global hook
 	}
 	return matches[1], nil
 }
 
 func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods.Manifest) error {
+	// if event="", then this is a global hook, and its executable lands in the
+	// top level of the hook exec directory
 	eventExecDir := path.Join(l.ExecDir, event)
 	err := os.MkdirAll(eventExecDir, 0755)
 	if err != nil {
