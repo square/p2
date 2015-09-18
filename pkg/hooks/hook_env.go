@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/square/p2/pkg/config"
@@ -43,4 +44,17 @@ func (h *HookEnv) Config() (*config.Config, error) {
 
 func (h *HookEnv) Event() (HookType, error) {
 	return AsHookType(os.Getenv("HOOK_EVENT"))
+}
+
+func (h *HookEnv) ExitUnlessEvent(types ...HookType) HookType {
+	t, _ := h.Event()
+	for _, target := range types {
+		if t == target {
+			return t
+		}
+	}
+
+	fmt.Printf("this hook responds to %v (but got %s), ignoring", types, t)
+	os.Exit(0)
+	return HookType("") // never reached
 }
