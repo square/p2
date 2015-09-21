@@ -98,10 +98,15 @@ func (pod *Pod) Halt(manifest *Manifest) (bool, error) {
 	success := true
 	for _, launchable := range launchables {
 		err = launchable.Halt(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
-		if err != nil {
-			// failing to halt cannot be a fatal error - otherwise, the preparer
-			// (which fails to halt due to sigterm handler) would be unable to restart itself
-			pod.logLaunchableError(launchable.Id, err, "Unable to halt launchable")
+		switch err.(type) {
+		case nil:
+			// noop
+		case hoist.DisableError:
+			// do not set success to false on a disable error
+			pod.logLaunchableWarning(launchable.Id, err, "Could not disable launchable")
+		default:
+			// this case intentionally includes hoist.StopError
+			pod.logLaunchableError(launchable.Id, err, "Could not halt launchable")
 			success = false
 		}
 	}
@@ -160,9 +165,15 @@ func (pod *Pod) Launch(manifest *Manifest) (bool, error) {
 			continue
 		}
 		err = launchable.Launch(pod.ServiceBuilder, pod.SV) // TODO: make these configurable
-		if err != nil {
-			// Log the failure but continue
-			pod.logLaunchableError(launchable.Id, err, "Unable to launch launchable")
+		switch err.(type) {
+		case nil:
+			// noop
+		case hoist.EnableError:
+			// do not set success to false on an enable error
+			pod.logLaunchableWarning(launchable.Id, err, "Could not enable launchable")
+		default:
+			// this case intentionally includes hoist.StartError
+			pod.logLaunchableError(launchable.Id, err, "Could not launch launchable")
 			success = false
 		}
 	}
@@ -541,6 +552,11 @@ func (p *Pod) logError(err error, message string) {
 func (p *Pod) logLaunchableError(launchableId string, err error, message string) {
 	p.logger.WithErrorAndFields(err, logrus.Fields{
 		"launchable": launchableId}).Error(message)
+}
+
+func (p *Pod) logLaunchableWarning(launchableId string, err error, message string) {
+	p.logger.WithErrorAndFields(err, logrus.Fields{
+		"launchable": launchableId}).Warn(message)
 }
 
 func (p *Pod) logInfo(message string) {

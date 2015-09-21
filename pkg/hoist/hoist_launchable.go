@@ -33,17 +33,22 @@ type Launchable struct {
 	RestartTimeout   time.Duration  // How long to wait when restarting the services in this launchable.
 }
 
+type DisableError error
+type EnableError error
+type StartError error
+type StopError error
+
 func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 	// probably want to do something with output at some point
 	_, err := hl.disable()
 	if err != nil {
-		return err
+		return DisableError(err)
 	}
 
 	// probably want to do something with output at some point
 	err = hl.stop(serviceBuilder, sv)
 	if err != nil {
-		return err
+		return StopError(err)
 	}
 
 	err = hl.makeLast()
@@ -58,11 +63,11 @@ func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV)
 	// probably want to do something with output at some point
 	err := hl.start(serviceBuilder, sv)
 	if err != nil {
-		return util.Errorf("Could not launch %s: %s", hl.Id, err)
+		return StartError(err)
 	}
 
 	_, err = hl.enable()
-	return err
+	return EnableError(err)
 }
 
 func (hl *Launchable) PostActivate() (string, error) {
