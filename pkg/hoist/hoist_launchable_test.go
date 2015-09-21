@@ -257,3 +257,67 @@ func TestStop(t *testing.T) {
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to stop runit services")
 }
+
+func TestHaltWithFailingDisable(t *testing.T) {
+	hl, sb := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+
+	sv := runit.FakeSV()
+	err := hl.Halt(sb, sv)
+	Assert(t).IsNotNil(err, "Expected error while halting")
+	_, ok := err.(DisableError)
+	Assert(t).IsTrue(ok, "Expected disable error to be returned")
+}
+
+func TestHaltWithPassingDisable(t *testing.T) {
+	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+
+	sv := runit.FakeSV()
+	err := hl.Halt(sb, sv)
+	Assert(t).IsNil(err, "Expected halt to succeed")
+
+	Assert(t).IsNil(os.Remove(hl.LastDir()), "expected halt to create last symlink")
+}
+
+func TestLaunchWithFailingEnable(t *testing.T) {
+	hl, sb := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+
+	sv := runit.FakeSV()
+	err := hl.Launch(sb, sv)
+	Assert(t).IsNotNil(err, "Expected error while launching")
+	_, ok := err.(EnableError)
+	Assert(t).IsTrue(ok, "Expected enable error to be returned")
+}
+
+func TestLaunchWithPassingEnable(t *testing.T) {
+	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+
+	sv := runit.FakeSV()
+	err := hl.Launch(sb, sv)
+	Assert(t).IsNil(err, "Expected launch to succeed")
+}
+
+func TestHaltWithFailingStop(t *testing.T) {
+	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+
+	sv := runit.ErringSV()
+	err := hl.Halt(sb, sv)
+	Assert(t).IsNotNil(err, "Expected error while halting")
+	_, ok := err.(StopError)
+	Assert(t).IsTrue(ok, "Expected stop error to be returned")
+}
+
+func TestLaunchWithFailingStart(t *testing.T) {
+	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+
+	sv := runit.ErringSV()
+	err := hl.Launch(sb, sv)
+	Assert(t).IsNotNil(err, "Expected error while launching")
+	_, ok := err.(StartError)
+	Assert(t).IsTrue(ok, "Expected start error to be returned")
+}
