@@ -16,9 +16,6 @@ import (
 // These constants should probably all be something the p2 user can set
 // in their preparer config...
 
-// Duration between reality store checks
-const POLL_KV_FOR_PODS = 3 * time.Second
-
 // Duration between health checks
 const HEALTHCHECK_INTERVAL = 1 * time.Second
 
@@ -76,42 +73,30 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 
 	node := config.NodeName
 	pods := []PodWatch{}
-	pods = updateHealthMonitors(store, healthManager, client, pods, node, logger)
+
+	watchQuitCh := make(chan struct{})
+	watchErrCh := make(chan error)
+	watchPodCh := make(chan []kp.ManifestResult)
+	go store.WatchPods(kp.RealityPath(node), watchQuitCh, watchErrCh, watchPodCh)
+
 	for {
 		select {
-		case <-time.After(POLL_KV_FOR_PODS):
+		case results := <-watchPodCh:
 			// check if pods have been added or removed
 			// starts monitor routine for new pods
 			// kills monitor routine for removed pods
-			pods = updateHealthMonitors(store, healthManager, client, pods, node, logger)
+			pods = updatePods(healthManager, client, pods, results, node, logger)
+		case err := <-watchErrCh:
+			logger.WithError(err).Errorln("there was an error reading reality manifests for health monitor")
 		case <-shutdownCh:
 			for _, pod := range pods {
 				pod.shutdownCh <- true
 			}
 			healthManager.Close()
+			close(watchQuitCh)
 			return
 		}
 	}
-}
-
-// Determines what pods should be running (by checking reality store)
-// Creates new PodWatch for any pod not being monitored and kills
-// PodWatches of pods that have been removed from the reality store
-func updateHealthMonitors(
-	store kp.Store,
-	healthManager kp.HealthManager,
-	client *http.Client,
-	watchedPods []PodWatch,
-	node string,
-	logger *logging.Logger,
-) []PodWatch {
-	path := kp.RealityPath(node)
-	reality, _, err := store.ListPods(path)
-	if err != nil {
-		logger.WithError(err).Warningln("failed to get pods from reality store")
-	}
-
-	return updatePods(healthManager, client, watchedPods, reality, node, logger)
 }
 
 // compares services being monitored with services that
