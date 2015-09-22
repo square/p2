@@ -49,6 +49,7 @@ type PreparerConfig struct {
 	ExtraLogDestinations []LogDestination       `yaml:"extra_log_destinations,omitempty"`
 	WriteKVHealth        bool                   `yaml:"write_kv_health,omitempty"`
 	UseSessionHealth     bool                   `yaml:"use_session_health,omitempty"`
+	LogLevel             string                 `yaml:"log_level,omitempty"`
 }
 
 // Configuration fields for the "keyring" auth type
@@ -215,6 +216,14 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	}
 	if preparerConfig.PodRoot == "" {
 		return nil, util.Errorf("No pod root given to the preparer")
+	}
+
+	if preparerConfig.LogLevel != "" {
+		lv, err := logrus.ParseLevel(preparerConfig.LogLevel)
+		if err != nil {
+			return nil, util.Errorf("Received invalid log level %q", preparerConfig.LogLevel)
+		}
+		logger.Logger.Level = lv
 	}
 
 	var err error
