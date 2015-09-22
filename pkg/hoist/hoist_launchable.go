@@ -39,10 +39,12 @@ type StartError error
 type StopError error
 
 func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-	// probably want to do something with output at some point
-	_, err := hl.disable()
+	// the error return from os/exec.Run is almost always meaningless
+	// ("exit status 1")
+	// since the output is more useful to the user, that's what we'll preserve
+	out, err := hl.disable()
 	if err != nil {
-		return DisableError(err)
+		return DisableError(util.Errorf("%s", out))
 	}
 
 	// probably want to do something with output at some point
@@ -60,14 +62,17 @@ func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) e
 }
 
 func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
-	// probably want to do something with output at some point
 	err := hl.start(serviceBuilder, sv)
 	if err != nil {
 		return StartError(err)
 	}
 
-	_, err = hl.enable()
-	return EnableError(err)
+	// same as disable
+	out, err := hl.enable()
+	if err != nil {
+		return EnableError(util.Errorf("%s", out))
+	}
+	return nil
 }
 
 func (hl *Launchable) PostActivate() (string, error) {
