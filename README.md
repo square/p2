@@ -46,7 +46,7 @@ instance, we first run `bin/disable`. When starting up an instance, we run
 `bin/enable`, and then monitor the application via a call to `GET /_status`. A
 200 response code means ready and healthy.
 * **Rich plugin architecture for _secret company stuff_**. For example, our
-integration with Keywhiz is implemented in an `after_install` hook. The `hooks`
+integration with [Keywhiz](https://github.com/square/keywhiz) is implemented in an `after_install` hook. The `hooks`
 package in this repo provides a handy Go library for writing hooks that can be
 scheduled.
 * **Self-hosting!** We wanted to deploy P2 with P2, so we did that. The binary
@@ -85,8 +85,11 @@ libraries require only one of these or are dependency-free.
 * [Consul](https://consul.io/)
 * [Runit](http://smarden.org/runit/), which includes chpst
 
-# Desireable features in the future
+## Desireable Features
 
+Adding Docker support is a big next step, but will ultimately help us migrate to using Docker (or equally excellent RunC implementation) at Square. 
+
+P2 also lacks a native job admission / scheduling system, so all pod scheduling is currently done manually by client using either a label selector or simply a hostname. Solutions to this are to be determined.
 
 # License
 
