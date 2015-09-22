@@ -273,6 +273,8 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 		}
 	}
 
+	p.tryRunHooks(hooks.BEFORE_LAUNCH, pod, pair.Intent, logger)
+
 	ok, err := pod.Launch(pair.Intent)
 	if err != nil {
 		logger.WithError(err).

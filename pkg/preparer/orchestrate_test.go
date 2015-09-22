@@ -79,8 +79,8 @@ func (t *TestPod) Path() string {
 }
 
 type fakeHooks struct {
-	beforeInstallErr, beforeUninstallErr, afterInstallErr, afterLaunchErr, afterAuthFailErr error
-	ranBeforeInstall, ranBeforeUninstall, ranAfterLaunch, ranAfterInstall, ranAfterAuthFail bool
+	beforeInstallErr, beforeUninstallErr, afterInstallErr, afterLaunchErr, afterAuthFailErr, beforeLaunchErr error
+	ranBeforeInstall, ranBeforeUninstall, ranAfterLaunch, ranAfterInstall, ranAfterAuthFail, ranBeforeLaunch bool
 }
 
 func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest *pods.Manifest) error {
@@ -94,6 +94,9 @@ func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest
 	case hooks.BEFORE_UNINSTALL:
 		f.ranBeforeUninstall = true
 		return f.beforeUninstallErr
+	case hooks.BEFORE_LAUNCH:
+		f.ranBeforeLaunch = true
+		return f.beforeLaunchErr
 	case hooks.AFTER_LAUNCH:
 		f.ranAfterLaunch = true
 		return f.afterLaunchErr

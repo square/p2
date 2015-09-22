@@ -34,8 +34,9 @@ func (hookType HookType) String() string {
 
 var (
 	BEFORE_INSTALL   = HookType("before_install")
-	AFTER_INSTALL    = HookType("after_install")
+	AFTER_INSTALL    = HookType("after_install") // after_install occurs before we have disabled the old version
 	BEFORE_UNINSTALL = HookType("before_uninstall")
+	BEFORE_LAUNCH    = HookType("before_launch") // before_launch occurs after we have disabled the old version
 	AFTER_LAUNCH     = HookType("after_launch")
 	AFTER_AUTH_FAIL  = HookType("after_auth_fail")
 )
@@ -48,6 +49,8 @@ func AsHookType(value string) (HookType, error) {
 		return AFTER_INSTALL, nil
 	case BEFORE_UNINSTALL.String():
 		return BEFORE_UNINSTALL, nil
+	case BEFORE_LAUNCH.String():
+		return BEFORE_LAUNCH, nil
 	case AFTER_LAUNCH.String():
 		return AFTER_LAUNCH, nil
 	case AFTER_AUTH_FAIL.String():
