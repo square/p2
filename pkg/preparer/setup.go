@@ -4,10 +4,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
@@ -149,7 +151,14 @@ func getTLSClient(certFile, keyFile, caFile string) (*http.Client, error) {
 		ClientCAs:    cas,
 		RootCAs:      cas,
 	}
-	return &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}, nil
+	return &http.Client{Transport: &http.Transport{
+		TLSClientConfig: tlsConfig,
+		// same dialer as http.DefaultTransport
+		Dial: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).Dial,
+	}}, nil
 }
 
 // GetStore constructs a key-value store from the given configuration.
