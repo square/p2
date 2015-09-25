@@ -34,8 +34,35 @@ func LoadConfigFile(filepath string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	yaml.Unmarshal(contents, &config.unpacked)
+	err = yaml.Unmarshal(contents, &config.unpacked)
+	if err != nil {
+		return nil, err
+	}
 	return config, nil
+}
+
+func LoadFromEnvInto(v interface{}) error {
+	env := os.Getenv("CONFIG_PATH")
+	if env == "" {
+		return errors.New("No value was found for the environment variable CONFIG_PATH")
+	}
+	contents, err := ioutil.ReadFile(env)
+	if err != nil {
+		return err
+	}
+	return yaml.Unmarshal(contents, v)
+}
+
+func (c *Config) ReadInt(key string) (int, error) {
+	readVal := c.Read(key)
+	if readVal == nil {
+		return 0, nil
+	}
+	intVal, ok := readVal.(int)
+	if !ok {
+		return 0, fmt.Errorf("%s is not an int value", key)
+	}
+	return intVal, nil
 }
 
 func (c *Config) ReadString(key string) (string, error) {

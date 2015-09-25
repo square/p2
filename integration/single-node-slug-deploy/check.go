@@ -104,8 +104,8 @@ func signManifest(manifestPath string, workdir string) (string, error) {
 }
 
 func generatePreparerPod(workdir string) (string, error) {
-	// build the artifact from HEAD
-	err := exec.Command("go", "build", "github.com/square/p2/bin/p2-preparer").Run()
+	// build the artifact with -race to check for race conditions
+	err := exec.Command("go", "build", "-race", "github.com/square/p2/bin/p2-preparer").Run()
 	if err != nil {
 		return "", util.Errorf("Couldn't build preparer: %s", err)
 	}
@@ -311,6 +311,8 @@ func postHelloManifest(dir string) error {
 		LaunchableType: "hoist",
 		Location:       hello,
 	}
+	manifest.StatusPort = 43770
+	manifest.StatusHTTP = true
 	manifest.LaunchableStanzas = map[string]pods.LaunchableStanza{
 		"hello": stanza,
 	}
@@ -363,6 +365,17 @@ func verifyHelloRunning() error {
 	case <-time.After(20 * time.Second):
 		return fmt.Errorf("Couldn't start hello after 15 seconds:\n\n %s", targetLogs())
 	case <-helloPidAppeared:
+		log.Println("Hello PID appeared, letting start up and then checking for responsiveness")
+		<-time.After(10 * time.Second)
+		resp, err := http.Get("http://localhost:43770/_status")
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := ioutil.ReadAll(resp.Body)
+			return util.Errorf("Did not OK response from hello: %s %s", resp.Status, string(body))
+		}
 		return nil
 	}
 }
