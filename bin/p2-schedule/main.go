@@ -64,7 +64,7 @@ func main() {
 			}
 			path = kp.HookPath(hookType.String(), manifest.ID())
 		}
-		duration, err := store.SetPod(path, *manifest)
+		duration, err := store.SetPod(path, manifest)
 		if err != nil {
 			log.Fatalf("Could not write manifest %s to intent store: %s\n", manifest.ID(), err)
 		}

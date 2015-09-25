@@ -57,18 +57,18 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 
 	current, err := user.Current()
 	Assert(t).IsNil(err, "test setup: could not get the current user")
-	manifest := &pods.Manifest{
-		Id:    "users",
-		RunAs: current.Username,
-		LaunchableStanzas: map[string]pods.LaunchableStanza{
-			"create": pods.LaunchableStanza{
-				Location:       util.From(runtime.Caller(0)).ExpandPath("hoisted-hello_def456.tar.gz"),
-				LaunchableType: "hoist",
-				LaunchableId:   "create",
-			},
+	builder := pods.NewManifestBuilder()
+	builder.SetID("users")
+	builder.SetRunAsUser(current.Username)
+	builder.SetLaunchables(map[string]pods.LaunchableStanza{
+		"create": {
+			Location:       util.From(runtime.Caller(0)).ExpandPath("hoisted-hello_def456.tar.gz"),
+			LaunchableType: "hoist",
+			LaunchableId:   "create",
 		},
-	}
-	manifestBytes, err := manifest.OriginalBytes()
+	})
+	manifest := builder.GetManifest()
+	manifestBytes, err := manifest.Marshal()
 	Assert(t).IsNil(err, "manifest bytes error should have been nil")
 
 	fakeSigner, err := openpgp.NewEntity("p2", "p2-test", "p2@squareup.com", nil)
@@ -86,7 +86,7 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 
 	fakeIntent := fakeStoreWithManifests(kp.ManifestResult{
 		Path:     path.Join(hookPrefix, "before_install/users"),
-		Manifest: *manifest,
+		Manifest: manifest,
 	})
 
 	listener := HookListener{

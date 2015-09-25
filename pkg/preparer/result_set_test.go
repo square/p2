@@ -8,14 +8,19 @@ import (
 	"github.com/square/p2/pkg/pods"
 )
 
+func podWithID(id string) pods.Manifest {
+	builder := pods.NewManifestBuilder()
+	builder.SetID(id)
+	return builder.GetManifest()
+}
+
 func TestZipBasic(t *testing.T) {
 	intent := []kp.ManifestResult{
-		{Manifest: pods.Manifest{Id: "foo"}},
-		{Manifest: pods.Manifest{Id: "bar"}},
-	}
+		{Manifest: podWithID("foo")},
+		{Manifest: podWithID("bar")}}
 	reality := []kp.ManifestResult{
-		{Manifest: pods.Manifest{Id: "baz"}},
-		{Manifest: pods.Manifest{Id: "bar"}},
+		{Manifest: podWithID("baz")},
+		{Manifest: podWithID("bar")},
 	}
 
 	pairs := ZipResultSets(intent, reality)

@@ -114,9 +114,9 @@ func updatePods(
 	for _, pod := range current {
 		inReality := false
 		for _, man := range reality {
-			if man.Manifest.Id == pod.manifest.Id &&
-				man.Manifest.StatusHTTP == pod.manifest.StatusHTTP &&
-				man.Manifest.StatusPort == pod.manifest.StatusPort {
+			if man.Manifest.ID() == pod.manifest.ID() &&
+				man.Manifest.GetStatusHTTP() == pod.manifest.GetStatusHTTP() &&
+				man.Manifest.GetStatusPort() == pod.manifest.GetStatusPort() {
 				inReality = true
 				break
 			}
@@ -135,7 +135,7 @@ func updatePods(
 	for _, man := range reality {
 		missing := true
 		for _, pod := range newCurrent {
-			if man.Manifest.Id == pod.manifest.Id {
+			if man.Manifest.ID() == pod.manifest.ID() {
 				missing = false
 				break
 			}
@@ -145,20 +145,20 @@ func updatePods(
 		// with that manifest and added to newCurrent
 		if missing {
 			sc := StatusChecker{
-				ID:     man.Manifest.Id,
+				ID:     man.Manifest.ID(),
 				Node:   node,
 				Client: client,
 			}
-			if man.Manifest.StatusPort == 0 {
+			if man.Manifest.GetStatusPort() == 0 {
 				sc.URI = ""
-			} else if man.Manifest.StatusHTTP {
-				sc.URI = fmt.Sprintf("http://%s:%d/_status", node, man.Manifest.StatusPort)
+			} else if man.Manifest.GetStatusHTTP() {
+				sc.URI = fmt.Sprintf("http://%s:%d/_status", node, man.Manifest.GetStatusPort())
 			} else {
-				sc.URI = fmt.Sprintf("https://%s:%d/_status", node, man.Manifest.StatusPort)
+				sc.URI = fmt.Sprintf("https://%s:%d/_status", node, man.Manifest.GetStatusPort())
 			}
 			newPod := PodWatch{
 				manifest:      man.Manifest,
-				updater:       healthManager.NewUpdater(man.Manifest.Id, man.Manifest.Id),
+				updater:       healthManager.NewUpdater(man.Manifest.ID(), man.Manifest.ID()),
 				statusChecker: sc,
 				shutdownCh:    make(chan bool, 1),
 				logger:        logger,

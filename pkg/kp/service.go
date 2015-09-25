@@ -25,26 +25,26 @@ func (c consulStore) RegisterService(manifest pods.Manifest, caPath string) erro
 		Name: manifest.ID(),
 	}
 
-	if manifest.StatusPort != 0 {
+	if manifest.GetStatusPort() != 0 {
 		hostname, err := os.Hostname()
 		if err != nil {
 			return err
 		}
-		podService.Port = manifest.StatusPort
+		podService.Port = manifest.GetStatusPort()
 		podService.Check = &api.AgentServiceCheck{
 			Interval: checkInterval,
 		}
-		if manifest.StatusHTTP {
+		if manifest.GetStatusHTTP() {
 			podService.Check.Script = fmt.Sprintf(
 				httpStatusCheck,
 				hostname,
-				manifest.StatusPort,
+				manifest.GetStatusPort(),
 			)
 		} else {
 			podService.Check.Script = fmt.Sprintf(
 				httpsStatusCheck,
 				hostname,
-				manifest.StatusPort,
+				manifest.GetStatusPort(),
 				caPath,
 			)
 		}

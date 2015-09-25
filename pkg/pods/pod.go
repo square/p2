@@ -81,7 +81,7 @@ func (pod *Pod) Path() string {
 	return pod.path
 }
 
-func (pod *Pod) CurrentManifest() (*Manifest, error) {
+func (pod *Pod) CurrentManifest() (Manifest, error) {
 	currentManPath := pod.currentPodManifestPath()
 	if _, err := os.Stat(currentManPath); os.IsNotExist(err) {
 		return nil, NoCurrentManifest
@@ -89,7 +89,7 @@ func (pod *Pod) CurrentManifest() (*Manifest, error) {
 	return ManifestFromPath(currentManPath)
 }
 
-func (pod *Pod) Halt(manifest *Manifest) (bool, error) {
+func (pod *Pod) Halt(manifest Manifest) (bool, error) {
 	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return false, err
@@ -122,7 +122,7 @@ func (pod *Pod) Halt(manifest *Manifest) (bool, error) {
 // during the launch process will be logged, but will not stop attempts to launch other launchables
 // in the same pod. If any services fail to start, the first return bool will be false. If an error
 // occurs when writing the current manifest to the pod directory, an error will be returned.
-func (pod *Pod) Launch(manifest *Manifest) (bool, error) {
+func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return false, err
@@ -217,7 +217,7 @@ func (pod *Pod) buildRunitServices(launchables []hoist.Launchable) error {
 	return pod.ServiceBuilder.Prune()
 }
 
-func (pod *Pod) WriteCurrentManifest(manifest *Manifest) (string, error) {
+func (pod *Pod) WriteCurrentManifest(manifest Manifest) (string, error) {
 	// write the old manifest to a temporary location in case a launch fails.
 	tmpDir, err := ioutil.TempDir("", "manifests")
 	if err != nil {
@@ -326,11 +326,11 @@ func (pod *Pod) Uninstall() error {
 // Install will ensure that executables for all required services are present on the host
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
-func (pod *Pod) Install(manifest *Manifest) error {
+func (pod *Pod) Install(manifest Manifest) error {
 	podHome := pod.path
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
-		return util.Errorf("Could not determine pod UID/GID: %s", err)
+		return util.Errorf("Could not determine pod UID/GID for %s: %s", manifest.RunAsUser(), err)
 	}
 
 	err = util.MkdirChownAll(podHome, uid, gid, 0755)
@@ -364,8 +364,8 @@ func (pod *Pod) Install(manifest *Manifest) error {
 	return nil
 }
 
-func (pod *Pod) Verify(manifest *Manifest, authPolicy auth.Policy) error {
-	for _, stanza := range manifest.LaunchableStanzas {
+func (pod *Pod) Verify(manifest Manifest, authPolicy auth.Policy) error {
+	for _, stanza := range manifest.GetLaunchableStanzas() {
 		if stanza.DigestLocation == "" {
 			continue
 		}
@@ -404,7 +404,7 @@ func (pod *Pod) Verify(manifest *Manifest, authPolicy auth.Policy) error {
 // SHA of its manifest's content. The "env" directory contains environment files
 // (as described in http://smarden.org/runit/chpst.8.html, with the -e option) and includes a
 // single file called CONFIG_PATH, which points at the file written in the "config" directory.
-func (pod *Pod) setupConfig(manifest *Manifest) error {
+func (pod *Pod) setupConfig(manifest Manifest) error {
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
 		return util.Errorf("Could not determine pod UID/GID: %s", err)
@@ -492,8 +492,8 @@ func writeEnvFile(envDir, name, value string, uid, gid int) error {
 	return nil
 }
 
-func (pod *Pod) Launchables(manifest *Manifest) ([]hoist.Launchable, error) {
-	launchableStanzas := manifest.LaunchableStanzas
+func (pod *Pod) Launchables(manifest Manifest) ([]hoist.Launchable, error) {
+	launchableStanzas := manifest.GetLaunchableStanzas()
 	launchables := make([]hoist.Launchable, 0, len(launchableStanzas))
 
 	for _, launchableStanza := range launchableStanzas {

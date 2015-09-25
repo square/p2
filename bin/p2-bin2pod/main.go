@@ -74,17 +74,17 @@ func main() {
 	bin2pod.Parse(os.Args[1:])
 
 	res := Result{}
-	manifest := &pods.Manifest{}
-	manifest.Id = podId()
-	manifest.LaunchableStanzas = map[string]pods.LaunchableStanza{}
+	manifestBuilder := pods.NewManifestBuilder()
+	manifestBuilder.SetID(podId())
+
 	stanza := pods.LaunchableStanza{}
 	stanza.LaunchableId = podId()
 	stanza.LaunchableType = "hoist"
 
 	workingDir := activeDir()
 
-	err := addManifestConfig(manifest)
-	tarLocation, err := makeTar(workingDir, manifest)
+	err := addManifestConfig(manifestBuilder)
+	tarLocation, err := makeTar(workingDir)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -97,12 +97,16 @@ func main() {
 		stanza.Location = tarLocation
 		res.FinalLocation = tarLocation
 	}
-	manifest.LaunchableStanzas[podId()] = stanza
+
+	manifestBuilder.SetLaunchables(map[string]pods.LaunchableStanza{
+		podId(): stanza,
+	})
 
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
+	manifest := manifestBuilder.GetManifest()
 	res.ManifestPath, err = writeManifest(workingDir, manifest)
 	if err != nil {
 		log.Fatalf("Couldn't write manifest: %s", err)
@@ -118,7 +122,7 @@ func main() {
 	}
 }
 
-func makeTar(workingDir string, manifest *pods.Manifest) (string, error) {
+func makeTar(workingDir string) (string, error) {
 	tarContents := path.Join(workingDir, fmt.Sprintf("%s.workd", podId()))
 	err := os.MkdirAll(tarContents, 0744)
 	defer os.RemoveAll(tarContents)
@@ -147,19 +151,20 @@ func makeTar(workingDir string, manifest *pods.Manifest) (string, error) {
 	return tarPath, nil
 }
 
-func addManifestConfig(manifest *pods.Manifest) error {
-	manifest.Config = make(map[interface{}]interface{})
+func addManifestConfig(manifestBuilder pods.ManifestBuilder) error {
+	podConfig := make(map[interface{}]interface{})
 	for _, pair := range *config {
 		res := strings.Split(pair, "=")
 		if len(res) != 2 {
 			return fmt.Errorf("%s is not a valid key=value config assignment", pair)
 		}
-		manifest.Config[res[0]] = res[1]
+		podConfig[res[0]] = res[1]
 	}
+	manifestBuilder.SetConfig(podConfig)
 	return nil
 }
 
-func writeManifest(workingDir string, manifest *pods.Manifest) (string, error) {
+func writeManifest(workingDir string, manifest pods.Manifest) (string, error) {
 	file, err := os.OpenFile(path.Join(workingDir, fmt.Sprintf("%s.yaml", podId())), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer file.Close()
 	if err != nil {

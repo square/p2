@@ -17,15 +17,15 @@ const POD_ID = "p2-preparer"
 
 type Pod interface {
 	hooks.Pod
-	Launch(*pods.Manifest) (bool, error)
-	Install(*pods.Manifest) error
+	Launch(pods.Manifest) (bool, error)
+	Install(pods.Manifest) error
 	Uninstall() error
-	Verify(*pods.Manifest, auth.Policy) error
-	Halt(*pods.Manifest) (bool, error)
+	Verify(pods.Manifest, auth.Policy) error
+	Halt(pods.Manifest) (bool, error)
 }
 
 type Hooks interface {
-	RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest *pods.Manifest) error
+	RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest pods.Manifest) error
 }
 
 type Store interface {
@@ -126,7 +126,7 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	}
 }
 
-func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest *pods.Manifest, logger logging.Logger) {
+func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest pods.Manifest, logger logging.Logger) {
 	err := p.hooks.RunHookType(hookType, pod, manifest)
 	if err != nil {
 		logger.WithErrorAndFields(err, logrus.Fields{
@@ -167,7 +167,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				working = true
 			} else {
 				// non-nil intent manifests need to be authorized first
-				working = p.authorize(*nextLaunch.Intent, manifestLogger)
+				working = p.authorize(nextLaunch.Intent, manifestLogger)
 				if !working {
 					p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pods.NewPod(nextLaunch.ID, pods.PodPath(p.podRoot, nextLaunch.ID)), nextLaunch.Intent, manifestLogger)
 				}
@@ -193,7 +193,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 
 // check if a manifest satisfies the authorization requirement of this preparer
 func (p *Preparer) authorize(manifest pods.Manifest, logger logging.Logger) bool {
-	err := p.authPolicy.AuthorizeApp(&manifest, logger)
+	err := p.authPolicy.AuthorizeApp(manifest, logger)
 	if err != nil {
 		if err, ok := err.(auth.Error); ok {
 			logger.WithFields(err.Fields).Errorln(err)
@@ -256,7 +256,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 	p.tryRunHooks(hooks.AFTER_INSTALL, pod, pair.Intent, logger)
 
 	if p.consulHealth {
-		err = p.store.RegisterService(*pair.Intent, p.caFile)
+		err = p.store.RegisterService(pair.Intent, p.caFile)
 		if err != nil {
 			logger.WithError(err).Errorln("Service registration failed")
 			return false
@@ -280,7 +280,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 		logger.WithError(err).
 			Errorln("Launch failed")
 	} else {
-		duration, err := p.store.SetPod(kp.RealityPath(p.node, pair.ID), *pair.Intent)
+		duration, err := p.store.SetPod(kp.RealityPath(p.node, pair.ID), pair.Intent)
 		if err != nil {
 			logger.WithErrorAndFields(err, logrus.Fields{
 				"duration": duration}).

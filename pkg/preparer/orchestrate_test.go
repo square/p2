@@ -22,7 +22,7 @@ import (
 )
 
 type TestPod struct {
-	currentManifest                                                      *pods.Manifest
+	currentManifest                                                      pods.Manifest
 	installed, uninstalled, launched, launchSuccess, halted, haltSuccess bool
 	installErr, uninstallErr, launchErr, haltError, currentManifestError error
 	configDir, envDir                                                    string
@@ -32,7 +32,7 @@ func (t *TestPod) ManifestSHA() (string, error) {
 	return "abc123", nil
 }
 
-func (t *TestPod) Launch(manifest *pods.Manifest) (bool, error) {
+func (t *TestPod) Launch(manifest pods.Manifest) (bool, error) {
 	t.currentManifest = manifest
 	t.launched = true
 	if t.launchErr != nil {
@@ -41,7 +41,7 @@ func (t *TestPod) Launch(manifest *pods.Manifest) (bool, error) {
 	return t.launchSuccess, nil
 }
 
-func (t *TestPod) Install(manifest *pods.Manifest) error {
+func (t *TestPod) Install(manifest pods.Manifest) error {
 	t.installed = true
 	return t.installErr
 }
@@ -51,11 +51,11 @@ func (t *TestPod) Uninstall() error {
 	return t.uninstallErr
 }
 
-func (t *TestPod) Verify(manifest *pods.Manifest, authPolicy auth.Policy) error {
+func (t *TestPod) Verify(manifest pods.Manifest, authPolicy auth.Policy) error {
 	return nil
 }
 
-func (t *TestPod) Halt(manifest *pods.Manifest) (bool, error) {
+func (t *TestPod) Halt(manifest pods.Manifest) (bool, error) {
 	t.halted = true
 	return t.haltSuccess, t.haltError
 }
@@ -83,7 +83,7 @@ type fakeHooks struct {
 	ranBeforeInstall, ranBeforeUninstall, ranAfterLaunch, ranAfterInstall, ranAfterAuthFail, ranBeforeLaunch bool
 }
 
-func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest *pods.Manifest) error {
+func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest pods.Manifest) error {
 	switch hookType {
 	case hooks.BEFORE_INSTALL:
 		f.ranBeforeInstall = true
@@ -107,7 +107,7 @@ func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest
 	return util.Errorf("Invalid hook type configured in test: %s", hookType)
 }
 
-func testManifest(t *testing.T) *pods.Manifest {
+func testManifest(t *testing.T) pods.Manifest {
 	manifestPath := util.From(runtime.Caller(0)).ExpandPath("test_manifest.yaml")
 	manifest, err := pods.ManifestFromPath(manifestPath)
 	if err != nil {
@@ -118,7 +118,7 @@ func testManifest(t *testing.T) *pods.Manifest {
 
 var fakeSigner *openpgp.Entity
 
-func testSignedManifest(t *testing.T, modify func(*pods.Manifest, *openpgp.Entity)) (*pods.Manifest, *openpgp.Entity) {
+func testSignedManifest(t *testing.T, modify func(pods.ManifestBuilder, *openpgp.Entity)) (pods.Manifest, *openpgp.Entity) {
 	testManifest := testManifest(t)
 
 	if fakeSigner == nil {
@@ -128,7 +128,9 @@ func testSignedManifest(t *testing.T, modify func(*pods.Manifest, *openpgp.Entit
 	}
 
 	if modify != nil {
-		modify(testManifest, fakeSigner)
+		testManifestBuilder := testManifest.GetBuilder()
+		modify(testManifestBuilder, fakeSigner)
+		testManifest = testManifestBuilder.GetManifest()
 	}
 
 	manifestBytes, err := testManifest.Marshal()
@@ -148,7 +150,7 @@ func testSignedManifest(t *testing.T, modify func(*pods.Manifest, *openpgp.Entit
 }
 
 type FakeStore struct {
-	currentManifest      *pods.Manifest
+	currentManifest      pods.Manifest
 	currentManifestError error
 }
 
@@ -160,7 +162,7 @@ func (f *FakeStore) ListPods(string) ([]kp.ManifestResult, time.Duration, error)
 		return nil, 0, f.currentManifestError
 	}
 	return []kp.ManifestResult{
-		{Manifest: *f.currentManifest},
+		{Manifest: f.currentManifest},
 	}, 0, nil
 }
 
@@ -218,8 +220,9 @@ func TestPreparerLaunchesNewPodsThatArentInstalledYet(t *testing.T) {
 }
 
 func TestPreparerLaunchesPodsThatHaveDifferentSHAs(t *testing.T) {
-	existing := &pods.Manifest{}
-	existing.Id = "hello"
+	builder := pods.NewManifestBuilder()
+	builder.SetID("hello")
+	existing := builder.GetManifest()
 
 	testPod := &TestPod{
 		launchSuccess:   true,
@@ -269,7 +272,10 @@ func TestPreparerFailsIfInstallFails(t *testing.T) {
 }
 
 func TestPreparerWillLaunchPreparerAsRoot(t *testing.T) {
-	illegalManifest := &pods.Manifest{Id: POD_ID, RunAs: "root"}
+	builder := pods.NewManifestBuilder()
+	builder.SetID(POD_ID)
+	builder.SetRunAsUser("root")
+	illegalManifest := builder.GetManifest()
 	newPair := ManifestPair{
 		ID:     illegalManifest.ID(),
 		Intent: illegalManifest,
@@ -346,7 +352,7 @@ func TestPreparerWillRequireSignatureWithKeyring(t *testing.T) {
 	p.authPolicy = auth.FixedKeyringPolicy{}
 
 	Assert(t).IsFalse(
-		p.authorize(*manifest, logging.DefaultLogger),
+		p.authorize(manifest, logging.DefaultLogger),
 		"should have accepted unsigned manifest",
 	)
 }
@@ -360,14 +366,14 @@ func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 	p.authPolicy = auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil}
 
 	Assert(t).IsTrue(
-		p.authorize(*manifest, logging.DefaultLogger),
+		p.authorize(manifest, logging.DefaultLogger),
 		"should have accepted signed manifest",
 	)
 }
 
 func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *testing.T) {
-	manifest, fakeSigner := testSignedManifest(t, func(m *pods.Manifest, _ *openpgp.Entity) {
-		m.Id = POD_ID
+	manifest, fakeSigner := testSignedManifest(t, func(b pods.ManifestBuilder, _ *openpgp.Entity) {
+		b.SetID(POD_ID)
 	})
 
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
@@ -376,14 +382,14 @@ func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *tes
 	p.authPolicy = auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil}
 
 	Assert(t).IsTrue(
-		p.authorize(*manifest, logging.DefaultLogger),
+		p.authorize(manifest, logging.DefaultLogger),
 		"expected preparer to accept manifest (empty authorized deployers)",
 	)
 }
 
 func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
-	manifest, fakeSigner := testSignedManifest(t, func(m *pods.Manifest, _ *openpgp.Entity) {
-		m.Id = POD_ID
+	manifest, fakeSigner := testSignedManifest(t, func(b pods.ManifestBuilder, _ *openpgp.Entity) {
+		b.SetID(POD_ID)
 	})
 
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
@@ -395,15 +401,15 @@ func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 	}
 
 	Assert(t).IsFalse(
-		p.authorize(*manifest, logging.DefaultLogger),
+		p.authorize(manifest, logging.DefaultLogger),
 		"expected preparer to reject manifest (unauthorized deployer)",
 	)
 }
 
 func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 	sig := ""
-	manifest, fakeSigner := testSignedManifest(t, func(m *pods.Manifest, e *openpgp.Entity) {
-		m.Id = POD_ID
+	manifest, fakeSigner := testSignedManifest(t, func(b pods.ManifestBuilder, e *openpgp.Entity) {
+		b.SetID(POD_ID)
 		sig = fmt.Sprintf("%X", e.PrimaryKey.Fingerprint)
 	})
 
@@ -416,7 +422,7 @@ func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 	}
 
 	Assert(t).IsTrue(
-		p.authorize(*manifest, logging.DefaultLogger),
+		p.authorize(manifest, logging.DefaultLogger),
 		"expected preparer to accept manifest (authorized deployer)",
 	)
 }
@@ -429,7 +435,7 @@ func TestPreparerWillAcceptSignatureWhenKeyringIsNil(t *testing.T) {
 	// Use default p.authPolicy when no keyfile path is given
 
 	Assert(t).IsTrue(
-		p.authorize(*manifest, logging.DefaultLogger),
+		p.authorize(manifest, logging.DefaultLogger),
 		"expected the preparer to verify the signature when no keyring given",
 	)
 }

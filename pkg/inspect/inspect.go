@@ -52,7 +52,7 @@ func AddKVPToMap(result kp.ManifestResult, source int, filterNode, filterPod str
 			return fmt.Errorf("Two intent manifests for node %s pod %s", nodeName, podId)
 		}
 		old.IntentManifestSHA = manifestSHA
-		for _, launchable := range result.Manifest.LaunchableStanzas {
+		for _, launchable := range result.Manifest.GetLaunchableStanzas() {
 			old.IntentLocations = append(old.IntentLocations, launchable.Location)
 		}
 		sort.Strings(old.IntentLocations)
@@ -61,7 +61,7 @@ func AddKVPToMap(result kp.ManifestResult, source int, filterNode, filterPod str
 			return fmt.Errorf("Two reality manifests for node %s pod %s", nodeName, podId)
 		}
 		old.RealityManifestSHA = manifestSHA
-		for _, launchable := range result.Manifest.LaunchableStanzas {
+		for _, launchable := range result.Manifest.GetLaunchableStanzas() {
 			old.RealityLocations = append(old.RealityLocations, launchable.Location)
 		}
 		sort.Strings(old.RealityLocations)

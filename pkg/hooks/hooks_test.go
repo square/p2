@@ -11,6 +11,8 @@ import (
 	"github.com/square/p2/pkg/pods"
 )
 
+const podId = "TestPod"
+
 func TestExecutableHooksAreRun(t *testing.T) {
 	tempDir, err := ioutil.TempDir("", "hook")
 	Assert(t).IsNil(err, "the error should have been nil")
@@ -22,10 +24,8 @@ func TestExecutableHooksAreRun(t *testing.T) {
 
 	ioutil.WriteFile(path.Join(tempDir, "test1"), []byte("#!/bin/sh\necho $HOOKED_POD_ID > $(dirname $0)/output"), 0755)
 
-	podId := "TestPod"
-	manifest := pods.Manifest{Id: podId}
 	hooks := Hooks(os.TempDir(), &logging.DefaultLogger)
-	hooks.runHooks(tempDir, AFTER_INSTALL, pods.NewPod(podId, podDir), &manifest, logging.DefaultLogger)
+	hooks.runHooks(tempDir, AFTER_INSTALL, pods.NewPod(podId, podDir), testManifest(), logging.DefaultLogger)
 
 	contents, err := ioutil.ReadFile(path.Join(tempDir, "output"))
 	Assert(t).IsNil(err, "the error should have been nil")
@@ -45,10 +45,8 @@ func TestNonExecutableHooksAreNotRun(t *testing.T) {
 	err = ioutil.WriteFile(path.Join(tempDir, "test2"), []byte("#!/bin/sh\ntouch $(dirname $0)/failed"), 0644)
 	Assert(t).IsNil(err, "the error should have been nil")
 
-	podId := "TestPod"
-	manifest := pods.Manifest{Id: podId}
 	hooks := Hooks(os.TempDir(), &logging.DefaultLogger)
-	hooks.runHooks(tempDir, AFTER_INSTALL, pods.NewPod(podId, podDir), &manifest, logging.DefaultLogger)
+	hooks.runHooks(tempDir, AFTER_INSTALL, pods.NewPod(podId, podDir), testManifest(), logging.DefaultLogger)
 
 	if _, err := os.Stat(path.Join(tempDir, "failed")); err == nil {
 		t.Fatal("`failed` file exists; non-executable hook ran but should not have run")
@@ -66,12 +64,16 @@ func TestDirectoriesDoNotBreakEverything(t *testing.T) {
 
 	Assert(t).IsNil(os.Mkdir(path.Join(tempDir, "mydir"), 0755), "Should not have erred")
 
-	podId := "TestPod"
-	manifest := pods.Manifest{Id: podId}
 	pod := pods.NewPod(podId, podDir)
 	logger := logging.TestLogger()
 	hooks := Hooks(os.TempDir(), &logger)
-	err = hooks.runHooks(tempDir, AFTER_INSTALL, pod, &manifest, logging.DefaultLogger)
+	err = hooks.runHooks(tempDir, AFTER_INSTALL, pod, testManifest(), logging.DefaultLogger)
 
 	Assert(t).IsNil(err, "Got an error when running a directory inside the hooks directory")
+}
+
+func testManifest() pods.Manifest {
+	builder := pods.NewManifestBuilder()
+	builder.SetID(podId)
+	return builder.GetManifest()
 }

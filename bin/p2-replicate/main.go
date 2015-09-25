@@ -76,7 +76,7 @@ func main() {
 	sort.Sort(order)
 
 	repl := replication.Replicator{
-		Manifest: *manifest,
+		Manifest: manifest,
 		Store:    store,
 		Health:   healthChecker,
 		Nodes:    *hosts, // sorted by the health.SortOrder

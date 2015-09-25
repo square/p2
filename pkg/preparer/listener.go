@@ -75,7 +75,7 @@ func (l *HookListener) installHook(result kp.ManifestResult) error {
 		"dest": l.DestinationDir,
 	})
 
-	err := l.authPolicy.AuthorizeHook(&result.Manifest, sub)
+	err := l.authPolicy.AuthorizeHook(result.Manifest, sub)
 	if err != nil {
 		if err, ok := err.(auth.Error); ok {
 			sub.WithFields(err.Fields).Errorln(err)
@@ -115,7 +115,10 @@ func (l *HookListener) installHook(result kp.ManifestResult) error {
 		return err
 	}
 
-	currentSHA, _ := current.SHA()
+	var currentSHA string
+	if current != nil {
+		currentSHA, _ = current.SHA()
+	}
 	newSHA, _ := result.Manifest.SHA()
 
 	if err != pods.NoCurrentManifest && currentSHA == newSHA {
@@ -124,20 +127,20 @@ func (l *HookListener) installHook(result kp.ManifestResult) error {
 	}
 
 	// The manifest is new, go ahead and install
-	err = hookPod.Install(&result.Manifest)
+	err = hookPod.Install(result.Manifest)
 	if err != nil {
 		sub.WithError(err).Errorln("Could not install hook")
 		return err
 	}
 
-	_, err = hookPod.WriteCurrentManifest(&result.Manifest)
+	_, err = hookPod.WriteCurrentManifest(result.Manifest)
 	if err != nil {
 		sub.WithError(err).Errorln("Could not write current manifest")
 		return err
 	}
 
 	// Now that the pod is installed, link it up to the exec dir.
-	err = l.writeHook(event, hookPod, &result.Manifest)
+	err = l.writeHook(event, hookPod, result.Manifest)
 	if err != nil {
 		sub.WithError(err).Errorln("Could not write hook link")
 		return err
@@ -161,7 +164,7 @@ func (l *HookListener) determineEvent(pathInIntent string) (string, error) {
 	return matches[1], nil
 }
 
-func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest *pods.Manifest) error {
+func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest pods.Manifest) error {
 	// if event="", then this is a global hook, and its executable lands in the
 	// top level of the hook exec directory
 	eventExecDir := path.Join(l.ExecDir, event)

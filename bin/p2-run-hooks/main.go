@@ -31,7 +31,7 @@ func main() {
 
 	pod := pods.NewPod(path.Base(*PodDir), *PodDir)
 
-	var manifest *pods.Manifest
+	var manifest pods.Manifest
 	if *Manifest != "" {
 		manifest, err = pods.ManifestFromPath(*Manifest)
 		if err != nil {

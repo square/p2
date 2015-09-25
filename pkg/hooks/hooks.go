@@ -106,14 +106,14 @@ func runDirectory(dirpath string, environment []string, logger logging.Logger) e
 	return nil
 }
 
-func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest *pods.Manifest, logger logging.Logger) error {
+func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest pods.Manifest, logger logging.Logger) error {
 	configFileName, err := podManifest.ConfigFileName()
 	if err != nil {
 		return err
 	}
 
 	// Write manifest to a file so hooks can read it.
-	tmpManifestFile, err := ioutil.TempFile("", fmt.Sprintf("%s-manifest.yaml", podManifest.Id))
+	tmpManifestFile, err := ioutil.TempFile("", fmt.Sprintf("%s-manifest.yaml", podManifest.ID()))
 	if err != nil {
 		logger.WithErrorAndFields(err, logrus.Fields{
 			"dir": dirpath,
@@ -133,7 +133,7 @@ func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest 
 	hookEnvironment := []string{
 		fmt.Sprintf("HOOK=%s", path.Base(dirpath)),
 		fmt.Sprintf("HOOK_EVENT=%s", hType.String()),
-		fmt.Sprintf("HOOKED_POD_ID=%s", podManifest.Id),
+		fmt.Sprintf("HOOKED_POD_ID=%s", podManifest.ID()),
 		fmt.Sprintf("HOOKED_POD_HOME=%s", pod.Path()),
 		fmt.Sprintf("HOOKED_POD_MANIFEST=%s", tmpManifestFile.Name()),
 		fmt.Sprintf("HOOKED_CONFIG_PATH=%s", path.Join(pod.ConfigDir(), configFileName)),
@@ -143,7 +143,7 @@ func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest 
 	return runDirectory(dirpath, hookEnvironment, logger)
 }
 
-func (h *HookDir) RunHookType(hookType HookType, pod Pod, manifest *pods.Manifest) error {
+func (h *HookDir) RunHookType(hookType HookType, pod Pod, manifest pods.Manifest) error {
 	logger := h.logger.SubLogger(logrus.Fields{
 		"pod":      manifest.ID(),
 		"pod_path": pod.Path(),
