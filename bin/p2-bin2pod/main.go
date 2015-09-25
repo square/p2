@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	bin2pod = kingpin.New("bin2pod", `Convert an executable file into a pod manifest with a single hoist-type launchable.
+	bin2pod = kingpin.New("p2-bin2pod", `Convert an executable file into a pod manifest with a single hoist-type launchable.
     EXAMPLES
 
     1. Simple example
