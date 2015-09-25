@@ -5,8 +5,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Sirupsen/logrus"
-	"github.com/hashicorp/consul/api"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/balancer"
 	"github.com/square/p2/pkg/config"
 	"github.com/square/p2/pkg/logging"
@@ -15,34 +15,28 @@ import (
 // serpro (service proxy) is a simple TCP proxy for services registered
 // in the Consul registry.
 
+type balancerConfig struct {
+	serviceToProxy string `yaml:"service_to_proxy"`
+	vhost          string `yaml:"vhost"`
+	port           int    `yaml:"port"`
+}
+
 func main() {
-	cfg, err := config.LoadFromEnvironment()
+	cfg := &balancerConfig{}
+	err := config.LoadFromEnvInto(cfg)
+
 	logger := logging.DefaultLogger
 
 	if err != nil {
 		logger.WithField("err", err).Fatalf("Could not load configuration for p2-balancer")
 	}
 
-	service, err := cfg.ReadString("service_to_proxy")
-	if err != nil {
-		logger.WithField("err", err).Fatalln("Could not read the service_to_proxy the field from config")
-	}
-
-	vhost, err := cfg.ReadString("vhost")
-	if err != nil {
-		logger.WithField("err", err).Fatalln("Could not read the vhost field from config")
-	}
-
-	if service == "" && vhost == "" {
+	if cfg.serviceToProxy == "" && cfg.vhost == "" {
 		logger.NoFields().Fatalln("Did not specify a service or vhost key in config")
 	}
 
-	port, err := cfg.ReadInt("port")
-	if err != nil {
-		logger.WithField("err", err).Fatalln("Could not get port number")
-	}
-	if port == 0 {
-		port = 443
+	if cfg.port == 0 {
+		cfg.port = 443
 	}
 
 	monitor, err := balancer.NewConsulMonitor(api.DefaultConfig(), &logger)
@@ -54,10 +48,10 @@ func main() {
 	signalCh := make(chan os.Signal, 2)
 	signal.Notify(signalCh, syscall.SIGTERM, os.Interrupt)
 
-	if service != "" {
-		err = doServer(service, port, signalCh, monitor)
+	if cfg.serviceToProxy != "" {
+		err = doServer(cfg.serviceToProxy, cfg.port, signalCh, monitor)
 	} else {
-		err = doVhost(port, signalCh, monitor)
+		err = doVhost(cfg.port, signalCh, monitor)
 	}
 	if err != nil {
 		logger.WithField("err", err).Fatalln("Error running")
