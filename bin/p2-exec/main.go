@@ -26,6 +26,7 @@ var (
 	cgroupName     = kingpin.Flag("cgroup", "the name of the cgroup that should be created").Short('c').String()
 	nolim          = kingpin.Flag("nolimit", "remove rlimits").Short('n').Bool()
 	clearEnv       = kingpin.Flag("clearenv", "clear all environment variables before loading envDir").Bool()
+	workDir        = kingpin.Flag("workdir", "set working directory").Short('w').String()
 
 	cmd = kingpin.Arg("command", "the command to execute").Required().Strings()
 )
@@ -71,6 +72,13 @@ func main() {
 
 	if *username != "" {
 		err := changeUser(*username)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if *workDir != "" {
+		err := os.Chdir(*workDir)
 		if err != nil {
 			log.Fatal(err)
 		}
