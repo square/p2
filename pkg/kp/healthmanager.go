@@ -10,6 +10,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/util/stream"
 )
 
@@ -85,15 +86,15 @@ func (u *consulSimpleHealthUpdater) PutHealth(health WatchResult) error {
 // resources to release.
 func (u *consulSimpleHealthUpdater) Close() {}
 
-const (
-	// HealthRetryTime determines how long to wait between retries when a health check fails
-	// to write.
-	HealthRetryTime = 5 * time.Second
+var (
+	// HealthRetryTimeSec determines how long to wait between retries when a health check
+	// fails to write.
+	HealthRetryTimeSec = param.Int("health_retry_time_sec", 5)
 
-	// SessionTTL sets the TTL time for each session created by consulHealthManager. This
+	// SessionTTLSec sets the TTL time for each session created by consulHealthManager. This
 	// parmeter controls how long it takes for clients to notice that health checks have
 	// stopped.
-	SessionTTL = 15 * time.Second
+	SessionTTLSec = param.Int("health_session_ttl_sec", 15)
 )
 
 // consulHealthManager maintains a Consul session for all the local node's health checks,
@@ -122,7 +123,7 @@ func (c consulStore) newSessionHealthManager(
 			Name:      fmt.Sprintf("health:%s:%d:%s", node, os.Getpid(), timeStr),
 			LockDelay: 1 * time.Nanosecond,
 			Behavior:  api.SessionBehaviorDelete,
-			TTL:       SessionTTL.String(),
+			TTL:       fmt.Sprintf("%ds", *SessionTTLSec),
 		},
 		c.client,
 		sessionChan,
@@ -364,7 +365,7 @@ func sendHealthUpdate(
 	if err := sender(); err != nil {
 		logger.WithError(err).Error("error writing health")
 		// Try not to overwhelm Consul
-		time.Sleep(HealthRetryTime)
+		time.Sleep(time.Duration(*HealthRetryTimeSec) * time.Second)
 		w <- writeResult{nil, false}
 	} else {
 		w <- writeResult{health, true}
