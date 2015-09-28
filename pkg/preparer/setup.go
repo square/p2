@@ -19,6 +19,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
+	"github.com/square/p2/pkg/util/param"
 )
 
 // DefaultConsulAddress is the default location for Consul when none is configured.
@@ -52,6 +53,10 @@ type PreparerConfig struct {
 	WriteKVHealth        bool                   `yaml:"write_kv_health,omitempty"`
 	UseSessionHealth     bool                   `yaml:"use_session_health,omitempty"`
 	LogLevel             string                 `yaml:"log_level,omitempty"`
+
+	// Params defines a collection of miscellaneous runtime parameters defined throughout the
+	// source files.
+	Params param.Values `yaml:"params"`
 }
 
 // Configuration fields for the "keyring" auth type

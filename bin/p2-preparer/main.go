@@ -12,6 +12,7 @@ import (
 
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/preparer"
+	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/version"
 	"github.com/square/p2/pkg/watch"
 )
@@ -28,6 +29,10 @@ func main() {
 	preparerConfig, err := preparer.LoadConfig(configPath)
 	if err != nil {
 		logger.WithError(err).Fatalln("could not load preparer config")
+	}
+	err = param.Parse(preparerConfig.Params)
+	if err != nil {
+		logger.WithError(err).Fatalln("invalid parameter")
 	}
 
 	prep, err := preparer.New(preparerConfig, logger)
