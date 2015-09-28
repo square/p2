@@ -36,7 +36,7 @@ func ZipResultSets(intent, reality []kp.ManifestResult) (ret []ManifestPair) {
 			rID = reality[realityIndex].Manifest.ID()
 		}
 
-		if rID == "" || iID < rID {
+		if iID != "" && (rID == "" || iID < rID) {
 			// if rID == "", then realityIndex is out of range, but we're still in
 			// the loop, therefore intentIndex must be in range
 			ret = append(ret, ManifestPair{
@@ -44,7 +44,7 @@ func ZipResultSets(intent, reality []kp.ManifestResult) (ret []ManifestPair) {
 				Intent: intent[intentIndex].Manifest,
 			})
 			intentIndex++
-		} else if iID == "" || rID < iID {
+		} else if rID != "" && (iID == "" || rID < iID) {
 			// and vice versa
 			ret = append(ret, ManifestPair{
 				ID:      rID,
