@@ -14,6 +14,7 @@ func (l Type) String() string {
 const (
 	POD  = Type("pod")
 	NODE = Type("node")
+	RC   = Type("replication_controller")
 )
 
 var InvalidType error = errors.New("Invalid type provided")
@@ -24,6 +25,8 @@ func AsType(v string) (Type, error) {
 		return POD, nil
 	case NODE.String():
 		return NODE, nil
+	case RC.String():
+		return RC, nil
 	default:
 		return Type(""), InvalidType
 	}
