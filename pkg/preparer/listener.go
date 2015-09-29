@@ -1,8 +1,6 @@
 package preparer
 
 import (
-	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -10,12 +8,10 @@ import (
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/auth"
-	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -140,7 +136,7 @@ func (l *HookListener) installHook(result kp.ManifestResult) error {
 	}
 
 	// Now that the pod is installed, link it up to the exec dir.
-	err = l.writeHook(event, hookPod, result.Manifest)
+	err = hooks.InstallHookScripts(filepath.Join(l.ExecDir, event), hookPod, result.Manifest, sub)
 	if err != nil {
 		sub.WithError(err).Errorln("Could not write hook link")
 		return err
@@ -162,68 +158,4 @@ func (l *HookListener) determineEvent(pathInIntent string) (string, error) {
 		return "", nil // no event, global hook
 	}
 	return matches[1], nil
-}
-
-func (l *HookListener) writeHook(event string, hookPod *pods.Pod, manifest pods.Manifest) error {
-	// if event="", then this is a global hook, and its executable lands in the
-	// top level of the hook exec directory
-	eventExecDir := path.Join(l.ExecDir, event)
-	err := os.MkdirAll(eventExecDir, 0755)
-	if err != nil {
-		return util.Errorf("Couldn't make event exec dir %s", eventExecDir)
-	}
-	launchables, err := hookPod.Launchables(manifest)
-	if err != nil {
-		return err
-	}
-
-	// First remove any pre-existing hooks for that pod. Note that this is gross
-	// and that we should have hooks recurse into subfolders.
-	podHookPattern := path.Join(eventExecDir, fmt.Sprintf("%s__*", hookPod.Id))
-	matches, err := filepath.Glob(podHookPattern)
-	if err != nil {
-		return util.Errorf("Couldn't find files using pattern %s in %s: %s", podHookPattern, eventExecDir, err)
-	}
-	for _, match := range matches {
-		err = os.Remove(match)
-		if err != nil {
-			l.Logger.WithError(err).Warnln("Could not remove old hook")
-		}
-	}
-
-	// For every launchable in the manifest, link its executable to the hook directory.
-	for _, launchable := range launchables {
-		// warn if a hook has a cgroup configured - it will be ignored
-		emptyCgroup := cgroups.Config{Name: launchable.CgroupConfig.Name}
-		if launchable.CgroupConfig != emptyCgroup {
-			l.Logger.WithField("hook_launchable_id", launchable.Id).Warnln("Hook cgroup will be ignored")
-		}
-
-		executables, err := launchable.Executables(runit.DefaultBuilder)
-		if err != nil {
-			return err
-		}
-
-		for _, executable := range executables {
-			// Write a script to the event directory that executes the pod's executables
-			// with the correct environment for that pod.
-			scriptPath := path.Join(eventExecDir, executable.Service.Name)
-			file, err := os.OpenFile(scriptPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0744)
-			defer file.Close()
-			if err != nil {
-				l.Logger.WithError(err).Errorln("Could not write to event dir path")
-			}
-			err = executable.WriteExecutor(file)
-			if err != nil {
-				l.Logger.WithError(err).Errorln("Could not install new hook")
-			}
-		}
-		// for convenience as we do with regular launchables, make these ones
-		// current under the launchable directory
-		err = launchable.MakeCurrent()
-		if err != nil {
-			l.Logger.WithError(err).Errorln("Could not update the current hook")
-		}
-	}
-	return nil
 }
