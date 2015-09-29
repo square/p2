@@ -59,6 +59,10 @@
 			"Rev": "54864211433d45cb780682431585b3e573b49e4a"
 		},
 		{
+			"ImportPath": "github.com/pborman/uuid",
+			"Rev": "cccd189d45f7ac3368a0d127efb7f4d08ae0b655"
+		},
+		{
 			"ImportPath": "golang.org/x/crypto/cast5",
 			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
 		},
