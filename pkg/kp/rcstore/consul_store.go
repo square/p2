@@ -123,25 +123,20 @@ func (s *consulStore) SetDesiredReplicas(id fields.ID, n int) error {
 }
 
 func (s *consulStore) Delete(id fields.ID) error {
-	key := idPrefix(id) + "/replicas_desired"
-	kvp, _, err := s.kv.Get(key, nil)
-	if err != nil {
-		return err
-	}
-	if kvp == nil {
-		return fmt.Errorf("No such replication controller %s", id)
-	}
-
-	i, err := strconv.Atoi(string(kvp.Value))
+	rc, err := s.Get(id)
 	if err != nil {
 		return err
 	}
 
-	if i != 0 {
-		return fmt.Errorf("Replication controller %s has %d desired replicas, must be 0 before can be deleted", id, i)
+	if rc.ReplicasDesired != 0 {
+		return fmt.Errorf("Replication controller %s has %d desired replicas, must be 0 before can be deleted", id, rc.ReplicasDesired)
 	}
 
 	_, err = s.kv.DeleteTree(idPrefix(id), nil)
+	if err != nil {
+		return err
+	}
+
 	return err
 }
 
