@@ -32,16 +32,19 @@ type consulKV interface {
 }
 
 type consulStore struct {
-	kv     consulKV
-	logger logging.Logger
+	applicator labels.Applicator
+	kv         consulKV
+	logger     logging.Logger
 }
 
 var _ Store = &consulStore{}
 
 func NewConsul(client *api.Client) *consulStore {
 	return &consulStore{
-		kv:     client.KV(),
-		logger: logging.DefaultLogger,
+		// TODO: Should the number of retries be configurable?
+		applicator: labels.NewConsulApplicator(client, 3),
+		kv:         client.KV(),
+		logger:     logging.DefaultLogger,
 	}
 }
 
@@ -53,6 +56,23 @@ func (s *consulStore) Create(manifest pods.Manifest, nodeSelector labels.Selecto
 	if err != nil {
 		return fields.RC{}, err
 	}
+
+	rc := fields.RC{
+		Id:              id,
+		Manifest:        manifest,
+		NodeSelector:    nodeSelector,
+		PodLabels:       podLabels,
+		ReplicasDesired: 0,
+		Disabled:        false,
+	}
+
+	err = s.forEachLabel(rc, func(id, k, v string) error {
+		return s.applicator.SetLabel(labels.RC, id, k, v)
+	})
+
+	// TODO: If the `put` operations fail, we have already labeled the RC,
+	// yet the RC will not exist in the backing Consul KV store.
+	// The labels may have to be cleaned up.
 
 	err = s.put(id, []kvPair{
 		kvPair{key: "disabled", value: []byte("false")},
@@ -66,14 +86,7 @@ func (s *consulStore) Create(manifest pods.Manifest, nodeSelector labels.Selecto
 		return fields.RC{}, err
 	}
 
-	return fields.RC{
-		Id:              id,
-		Manifest:        manifest,
-		NodeSelector:    nodeSelector,
-		PodLabels:       podLabels,
-		ReplicasDesired: 0,
-		Disabled:        false,
-	}, nil
+	return rc, nil
 }
 
 func (s *consulStore) Get(id fields.ID) (fields.RC, error) {
@@ -123,26 +136,25 @@ func (s *consulStore) SetDesiredReplicas(id fields.ID, n int) error {
 }
 
 func (s *consulStore) Delete(id fields.ID) error {
-	key := idPrefix(id) + "/replicas_desired"
-	kvp, _, err := s.kv.Get(key, nil)
-	if err != nil {
-		return err
-	}
-	if kvp == nil {
-		return fmt.Errorf("No such replication controller %s", id)
-	}
-
-	i, err := strconv.Atoi(string(kvp.Value))
+	rc, err := s.Get(id)
 	if err != nil {
 		return err
 	}
 
-	if i != 0 {
-		return fmt.Errorf("Replication controller %s has %d desired replicas, must be 0 before can be deleted", id, i)
+	if rc.ReplicasDesired != 0 {
+		return fmt.Errorf("Replication controller %s has %d desired replicas, must be 0 before can be deleted", id, rc.ReplicasDesired)
 	}
 
 	_, err = s.kv.DeleteTree(idPrefix(id), nil)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// TODO: If this fails, then we have some dangling labels.
+	// Perhaps they can be cleaned up later.
+	return s.forEachLabel(rc, func(id, k, _ string) error {
+		return s.applicator.RemoveLabel(labels.RC, id, k)
+	})
 }
 
 func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
@@ -283,4 +295,14 @@ func (s *consulStore) kvpsToRcs(kvps api.KVPairs) map[fields.ID]*fields.RC {
 	}
 
 	return rcs
+}
+
+// forEachLabel Attempts to apply the supplied function to labels of the replication controller.
+// If forEachLabel encounters any error applying the function, it returns that error immediately.
+// The function is not further applied to subsequent labels on an error.
+func (s *consulStore) forEachLabel(rc fields.RC, f func(id, k, v string) error) error {
+	id := rc.Id.String()
+	// As of this writing the only label we want is the pod ID.
+	// There may be more in the future.
+	return f(id, "pod_id", rc.Manifest.ID())
 }
