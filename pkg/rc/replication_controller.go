@@ -18,6 +18,25 @@ const (
 	podIdLabel = "pod_id"
 )
 
+type ReplicationController interface {
+	Id() fields.ID
+
+	// WatchDesires causes the replication controller to watch for any changes to its desired state.
+	// It is expected that a replication controller is aware of a backing rcstore against which to perform this watch.
+	// Upon seeing any changes, the replication controller schedules or unschedules pods to meet the desired state.
+	// This spawns a goroutine that performs the watch and returns a channel on which errors are sent.
+	// Send a struct{} on the quit channel to stop the goroutine.
+	// The error channel will be closed in response.
+	WatchDesires(quit <-chan struct{}) <-chan error
+
+	// CurrentNodes() returns all nodes that this replication controller is currently scheduled on,
+	// according to the pod label set associated with the replication controller.
+	CurrentNodes() ([]string, error)
+
+	// Internal: meetDesires synchronously schedules or unschedules pods to meet desired state.
+	meetDesires() error
+}
+
 // These methods are the same as the methods of the same name in kp.Store.
 // Replication controllers have no need of any methods other than these.
 type kpStore interface {
@@ -42,7 +61,7 @@ func New(
 	rcStore rcstore.Store,
 	scheduler Scheduler,
 	podApplicator labels.Applicator,
-) *replicationController {
+) ReplicationController {
 	return &replicationController{
 		RC: fields,
 
@@ -52,6 +71,10 @@ func New(
 		scheduler:     scheduler,
 		podApplicator: podApplicator,
 	}
+}
+
+func (rc *replicationController) Id() fields.ID {
+	return rc.RC.Id
 }
 
 func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error {
@@ -195,7 +218,7 @@ func (rc *replicationController) forEachLabel(node string, f func(id, k, v strin
 	if err := f(id, podIdLabel, rc.Manifest.ID()); err != nil {
 		return err
 	}
-	return f(id, rcIdLabel, rc.Id.String())
+	return f(id, rcIdLabel, rc.Id().String())
 }
 
 func (rc *replicationController) schedule(node string) error {
