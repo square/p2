@@ -25,6 +25,8 @@ type ReplicationController interface {
 	// It is expected that a replication controller is aware of a backing rcstore against which to perform this watch.
 	// Upon seeing any changes, the replication controller schedules or unschedules pods to meet the desired state.
 	// This spawns a goroutine that performs the watch and returns a channel on which errors are sent.
+	// The caller must consume from the error channel.
+	// Failure to do so blocks the replication controller from meeting desires.
 	// Send a struct{} on the quit channel to stop the goroutine.
 	// The error channel will be closed in response.
 	WatchDesires(quit <-chan struct{}) <-chan error
