@@ -60,15 +60,14 @@ func NewPod(id string, path string) *Pod {
 }
 
 func ExistingPod(path string) (*Pod, error) {
-	pod := NewPod("temp", path)
-	manifest, err := pod.CurrentManifest()
+	temp := Pod{path: path}
+	manifest, err := temp.CurrentManifest()
 	if err == NoCurrentManifest {
 		return nil, util.Errorf("No current manifest set, this is not an extant pod directory")
 	} else if err != nil {
 		return nil, err
 	}
-	pod.Id = manifest.ID()
-	return pod, nil
+	return NewPod(manifest.ID(), path), nil
 }
 
 func PodFromManifestId(manifestId string) *Pod {
@@ -185,6 +184,26 @@ func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 	}
 
 	return success, nil
+}
+
+func (pod *Pod) Services(manifest Manifest) ([]runit.Service, error) {
+	allServices := []runit.Service{}
+	launchables, err := pod.Launchables(manifest)
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range launchables {
+		es, err := l.Executables(pod.ServiceBuilder)
+		if err != nil {
+			return nil, err
+		}
+		if es != nil {
+			for _, e := range es {
+				allServices = append(allServices, e.Service)
+			}
+		}
+	}
+	return allServices, nil
 }
 
 // Write servicebuilder *.yaml file and run servicebuilder, which will register runit services for this

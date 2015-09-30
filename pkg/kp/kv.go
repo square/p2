@@ -283,7 +283,7 @@ func (c consulStore) Pod(key string) (pods.Manifest, time.Duration, error) {
 //
 // All the values under the given key prefix must be pod manifests.
 func (c consulStore) ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error) {
-	kvPairs, writeMeta, err := c.client.KV().List(keyPrefix, nil)
+	kvPairs, queryMeta, err := c.client.KV().List(keyPrefix, nil)
 	if err != nil {
 		return nil, 0, NewKVError("list", keyPrefix, err)
 	}
@@ -292,12 +292,12 @@ func (c consulStore) ListPods(keyPrefix string) ([]ManifestResult, time.Duration
 	for _, kvp := range kvPairs {
 		manifest, err := pods.ManifestFromBytes(kvp.Value)
 		if err != nil {
-			return nil, writeMeta.RequestTime, err
+			return nil, queryMeta.RequestTime, err
 		}
 		ret = append(ret, ManifestResult{manifest, kvp.Key})
 	}
 
-	return ret, writeMeta.RequestTime, nil
+	return ret, queryMeta.RequestTime, nil
 }
 
 // WatchPods watches the key-value store for any changes under the given key
