@@ -29,7 +29,7 @@ func setup(t *testing.T) (
 	rcStore rcstore.Store,
 	kpStore fakeKpStore,
 	applicator labels.Applicator,
-	rc *replicationController) {
+	rc ReplicationController) {
 
 	rcStore = rcstore.NewFake()
 
@@ -64,7 +64,7 @@ func scheduledPods(t *testing.T, pods labels.Applicator) []labels.Labeled {
 	return labeled
 }
 
-func waitForNodes(t *testing.T, rc *replicationController, desired int) int {
+func waitForNodes(t *testing.T, rc ReplicationController, desired int) int {
 	timeout := time.After(1 * time.Second)
 	currentNodes, err := rc.CurrentNodes()
 	Assert(t).IsNil(err, "expected no error getting current nodes")
@@ -102,7 +102,7 @@ func TestCantSchedule(t *testing.T) {
 	quit := make(chan struct{})
 	errors := rc.WatchDesires(quit)
 
-	rcStore.SetDesiredReplicas(rc.Id, 1)
+	rcStore.SetDesiredReplicas(rc.Id(), 1)
 
 	select {
 	case <-errors:
@@ -125,7 +125,7 @@ func TestSchedule(t *testing.T) {
 	quit := make(chan struct{})
 	rc.WatchDesires(quit)
 
-	rcStore.SetDesiredReplicas(rc.Id, 1)
+	rcStore.SetDesiredReplicas(rc.Id(), 1)
 	numNodes := waitForNodes(t, rc, 1)
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
 
@@ -150,7 +150,7 @@ func TestSchedulePartial(t *testing.T) {
 	quit := make(chan struct{})
 	errors := rc.WatchDesires(quit)
 
-	rcStore.SetDesiredReplicas(rc.Id, 2)
+	rcStore.SetDesiredReplicas(rc.Id(), 2)
 	numNodes := waitForNodes(t, rc, 1)
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
 
@@ -182,11 +182,11 @@ func TestScheduleTwice(t *testing.T) {
 	quit := make(chan struct{})
 	rc.WatchDesires(quit)
 
-	rcStore.SetDesiredReplicas(rc.Id, 1)
+	rcStore.SetDesiredReplicas(rc.Id(), 1)
 	numNodes := waitForNodes(t, rc, 1)
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule first")
 
-	rcStore.SetDesiredReplicas(rc.Id, 2)
+	rcStore.SetDesiredReplicas(rc.Id(), 2)
 	numNodes = waitForNodes(t, rc, 2)
 	Assert(t).AreEqual(numNodes, 2, "took too long to schedule second")
 
@@ -218,7 +218,7 @@ func TestUnschedule(t *testing.T) {
 	quit := make(chan struct{})
 	rc.WatchDesires(quit)
 
-	rcStore.SetDesiredReplicas(rc.Id, 1)
+	rcStore.SetDesiredReplicas(rc.Id(), 1)
 	numNodes := waitForNodes(t, rc, 1)
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
 
@@ -226,7 +226,7 @@ func TestUnschedule(t *testing.T) {
 	Assert(t).AreEqual(len(scheduled), 1, "expected a pod to have been labeled")
 	Assert(t).AreEqual(len(kp.manifests), 1, "expected a manifest to have been scheduled")
 
-	rcStore.SetDesiredReplicas(rc.Id, 0)
+	rcStore.SetDesiredReplicas(rc.Id(), 0)
 	numNodes = waitForNodes(t, rc, 0)
 	Assert(t).AreEqual(numNodes, 0, "took too long to unschedule")
 
