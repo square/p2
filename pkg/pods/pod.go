@@ -186,7 +186,7 @@ func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 	return success, nil
 }
 
-func (pod *Pod) Services(manifest *Manifest) ([]runit.Service, error) {
+func (pod *Pod) Services(manifest Manifest) ([]runit.Service, error) {
 	allServices := []runit.Service{}
 	launchables, err := pod.Launchables(manifest)
 	if err != nil {
