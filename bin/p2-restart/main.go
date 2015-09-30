@@ -94,7 +94,7 @@ func main() {
 	if err != nil {
 		logger.WithError(err).Fatalln("Could not halt pod")
 	} else if !ok {
-		logger.NoFields().Warningln("Had to forcibly kill some services")
+		logger.NoFields().Warningln("Failed to cleanly halt services. Some may have been sent a SIGKILL.")
 	}
 
 	logger.NoFields().Infoln("Starting pod")
@@ -103,7 +103,7 @@ func main() {
 	if err != nil {
 		logger.WithError(err).Fatalln("Could not start pod")
 	} else if !ok {
-		logger.NoFields().Warningln("Some services did not come up quickly")
+		logger.NoFields().Warningln("Some services did not come up - check output for details")
 	}
 
 	logger.NoFields().Infoln("Restart successful.")
