@@ -186,6 +186,26 @@ func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 	return success, nil
 }
 
+func (pod *Pod) Services(manifest *Manifest) ([]runit.Service, error) {
+	allServices := []runit.Service{}
+	launchables, err := pod.Launchables(manifest)
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range launchables {
+		es, err := l.Executables(pod.ServiceBuilder)
+		if err != nil {
+			return nil, err
+		}
+		if es != nil {
+			for _, e := range es {
+				allServices = append(allServices, e.Service)
+			}
+		}
+	}
+	return allServices, nil
+}
+
 // Write servicebuilder *.yaml file and run servicebuilder, which will register runit services for this
 // pod.
 func (pod *Pod) buildRunitServices(launchables []hoist.Launchable) error {

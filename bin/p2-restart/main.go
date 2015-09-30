@@ -8,6 +8,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v1"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -58,7 +59,36 @@ func main() {
 		logger.NoFields().Fatalln(err)
 	}
 
-	logger.WithField("pod", pod.Id).Infoln("Halting pod")
+	logger = logger.SubLogger(logrus.Fields{"pod": pod.Id})
+	logger.NoFields().Infoln("Finding services to restart")
+
+	services, err := pod.Services(manifest)
+	if err != nil {
+		logger.WithError(err).Fatalln("Could not determine services to restart")
+	}
+
+	ls, err := pod.Launchables(manifest)
+	if err != nil {
+		logger.WithError(err).Fatalln("Could not determine launchables in pod")
+	}
+
+	if len(ls) == 0 {
+		logger.NoFields().Fatalln("No launchables in pod")
+	}
+
+	for _, service := range services {
+		res, err := runit.DefaultSV.Stat(&service)
+		if err != nil {
+			logger.WithErrorAndFields(err, logrus.Fields{"service": service.Name}).Fatalln("Could not stat service")
+		}
+		logger.WithFields(logrus.Fields{
+			"service": service.Name,
+			"uptime":  res.ChildUptime,
+			"PID":     res.ChildPID,
+		}).Infoln("Will restart")
+	}
+
+	logger.NoFields().Infoln("Halting pod")
 
 	ok, err := pod.Halt(manifest)
 	if err != nil {
@@ -67,7 +97,7 @@ func main() {
 		logger.NoFields().Warningln("Had to forcibly kill some services")
 	}
 
-	logger.WithField("pod", pod.Id).Infoln("Starting pod")
+	logger.NoFields().Infoln("Starting pod")
 
 	ok, err = pod.Launch(manifest)
 	if err != nil {
@@ -76,5 +106,5 @@ func main() {
 		logger.NoFields().Warningln("Some services did not come up quickly")
 	}
 
-	logger.WithField("pod", pod.Id).Infoln("Restart successful.")
+	logger.NoFields().Infoln("Restart successful.")
 }
