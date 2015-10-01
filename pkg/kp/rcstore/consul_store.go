@@ -10,6 +10,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/pborman/uuid"
 
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
@@ -26,6 +27,7 @@ type consulKV interface {
 	Keys(prefix string, separator string, opts *api.QueryOptions) ([]string, *api.QueryMeta, error)
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
 	Put(pair *api.KVPair, opts *api.WriteOptions) (*api.WriteMeta, error)
+	Acquire(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
 	DeleteTree(prefix string, opts *api.WriteOptions) (*api.WriteMeta, error)
 }
 
@@ -117,6 +119,19 @@ func (s *consulStore) List() ([]fields.RC, error) {
 	}
 
 	return rcs, nil
+}
+
+// TODO: refactor pkg/kp/lock.go and pkg/kp/session.go into their own package,
+// and use that instead of c+ping it here
+// we are intentionally not using kp.Lock, because kp.Lock manages its own
+// session and therefore it cannot cooperate with kp.ConsulSessionManager
+func (s *consulStore) Lock(id fields.ID, session string) (bool, error) {
+	success, _, err := s.kv.Acquire(&api.KVPair{
+		Key:     kp.LockPath(kp.RCPath(id.String())),
+		Value:   []byte(session),
+		Session: session,
+	}, nil)
+	return success, err
 }
 
 func (s *consulStore) Disable(id fields.ID) error {

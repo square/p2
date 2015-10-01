@@ -17,6 +17,16 @@ type Store interface {
 	Get(id fields.ID) (fields.RC, error)
 	List() ([]fields.RC, error)
 
+	// Use the given session string (which uniquely identifies the lock holder)
+	// to acquire a lock on the specified replication controller. If the lock
+	// was successfully claimed, return (true, nil). If the request completed
+	// but the lock was already held, return (false, nil). Otherwise return an
+	// appropriate error.
+	//
+	// The lock will be taken against an ephemeral key, so it is safe to use a
+	// session that deletes its keys on invalidation.
+	Lock(id fields.ID, session string) (bool, error)
+
 	SetDesiredReplicas(fields.ID, int) error
 	Disable(fields.ID) error
 	Delete(fields.ID) error
