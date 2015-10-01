@@ -75,7 +75,7 @@ func (r replication) lockHosts(overrideLock bool, lockMessage string) error {
 	}
 
 	for _, host := range r.nodes {
-		lockPath := kp.LockPath(host, r.manifest.ID())
+		lockPath := kp.LockPath(kp.IntentPath(host, r.manifest.ID()))
 		err := r.lock(lock, lockPath, overrideLock)
 
 		if err != nil {

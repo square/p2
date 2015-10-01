@@ -26,7 +26,7 @@ func TestInitializeReplication(t *testing.T) {
 
 	// Confirm that the appropriate kv keys have been locked
 	for _, node := range testNodes {
-		lockPath := kp.LockPath(node, testPodId)
+		lockPath := kp.LockPath(kp.IntentPath(node, testPodId))
 		lockHolder, _, err := store.LockHolder(lockPath)
 		if err != nil {
 			t.Fatalf("Unexpected error checking for lock holder: %s", err)
@@ -77,7 +77,7 @@ func TestInitializeReplicationFailsIfLockExists(t *testing.T) {
 		t.Fatalf("Unable to set up competing lock: %s", err)
 	}
 	defer lock.Destroy()
-	lockPath := kp.LockPath(testNodes[0], testPodId)
+	lockPath := kp.LockPath(kp.IntentPath(testNodes[0], testPodId))
 	err = lock.Lock(lockPath)
 	if err != nil {
 		t.Fatalf("Unable to set up competing lock: %s", err)
@@ -115,7 +115,7 @@ func TestInitializeReplicationCanOverrideLocks(t *testing.T) {
 		t.Fatalf("Unable to set up competing lock: %s", err)
 	}
 	defer lock.Destroy()
-	lockPath := kp.LockPath(testNodes[0], testPodId)
+	lockPath := kp.LockPath(kp.IntentPath(testNodes[0], testPodId))
 	err = lock.Lock(lockPath)
 	if err != nil {
 		t.Fatalf("Unable to set up competing lock: %s", err)
