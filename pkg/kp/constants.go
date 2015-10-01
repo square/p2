@@ -9,6 +9,7 @@ const (
 	REALITY_TREE string = "reality"
 	HOOK_TREE    string = "hooks"
 	LOCK_TREE    string = "lock"
+	RC_TREE      string = "replication_controller"
 )
 
 func IntentPath(args ...string) string {
@@ -25,4 +26,8 @@ func HookPath(args ...string) string {
 
 func LockPath(args ...string) string {
 	return strings.Join(append([]string{LOCK_TREE}, args...), "/")
+}
+
+func RCPath(args ...string) string {
+	return strings.Join(append([]string{RC_TREE}, args...), "/")
 }
