@@ -155,13 +155,16 @@ REALITY_LOOP:
 			errCh <- err
 		case mResult := <-realityResults:
 			if len(mResult) != 1 {
-				nodeLogger.WithField("n", len(mResult)).Errorln("Got unexpected number of results when watching reality")
-			}
-			receivedSHA, _ := mResult[0].Manifest.SHA()
-			if receivedSHA == targetSHA {
-				break REALITY_LOOP
+				msg := "Got unexpected number of results when watching reality"
+				nodeLogger.WithField("n", len(mResult)).Errorln(msg)
+				errCh <- util.Errorf(msg)
 			} else {
-				nodeLogger.WithFields(logrus.Fields{"current": receivedSHA, "target": targetSHA}).Infoln("Waiting for current")
+				receivedSHA, _ := mResult[0].Manifest.SHA()
+				if receivedSHA == targetSHA {
+					break REALITY_LOOP
+				} else {
+					nodeLogger.WithFields(logrus.Fields{"current": receivedSHA, "target": targetSHA}).Infoln("Waiting for current")
+				}
 			}
 		}
 	}
