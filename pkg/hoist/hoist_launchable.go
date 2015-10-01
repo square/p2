@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"time"
 
@@ -241,12 +242,32 @@ func (hl *Launchable) Install() error {
 		return nil
 	}
 
-	data, err := hl.Fetcher.Open(hl.Location)
+	// Write to a temporary file for easy cleanup if the network transfer fails
+	artifactFile, err := ioutil.TempFile("", path.Base(hl.Location))
 	if err != nil {
 		return err
 	}
-	defer data.Close()
-	return hl.extractTarGz(data, hl.Version(), hl.InstallDir())
+	defer os.Remove(artifactFile.Name())
+	defer artifactFile.Close()
+	remoteData, err := hl.Fetcher.Open(hl.Location)
+	if err != nil {
+		return err
+	}
+	defer remoteData.Close()
+	_, err = io.Copy(artifactFile, remoteData)
+	if err != nil {
+		return err
+	}
+	_, err = artifactFile.Seek(0, os.SEEK_SET)
+	if err != nil {
+		return err
+	}
+
+	err = gzip.ExtractTarGz(hl.RunAs, artifactFile, hl.Version(), hl.InstallDir())
+	if err != nil {
+		os.RemoveAll(hl.InstallDir())
+	}
+	return err
 }
 
 // The version of the artifact is currently derived from the location, using
@@ -318,8 +339,4 @@ func (hl *Launchable) flipSymlink(newLinkPath string) error {
 func (hl *Launchable) InstallDir() string {
 	launchableName := hl.Version()
 	return filepath.Join(hl.RootDir, "installs", launchableName)
-}
-
-func (hl *Launchable) extractTarGz(fp io.Reader, fpName string, dest string) (err error) {
-	return gzip.ExtractTarGz(hl.RunAs, fp, fpName, dest)
 }
