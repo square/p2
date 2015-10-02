@@ -281,9 +281,10 @@ func (hl *Launchable) Install() error {
 		return err
 	}
 
-	err = gzip.ExtractTarGz(hl.RunAs, artifactFile, hl.Version(), hl.InstallDir())
+	err = gzip.ExtractTarGz(hl.RunAs, artifactFile, hl.InstallDir())
 	if err != nil {
 		os.RemoveAll(hl.InstallDir())
+		return util.Errorf("extracting %s: %s", hl.Version(), err)
 	}
 	return err
 }
