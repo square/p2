@@ -14,6 +14,7 @@ import (
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/gzip"
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/user"
@@ -34,10 +35,25 @@ type Launchable struct {
 	RestartTimeout   time.Duration  // How long to wait when restarting the services in this launchable.
 }
 
-type DisableError error
-type EnableError error
-type StartError error
-type StopError error
+// LaunchAdapter adapts a hoist.Launchable to the launch.Launchable interface.
+type LaunchAdapter struct {
+	*Launchable
+}
+
+func (a LaunchAdapter) ID() string {
+	return a.Launchable.Id
+}
+
+func (a LaunchAdapter) Fetcher() uri.Fetcher {
+	return a.Launchable.Fetcher
+}
+
+var _ launch.Launchable = &LaunchAdapter{}
+
+// If adapts the hoist Launchable to the launch.Launchable interface.
+func (hl *Launchable) If() launch.Launchable {
+	return LaunchAdapter{Launchable: hl}
+}
 
 func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 	// the error return from os/exec.Run is almost always meaningless
@@ -45,13 +61,13 @@ func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) e
 	// since the output is more useful to the user, that's what we'll preserve
 	out, err := hl.disable()
 	if err != nil {
-		return DisableError(util.Errorf("%s", out))
+		return launch.DisableError(util.Errorf("%s", out))
 	}
 
 	// probably want to do something with output at some point
 	err = hl.stop(serviceBuilder, sv)
 	if err != nil {
-		return StopError(err)
+		return launch.StopError(err)
 	}
 
 	err = hl.makeLast()
@@ -65,13 +81,13 @@ func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) e
 func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
 	err := hl.start(serviceBuilder, sv)
 	if err != nil {
-		return StartError(err)
+		return launch.StartError(err)
 	}
 
 	// same as disable
 	out, err := hl.enable()
 	if err != nil {
-		return EnableError(util.Errorf("%s", out))
+		return launch.EnableError(util.Errorf("%s", out))
 	}
 	return nil
 }
@@ -177,16 +193,18 @@ func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) 
 	return nil
 }
 
-func (hl *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]Executable, error) {
+func (hl *Launchable) Executables(
+	serviceBuilder *runit.ServiceBuilder,
+) ([]launch.Executable, error) {
 	if !hl.Installed() {
-		return []Executable{}, util.Errorf("%s is not installed", hl.Id)
+		return []launch.Executable{}, util.Errorf("%s is not installed", hl.Id)
 	}
 
 	binLaunchPath := filepath.Join(hl.InstallDir(), "bin", "launch")
 
 	binLaunchInfo, err := os.Stat(binLaunchPath)
 	if os.IsNotExist(err) {
-		return []Executable{}, nil
+		return []launch.Executable{}, nil
 	} else if err != nil {
 		return nil, util.Errorf("%s", err)
 	}
@@ -202,7 +220,7 @@ func (hl *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]Execu
 		}
 	}
 
-	var executables []Executable
+	var executables []launch.Executable
 	for _, service := range services {
 		serviceName := fmt.Sprintf("%s__%s", hl.Id, service.Name())
 		execCmd := []string{
@@ -219,7 +237,7 @@ func (hl *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]Execu
 			filepath.Join(serviceDir, service.Name()),
 		}
 
-		executables = append(executables, Executable{
+		executables = append(executables, launch.Executable{
 			Service: runit.Service{
 				Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
 				Name: serviceName,

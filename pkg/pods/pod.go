@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/digest"
 	"github.com/square/p2/pkg/hoist"
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
@@ -100,12 +101,12 @@ func (pod *Pod) Halt(manifest Manifest) (bool, error) {
 		switch err.(type) {
 		case nil:
 			// noop
-		case hoist.DisableError:
+		case launch.DisableError:
 			// do not set success to false on a disable error
-			pod.logLaunchableWarning(launchable.Id, err, "Could not disable launchable")
+			pod.logLaunchableWarning(launchable.ID(), err, "Could not disable launchable")
 		default:
-			// this case intentionally includes hoist.StopError
-			pod.logLaunchableError(launchable.Id, err, "Could not halt launchable")
+			// this case intentionally includes launch.StopError
+			pod.logLaunchableError(launchable.ID(), err, "Could not halt launchable")
 			success = false
 		}
 	}
@@ -146,7 +147,7 @@ func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 		if err != nil {
 			// if a launchable's post-activate fails, we probably can't
 			// launch it, but this does not break the entire pod
-			pod.logLaunchableError(launchable.Id, err, out)
+			pod.logLaunchableError(launchable.ID(), err, out)
 			successes = append(successes, false)
 		} else {
 			if out != "" {
@@ -167,12 +168,12 @@ func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 		switch err.(type) {
 		case nil:
 			// noop
-		case hoist.EnableError:
+		case launch.EnableError:
 			// do not set success to false on an enable error
-			pod.logLaunchableWarning(launchable.Id, err, "Could not enable launchable")
+			pod.logLaunchableWarning(launchable.ID(), err, "Could not enable launchable")
 		default:
-			// this case intentionally includes hoist.StartError
-			pod.logLaunchableError(launchable.Id, err, "Could not launch launchable")
+			// this case intentionally includes launch.StartError
+			pod.logLaunchableError(launchable.ID(), err, "Could not launch launchable")
 			success = false
 		}
 	}
@@ -208,18 +209,18 @@ func (pod *Pod) Services(manifest Manifest) ([]runit.Service, error) {
 
 // Write servicebuilder *.yaml file and run servicebuilder, which will register runit services for this
 // pod.
-func (pod *Pod) buildRunitServices(launchables []hoist.Launchable) error {
+func (pod *Pod) buildRunitServices(launchables []launch.Launchable) error {
 	// if the service is new, building the runit services also starts them
 	sbTemplate := make(map[string]runit.ServiceTemplate)
 	for _, launchable := range launchables {
 		executables, err := launchable.Executables(pod.ServiceBuilder)
 		if err != nil {
-			pod.logLaunchableError(launchable.Id, err, "Unable to list executables")
+			pod.logLaunchableError(launchable.ID(), err, "Unable to list executables")
 			continue
 		}
 		for _, executable := range executables {
 			if _, ok := sbTemplate[executable.Service.Name]; ok {
-				return util.Errorf("Duplicate executable %q for launchable %q", executable.Service.Name, launchable.Id)
+				return util.Errorf("Duplicate executable %q for launchable %q", executable.Service.Name, launchable.ID())
 			}
 			sbTemplate[executable.Service.Name] = runit.ServiceTemplate{
 				Run: executable.Exec,
@@ -373,7 +374,7 @@ func (pod *Pod) Install(manifest Manifest) error {
 	for _, launchable := range launchables {
 		err := launchable.Install()
 		if err != nil {
-			pod.logLaunchableError(launchable.Id, err, "Unable to install launchable")
+			pod.logLaunchableError(launchable.ID(), err, "Unable to install launchable")
 			return err
 		}
 	}
@@ -395,7 +396,7 @@ func (pod *Pod) Verify(manifest Manifest, authPolicy auth.Policy) error {
 
 		// Retrieve the digest data
 		launchableDigest, err := digest.ParseUris(
-			launchable.Fetcher,
+			launchable.Fetcher(),
 			stanza.DigestLocation,
 			stanza.DigestSignatureLocation,
 		)
@@ -511,22 +512,22 @@ func writeEnvFile(envDir, name, value string, uid, gid int) error {
 	return nil
 }
 
-func (pod *Pod) Launchables(manifest Manifest) ([]hoist.Launchable, error) {
+func (pod *Pod) Launchables(manifest Manifest) ([]launch.Launchable, error) {
 	launchableStanzas := manifest.GetLaunchableStanzas()
-	launchables := make([]hoist.Launchable, 0, len(launchableStanzas))
+	launchables := make([]launch.Launchable, 0, len(launchableStanzas))
 
 	for _, launchableStanza := range launchableStanzas {
 		launchable, err := pod.getLaunchable(launchableStanza, manifest.RunAsUser())
 		if err != nil {
 			return nil, err
 		}
-		launchables = append(launchables, *launchable)
+		launchables = append(launchables, launchable)
 	}
 
 	return launchables, nil
 }
 
-func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser string) (*hoist.Launchable, error) {
+func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser string) (launch.Launchable, error) {
 	if launchableStanza.LaunchableType == "hoist" {
 		launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
 		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
@@ -555,7 +556,7 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 			CgroupConfigName: launchableStanza.LaunchableId,
 		}
 		ret.CgroupConfig.Name = ret.Id
-		return ret, nil
+		return ret.If(), nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)
 		pod.logLaunchableError(launchableStanza.LaunchableId, err, "Unknown launchable type")

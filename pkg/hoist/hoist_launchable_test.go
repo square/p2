@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
@@ -265,7 +266,7 @@ func TestHaltWithFailingDisable(t *testing.T) {
 	sv := runit.FakeSV()
 	err := hl.Halt(sb, sv)
 	Assert(t).IsNotNil(err, "Expected error while halting")
-	_, ok := err.(DisableError)
+	_, ok := err.(launch.DisableError)
 	Assert(t).IsTrue(ok, "Expected disable error to be returned")
 }
 
@@ -287,7 +288,7 @@ func TestLaunchWithFailingEnable(t *testing.T) {
 	sv := runit.FakeSV()
 	err := hl.Launch(sb, sv)
 	Assert(t).IsNotNil(err, "Expected error while launching")
-	_, ok := err.(EnableError)
+	_, ok := err.(launch.EnableError)
 	Assert(t).IsTrue(ok, "Expected enable error to be returned")
 }
 
@@ -307,7 +308,7 @@ func TestHaltWithFailingStop(t *testing.T) {
 	sv := runit.ErringSV()
 	err := hl.Halt(sb, sv)
 	Assert(t).IsNotNil(err, "Expected error while halting")
-	_, ok := err.(StopError)
+	_, ok := err.(launch.StopError)
 	Assert(t).IsTrue(ok, "Expected stop error to be returned")
 }
 
@@ -318,6 +319,6 @@ func TestLaunchWithFailingStart(t *testing.T) {
 	sv := runit.ErringSV()
 	err := hl.Launch(sb, sv)
 	Assert(t).IsNotNil(err, "Expected error while launching")
-	_, ok := err.(StartError)
+	_, ok := err.(launch.StartError)
 	Assert(t).IsTrue(ok, "Expected start error to be returned")
 }

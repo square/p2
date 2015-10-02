@@ -42,6 +42,13 @@ func InstallHookScripts(dir string, hookPod *pods.Pod, manifest pods.Manifest, l
 		return err
 	}
 	for _, launchable := range launchables {
+		if launchable.Type() != "hoist" {
+			logger.WithFields(logrus.Fields{
+				"id":   launchable.ID(),
+				"type": launchable.Type(),
+			}).Errorln("hook disabled: unsupported launchable type")
+			continue
+		}
 		executables, err := launchable.Executables(runit.DefaultBuilder)
 		if err != nil {
 			return err
@@ -65,7 +72,8 @@ func InstallHookScripts(dir string, hookPod *pods.Pod, manifest pods.Manifest, l
 		// current under the launchable directory
 		err = launchable.MakeCurrent()
 		if err != nil {
-			logger.WithErrorAndFields(err, logrus.Fields{"launchable_id": launchable.Id}).Errorln("Could not set hook launchable to current")
+			logger.WithErrorAndFields(err, logrus.Fields{"launchable_id": launchable.ID()}).
+				Errorln("Could not set hook launchable to current")
 		}
 	}
 	return nil
