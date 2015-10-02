@@ -121,6 +121,42 @@ func (s *consulStore) List() ([]fields.RC, error) {
 	return rcs, nil
 }
 
+func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan error) {
+	outCh := make(chan []fields.RC)
+	errCh := make(chan error)
+
+	go func() {
+		defer close(outCh)
+		defer close(errCh)
+		var currentIndex uint64 = 0
+
+		for {
+			select {
+			case <-quit:
+				return
+			case <-time.After(1 * time.Second):
+				listed, meta, err := s.kv.List(kp.RC_TREE, &api.QueryOptions{
+					WaitIndex: currentIndex,
+				})
+				if err != nil {
+					// TODO: wrap error types for security
+					errCh <- err
+				} else {
+					currentIndex = meta.LastIndex
+					rcMap := s.kvpsToRcs(listed)
+					rcs := make([]fields.RC, 0, len(rcMap))
+					for _, rc := range rcMap {
+						rcs = append(rcs, *rc)
+					}
+					outCh <- rcs
+				}
+			}
+		}
+	}()
+
+	return outCh, errCh
+}
+
 // TODO: refactor pkg/kp/lock.go and pkg/kp/session.go into their own package,
 // and use that instead of c+ping it here
 // we are intentionally not using kp.Lock, because kp.Lock manages its own

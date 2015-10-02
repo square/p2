@@ -17,6 +17,12 @@ type Store interface {
 	Get(id fields.ID) (fields.RC, error)
 	List() ([]fields.RC, error)
 
+	// Watch for changes to the entire store and output the current list of RCs
+	// any time it changes. This function blocks; close the quit channel to
+	// terminate. Callers must drain the returned channels, including the error
+	// channel.
+	WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan error)
+
 	// Use the given session string (which uniquely identifies the lock holder)
 	// to acquire a lock on the specified replication controller. If the lock
 	// was successfully claimed, return (true, nil). If the request completed
