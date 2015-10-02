@@ -257,7 +257,7 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 	}
 
 	for _, host := range testNodes {
-		lockPath := kp.LockPath(host, manifest.ID())
+		lockPath := kp.LockPath(kp.IntentPath(host, manifest.ID()))
 		err := replication.lock(lock, lockPath, false)
 
 		if err != nil {
@@ -354,7 +354,7 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 	}
 
 	// Destroy lock holder so the next renewal will fail
-	lockPath := kp.LockPath(testNodes[0], manifest.ID())
+	lockPath := kp.LockPath(kp.IntentPath(testNodes[0], manifest.ID()))
 	_, id, err := store.LockHolder(lockPath)
 	if err != nil {
 		t.Fatalf("Unable to determine lock holder in order to destroy the lock: %s", err)

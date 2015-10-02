@@ -18,6 +18,7 @@ type fakeEntry struct {
 	fields.RC
 	watchers      map[int]chan struct{}
 	lastWatcherId int
+	locked        string
 }
 
 var _ Store = &fakeStore{}
@@ -70,6 +71,22 @@ func (s *fakeStore) List() ([]fields.RC, error) {
 		i += 1
 	}
 	return results, nil
+}
+
+func (s *fakeStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan error) {
+	return nil, nil
+}
+
+func (s *fakeStore) Lock(id fields.ID, session string) (bool, error) {
+	entry, ok := s.rcs[id]
+	if !ok {
+		return false, util.Errorf("Nonexistent rc")
+	}
+	if entry.locked == "" {
+		entry.locked = session
+		return true, nil
+	}
+	return false, nil
 }
 
 func (s *fakeStore) Disable(id fields.ID) error {

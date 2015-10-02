@@ -32,7 +32,7 @@ type ReplicationController interface {
 	WatchDesires(quit <-chan struct{}) <-chan error
 
 	// CurrentNodes() returns all nodes that this replication controller is currently scheduled on,
-	// according to the pod label set associated with the replication controller.
+	// by selecting pods labeled with the replication controller's ID.
 	CurrentNodes() ([]string, error)
 
 	// Internal: meetDesires synchronously schedules or unschedules pods to meet desired state.
@@ -184,7 +184,7 @@ func (rc *replicationController) eligibleNodes() ([]string, error) {
 }
 
 func (rc *replicationController) CurrentNodes() ([]string, error) {
-	selector := rc.PodLabels.AsSelector()
+	selector := labels.Everything().Add(rcIdLabel, labels.EqualsOperator, []string{rc.Id().String()})
 
 	pods, err := rc.podApplicator.GetMatches(selector, labels.POD)
 	if err != nil {

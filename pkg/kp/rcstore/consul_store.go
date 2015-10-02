@@ -10,13 +10,12 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/pborman/uuid"
 
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
 )
-
-const kvPrefix = "replication_controllers"
 
 type kvPair struct {
 	key   string
@@ -28,6 +27,7 @@ type consulKV interface {
 	Keys(prefix string, separator string, opts *api.QueryOptions) ([]string, *api.QueryMeta, error)
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
 	Put(pair *api.KVPair, opts *api.WriteOptions) (*api.WriteMeta, error)
+	Acquire(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
 	DeleteTree(prefix string, opts *api.WriteOptions) (*api.WriteMeta, error)
 }
 
@@ -90,7 +90,7 @@ func (s *consulStore) Create(manifest pods.Manifest, nodeSelector labels.Selecto
 }
 
 func (s *consulStore) Get(id fields.ID) (fields.RC, error) {
-	listed, _, err := s.kv.List(idPrefix(id), nil)
+	listed, _, err := s.kv.List(kp.RCPath(id.String()), nil)
 	if err != nil {
 		return fields.RC{}, nil
 	}
@@ -106,7 +106,7 @@ func (s *consulStore) Get(id fields.ID) (fields.RC, error) {
 }
 
 func (s *consulStore) List() ([]fields.RC, error) {
-	listed, _, err := s.kv.List(kvPrefix, nil)
+	listed, _, err := s.kv.List(kp.RC_TREE, nil)
 	if err != nil {
 		return []fields.RC{}, nil
 	}
@@ -119,6 +119,55 @@ func (s *consulStore) List() ([]fields.RC, error) {
 	}
 
 	return rcs, nil
+}
+
+func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan error) {
+	outCh := make(chan []fields.RC)
+	errCh := make(chan error)
+
+	go func() {
+		defer close(outCh)
+		defer close(errCh)
+		var currentIndex uint64 = 0
+
+		for {
+			select {
+			case <-quit:
+				return
+			case <-time.After(1 * time.Second):
+				listed, meta, err := s.kv.List(kp.RC_TREE, &api.QueryOptions{
+					WaitIndex: currentIndex,
+				})
+				if err != nil {
+					// TODO: wrap error types for security
+					errCh <- err
+				} else {
+					currentIndex = meta.LastIndex
+					rcMap := s.kvpsToRcs(listed)
+					rcs := make([]fields.RC, 0, len(rcMap))
+					for _, rc := range rcMap {
+						rcs = append(rcs, *rc)
+					}
+					outCh <- rcs
+				}
+			}
+		}
+	}()
+
+	return outCh, errCh
+}
+
+// TODO: refactor pkg/kp/lock.go and pkg/kp/session.go into their own package,
+// and use that instead of c+ping it here
+// we are intentionally not using kp.Lock, because kp.Lock manages its own
+// session and therefore it cannot cooperate with kp.ConsulSessionManager
+func (s *consulStore) Lock(id fields.ID, session string) (bool, error) {
+	success, _, err := s.kv.Acquire(&api.KVPair{
+		Key:     kp.LockPath(kp.RCPath(id.String())),
+		Value:   []byte(session),
+		Session: session,
+	}, nil)
+	return success, err
 }
 
 func (s *consulStore) Disable(id fields.ID) error {
@@ -145,7 +194,7 @@ func (s *consulStore) Delete(id fields.ID) error {
 		return fmt.Errorf("Replication controller %s has %d desired replicas, must be 0 before can be deleted", id, rc.ReplicasDesired)
 	}
 
-	_, err = s.kv.DeleteTree(idPrefix(id), nil)
+	_, err = s.kv.DeleteTree(kp.RCPath(id.String()), nil)
 	if err != nil {
 		return err
 	}
@@ -171,7 +220,7 @@ func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{
 			case <-quit:
 				return
 			case <-time.After(1 * time.Second):
-				pairs, meta, err := s.kv.List(idPrefix(rc.Id), &api.QueryOptions{
+				pairs, meta, err := s.kv.List(kp.RCPath(rc.Id.String()), &api.QueryOptions{
 					WaitIndex: curIndex,
 				})
 				if err != nil {
@@ -193,13 +242,8 @@ func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{
 	return updated, errors
 }
 
-func idPrefix(id fields.ID) string {
-	return fmt.Sprintf("%s/%s", kvPrefix, id)
-}
-
 func (s *consulStore) putOne(id fields.ID, key string, value []byte) error {
-	prefix := idPrefix(id)
-	p := &api.KVPair{Key: prefix + "/" + key, Value: value}
+	p := &api.KVPair{Key: kp.RCPath(id.String(), key), Value: value}
 	_, err := s.kv.Put(p, nil)
 	return err
 }
@@ -217,7 +261,7 @@ func (s *consulStore) put(id fields.ID, pairs []kvPair) error {
 }
 
 func (s *consulStore) verifyExists(id fields.ID) error {
-	keys, _, err := s.kv.Keys(idPrefix(id), "", nil)
+	keys, _, err := s.kv.Keys(kp.RCPath(id.String()), "", nil)
 	if err != nil {
 		return err
 	}
@@ -232,7 +276,6 @@ func (s *consulStore) kvpsToRcs(kvps api.KVPairs) map[fields.ID]*fields.RC {
 
 	for _, kvp := range kvps {
 		// The key will be of the form replication_controllers/ID/rckey
-		// (according to idPrefix)
 		parts := strings.SplitN(kvp.Key, "/", 3)
 		if len(parts) < 3 {
 			s.logger.NoFields().Infof("Ignoring unexpected key %s", kvp.Key)
