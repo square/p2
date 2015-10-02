@@ -58,7 +58,7 @@ func (s *consulStore) Create(manifest pods.Manifest, nodeSelector labels.Selecto
 	}
 
 	rc := fields.RC{
-		Id:              id,
+		ID:              id,
 		Manifest:        manifest,
 		NodeSelector:    nodeSelector,
 		PodLabels:       podLabels,
@@ -220,7 +220,7 @@ func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{
 			case <-quit:
 				return
 			case <-time.After(1 * time.Second):
-				pairs, meta, err := s.kv.List(kp.RCPath(rc.Id.String()), &api.QueryOptions{
+				pairs, meta, err := s.kv.List(kp.RCPath(rc.ID.String()), &api.QueryOptions{
 					WaitIndex: curIndex,
 				})
 				if err != nil {
@@ -230,7 +230,7 @@ func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{
 
 					rcMap := s.kvpsToRcs(pairs)
 
-					if newRc, ok := rcMap[rc.Id]; ok {
+					if newRc, ok := rcMap[rc.ID]; ok {
 						*rc = *newRc
 						updated <- struct{}{}
 					}
@@ -344,7 +344,7 @@ func (s *consulStore) kvpsToRcs(kvps api.KVPairs) map[fields.ID]*fields.RC {
 // If forEachLabel encounters any error applying the function, it returns that error immediately.
 // The function is not further applied to subsequent labels on an error.
 func (s *consulStore) forEachLabel(rc fields.RC, f func(id, k, v string) error) error {
-	id := rc.Id.String()
+	id := rc.ID.String()
 	// As of this writing the only label we want is the pod ID.
 	// There may be more in the future.
 	return f(id, "pod_id", rc.Manifest.ID())

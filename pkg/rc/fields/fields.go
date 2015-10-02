@@ -12,7 +12,7 @@ func (id ID) String() string {
 }
 
 type RC struct {
-	Id              ID
+	ID              ID
 	Manifest        pods.Manifest
 	NodeSelector    labels.Selector
 	PodLabels       labels.Set

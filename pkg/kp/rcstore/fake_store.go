@@ -38,7 +38,7 @@ func (s *fakeStore) Create(manifest pods.Manifest, nodeSelector labels.Selector,
 
 	entry := fakeEntry{
 		RC: fields.RC{
-			Id:              id,
+			ID:              id,
 			Manifest:        manifest,
 			NodeSelector:    nodeSelector,
 			PodLabels:       podLabels,
@@ -136,7 +136,7 @@ func (s *fakeStore) Delete(id fields.ID) error {
 
 func (s *fakeStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
 	updatesOut := make(chan struct{})
-	entry, ok := s.rcs[rc.Id]
+	entry, ok := s.rcs[rc.ID]
 	if !ok {
 		errors := make(chan error, 1)
 		errors <- util.Errorf("Nonexistent RC")
