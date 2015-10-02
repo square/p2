@@ -17,6 +17,10 @@ type ConsulTestFixture struct {
 
 // Create a new test fixture that spins up a local Consul server.
 func NewConsulTestFixture(t *testing.T) *ConsulTestFixture {
+	if testing.Short() {
+		t.Skip("skipping test dependent on consul because of short mode")
+	}
+
 	// testutil.NewTestServerConfig will skip the test if "consul" isn't in the system path.
 	// We'd rather the test fail.
 	defer func() {
