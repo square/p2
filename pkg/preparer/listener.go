@@ -55,6 +55,7 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 			l.Logger.WithError(err).Errorln("Error while watching pods")
 			errCh <- err
 		case results := <-podChan:
+			// results could be empty, but we don't support hook deletion yet.
 			for _, result := range results {
 				err := l.installHook(result)
 				if err != nil {

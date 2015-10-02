@@ -248,17 +248,17 @@ REALITY_LOOP:
 			case <-quitCh:
 			}
 		case mResult := <-realityResults:
-			if len(mResult) != 1 {
-				msg := "Got unexpected number of results when watching reality"
-				nodeLogger.WithField("n", len(mResult)).Errorln(msg)
-				r.errCh <- util.Errorf(msg)
-			} else {
+			// We expect len(mResult) == 0 if the pod key doesn't
+			// exist yet, that's okay just wait longer
+			if len(mResult) == 1 {
 				receivedSHA, _ := mResult[0].Manifest.SHA()
 				if receivedSHA == targetSHA {
 					break REALITY_LOOP
 				} else {
 					nodeLogger.WithFields(logrus.Fields{"current": receivedSHA, "target": targetSHA}).Infoln("Waiting for current")
 				}
+			} else if len(mResult) > 1 {
+				nodeLogger.WithField("n", len(mResult)).Errorf("Got %d results from reality but was expecting only 1", len(mResult))
 			}
 		}
 	}
