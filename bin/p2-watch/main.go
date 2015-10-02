@@ -64,9 +64,13 @@ func main() {
 	for {
 		select {
 		case results := <-podCh:
-			for _, result := range results {
-				fmt.Println("")
-				result.Manifest.Write(os.Stdout)
+			if len(results) == 0 {
+				fmt.Println(fmt.Sprintf("No manifest exists at key %s (it may have been deleted)", path))
+			} else {
+				for _, result := range results {
+					fmt.Println("")
+					result.Manifest.Write(os.Stdout)
+				}
 			}
 		case err := <-errChan:
 			log.Fatalf("Error occurred while listening to pods: %s", err)
