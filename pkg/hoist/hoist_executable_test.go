@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
+
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
 )
 
@@ -24,7 +26,7 @@ func TestExecutableWritesValidScript(t *testing.T) {
 	Assert(t).IsNil(err, "test setup failure - should not have failed to get a temp dir")
 	err = ioutil.WriteFile(path.Join(envdir, "SPECIALTESTVAR"), []byte("specialvalue"), 0644)
 	Assert(t).IsNil(err, "test setup failure - should not have failed to write an environment var")
-	executable := &Executable{
+	executable := &launch.Executable{
 		Service: runit.Service{Name: "foo"},
 		Exec: []string{
 			runit.FakeChpst(),
