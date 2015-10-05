@@ -19,7 +19,7 @@ const (
 )
 
 type ReplicationController interface {
-	Id() fields.ID
+	ID() fields.ID
 
 	// WatchDesires causes the replication controller to watch for any changes to its desired state.
 	// It is expected that a replication controller is aware of a backing rcstore against which to perform this watch.
@@ -75,8 +75,8 @@ func New(
 	}
 }
 
-func (rc *replicationController) Id() fields.ID {
-	return rc.RC.Id
+func (rc *replicationController) ID() fields.ID {
+	return rc.RC.ID
 }
 
 func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error {
@@ -184,7 +184,7 @@ func (rc *replicationController) eligibleNodes() ([]string, error) {
 }
 
 func (rc *replicationController) CurrentNodes() ([]string, error) {
-	selector := labels.Everything().Add(rcIdLabel, labels.EqualsOperator, []string{rc.Id().String()})
+	selector := labels.Everything().Add(rcIdLabel, labels.EqualsOperator, []string{rc.ID().String()})
 
 	pods, err := rc.podApplicator.GetMatches(selector, labels.POD)
 	if err != nil {
@@ -220,7 +220,7 @@ func (rc *replicationController) forEachLabel(node string, f func(id, k, v strin
 	if err := f(id, podIdLabel, rc.Manifest.ID()); err != nil {
 		return err
 	}
-	return f(id, rcIdLabel, rc.Id().String())
+	return f(id, rcIdLabel, rc.ID().String())
 }
 
 func (rc *replicationController) schedule(node string) error {

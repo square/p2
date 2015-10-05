@@ -1,10 +1,8 @@
 package rcstore
 
 import (
-	"bytes"
+	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
@@ -24,64 +22,54 @@ type kvPair struct {
 
 type consulKV interface {
 	Get(key string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
-	Keys(prefix string, separator string, opts *api.QueryOptions) ([]string, *api.QueryMeta, error)
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
-	Put(pair *api.KVPair, opts *api.WriteOptions) (*api.WriteMeta, error)
+	CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
+	DeleteCAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
 	Acquire(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
-	DeleteTree(prefix string, opts *api.WriteOptions) (*api.WriteMeta, error)
 }
 
 type consulStore struct {
 	applicator labels.Applicator
 	kv         consulKV
 	logger     logging.Logger
+	retries    int
+}
+
+// TODO: combine with similar CASError type in pkg/labels
+type CASError string
+
+func (e CASError) Error() string {
+	return fmt.Sprintf("Could not check-and-set key %q", string(e))
 }
 
 var _ Store = &consulStore{}
 
-func NewConsul(client *api.Client) *consulStore {
+func NewConsul(client *api.Client, retries int, logger logging.Logger) *consulStore {
 	return &consulStore{
-		// TODO: Should the number of retries be configurable?
-		applicator: labels.NewConsulApplicator(client, 3),
+		retries:    retries,
+		applicator: labels.NewConsulApplicator(client, retries),
 		kv:         client.KV(),
-		logger:     logging.DefaultLogger,
+		logger:     logger,
 	}
 }
 
 func (s *consulStore) Create(manifest pods.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (fields.RC, error) {
-	id := fields.ID(uuid.New())
-
-	buf := bytes.Buffer{}
-	err := manifest.Write(&buf)
+	rc, err := s.innerCreate(manifest, nodeSelector, podLabels)
+	for i := 0; i < s.retries; i++ {
+		if _, ok := err.(CASError); ok {
+			rc, err = s.innerCreate(manifest, nodeSelector, podLabels)
+		} else {
+			break
+		}
+	}
 	if err != nil {
 		return fields.RC{}, err
 	}
 
-	rc := fields.RC{
-		Id:              id,
-		Manifest:        manifest,
-		NodeSelector:    nodeSelector,
-		PodLabels:       podLabels,
-		ReplicasDesired: 0,
-		Disabled:        false,
-	}
-
+	// labels do not need to be retried, consul applicator does that itself
 	err = s.forEachLabel(rc, func(id, k, v string) error {
-		return s.applicator.SetLabel(labels.RC, id, k, v)
+		return s.applicator.SetLabel(labels.RC, rc.ID.String(), k, v)
 	})
-
-	// TODO: If the `put` operations fail, we have already labeled the RC,
-	// yet the RC will not exist in the backing Consul KV store.
-	// The labels may have to be cleaned up.
-
-	err = s.put(id, []kvPair{
-		kvPair{key: "disabled", value: []byte("false")},
-		kvPair{key: "node_selector", value: []byte(nodeSelector.String())},
-		kvPair{key: "pod_labels", value: []byte(podLabels.String())},
-		kvPair{key: "pod_manifest", value: buf.Bytes()},
-		kvPair{key: "replicas_desired", value: []byte("0")},
-	})
-
 	if err != nil {
 		return fields.RC{}, err
 	}
@@ -89,36 +77,59 @@ func (s *consulStore) Create(manifest pods.Manifest, nodeSelector labels.Selecto
 	return rc, nil
 }
 
-func (s *consulStore) Get(id fields.ID) (fields.RC, error) {
-	listed, _, err := s.kv.List(kp.RCPath(id.String()), nil)
+// these parts of Create may require a retry
+func (s *consulStore) innerCreate(manifest pods.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (fields.RC, error) {
+	id := fields.ID(uuid.New())
+	rcp := kp.RCPath(id.String())
+	rc := fields.RC{
+		ID:              id,
+		Manifest:        manifest,
+		NodeSelector:    nodeSelector,
+		PodLabels:       podLabels,
+		ReplicasDesired: 0,
+		Disabled:        false,
+	}
+
+	jsonRC, err := json.Marshal(rc)
 	if err != nil {
+		return fields.RC{}, err
+	}
+	success, _, err := s.kv.CAS(&api.KVPair{
+		Key:   rcp,
+		Value: jsonRC,
+		// the chance of the UUID already existing is vanishingly small, but
+		// technically not impossible, so we should use the CAS index to guard
+		// against duplicate UUIDs
+		ModifyIndex: 0,
+	}, nil)
+
+	if err != nil {
+		return fields.RC{}, kp.NewKVError("cas", rcp, err)
+	}
+	if !success {
+		return fields.RC{}, CASError(rcp)
+	}
+	return rc, nil
+}
+
+func (s *consulStore) Get(id fields.ID) (fields.RC, error) {
+	kvp, _, err := s.kv.Get(kp.RCPath(id.String()), nil)
+	if err != nil {
+		return fields.RC{}, err
+	}
+	if kvp == nil {
+		// ID didn't exist
 		return fields.RC{}, nil
 	}
-
-	rcMap := s.kvpsToRcs(listed)
-
-	rc, ok := rcMap[id]
-	if !ok {
-		return fields.RC{}, fmt.Errorf("No such replication controller %s", id)
-	}
-
-	return *rc, nil
+	return s.kvpToRC(kvp)
 }
 
 func (s *consulStore) List() ([]fields.RC, error) {
 	listed, _, err := s.kv.List(kp.RC_TREE, nil)
 	if err != nil {
-		return []fields.RC{}, nil
+		return nil, err
 	}
-
-	rcMap := s.kvpsToRcs(listed)
-	rcs := make([]fields.RC, 0)
-
-	for _, rc := range rcMap {
-		rcs = append(rcs, *rc)
-	}
-
-	return rcs, nil
+	return s.kvpsToRCs(listed)
 }
 
 func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan error) {
@@ -143,18 +154,39 @@ func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan
 					errCh <- err
 				} else {
 					currentIndex = meta.LastIndex
-					rcMap := s.kvpsToRcs(listed)
-					rcs := make([]fields.RC, 0, len(rcMap))
-					for _, rc := range rcMap {
-						rcs = append(rcs, *rc)
+					out, err := s.kvpsToRCs(listed)
+					if err != nil {
+						errCh <- err
+					} else {
+						outCh <- out
 					}
-					outCh <- rcs
 				}
 			}
 		}
 	}()
 
 	return outCh, errCh
+}
+
+func (s *consulStore) kvpToRC(kvp *api.KVPair) (fields.RC, error) {
+	rc := fields.RC{
+		// cannot unmarshal into a nil interface - have to initialize to something
+		Manifest: pods.NewManifestBuilder().GetManifest(),
+	}
+	err := json.Unmarshal(kvp.Value, &rc)
+	return rc, err
+}
+
+func (s *consulStore) kvpsToRCs(l api.KVPairs) ([]fields.RC, error) {
+	ret := make([]fields.RC, 0, len(l))
+	for _, kvp := range l {
+		rc, err := s.kvpToRC(kvp)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, rc)
+	}
+	return ret, nil
 }
 
 // TODO: refactor pkg/kp/lock.go and pkg/kp/session.go into their own package,
@@ -171,39 +203,92 @@ func (s *consulStore) Lock(id fields.ID, session string) (bool, error) {
 }
 
 func (s *consulStore) Disable(id fields.ID) error {
-	if err := s.verifyExists(id); err != nil {
-		return err
-	}
-	return s.putOne(id, "disabled", []byte("true"))
+	return s.retryMutate(id, func(rc fields.RC) fields.RC {
+		rc.Disabled = true
+		return rc
+	})
 }
 
 func (s *consulStore) SetDesiredReplicas(id fields.ID, n int) error {
-	if err := s.verifyExists(id); err != nil {
-		return err
-	}
-	return s.putOne(id, "replicas_desired", []byte(strconv.Itoa(n)))
+	return s.retryMutate(id, func(rc fields.RC) fields.RC {
+		rc.ReplicasDesired = n
+		return rc
+	})
 }
 
 func (s *consulStore) Delete(id fields.ID) error {
-	rc, err := s.Get(id)
+	return s.retryMutate(id, nil)
+}
+
+// TODO: this function is almost a verbatim copy of pkg/labels retryMutate, can
+// we find some way to combine them?
+func (s *consulStore) retryMutate(id fields.ID, mutator func(fields.RC) fields.RC) error {
+	err := s.mutateRc(id, mutator)
+	for i := 0; i < s.retries; i++ {
+		if _, ok := err.(CASError); ok {
+			err = s.mutateRc(id, mutator)
+		} else {
+			break
+		}
+	}
+	return err
+}
+
+// performs a safe (ie check-and-set) mutation of the rc with the given id,
+// using the given function
+// pass nil function to delete
+func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) fields.RC) error {
+	rcp := kp.RCPath(id.String())
+	kvp, meta, err := s.kv.Get(rcp, nil)
 	if err != nil {
 		return err
 	}
-
-	if rc.ReplicasDesired != 0 {
-		return fmt.Errorf("Replication controller %s has %d desired replicas, must be 0 before can be deleted", id, rc.ReplicasDesired)
+	if kvp == nil {
+		return fmt.Errorf("replication controller %s does not exist", id)
 	}
 
-	_, err = s.kv.DeleteTree(kp.RCPath(id.String()), nil)
+	rc, err := s.kvpToRC(kvp)
 	if err != nil {
 		return err
 	}
+	newKVP := &api.KVPair{
+		Key:         rcp,
+		ModifyIndex: meta.LastIndex,
+	}
 
-	// TODO: If this fails, then we have some dangling labels.
-	// Perhaps they can be cleaned up later.
-	return s.forEachLabel(rc, func(id, k, _ string) error {
-		return s.applicator.RemoveLabel(labels.RC, id, k)
-	})
+	var success bool
+	if mutator != nil {
+		newRC := mutator(rc)
+		b, err := json.Marshal(newRC)
+		if err != nil {
+			return err
+		}
+		newKVP.Value = b
+		success, _, err = s.kv.CAS(newKVP, nil)
+	} else {
+		// special logic for the delete case
+		if rc.ReplicasDesired != 0 {
+			return fmt.Errorf("replication controller %s has %d desired replicas (must reduce to 0 before deleting)", id, rc.ReplicasDesired)
+		}
+
+		// TODO: If this fails, then we have some dangling labels.
+		// Perhaps they can be cleaned up later.
+		err = s.forEachLabel(rc, func(id, k, _ string) error {
+			return s.applicator.RemoveLabel(labels.RC, id, k)
+		})
+		if err != nil {
+			return err
+		}
+		success, _, err = s.kv.DeleteCAS(newKVP, nil)
+	}
+
+	if err != nil {
+		return err
+	}
+	if !success {
+		return CASError(rcp)
+	}
+	return nil
 }
 
 func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
@@ -220,18 +305,25 @@ func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{
 			case <-quit:
 				return
 			case <-time.After(1 * time.Second):
-				pairs, meta, err := s.kv.List(kp.RCPath(rc.Id.String()), &api.QueryOptions{
+				kvp, meta, err := s.kv.Get(kp.RCPath(rc.ID.String()), &api.QueryOptions{
 					WaitIndex: curIndex,
 				})
 				if err != nil {
 					errors <- err
 				} else {
 					curIndex = meta.LastIndex
+					if kvp == nil {
+						// seems this RC got deleted from under us. quitting
+						// would be unexpected, so we'll just wait for it to
+						// reappear in consul
+						continue
+					}
 
-					rcMap := s.kvpsToRcs(pairs)
-
-					if newRc, ok := rcMap[rc.Id]; ok {
-						*rc = *newRc
+					newRC, err := s.kvpToRC(kvp)
+					if err != nil {
+						errors <- err
+					} else {
+						*rc = newRC
 						updated <- struct{}{}
 					}
 				}
@@ -242,109 +334,11 @@ func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{
 	return updated, errors
 }
 
-func (s *consulStore) putOne(id fields.ID, key string, value []byte) error {
-	p := &api.KVPair{Key: kp.RCPath(id.String(), key), Value: value}
-	_, err := s.kv.Put(p, nil)
-	return err
-}
-
-// consulPut attempts to put multiple KV Pairs into consul, returning an error if any fail.
-// For now, this performs no CAS or other locking.
-// It is assumed that only one process will be writing to an RC at a time.
-func (s *consulStore) put(id fields.ID, pairs []kvPair) error {
-	for _, pair := range pairs {
-		if err := s.putOne(id, pair.key, pair.value); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *consulStore) verifyExists(id fields.ID) error {
-	keys, _, err := s.kv.Keys(kp.RCPath(id.String()), "", nil)
-	if err != nil {
-		return err
-	}
-	if len(keys) == 0 {
-		return fmt.Errorf("No such replication controller %s", id)
-	}
-	return nil
-}
-
-func (s *consulStore) kvpsToRcs(kvps api.KVPairs) map[fields.ID]*fields.RC {
-	rcs := make(map[fields.ID]*fields.RC)
-
-	for _, kvp := range kvps {
-		// The key will be of the form replication_controllers/ID/rckey
-		parts := strings.SplitN(kvp.Key, "/", 3)
-		if len(parts) < 3 {
-			s.logger.NoFields().Infof("Ignoring unexpected key %s", kvp.Key)
-			continue
-		}
-		id := fields.ID(parts[1])
-		if _, ok := rcs[id]; !ok {
-			rcs[id] = &fields.RC{Id: id}
-		}
-
-		switch parts[2] {
-
-		case "disabled":
-			rcs[id].Disabled = string(kvp.Value) == "true"
-
-		case "node_selector":
-			nodeSelector, err := labels.Parse(string(kvp.Value))
-			if err == nil {
-				rcs[id].NodeSelector = nodeSelector
-			} else {
-				s.logger.WithError(err).Warnf("%s: Can't unmarshal %s, ignoring", parts[2], kvp.Value)
-			}
-
-		case "pod_labels":
-			// I don't think there's a way to parse a selector string into a label set, so we have to do it ourselves?!
-			labels := make(labels.Set)
-			splits := strings.Split(string(kvp.Value), ",")
-			for i, split := range splits {
-				parts := strings.SplitN(split, "=", 2)
-				if len(parts) < 2 {
-					s.logger.NoFields().Warnf(
-						"%s: Can't unmarshal part %d (%s) out of %d (%s), ignoring",
-						parts[2], i, split, len(splits), kvp.Value,
-					)
-					continue
-				}
-				labels[parts[0]] = parts[1]
-			}
-			rcs[id].PodLabels = labels
-
-		case "pod_manifest":
-			manifest, err := pods.ManifestFromBytes(kvp.Value)
-			if err == nil {
-				rcs[id].Manifest = manifest
-			} else {
-				s.logger.WithError(err).Warnf("%s: Can't unmarshal %s, ignoring", parts[2], kvp.Value)
-			}
-
-		case "replicas_desired":
-			i, err := strconv.Atoi(string(kvp.Value))
-			if err == nil {
-				rcs[id].ReplicasDesired = i
-			} else {
-				s.logger.WithError(err).Warnf("%s: Can't unmarshal %s, ignoring", parts[2], kvp.Value)
-			}
-
-		default:
-			s.logger.NoFields().Infof("Ignoring unexpcted key %s", kvp.Key)
-		}
-	}
-
-	return rcs
-}
-
 // forEachLabel Attempts to apply the supplied function to labels of the replication controller.
 // If forEachLabel encounters any error applying the function, it returns that error immediately.
 // The function is not further applied to subsequent labels on an error.
 func (s *consulStore) forEachLabel(rc fields.RC, f func(id, k, v string) error) error {
-	id := rc.Id.String()
+	id := rc.ID.String()
 	// As of this writing the only label we want is the pod ID.
 	// There may be more in the future.
 	return f(id, "pod_id", rc.Manifest.ID())

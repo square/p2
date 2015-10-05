@@ -18,7 +18,7 @@ type CASError struct {
 }
 
 func (e CASError) Error() string {
-	return fmt.Sprintf("Could not compare-and-set key %q", e.Key)
+	return fmt.Sprintf("Could not check-and-set key %q", e.Key)
 }
 
 type consulKV interface {
