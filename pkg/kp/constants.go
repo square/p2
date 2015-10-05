@@ -9,7 +9,7 @@ const (
 	REALITY_TREE string = "reality"
 	HOOK_TREE    string = "hooks"
 	LOCK_TREE    string = "lock"
-	RC_TREE      string = "replication_controller"
+	RC_TREE      string = "replication_controllers"
 )
 
 func IntentPath(args ...string) string {
