@@ -34,8 +34,14 @@ type Store interface {
 	Lock(id fields.ID, session string) (bool, error)
 
 	SetDesiredReplicas(fields.ID, int) error
+
+	Enable(fields.ID) error
 	Disable(fields.ID) error
-	Delete(fields.ID) error
+
+	// Deletes the targeted RC, returning an error if it does not exist.
+	// Normally an RC can only be deleted if its desired replica count is zero;
+	// pass force=true to override this check.
+	Delete(fields.ID, bool) error
 
 	// Watch(rc, quitChannel) watches for any changes to the replication controller `rc`.
 	// This returns two output channels.

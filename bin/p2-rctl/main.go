@@ -24,6 +24,8 @@ const (
 	CMD_REPLICAS = "set-replicas"
 	CMD_LIST     = "list"
 	CMD_GET      = "get"
+	CMD_ENABLE   = "enable"
+	CMD_DISABLE  = "disable"
 )
 
 var (
@@ -37,8 +39,9 @@ var (
 	createNodeSel   = cmdCreate.Flag("node-selector", "node selector that this replication controller should target").Short('n').Required().String()
 	createPodLabels = cmdCreate.Flag("pod-label", "a pod label, in LABEL=VALUE form, to add to this replication controller. Can be specified multiple times.").Short('p').StringMap()
 
-	cmdDelete = kingpin.Command(CMD_DELETE, "Delete a replication controller")
-	deleteID  = cmdDelete.Arg("id", "replication controller uuid to delete").Required().String()
+	cmdDelete   = kingpin.Command(CMD_DELETE, "Delete a replication controller")
+	deleteID    = cmdDelete.Arg("id", "replication controller uuid to delete").Required().String()
+	deleteForce = cmdDelete.Flag("force", "delete even if desired replicas > 0").Short('f').Bool()
 
 	cmdReplicas = kingpin.Command(CMD_REPLICAS, "Set desired replica count of a replication controller")
 	replicasID  = cmdReplicas.Arg("id", "replication controller uuid to modify").Required().String()
@@ -50,6 +53,12 @@ var (
 	cmdGet      = kingpin.Command(CMD_GET, "Get replication controller")
 	getID       = cmdGet.Arg("id", "replication controller uuid to get").Required().String()
 	getManifest = cmdGet.Flag("manifest", "print just the manifest of the replication controller").Short('m').Bool()
+
+	cmdEnable = kingpin.Command(CMD_ENABLE, "Enable replication controller")
+	enableID  = cmdEnable.Arg("id", "replication controller uuid to enable").Required().String()
+
+	cmdDisable = kingpin.Command(CMD_DISABLE, "Disable replication controller")
+	disableID  = cmdDisable.Arg("id", "replication controller uuid to disable").Required().String()
 )
 
 func main() {
@@ -75,13 +84,17 @@ func main() {
 	case CMD_CREATE:
 		rctl.Create(*createManifest, *createNodeSel, *createPodLabels)
 	case CMD_DELETE:
-		rctl.Delete(*deleteID)
+		rctl.Delete(*deleteID, *deleteForce)
 	case CMD_REPLICAS:
 		rctl.SetReplicas(*replicasID, *replicasNum)
 	case CMD_LIST:
 		rctl.List(*listJSON)
 	case CMD_GET:
 		rctl.Get(*getID, *getManifest)
+	case CMD_ENABLE:
+		rctl.Enable(*enableID)
+	case CMD_DISABLE:
+		rctl.Disable(*disableID)
 	}
 }
 
@@ -115,8 +128,8 @@ func (r RCtl) Create(manifestPath, nodeSelector string, podLabels map[string]str
 	r.logger.WithField("id", newRC.ID).Infoln("Created new replication controller")
 }
 
-func (r RCtl) Delete(id string) {
-	err := r.rcs.Delete(fields.ID(id))
+func (r RCtl) Delete(id string, force bool) {
+	err := r.rcs.Delete(fields.ID(id), force)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not delete replication controller in Consul")
 	}
@@ -176,4 +189,20 @@ func (r RCtl) Get(id string, manifest bool) {
 		}
 		fmt.Printf("%s\n", out)
 	}
+}
+
+func (r RCtl) Enable(id string) {
+	err := r.rcs.Enable(fields.ID(id))
+	if err != nil {
+		r.logger.WithError(err).Fatalln("Could not enable replication controller in Consul")
+	}
+	r.logger.WithField("id", id).Infoln("Enabled replication controller")
+}
+
+func (r RCtl) Disable(id string) {
+	err := r.rcs.Disable(fields.ID(id))
+	if err != nil {
+		r.logger.WithError(err).Fatalln("Could not disable replication controller in Consul")
+	}
+	r.logger.WithField("id", id).Infoln("Disabled replication controller")
 }

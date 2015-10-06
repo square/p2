@@ -102,6 +102,19 @@ func (s *fakeStore) Disable(id fields.ID) error {
 	return nil
 }
 
+func (s *fakeStore) Enable(id fields.ID) error {
+	entry, ok := s.rcs[id]
+	if !ok {
+		return util.Errorf("Nonexistent RC")
+	}
+
+	entry.Disabled = false
+	for _, channel := range entry.watchers {
+		channel <- struct{}{}
+	}
+	return nil
+}
+
 func (s *fakeStore) SetDesiredReplicas(id fields.ID, n int) error {
 	entry, ok := s.rcs[id]
 	if !ok {
@@ -115,13 +128,13 @@ func (s *fakeStore) SetDesiredReplicas(id fields.ID, n int) error {
 	return nil
 }
 
-func (s *fakeStore) Delete(id fields.ID) error {
+func (s *fakeStore) Delete(id fields.ID, force bool) error {
 	entry, ok := s.rcs[id]
 	if !ok {
 		return util.Errorf("Nonexistent RC")
 	}
 
-	if entry.ReplicasDesired != 0 {
+	if !force && entry.ReplicasDesired != 0 {
 		return util.Errorf("Replicas desired must be 0 to delete.")
 	}
 
