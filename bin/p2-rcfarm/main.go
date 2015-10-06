@@ -36,7 +36,7 @@ func main() {
 	}
 	kpStore := kp.NewConsulStore(opts)
 	client := kp.NewConsulClient(opts)
-	rcStore := rcstore.NewConsul(client, 3, logging.DefaultLogger)
+	rcStore := rcstore.NewConsul(client, 3)
 	labeler := labels.NewConsulApplicator(client, 3)
 	sched := rc.NewApplicatorScheduler(labeler)
 

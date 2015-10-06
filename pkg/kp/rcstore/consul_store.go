@@ -10,7 +10,6 @@ import (
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
 )
@@ -31,7 +30,6 @@ type consulKV interface {
 type consulStore struct {
 	applicator labels.Applicator
 	kv         consulKV
-	logger     logging.Logger
 	retries    int
 }
 
@@ -44,12 +42,11 @@ func (e CASError) Error() string {
 
 var _ Store = &consulStore{}
 
-func NewConsul(client *api.Client, retries int, logger logging.Logger) *consulStore {
+func NewConsul(client *api.Client, retries int) *consulStore {
 	return &consulStore{
 		retries:    retries,
 		applicator: labels.NewConsulApplicator(client, retries),
 		kv:         client.KV(),
-		logger:     logger,
 	}
 }
 
@@ -203,26 +200,38 @@ func (s *consulStore) Lock(id fields.ID, session string) (bool, error) {
 }
 
 func (s *consulStore) Disable(id fields.ID) error {
-	return s.retryMutate(id, func(rc fields.RC) fields.RC {
+	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
 		rc.Disabled = true
-		return rc
+		return rc, nil
+	})
+}
+
+func (s *consulStore) Enable(id fields.ID) error {
+	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
+		rc.Disabled = false
+		return rc, nil
 	})
 }
 
 func (s *consulStore) SetDesiredReplicas(id fields.ID, n int) error {
-	return s.retryMutate(id, func(rc fields.RC) fields.RC {
+	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
 		rc.ReplicasDesired = n
-		return rc
+		return rc, nil
 	})
 }
 
-func (s *consulStore) Delete(id fields.ID) error {
-	return s.retryMutate(id, nil)
+func (s *consulStore) Delete(id fields.ID, force bool) error {
+	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
+		if !force && rc.ReplicasDesired != 0 {
+			return fields.RC{}, fmt.Errorf("replication controller %s has %d desired replicas (must reduce to 0 before deleting)", rc.ID, rc.ReplicasDesired)
+		}
+		return fields.RC{}, nil
+	})
 }
 
 // TODO: this function is almost a verbatim copy of pkg/labels retryMutate, can
 // we find some way to combine them?
-func (s *consulStore) retryMutate(id fields.ID, mutator func(fields.RC) fields.RC) error {
+func (s *consulStore) retryMutate(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
 	err := s.mutateRc(id, mutator)
 	for i := 0; i < s.retries; i++ {
 		if _, ok := err.(CASError); ok {
@@ -236,8 +245,9 @@ func (s *consulStore) retryMutate(id fields.ID, mutator func(fields.RC) fields.R
 
 // performs a safe (ie check-and-set) mutation of the rc with the given id,
 // using the given function
-// pass nil function to delete
-func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) fields.RC) error {
+// if the mutator returns an error, it will be propagated out
+// if the returned RC has id="", then it will be deleted
+func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
 	rcp := kp.RCPath(id.String())
 	kvp, meta, err := s.kv.Get(rcp, nil)
 	if err != nil {
@@ -257,20 +267,11 @@ func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) fields.RC) 
 	}
 
 	var success bool
-	if mutator != nil {
-		newRC := mutator(rc)
-		b, err := json.Marshal(newRC)
-		if err != nil {
-			return err
-		}
-		newKVP.Value = b
-		success, _, err = s.kv.CAS(newKVP, nil)
-	} else {
-		// special logic for the delete case
-		if rc.ReplicasDesired != 0 {
-			return fmt.Errorf("replication controller %s has %d desired replicas (must reduce to 0 before deleting)", id, rc.ReplicasDesired)
-		}
-
+	newRC, err := mutator(rc)
+	if err != nil {
+		return err
+	}
+	if newRC.ID.String() == "" {
 		// TODO: If this fails, then we have some dangling labels.
 		// Perhaps they can be cleaned up later.
 		err = s.forEachLabel(rc, func(id, k, _ string) error {
@@ -279,7 +280,15 @@ func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) fields.RC) 
 		if err != nil {
 			return err
 		}
+
 		success, _, err = s.kv.DeleteCAS(newKVP, nil)
+	} else {
+		b, err := json.Marshal(newRC)
+		if err != nil {
+			return err
+		}
+		newKVP.Value = b
+		success, _, err = s.kv.CAS(newKVP, nil)
 	}
 
 	if err != nil {
