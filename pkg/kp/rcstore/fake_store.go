@@ -128,6 +128,22 @@ func (s *fakeStore) SetDesiredReplicas(id fields.ID, n int) error {
 	return nil
 }
 
+func (s *fakeStore) AddDesiredReplicas(id fields.ID, n int) error {
+	entry, ok := s.rcs[id]
+	if !ok {
+		return util.Errorf("Nonexistent RC")
+	}
+
+	entry.ReplicasDesired += n
+	if entry.ReplicasDesired < 0 {
+		entry.ReplicasDesired = 0
+	}
+	for _, channel := range entry.watchers {
+		channel <- struct{}{}
+	}
+	return nil
+}
+
 func (s *fakeStore) Delete(id fields.ID, force bool) error {
 	entry, ok := s.rcs[id]
 	if !ok {

@@ -33,7 +33,10 @@ type Store interface {
 	// session that deletes its keys on invalidation.
 	Lock(id fields.ID, session string) (bool, error)
 
+	// Set the desired replica count for the given RC to the given integer.
 	SetDesiredReplicas(fields.ID, int) error
+	// Add the given integer to the given RC's replica count (bounding at zero).
+	AddDesiredReplicas(fields.ID, int) error
 
 	Enable(fields.ID) error
 	Disable(fields.ID) error

@@ -220,6 +220,16 @@ func (s *consulStore) SetDesiredReplicas(id fields.ID, n int) error {
 	})
 }
 
+func (s *consulStore) AddDesiredReplicas(id fields.ID, n int) error {
+	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
+		rc.ReplicasDesired += n
+		if rc.ReplicasDesired < 0 {
+			rc.ReplicasDesired = 0
+		}
+		return rc, nil
+	})
+}
+
 func (s *consulStore) Delete(id fields.ID, force bool) error {
 	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
 		if !force && rc.ReplicasDesired != 0 {
