@@ -10,7 +10,6 @@ import (
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
 )
@@ -31,7 +30,6 @@ type consulKV interface {
 type consulStore struct {
 	applicator labels.Applicator
 	kv         consulKV
-	logger     logging.Logger
 	retries    int
 }
 
@@ -44,12 +42,11 @@ func (e CASError) Error() string {
 
 var _ Store = &consulStore{}
 
-func NewConsul(client *api.Client, retries int, logger logging.Logger) *consulStore {
+func NewConsul(client *api.Client, retries int) *consulStore {
 	return &consulStore{
 		retries:    retries,
 		applicator: labels.NewConsulApplicator(client, retries),
 		kv:         client.KV(),
-		logger:     logger,
 	}
 }
 

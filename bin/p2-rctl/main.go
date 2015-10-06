@@ -74,7 +74,7 @@ func main() {
 		HTTPS:   *https,
 	}
 	client := kp.NewConsulClient(opts)
-	rcStore := rcstore.NewConsul(client, 3, logger)
+	rcStore := rcstore.NewConsul(client, 3)
 	rctl := RCtl{
 		rcs:    rcStore,
 		logger: logger,
