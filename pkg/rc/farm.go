@@ -154,7 +154,7 @@ func (rcm *Farm) Start(quit <-chan struct{}) {
 
 				go func() {
 					// disabled-ness is handled in watchdesires
-					for range newChild.WatchDesires(childQuit) {
+					for err := range newChild.WatchDesires(childQuit) {
 						rcm.logger.WithErrorAndFields(err, logrus.Fields{
 							"rc_id": newChild.ID(),
 						}).Errorln("Got error in replication controller loop")
