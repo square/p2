@@ -94,7 +94,7 @@ func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV)
 
 func (hl *Launchable) PostActivate() (string, error) {
 	// TODO: unexport this method (requires integrating BuildRunitServices into this API)
-	output, err := hl.invokeBinScript("post-activate")
+	output, err := hl.InvokeBinScript("post-activate")
 
 	// providing a post-activate script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
@@ -105,7 +105,7 @@ func (hl *Launchable) PostActivate() (string, error) {
 }
 
 func (hl *Launchable) disable() (string, error) {
-	output, err := hl.invokeBinScript("disable")
+	output, err := hl.InvokeBinScript("disable")
 
 	// providing a disable script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
@@ -116,7 +116,7 @@ func (hl *Launchable) disable() (string, error) {
 }
 
 func (hl *Launchable) enable() (string, error) {
-	output, err := hl.invokeBinScript("enable")
+	output, err := hl.InvokeBinScript("enable")
 
 	// providing an enable script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
@@ -126,7 +126,7 @@ func (hl *Launchable) enable() (string, error) {
 	return output, nil
 }
 
-func (hl *Launchable) invokeBinScript(script string) (string, error) {
+func (hl *Launchable) InvokeBinScript(script string) (string, error) {
 	cmdPath := filepath.Join(hl.InstallDir(), "bin", script)
 	_, err := os.Stat(cmdPath)
 	if err != nil {
