@@ -20,7 +20,7 @@ func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuild
 		Id:        "testPod__testLaunchable",
 		RunAs:     "testPod",
 		ConfigDir: tempDir,
-		Fetcher:   uri.DefaultFetcher,
+		fetcher:   uri.DefaultFetcher,
 		RootDir:   launchableInstallDir,
 		P2exec:    util.From(runtime.Caller(0)).ExpandPath("fake_p2-exec"),
 	}

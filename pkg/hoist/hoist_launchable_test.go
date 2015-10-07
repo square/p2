@@ -33,7 +33,7 @@ func TestInstall(t *testing.T) {
 		Id:        "hello",
 		RunAs:     currentUser.Username,
 		ConfigDir: launchableHome,
-		Fetcher:   fetcher,
+		fetcher:   fetcher,
 		RootDir:   launchableHome,
 	}
 
@@ -64,7 +64,7 @@ func TestInstallDir(t *testing.T) {
 		Id:        "testLaunchable",
 		RunAs:     "testuser",
 		ConfigDir: tempDir,
-		Fetcher:   uri.DefaultFetcher,
+		fetcher:   uri.DefaultFetcher,
 		RootDir:   tempDir,
 	}
 
