@@ -140,7 +140,14 @@ func (rcm *Farm) Start(quit <-chan struct{}) {
 					"session": session,
 				}).Infoln("Acquired lock on new replication controller, spawning")
 
-				newChild := New(rcField, rcm.kpStore, rcm.rcStore, rcm.scheduler, rcm.labeler)
+				newChild := New(
+					rcField,
+					rcm.kpStore,
+					rcm.rcStore,
+					rcm.scheduler,
+					rcm.labeler,
+					rcm.logger.SubLogger(logrus.Fields{"rc_id": rcField.ID}),
+				)
 				childQuit := make(chan struct{})
 				rcm.children[rcField.ID] = childRC{rc: newChild, quit: childQuit}
 				foundChildren[rcField.ID] = struct{}{}
