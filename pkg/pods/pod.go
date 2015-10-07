@@ -548,13 +548,13 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 			Id:               launchableId,
 			RunAs:            runAsUser,
 			ConfigDir:        pod.EnvDir(),
-			Fetcher:          uri.DefaultFetcher,
 			RootDir:          launchableRootDir,
 			P2exec:           pod.P2exec,
 			RestartTimeout:   restartTimeout,
 			CgroupConfig:     launchableStanza.CgroupConfig,
 			CgroupConfigName: launchableStanza.LaunchableId,
 		}
+		ret.SetFetcher(uri.DefaultFetcher)
 		ret.CgroupConfig.Name = ret.Id
 		return ret.If(), nil
 	} else {

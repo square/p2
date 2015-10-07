@@ -27,7 +27,7 @@ type Launchable struct {
 	Id               string         // A unique identifier for this launchable, used when creating runit services
 	RunAs            string         // The user to assume when launching the executable
 	ConfigDir        string         // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
-	Fetcher          uri.Fetcher    // Callback that downloads the file from the remote location.
+	fetcher          uri.Fetcher    // Callback that downloads the file from the remote location.
 	RootDir          string         // The root directory of the launchable, containing N:N>=1 installs.
 	P2exec           string         // The path to p2-exec
 	CgroupConfig     cgroups.Config // Cgroup parameters to use with p2-exec
@@ -45,7 +45,7 @@ func (a LaunchAdapter) ID() string {
 }
 
 func (a LaunchAdapter) Fetcher() uri.Fetcher {
-	return a.Launchable.Fetcher
+	return a.Launchable.fetcher
 }
 
 var _ launch.Launchable = &LaunchAdapter{}
@@ -267,7 +267,7 @@ func (hl *Launchable) Install() error {
 	}
 	defer os.Remove(artifactFile.Name())
 	defer artifactFile.Close()
-	remoteData, err := hl.Fetcher.Open(hl.Location)
+	remoteData, err := hl.fetcher.Open(hl.Location)
 	if err != nil {
 		return err
 	}
@@ -357,4 +357,8 @@ func (hl *Launchable) flipSymlink(newLinkPath string) error {
 func (hl *Launchable) InstallDir() string {
 	launchableName := hl.Version()
 	return filepath.Join(hl.RootDir, "installs", launchableName)
+}
+
+func (hl *Launchable) SetFetcher(fetcher uri.Fetcher) {
+	hl.fetcher = fetcher
 }
