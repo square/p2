@@ -9,7 +9,9 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 
+	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/util/limit"
 	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/util/stream"
 )
@@ -95,6 +97,20 @@ var (
 	// parameter controls how long it takes for clients to notice that health checks have
 	// stopped.
 	SessionTTLSec = param.Int("health_session_ttl_sec", 15)
+
+	// HealthWritesPerMinute sets the average number of writes per minute per service that
+	// will be sent to Consul to update health.
+	HealthWritesPerMinute = param.Int("health_writes_per_minute", 4)
+
+	// HealthMaxBucketSize sets the maximum token bucket size per service used to
+	// rate-limit Consul writes.
+	HealthMaxBucketSize = param.Int64("health_max_bucket_size", 16)
+
+	// HealthResumeLimit sets the lower bound on the number of tokens at which updates will
+	// be resumed. If a service runs out of tokens, its last update will be to set the
+	// health status to "unknown" with an error message, and further updates will be
+	// throttled until enough tokens have been accumulated.
+	HealthResumeLimit = param.Int64("health_resume_limit", 4)
 )
 
 // consulHealthManager maintains a Consul session for all the local node's health checks,
@@ -205,8 +221,9 @@ func (u *consulHealthUpdater) Close() {
 }
 
 type writeResult struct {
-	Health *WatchResult // The health that was just written
-	OK     bool         // Whether the write succeeded
+	Health   *WatchResult // The health that was just written
+	OK       bool         // Whether the write succeeded
+	Throttle bool         // Whether to turn on the write throttle on success
 }
 
 // processHealthUpdater() runs in a goroutine to keep Consul in sync with the local health
@@ -237,7 +254,19 @@ func processHealthUpdater(
 	var remoteHealth *WatchResult // Health last written to Consul
 	var session string            // Current session
 
-	var write <-chan writeResult // Future result of an in-flight write
+	var write <-chan writeResult  // Future result of an in-flight write
+	var throttle <-chan time.Time // If set, writes are throttled
+
+	// Track and limit all writes to avoid crushing Consul
+	bucketRefreshRate := time.Minute / time.Duration(*HealthWritesPerMinute)
+	rateLimiter, err := limit.NewTokenBucket(
+		*HealthMaxBucketSize,
+		*HealthMaxBucketSize,
+		bucketRefreshRate,
+	)
+	if err != nil {
+		panic("invalid token bucket parameters")
+	}
 
 	logger.NoFields().Debug("starting update loop")
 	for {
@@ -270,7 +299,14 @@ func processHealthUpdater(
 			write = nil
 			if result.OK {
 				remoteHealth = result.Health
+				if result.Throttle && throttle == nil {
+					throttle = time.After(time.Duration(*HealthResumeLimit) * bucketRefreshRate)
+					logger.NoFields().Warning("health is flapping; throttling updates")
+				}
 			}
+		case <-throttle:
+			throttle = nil
+			logger.NoFields().Warning("health is stable; resuming updates")
 		}
 
 		// Exit
@@ -280,15 +316,18 @@ func processHealthUpdater(
 		}
 
 		// Send update to Consul
-		if !healthEquiv(localHealth, remoteHealth) && session != "" && write == nil {
+		if !healthEquiv(localHealth, remoteHealth) && session != "" && write == nil &&
+			throttle == nil {
 			writeLogger := logger.SubLogger(logrus.Fields{
 				"session": session,
 			})
 			w := make(chan writeResult, 1)
 			if localHealth == nil {
+				// Don't wait on the rate limiter when removing the health status
+				rateLimiter.TryUse(1)
 				logger.NoFields().Debug("deleting remote health")
 				key := HealthPath(remoteHealth.Service, remoteHealth.Node)
-				go sendHealthUpdate(writeLogger, w, nil, func() error {
+				go sendHealthUpdate(writeLogger, w, nil, false, func() error {
 					_, err := client.KV().Delete(key, nil)
 					if err != nil {
 						return NewKVError("delete", key, err)
@@ -296,18 +335,28 @@ func processHealthUpdater(
 					return nil
 				})
 			} else {
-				logger.NoFields().Debug("writing remote health")
-				kv, err := healthToKV(*localHealth, session)
+				writeHealth := localHealth
+				doThrottle := false
+				if count, _ := rateLimiter.TryUse(1); count <= 1 {
+					// This is the last update before the throttle will be engaged. Write a special
+					// message.
+					logger.NoFields().Debug("writing throttled health")
+					writeHealth = toThrottled(localHealth)
+					doThrottle = true
+				} else {
+					logger.NoFields().Debug("writing remote health")
+				}
+				kv, err := healthToKV(*writeHealth, session)
 				if err != nil {
 					// Practically, this should never happen.
 					logger.WithErrorAndFields(err, logrus.Fields{
-						"health": *localHealth,
+						"health": *writeHealth,
 					}).Error("could not serialize health update")
 					localHealth = nil
 					continue
 				}
 				if remoteHealth == nil {
-					go sendHealthUpdate(writeLogger, w, localHealth, func() error {
+					go sendHealthUpdate(writeLogger, w, localHealth, doThrottle, func() error {
 						ok, _, err := client.KV().Acquire(kv, nil)
 						if err != nil {
 							return NewKVError("acquire", kv.Key, err)
@@ -318,7 +367,7 @@ func processHealthUpdater(
 						return nil
 					})
 				} else {
-					go sendHealthUpdate(writeLogger, w, localHealth, func() error {
+					go sendHealthUpdate(writeLogger, w, localHealth, doThrottle, func() error {
 						_, err := client.KV().Put(kv, nil)
 						if err != nil {
 							return NewKVError("put", kv.Key, err)
@@ -336,6 +385,16 @@ func processHealthUpdater(
 func healthEquiv(x *WatchResult, y *WatchResult) bool {
 	return x == nil && y == nil ||
 		x != nil && y != nil && x.Status == y.Status
+}
+
+func toThrottled(wr *WatchResult) *WatchResult {
+	return &WatchResult{
+		Node:    wr.Node,
+		Id:      wr.Id,
+		Service: wr.Service,
+		Status:  string(health.Unknown),
+		Output:  "service status is changing too rapidly to report health metrics",
+	}
 }
 
 // Helper to processHealthUpdater()
@@ -360,14 +419,15 @@ func sendHealthUpdate(
 	logger logging.Logger,
 	w chan<- writeResult,
 	health *WatchResult,
+	doThrottle bool,
 	sender func() error,
 ) {
 	if err := sender(); err != nil {
 		logger.WithError(err).Error("error writing health")
 		// Try not to overwhelm Consul
 		time.Sleep(time.Duration(*HealthRetryTimeSec) * time.Second)
-		w <- writeResult{nil, false}
+		w <- writeResult{nil, false, doThrottle}
 	} else {
-		w <- writeResult{health, true}
+		w <- writeResult{health, true, doThrottle}
 	}
 }
