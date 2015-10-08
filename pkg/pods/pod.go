@@ -548,7 +548,7 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 			Id:               launchableId,
 			RunAs:            runAsUser,
 			ConfigDir:        pod.EnvDir(),
-			Fetcher:          uri.DefaultFetcher,
+			Fetcher_:         uri.DefaultFetcher,
 			RootDir:          launchableRootDir,
 			P2exec:           pod.P2exec,
 			RestartTimeout:   restartTimeout,
@@ -556,7 +556,7 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 			CgroupConfigName: launchableStanza.LaunchableId,
 		}
 		ret.CgroupConfig.Name = ret.Id
-		return ret.If(), nil
+		return ret, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)
 		pod.logLaunchableError(launchableStanza.LaunchableId, err, "Unknown launchable type")

@@ -27,7 +27,7 @@ type Launchable struct {
 	Id               string         // A unique identifier for this launchable, used when creating runit services
 	RunAs            string         // The user to assume when launching the executable
 	ConfigDir        string         // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
-	Fetcher          uri.Fetcher    // Callback that downloads the file from the remote location.
+	Fetcher_         uri.Fetcher    // Callback that downloads the file from the remote location.
 	RootDir          string         // The root directory of the launchable, containing N:N>=1 installs.
 	P2exec           string         // The path to p2-exec
 	CgroupConfig     cgroups.Config // Cgroup parameters to use with p2-exec
@@ -35,24 +35,12 @@ type Launchable struct {
 	RestartTimeout   time.Duration  // How long to wait when restarting the services in this launchable.
 }
 
-// LaunchAdapter adapts a hoist.Launchable to the launch.Launchable interface.
-type LaunchAdapter struct {
-	*Launchable
+func (hl *Launchable) ID() string {
+	return hl.Id
 }
 
-func (a LaunchAdapter) ID() string {
-	return a.Launchable.Id
-}
-
-func (a LaunchAdapter) Fetcher() uri.Fetcher {
-	return a.Launchable.Fetcher
-}
-
-var _ launch.Launchable = &LaunchAdapter{}
-
-// If adapts the hoist Launchable to the launch.Launchable interface.
-func (hl *Launchable) If() launch.Launchable {
-	return LaunchAdapter{Launchable: hl}
+func (hl *Launchable) Fetcher() uri.Fetcher {
+	return hl.Fetcher_
 }
 
 func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
@@ -267,7 +255,7 @@ func (hl *Launchable) Install() error {
 	}
 	defer os.Remove(artifactFile.Name())
 	defer artifactFile.Close()
-	remoteData, err := hl.Fetcher.Open(hl.Location)
+	remoteData, err := hl.Fetcher_.Open(hl.Location)
 	if err != nil {
 		return err
 	}

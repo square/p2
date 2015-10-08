@@ -49,7 +49,7 @@ func TestGetLaunchable(t *testing.T) {
 	Assert(t).AreNotEqual(0, len(launchableStanzas), "Expected there to be at least one launchable stanza in the test manifest")
 	for _, stanza := range launchableStanzas {
 		l, _ := pod.getLaunchable(stanza, "foouser")
-		launchable := l.(hoist.LaunchAdapter).Launchable
+		launchable := l.(*hoist.Launchable)
 		Assert(t).AreEqual("hello__hello", launchable.Id, "LaunchableId did not have expected value")
 		Assert(t).AreEqual("hoisted-hello_def456.tar.gz", launchable.Location, "Launchable location did not have expected value")
 		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
@@ -245,7 +245,7 @@ func TestBuildRunitServices(t *testing.T) {
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
 
-	pod.buildRunitServices([]launch.Launchable{hl.If()})
+	pod.buildRunitServices([]launch.Launchable{hl})
 	f, err := os.Open(outFilePath)
 	defer f.Close()
 	bytes, err := ioutil.ReadAll(f)
