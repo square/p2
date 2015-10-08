@@ -11,13 +11,16 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v1"
 
+	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/rc"
+	rc_fields "github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/roll"
+	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/util/net"
 	"github.com/square/p2/pkg/version"
 )
@@ -30,6 +33,7 @@ const (
 	CMD_GET      = "get"
 	CMD_ENABLE   = "enable"
 	CMD_DISABLE  = "disable"
+	CMD_ROLL     = "rolling-update"
 	CMD_FARM     = "farm"
 )
 
@@ -67,6 +71,13 @@ var (
 
 	cmdDisable = kingpin.Command(CMD_DISABLE, "Disable replication controller")
 	disableID  = cmdDisable.Arg("id", "replication controller uuid to disable").Required().String()
+
+	cmdRoll    = kingpin.Command(CMD_ROLL, "Rolling update from one replication controller to another")
+	rollOldID  = cmdRoll.Flag("old", "old replication controller uuid").Required().Short('o').String()
+	rollNewID  = cmdRoll.Flag("new", "new replication controller uuid").Required().Short('n').String()
+	rollWant   = cmdRoll.Flag("desired", "number of replicas desired").Required().Short('d').Int()
+	rollNeed   = cmdRoll.Flag("minimum", "minimum number of healthy replicas during update").Required().Short('m').Int()
+	rollDelete = cmdRoll.Flag("delete", "delete pods during update").Bool()
 
 	cmdFarm = kingpin.Command(CMD_FARM, "Start a replication controller farm")
 )
@@ -114,6 +125,7 @@ func main() {
 		kps:        kp.NewConsulStore(opts),
 		labeler:    labeler,
 		sched:      sched,
+		hcheck:     checker.NewConsulHealthChecker(opts),
 		logger:     logger,
 	}
 
@@ -132,6 +144,8 @@ func main() {
 		rctl.Enable(*enableID)
 	case CMD_DISABLE:
 		rctl.Disable(*disableID)
+	case CMD_ROLL:
+		rctl.RollingUpdate(*rollOldID, *rollNewID, *rollWant, *rollNeed, *rollDelete)
 	case CMD_FARM:
 		rctl.Farm()
 	}
@@ -146,6 +160,7 @@ type RCtl struct {
 	sched      rc.Scheduler
 	labeler    labels.Applicator
 	kps        kp.Store
+	hcheck     checker.ConsulHealthChecker
 	logger     logging.Logger
 }
 
@@ -172,7 +187,7 @@ func (r RCtl) Create(manifestPath, nodeSelector string, podLabels map[string]str
 }
 
 func (r RCtl) Delete(id string, force bool) {
-	err := r.rcs.Delete(fields.ID(id), force)
+	err := r.rcs.Delete(rc_fields.ID(id), force)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not delete replication controller in Consul")
 	}
@@ -184,7 +199,7 @@ func (r RCtl) SetReplicas(id string, replicas int) {
 		r.logger.NoFields().Fatalln("Cannot set negative replica count")
 	}
 
-	err := r.rcs.SetDesiredReplicas(fields.ID(id), replicas)
+	err := r.rcs.SetDesiredReplicas(rc_fields.ID(id), replicas)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not set desired replica count in Consul")
 	}
@@ -214,7 +229,7 @@ func (r RCtl) List(asJSON bool) {
 }
 
 func (r RCtl) Get(id string, manifest bool) {
-	getRC, err := r.rcs.Get(fields.ID(id))
+	getRC, err := r.rcs.Get(rc_fields.ID(id))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not get replication controller in Consul")
 	}
@@ -235,7 +250,7 @@ func (r RCtl) Get(id string, manifest bool) {
 }
 
 func (r RCtl) Enable(id string) {
-	err := r.rcs.Enable(fields.ID(id))
+	err := r.rcs.Enable(rc_fields.ID(id))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not enable replication controller in Consul")
 	}
@@ -243,11 +258,53 @@ func (r RCtl) Enable(id string) {
 }
 
 func (r RCtl) Disable(id string) {
-	err := r.rcs.Disable(fields.ID(id))
+	err := r.rcs.Disable(rc_fields.ID(id))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not disable replication controller in Consul")
 	}
 	r.logger.WithField("id", id).Infoln("Disabled replication controller")
+}
+
+func (r RCtl) RollingUpdate(oldID, newID string, want, need int, deletes bool) {
+	sessions := make(chan string)
+	go kp.ConsulSessionManager(api.SessionEntry{
+		LockDelay: 1 * time.Nanosecond,
+		Behavior:  api.SessionBehaviorDelete,
+		TTL:       "15s",
+	}, r.baseClient, sessions, nil, r.logger)
+
+	session := <-sessions
+	if session == "" {
+		r.logger.NoFields().Fatalln("Could not acquire session")
+	}
+
+	u := roll.NewUpdate(roll_fields.Update{
+		OldRC:           rc_fields.ID(oldID),
+		NewRC:           rc_fields.ID(newID),
+		DesiredReplicas: want,
+		MinimumReplicas: need,
+		DeletePods:      deletes,
+	}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, session)
+
+	if err := u.Prepare(); err != nil {
+		r.logger.WithError(err).Fatalln("Could not prepare update")
+	}
+
+	doneRun := make(chan struct{})
+	go func() {
+		err := u.Run(nil)
+		if err != nil {
+			r.logger.WithError(err).Errorln("Could not run update")
+		}
+		close(doneRun)
+	}()
+
+	select {
+	case <-sessions:
+		r.logger.NoFields().Fatalln("Lost session")
+	case <-doneRun:
+		r.logger.NoFields().Infoln("Done")
+	}
 }
 
 func (r RCtl) Farm() {
