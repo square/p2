@@ -92,7 +92,7 @@ var (
 	HealthRetryTimeSec = param.Int("health_retry_time_sec", 5)
 
 	// SessionTTLSec sets the TTL time for each session created by consulHealthManager. This
-	// parmeter controls how long it takes for clients to notice that health checks have
+	// parameter controls how long it takes for clients to notice that health checks have
 	// stopped.
 	SessionTTLSec = param.Int("health_session_ttl_sec", 15)
 )
