@@ -63,11 +63,12 @@ func New(
 	rcStore rcstore.Store,
 	scheduler Scheduler,
 	podApplicator labels.Applicator,
+	logger logging.Logger,
 ) ReplicationController {
 	return &replicationController{
 		RC: fields,
 
-		logger:        logging.DefaultLogger,
+		logger:        logger,
 		kpStore:       kpStore,
 		rcStore:       rcStore,
 		scheduler:     scheduler,
