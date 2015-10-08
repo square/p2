@@ -11,23 +11,36 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuilder) {
+// Used as argument to launchableWithFields to make it easy for tests to only
+// specify the fields they care about when creating a hoist.Launchable
+type LaunchableFields struct {
+	ID    string
+	RunAs string
+}
+
+func FakeHoistLaunchableForDir(dirName string, modifyFields LaunchableFields) (*Launchable, *runit.ServiceBuilder) {
 	tempDir, _ := ioutil.TempDir("", "fakeenv")
 	launchableInstallDir := util.From(runtime.Caller(0)).ExpandPath(dirName)
 
+	// Prefer the passed RunAs, otherwise make one up
+	runAs := modifyFields.RunAs
+	if runAs == "" {
+		runAs = "testPod"
+	}
+
 	launchable := &Launchable{
-		Location:  "testLaunchable.tar.gz",
-		Id:        "testPod__testLaunchable",
-		RunAs:     "testPod",
-		ConfigDir: tempDir,
-		Fetcher:   uri.DefaultFetcher,
-		RootDir:   launchableInstallDir,
-		P2exec:    util.From(runtime.Caller(0)).ExpandPath("fake_p2-exec"),
+		location:  "testLaunchable.tar.gz",
+		id:        "testPod__testLaunchable",
+		runAs:     runAs,
+		configDir: tempDir,
+		fetcher:   uri.DefaultFetcher,
+		rootDir:   launchableInstallDir,
+		p2exec:    util.From(runtime.Caller(0)).ExpandPath("fake_p2-exec"),
 	}
 
 	curUser, err := user.Current()
 	if err == nil {
-		launchable.RunAs = curUser.Username
+		launchable.runAs = curUser.Username
 	}
 
 	sbTemp, _ := ioutil.TempDir("", "fakesvdir")
@@ -44,8 +57,8 @@ func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuild
 }
 
 func CleanupFakeLaunchable(h *Launchable, s *runit.ServiceBuilder) {
-	if os.TempDir() != h.ConfigDir {
-		os.RemoveAll(h.ConfigDir)
+	if os.TempDir() != h.configDir {
+		os.RemoveAll(h.configDir)
 	}
 	if os.TempDir() != s.RunitRoot {
 		os.RemoveAll(s.RunitRoot)
