@@ -284,6 +284,10 @@ func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC,
 	if newRC.ID.String() == "" {
 		// TODO: If this fails, then we have some dangling labels.
 		// Perhaps they can be cleaned up later.
+		// note that if the CAS fails afterwards, we will have still deleted
+		// the labels, and then we will retry, which will involve deleting them
+		// again
+		// really the only way to solve this is a transaction
 		err = s.forEachLabel(rc, func(id, k, _ string) error {
 			return s.applicator.RemoveLabel(labels.RC, id, k)
 		})
