@@ -115,7 +115,7 @@ func (rcm *Farm) Start(quit <-chan struct{}) {
 					continue
 				}
 
-				success, err := rcm.rcStore.Lock(rcField.ID, session)
+				success, err := rcm.rcStore.LockRead(rcField.ID, session)
 				if err != nil {
 					// log and break out of the loop - we can't continue if
 					// we had a real failure, our session probably disappeared

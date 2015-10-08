@@ -190,13 +190,19 @@ func (s *consulStore) kvpsToRCs(l api.KVPairs) ([]fields.RC, error) {
 // and use that instead of c+ping it here
 // we are intentionally not using kp.Lock, because kp.Lock manages its own
 // session and therefore it cannot cooperate with kp.ConsulSessionManager
-func (s *consulStore) Lock(id fields.ID, session string) (bool, error) {
+func (s *consulStore) lock(id fields.ID, session, lockType string) (bool, error) {
 	success, _, err := s.kv.Acquire(&api.KVPair{
-		Key:     kp.LockPath(kp.RCPath(id.String())),
+		Key:     kp.LockPath(kp.RCPath(id.String(), lockType)),
 		Value:   []byte(session),
 		Session: session,
 	}, nil)
 	return success, err
+}
+func (s *consulStore) LockWrite(id fields.ID, session string) (bool, error) {
+	return s.lock(id, session, "write")
+}
+func (s *consulStore) LockRead(id fields.ID, session string) (bool, error) {
+	return s.lock(id, session, "read")
 }
 
 func (s *consulStore) Disable(id fields.ID) error {
