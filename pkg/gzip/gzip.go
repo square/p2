@@ -11,37 +11,32 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-func ExtractTarGz(owner string, fp io.Reader, fpName string, dest string) (err error) {
+// ExtractTarGz reads a gzipped tar stream and extracts all files to the destination
+// directory. If an owner name is specified, all files will be created to be owned by that
+// user; otherwise, the tar specifies ownership.
+func ExtractTarGz(owner string, fp io.Reader, dest string) (err error) {
 	fz, err := gzip.NewReader(fp)
 	if err != nil {
-		return util.Errorf("Unable to create gzip reader: %s", err)
+		return util.Errorf("error reading gzip data: %s", err)
 	}
 	defer fz.Close()
-
 	tr := tar.NewReader(fz)
-	uid, gid, err := user.IDs(owner)
-	if err != nil {
-		return err
+
+	var ownerUID, ownerGID int
+	if owner != "" {
+		ownerUID, ownerGID, err = user.IDs(owner)
+		if err != nil {
+			return err
+		}
 	}
 
-	err = util.MkdirChownAll(dest, uid, gid, 0755)
+	err = util.MkdirChownAll(dest, ownerUID, ownerGID, 0755)
 	if err != nil {
-		return util.Errorf(
-			"Unable to create root directory %s when unpacking %s: %s",
-			dest,
-			fpName,
-			err,
-		)
+		return util.Errorf("error creating root directory %s: %s", dest, err)
 	}
-	err = os.Chown(dest, uid, gid)
+	err = os.Chown(dest, ownerUID, ownerGID)
 	if err != nil {
-		return util.Errorf(
-			"Unable to chown root directory %s to %s when unpacking %s: %s",
-			dest,
-			owner,
-			fpName,
-			err,
-		)
+		return util.Errorf("error setting ownership of root directory %s: %s", dest, err)
 	}
 
 	for {
@@ -50,21 +45,30 @@ func ExtractTarGz(owner string, fp io.Reader, fpName string, dest string) (err e
 			break
 		}
 		if err != nil {
-			return util.Errorf("Unable to read %s: %s", fpName, err)
+			return util.Errorf("read error: %s", err)
 		}
 		fpath := filepath.Join(dest, hdr.Name)
+		var uid, gid int
+		if owner == "" {
+			uid, gid = hdr.Uid, hdr.Gid
+		} else {
+			uid, gid = ownerUID, ownerGID
+		}
 
 		switch hdr.Typeflag {
 		case tar.TypeSymlink:
 			err = os.Symlink(hdr.Linkname, fpath)
 			if err != nil {
 				return util.Errorf(
-					"Unable to create destination symlink %s (to %s) when unpacking %s: %s",
+					"error creating symlink %s -> %s: %s",
 					fpath,
 					hdr.Linkname,
-					fpName,
 					err,
 				)
+			}
+			err = os.Lchown(fpath, uid, gid)
+			if err != nil {
+				return util.Errorf("error setting owner of %s: %s", fpath, err)
 			}
 		case tar.TypeLink:
 			// hardlink paths are encoded relative to the tarball root, rather than
@@ -72,10 +76,9 @@ func ExtractTarGz(owner string, fp io.Reader, fpName string, dest string) (err e
 			linkTarget, err := filepath.Rel(filepath.Dir(hdr.Name), hdr.Linkname)
 			if err != nil {
 				return util.Errorf(
-					"Unable to resolve relative path for hardlink %s (to %s) when unpacking %s: %s",
+					"error resolving link: %s -> %s: %s",
 					fpath,
 					hdr.Linkname,
-					fpName,
 					err,
 				)
 			}
@@ -84,75 +87,56 @@ func ExtractTarGz(owner string, fp io.Reader, fpName string, dest string) (err e
 			err = os.Symlink(linkTarget, fpath)
 			if err != nil {
 				return util.Errorf(
-					"Unable to create destination symlink %s (resolved %s to %s) when unpacking %s: %s",
+					"error creating symlink %s -> %s (originally hardlink): %s",
 					fpath,
 					linkTarget,
-					hdr.Linkname,
-					fpName,
 					err,
 				)
 			}
 		case tar.TypeDir:
 			err = os.Mkdir(fpath, hdr.FileInfo().Mode())
 			if err != nil && !os.IsExist(err) {
-				return util.Errorf(
-					"Unable to create destination directory %s when unpacking %s: %s",
-					fpath,
-					fpName,
-					err,
-				)
+				return util.Errorf("error creating directory %s: %s", fpath, err)
 			}
 
 			err = os.Chown(fpath, uid, gid)
 			if err != nil {
-				return util.Errorf(
-					"Unable to chown destination directory %s to %s when unpacking %s: %s",
-					fpath,
-					owner,
-					fpName,
-					err,
-				)
+				return util.Errorf("error setting ownership of %s: %s", fpath, err)
 			}
 		case tar.TypeReg, tar.TypeRegA:
-			f, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, hdr.FileInfo().Mode())
-			if err != nil {
-				return util.Errorf(
-					"Unable to open destination file %s when unpacking %s: %s",
+			// Extract the file inside a closure to limit the scope of its open FD
+			err = func() (innerErr error) {
+				f, err := os.OpenFile(
 					fpath,
-					fpName,
-					err,
+					os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
+					hdr.FileInfo().Mode(),
 				)
-			}
-			defer f.Close()
+				if err != nil {
+					return util.Errorf("error creating %s: %s", fpath, err)
+				}
+				// Released at end of "case" statement
+				defer func() {
+					if closeErr := f.Close(); innerErr == nil {
+						innerErr = closeErr
+					}
+				}()
 
-			err = f.Chown(uid, gid) // this operation may cause tar unpacking to become significantly slower. Refactor as necessary.
-			if err != nil {
-				return util.Errorf(
-					"Unable to chown destination file %s to %s when unpacking %s: %s",
-					fpath,
-					owner,
-					fpName,
-					err,
-				)
-			}
+				err = f.Chown(uid, gid)
+				if err != nil {
+					return util.Errorf("error setting file ownership of %s: %s", fpath, err)
+				}
 
-			_, err = io.Copy(f, tr)
+				_, err = io.Copy(f, tr)
+				if err != nil {
+					return util.Errorf("error extracting to %s: %s", fpath, err)
+				}
+				return nil
+			}()
 			if err != nil {
-				return util.Errorf(
-					"Unable to copy into destination file %s when unpacking %s: %s",
-					fpath,
-					fpName,
-					err,
-				)
+				return err
 			}
-			f.Close() // eagerly release file descriptors rather than letting them pile up
 		default:
-			return util.Errorf(
-				"Unhandled type flag %q (header %v) when unpacking %s",
-				hdr.Typeflag,
-				hdr,
-				fpName,
-			)
+			return util.Errorf("unhandled type flag %q (header %v)", hdr.Typeflag, hdr)
 		}
 	}
 	return nil
