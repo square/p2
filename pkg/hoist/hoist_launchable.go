@@ -23,36 +23,50 @@ import (
 
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type Launchable struct {
-	Location         string         // A URL where we can download the artifact from.
-	Id               string         // A unique identifier for this launchable, used when creating runit services
-	RunAs            string         // The user to assume when launching the executable
-	ConfigDir        string         // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
-	Fetcher          uri.Fetcher    // Callback that downloads the file from the remote location.
-	RootDir          string         // The root directory of the launchable, containing N:N>=1 installs.
-	P2exec           string         // The path to p2-exec
-	CgroupConfig     cgroups.Config // Cgroup parameters to use with p2-exec
-	CgroupConfigName string         // The string in PLATFORM_CONFIG to pass to p2-exec
-	RestartTimeout   time.Duration  // How long to wait when restarting the services in this launchable.
+	location         string         // A URL where we can download the artifact from.
+	id               string         // A unique identifier for this launchable, used when creating runit services
+	runAs            string         // The user to assume when launching the executable
+	configDir        string         // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
+	fetcher          uri.Fetcher    // Callback that downloads the file from the remote location.
+	rootDir          string         // The root directory of the launchable, containing N:N>=1 installs.
+	p2exec           string         // The path to p2-exec
+	cgroupConfig     cgroups.Config // Cgroup parameters to use with p2-exec
+	cgroupConfigName string         // The string in PLATFORM_CONFIG to pass to p2-exec
+	restartTimeout   time.Duration  // How long to wait when restarting the services in this launchable.
 }
 
-// LaunchAdapter adapts a hoist.Launchable to the launch.Launchable interface.
-type LaunchAdapter struct {
-	*Launchable
+func NewLaunchable(
+	location string,
+	id string,
+	runAs string,
+	configDir string,
+	fetcher uri.Fetcher,
+	rootDir string,
+	p2exec string,
+	cgroupConfig cgroups.Config,
+	cgroupConfigName string,
+	restartTimeout time.Duration,
+) launch.Launchable {
+	return &Launchable{
+		location:         location,
+		id:               id,
+		runAs:            runAs,
+		configDir:        configDir,
+		fetcher:          fetcher,
+		rootDir:          rootDir,
+		p2exec:           p2exec,
+		cgroupConfig:     cgroupConfig,
+		cgroupConfigName: cgroupConfigName,
+		restartTimeout:   restartTimeout,
+	}
 }
 
-func (a LaunchAdapter) ID() string {
-	return a.Launchable.Id
+func (l *Launchable) ID() string {
+	return l.id
 }
 
-func (a LaunchAdapter) Fetcher() uri.Fetcher {
-	return a.Launchable.Fetcher
-}
-
-var _ launch.Launchable = &LaunchAdapter{}
-
-// If adapts the hoist Launchable to the launch.Launchable interface.
-func (hl *Launchable) If() launch.Launchable {
-	return LaunchAdapter{Launchable: hl}
+func (l *Launchable) Fetcher() uri.Fetcher {
+	return l.fetcher
 }
 
 func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
@@ -109,7 +123,7 @@ func (hl *Launchable) disable() (string, error) {
 
 	// providing a disable script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
-		return output, util.Errorf("Could not disable %s: %s", hl.Id, err)
+		return output, util.Errorf("Could not disable %s: %s", hl.id, err)
 	}
 
 	return output, nil
@@ -120,7 +134,7 @@ func (hl *Launchable) enable() (string, error) {
 
 	// providing an enable script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
-		return output, util.Errorf("Could not enable %s: %s", hl.Id, err)
+		return output, util.Errorf("Could not enable %s: %s", hl.id, err)
 	}
 
 	return output, nil
@@ -134,16 +148,16 @@ func (hl *Launchable) InvokeBinScript(script string) (string, error) {
 	}
 
 	cmd := exec.Command(
-		hl.P2exec,
+		hl.p2exec,
 		"-n",
 		"-u",
-		hl.RunAs,
+		hl.runAs,
 		"-e",
-		hl.ConfigDir,
+		hl.configDir,
 		"-l",
-		hl.CgroupConfigName,
+		hl.cgroupConfigName,
 		"-c",
-		hl.Id,
+		hl.id,
 		cmdPath,
 	)
 	buffer := bytes.Buffer{}
@@ -164,7 +178,7 @@ func (hl *Launchable) stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) e
 	}
 
 	for _, executable := range executables {
-		_, err := sv.Stop(&executable.Service, hl.RestartTimeout)
+		_, err := sv.Stop(&executable.Service, hl.restartTimeout)
 		if err != nil {
 			// TODO: FAILURE SCENARIO (what should we do here?)
 			// 1) does `sv stop` ever exit nonzero?
@@ -184,7 +198,7 @@ func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) 
 	}
 
 	for _, executable := range executables {
-		_, err := sv.Restart(&executable.Service, hl.RestartTimeout)
+		_, err := sv.Restart(&executable.Service, hl.restartTimeout)
 		if err != nil && err != runit.SuperviseOkMissing {
 			return err
 		}
@@ -197,7 +211,7 @@ func (hl *Launchable) Executables(
 	serviceBuilder *runit.ServiceBuilder,
 ) ([]launch.Executable, error) {
 	if !hl.Installed() {
-		return []launch.Executable{}, util.Errorf("%s is not installed", hl.Id)
+		return []launch.Executable{}, util.Errorf("%s is not installed", hl.id)
 	}
 
 	binLaunchPath := filepath.Join(hl.InstallDir(), "bin", "launch")
@@ -222,18 +236,18 @@ func (hl *Launchable) Executables(
 
 	var executables []launch.Executable
 	for _, service := range services {
-		serviceName := fmt.Sprintf("%s__%s", hl.Id, service.Name())
+		serviceName := fmt.Sprintf("%s__%s", hl.id, service.Name())
 		execCmd := []string{
-			hl.P2exec,
+			hl.p2exec,
 			"-n",
 			"-u",
-			hl.RunAs,
+			hl.runAs,
 			"-e",
-			hl.ConfigDir,
+			hl.configDir,
 			"-l",
-			hl.CgroupConfigName,
+			hl.cgroupConfigName,
 			"-c",
-			hl.Id,
+			hl.id,
 			filepath.Join(serviceDir, service.Name()),
 		}
 
@@ -261,13 +275,13 @@ func (hl *Launchable) Install() error {
 	}
 
 	// Write to a temporary file for easy cleanup if the network transfer fails
-	artifactFile, err := ioutil.TempFile("", path.Base(hl.Location))
+	artifactFile, err := ioutil.TempFile("", path.Base(hl.location))
 	if err != nil {
 		return err
 	}
 	defer os.Remove(artifactFile.Name())
 	defer artifactFile.Close()
-	remoteData, err := hl.Fetcher.Open(hl.Location)
+	remoteData, err := hl.fetcher.Open(hl.location)
 	if err != nil {
 		return err
 	}
@@ -281,7 +295,7 @@ func (hl *Launchable) Install() error {
 		return err
 	}
 
-	err = gzip.ExtractTarGz(hl.RunAs, artifactFile, hl.Version(), hl.InstallDir())
+	err = gzip.ExtractTarGz(hl.runAs, artifactFile, hl.Version(), hl.InstallDir())
 	if err != nil {
 		os.RemoveAll(hl.InstallDir())
 	}
@@ -291,7 +305,7 @@ func (hl *Launchable) Install() error {
 // The version of the artifact is currently derived from the location, using
 // the naming scheme <the-app>_<unique-version-string>.tar.gz
 func (hl *Launchable) Version() string {
-	fileName := filepath.Base(hl.Location)
+	fileName := filepath.Base(hl.location)
 	return fileName[:len(fileName)-len(".tar.gz")]
 }
 
@@ -301,20 +315,20 @@ func (*Launchable) Type() string {
 
 func (hl *Launchable) AppManifest() (*artifact.AppManifest, error) {
 	if !hl.Installed() {
-		return nil, util.Errorf("%s has not been installed yet", hl.Id)
+		return nil, util.Errorf("%s has not been installed yet", hl.id)
 	}
 	manPath := filepath.Join(hl.InstallDir(), "app-manifest.yaml")
 	if _, err := os.Stat(manPath); os.IsNotExist(err) {
 		manPath = filepath.Join(hl.InstallDir(), "app-manifest.yml")
 		if _, err = os.Stat(manPath); os.IsNotExist(err) {
-			return nil, util.Errorf("No app manifest was found in the Hoist launchable %s", hl.Id)
+			return nil, util.Errorf("No app manifest was found in the Hoist launchable %s", hl.id)
 		}
 	}
 	return artifact.ManifestFromPath(manPath)
 }
 
 func (hl *Launchable) CurrentDir() string {
-	return filepath.Join(hl.RootDir, "current")
+	return filepath.Join(hl.rootDir, "current")
 }
 
 func (hl *Launchable) MakeCurrent() error {
@@ -323,7 +337,7 @@ func (hl *Launchable) MakeCurrent() error {
 }
 
 func (hl *Launchable) LastDir() string {
-	return filepath.Join(hl.RootDir, "last")
+	return filepath.Join(hl.rootDir, "last")
 }
 
 func (hl *Launchable) makeLast() error {
@@ -331,24 +345,24 @@ func (hl *Launchable) makeLast() error {
 }
 
 func (hl *Launchable) flipSymlink(newLinkPath string) error {
-	dir, err := ioutil.TempDir(hl.RootDir, hl.Id)
+	dir, err := ioutil.TempDir(hl.rootDir, hl.id)
 	if err != nil {
 		return util.Errorf("Couldn't create temporary directory for symlink: %s", err)
 	}
 	defer os.RemoveAll(dir)
-	tempLinkPath := filepath.Join(dir, hl.Id)
+	tempLinkPath := filepath.Join(dir, hl.id)
 	err = os.Symlink(hl.InstallDir(), tempLinkPath)
 	if err != nil {
-		return util.Errorf("Couldn't create symlink for hoist launchable %s: %s", hl.Id, err)
+		return util.Errorf("Couldn't create symlink for hoist launchable %s: %s", hl.id, err)
 	}
 
-	uid, gid, err := user.IDs(hl.RunAs)
+	uid, gid, err := user.IDs(hl.runAs)
 	if err != nil {
-		return util.Errorf("Couldn't retrieve UID/GID for hoist launchable %s user %s: %s", hl.Id, hl.RunAs, err)
+		return util.Errorf("Couldn't retrieve UID/GID for hoist launchable %s user %s: %s", hl.id, hl.runAs, err)
 	}
 	err = os.Lchown(tempLinkPath, uid, gid)
 	if err != nil {
-		return util.Errorf("Couldn't lchown symlink for hoist launchable %s: %s", hl.Id, err)
+		return util.Errorf("Couldn't lchown symlink for hoist launchable %s: %s", hl.id, err)
 	}
 
 	return os.Rename(tempLinkPath, newLinkPath)
@@ -356,5 +370,13 @@ func (hl *Launchable) flipSymlink(newLinkPath string) error {
 
 func (hl *Launchable) InstallDir() string {
 	launchableName := hl.Version()
-	return filepath.Join(hl.RootDir, "installs", launchableName)
+	return filepath.Join(hl.rootDir, "installs", launchableName)
+}
+
+func (hl *Launchable) Location() string {
+	return hl.location
+}
+
+func (hl *Launchable) RunAs() string {
+	return hl.runAs
 }

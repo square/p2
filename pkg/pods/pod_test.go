@@ -13,9 +13,11 @@ import (
 	"testing"
 
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
@@ -48,11 +50,11 @@ func TestGetLaunchable(t *testing.T) {
 	pod := getTestPod()
 	Assert(t).AreNotEqual(0, len(launchableStanzas), "Expected there to be at least one launchable stanza in the test manifest")
 	for _, stanza := range launchableStanzas {
-		l, _ := pod.getLaunchable(stanza, "foouser")
-		launchable := l.(hoist.LaunchAdapter).Launchable
-		Assert(t).AreEqual("hello__hello", launchable.Id, "LaunchableId did not have expected value")
-		Assert(t).AreEqual("hoisted-hello_def456.tar.gz", launchable.Location, "Launchable location did not have expected value")
-		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
+		launchable, err := pod.getLaunchable(stanza, "foouser")
+		Assert(t).IsNil(err, "Error getting 'foouser' launchable from stanza")
+		Assert(t).AreEqual("hello__hello", launchable.ID(), "LaunchableId did not have expected value")
+		Assert(t).AreEqual("hoist", launchable.Type(), "Launchable type did not have expected value")
+		Assert(t).AreEqual("/data/pods/test/hello/installs/hoisted-hello_def456", launchable.InstallDir(), "Launchable run as did not have expected install directory")
 	}
 }
 
@@ -139,12 +141,14 @@ func TestLogLaunchableError(t *testing.T) {
 	out := bytes.Buffer{}
 	Log.SetLogOut(&out)
 
-	testLaunchable := &hoist.Launchable{Id: "TestLaunchable"}
+	testLaunchable := launchableWithFields(hoist.LaunchableFields{
+		ID: "TestLaunchable",
+	})
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
 	pod := PodFromManifestId(testManifest.ID())
-	pod.logLaunchableError(testLaunchable.Id, testErr, message)
+	pod.logLaunchableError(testLaunchable.ID(), testErr, message)
 
 	output, err := ioutil.ReadAll(&out)
 	Assert(t).IsNil(err, "Got an error reading the logging output")
@@ -237,9 +241,10 @@ func TestBuildRunitServices(t *testing.T) {
 		path:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
 	}
-	hl, sb := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	hl, sb := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable", hoist.LaunchableFields{
+		RunAs: "testPod",
+	})
 	defer hoist.CleanupFakeLaunchable(hl, sb)
-	hl.RunAs = "testPod"
 	executables, err := hl.Executables(serviceBuilder)
 	outFilePath := filepath.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
@@ -315,4 +320,19 @@ func ContainsString(test string) func(interface{}) bool {
 			return false
 		}
 	}
+}
+
+func launchableWithFields(launchableFields hoist.LaunchableFields) launch.Launchable {
+	return hoist.NewLaunchable(
+		"some_loc",
+		launchableFields.ID,
+		launchableFields.RunAs,
+		"some_dir",
+		uri.DefaultFetcher,
+		"root_dir",
+		"p2_exec",
+		cgroups.Config{},
+		"some_cgroup_config_name",
+		0,
+	)
 }
