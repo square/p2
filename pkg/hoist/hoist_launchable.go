@@ -44,7 +44,7 @@ func (a LaunchAdapter) ID() string {
 	return a.Launchable.Id
 }
 
-func (a LaunchAdapter) Fetcher() uri.Fetcher {
+func (a LaunchAdapter) GetFetcher() uri.Fetcher {
 	return a.Launchable.Fetcher
 }
 

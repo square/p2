@@ -396,7 +396,7 @@ func (pod *Pod) Verify(manifest Manifest, authPolicy auth.Policy) error {
 
 		// Retrieve the digest data
 		launchableDigest, err := digest.ParseUris(
-			launchable.Fetcher(),
+			launchable.GetFetcher(),
 			stanza.DigestLocation,
 			stanza.DigestSignatureLocation,
 		)

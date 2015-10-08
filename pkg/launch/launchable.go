@@ -26,8 +26,10 @@ type Launchable interface {
 	Executables(serviceBuilder *runit.ServiceBuilder) ([]Executable, error)
 	// Installed returns true if this launchable is already installed.
 	Installed() bool
-	// Fetcher returns a uri.Fetcher that is capable of fetching the launchable files.
-	Fetcher() uri.Fetcher
+	// GetFetcher returns a uri.Fetcher that is capable of fetching the launchable files.
+	// It is prefixed with Get (non-idiomatic) to avoid a name collision with the Fetcher
+	// field in hoist.Launchable which prevents interface conversions.
+	GetFetcher() uri.Fetcher
 
 	// Install acquires the launchable and makes it ready to be launched.
 	Install() error
