@@ -22,6 +22,7 @@ var (
 	consulToken   = kingpin.Flag("token", "The ACL to use for accessing consul.").String()
 	headers       = kingpin.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
 	https         = kingpin.Flag("https", "Use HTTPS").Bool()
+	waitTime      = kingpin.Flag("wait", "Maximum duration for Consul watches, before resetting and starting again.").Default("30s").Duration()
 )
 
 func main() {
@@ -29,10 +30,11 @@ func main() {
 	kingpin.Parse()
 
 	store := kp.NewConsulStore(kp.Options{
-		Address: *consulAddress,
-		Token:   *consulToken,
-		Client:  net.NewHeaderClient(*headers, http.DefaultTransport),
-		HTTPS:   *https,
+		Address:  *consulAddress,
+		Token:    *consulToken,
+		Client:   net.NewHeaderClient(*headers, http.DefaultTransport),
+		HTTPS:    *https,
+		WaitTime: *waitTime,
 	})
 
 	if *nodeName == "" {

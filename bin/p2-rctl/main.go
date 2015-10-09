@@ -40,6 +40,7 @@ var (
 	https         = kingpin.Flag("https", "Use HTTPS").Bool()
 	labelEndpoint = kingpin.Flag("labels", "An HTTP endpoint to use for labels, instead of using Consul.").String()
 	logLevel      = kingpin.Flag("log", "Logging level to display.").String()
+	waitTime      = kingpin.Flag("wait", "Maximum duration for Consul watches, before resetting and starting again.").Default("30s").Duration()
 
 	cmdCreate       = kingpin.Command(CMD_CREATE, "Create a new replication controller")
 	createManifest  = cmdCreate.Flag("manifest", "manifest file to use for this replication controller").Short('m').Required().String()
@@ -85,10 +86,11 @@ func main() {
 	}
 
 	opts := kp.Options{
-		Address: *consulUrl,
-		Token:   *consulToken,
-		Client:  net.NewHeaderClient(*headers, http.DefaultTransport),
-		HTTPS:   *https,
+		Address:  *consulUrl,
+		Token:    *consulToken,
+		Client:   net.NewHeaderClient(*headers, http.DefaultTransport),
+		HTTPS:    *https,
+		WaitTime: *waitTime,
 	}
 	client := kp.NewConsulClient(opts)
 	labeler := labels.NewConsulApplicator(client, 3)
