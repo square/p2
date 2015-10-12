@@ -27,7 +27,7 @@ type update struct {
 
 	logger logging.Logger
 
-	session string
+	lock kp.Lock
 }
 
 // Create a new Update. The kp.Store, rcstore.Store, labels.Applicator and
@@ -42,7 +42,7 @@ func NewUpdate(
 	labeler labels.Applicator,
 	sched rc.Scheduler,
 	logger logging.Logger,
-	session string,
+	lock kp.Lock,
 ) Update {
 	return update{
 		Update:  f,
@@ -52,7 +52,7 @@ func NewUpdate(
 		labeler: labeler,
 		sched:   sched,
 		logger:  logger,
-		session: session,
+		lock:    lock,
 	}
 }
 
@@ -75,12 +75,12 @@ type Update interface {
 }
 
 func (u update) Prepare() error {
-	u.logger.WithField("session", u.session).Debugln("Locking")
-	if err := u.lock(u.session); err != nil {
+	u.logger.NoFields().Debugln("Locking")
+	if err := u.lockRCs(); err != nil {
 		return err
 	}
 
-	u.logger.WithField("session", u.session).Debugln("Enabling/disabling")
+	u.logger.NoFields().Debugln("Enabling/disabling")
 	if err := u.enable(); err != nil {
 		return err
 	}
@@ -202,23 +202,22 @@ func (u update) lockPath(id rcf.ID) string {
 	return kp.LockPath(kp.RCPath(id.String(), "update"))
 }
 
-func (u update) lock(session string) error {
-	l := u.kps.NewUnmanagedLock(session, "")
+func (u update) lockRCs() error {
 	newPath := u.lockPath(u.NewRC)
 	oldPath := u.lockPath(u.OldRC)
 
-	err := l.Lock(newPath)
+	err := u.lock.Lock(newPath)
 	if _, ok := err.(kp.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock new %s", u.NewRC)
 	} else if err != nil {
 		return err
 	}
 
-	err = l.Lock(oldPath)
+	err = u.lock.Lock(oldPath)
 	if _, ok := err.(kp.AlreadyLockedError); ok {
 		// release the other lock - no point checking this error, we can't
 		// really act on it
-		l.Unlock(newPath)
+		u.lock.Unlock(newPath)
 		return fmt.Errorf("could not lock old %s", u.OldRC)
 	} else if err != nil {
 		return err

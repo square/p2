@@ -277,6 +277,7 @@ func (r RCtl) RollingUpdate(oldID, newID string, want, need int, deletes bool) {
 	if session == "" {
 		r.logger.NoFields().Fatalln("Could not acquire session")
 	}
+	lock := r.kps.NewUnmanagedLock(session, "")
 
 	u := roll.NewUpdate(roll_fields.Update{
 		OldRC:           rc_fields.ID(oldID),
@@ -284,7 +285,7 @@ func (r RCtl) RollingUpdate(oldID, newID string, want, need int, deletes bool) {
 		DesiredReplicas: want,
 		MinimumReplicas: need,
 		DeletePods:      deletes,
-	}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, session)
+	}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, lock)
 
 	if err := u.Prepare(); err != nil {
 		r.logger.WithError(err).Fatalln("Could not prepare update")
