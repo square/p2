@@ -4,16 +4,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v1"
 
+	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/rc"
+	rc_fields "github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/roll"
+	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/util/net"
 	"github.com/square/p2/pkg/version"
 )
@@ -26,13 +33,18 @@ const (
 	CMD_GET      = "get"
 	CMD_ENABLE   = "enable"
 	CMD_DISABLE  = "disable"
+	CMD_ROLL     = "rolling-update"
+	CMD_FARM     = "farm"
 )
 
 var (
-	consulUrl   = kingpin.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
-	consulToken = kingpin.Flag("token", "The consul ACL token to use. Empty by default.").String()
-	headers     = kingpin.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
-	https       = kingpin.Flag("https", "Use HTTPS").Bool()
+	consulUrl     = kingpin.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
+	consulToken   = kingpin.Flag("token", "The consul ACL token to use. Empty by default.").String()
+	headers       = kingpin.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
+	https         = kingpin.Flag("https", "Use HTTPS").Bool()
+	labelEndpoint = kingpin.Flag("labels", "An HTTP endpoint to use for labels, instead of using Consul.").String()
+	logLevel      = kingpin.Flag("log", "Logging level to display.").String()
+	waitTime      = kingpin.Flag("wait", "Maximum duration for Consul watches, before resetting and starting again.").Default("30s").Duration()
 
 	cmdCreate       = kingpin.Command(CMD_CREATE, "Create a new replication controller")
 	createManifest  = cmdCreate.Flag("manifest", "manifest file to use for this replication controller").Short('m').Required().String()
@@ -59,6 +71,15 @@ var (
 
 	cmdDisable = kingpin.Command(CMD_DISABLE, "Disable replication controller")
 	disableID  = cmdDisable.Arg("id", "replication controller uuid to disable").Required().String()
+
+	cmdRoll    = kingpin.Command(CMD_ROLL, "Rolling update from one replication controller to another")
+	rollOldID  = cmdRoll.Flag("old", "old replication controller uuid").Required().Short('o').String()
+	rollNewID  = cmdRoll.Flag("new", "new replication controller uuid").Required().Short('n').String()
+	rollWant   = cmdRoll.Flag("desired", "number of replicas desired").Required().Short('d').Int()
+	rollNeed   = cmdRoll.Flag("minimum", "minimum number of healthy replicas during update").Required().Short('m').Int()
+	rollDelete = cmdRoll.Flag("delete", "delete pods during update").Bool()
+
+	cmdFarm = kingpin.Command(CMD_FARM, "Start a replication controller farm")
 )
 
 func main() {
@@ -67,17 +88,45 @@ func main() {
 
 	logger := logging.NewLogger(logrus.Fields{})
 	logger.Logger.Formatter = &logrus.TextFormatter{}
+	if *logLevel != "" {
+		lv, err := logrus.ParseLevel(*logLevel)
+		if err != nil {
+			logger.WithErrorAndFields(err, logrus.Fields{"level": *logLevel}).Fatalln("Could not parse log level")
+		}
+		logger.Logger.Level = lv
+	}
+
 	opts := kp.Options{
-		Address: *consulUrl,
-		Token:   *consulToken,
-		Client:  net.NewHeaderClient(*headers, http.DefaultTransport),
-		HTTPS:   *https,
+		Address:  *consulUrl,
+		Token:    *consulToken,
+		Client:   net.NewHeaderClient(*headers, http.DefaultTransport),
+		HTTPS:    *https,
+		WaitTime: *waitTime,
 	}
 	client := kp.NewConsulClient(opts)
-	rcStore := rcstore.NewConsul(client, 3)
+	labeler := labels.NewConsulApplicator(client, 3)
+	sched := rc.NewApplicatorScheduler(labeler)
+	if *labelEndpoint != "" {
+		endpoint, err := url.Parse(*labelEndpoint)
+		if err != nil {
+			logging.DefaultLogger.WithErrorAndFields(err, logrus.Fields{
+				"url": *labelEndpoint,
+			}).Fatalln("Could not parse URL from label endpoint")
+		}
+		httpLabeler, err := labels.NewHttpApplicator(opts.Client, endpoint)
+		if err != nil {
+			logging.DefaultLogger.WithError(err).Fatalln("Could not create label applicator from endpoint")
+		}
+		sched = rc.NewApplicatorScheduler(httpLabeler)
+	}
 	rctl := RCtl{
-		rcs:    rcStore,
-		logger: logger,
+		baseClient: client,
+		rcs:        rcstore.NewConsul(client, 3),
+		kps:        kp.NewConsulStore(opts),
+		labeler:    labeler,
+		sched:      sched,
+		hcheck:     checker.NewConsulHealthChecker(opts),
+		logger:     logger,
 	}
 
 	switch cmd {
@@ -95,6 +144,10 @@ func main() {
 		rctl.Enable(*enableID)
 	case CMD_DISABLE:
 		rctl.Disable(*disableID)
+	case CMD_ROLL:
+		rctl.RollingUpdate(*rollOldID, *rollNewID, *rollWant, *rollNeed, *rollDelete)
+	case CMD_FARM:
+		rctl.Farm()
 	}
 }
 
@@ -102,8 +155,13 @@ func main() {
 // each member function represents a single command that takes over from main
 // and terminates the program on failure
 type RCtl struct {
-	rcs    rcstore.Store
-	logger logging.Logger
+	baseClient *api.Client
+	rcs        rcstore.Store
+	sched      rc.Scheduler
+	labeler    labels.Applicator
+	kps        kp.Store
+	hcheck     checker.ConsulHealthChecker
+	logger     logging.Logger
 }
 
 func (r RCtl) Create(manifestPath, nodeSelector string, podLabels map[string]string) {
@@ -129,7 +187,7 @@ func (r RCtl) Create(manifestPath, nodeSelector string, podLabels map[string]str
 }
 
 func (r RCtl) Delete(id string, force bool) {
-	err := r.rcs.Delete(fields.ID(id), force)
+	err := r.rcs.Delete(rc_fields.ID(id), force)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not delete replication controller in Consul")
 	}
@@ -141,7 +199,7 @@ func (r RCtl) SetReplicas(id string, replicas int) {
 		r.logger.NoFields().Fatalln("Cannot set negative replica count")
 	}
 
-	err := r.rcs.SetDesiredReplicas(fields.ID(id), replicas)
+	err := r.rcs.SetDesiredReplicas(rc_fields.ID(id), replicas)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not set desired replica count in Consul")
 	}
@@ -171,7 +229,7 @@ func (r RCtl) List(asJSON bool) {
 }
 
 func (r RCtl) Get(id string, manifest bool) {
-	getRC, err := r.rcs.Get(fields.ID(id))
+	getRC, err := r.rcs.Get(rc_fields.ID(id))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not get replication controller in Consul")
 	}
@@ -192,7 +250,7 @@ func (r RCtl) Get(id string, manifest bool) {
 }
 
 func (r RCtl) Enable(id string) {
-	err := r.rcs.Enable(fields.ID(id))
+	err := r.rcs.Enable(rc_fields.ID(id))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not enable replication controller in Consul")
 	}
@@ -200,9 +258,61 @@ func (r RCtl) Enable(id string) {
 }
 
 func (r RCtl) Disable(id string) {
-	err := r.rcs.Disable(fields.ID(id))
+	err := r.rcs.Disable(rc_fields.ID(id))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not disable replication controller in Consul")
 	}
 	r.logger.WithField("id", id).Infoln("Disabled replication controller")
+}
+
+func (r RCtl) RollingUpdate(oldID, newID string, want, need int, deletes bool) {
+	sessions := make(chan string)
+	go kp.ConsulSessionManager(api.SessionEntry{
+		LockDelay: 1 * time.Nanosecond,
+		Behavior:  api.SessionBehaviorDelete,
+		TTL:       "15s",
+	}, r.baseClient, sessions, nil, r.logger)
+
+	session := <-sessions
+	if session == "" {
+		r.logger.NoFields().Fatalln("Could not acquire session")
+	}
+
+	u := roll.NewUpdate(roll_fields.Update{
+		OldRC:           rc_fields.ID(oldID),
+		NewRC:           rc_fields.ID(newID),
+		DesiredReplicas: want,
+		MinimumReplicas: need,
+		DeletePods:      deletes,
+	}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, session)
+
+	if err := u.Prepare(); err != nil {
+		r.logger.WithError(err).Fatalln("Could not prepare update")
+	}
+
+	doneRun := make(chan struct{})
+	go func() {
+		err := u.Run(nil)
+		if err != nil {
+			r.logger.WithError(err).Errorln("Could not run update")
+		}
+		close(doneRun)
+	}()
+
+	select {
+	case <-sessions:
+		r.logger.NoFields().Fatalln("Lost session")
+	case <-doneRun:
+		r.logger.NoFields().Infoln("Done")
+	}
+}
+
+func (r RCtl) Farm() {
+	sessions := make(chan string)
+	go kp.ConsulSessionManager(api.SessionEntry{
+		LockDelay: 1 * time.Nanosecond,
+		Behavior:  api.SessionBehaviorDelete,
+		TTL:       "15s",
+	}, r.baseClient, sessions, nil, r.logger)
+	rc.NewFarm(r.kps, r.rcs, r.sched, r.labeler, sessions, r.logger).Start(nil)
 }

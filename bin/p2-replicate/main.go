@@ -43,6 +43,7 @@ var (
 	threshold    = replicate.Flag("threshold", "The minimum health level to treat as healthy. One of (in order) passing, warning, unknown, critical.").String()
 	headers      = replicate.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
 	https        = replicate.Flag("https", "Use HTTPS").Bool()
+	waitTime     = replicate.Flag("wait", "Maximum duration for Consul watches, before resetting and starting again.").Default("30s").Duration()
 	overrideLock = replicate.Flag("override-lock", "Override any lock holders").Bool()
 )
 
@@ -51,10 +52,11 @@ func main() {
 	replicate.Parse(os.Args[1:])
 
 	opts := kp.Options{
-		Address: *consulUrl,
-		Token:   *consulToken,
-		Client:  net.NewHeaderClient(*headers, http.DefaultTransport),
-		HTTPS:   *https,
+		Address:  *consulUrl,
+		Token:    *consulToken,
+		Client:   net.NewHeaderClient(*headers, http.DefaultTransport),
+		HTTPS:    *https,
+		WaitTime: *waitTime,
 	}
 	store := kp.NewConsulStore(opts)
 	healthChecker := checker.NewConsulHealthChecker(opts)

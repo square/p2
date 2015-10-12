@@ -1,6 +1,7 @@
 package checker
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
@@ -25,6 +26,11 @@ type ConsulHealthChecker interface {
 		errCh chan<- error,
 		quitCh <-chan struct{},
 	)
+	WatchService(
+		serviceID string,
+		resultCh chan<- map[string]health.Result,
+		errCh chan<- error,
+		quitCh <-chan struct{})
 	Service(serviceID string) (map[string]health.Result, error)
 }
 
@@ -77,6 +83,42 @@ func (c consulHealthChecker) WatchNodeService(
 			// GetHealth will fail if there are no kv results
 			kvCheck, err := c.consulStore.GetHealth(serviceID, nodename)
 			pickHealthResult(catalogResults, kvCheck, err, resultCh, errCh)
+		}
+	}
+}
+
+func (c consulHealthChecker) WatchService(
+	serviceID string,
+	resultCh chan<- map[string]health.Result,
+	errCh chan<- error,
+	quitCh <-chan struct{},
+) {
+	defer close(resultCh)
+	var curIndex uint64 = 0
+
+	for {
+		select {
+		case <-quitCh:
+			return
+		case <-time.After(1 * time.Second):
+			results, _, err := c.client.KV().List(kp.HealthPath(serviceID, ""), &api.QueryOptions{
+				WaitIndex: curIndex,
+			})
+			if err != nil {
+				errCh <- kp.NewKVError("list", kp.HealthPath(serviceID, ""), err)
+			} else {
+				out := make(map[string]health.Result)
+				for _, result := range results {
+					var next kp.WatchResult
+					err = json.Unmarshal(result.Value, &next)
+					if err != nil {
+						errCh <- err
+					} else {
+						out[next.Node] = consulWatchToResult(next)
+					}
+				}
+				resultCh <- out
+			}
 		}
 	}
 }
