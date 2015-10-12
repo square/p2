@@ -14,6 +14,7 @@ import (
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/rcstore"
+	"github.com/square/p2/pkg/kp/rollstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
@@ -22,6 +23,7 @@ import (
 	"github.com/square/p2/pkg/roll"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/util/net"
+	"github.com/square/p2/pkg/util/stream"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -35,6 +37,7 @@ const (
 	CMD_DISABLE  = "disable"
 	CMD_ROLL     = "rolling-update"
 	CMD_FARM     = "farm"
+	CMD_SCHEDUP  = "schedule-update"
 )
 
 var (
@@ -79,7 +82,14 @@ var (
 	rollNeed   = cmdRoll.Flag("minimum", "minimum number of healthy replicas during update").Required().Short('m').Int()
 	rollDelete = cmdRoll.Flag("delete", "delete pods during update").Bool()
 
-	cmdFarm = kingpin.Command(CMD_FARM, "Start a replication controller farm")
+	cmdFarm = kingpin.Command(CMD_FARM, "Start farms for replication controllers and rolling updates")
+
+	cmdSchedup    = kingpin.Command(CMD_SCHEDUP, "Schedule new rolling update (will be run by farm)")
+	schedupOldID  = cmdSchedup.Flag("old", "old replication controller uuid").Required().Short('o').String()
+	schedupNewID  = cmdSchedup.Flag("new", "new replication controller uuid").Required().Short('n').String()
+	schedupWant   = cmdSchedup.Flag("desired", "number of replicas desired").Required().Short('d').Int()
+	schedupNeed   = cmdSchedup.Flag("minimum", "minimum number of healthy replicas during update").Required().Short('m').Int()
+	schedupDelete = cmdSchedup.Flag("delete", "delete pods during update").Bool()
 )
 
 func main() {
@@ -122,6 +132,7 @@ func main() {
 	rctl := RCtl{
 		baseClient: client,
 		rcs:        rcstore.NewConsul(client, 3),
+		rls:        rollstore.NewConsul(client),
 		kps:        kp.NewConsulStore(opts),
 		labeler:    labeler,
 		sched:      sched,
@@ -148,6 +159,8 @@ func main() {
 		rctl.RollingUpdate(*rollOldID, *rollNewID, *rollWant, *rollNeed, *rollDelete)
 	case CMD_FARM:
 		rctl.Farm()
+	case CMD_SCHEDUP:
+		rctl.ScheduleUpdate(*schedupOldID, *schedupNewID, *schedupWant, *schedupNeed, *schedupDelete)
 	}
 }
 
@@ -157,6 +170,7 @@ func main() {
 type RCtl struct {
 	baseClient *api.Client
 	rcs        rcstore.Store
+	rls        rollstore.Store
 	sched      rc.Scheduler
 	labeler    labels.Applicator
 	kps        kp.Store
@@ -315,5 +329,33 @@ func (r RCtl) Farm() {
 		Behavior:  api.SessionBehaviorDelete,
 		TTL:       "15s",
 	}, r.baseClient, sessions, nil, r.logger)
-	rc.NewFarm(r.kps, r.rcs, r.sched, r.labeler, sessions, r.logger).Start(nil)
+	firstSession := <-sessions
+
+	pub := stream.NewStringValuePublisher(sessions, firstSession)
+	rcSub := pub.Subscribe(nil)
+	rlSub := pub.Subscribe(nil)
+
+	go rc.NewFarm(r.kps, r.rcs, r.sched, r.labeler, rcSub.Chan(), r.logger).Start(nil)
+	roll.NewFarm(roll.UpdateFactory{
+		KPStore:       r.kps,
+		RCStore:       r.rcs,
+		HealthChecker: r.hcheck,
+		Labeler:       r.labeler,
+		Scheduler:     r.sched,
+	}, r.kps, r.rls, rlSub.Chan(), r.logger).Start(nil)
+}
+
+func (r RCtl) ScheduleUpdate(oldID, newID string, want, need int, deletes bool) {
+	err := r.rls.Put(roll_fields.Update{
+		OldRC:           rc_fields.ID(oldID),
+		NewRC:           rc_fields.ID(newID),
+		DesiredReplicas: want,
+		MinimumReplicas: need,
+		DeletePods:      deletes,
+	})
+	if err != nil {
+		r.logger.WithError(err).Fatalln("Could not create rolling update")
+	} else {
+		r.logger.WithField("id", newID).Infoln("Created new rolling update")
+	}
 }
