@@ -44,7 +44,7 @@ type Pod struct {
 	logger         logging.Logger
 	SV             *runit.SV
 	ServiceBuilder *runit.ServiceBuilder
-	P2exec         string
+	P2Exec         string
 	DefaultTimeout time.Duration // this is the default timeout for stopping and restarting services in this pod
 }
 
@@ -55,7 +55,7 @@ func NewPod(id string, path string) *Pod {
 		logger:         Log.SubLogger(logrus.Fields{"pod": id}),
 		SV:             runit.DefaultSV,
 		ServiceBuilder: runit.DefaultBuilder,
-		P2exec:         DefaultP2Exec,
+		P2Exec:         DefaultP2Exec,
 		DefaultTimeout: 60 * time.Second,
 	}
 }
@@ -550,7 +550,8 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 			ConfigDir:        pod.EnvDir(),
 			Fetcher:          uri.DefaultFetcher,
 			RootDir:          launchableRootDir,
-			P2exec:           pod.P2exec,
+			P2Exec:           pod.P2Exec,
+			ExecNoLimit:      true,
 			RestartTimeout:   restartTimeout,
 			CgroupConfig:     launchableStanza.CgroupConfig,
 			CgroupConfigName: launchableStanza.LaunchableId,
