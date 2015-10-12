@@ -78,29 +78,6 @@ func (s *fakeStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan e
 	return nil, nil
 }
 
-func (s *fakeStore) LockWrite(id fields.ID, session string) (bool, error) {
-	entry, ok := s.rcs[id]
-	if !ok {
-		return false, util.Errorf("Nonexistent rc")
-	}
-	if entry.lockedWrite == "" {
-		entry.lockedWrite = session
-		return true, nil
-	}
-	return false, nil
-}
-func (s *fakeStore) LockRead(id fields.ID, session string) (bool, error) {
-	entry, ok := s.rcs[id]
-	if !ok {
-		return false, util.Errorf("Nonexistent rc")
-	}
-	if entry.lockedRead == "" {
-		entry.lockedRead = session
-		return true, nil
-	}
-	return false, nil
-}
-
 func (s *fakeStore) Disable(id fields.ID) error {
 	entry, ok := s.rcs[id]
 	if !ok {

@@ -76,6 +76,17 @@ func (c consulStore) NewLock(name string, renewalCh <-chan time.Time) (Lock, cha
 	return lock, renewalErrCh, nil
 }
 
+// Creates a lock using an existing session, and does not set up auto-renewal
+// for that session. Use this constructor when the session already exists and
+// should not be managed by the lock itself.
+func (c consulStore) NewUnmanagedLock(session, name string) Lock {
+	return Lock{
+		client:  c.client,
+		session: session,
+		name:    name,
+	}
+}
+
 // determine the name and ID of the session that is locking this key, if any
 func (c consulStore) LockHolder(key string) (string, string, error) {
 	kvp, _, err := c.client.KV().Get(key, nil)
@@ -117,6 +128,35 @@ func (l Lock) Lock(key string) error {
 	return AlreadyLockedError{Key: key}
 }
 
+// attempts to unlock the targeted key - since lock keys are ephemeral, this
+// will delete it, but only if it is held by the current lock
+func (l Lock) Unlock(key string) error {
+	kvp, meta, err := l.client.KV().Get(key, nil)
+	if err != nil {
+		return NewKVError("get", key, err)
+	}
+	if kvp == nil {
+		return nil
+	}
+	if kvp.Session != l.session {
+		return AlreadyLockedError{Key: key}
+	}
+
+	success, _, err := l.client.KV().DeleteCAS(&api.KVPair{
+		Key:         key,
+		ModifyIndex: meta.LastIndex,
+	}, nil)
+	if err != nil {
+		return NewKVError("deletecas", key, err)
+	}
+	if !success {
+		// the key has been mutated since we checked it - probably someone
+		// overrode our lock on it or deleted it themselves
+		return AlreadyLockedError{Key: key}
+	}
+	return nil
+}
+
 func (l Lock) continuallyRenew() {
 	defer close(l.renewalErrCh)
 	for {
@@ -145,7 +185,9 @@ func (l Lock) Renew() error {
 
 // destroy a lock, releasing and deleting all the keys it holds
 func (l Lock) Destroy() error {
-	close(l.quitCh)
+	if l.quitCh != nil {
+		close(l.quitCh)
+	}
 
 	// There is a race here if (lockTTL - renewalInterval) time passes and
 	// the lock is destroyed automatically before we do it explicitly. In

@@ -195,17 +195,33 @@ ROLL_LOOP:
 	return nil
 }
 
+func (u update) lockPath(id rcf.ID) string {
+	// RUs want to lock the RCs they're mutating, but this lock is separate
+	// from the RC lock (which is held by the rc.WatchDesires goroutine), so the
+	// key being locked is different
+	return kp.LockPath(kp.RCPath(id.String(), "update"))
+}
+
 func (u update) lock(session string) error {
-	if success, err := u.rcs.LockWrite(u.NewRC, session); err != nil {
-		return err
-	} else if !success {
+	l := u.kps.NewUnmanagedLock(session, "")
+	newPath := u.lockPath(u.NewRC)
+	oldPath := u.lockPath(u.OldRC)
+
+	err := l.Lock(newPath)
+	if _, ok := err.(kp.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock new %s", u.NewRC)
+	} else if err != nil {
+		return err
 	}
 
-	if success, err := u.rcs.LockWrite(u.OldRC, session); err != nil {
-		return err
-	} else if !success {
+	err = l.Lock(oldPath)
+	if _, ok := err.(kp.AlreadyLockedError); ok {
+		// release the other lock - no point checking this error, we can't
+		// really act on it
+		l.Unlock(newPath)
 		return fmt.Errorf("could not lock old %s", u.OldRC)
+	} else if err != nil {
+		return err
 	}
 
 	return nil
