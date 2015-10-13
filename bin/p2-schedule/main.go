@@ -2,14 +2,13 @@ package main
 
 import (
 	"log"
-	"net/http"
 	"os"
 
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/util/net"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -18,23 +17,13 @@ var (
 	nodeName     = kingpin.Flag("node", "The node to do the scheduling on. Uses the hostname by default.").String()
 	hookTypeName = kingpin.Flag("hook-type", "Schedule as a hook, not an intended pod, as the given hook type. Can be one of the hooks listed in hooks.go, or the word \"global\"").String()
 	// unhide this flag when typed hooks are removed
-	hookGlobal    = kingpin.Flag("hook", "Schedule as a global hook.").Hidden().Bool()
-	consulAddress = kingpin.Flag("consul", "The address of the consul node to use. Defaults to 0.0.0.0:8500").String()
-	consulToken   = kingpin.Flag("token", "The ACL to use for accessing consul.").String()
-	headers       = kingpin.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
-	https         = kingpin.Flag("https", "Use HTTPS").Bool()
+	hookGlobal = kingpin.Flag("hook", "Schedule as a global hook.").Hidden().Bool()
 )
 
 func main() {
 	kingpin.Version(version.VERSION)
-	kingpin.Parse()
-
-	store := kp.NewConsulStore(kp.Options{
-		Address: *consulAddress,
-		Token:   *consulToken,
-		Client:  net.NewHeaderClient(*headers, http.DefaultTransport),
-		HTTPS:   *https,
-	})
+	_, opts := flags.ParseWithConsulOptions()
+	store := kp.NewConsulStore(opts)
 
 	if *nodeName == "" {
 		hostname, err := os.Hostname()

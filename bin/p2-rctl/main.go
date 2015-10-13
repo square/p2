@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/kp/rollstore"
 	"github.com/square/p2/pkg/labels"
@@ -23,7 +23,6 @@ import (
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
-	"github.com/square/p2/pkg/util/net"
 	"github.com/square/p2/pkg/util/stream"
 	"github.com/square/p2/pkg/version"
 )
@@ -42,13 +41,8 @@ const (
 )
 
 var (
-	consulUrl     = kingpin.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
-	consulToken   = kingpin.Flag("token", "The consul ACL token to use. Empty by default.").String()
-	headers       = kingpin.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
-	https         = kingpin.Flag("https", "Use HTTPS").Bool()
 	labelEndpoint = kingpin.Flag("labels", "An HTTP endpoint to use for labels, instead of using Consul.").String()
 	logLevel      = kingpin.Flag("log", "Logging level to display.").String()
-	waitTime      = kingpin.Flag("wait", "Maximum duration for Consul watches, before resetting and starting again.").Default("30s").Duration()
 
 	cmdCreate       = kingpin.Command(CMD_CREATE, "Create a new replication controller")
 	createManifest  = cmdCreate.Flag("manifest", "manifest file to use for this replication controller").Short('m').Required().String()
@@ -95,7 +89,7 @@ var (
 
 func main() {
 	kingpin.Version(version.VERSION)
-	cmd := kingpin.Parse()
+	cmd, opts := flags.ParseWithConsulOptions()
 
 	logger := logging.NewLogger(logrus.Fields{})
 	logger.Logger.Formatter = &logrus.TextFormatter{}
@@ -107,13 +101,6 @@ func main() {
 		logger.Logger.Level = lv
 	}
 
-	opts := kp.Options{
-		Address:  *consulUrl,
-		Token:    *consulToken,
-		Client:   net.NewHeaderClient(*headers, http.DefaultTransport),
-		HTTPS:    *https,
-		WaitTime: *waitTime,
-	}
 	client := kp.NewConsulClient(opts)
 	labeler := labels.NewConsulApplicator(client, 3)
 	sched := rc.NewApplicatorScheduler(labeler)
