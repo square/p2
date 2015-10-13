@@ -23,6 +23,10 @@
 			"Rev": "fbd82e84e2b13651f3abc5ffd26b65ba71bc8f93"
 		},
 		{
+			"ImportPath": "github.com/davecgh/go-spew/spew",
+			"Rev": "2df174808ee097f90d259e432cc04442cf60be21"
+		},
+		{
 			"ImportPath": "github.com/hashicorp/consul/acl",
 			"Comment": "v0.5.2-198-g3846dea",
 			"Rev": "3846dea3706fbf79090b73e447b0dde3b5ac1959"
@@ -86,6 +90,31 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "7ad95dd0798a40da1ccdff6dff35fd177b5edf40"
+		},
+		{
+			"ImportPath": "k8s.io/kubernetes/pkg/labels",
+			"Comment": "v1.2.0-alpha.1-946-ge2659fc",
+			"Rev": "e2659fc645dee21960ee0c8e6c768460babbddf6"
+		},
+		{
+			"ImportPath": "k8s.io/kubernetes/pkg/util/errors",
+			"Comment": "v1.2.0-alpha.1-946-ge2659fc",
+			"Rev": "e2659fc645dee21960ee0c8e6c768460babbddf6"
+		},
+		{
+			"ImportPath": "k8s.io/kubernetes/pkg/util/fielderrors",
+			"Comment": "v1.2.0-alpha.1-946-ge2659fc",
+			"Rev": "e2659fc645dee21960ee0c8e6c768460babbddf6"
+		},
+		{
+			"ImportPath": "k8s.io/kubernetes/pkg/util/sets",
+			"Comment": "v1.2.0-alpha.1-946-ge2659fc",
+			"Rev": "e2659fc645dee21960ee0c8e6c768460babbddf6"
+		},
+		{
+			"ImportPath": "k8s.io/kubernetes/pkg/util/validation",
+			"Comment": "v1.2.0-alpha.1-946-ge2659fc",
+			"Rev": "e2659fc645dee21960ee0c8e6c768460babbddf6"
 		}
 	]
 }

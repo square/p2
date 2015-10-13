@@ -10,6 +10,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v1"
+	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
@@ -186,14 +187,14 @@ func (r RCtl) Create(manifestPath, nodeSelector string, podLabels map[string]str
 		}).Fatalln("Could not read pod manifest")
 	}
 
-	nodeSel, err := labels.Parse(nodeSelector)
+	nodeSel, err := klabels.Parse(nodeSelector)
 	if err != nil {
 		r.logger.WithErrorAndFields(err, logrus.Fields{
 			"selector": nodeSelector,
 		}).Fatalln("Could not parse node selector")
 	}
 
-	newRC, err := r.rcs.Create(manifest, nodeSel, labels.Set(podLabels))
+	newRC, err := r.rcs.Create(manifest, nodeSel, klabels.Set(podLabels))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not create replication controller in Consul")
 	}

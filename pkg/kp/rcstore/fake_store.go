@@ -3,7 +3,7 @@ package rcstore
 import (
 	"strconv"
 
-	"github.com/square/p2/pkg/labels"
+	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/util"

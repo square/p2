@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 )
 
 // The Fake Applicator is most useful in tests
@@ -56,7 +57,7 @@ func TestMatches(t *testing.T) {
 	err = app.SetLabel(NODE, "stuff", "foo", "blar")
 	Assert(t).IsNil(err, "expected no error setting label")
 
-	selector := Everything().Add("foo", EqualsOperator, []string{"bar"})
+	selector := labels.Everything().Add("foo", labels.EqualsOperator, []string{"bar"})
 
 	labeled, err := app.GetMatches(selector, NODE)
 	Assert(t).IsNil(err, "expected no error getting matches")

@@ -4,6 +4,9 @@ import (
 	"strings"
 	"time"
 
+	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/util/sets"
+
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
@@ -144,7 +147,7 @@ func (rc *replicationController) meetDesires() error {
 
 		// TODO: With Docker or runc we would not be constrained to running only once per node.
 		// So it may be the case that we need to make the Scheduler interface smarter and use it here.
-		possible := labels.NewStringSet(eligible...).Difference(labels.NewStringSet(current...))
+		possible := sets.NewString(eligible...).Difference(sets.NewString(current...))
 		toSchedule := rc.ReplicasDesired - len(current)
 
 		rc.logger.NoFields().Infof("Need to schedule %d nodes out of %s", toSchedule, possible)
@@ -185,7 +188,7 @@ func (rc *replicationController) eligibleNodes() ([]string, error) {
 }
 
 func (rc *replicationController) CurrentNodes() ([]string, error) {
-	selector := labels.Everything().Add(rcIdLabel, labels.EqualsOperator, []string{rc.ID().String()})
+	selector := klabels.Everything().Add(rcIdLabel, klabels.EqualsOperator, []string{rc.ID().String()})
 
 	pods, err := rc.podApplicator.GetMatches(selector, labels.POD)
 	if err != nil {

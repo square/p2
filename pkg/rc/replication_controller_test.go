@@ -10,6 +10,7 @@ import (
 	"github.com/square/p2/pkg/pods"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
+	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 )
 
 type fakeKpStore struct {
@@ -38,7 +39,7 @@ func setup(t *testing.T) (
 	manifestBuilder.SetID("testPod")
 	manifest := manifestBuilder.GetManifest()
 
-	nodeSelector := labels.Everything().Add("nodeQuality", labels.EqualsOperator, []string{"good"})
+	nodeSelector := klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"})
 	podLabels := map[string]string{"podTest": "successful"}
 
 	rcData, err := rcStore.Create(manifest, nodeSelector, podLabels)
@@ -60,7 +61,7 @@ func setup(t *testing.T) (
 }
 
 func scheduledPods(t *testing.T, pods labels.Applicator) []labels.Labeled {
-	podSelector := labels.Everything().Add("podTest", labels.EqualsOperator, []string{"successful"})
+	podSelector := klabels.Everything().Add("podTest", klabels.EqualsOperator, []string{"successful"})
 	labeled, err := pods.GetMatches(podSelector, labels.POD)
 	Assert(t).IsNil(err, "expected no error matching pods")
 	return labeled

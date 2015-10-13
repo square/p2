@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package labels
+package sets
 
 import (
 	"reflect"
@@ -26,19 +26,19 @@ import (
 type Empty struct{}
 
 // StringSet is a set of strings, implemented via map[string]struct{} for minimal memory consumption.
-type StringSet map[string]Empty
+type String map[string]Empty
 
-// NewStringSet creates a StringSet from a list of values.
-func NewStringSet(items ...string) StringSet {
-	ss := StringSet{}
+// New creates a StringSet from a list of values.
+func NewString(items ...string) String {
+	ss := String{}
 	ss.Insert(items...)
 	return ss
 }
 
 // KeySet creates a StringSet from a keys of a map[string](? extends interface{}).  Since you can't describe that map type in the Go type system
 // the reflected value is required.
-func KeySet(theMap reflect.Value) StringSet {
-	ret := StringSet{}
+func KeySet(theMap reflect.Value) String {
+	ret := String{}
 
 	for _, keyValue := range theMap.MapKeys() {
 		ret.Insert(keyValue.String())
@@ -48,27 +48,27 @@ func KeySet(theMap reflect.Value) StringSet {
 }
 
 // Insert adds items to the set.
-func (s StringSet) Insert(items ...string) {
+func (s String) Insert(items ...string) {
 	for _, item := range items {
 		s[item] = Empty{}
 	}
 }
 
 // Delete removes all items from the set.
-func (s StringSet) Delete(items ...string) {
+func (s String) Delete(items ...string) {
 	for _, item := range items {
 		delete(s, item)
 	}
 }
 
-// Has returns true iff item is contained in the set.
-func (s StringSet) Has(item string) bool {
+// Has returns true if and only if item is contained in the set.
+func (s String) Has(item string) bool {
 	_, contained := s[item]
 	return contained
 }
 
-// HasAll returns true iff all items are contained in the set.
-func (s StringSet) HasAll(items ...string) bool {
+// HasAll returns true if and only if all items are contained in the set.
+func (s String) HasAll(items ...string) bool {
 	for _, item := range items {
 		if !s.Has(item) {
 			return false
@@ -78,7 +78,7 @@ func (s StringSet) HasAll(items ...string) bool {
 }
 
 // HasAny returns true if any items are contained in the set.
-func (s StringSet) HasAny(items ...string) bool {
+func (s String) HasAny(items ...string) bool {
 	for _, item := range items {
 		if s.Has(item) {
 			return true
@@ -93,8 +93,8 @@ func (s StringSet) HasAny(items ...string) bool {
 // s2 = {1, 2, 4, 5}
 // s1.Difference(s2) = {3}
 // s2.Difference(s1) = {4, 5}
-func (s StringSet) Difference(s2 StringSet) StringSet {
-	result := NewStringSet()
+func (s String) Difference(s2 String) String {
+	result := NewString()
 	for key := range s {
 		if !s2.Has(key) {
 			result.Insert(key)
@@ -110,8 +110,8 @@ func (s StringSet) Difference(s2 StringSet) StringSet {
 // s2 = {3, 4}
 // s1.Union(s2) = {1, 2, 3, 4}
 // s2.Union(s1) = {1, 2, 3, 4}
-func (s1 StringSet) Union(s2 StringSet) StringSet {
-	result := NewStringSet()
+func (s1 String) Union(s2 String) String {
+	result := NewString()
 	for key := range s1 {
 		result.Insert(key)
 	}
@@ -121,8 +121,31 @@ func (s1 StringSet) Union(s2 StringSet) StringSet {
 	return result
 }
 
-// IsSuperset returns true iff s1 is a superset of s2.
-func (s1 StringSet) IsSuperset(s2 StringSet) bool {
+// Intersection returns a new set which includes the item in BOTH s1 and s2
+// For example:
+// s1 = {1, 2}
+// s2 = {2, 3}
+// s1.Intersection(s2) = {2}
+func (s1 String) Intersection(s2 String) String {
+	var walk, other String
+	result := NewString()
+	if s1.Len() < s2.Len() {
+		walk = s1
+		other = s2
+	} else {
+		walk = s2
+		other = s1
+	}
+	for key := range walk {
+		if other.Has(key) {
+			result.Insert(key)
+		}
+	}
+	return result
+}
+
+// IsSuperset returns true if and only if s1 is a superset of s2.
+func (s1 String) IsSuperset(s2 String) bool {
 	for item := range s2 {
 		if !s1.Has(item) {
 			return false
@@ -131,10 +154,10 @@ func (s1 StringSet) IsSuperset(s2 StringSet) bool {
 	return true
 }
 
-// Equal returns true iff s1 is equal (as a set) to s2.
+// Equal returns true if and only if s1 is equal (as a set) to s2.
 // Two sets are equal if their membership is identical.
 // (In practice, this means same elements, order doesn't matter)
-func (s1 StringSet) Equal(s2 StringSet) bool {
+func (s1 String) Equal(s2 String) bool {
 	if len(s1) != len(s2) {
 		return false
 	}
@@ -147,7 +170,7 @@ func (s1 StringSet) Equal(s2 StringSet) bool {
 }
 
 // List returns the contents as a sorted string slice.
-func (s StringSet) List() []string {
+func (s String) List() []string {
 	res := make([]string, 0, len(s))
 	for key := range s {
 		res = append(res, key)
@@ -157,7 +180,7 @@ func (s StringSet) List() []string {
 }
 
 // Returns a single element from the set.
-func (s StringSet) PopAny() (string, bool) {
+func (s String) PopAny() (string, bool) {
 	for key := range s {
 		s.Delete(key)
 		return key, true
@@ -166,6 +189,6 @@ func (s StringSet) PopAny() (string, bool) {
 }
 
 // Len returns the size of the set.
-func (s StringSet) Len() int {
+func (s String) Len() int {
 	return len(s)
 }

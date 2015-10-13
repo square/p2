@@ -22,7 +22,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/square/p2/pkg/util"
+	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/util/fielderrors"
+	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/util/sets"
+	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/util/validation"
 )
 
 // Selector represents a label selector.
@@ -68,7 +70,7 @@ func (a ByKey) Len() int { return len(a) }
 
 func (a ByKey) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
-func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
+func (a ByKey) Less(i, j int) bool { return a[i].key < a[j].key }
 
 // Requirement is a selector that contains values, a key
 // and an operator that relates the key and values. The zero
@@ -76,9 +78,9 @@ func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 // Requirement implements both set based match and exact match
 // Requirement is initialized via NewRequirement constructor for creating a valid Requirement.
 type Requirement struct {
-	Key      string
-	Operator Operator
-	Values   StringSet
+	key       string
+	operator  Operator
+	strValues sets.String
 }
 
 // NewRequirement is the constructor for a Requirement.
@@ -90,7 +92,7 @@ type Requirement struct {
 //     of characters. See validateLabelKey for more details.
 //
 // The empty string is a valid value in the input values set.
-func NewRequirement(key string, op Operator, vals StringSet) (*Requirement, error) {
+func NewRequirement(key string, op Operator, vals sets.String) (*Requirement, error) {
 	if err := validateLabelKey(key); err != nil {
 		return nil, err
 	}
@@ -113,7 +115,7 @@ func NewRequirement(key string, op Operator, vals StringSet) (*Requirement, erro
 			return nil, err
 		}
 	}
-	return &Requirement{Key: key, Operator: op, Values: vals}, nil
+	return &Requirement{key: key, operator: op, strValues: vals}, nil
 }
 
 // Matches returns true if the Requirement matches the input Labels.
@@ -126,22 +128,36 @@ func NewRequirement(key string, op Operator, vals StringSet) (*Requirement, erro
 // (4) The operator is NotIn and Labels does not have the
 //     Requirement's key.
 func (r *Requirement) Matches(ls Labels) bool {
-	switch r.Operator {
+	switch r.operator {
 	case InOperator, EqualsOperator, DoubleEqualsOperator:
-		if !ls.Has(r.Key) {
+		if !ls.Has(r.key) {
 			return false
 		}
-		return r.Values.Has(ls.Get(r.Key))
+		return r.strValues.Has(ls.Get(r.key))
 	case NotInOperator, NotEqualsOperator:
-		if !ls.Has(r.Key) {
+		if !ls.Has(r.key) {
 			return true
 		}
-		return !r.Values.Has(ls.Get(r.Key))
+		return !r.strValues.Has(ls.Get(r.key))
 	case ExistsOperator:
-		return ls.Has(r.Key)
+		return ls.Has(r.key)
 	default:
 		return false
 	}
+}
+
+func (r *Requirement) Key() string {
+	return r.key
+}
+func (r *Requirement) Operator() Operator {
+	return r.operator
+}
+func (r *Requirement) Values() sets.String {
+	ret := sets.String{}
+	for k := range r.strValues {
+		ret.Insert(k)
+	}
+	return ret
 }
 
 // Return true if the LabelSelector doesn't restrict selection space
@@ -157,9 +173,9 @@ func (lsel LabelSelector) Empty() bool {
 // returned. See NewRequirement for creating a valid Requirement.
 func (r *Requirement) String() string {
 	var buffer bytes.Buffer
-	buffer.WriteString(r.Key)
+	buffer.WriteString(r.key)
 
-	switch r.Operator {
+	switch r.operator {
 	case EqualsOperator:
 		buffer.WriteString("=")
 	case DoubleEqualsOperator:
@@ -174,17 +190,17 @@ func (r *Requirement) String() string {
 		return buffer.String()
 	}
 
-	switch r.Operator {
+	switch r.operator {
 	case InOperator, NotInOperator:
 		buffer.WriteString("(")
 	}
-	if len(r.Values) == 1 {
-		buffer.WriteString(r.Values.List()[0])
+	if len(r.strValues) == 1 {
+		buffer.WriteString(r.strValues.List()[0])
 	} else { // only > 1 since == 0 prohibited by NewRequirement
-		buffer.WriteString(strings.Join(r.Values.List(), ","))
+		buffer.WriteString(strings.Join(r.strValues.List(), ","))
 	}
 
-	switch r.Operator {
+	switch r.operator {
 	case InOperator, NotInOperator:
 		buffer.WriteString(")")
 	}
@@ -197,7 +213,7 @@ func (lsel LabelSelector) Add(key string, operator Operator, values []string) Se
 	for _, item := range lsel {
 		reqs = append(reqs, item)
 	}
-	if r, err := NewRequirement(key, operator, NewStringSet(values...)); err == nil {
+	if r, err := NewRequirement(key, operator, sets.NewString(values...)); err == nil {
 		reqs = append(reqs, *r)
 	}
 	return LabelSelector(reqs)
@@ -479,7 +495,7 @@ func (p *Parser) parseRequirement() (*Requirement, error) {
 	if err != nil {
 		return nil, err
 	}
-	var values StringSet
+	var values sets.String
 	switch operator {
 	case InOperator, NotInOperator:
 		values, err = p.parseValues()
@@ -534,7 +550,7 @@ func (p *Parser) parseOperator() (op Operator, err error) {
 }
 
 // parseValues parses the values for set based matching (x,y,z)
-func (p *Parser) parseValues() (StringSet, error) {
+func (p *Parser) parseValues() (sets.String, error) {
 	tok, lit := p.consume(Values)
 	if tok != OpenParToken {
 		return nil, fmt.Errorf("found '%s' expected: '('", lit)
@@ -552,7 +568,7 @@ func (p *Parser) parseValues() (StringSet, error) {
 		return s, nil
 	case ClosedParToken: // handles "()"
 		p.consume(Values)
-		return NewStringSet(""), nil
+		return sets.NewString(""), nil
 	default:
 		return nil, fmt.Errorf("found '%s', expected: ',', ')' or identifier", lit)
 	}
@@ -560,8 +576,8 @@ func (p *Parser) parseValues() (StringSet, error) {
 
 // parseIdentifiersList parses a (possibly empty) list of
 // of comma separated (possibly empty) identifiers
-func (p *Parser) parseIdentifiersList() (StringSet, error) {
-	s := NewStringSet()
+func (p *Parser) parseIdentifiersList() (sets.String, error) {
+	s := sets.NewString()
 	for {
 		tok, lit := p.consume(Values)
 		switch tok {
@@ -596,9 +612,14 @@ func (p *Parser) parseIdentifiersList() (StringSet, error) {
 }
 
 // parseExactValue parses the only value for exact match style
-func (p *Parser) parseExactValue() (StringSet, error) {
-	s := NewStringSet()
-	tok, lit := p.consume(Values)
+func (p *Parser) parseExactValue() (sets.String, error) {
+	s := sets.NewString()
+	tok, lit := p.lookahead(Values)
+	if tok == EndOfStringToken || tok == CommaToken {
+		s.Insert("")
+		return s, nil
+	}
+	tok, lit = p.consume(Values)
 	if tok == IdentifierToken {
 		s.Insert(lit)
 		return s, nil
@@ -645,16 +666,18 @@ func Parse(selector string) (Selector, error) {
 	return nil, error
 }
 
+const qualifiedNameErrorMsg string = "must match regex [" + validation.DNS1123SubdomainFmt + " / ] " + validation.DNS1123LabelFmt
+
 func validateLabelKey(k string) error {
-	if !isQualifiedName(k) {
-		return util.Errorf("label key %q has invalid format", k)
+	if !validation.IsQualifiedName(k) {
+		return fielderrors.NewFieldInvalid("label key", k, qualifiedNameErrorMsg)
 	}
 	return nil
 }
 
 func validateLabelValue(v string) error {
-	if !isValidLabelValue(v) {
-		return util.Errorf("label value %q %has invalid format", v)
+	if !validation.IsValidLabelValue(v) {
+		return fielderrors.NewFieldInvalid("label value", v, qualifiedNameErrorMsg)
 	}
 	return nil
 }
@@ -667,7 +690,7 @@ func SelectorFromSet(ls Set) Selector {
 	}
 	var requirements []Requirement
 	for label, value := range ls {
-		if r, err := NewRequirement(label, EqualsOperator, NewStringSet(value)); err != nil {
+		if r, err := NewRequirement(label, EqualsOperator, sets.NewString(value)); err != nil {
 			//TODO: double check errors when input comes from serialization?
 			return LabelSelector{}
 		} else {
