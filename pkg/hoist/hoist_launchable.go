@@ -140,7 +140,7 @@ func (hl *Launchable) InvokeBinScript(script string) (string, error) {
 		cgroupName = ""
 	}
 	p2ExecArgs := p2exec.P2ExecArgs{
-		Command:          cmdPath,
+		Command:          []string{cmdPath},
 		User:             hl.RunAs,
 		EnvDir:           hl.ConfigDir,
 		NoLimits:         hl.ExecNoLimit,
@@ -226,7 +226,7 @@ func (hl *Launchable) Executables(
 	for _, service := range services {
 		serviceName := fmt.Sprintf("%s__%s", hl.Id, service.Name())
 		p2ExecArgs := p2exec.P2ExecArgs{
-			Command:          filepath.Join(serviceDir, service.Name()),
+			Command:          []string{filepath.Join(serviceDir, service.Name())},
 			User:             hl.RunAs,
 			EnvDir:           hl.ConfigDir,
 			NoLimits:         hl.ExecNoLimit,

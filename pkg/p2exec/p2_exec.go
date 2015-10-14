@@ -8,7 +8,8 @@ type P2ExecArgs struct {
 	NoLimits         bool
 	CgroupName       string
 	CgroupConfigName string
-	Command          string
+	Command          []string
+	WorkDir          string
 }
 
 func (args P2ExecArgs) CommandLine() []string {
@@ -33,5 +34,9 @@ func (args P2ExecArgs) CommandLine() []string {
 		cmd = append(cmd, "-c", args.CgroupName)
 	}
 
-	return append(cmd, args.Command)
+	if args.WorkDir != "" {
+		cmd = append(cmd, "-w", args.WorkDir)
+	}
+
+	return append(cmd, args.Command...)
 }
