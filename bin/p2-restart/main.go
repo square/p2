@@ -83,7 +83,8 @@ func main() {
 		}
 		logger.WithFields(logrus.Fields{
 			"service": service.Name,
-			"uptime":  res.ChildUptime,
+			"time":    res.ChildTime,
+			"status":  res.ChildStatus,
 			"PID":     res.ChildPID,
 		}).Infoln("Will restart")
 	}

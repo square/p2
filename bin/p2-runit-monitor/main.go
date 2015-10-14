@@ -43,8 +43,12 @@ func main() {
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusServiceUnavailable)
 			} else {
-				if statResult.ChildUptime > childDuration {
-					fmt.Fprintf(w, `{"status": "ok", "duration": "%s"}`, childDuration)
+				statusString := fmt.Sprintf(`{"status": "%s", "time": "%s"}`, statResult.ChildStatus, statResult.ChildTime)
+				if statResult.ChildTime > childDuration && statResult.ChildStatus == runit.STATUS_RUN {
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprintf(w, statusString)
+				} else {
+					http.Error(w, statusString, http.StatusServiceUnavailable)
 				}
 			}
 		})
