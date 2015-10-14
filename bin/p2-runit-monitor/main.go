@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/square/p2/pkg/config"
@@ -30,11 +31,13 @@ func main() {
 	if runitDir == "" {
 		runitDir = runit.DefaultBuilder.RunitRoot
 	}
-	statusPort, err := runitMonCfg.ReadString("port")
+	statusPortStr, err := runitMonCfg.ReadString("port")
 	fatalize(err)
-	if statusPort == "" {
+	if statusPortStr == "" {
 		logging.DefaultLogger.NoFields().Fatalln("Should have assigned a port under the runit_monitor config")
 	}
+	statusPort, err := strconv.Atoi(statusPortStr)
+	fatalize(err)
 
 	service := &runit.Service{Name: toMonitor, Path: filepath.Join(runitDir, toMonitor)}
 	http.HandleFunc("/_status",

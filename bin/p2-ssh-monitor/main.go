@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 
 	"github.com/square/p2/pkg/config"
 	"github.com/square/p2/pkg/logging"
@@ -24,11 +25,13 @@ func main() {
 	fatalize(err)
 	sshAddr, err := sshConf.ReadString("ssh_address")
 	fatalize(err)
-	monitorPort, err := sshConf.ReadString("port")
+	monitorPortStr, err := sshConf.ReadString("port")
 	fatalize(err)
-	if sshKeyPath == "" || sshUser == "" || sshAddr == "" || monitorPort == "" {
+	if sshKeyPath == "" || sshUser == "" || sshAddr == "" || monitorPortStr == "" {
 		logging.DefaultLogger.NoFields().Fatalln("Must set all of ssh_key, ssh_user, ssh_address and port")
 	}
+	monitorPort, err := strconv.Atoi(monitorPortStr)
+	fatalize(err)
 
 	privateKey, err := ioutil.ReadFile(sshKeyPath)
 	if err != nil {
