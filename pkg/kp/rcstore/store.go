@@ -31,9 +31,18 @@ type Store interface {
 	//
 	// The lock will be taken against an ephemeral key, so it is safe to use a
 	// session that deletes its keys on invalidation.
-	Lock(id fields.ID, session string) (bool, error)
+	//
+	// The separate locks are for one reader (who watches the RC and acts when
+	// it changes) and one writer (who mutates the RC to cause those changes).
+	// Each lock may be held by one, and only one, party (readers cannot share
+	// the read lock).
+	LockWrite(id fields.ID, session string) (bool, error)
+	LockRead(id fields.ID, session string) (bool, error)
 
+	// Set the desired replica count for the given RC to the given integer.
 	SetDesiredReplicas(fields.ID, int) error
+	// Add the given integer to the given RC's replica count (bounding at zero).
+	AddDesiredReplicas(fields.ID, int) error
 
 	Enable(fields.ID) error
 	Disable(fields.ID) error

@@ -129,6 +129,21 @@ func (h alwaysHappyHealthChecker) Service(serviceID string) (map[string]health.R
 	return results, nil
 }
 
+func (h alwaysHappyHealthChecker) WatchService(
+	serviceID string,
+	resultCh chan<- map[string]health.Result,
+	errCh chan<- error,
+	quitCh <-chan struct{},
+) {
+	for {
+		select {
+		case <-quitCh:
+			return
+		case resultCh <- map[string]health.Result{}:
+		}
+	}
+}
+
 // creates an implementation of checker.ConsulHealthChecker that always reports
 // satisfied health checks for testing purposes
 func happyHealthChecker() checker.ConsulHealthChecker {
@@ -171,6 +186,21 @@ func (c channelBasedHealthChecker) Service(serviceID string) (map[string]health.
 		}
 	}
 	return results, nil
+}
+
+func (h channelBasedHealthChecker) WatchService(
+	serviceID string,
+	resultCh chan<- map[string]health.Result,
+	errCh chan<- error,
+	quitCh <-chan struct{},
+) {
+	for {
+		select {
+		case <-quitCh:
+			return
+		case resultCh <- map[string]health.Result{}:
+		}
+	}
 }
 
 // returns an implementation of checker.ConsulHealthChecker that will provide

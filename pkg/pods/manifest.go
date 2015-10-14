@@ -7,6 +7,7 @@ package pods
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -218,6 +219,9 @@ func ManifestFromBytes(bytes []byte) (Manifest, error) {
 	if err := yaml.Unmarshal(bytes, manifest); err != nil {
 		return nil, util.Errorf("Could not read pod manifest: %s", err)
 	}
+	if err := ValidManifest(manifest); err != nil {
+		return nil, util.Errorf("invalid manifest: %s", err)
+	}
 	return manifest, nil
 }
 
@@ -319,4 +323,23 @@ func (m manifest) SignatureData() (plaintext, signature []byte) {
 		return nil, nil
 	}
 	return m.plaintext, m.signature
+}
+
+// ValidManifest checks the internal consistency of a manifest. Returns an error if the
+// data is inconsistent or "nil" otherwise.
+func ValidManifest(m Manifest) error {
+	if m.ID() == "" {
+		return fmt.Errorf("manifest must contain an 'id'")
+	}
+	for key, stanza := range m.GetLaunchableStanzas() {
+		switch {
+		case stanza.LaunchableType == "":
+			return fmt.Errorf("'%s': launchable must contain a 'launchable_type'", key)
+		case stanza.LaunchableId == "":
+			return fmt.Errorf("'%s': launchable must contain a 'launchable_id'", key)
+		case stanza.Location == "":
+			return fmt.Errorf("'%s': launchable must contain a 'location'", key)
+		}
+	}
+	return nil
 }

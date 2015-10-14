@@ -15,6 +15,7 @@ import (
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/gzip"
 	"github.com/square/p2/pkg/launch"
+	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/user"
@@ -29,7 +30,8 @@ type Launchable struct {
 	ConfigDir        string         // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
 	Fetcher          uri.Fetcher    // Callback that downloads the file from the remote location.
 	RootDir          string         // The root directory of the launchable, containing N:N>=1 installs.
-	P2exec           string         // The path to p2-exec
+	P2Exec           string         // Struct that can be used to build a p2-exec invocation with appropriate flags
+	ExecNoLimit      bool           // If set, execute with the -n (--no-limit) argument to p2-exec
 	CgroupConfig     cgroups.Config // Cgroup parameters to use with p2-exec
 	CgroupConfigName string         // The string in PLATFORM_CONFIG to pass to p2-exec
 	RestartTimeout   time.Duration  // How long to wait when restarting the services in this launchable.
@@ -94,7 +96,7 @@ func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV)
 
 func (hl *Launchable) PostActivate() (string, error) {
 	// TODO: unexport this method (requires integrating BuildRunitServices into this API)
-	output, err := hl.invokeBinScript("post-activate")
+	output, err := hl.InvokeBinScript("post-activate")
 
 	// providing a post-activate script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
@@ -105,7 +107,7 @@ func (hl *Launchable) PostActivate() (string, error) {
 }
 
 func (hl *Launchable) disable() (string, error) {
-	output, err := hl.invokeBinScript("disable")
+	output, err := hl.InvokeBinScript("disable")
 
 	// providing a disable script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
@@ -116,7 +118,7 @@ func (hl *Launchable) disable() (string, error) {
 }
 
 func (hl *Launchable) enable() (string, error) {
-	output, err := hl.invokeBinScript("enable")
+	output, err := hl.InvokeBinScript("enable")
 
 	// providing an enable script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
@@ -126,26 +128,26 @@ func (hl *Launchable) enable() (string, error) {
 	return output, nil
 }
 
-func (hl *Launchable) invokeBinScript(script string) (string, error) {
+func (hl *Launchable) InvokeBinScript(script string) (string, error) {
 	cmdPath := filepath.Join(hl.InstallDir(), "bin", script)
 	_, err := os.Stat(cmdPath)
 	if err != nil {
 		return "", err
 	}
 
-	cmd := exec.Command(
-		hl.P2exec,
-		"-n",
-		"-u",
-		hl.RunAs,
-		"-e",
-		hl.ConfigDir,
-		"-l",
-		hl.CgroupConfigName,
-		"-c",
-		hl.Id,
-		cmdPath,
-	)
+	cgroupName := hl.Id
+	if hl.CgroupConfigName == "" {
+		cgroupName = ""
+	}
+	p2ExecArgs := p2exec.P2ExecArgs{
+		Command:          cmdPath,
+		User:             hl.RunAs,
+		EnvDir:           hl.ConfigDir,
+		NoLimits:         hl.ExecNoLimit,
+		CgroupConfigName: hl.CgroupConfigName,
+		CgroupName:       cgroupName,
+	}
+	cmd := exec.Command(hl.P2Exec, p2ExecArgs.CommandLine()...)
 	buffer := bytes.Buffer{}
 	cmd.Stdout = &buffer
 	cmd.Stderr = &buffer
@@ -223,19 +225,15 @@ func (hl *Launchable) Executables(
 	var executables []launch.Executable
 	for _, service := range services {
 		serviceName := fmt.Sprintf("%s__%s", hl.Id, service.Name())
-		execCmd := []string{
-			hl.P2exec,
-			"-n",
-			"-u",
-			hl.RunAs,
-			"-e",
-			hl.ConfigDir,
-			"-l",
-			hl.CgroupConfigName,
-			"-c",
-			hl.Id,
-			filepath.Join(serviceDir, service.Name()),
+		p2ExecArgs := p2exec.P2ExecArgs{
+			Command:          filepath.Join(serviceDir, service.Name()),
+			User:             hl.RunAs,
+			EnvDir:           hl.ConfigDir,
+			NoLimits:         hl.ExecNoLimit,
+			CgroupConfigName: hl.CgroupConfigName,
+			CgroupName:       hl.Id,
 		}
+		execCmd := append([]string{hl.P2Exec}, p2ExecArgs.CommandLine()...)
 
 		executables = append(executables, launch.Executable{
 			Service: runit.Service{
@@ -281,9 +279,10 @@ func (hl *Launchable) Install() error {
 		return err
 	}
 
-	err = gzip.ExtractTarGz(hl.RunAs, artifactFile, hl.Version(), hl.InstallDir())
+	err = gzip.ExtractTarGz(hl.RunAs, artifactFile, hl.InstallDir())
 	if err != nil {
 		os.RemoveAll(hl.InstallDir())
+		return util.Errorf("extracting %s: %s", hl.Version(), err)
 	}
 	return err
 }

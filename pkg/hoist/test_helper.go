@@ -22,7 +22,7 @@ func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuild
 		ConfigDir: tempDir,
 		Fetcher:   uri.DefaultFetcher,
 		RootDir:   launchableInstallDir,
-		P2exec:    util.From(runtime.Caller(0)).ExpandPath("fake_p2-exec"),
+		P2Exec:    util.From(runtime.Caller(0)).ExpandPath("fake_p2-exec"),
 	}
 
 	curUser, err := user.Current()

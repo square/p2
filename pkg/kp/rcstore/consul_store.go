@@ -190,13 +190,19 @@ func (s *consulStore) kvpsToRCs(l api.KVPairs) ([]fields.RC, error) {
 // and use that instead of c+ping it here
 // we are intentionally not using kp.Lock, because kp.Lock manages its own
 // session and therefore it cannot cooperate with kp.ConsulSessionManager
-func (s *consulStore) Lock(id fields.ID, session string) (bool, error) {
+func (s *consulStore) lock(id fields.ID, session, lockType string) (bool, error) {
 	success, _, err := s.kv.Acquire(&api.KVPair{
-		Key:     kp.LockPath(kp.RCPath(id.String())),
+		Key:     kp.LockPath(kp.RCPath(id.String(), lockType)),
 		Value:   []byte(session),
 		Session: session,
 	}, nil)
 	return success, err
+}
+func (s *consulStore) LockWrite(id fields.ID, session string) (bool, error) {
+	return s.lock(id, session, "write")
+}
+func (s *consulStore) LockRead(id fields.ID, session string) (bool, error) {
+	return s.lock(id, session, "read")
 }
 
 func (s *consulStore) Disable(id fields.ID) error {
@@ -216,6 +222,16 @@ func (s *consulStore) Enable(id fields.ID) error {
 func (s *consulStore) SetDesiredReplicas(id fields.ID, n int) error {
 	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
 		rc.ReplicasDesired = n
+		return rc, nil
+	})
+}
+
+func (s *consulStore) AddDesiredReplicas(id fields.ID, n int) error {
+	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
+		rc.ReplicasDesired += n
+		if rc.ReplicasDesired < 0 {
+			rc.ReplicasDesired = 0
+		}
 		return rc, nil
 	})
 }
@@ -274,6 +290,10 @@ func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC,
 	if newRC.ID.String() == "" {
 		// TODO: If this fails, then we have some dangling labels.
 		// Perhaps they can be cleaned up later.
+		// note that if the CAS fails afterwards, we will have still deleted
+		// the labels, and then we will retry, which will involve deleting them
+		// again
+		// really the only way to solve this is a transaction
 		err = s.forEachLabel(rc, func(id, k, _ string) error {
 			return s.applicator.RemoveLabel(labels.RC, id, k)
 		})

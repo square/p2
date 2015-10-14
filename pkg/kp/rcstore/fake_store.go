@@ -18,7 +18,8 @@ type fakeEntry struct {
 	fields.RC
 	watchers      map[int]chan struct{}
 	lastWatcherId int
-	locked        string
+	lockedRead    string
+	lockedWrite   string
 }
 
 var _ Store = &fakeStore{}
@@ -77,13 +78,24 @@ func (s *fakeStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan e
 	return nil, nil
 }
 
-func (s *fakeStore) Lock(id fields.ID, session string) (bool, error) {
+func (s *fakeStore) LockWrite(id fields.ID, session string) (bool, error) {
 	entry, ok := s.rcs[id]
 	if !ok {
 		return false, util.Errorf("Nonexistent rc")
 	}
-	if entry.locked == "" {
-		entry.locked = session
+	if entry.lockedWrite == "" {
+		entry.lockedWrite = session
+		return true, nil
+	}
+	return false, nil
+}
+func (s *fakeStore) LockRead(id fields.ID, session string) (bool, error) {
+	entry, ok := s.rcs[id]
+	if !ok {
+		return false, util.Errorf("Nonexistent rc")
+	}
+	if entry.lockedRead == "" {
+		entry.lockedRead = session
 		return true, nil
 	}
 	return false, nil
@@ -122,6 +134,22 @@ func (s *fakeStore) SetDesiredReplicas(id fields.ID, n int) error {
 	}
 
 	entry.ReplicasDesired = n
+	for _, channel := range entry.watchers {
+		channel <- struct{}{}
+	}
+	return nil
+}
+
+func (s *fakeStore) AddDesiredReplicas(id fields.ID, n int) error {
+	entry, ok := s.rcs[id]
+	if !ok {
+		return util.Errorf("Nonexistent RC")
+	}
+
+	entry.ReplicasDesired += n
+	if entry.ReplicasDesired < 0 {
+		entry.ReplicasDesired = 0
+	}
 	for _, channel := range entry.watchers {
 		channel <- struct{}{}
 	}

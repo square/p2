@@ -67,7 +67,15 @@
 			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
 		},
 		{
+			"ImportPath": "golang.org/x/crypto/curve25519",
+			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
+		},
+		{
 			"ImportPath": "golang.org/x/crypto/openpgp",
+			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
+		},
+		{
+			"ImportPath": "golang.org/x/crypto/ssh",
 			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
 		},
 		{
