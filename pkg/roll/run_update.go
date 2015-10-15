@@ -27,7 +27,7 @@ type update struct {
 
 	logger logging.Logger
 
-	session string
+	lock kp.Lock
 }
 
 // Create a new Update. The kp.Store, rcstore.Store, labels.Applicator and
@@ -42,7 +42,7 @@ func NewUpdate(
 	labeler labels.Applicator,
 	sched rc.Scheduler,
 	logger logging.Logger,
-	session string,
+	lock kp.Lock,
 ) Update {
 	return update{
 		Update:  f,
@@ -52,7 +52,7 @@ func NewUpdate(
 		labeler: labeler,
 		sched:   sched,
 		logger:  logger,
-		session: session,
+		lock:    lock,
 	}
 }
 
@@ -75,12 +75,12 @@ type Update interface {
 }
 
 func (u update) Prepare() error {
-	u.logger.WithField("session", u.session).Debugln("Locking")
-	if err := u.lock(u.session); err != nil {
+	u.logger.NoFields().Debugln("Locking")
+	if err := u.lockRCs(); err != nil {
 		return err
 	}
 
-	u.logger.WithField("session", u.session).Debugln("Enabling/disabling")
+	u.logger.NoFields().Debugln("Enabling/disabling")
 	if err := u.enable(); err != nil {
 		return err
 	}
@@ -195,17 +195,32 @@ ROLL_LOOP:
 	return nil
 }
 
-func (u update) lock(session string) error {
-	if success, err := u.rcs.LockWrite(u.NewRC, session); err != nil {
-		return err
-	} else if !success {
+func (u update) lockPath(id rcf.ID) string {
+	// RUs want to lock the RCs they're mutating, but this lock is separate
+	// from the RC lock (which is held by the rc.WatchDesires goroutine), so the
+	// key being locked is different
+	return kp.LockPath(kp.RCPath(id.String(), "update"))
+}
+
+func (u update) lockRCs() error {
+	newPath := u.lockPath(u.NewRC)
+	oldPath := u.lockPath(u.OldRC)
+
+	err := u.lock.Lock(newPath)
+	if _, ok := err.(kp.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock new %s", u.NewRC)
+	} else if err != nil {
+		return err
 	}
 
-	if success, err := u.rcs.LockWrite(u.OldRC, session); err != nil {
-		return err
-	} else if !success {
+	err = u.lock.Lock(oldPath)
+	if _, ok := err.(kp.AlreadyLockedError); ok {
+		// release the other lock - no point checking this error, we can't
+		// really act on it
+		u.lock.Unlock(newPath)
 		return fmt.Errorf("could not lock old %s", u.OldRC)
+	} else if err != nil {
+		return err
 	}
 
 	return nil

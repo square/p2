@@ -3,6 +3,7 @@ package rc
 import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -16,7 +17,7 @@ import (
 // multiple times.
 type Farm struct {
 	// constructor arguments for rcs created by this farm
-	kpStore   kpStore
+	kpStore   kp.Store
 	rcStore   rcstore.Store
 	scheduler Scheduler
 	labeler   labels.Applicator
@@ -24,8 +25,8 @@ type Farm struct {
 	// session stream for the rcs locked by this farm
 	sessions <-chan string
 
-	// rcs owned by this farm
 	children map[fields.ID]childRC
+	lock     *kp.Lock
 
 	logger logging.Logger
 }
@@ -36,7 +37,7 @@ type childRC struct {
 }
 
 func NewFarm(
-	kpStore kpStore,
+	kpStore kp.Store,
 	rcs rcstore.Store,
 	scheduler Scheduler,
 	labeler labels.Applicator,
@@ -57,116 +58,105 @@ func NewFarm(
 // Start is a blocking function that monitors Consul for replication controllers.
 // The Farm will attempt to claim replication controllers as they appear and,
 // if successful, will start goroutines for those replication controllers to do
-// their job. Closing the quit channel will cause this function to return, but
-// does not release locks.
+// their job. Closing the quit channel will cause this function to return,
+// releasing all locks it holds.
 //
 // Start is not safe for concurrent execution. Do not execute multiple
 // concurrent instances of Start.
-func (rcm *Farm) Start(quit <-chan struct{}) {
+func (rcf *Farm) Start(quit <-chan struct{}) {
 	subQuit := make(chan struct{})
 	defer close(subQuit)
-	rcWatch, rcErr := rcm.rcStore.WatchNew(subQuit)
-	var session string
+	rcWatch, rcErr := rcf.rcStore.WatchNew(subQuit)
 
+START_LOOP:
 	for {
 		select {
 		case <-quit:
-			// TODO: we have to release these locks as well to make sure others
-			// can capture them, otherwise the lock will persist until it expires
-			// on its own. in practice, we will also kill the consul session
-			// manager, so is this really a problem?
-			rcm.logger.WithField("session", session).Infoln("Halt requested, releasing replication controllers")
-			rcm.releaseChildren()
+			rcf.logger.NoFields().Infoln("Halt requested, releasing replication controllers")
+			rcf.releaseChildren()
 			return
-		case session = <-rcm.sessions:
+		case session := <-rcf.sessions:
 			if session == "" {
 				// our session has expired, we must assume our locked children
 				// have all been released and that someone else may have
 				// claimed them by now
-				rcm.logger.NoFields().Errorln("Session expired, releasing replication controllers")
-				rcm.releaseChildren()
+				rcf.logger.NoFields().Errorln("Session expired, releasing replication controllers")
+				rcf.lock = nil
+				rcf.releaseChildren()
 			} else {
 				// a new session has been acquired - only happens after an
-				// expiration message, so len(children)==0. right now this is a
-				// noop, since the session has been set to its new value, but in
-				// the future we should use a refactored lock API and instantiate
-				// it here
-				rcm.logger.WithField("session", session).Infoln("Acquired new session")
+				// expiration message, so len(children)==0
+				rcf.logger.WithField("session", session).Infoln("Acquired new session")
+				lock := rcf.kpStore.NewUnmanagedLock(session, "")
+				rcf.lock = &lock
 				// TODO: restart the watch so that you get updates right away?
 			}
 		case err := <-rcErr:
-			rcm.logger.WithError(err).Errorln("Could not read consul replication controllers")
+			rcf.logger.WithError(err).Errorln("Could not read consul replication controllers")
 		case rcFields := <-rcWatch:
-			rcm.logger.WithField("n", len(rcFields)).Debugln("Received replication controller update")
-			if session == "" {
+			rcf.logger.WithField("n", len(rcFields)).Debugln("Received replication controller update")
+			if rcf.lock == nil {
 				// we can't claim new nodes because our session is invalidated.
 				// raise an error and ignore this update
-				rcm.logger.NoFields().Warnln("Received replication controller update, but do not have session to acquire locks")
+				rcf.logger.NoFields().Warnln("Received replication controller update, but do not have session to acquire locks")
 				continue
 			}
 
 			// track which children were found in the returned set
 			foundChildren := make(map[fields.ID]struct{})
 			for _, rcField := range rcFields {
-				if _, ok := rcm.children[rcField.ID]; ok {
+				rcLogger := rcf.logger.SubLogger(logrus.Fields{
+					"rc_id": rcField.ID,
+				})
+				if _, ok := rcf.children[rcField.ID]; ok {
 					// this one is already ours, skip
-					rcm.logger.WithField("rc_id", rcField.ID).Debugln("Got replication controller already owned by self")
+					rcLogger.NoFields().Debugln("Got replication controller already owned by self")
 					foundChildren[rcField.ID] = struct{}{}
 					continue
 				}
 
-				success, err := rcm.rcStore.LockRead(rcField.ID, session)
-				if err != nil {
-					// log and break out of the loop - we can't continue if
-					// we had a real failure, our session probably disappeared
-					rcm.logger.WithErrorAndFields(err, logrus.Fields{
-						"rc_id":   rcField.ID,
-						"session": session,
-					}).Errorln("Got error while locking replication controller - session may be expired")
-					break // TODO: should we be pruning after this?
-				} else if !success {
+				err := rcf.lock.Lock(kp.LockPath(kp.RCPath(rcField.ID.String())))
+				if _, ok := err.(kp.AlreadyLockedError); ok {
 					// someone else must have gotten it first - log and move to
 					// the next one
-					rcm.logger.WithFields(logrus.Fields{
-						"rc_id":   rcField.ID,
-						"session": session,
-					}).Debugln("Lock on replication controller was denied")
+					rcLogger.NoFields().Debugln("Lock on replication controller was denied")
 					continue
+				} else if err != nil {
+					rcLogger.NoFields().Errorln("Got error while locking replication controller - session may be expired")
+					// stop processing this update and go back to the select
+					// chances are this error is a network problem or session
+					// expiry, and all the others in this update would also fail
+					continue START_LOOP
 				}
 
 				// at this point the rc is ours, time to spin it up
-				rcm.logger.WithFields(logrus.Fields{
-					"rc_id":   rcField.ID,
-					"session": session,
-				}).Infoln("Acquired lock on new replication controller, spawning")
+				rcLogger.NoFields().Infoln("Acquired lock on new replication controller, spawning")
 
 				newChild := New(
 					rcField,
-					rcm.kpStore,
-					rcm.rcStore,
-					rcm.scheduler,
-					rcm.labeler,
-					rcm.logger.SubLogger(logrus.Fields{"rc_id": rcField.ID}),
+					rcf.kpStore,
+					rcf.rcStore,
+					rcf.scheduler,
+					rcf.labeler,
+					rcLogger,
 				)
 				childQuit := make(chan struct{})
-				rcm.children[rcField.ID] = childRC{rc: newChild, quit: childQuit}
+				rcf.children[rcField.ID] = childRC{rc: newChild, quit: childQuit}
 				foundChildren[rcField.ID] = struct{}{}
 
 				go func() {
 					// disabled-ness is handled in watchdesires
 					for err := range newChild.WatchDesires(childQuit) {
-						rcm.logger.WithErrorAndFields(err, logrus.Fields{
-							"rc_id": newChild.ID(),
-						}).Errorln("Got error in replication controller loop")
+						rcLogger.WithError(err).Errorln("Got error in replication controller loop")
 					}
 				}()
 			}
 
 			// now remove any children that were not found in the result set
-			rcm.logger.NoFields().Debugln("Pruning replication controllers that have disappeared")
-			for id := range rcm.children {
+			rcf.logger.NoFields().Debugln("Pruning replication controllers that have disappeared")
+			for id := range rcf.children {
 				if _, ok := foundChildren[id]; !ok {
-					rcm.releaseChild(id)
+					rcf.releaseChild(id)
 				}
 			}
 		}
@@ -174,17 +164,25 @@ func (rcm *Farm) Start(quit <-chan struct{}) {
 }
 
 // close one child
-func (rcm *Farm) releaseChild(id fields.ID) {
-	rcm.logger.WithField("rc_id", id).Infoln("Releasing replication controller")
-	close(rcm.children[id].quit)
-	delete(rcm.children, id)
+func (rcf *Farm) releaseChild(id fields.ID) {
+	rcf.logger.WithField("rc_id", id).Infoln("Releasing replication controller")
+	close(rcf.children[id].quit)
+	delete(rcf.children, id)
+
+	// if our lock is active, attempt to gracefully release it on this rc
+	if rcf.lock != nil {
+		err := rcf.lock.Unlock(kp.LockPath(kp.RCPath(id.String())))
+		if err != nil {
+			rcf.logger.WithField("rc_id", id).Warnln("Could not release replication controller lock")
+		}
+	}
 }
 
 // close all children
-func (rcm *Farm) releaseChildren() {
-	for id := range rcm.children {
+func (rcf *Farm) releaseChildren() {
+	for id := range rcf.children {
 		// it's safe to delete this element during iteration,
 		// because we have already iterated over it
-		rcm.releaseChild(id)
+		rcf.releaseChild(id)
 	}
 }

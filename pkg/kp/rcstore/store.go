@@ -23,22 +23,6 @@ type Store interface {
 	// channel.
 	WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan error)
 
-	// Use the given session string (which uniquely identifies the lock holder)
-	// to acquire a lock on the specified replication controller. If the lock
-	// was successfully claimed, return (true, nil). If the request completed
-	// but the lock was already held, return (false, nil). Otherwise return an
-	// appropriate error.
-	//
-	// The lock will be taken against an ephemeral key, so it is safe to use a
-	// session that deletes its keys on invalidation.
-	//
-	// The separate locks are for one reader (who watches the RC and acts when
-	// it changes) and one writer (who mutates the RC to cause those changes).
-	// Each lock may be held by one, and only one, party (readers cannot share
-	// the read lock).
-	LockWrite(id fields.ID, session string) (bool, error)
-	LockRead(id fields.ID, session string) (bool, error)
-
 	// Set the desired replica count for the given RC to the given integer.
 	SetDesiredReplicas(fields.ID, int) error
 	// Add the given integer to the given RC's replica count (bounding at zero).
