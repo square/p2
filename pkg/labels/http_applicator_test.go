@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 )
 
 const endpointSuffix = "/testendpoint"
@@ -26,7 +27,7 @@ func getMatches(t *testing.T, httpResponse string) ([]Labeled, error) {
 
 	applicator, err := NewHttpApplicator(nil, url)
 	Assert(t).IsNil(err, "expected no error creating HTTP applicator")
-	selector := Everything().Add("r1", EqualsOperator, []string{"v1"}).Add("r2", EqualsOperator, []string{"v2"})
+	selector := labels.Everything().Add("r1", labels.EqualsOperator, []string{"v1"}).Add("r2", labels.EqualsOperator, []string{"v2"})
 	return applicator.GetMatches(selector, NODE)
 }
 

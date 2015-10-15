@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
+	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util"
 )
@@ -52,7 +54,7 @@ func (c *consulApplicator) getLabels(labelType Type, id string) (Labeled, uint64
 		return Labeled{
 			ID:        id,
 			LabelType: labelType,
-			Labels:    Set{},
+			Labels:    labels.Set{},
 		}, 0, err
 	}
 
@@ -64,7 +66,7 @@ func (c *consulApplicator) GetLabels(labelType Type, id string) (Labeled, error)
 	return l, err
 }
 
-func (c *consulApplicator) GetMatches(selector Selector, labelType Type) ([]Labeled, error) {
+func (c *consulApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
 	// TODO: Label selector result caching
 	allMatches, _, err := c.kv.List(path.Join(labelRoot, labelType.String()), nil)
 	if err != nil {
@@ -155,7 +157,7 @@ func convertKVPToLabeled(kvp *api.KVPair) (Labeled, error) {
 
 	ret := Labeled{
 		ID:     parts[2],
-		Labels: Set{},
+		Labels: labels.Set{},
 	}
 
 	labelType, err := AsType(parts[1])

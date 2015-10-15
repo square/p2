@@ -3,37 +3,25 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"net/http"
 	"os"
 
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v1"
+	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/inspect"
 	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/util/net"
+	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/version"
 )
 
 var (
-	consulUrl      = kingpin.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
 	filterNodeName = kingpin.Flag("node", "The node to inspect. By default, all nodes are shown.").String()
 	filterPodId    = kingpin.Flag("pod", "The pod manifest ID to inspect. By default, all pods are shown.").String()
-	consulToken    = kingpin.Flag("token", "The consul ACL token to use. Empty by default.").String()
-	headers        = kingpin.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
-	https          = kingpin.Flag("https", "Use HTTPS").Bool()
 )
 
 func main() {
 	kingpin.Version(version.VERSION)
-	kingpin.Parse()
-
-	opts := kp.Options{
-		Address: *consulUrl,
-		Token:   *consulToken,
-		Client:  net.NewHeaderClient(*headers, http.DefaultTransport),
-		HTTPS:   *https,
-	}
+	_, opts := flags.ParseWithConsulOptions()
 	store := kp.NewConsulStore(opts)
 
 	intents, _, err := store.ListPods(kp.INTENT_TREE)

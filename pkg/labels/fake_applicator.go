@@ -1,8 +1,12 @@
 package labels
 
+import (
+	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+)
+
 // This is a map of type -> id -> Set
 // equivelently, of type -> id -> key -> value
-type fakeApplicatorData map[Type]map[string]Set
+type fakeApplicatorData map[Type]map[string]labels.Set
 
 type fakeApplicator struct {
 	data fakeApplicatorData
@@ -16,11 +20,11 @@ func NewFakeApplicator() *fakeApplicator {
 
 func (app *fakeApplicator) entry(labelType Type, id string) map[string]string {
 	if _, ok := app.data[labelType]; !ok {
-		app.data[labelType] = make(map[string]Set)
+		app.data[labelType] = make(map[string]labels.Set)
 	}
 	forType := app.data[labelType]
 	if _, ok := forType[id]; !ok {
-		forType[id] = make(Set)
+		forType[id] = make(labels.Set)
 	}
 	return forType[id]
 }
@@ -46,7 +50,7 @@ func (app *fakeApplicator) GetLabels(labelType Type, id string) (Labeled, error)
 	}, nil
 }
 
-func (app *fakeApplicator) GetMatches(selector Selector, labelType Type) ([]Labeled, error) {
+func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
 	forType, ok := app.data[labelType]
 	if !ok {
 		return []Labeled{}, nil

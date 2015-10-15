@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util"
 )
@@ -48,7 +50,7 @@ func (h *httpApplicator) GetLabels(labelType Type, id string) (Labeled, error) {
 	return Labeled{}, util.Errorf("GetLabels not implemented for HttpApplicator (type %s, id %s)", labelType, id)
 }
 
-func (h *httpApplicator) GetMatches(selector Selector, labelType Type) ([]Labeled, error) {
+func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
 	params := url.Values{}
 	params.Add("selector", selector.String())
 	params.Add("type", labelType.String())
@@ -77,7 +79,7 @@ func (h *httpApplicator) GetMatches(selector Selector, labelType Type) ([]Labele
 		labeled[i] = Labeled{
 			ID:        s,
 			LabelType: labelType,
-			Labels:    Set{},
+			Labels:    labels.Set{},
 		}
 	}
 

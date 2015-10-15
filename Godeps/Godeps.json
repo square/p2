@@ -11,6 +11,10 @@
 			"Rev": "8bca2664072173a3c71db4c28ca8d304079b1787"
 		},
 		{
+			"ImportPath": "github.com/alecthomas/template",
+			"Rev": "b867cc6ab45cece8143cfcc6fc9c77cf3f2c23c0"
+		},
+		{
 			"ImportPath": "github.com/alecthomas/units",
 			"Rev": "6b4e7dc5e3143b85ea77909c72caf89416fc2915"
 		},
@@ -21,6 +25,10 @@
 		{
 			"ImportPath": "github.com/armon/go-radix",
 			"Rev": "fbd82e84e2b13651f3abc5ffd26b65ba71bc8f93"
+		},
+		{
+			"ImportPath": "github.com/davecgh/go-spew/spew",
+			"Rev": "2df174808ee097f90d259e432cc04442cf60be21"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/acl",
@@ -79,13 +87,38 @@
 			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
 		},
 		{
-			"ImportPath": "gopkg.in/alecthomas/kingpin.v1",
-			"Comment": "v1.3.7",
-			"Rev": "45f9714aa86a9624491adeaab1e9df1baf84dd38"
+			"ImportPath": "gopkg.in/alecthomas/kingpin.v2",
+			"Comment": "v2.1.1",
+			"Rev": "b5101a19548bb5ca25d38bb60f60697c0621a473"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "7ad95dd0798a40da1ccdff6dff35fd177b5edf40"
+		},
+		{
+			"ImportPath": "k8s.io/kubernetes/pkg/labels",
+			"Comment": "v1.2.0-alpha.1-946-ge2659fc",
+			"Rev": "e2659fc645dee21960ee0c8e6c768460babbddf6"
+		},
+		{
+			"ImportPath": "k8s.io/kubernetes/pkg/util/errors",
+			"Comment": "v1.2.0-alpha.1-946-ge2659fc",
+			"Rev": "e2659fc645dee21960ee0c8e6c768460babbddf6"
+		},
+		{
+			"ImportPath": "k8s.io/kubernetes/pkg/util/fielderrors",
+			"Comment": "v1.2.0-alpha.1-946-ge2659fc",
+			"Rev": "e2659fc645dee21960ee0c8e6c768460babbddf6"
+		},
+		{
+			"ImportPath": "k8s.io/kubernetes/pkg/util/sets",
+			"Comment": "v1.2.0-alpha.1-946-ge2659fc",
+			"Rev": "e2659fc645dee21960ee0c8e6c768460babbddf6"
+		},
+		{
+			"ImportPath": "k8s.io/kubernetes/pkg/util/validation",
+			"Comment": "v1.2.0-alpha.1-946-ge2659fc",
+			"Rev": "e2659fc645dee21960ee0c8e6c768460babbddf6"
 		}
 	]
 }

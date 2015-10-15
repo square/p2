@@ -7,6 +7,7 @@ import (
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/pborman/uuid"
+	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/labels"
@@ -50,7 +51,7 @@ func NewConsul(client *api.Client, retries int) *consulStore {
 	}
 }
 
-func (s *consulStore) Create(manifest pods.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (fields.RC, error) {
+func (s *consulStore) Create(manifest pods.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
 	rc, err := s.innerCreate(manifest, nodeSelector, podLabels)
 	for i := 0; i < s.retries; i++ {
 		if _, ok := err.(CASError); ok {
@@ -75,7 +76,7 @@ func (s *consulStore) Create(manifest pods.Manifest, nodeSelector labels.Selecto
 }
 
 // these parts of Create may require a retry
-func (s *consulStore) innerCreate(manifest pods.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (fields.RC, error) {
+func (s *consulStore) innerCreate(manifest pods.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
 	id := fields.ID(uuid.New())
 	rcp := kp.RCPath(id.String())
 	rc := fields.RC{
