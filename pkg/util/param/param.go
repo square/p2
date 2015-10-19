@@ -41,6 +41,11 @@ var DefaultParams flag.FlagSet
 // are meant to be define parameters.
 type Values map[string]string
 
+// Bool declares a new "bool"-typed parameter with the given default value.
+func Bool(name string, value bool) *bool {
+	return DefaultParams.Bool(name, value, "")
+}
+
 // Float64 declares a new "float64"-typed parameter with the given default value.
 func Float64(name string, value float64) *float64 {
 	return DefaultParams.Float64(name, value, "")

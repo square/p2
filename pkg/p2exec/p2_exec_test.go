@@ -7,7 +7,7 @@ import (
 
 func TestBuildWithArgs(t *testing.T) {
 	args := P2ExecArgs{
-		Command: "script",
+		Command: []string{"script"},
 	}
 
 	expected := "script"
@@ -17,7 +17,7 @@ func TestBuildWithArgs(t *testing.T) {
 	}
 
 	args = P2ExecArgs{
-		Command:          "script",
+		Command:          []string{"script"},
 		NoLimits:         true,
 		User:             "some_user",
 		EnvDir:           "some_dir",

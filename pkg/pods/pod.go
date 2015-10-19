@@ -14,16 +14,22 @@ import (
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/opencontainer"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
+	"github.com/square/p2/pkg/util/param"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 )
 
 var (
 	Log logging.Logger
+
+	// ExperimentalOpencontainer permits the use of the experimental "opencontainer"
+	// launcahble type.
+	ExperimentalOpencontainer = param.Bool("experimental_opencontainer", false)
 )
 
 const DEFAULT_PATH = "/data/pods"
@@ -528,21 +534,21 @@ func (pod *Pod) Launchables(manifest Manifest) ([]launch.Launchable, error) {
 }
 
 func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser string) (launch.Launchable, error) {
-	if launchableStanza.LaunchableType == "hoist" {
-		launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
-		launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
+	launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
+	launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
 
-		restartTimeout := pod.DefaultTimeout
+	restartTimeout := pod.DefaultTimeout
 
-		if launchableStanza.RestartTimeout != "" {
-			possibleTimeout, err := time.ParseDuration(launchableStanza.RestartTimeout)
-			if err != nil {
-				pod.logger.WithError(err).Errorf("%v is not a valid restart timeout - must be parseable by time.ParseDuration(). Using default time %v", launchableStanza.RestartTimeout, restartTimeout)
-			} else {
-				restartTimeout = possibleTimeout
-			}
+	if launchableStanza.RestartTimeout != "" {
+		possibleTimeout, err := time.ParseDuration(launchableStanza.RestartTimeout)
+		if err != nil {
+			pod.logger.WithError(err).Errorf("%v is not a valid restart timeout - must be parseable by time.ParseDuration(). Using default time %v", launchableStanza.RestartTimeout, restartTimeout)
+		} else {
+			restartTimeout = possibleTimeout
 		}
+	}
 
+	if launchableStanza.LaunchableType == "hoist" {
 		ret := &hoist.Launchable{
 			Location:         launchableStanza.Location,
 			Id:               launchableId,
@@ -558,8 +564,20 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 		}
 		ret.CgroupConfig.Name = ret.Id
 		return ret.If(), nil
+	} else if *ExperimentalOpencontainer && launchableStanza.LaunchableType == "opencontainer" {
+		ret := &opencontainer.Launchable{
+			Location:       launchableStanza.Location,
+			ID_:            launchableId,
+			RunAs:          runAsUser,
+			RootDir:        launchableRootDir,
+			P2Exec:         pod.P2Exec,
+			RestartTimeout: restartTimeout,
+			CgroupConfig:   launchableStanza.CgroupConfig,
+		}
+		ret.CgroupConfig.Name = launchableId
+		return ret, nil
 	} else {
-		err := fmt.Errorf("launchable type '%s' is not supported yet", launchableStanza.LaunchableType)
+		err := fmt.Errorf("launchable type '%s' is not supported", launchableStanza.LaunchableType)
 		pod.logLaunchableError(launchableStanza.LaunchableId, err, "Unknown launchable type")
 		return nil, err
 	}
