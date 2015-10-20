@@ -36,18 +36,6 @@ type Store interface {
 	WatchPods(string, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult)
 }
 
-type Preparer struct {
-	node         string
-	store        Store
-	hooks        Hooks
-	hookListener HookListener
-	Logger       logging.Logger
-	podRoot      string
-	caFile       string
-	authPolicy   auth.Policy
-	consulHealth bool
-}
-
 func (p *Preparer) WatchForHooks(quit chan struct{}) {
 	hookErrCh := make(chan error)
 	hookQuitCh := make(chan struct{})

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -35,6 +33,16 @@ func main() {
 		logger.WithError(err).Fatalln("invalid parameter")
 	}
 
+	statusServer, err := preparer.NewStatusServer(preparerConfig.StatusPort, preparerConfig.StatusSocket, &logger)
+	if err == preparer.NoServerConfigured {
+		logger.NoFields().Warningln("No status port or socket provided, no status server configured")
+	} else if err != nil {
+		logger.WithError(err).Fatalln("Could not start status server")
+	} else {
+		go statusServer.Serve()
+		defer statusServer.Close()
+	}
+
 	prep, err := preparer.New(preparerConfig, logger)
 	if err != nil {
 		logger.WithError(err).Fatalln("Could not initialize preparer")
@@ -58,17 +66,6 @@ func main() {
 
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
 	go prep.WatchForHooks(quitHookUpdate)
-
-	if preparerConfig.StatusPort != 0 {
-		http.HandleFunc("/_status",
-			func(w http.ResponseWriter, r *http.Request) {
-				fmt.Fprintf(w, "p2-preparer OK")
-			})
-		go func() {
-			err := http.ListenAndServe(fmt.Sprintf(":%d", preparerConfig.StatusPort), nil)
-			logger.WithError(err).Fatalln("status server exited")
-		}()
-	}
 
 	// Launch health checking watch. This watch tracks health of
 	// all pods on this host and writes the information to consul

@@ -35,6 +35,18 @@ type LogDestination struct {
 	Path string          `yaml:"path"`
 }
 
+type Preparer struct {
+	node         string
+	store        Store
+	hooks        Hooks
+	hookListener HookListener
+	Logger       logging.Logger
+	podRoot      string
+	caFile       string
+	authPolicy   auth.Policy
+	consulHealth bool
+}
+
 type PreparerConfig struct {
 	NodeName             string                 `yaml:"node_name"`
 	ConsulAddress        string                 `yaml:"consul_address"`
@@ -48,6 +60,7 @@ type PreparerConfig struct {
 	NoConsulHealth       bool                   `yaml:"no_consul_health,omitempty"`
 	PodRoot              string                 `yaml:"pod_root,omitempty"`
 	StatusPort           int                    `yaml:"status_port"`
+	StatusSocket         string                 `yaml:"status_socket"`
 	Auth                 map[string]interface{} `yaml:"auth,omitempty"`
 	ExtraLogDestinations []LogDestination       `yaml:"extra_log_destinations,omitempty"`
 	WriteKVHealth        bool                   `yaml:"write_kv_health,omitempty"`
