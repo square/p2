@@ -36,7 +36,7 @@ type QueryOptions struct {
 	WaitIndex uint64
 
 	// WaitTime is used to bound the duration of a wait.
-	// Defaults to that of the Config, but can be overriden.
+	// Defaults to that of the Config, but can be overridden.
 	WaitTime time.Duration
 
 	// Token is used to provide a per-request ACL token
@@ -119,7 +119,7 @@ func DefaultConfig() *Config {
 	config := &Config{
 		Address:    "127.0.0.1:8500",
 		Scheme:     "http",
-		HttpClient: http.DefaultClient,
+		HttpClient: &http.Client{},
 	}
 
 	if addr := os.Getenv("CONSUL_HTTP_ADDR"); addr != "" {
