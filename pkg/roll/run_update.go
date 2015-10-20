@@ -106,8 +106,8 @@ func (u update) Prepare() error {
 	if u.DesiredReplicas < u.MinimumReplicas {
 		return fmt.Errorf("desired replicas (%d) less than minimum replicas (%d), update is invalid", u.DesiredReplicas, u.MinimumReplicas)
 	}
-	if newNodes.healthy+oldNodes.healthy <= u.MinimumReplicas {
-		return fmt.Errorf("minimum (%d) is not satisfied by existing healthy nodes (%d old, %d new), update would block immediately", u.MinimumReplicas, oldNodes.healthy, newNodes.healthy)
+	if newNodes.Healthy+oldNodes.Healthy <= u.MinimumReplicas {
+		return fmt.Errorf("minimum (%d) is not satisfied by existing healthy nodes (%d old, %d new), update would block immediately", u.MinimumReplicas, oldNodes.Healthy, newNodes.Healthy)
 	}
 	return nil
 }
@@ -140,7 +140,7 @@ ROLL_LOOP:
 				return err
 			}
 
-			if newNodes.desired > newNodes.healthy {
+			if newNodes.Desired > newNodes.Healthy {
 				// we assume replication controllers do in fact "work", ie healthy
 				// and current converge towards desired
 				// in this case, they have not yet met, so we block
@@ -150,7 +150,7 @@ ROLL_LOOP:
 				}).Debugln("Blocking for more healthy new nodes")
 				break
 			}
-			if newNodes.desired >= u.DesiredReplicas {
+			if newNodes.Desired >= u.DesiredReplicas {
 				// note that we only exit the loop AFTER the desired nodes
 				// become healthy - this ensures that, when the old RC is
 				// cleaned up, we do not accidentally remove the nodes we just
@@ -165,18 +165,23 @@ ROLL_LOOP:
 				break ROLL_LOOP
 			}
 
-			next := algorithm(oldNodes.healthy, newNodes.healthy, u.DesiredReplicas, u.MinimumReplicas)
-			u.logger.WithFields(logrus.Fields{
-				"old":  oldNodes,
-				"new":  newNodes,
-				"next": next,
-			}).Infoln("Undergoing next update")
+			next := algorithm(oldNodes.Healthy, newNodes.Healthy, u.DesiredReplicas, u.MinimumReplicas)
 
 			if next > 0 {
+				u.logger.WithFields(logrus.Fields{
+					"old":  oldNodes,
+					"new":  newNodes,
+					"next": next,
+				}).Infoln("Undergoing next update")
 				if u.DeletePods {
 					u.rcs.AddDesiredReplicas(u.OldRC, -next)
 				}
 				u.rcs.AddDesiredReplicas(u.NewRC, next)
+			} else {
+				u.logger.WithFields(logrus.Fields{
+					"old": oldNodes,
+					"new": newNodes,
+				}).Debugln("Blocking for more healthy old nodes")
 			}
 		}
 	}
@@ -245,9 +250,9 @@ func (u update) enable() error {
 }
 
 type rcNodeCounts struct {
-	desired int
-	current int
-	healthy int
+	Desired int
+	Current int
+	Healthy int
 }
 
 func (u update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNodeCounts, error) {
@@ -256,17 +261,17 @@ func (u update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNode
 	if err != nil {
 		return ret, err
 	}
-	ret.desired = rcFields.ReplicasDesired
+	ret.Desired = rcFields.ReplicasDesired
 
 	nodes, err := rc.New(rcFields, u.kps, u.rcs, u.sched, u.labeler, u.logger).CurrentNodes()
 	if err != nil {
 		return ret, err
 	}
-	ret.current = len(nodes)
+	ret.Current = len(nodes)
 
 	for _, node := range nodes {
 		if hres, ok := checks[node]; ok && hres.Status == health.Passing {
-			ret.healthy++
+			ret.Healthy++
 		}
 	}
 	return ret, err
