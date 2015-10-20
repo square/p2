@@ -32,23 +32,23 @@
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/acl",
-			"Comment": "v0.5.2-198-g3846dea",
-			"Rev": "3846dea3706fbf79090b73e447b0dde3b5ac1959"
+			"Comment": "v0.5.2-347-gfc6a605",
+			"Rev": "fc6a605a88bf81a700a7d4e2b1b8af86a79e03ea"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/api",
-			"Comment": "v0.5.2-198-g3846dea",
-			"Rev": "3846dea3706fbf79090b73e447b0dde3b5ac1959"
+			"Comment": "v0.5.2-347-gfc6a605",
+			"Rev": "fc6a605a88bf81a700a7d4e2b1b8af86a79e03ea"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/consul/structs",
-			"Comment": "v0.5.2-198-g3846dea",
-			"Rev": "3846dea3706fbf79090b73e447b0dde3b5ac1959"
+			"Comment": "v0.5.2-347-gfc6a605",
+			"Rev": "fc6a605a88bf81a700a7d4e2b1b8af86a79e03ea"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/testutil",
-			"Comment": "v0.5.2-198-g3846dea",
-			"Rev": "3846dea3706fbf79090b73e447b0dde3b5ac1959"
+			"Comment": "v0.5.2-347-gfc6a605",
+			"Rev": "fc6a605a88bf81a700a7d4e2b1b8af86a79e03ea"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/go-msgpack/codec",
