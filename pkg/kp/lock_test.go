@@ -67,3 +67,24 @@ func TestLockExclusion(t *testing.T) {
 		t.Fatalf("Should have failed to acquire the same lock using a second session")
 	}
 }
+
+func TestRenewalFailsWhen404(t *testing.T) {
+	fixture := NewConsulTestFixture(t)
+	defer fixture.Close()
+
+	lock, _, err := fixture.Store.NewLock(lockMessage, make(chan time.Time))
+	if err != nil {
+		t.Fatalf("Unable to create lock: %s", err)
+	}
+
+	err = lock.Renew()
+	if err != nil {
+		t.Errorf("Renewal should have succeeded: %s", err)
+	}
+
+	lock.Destroy()
+	err = lock.Renew()
+	if err == nil {
+		t.Errorf("Renewing a destroyed lock should have failed, but it succeeded")
+	}
+}

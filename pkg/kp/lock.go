@@ -176,9 +176,13 @@ func (l Lock) continuallyRenew() {
 
 // refresh the TTL on this lock
 func (l Lock) Renew() error {
-	_, _, err := l.client.Session().Renew(l.session, nil)
+	entry, _, err := l.client.Session().Renew(l.session, nil)
 	if err != nil {
 		return util.Errorf("Could not renew lock")
+	}
+
+	if entry == nil {
+		return util.Errorf("Could not renew because session was destroyed")
 	}
 	return nil
 }
