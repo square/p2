@@ -250,9 +250,10 @@ func (u update) enable() error {
 }
 
 type rcNodeCounts struct {
-	Desired int
-	Current int
-	Healthy int
+	Desired int // the number of nodes the RC wants to be on
+	Current int // the number of nodes the RC has scheduled itself on
+	Real    int // the number of current nodes that have finished scheduling
+	Healthy int // the number of real nodes that are healthy
 }
 
 func (u update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNodeCounts, error) {
@@ -270,6 +271,19 @@ func (u update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNode
 	ret.Current = len(nodes)
 
 	for _, node := range nodes {
+		// TODO: is reality checking an rc-layer concern?
+		realManifest, _, err := u.kps.Pod(kp.RealityPath(node, rcFields.Manifest.ID()))
+		if err != nil {
+			return ret, err
+		}
+		realSHA, _ := realManifest.SHA()
+		targetSHA, _ := rcFields.Manifest.SHA()
+		if targetSHA == realSHA {
+			ret.Real++
+		} else {
+			// don't check health if the update isn't even done there yet
+			continue
+		}
 		if hres, ok := checks[node]; ok && hres.Status == health.Passing {
 			ret.Healthy++
 		}
