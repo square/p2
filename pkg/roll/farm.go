@@ -1,6 +1,8 @@
 package roll
 
 import (
+	"time"
+
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 
 	"github.com/square/p2/pkg/health/checker"
@@ -150,19 +152,16 @@ START_LOOP:
 				foundChildren[rlField.NewRC] = struct{}{}
 
 				go func(id fields.ID) {
-					err := newChild.Prepare()
-					if err != nil {
-						rlLogger.WithError(err).Errorln("Could not prepare update")
-						return
+					for err := range newChild.Run(childQuit) {
+						if err != nil {
+							rlLogger.WithError(err).Errorln("Error during update")
+						}
 					}
-					err = newChild.Run(childQuit)
-					if err != nil {
-						rlLogger.WithError(err).Errorln("Could not complete update")
-						return
-					}
-					err = rlf.rls.Delete(id)
-					if err != nil {
-						rlLogger.WithError(err).Errorln("Could not remove completed update")
+					// our lock on this RU won't be released until it's deleted,
+					// so if we fail to delete it, we have to retry
+					for err := rlf.rls.Delete(id); err != nil; err = rlf.rls.Delete(id) {
+						rlLogger.WithError(err).Errorln("Could not delete update")
+						time.Sleep(1 * time.Second)
 					}
 				}(rlField.NewRC) // do not close over rlField, it's a loop variable
 			}

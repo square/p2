@@ -2,6 +2,7 @@ package roll
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 
@@ -57,66 +58,78 @@ func NewUpdate(
 }
 
 type Update interface {
-	// Prepare should be called immediately before Run. If it returns nil, then
-	// Run can be called; otherwise it should not be called. This function should
-	// do at least the following:
-	//   - claim exclusive control of the RCs involved in this Update. If this
-	//     exclusivity is somehow lost, Prepare should be called again.
-	//   - enable or disable RCs as appropriate
-	//   - verify the MinimumReplicas and DesiredReplicas of the Update, to
-	//     make sure they are valid.
-	Prepare() error
 	// Run will execute the Update and remove the old RC upon completion. Run
-	// assumes that it has exclusive control over the RCs in the Update. This
-	// function will block until finished; close the quit channel to terminate
-	// early. Run can be invoked again to resume after termination, if it did
-	// not lose exclusivity of the RCs.
-	Run(quit <-chan struct{}) error
+	// should claim exclusive ownership of both affected RCs, and release that
+	// exclusivity upon completion. Run is long-lived and non-blocking; close
+	// the quit channel to terminate it early. If an Update is interrupted, Run
+	// should leave the RCs in a state such that it can later be called again to
+	// resume. The error channel returned from Run() must be drained.
+	Run(quit <-chan struct{}) <-chan error
 }
 
-func (u update) Prepare() error {
+func (u update) Run(quit <-chan struct{}) <-chan error {
+	ret := make(chan error)
+	go u.run(quit, ret)
+	return ret
+}
+
+// retries a given function until it returns a nil error or the quit channel is
+// closed. returns true if it exited in the former case, false in the latter.
+// errors are propagated through the errs channel, which must be drained. the
+// retry rate is limited to once per second, to avoid spinning on functions that
+// fail quickly.
+func retryOrQuit(f func() error, errs chan<- error, quit <-chan struct{}) bool {
+	for err := f(); err != nil; err = f() {
+		errs <- err
+		select {
+		case <-quit:
+			return false
+		case <-time.After(1 * time.Second):
+			// unblock the select and loop again
+		}
+	}
+	return true
+}
+
+func (u update) run(quit <-chan struct{}, errs chan<- error) {
 	u.logger.NoFields().Debugln("Locking")
-	if err := u.lockRCs(); err != nil {
-		return err
+	// TODO: implement API for blocking locks and use that instead of retrying
+	if !retryOrQuit(u.lockRCs, errs, quit) {
+		return
 	}
 
-	u.logger.NoFields().Debugln("Enabling/disabling")
-	if err := u.enable(); err != nil {
-		return err
+	// release both locks on termination
+	defer func() {
+		// failure to unlock probably means:
+		// - session was already invalidated, lock was already released when
+		//   that happened
+		// - network error, session will probably time out soon
+		// either way no point retrying
+		if err := u.lock.Unlock(u.lockPath(u.OldRC)); err != nil {
+			errs <- err
+		}
+		if err := u.lock.Unlock(u.lockPath(u.NewRC)); err != nil {
+			errs <- err
+		}
+		close(errs)
+	}()
+
+	u.logger.NoFields().Debugln("Enabling")
+	if !retryOrQuit(u.enable, errs, quit) {
+		return
 	}
 
-	newFields, err := u.rcs.Get(u.NewRC)
-	if err != nil {
+	u.logger.NoFields().Debugln("Launching health watch")
+	var newFields rcf.RC
+	var err error
+	if !retryOrQuit(func() error {
+		// close over newFields so that it can be propagated out of this function
+		newFields, err = u.rcs.Get(u.NewRC)
 		return err
-	}
-	checks, err := u.hcheck.Service(newFields.Manifest.ID())
-	if err != nil {
-		return err
+	}, errs, quit) {
+		return
 	}
 
-	newNodes, err := u.countHealthy(u.NewRC, checks)
-	if err != nil {
-		return err
-	}
-	oldNodes, err := u.countHealthy(u.OldRC, checks)
-	if err != nil {
-		return err
-	}
-
-	if u.DesiredReplicas < u.MinimumReplicas {
-		return fmt.Errorf("desired replicas (%d) less than minimum replicas (%d), update is invalid", u.DesiredReplicas, u.MinimumReplicas)
-	}
-	if newNodes.Healthy+oldNodes.Healthy <= u.MinimumReplicas {
-		return fmt.Errorf("minimum (%d) is not satisfied by existing healthy nodes (%d old, %d new), update would block immediately", u.MinimumReplicas, oldNodes.Healthy, newNodes.Healthy)
-	}
-	return nil
-}
-
-func (u update) Run(quit <-chan struct{}) error {
-	newFields, err := u.rcs.Get(u.NewRC)
-	if err != nil {
-		return err
-	}
 	hChecks := make(chan map[string]health.Result)
 	hErrs := make(chan error)
 	hQuit := make(chan struct{})
@@ -127,17 +140,19 @@ ROLL_LOOP:
 	for {
 		select {
 		case <-quit:
-			return nil
+			return
 		case <-hErrs:
-			return err
+			errs <- err
 		case checks := <-hChecks:
 			newNodes, err := u.countHealthy(u.NewRC, checks)
 			if err != nil {
-				return err
+				errs <- err
+				break
 			}
 			oldNodes, err := u.countHealthy(u.OldRC, checks)
 			if err != nil {
-				return err
+				errs <- err
+				break
 			}
 
 			if newNodes.Desired > newNodes.Healthy {
@@ -166,7 +181,6 @@ ROLL_LOOP:
 			}
 
 			next := algorithm(oldNodes.Healthy, newNodes.Healthy, u.DesiredReplicas, u.MinimumReplicas)
-
 			if next > 0 {
 				u.logger.WithFields(logrus.Fields{
 					"old":  oldNodes,
@@ -188,16 +202,15 @@ ROLL_LOOP:
 
 	// rollout complete, clean up old RC
 	u.logger.NoFields().Infoln("Cleaning up old RC")
-	if err := u.rcs.SetDesiredReplicas(u.OldRC, 0); err != nil {
-		return err
+	if !retryOrQuit(func() error { return u.rcs.SetDesiredReplicas(u.OldRC, 0) }, errs, quit) {
+		return
 	}
-	if err := u.rcs.Enable(u.OldRC); err != nil {
-		return err
+	if !retryOrQuit(func() error { return u.rcs.Enable(u.OldRC) }, errs, quit) {
+		return
 	}
-	if err := u.rcs.Delete(u.OldRC, false); err != nil {
-		return err
+	if !retryOrQuit(func() error { return u.rcs.Delete(u.OldRC, false) }, errs, quit) {
+		return
 	}
-	return nil
 }
 
 func (u update) lockPath(id rcf.ID) string {

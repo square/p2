@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
@@ -268,12 +271,20 @@ func (r RCtl) Disable(id string) {
 }
 
 func (r RCtl) RollingUpdate(oldID, newID string, want, need int, deletes bool) {
+	if want < need {
+		r.logger.WithFields(logrus.Fields{
+			"want": want,
+			"need": need,
+		}).Fatalln("Cannot run update with desired replicas less than minimum replicas")
+	}
 	sessions := make(chan string)
+	quit := make(chan struct{})
+
 	go kp.ConsulSessionManager(api.SessionEntry{
 		LockDelay: 1 * time.Nanosecond,
 		Behavior:  api.SessionBehaviorDelete,
 		TTL:       "15s",
-	}, r.baseClient, sessions, nil, r.logger)
+	}, r.baseClient, sessions, quit, r.logger)
 
 	session := <-sessions
 	if session == "" {
@@ -281,32 +292,38 @@ func (r RCtl) RollingUpdate(oldID, newID string, want, need int, deletes bool) {
 	}
 	lock := r.kps.NewUnmanagedLock(session, "")
 
-	u := roll.NewUpdate(roll_fields.Update{
+	errs := roll.NewUpdate(roll_fields.Update{
 		OldRC:           rc_fields.ID(oldID),
 		NewRC:           rc_fields.ID(newID),
 		DesiredReplicas: want,
 		MinimumReplicas: need,
 		DeletePods:      deletes,
-	}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, lock)
+	}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, lock).Run(quit)
 
-	if err := u.Prepare(); err != nil {
-		r.logger.WithError(err).Fatalln("Could not prepare update")
-	}
+	signals := make(chan os.Signal, 2)
+	signal.Notify(signals, syscall.SIGTERM, os.Interrupt)
 
-	doneRun := make(chan struct{})
-	go func() {
-		err := u.Run(nil)
-		if err != nil {
-			r.logger.WithError(err).Errorln("Could not run update")
+LOOP:
+	for {
+		select {
+		case <-signals:
+			// try to clean up locks on ^C
+			close(quit)
+			// do not exit right away - the session and error channels will be
+			// closed after the quit is requested, ensuring that the locks held
+			// by the farm were released.
+			r.logger.NoFields().Errorln("Got signal, exiting")
+		case <-sessions:
+			r.logger.NoFields().Fatalln("Lost session")
+		case err, ok := <-errs:
+			if !ok {
+				r.logger.NoFields().Infoln("Done")
+				break LOOP
+			}
+			if err != nil {
+				r.logger.WithError(err).Errorln("Error during update")
+			}
 		}
-		close(doneRun)
-	}()
-
-	select {
-	case <-sessions:
-		r.logger.NoFields().Fatalln("Lost session")
-	case <-doneRun:
-		r.logger.NoFields().Infoln("Done")
 	}
 }
 
