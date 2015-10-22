@@ -11,20 +11,18 @@ import (
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
+	"github.com/square/p2/pkg/util/param"
 )
 
 // Healthcheck TTL
 const TTL = 60 * time.Second
 
-var showConsulErrors = kingpin.Flag(
-	"show-consul-errors-unsafe",
-	"Show detailed error messages from Consul (use only when debugging)",
-).Default("false").Bool()
+// Show detailed error messages from Consul (use only when debugging)
+var showConsulErrors = param.Bool("show_consul_errors_unsafe", false)
 
 type ManifestResult struct {
 	Manifest pods.Manifest
