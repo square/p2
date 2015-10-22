@@ -167,10 +167,7 @@ func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan
 }
 
 func (s *consulStore) kvpToRC(kvp *api.KVPair) (fields.RC, error) {
-	rc := fields.RC{
-		// cannot unmarshal into a nil interface - have to initialize to something
-		Manifest: pods.NewManifestBuilder().GetManifest(),
-	}
+	rc := fields.RC{}
 	err := json.Unmarshal(kvp.Value, &rc)
 	return rc, err
 }
