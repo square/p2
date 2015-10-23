@@ -13,17 +13,27 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/square/p2/pkg/pods"
 )
 
 var help = flag.Bool("help", false, "show program usage")
 
-const usage = `usage: %s [FILE]...
+const usageMsg = `usage: %s [FLAG]... [FILE]...
 Print the canonical P2 pod manifest hash for the given files.
 With no FILE, or when FILE is -, read standard input.
+
+Flags:
 `
+
+func init() {
+	flag.Usage = Usage
+}
+
+func Usage() {
+	fmt.Fprintf(os.Stderr, usageMsg, filepath.Base(os.Args[0]))
+	flag.PrintDefaults()
+}
 
 // HashErr is a sum type holding either a hash (string) or an error raised while producing
 // the hash. An explicit struct is used instead of a multi-value return so that the hash
@@ -68,7 +78,7 @@ func main() {
 	flag.Parse()
 	progName := filepath.Base(os.Args[0])
 	if *help {
-		fmt.Fprintf(os.Stderr, strings.TrimSpace(usage), progName)
+		Usage()
 		os.Exit(0)
 	}
 	args := flag.Args()
@@ -93,7 +103,7 @@ func main() {
 			hash = SumFile(filename)
 		}
 		if hash.Err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %s: %s", progName, filename, hash.Err)
+			fmt.Fprintf(os.Stderr, "%s: %s: %s\n", progName, filename, hash.Err)
 		} else {
 			fmt.Printf("%s  %s\n", hash.Hash, filename)
 		}
