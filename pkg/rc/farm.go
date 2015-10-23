@@ -106,7 +106,8 @@ START_LOOP:
 			foundChildren := make(map[fields.ID]struct{})
 			for _, rcField := range rcFields {
 				rcLogger := rcf.logger.SubLogger(logrus.Fields{
-					"rc_id": rcField.ID,
+					"rc":  rcField.ID,
+					"pod": rcField.Manifest.ID(),
 				})
 				if _, ok := rcf.children[rcField.ID]; ok {
 					// this one is already ours, skip
@@ -165,7 +166,7 @@ START_LOOP:
 
 // close one child
 func (rcf *Farm) releaseChild(id fields.ID) {
-	rcf.logger.WithField("rc_id", id).Infoln("Releasing replication controller")
+	rcf.logger.WithField("rc", id).Infoln("Releasing replication controller")
 	close(rcf.children[id].quit)
 	delete(rcf.children, id)
 
@@ -173,7 +174,7 @@ func (rcf *Farm) releaseChild(id fields.ID) {
 	if rcf.lock != nil {
 		err := rcf.lock.Unlock(kp.LockPath(kp.RCPath(id.String())))
 		if err != nil {
-			rcf.logger.WithField("rc_id", id).Warnln("Could not release replication controller lock")
+			rcf.logger.WithField("rc", id).Warnln("Could not release replication controller lock")
 		}
 	}
 }

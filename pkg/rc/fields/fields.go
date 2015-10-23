@@ -87,7 +87,7 @@ func (rc *RC) UnmarshalJSON(b []byte) error {
 		NodeSelector:    nodeSel,
 		PodLabels:       jrc.PodLabels,
 		ReplicasDesired: jrc.ReplicasDesired,
-		Disabled:        rc.Disabled,
+		Disabled:        jrc.Disabled,
 	}
 	return nil
 }

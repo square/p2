@@ -1,6 +1,8 @@
 package roll
 
 import (
+	"time"
+
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 
 	"github.com/square/p2/pkg/health/checker"
@@ -118,7 +120,7 @@ START_LOOP:
 			foundChildren := make(map[fields.ID]struct{})
 			for _, rlField := range rlFields {
 				rlLogger := rlf.logger.SubLogger(logrus.Fields{
-					"ru_id": rlField.NewRC,
+					"ru": rlField.NewRC,
 				})
 				if _, ok := rlf.children[rlField.NewRC]; ok {
 					// this one is already ours, skip
@@ -150,19 +152,16 @@ START_LOOP:
 				foundChildren[rlField.NewRC] = struct{}{}
 
 				go func(id fields.ID) {
-					err := newChild.Prepare()
-					if err != nil {
-						rlLogger.WithError(err).Errorln("Could not prepare update")
-						return
+					for err := range newChild.Run(childQuit) {
+						if err != nil {
+							rlLogger.WithError(err).Errorln("Error during update")
+						}
 					}
-					err = newChild.Run(childQuit)
-					if err != nil {
-						rlLogger.WithError(err).Errorln("Could not complete update")
-						return
-					}
-					err = rlf.rls.Delete(id)
-					if err != nil {
-						rlLogger.WithError(err).Errorln("Could not remove completed update")
+					// our lock on this RU won't be released until it's deleted,
+					// so if we fail to delete it, we have to retry
+					for err := rlf.rls.Delete(id); err != nil; err = rlf.rls.Delete(id) {
+						rlLogger.WithError(err).Errorln("Could not delete update")
+						time.Sleep(1 * time.Second)
 					}
 				}(rlField.NewRC) // do not close over rlField, it's a loop variable
 			}
@@ -180,7 +179,7 @@ START_LOOP:
 
 // close one child
 func (rlf *Farm) releaseChild(id fields.ID) {
-	rlf.logger.WithField("ru_id", id).Infoln("Releasing update")
+	rlf.logger.WithField("ru", id).Infoln("Releasing update")
 	close(rlf.children[id].quit)
 	delete(rlf.children, id)
 
@@ -188,7 +187,7 @@ func (rlf *Farm) releaseChild(id fields.ID) {
 	if rlf.lock != nil {
 		err := rlf.lock.Unlock(kp.LockPath(kp.RollPath(id.String())))
 		if err != nil {
-			rlf.logger.WithField("ru_id", id).Warnln("Could not release update lock")
+			rlf.logger.WithField("ru", id).Warnln("Could not release update lock")
 		}
 	}
 }
