@@ -46,6 +46,10 @@ func (h *httpApplicator) RemoveLabel(labelType Type, id, name string) error {
 	return util.Errorf("RemoveLabel not implemented for HttpApplicator (type %s, id %s, name %s)", labelType, id, name)
 }
 
+func (h *httpApplicator) RemoveAllLabels(labelType Type, id string) error {
+	return util.Errorf("RemoveAllLabels not implemented for HttpApplicator (type %s, id %s)", labelType, id)
+}
+
 func (h *httpApplicator) GetLabels(labelType Type, id string) (Labeled, error) {
 	return Labeled{}, util.Errorf("GetLabels not implemented for HttpApplicator (type %s, id %s)", labelType, id)
 }

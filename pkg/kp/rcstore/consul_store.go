@@ -273,9 +273,7 @@ func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC,
 		// the labels, and then we will retry, which will involve deleting them
 		// again
 		// really the only way to solve this is a transaction
-		err = s.forEachLabel(rc, func(id, k, _ string) error {
-			return s.applicator.RemoveLabel(labels.RC, id, k)
-		})
+		err = s.applicator.RemoveAllLabels(labels.RC, id.String())
 		if err != nil {
 			return err
 		}

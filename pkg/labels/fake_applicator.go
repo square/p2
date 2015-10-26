@@ -35,6 +35,11 @@ func (app *fakeApplicator) SetLabel(labelType Type, id, name, value string) erro
 	return nil
 }
 
+func (app *fakeApplicator) RemoveAllLabels(labelType Type, id string) error {
+	delete(app.data[labelType], id)
+	return nil
+}
+
 func (app *fakeApplicator) RemoveLabel(labelType Type, id, name string) error {
 	entry := app.entry(labelType, id)
 	delete(entry, name)

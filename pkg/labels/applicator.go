@@ -53,6 +53,9 @@ type Applicator interface {
 	// Remove a label from the identified object
 	RemoveLabel(labelType Type, id, name string) error
 
+	// Remove all labels from the identified object
+	RemoveAllLabels(labelType Type, id string) error
+
 	// Get all Labels assigned to the given object
 	GetLabels(labelType Type, id string) (Labeled, error)
 
