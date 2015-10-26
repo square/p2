@@ -81,7 +81,7 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 		case intentResults := <-podChan:
 			realityResults, _, err := p.store.ListPods(kp.RealityPath(p.node))
 			if err != nil {
-				errChan <- err
+				p.Logger.WithError(err).Errorln("Could not check reality")
 			} else {
 				// if the preparer's own ID is missing from the intent set, we
 				// assume it was damaged and discard it
