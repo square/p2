@@ -48,11 +48,11 @@ func TestGetLaunchable(t *testing.T) {
 	pod := getTestPod()
 	Assert(t).AreNotEqual(0, len(launchableStanzas), "Expected there to be at least one launchable stanza in the test manifest")
 	for _, stanza := range launchableStanzas {
-		l, _ := pod.getLaunchable(stanza, "foouser")
+		l, _ := pod.getLaunchable(stanza, getTestPodManifest(t))
 		launchable := l.(hoist.LaunchAdapter).Launchable
 		Assert(t).AreEqual("hello__hello", launchable.Id, "LaunchableId did not have expected value")
 		Assert(t).AreEqual("hoisted-hello_def456.tar.gz", launchable.Location, "Launchable location did not have expected value")
-		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
+		Assert(t).AreEqual("hello", launchable.RunAs, "Launchable run as did not have expected username")
 		Assert(t).IsTrue(launchable.ExecNoLimit, "GetLaunchable() should always set ExecNoLimit to true for hoist launchables")
 	}
 }
@@ -107,20 +107,20 @@ config:
 	err = pod.setupConfig(manifest)
 	Assert(t).IsNil(err, "There shouldn't have been an error setting up config")
 
-	configFileName, err := manifest.ConfigFileName()
-	Assert(t).IsNil(err, "Couldn't generate config filename")
-	configPath := filepath.Join(pod.ConfigDir(), configFileName)
+	configPath, err := pod.ConfigPath(manifest)
+	Assert(t).IsNil(err, "should not have erred locating config file")
 	config, err := ioutil.ReadFile(configPath)
 	Assert(t).IsNil(err, "should not have erred reading the config")
 	Assert(t).AreEqual("ENVIRONMENT: staging\n", string(config), "the config didn't match")
 
-	env, err := ioutil.ReadFile(filepath.Join(pod.EnvDir(), "CONFIG_PATH"))
+	envDir, err := pod.EnvDir(manifest)
+	Assert(t).IsNil(err, "should not have erred locating env dir")
+	env, err := ioutil.ReadFile(filepath.Join(envDir, "CONFIG_PATH"))
 	Assert(t).IsNil(err, "should not have erred reading the env file")
 	Assert(t).AreEqual(configPath, string(env), "The env path to config didn't match")
 
-	platformConfigFileName, err := manifest.PlatformConfigFileName()
-	Assert(t).IsNil(err, "Couldn't generate platform config filename")
-	platformConfigPath := filepath.Join(pod.ConfigDir(), platformConfigFileName)
+	platformConfigPath, err := pod.PlatformConfigPath(manifest)
+	Assert(t).IsNil(err, "should not have erred locating platform config file")
 	platConfig, err := ioutil.ReadFile(platformConfigPath)
 	Assert(t).IsNil(err, "should not have erred reading the platform config")
 
@@ -131,7 +131,7 @@ config:
 `
 	Assert(t).AreEqual(expectedPlatConfig, string(platConfig), "the platform config didn't match")
 
-	platEnv, err := ioutil.ReadFile(filepath.Join(pod.EnvDir(), "PLATFORM_CONFIG_PATH"))
+	platEnv, err := ioutil.ReadFile(filepath.Join(envDir, "PLATFORM_CONFIG_PATH"))
 	Assert(t).IsNil(err, "should not have erred reading the platform config env file")
 	Assert(t).AreEqual(platformConfigPath, string(platEnv), "The env path to platform config didn't match")
 }
@@ -294,6 +294,36 @@ func TestUninstall(t *testing.T) {
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
 	_, err = os.Stat(pod.currentPodManifestPath())
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
+}
+
+func TestNamespacedPath(t *testing.T) {
+	manifest := getTestPodManifest(t)
+	pod := getTestPod()
+
+	namespacedPath, err := pod.NamespacedPath(manifest)
+	Assert(t).IsNil(err, "Error computing namespaced path")
+	expected := "/data/pods/test/hello_b896833157e8b3a3af48c7d3b3f8b42f740987a520ca3b9cfbf54f07cc47935f"
+	Assert(t).AreEqual(namespacedPath, expected, "Namespaced path did not match expected")
+}
+
+func TestConfigPath(t *testing.T) {
+	manifest := getTestPodManifest(t)
+	pod := getTestPod()
+
+	configPath, err := pod.ConfigPath(manifest)
+	Assert(t).IsNil(err, "Error computing namespaced path")
+	expected := "/data/pods/test/hello_b896833157e8b3a3af48c7d3b3f8b42f740987a520ca3b9cfbf54f07cc47935f/config.yaml"
+	Assert(t).AreEqual(configPath, expected, "Config path did not match expected")
+}
+
+func TestEnvDir(t *testing.T) {
+	manifest := getTestPodManifest(t)
+	pod := getTestPod()
+
+	envDir, err := pod.EnvDir(manifest)
+	Assert(t).IsNil(err, "Error computing env dir")
+	expected := "/data/pods/test/hello_b896833157e8b3a3af48c7d3b3f8b42f740987a520ca3b9cfbf54f07cc47935f/env"
+	Assert(t).AreEqual(envDir, expected, "Env dir did not match expected")
 }
 
 func manifestMustEqual(expected, actual Manifest, t *testing.T) {
