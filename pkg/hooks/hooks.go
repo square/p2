@@ -15,6 +15,16 @@ import (
 
 var DEFAULT_PATH = "/usr/local/p2hooks.d"
 
+const (
+	HOOK_ENV_VAR                = "HOOK"
+	HOOK_EVENT_ENV_VAR          = "HOOK_EVENT"
+	HOOKED_POD_ID_ENV_VAR       = "HOOKED_POD_ID"
+	HOOKED_POD_HOME_ENV_VAR     = "HOOKED_POD_HOME"
+	HOOKED_POD_MANIFEST_ENV_VAR = "HOOKED_POD_MANIFEST"
+	HOOKED_CONFIG_PATH_ENV_VAR  = "HOOKED_CONFIG_PATH"
+	HOOKED_ENV_PATH_ENV_VAR     = "HOOKED_ENV_PATH"
+)
+
 type Pod interface {
 	ConfigDir() string
 	EnvDir() string
@@ -131,13 +141,13 @@ func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest 
 	}
 
 	hookEnvironment := []string{
-		fmt.Sprintf("HOOK=%s", path.Base(dirpath)),
-		fmt.Sprintf("HOOK_EVENT=%s", hType.String()),
-		fmt.Sprintf("HOOKED_POD_ID=%s", podManifest.ID()),
-		fmt.Sprintf("HOOKED_POD_HOME=%s", pod.Path()),
-		fmt.Sprintf("HOOKED_POD_MANIFEST=%s", tmpManifestFile.Name()),
-		fmt.Sprintf("HOOKED_CONFIG_PATH=%s", path.Join(pod.ConfigDir(), configFileName)),
-		fmt.Sprintf("HOOKED_ENV_PATH=%s", pod.EnvDir()),
+		fmt.Sprintf("%s=%s", HOOK_ENV_VAR, path.Base(dirpath)),
+		fmt.Sprintf("%s=%s", HOOK_EVENT_ENV_VAR, hType.String()),
+		fmt.Sprintf("%s=%s", HOOKED_POD_ID_ENV_VAR, podManifest.ID()),
+		fmt.Sprintf("%s=%s", HOOKED_POD_HOME_ENV_VAR, pod.Path()),
+		fmt.Sprintf("%s=%s", HOOKED_POD_MANIFEST_ENV_VAR, tmpManifestFile.Name()),
+		fmt.Sprintf("%s=%s", HOOKED_CONFIG_PATH_ENV_VAR, path.Join(pod.ConfigDir(), configFileName)),
+		fmt.Sprintf("%s=%s", HOOKED_ENV_PATH_ENV_VAR, pod.EnvDir()),
 	}
 
 	return runDirectory(dirpath, hookEnvironment, logger)
