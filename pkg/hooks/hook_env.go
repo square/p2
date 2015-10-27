@@ -18,7 +18,7 @@ func CurrentEnv() *HookEnv {
 type HookEnv struct{}
 
 func (h *HookEnv) Manifest() (pods.Manifest, error) {
-	path := os.Getenv("HOOKED_POD_MANIFEST")
+	path := os.Getenv(HOOKED_POD_MANIFEST_ENV_VAR)
 	if path == "" {
 		return nil, util.Errorf("No manifest exported")
 	}
@@ -26,11 +26,11 @@ func (h *HookEnv) Manifest() (pods.Manifest, error) {
 }
 
 func (h *HookEnv) Pod() (*pods.Pod, error) {
-	id := os.Getenv("HOOKED_POD_ID")
+	id := os.Getenv(HOOKED_POD_ID_ENV_VAR)
 	if id == "" {
 		return nil, util.Errorf("Did not provide a pod ID to use")
 	}
-	path := os.Getenv("HOOKED_POD_HOME")
+	path := os.Getenv(HOOKED_POD_HOME_ENV_VAR)
 	if path == "" {
 		return nil, util.Errorf("No pod home given for pod ID %s", id)
 	}
@@ -39,11 +39,15 @@ func (h *HookEnv) Pod() (*pods.Pod, error) {
 }
 
 func (h *HookEnv) Config() (*config.Config, error) {
-	return config.LoadConfigFile(os.Getenv("HOOKED_CONFIG_PATH"))
+	return config.LoadConfigFile(os.Getenv(HOOKED_CONFIG_PATH_ENV_VAR))
 }
 
 func (h *HookEnv) Event() (HookType, error) {
-	return AsHookType(os.Getenv("HOOK_EVENT"))
+	return AsHookType(os.Getenv(HOOK_EVENT_ENV_VAR))
+}
+
+func (h *HookEnv) EnvPath() string {
+	return os.Getenv(HOOKED_ENV_PATH_ENV_VAR)
 }
 
 func (h *HookEnv) ExitUnlessEvent(types ...HookType) HookType {
