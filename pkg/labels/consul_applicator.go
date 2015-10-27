@@ -26,6 +26,7 @@ func (e CASError) Error() string {
 type consulKV interface {
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
 	CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
+	Delete(key string, opts *api.WriteOptions) (*api.WriteMeta, error)
 	DeleteCAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
 	Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
 }
@@ -143,6 +144,11 @@ func (c *consulApplicator) SetLabel(labelType Type, id, label, value string) err
 
 func (c *consulApplicator) RemoveLabel(labelType Type, id, label string) error {
 	return c.retryMutate(labelType, id, label, nil)
+}
+
+func (c *consulApplicator) RemoveAllLabels(labelType Type, id string) error {
+	_, err := c.kv.Delete(objectPath(labelType, id), nil)
+	return err
 }
 
 // kvp must be non-nil
