@@ -152,10 +152,9 @@ START_LOOP:
 				foundChildren[rlField.NewRC] = struct{}{}
 
 				go func(id fields.ID) {
-					for err := range newChild.Run(childQuit) {
-						if err != nil {
-							rlLogger.WithError(err).Errorln("Error during update")
-						}
+					if !newChild.Run(childQuit) {
+						// returned false, farm must have asked us to quit
+						return
 					}
 					// our lock on this RU won't be released until it's deleted,
 					// so if we fail to delete it, we have to retry

@@ -292,13 +292,17 @@ func (r RCtl) RollingUpdate(oldID, newID string, want, need int, deletes bool) {
 	}
 	lock := r.kps.NewUnmanagedLock(session, "")
 
-	errs := roll.NewUpdate(roll_fields.Update{
-		OldRC:           rc_fields.ID(oldID),
-		NewRC:           rc_fields.ID(newID),
-		DesiredReplicas: want,
-		MinimumReplicas: need,
-		DeletePods:      deletes,
-	}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, lock).Run(quit)
+	result := make(chan bool, 1)
+	go func() {
+		result <- roll.NewUpdate(roll_fields.Update{
+			OldRC:           rc_fields.ID(oldID),
+			NewRC:           rc_fields.ID(newID),
+			DesiredReplicas: want,
+			MinimumReplicas: need,
+			DeletePods:      deletes,
+		}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, lock).Run(quit)
+		close(result)
+	}()
 
 	signals := make(chan os.Signal, 2)
 	signal.Notify(signals, syscall.SIGTERM, os.Interrupt)
@@ -309,20 +313,19 @@ LOOP:
 		case <-signals:
 			// try to clean up locks on ^C
 			close(quit)
-			// do not exit right away - the session and error channels will be
+			// do not exit right away - the session and result channels will be
 			// closed after the quit is requested, ensuring that the locks held
 			// by the farm were released.
 			r.logger.NoFields().Errorln("Got signal, exiting")
 		case <-sessions:
 			r.logger.NoFields().Fatalln("Lost session")
-		case err, ok := <-errs:
-			if !ok {
+		case res := <-result:
+			// done, either due to ^C (already printed message above) or
+			// clean finish
+			if res {
 				r.logger.NoFields().Infoln("Done")
-				break LOOP
 			}
-			if err != nil {
-				r.logger.WithError(err).Errorln("Error during update")
-			}
+			break LOOP
 		}
 	}
 }
