@@ -15,6 +15,11 @@ import (
 	"github.com/square/p2/pkg/rc/fields"
 )
 
+const (
+	// This label is applied to an RC, to identify the ID of its pod manifest.
+	PodIDLabel = "pod_id"
+)
+
 type kvPair struct {
 	key   string
 	value []byte
@@ -347,5 +352,5 @@ func (s *consulStore) forEachLabel(rc fields.RC, f func(id, k, v string) error) 
 	id := rc.ID.String()
 	// As of this writing the only label we want is the pod ID.
 	// There may be more in the future.
-	return f(id, "pod_id", rc.Manifest.ID())
+	return f(id, PodIDLabel, rc.Manifest.ID())
 }

@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	rcIdLabel  = "replication_controller_id"
-	podIdLabel = "pod_id"
+	// This label is applied to pods owned by an RC.
+	RCIDLabel = "replication_controller_id"
 )
 
 type ReplicationController interface {
@@ -188,7 +188,7 @@ func (rc *replicationController) eligibleNodes() ([]string, error) {
 }
 
 func (rc *replicationController) CurrentNodes() ([]string, error) {
-	selector := klabels.Everything().Add(rcIdLabel, klabels.EqualsOperator, []string{rc.ID().String()})
+	selector := klabels.Everything().Add(RCIDLabel, klabels.EqualsOperator, []string{rc.ID().String()})
 
 	pods, err := rc.podApplicator.GetMatches(selector, labels.POD)
 	if err != nil {
@@ -208,7 +208,7 @@ func (rc *replicationController) CurrentNodes() ([]string, error) {
 }
 
 // forEachLabel Attempts to apply the supplied function to all user-supplied labels
-// and the reserved labels podIdLabel and rcIdLabel.
+// and the reserved labels.
 // If forEachLabel encounters any error applying the function, it returns that error immediately.
 // The function is not further applied to subsequent labels on an error.
 func (rc *replicationController) forEachLabel(node string, f func(id, k, v string) error) error {
@@ -221,10 +221,7 @@ func (rc *replicationController) forEachLabel(node string, f func(id, k, v strin
 		}
 	}
 	// our reserved labels.
-	if err := f(id, podIdLabel, rc.Manifest.ID()); err != nil {
-		return err
-	}
-	return f(id, rcIdLabel, rc.ID().String())
+	return f(id, RCIDLabel, rc.ID().String())
 }
 
 func (rc *replicationController) schedule(node string) error {
