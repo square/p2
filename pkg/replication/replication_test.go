@@ -278,7 +278,6 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 			t.Fatalf("Did not get expected lock renewal error within timeout")
 		}
 	}()
-	failIfErrors(errCh, doneCh, t)
 	imitatePreparers(server, doneCh)
 
 	go func() {
