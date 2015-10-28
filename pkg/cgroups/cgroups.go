@@ -173,11 +173,11 @@ func (subsys Subsystems) Write(config Config) error {
 }
 
 func (subsys Subsystems) AddPID(name string, pid int) error {
-	err := appendIntToFile(filepath.Join(subsys.Memory, name, "tasks"), pid)
+	err := appendIntToFile(filepath.Join(subsys.Memory, name, "cgroup.procs"), pid)
 	if err != nil {
 		return err
 	}
-	return appendIntToFile(filepath.Join(subsys.CPU, name, "tasks"), pid)
+	return appendIntToFile(filepath.Join(subsys.CPU, name, "cgroup.procs"), pid)
 }
 
 func appendIntToFile(filename string, data int) error {
