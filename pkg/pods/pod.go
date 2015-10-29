@@ -344,9 +344,7 @@ func (pod *Pod) Uninstall() error {
 	}
 
 	// remove pod home dir
-	os.RemoveAll(pod.path)
-
-	return nil
+	return os.RemoveAll(pod.path)
 }
 
 // Install will ensure that executables for all required services are present on the host
