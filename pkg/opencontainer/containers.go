@@ -36,13 +36,14 @@ var RuncPath = param.String("runc_path", "/usr/local/bin/runc")
 
 // Launchable represents an installation of a container.
 type Launchable struct {
-	Location       string         // A URL where we can download the artifact from.
-	ID_            string         // A unique identifier for this launchable, used when creating runit services
-	RunAs          string         // The user to assume when launching the executable
-	RootDir        string         // The root directory of the launchable, containing N:N>=1 installs.
-	P2Exec         string         // The path to p2-exec
-	RestartTimeout time.Duration  // How long to wait when restarting the services in this launchable.
-	CgroupConfig   cgroups.Config // Cgroup parameters to use with p2-exec
+	Location       string              // A URL where we can download the artifact from.
+	ID_            string              // A unique identifier for this launchable, used when creating runit services
+	RunAs          string              // The user to assume when launching the executable
+	RootDir        string              // The root directory of the launchable, containing N:N>=1 installs.
+	P2Exec         string              // The path to p2-exec
+	RestartTimeout time.Duration       // How long to wait when restarting the services in this launchable.
+	RestartPolicy  runit.RestartPolicy // Dictates whether the container should be automatically restarted upon exit.
+	CgroupConfig   cgroups.Config      // Cgroup parameters to use with p2-exec
 
 	spec *LinuxSpec // The container's "config.json"
 }
@@ -237,14 +238,19 @@ func (l *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) 
 	return nil
 }
 
-func (l *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+func (l *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
 	executables, err := l.Executables(serviceBuilder)
 	if err != nil {
 		return err
 	}
 
 	for _, executable := range executables {
-		_, err := sv.Restart(&executable.Service, l.RestartTimeout)
+		var err error
+		if l.RestartPolicy == runit.RestartPolicyAlways {
+			_, err = sv.Restart(&executable.Service, l.RestartTimeout)
+		} else {
+			_, err = sv.Once(&executable.Service)
+		}
 		if err != nil && err != runit.SuperviseOkMissing {
 			return err
 		}

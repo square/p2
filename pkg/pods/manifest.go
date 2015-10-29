@@ -15,6 +15,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp/clearsign"
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
 	"github.com/square/p2/pkg/cgroups"
+	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 )
@@ -70,6 +71,7 @@ type Manifest interface {
 	GetStatusHTTP() bool
 	Marshal() ([]byte, error)
 	SignatureData() (plaintext, signature []byte)
+	GetRestartPolicy() runit.RestartPolicy
 
 	GetBuilder() ManifestBuilder
 }
@@ -84,6 +86,7 @@ type manifest struct {
 	Config            map[interface{}]interface{} `yaml:"config"`
 	StatusPort        int                         `yaml:"status_port,omitempty"`
 	StatusHTTP        bool                        `yaml:"status_http,omitempty"`
+	RestartPolicy     runit.RestartPolicy         `yaml:"restart_policy,omitempty"`
 
 	// Used to track the original bytes so that we don't reorder them when
 	// doing a yaml.Unmarshal and a yaml.Marshal in succession
@@ -323,6 +326,13 @@ func (m manifest) SignatureData() (plaintext, signature []byte) {
 		return nil, nil
 	}
 	return m.plaintext, m.signature
+}
+
+func (m manifest) GetRestartPolicy() runit.RestartPolicy {
+	if m.RestartPolicy == "" {
+		return runit.DefaultRestartPolicy
+	}
+	return m.RestartPolicy
 }
 
 // ValidManifest checks the internal consistency of a manifest. Returns an error if the

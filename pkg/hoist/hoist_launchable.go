@@ -24,17 +24,18 @@ import (
 
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type Launchable struct {
-	Location         string         // A URL where we can download the artifact from.
-	Id               string         // A unique identifier for this launchable, used when creating runit services
-	RunAs            string         // The user to assume when launching the executable
-	ConfigDir        string         // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
-	Fetcher          uri.Fetcher    // Callback that downloads the file from the remote location.
-	RootDir          string         // The root directory of the launchable, containing N:N>=1 installs.
-	P2Exec           string         // Struct that can be used to build a p2-exec invocation with appropriate flags
-	ExecNoLimit      bool           // If set, execute with the -n (--no-limit) argument to p2-exec
-	CgroupConfig     cgroups.Config // Cgroup parameters to use with p2-exec
-	CgroupConfigName string         // The string in PLATFORM_CONFIG to pass to p2-exec
-	RestartTimeout   time.Duration  // How long to wait when restarting the services in this launchable.
+	Location         string              // A URL where we can download the artifact from.
+	Id               string              // A unique identifier for this launchable, used when creating runit services
+	RunAs            string              // The user to assume when launching the executable
+	ConfigDir        string              // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
+	Fetcher          uri.Fetcher         // Callback that downloads the file from the remote location.
+	RootDir          string              // The root directory of the launchable, containing N:N>=1 installs.
+	P2Exec           string              // Struct that can be used to build a p2-exec invocation with appropriate flags
+	ExecNoLimit      bool                // If set, execute with the -n (--no-limit) argument to p2-exec
+	CgroupConfig     cgroups.Config      // Cgroup parameters to use with p2-exec
+	CgroupConfigName string              // The string in PLATFORM_CONFIG to pass to p2-exec
+	RestartTimeout   time.Duration       // How long to wait when restarting the services in this launchable.
+	RestartPolicy    runit.RestartPolicy // Dictates whether the launchable should be automatically restarted upon exit.
 }
 
 // LaunchAdapter adapts a hoist.Launchable to the launch.Launchable interface.
@@ -186,7 +187,12 @@ func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) 
 	}
 
 	for _, executable := range executables {
-		_, err := sv.Restart(&executable.Service, hl.RestartTimeout)
+		var err error
+		if hl.RestartPolicy == runit.RestartPolicyAlways {
+			_, err = sv.Restart(&executable.Service, hl.RestartTimeout)
+		} else {
+			_, err = sv.Once(&executable.Service)
+		}
 		if err != nil && err != runit.SuperviseOkMissing {
 			return err
 		}

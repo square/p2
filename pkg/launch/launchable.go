@@ -45,8 +45,9 @@ type Launchable interface {
 // Executable describes a command and its arguments that should be executed to start a
 // service running.
 type Executable struct {
-	Service runit.Service
-	Exec    []string
+	Service       runit.Service
+	Exec          []string
+	RestartPolicy runit.RestartPolicy
 }
 
 func (e Executable) WriteExecutor(writer io.Writer) error {

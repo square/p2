@@ -30,6 +30,18 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
 )
 
+// This is in the runit package to avoid import cycles, it should probably move somewhere else
+type RestartPolicy string
+
+const (
+	RestartPolicyAlways RestartPolicy = "always"
+	RestartPolicyNever  RestartPolicy = "never"
+
+	DefaultRestartPolicy = RestartPolicyAlways
+
+	DOWN_FILE_NAME = "down"
+)
+
 // To maintain compatibility with Ruby1.8's YAML serializer, a document separator with a
 // trailing space must be used.
 const yamlSeparator = "--- "
@@ -145,7 +157,7 @@ func (s *ServiceBuilder) write(path string, templates map[string]ServiceTemplate
 }
 
 // convert the servicebuilder yaml file into a runit service directory
-func (s *ServiceBuilder) stage(templates map[string]ServiceTemplate) error {
+func (s *ServiceBuilder) stage(templates map[string]ServiceTemplate, restartPolicy RestartPolicy) error {
 	nobody, err := user.Lookup("nobody")
 	if err != nil {
 		return err
@@ -197,6 +209,31 @@ func (s *ServiceBuilder) stage(templates map[string]ServiceTemplate) error {
 		if _, err := util.WriteIfChanged(filepath.Join(stageDir, "log", "run"), logScript, 0755); err != nil {
 			return err
 		}
+
+		// If a "down" file is not present, runit will restart the process
+		// whenever it finishes. Prevent that if the requested restart policy
+		// is not RestartAlways
+		downPath := filepath.Join(stageDir, DOWN_FILE_NAME)
+		if restartPolicy != RestartPolicyAlways {
+			file, err := os.Create(downPath)
+			if err != nil {
+				return err
+			}
+			file.Close()
+		} else {
+			// There could be a down file lying around from a
+			// previous installation with a different restart
+			// policy, check for it and remove it if present
+			_, err := os.Stat(downPath)
+			if err == nil {
+				err := os.Remove(downPath)
+				if err != nil {
+					return util.Errorf("Unable to remove down file: %s", err)
+				}
+			} else if !os.IsNotExist(err) {
+				return util.Errorf("Error checking for down file: %s", err)
+			}
+		}
 	}
 	return nil
 }
@@ -237,13 +274,14 @@ func (s *ServiceBuilder) activate(templates map[string]ServiceTemplate) error {
 }
 
 // public API to write, stage and activate a servicebuilder template
-func (s *ServiceBuilder) Activate(name string, templates map[string]ServiceTemplate) error {
+func (s *ServiceBuilder) Activate(name string, templates map[string]ServiceTemplate, restartPolicy RestartPolicy) error {
 	if err := s.write(filepath.Join(s.ConfigRoot, name+".yaml"), templates); err != nil {
 		return err
 	}
-	if err := s.stage(templates); err != nil {
+	if err := s.stage(templates, restartPolicy); err != nil {
 		return err
 	}
+
 	return s.activate(templates)
 }
 

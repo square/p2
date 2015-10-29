@@ -89,6 +89,10 @@ func (sv *SV) execCmdOrTimeout(service *Service, nonTimeoutCmd, timeoutCmd strin
 	return convertToErr(sv.execCmdOnService(service, cmd))
 }
 
+func (sv *SV) execCmd(service *Service, cmd string) (string, error) {
+	return sv.execCmdOrTimeout(service, cmd, "", 0)
+}
+
 func (sv *SV) execOnService(service *Service, svVerb string) (string, error) {
 	cmd := exec.Command(sv.Bin, svVerb, service.Path)
 	return sv.execCmdOnService(service, cmd)
@@ -114,6 +118,10 @@ func (sv *SV) Stat(service *Service) (*StatResult, error) {
 // is provided, will just send a TERM.
 func (sv *SV) Restart(service *Service, timeout time.Duration) (string, error) {
 	return sv.execCmdOrTimeout(service, "restart", "force-restart", timeout)
+}
+
+func (sv *SV) Once(service *Service) (string, error) {
+	return sv.execCmd(service, "once")
 }
 
 func outToStatResult(out string) (*StatResult, error) {

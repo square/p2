@@ -55,7 +55,7 @@ func TestStagedContents(t *testing.T) {
 	sb := FakeServiceBuilder()
 	defer sb.Cleanup()
 
-	err := sb.stage(fakeTemplate)
+	err := sb.stage(fakeTemplate, RestartPolicyAlways)
 	Assert(t).IsNil(err, "should have staged")
 
 	info, err := os.Stat(filepath.Join(sb.StagingRoot, "foo"))
@@ -97,7 +97,7 @@ func TestRuby18Yaml(t *testing.T) {
 	sb := FakeServiceBuilder()
 	defer sb.Cleanup()
 
-	err := sb.stage(fakeTemplate)
+	err := sb.stage(fakeTemplate, RestartPolicyAlways)
 	Assert(t).IsNil(err, "should have staged")
 
 	verifyRuby18(t, filepath.Join(sb.StagingRoot, "foo", "run"), "run script")
@@ -127,13 +127,13 @@ func TestPrune(t *testing.T) {
 	defer sb.Cleanup()
 
 	// first create the service
-	err := sb.Activate("foo", fakeTemplate)
+	err := sb.Activate("foo", fakeTemplate, RestartPolicyAlways)
 	Assert(t).IsNil(err, "should have activated service")
 	_, err = os.Readlink(filepath.Join(sb.RunitRoot, "foo"))
 	Assert(t).IsNil(err, "should have created activation symlink")
 
 	// now remove the service's yaml file
-	err = sb.Activate("foo", map[string]ServiceTemplate{})
+	err = sb.Activate("foo", map[string]ServiceTemplate{}, RestartPolicyAlways)
 	Assert(t).IsNil(err, "should have activated service")
 	// symlink should still exist, haven't pruned yet
 	_, err = os.Readlink(filepath.Join(sb.RunitRoot, "foo"))
