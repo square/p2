@@ -32,7 +32,11 @@ var (
 	ExperimentalOpencontainer = param.Bool("experimental_opencontainer", false)
 )
 
-const DEFAULT_PATH = "/data/pods"
+const (
+	DEFAULT_PATH              = "/data/pods"
+	CONFIG_FILE_NAME          = "config.yaml"
+	PLATFORM_CONFIG_FILE_NAME = "platform.yaml"
+)
 
 var DefaultP2Exec = "/usr/local/bin/p2-exec"
 
@@ -258,10 +262,18 @@ func (pod *Pod) WriteCurrentManifest(manifest Manifest) (string, error) {
 		}
 	}
 
+	if err != nil {
+		pod.logError(err, "Unable to determine path for current manifest file")
+		err = pod.revertCurrentManifest(lastManifest, manifest)
+		if err != nil {
+			pod.logError(err, "Couldn't replace old manifest as current")
+		}
+		return "", err
+	}
 	f, err := os.OpenFile(pod.currentPodManifestPath(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		pod.logError(err, "Unable to open current manifest file")
-		err = pod.revertCurrentManifest(lastManifest)
+		err = pod.revertCurrentManifest(lastManifest, manifest)
 		if err != nil {
 			pod.logError(err, "Couldn't replace old manifest as current")
 		}
@@ -272,7 +284,7 @@ func (pod *Pod) WriteCurrentManifest(manifest Manifest) (string, error) {
 	err = manifest.Write(f)
 	if err != nil {
 		pod.logError(err, "Unable to write current manifest file")
-		err = pod.revertCurrentManifest(lastManifest)
+		err = pod.revertCurrentManifest(lastManifest, manifest)
 		if err != nil {
 			pod.logError(err, "Couldn't replace old manifest as current")
 		}
@@ -294,7 +306,7 @@ func (pod *Pod) WriteCurrentManifest(manifest Manifest) (string, error) {
 	return lastManifest, nil
 }
 
-func (pod *Pod) revertCurrentManifest(lastPath string) error {
+func (pod *Pod) revertCurrentManifest(lastPath string, manifest Manifest) error {
 	if _, err := os.Stat(lastPath); err == nil {
 		return os.Rename(lastPath, pod.currentPodManifestPath())
 	} else {
@@ -306,12 +318,33 @@ func (pod *Pod) currentPodManifestPath() string {
 	return filepath.Join(pod.path, "current_manifest.yaml")
 }
 
-func (pod *Pod) ConfigDir() string {
-	return filepath.Join(pod.path, "config")
+func (pod *Pod) EnvDir(manifest Manifest) (string, error) {
+	return pod.PathFor("env", manifest)
 }
 
-func (pod *Pod) EnvDir() string {
-	return filepath.Join(pod.path, "env")
+func (pod *Pod) ConfigPath(manifest Manifest) (string, error) {
+	return pod.PathFor(CONFIG_FILE_NAME, manifest)
+}
+
+func (pod *Pod) PlatformConfigPath(manifest Manifest) (string, error) {
+	return pod.PathFor(PLATFORM_CONFIG_FILE_NAME, manifest)
+}
+
+func (pod *Pod) PathFor(name string, manifest Manifest) (string, error) {
+	namespacedDir, err := pod.NamespacedPath(manifest)
+	if err != nil {
+		return "", util.Errorf("Unable to find path for %s: %s", name, err)
+	}
+
+	return filepath.Join(namespacedDir, name), nil
+}
+
+func (pod *Pod) NamespacedPath(manifest Manifest) (string, error) {
+	sha, err := manifest.SHA()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(pod.path, fmt.Sprintf("%s_%s", manifest.ID(), sha)), nil
 }
 
 func (pod *Pod) Uninstall() error {
@@ -395,7 +428,7 @@ func (pod *Pod) Verify(manifest Manifest, authPolicy auth.Policy) error {
 		if stanza.DigestLocation == "" {
 			continue
 		}
-		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser())
+		launchable, err := pod.getLaunchable(stanza, manifest)
 		if err != nil {
 			return err
 		}
@@ -436,15 +469,20 @@ func (pod *Pod) setupConfig(manifest Manifest) error {
 		return util.Errorf("Could not determine pod UID/GID: %s", err)
 	}
 
-	err = util.MkdirChownAll(pod.ConfigDir(), uid, gid, 0755)
+	namespacedDir, err := pod.NamespacedPath(manifest)
+	if err != nil {
+		return util.Errorf("Could not locate namespaced dir for pod %s: %s", manifest.ID(), err)
+	}
+
+	err = util.MkdirChownAll(namespacedDir, uid, gid, 0755)
 	if err != nil {
 		return util.Errorf("Could not create config directory for pod %s: %s", manifest.ID(), err)
 	}
-	configFileName, err := manifest.ConfigFileName()
+
+	configPath, err := pod.ConfigPath(manifest)
 	if err != nil {
 		return err
 	}
-	configPath := filepath.Join(pod.ConfigDir(), configFileName)
 
 	file, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer file.Close()
@@ -460,11 +498,10 @@ func (pod *Pod) setupConfig(manifest Manifest) error {
 		return err
 	}
 
-	platConfigFileName, err := manifest.PlatformConfigFileName()
+	platConfigPath, err := pod.PlatformConfigPath(manifest)
 	if err != nil {
 		return err
 	}
-	platConfigPath := filepath.Join(pod.ConfigDir(), platConfigFileName)
 	platFile, err := os.OpenFile(platConfigPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer platFile.Close()
 	if err != nil {
@@ -479,19 +516,23 @@ func (pod *Pod) setupConfig(manifest Manifest) error {
 		return err
 	}
 
-	err = util.MkdirChownAll(pod.EnvDir(), uid, gid, 0755)
+	envDir, err := pod.EnvDir(manifest)
+	if err != nil {
+		return err
+	}
+	err = util.MkdirChownAll(envDir, uid, gid, 0755)
 	if err != nil {
 		return util.Errorf("Could not create the environment dir for pod %s: %s", manifest.ID(), err)
 	}
-	err = writeEnvFile(pod.EnvDir(), "CONFIG_PATH", configPath, uid, gid)
+	err = writeEnvFile(envDir, "CONFIG_PATH", configPath, uid, gid)
 	if err != nil {
 		return err
 	}
-	err = writeEnvFile(pod.EnvDir(), "PLATFORM_CONFIG_PATH", platConfigPath, uid, gid)
+	err = writeEnvFile(envDir, "PLATFORM_CONFIG_PATH", platConfigPath, uid, gid)
 	if err != nil {
 		return err
 	}
-	err = writeEnvFile(pod.EnvDir(), "POD_HOME", pod.Path(), uid, gid)
+	err = writeEnvFile(envDir, "POD_HOME", pod.Path(), uid, gid)
 	if err != nil {
 		return err
 	}
@@ -523,7 +564,7 @@ func (pod *Pod) Launchables(manifest Manifest) ([]launch.Launchable, error) {
 	launchables := make([]launch.Launchable, 0, len(launchableStanzas))
 
 	for _, launchableStanza := range launchableStanzas {
-		launchable, err := pod.getLaunchable(launchableStanza, manifest.RunAsUser())
+		launchable, err := pod.getLaunchable(launchableStanza, manifest)
 		if err != nil {
 			return nil, err
 		}
@@ -533,7 +574,7 @@ func (pod *Pod) Launchables(manifest Manifest) ([]launch.Launchable, error) {
 	return launchables, nil
 }
 
-func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser string) (launch.Launchable, error) {
+func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, manifest Manifest) (launch.Launchable, error) {
 	launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
 	launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
 
@@ -548,12 +589,17 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 		}
 	}
 
+	envDir, err := pod.EnvDir(manifest)
+	if err != nil {
+		return nil, err
+	}
+
 	if launchableStanza.LaunchableType == "hoist" {
 		ret := &hoist.Launchable{
 			Location:         launchableStanza.Location,
 			Id:               launchableId,
-			RunAs:            runAsUser,
-			ConfigDir:        pod.EnvDir(),
+			RunAs:            manifest.RunAsUser(),
+			ConfigDir:        envDir,
 			Fetcher:          uri.DefaultFetcher,
 			RootDir:          launchableRootDir,
 			P2Exec:           pod.P2Exec,
@@ -568,7 +614,7 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 		ret := &opencontainer.Launchable{
 			Location:       launchableStanza.Location,
 			ID_:            launchableId,
-			RunAs:          runAsUser,
+			RunAs:          manifest.RunAsUser(),
 			RootDir:        launchableRootDir,
 			P2Exec:         pod.P2Exec,
 			RestartTimeout: restartTimeout,

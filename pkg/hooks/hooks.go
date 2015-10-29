@@ -26,8 +26,8 @@ const (
 )
 
 type Pod interface {
-	ConfigDir() string
-	EnvDir() string
+	ConfigPath(pods.Manifest) (string, error)
+	EnvDir(pods.Manifest) (string, error)
 	Path() string
 }
 
@@ -117,11 +117,6 @@ func runDirectory(dirpath string, environment []string, logger logging.Logger) e
 }
 
 func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest pods.Manifest, logger logging.Logger) error {
-	configFileName, err := podManifest.ConfigFileName()
-	if err != nil {
-		return err
-	}
-
 	// Write manifest to a file so hooks can read it.
 	tmpManifestFile, err := ioutil.TempFile("", fmt.Sprintf("%s-manifest.yaml", podManifest.ID()))
 	if err != nil {
@@ -140,14 +135,29 @@ func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest 
 		return err
 	}
 
+	configPath, err := pod.ConfigPath(podManifest)
+	if err != nil {
+		logger.WithErrorAndFields(err, logrus.Fields{
+			"dir": dirpath,
+		}).Warnln("Unable to determine config dir for hooks")
+		return err
+	}
+
+	envDir, err := pod.EnvDir(podManifest)
+	if err != nil {
+		logger.WithErrorAndFields(err, logrus.Fields{
+			"dir": dirpath,
+		}).Warnln("Unable to determine env dir for hooks")
+		return err
+	}
 	hookEnvironment := []string{
 		fmt.Sprintf("%s=%s", HOOK_ENV_VAR, path.Base(dirpath)),
 		fmt.Sprintf("%s=%s", HOOK_EVENT_ENV_VAR, hType.String()),
 		fmt.Sprintf("%s=%s", HOOKED_POD_ID_ENV_VAR, podManifest.ID()),
 		fmt.Sprintf("%s=%s", HOOKED_POD_HOME_ENV_VAR, pod.Path()),
 		fmt.Sprintf("%s=%s", HOOKED_POD_MANIFEST_ENV_VAR, tmpManifestFile.Name()),
-		fmt.Sprintf("%s=%s", HOOKED_CONFIG_PATH_ENV_VAR, path.Join(pod.ConfigDir(), configFileName)),
-		fmt.Sprintf("%s=%s", HOOKED_ENV_PATH_ENV_VAR, pod.EnvDir()),
+		fmt.Sprintf("%s=%s", HOOKED_CONFIG_PATH_ENV_VAR, configPath),
+		fmt.Sprintf("%s=%s", HOOKED_ENV_PATH_ENV_VAR, envDir),
 	}
 
 	return runDirectory(dirpath, hookEnvironment, logger)

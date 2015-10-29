@@ -25,8 +25,10 @@ type TestPod struct {
 	currentManifest                                                      pods.Manifest
 	installed, uninstalled, launched, launchSuccess, halted, haltSuccess bool
 	installErr, uninstallErr, launchErr, haltError, currentManifestError error
-	configDir, envDir                                                    string
+	configPath, envDir                                                   string
 }
+
+var _ Pod = &TestPod{}
 
 func (t *TestPod) ManifestSHA() (string, error) {
 	return "abc123", nil
@@ -51,27 +53,27 @@ func (t *TestPod) Uninstall() error {
 	return t.uninstallErr
 }
 
-func (t *TestPod) Verify(manifest pods.Manifest, authPolicy auth.Policy) error {
+func (t *TestPod) Verify(_ pods.Manifest, authPolicy auth.Policy) error {
 	return nil
 }
 
-func (t *TestPod) Halt(manifest pods.Manifest) (bool, error) {
+func (t *TestPod) Halt(_ pods.Manifest) (bool, error) {
 	t.halted = true
 	return t.haltSuccess, t.haltError
 }
 
-func (t *TestPod) ConfigDir() string {
-	if t.configDir != "" {
-		return t.configDir
+func (t *TestPod) ConfigPath(_ pods.Manifest) (string, error) {
+	if t.configPath != "" {
+		return t.configPath, nil
 	}
-	return os.TempDir()
+	return "", util.Errorf("no config path defined for test pod")
 }
 
-func (t *TestPod) EnvDir() string {
+func (t *TestPod) EnvDir(_ pods.Manifest) (string, error) {
 	if t.envDir != "" {
-		return t.envDir
+		return t.envDir, nil
 	}
-	return os.TempDir()
+	return os.TempDir(), nil
 }
 
 func (t *TestPod) Path() string {

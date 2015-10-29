@@ -59,9 +59,7 @@ type Manifest interface {
 	ID() string
 	RunAsUser() string
 	Write(out io.Writer) error
-	ConfigFileName() (string, error)
 	WriteConfig(out io.Writer) error
-	PlatformConfigFileName() (string, error)
 	WritePlatformConfig(out io.Writer) error
 	GetLaunchableStanzas() map[string]LaunchableStanza
 	GetConfig() map[interface{}]interface{}
@@ -298,22 +296,6 @@ func (manifest *manifest) SHA() (string, error) {
 	hasher := sha256.New()
 	hasher.Write(buf)
 	return hex.EncodeToString(hasher.Sum(nil)), nil
-}
-
-func (manifest *manifest) ConfigFileName() (string, error) {
-	sha, err := manifest.SHA()
-	if err != nil {
-		return "", err
-	}
-	return manifest.Id + "_" + sha + ".yaml", nil
-}
-
-func (manifest *manifest) PlatformConfigFileName() (string, error) {
-	sha, err := manifest.SHA()
-	if err != nil {
-		return "", err
-	}
-	return manifest.Id + "_" + sha + ".platform.yaml", nil
 }
 
 // Returns readers needed to verify the signature on the
