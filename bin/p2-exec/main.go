@@ -190,7 +190,7 @@ func cgEnter(platconf, launchableName, cgroupName string) error {
 	} else if err != nil {
 		return util.Errorf("Could not set cgroup parameters: %s", err)
 	}
-	return cg.AddPID(cgConfig.Name, os.Getpid())
+	return cg.AddPID(cgConfig.Name, 0)
 }
 
 // generalized code to remove rlimits on both darwin and linux
