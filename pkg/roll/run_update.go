@@ -60,27 +60,20 @@ func NewUpdate(
 type Update interface {
 	// Run will execute the Update and remove the old RC upon completion. Run
 	// should claim exclusive ownership of both affected RCs, and release that
-	// exclusivity upon completion. Run is long-lived and non-blocking; close
-	// the quit channel to terminate it early. If an Update is interrupted, Run
+	// exclusivity upon completion. Run is long-lived and blocking; close the
+	// quit channel to terminate it early. If an Update is interrupted, Run
 	// should leave the RCs in a state such that it can later be called again to
-	// resume. The error channel returned from Run() must be drained.
-	Run(quit <-chan struct{}) <-chan error
-}
-
-func (u update) Run(quit <-chan struct{}) <-chan error {
-	ret := make(chan error)
-	go u.run(quit, ret)
-	return ret
+	// resume. The return value indicates if the update completed (true) or if
+	// it was terminated early (false).
+	Run(quit <-chan struct{}) bool
 }
 
 // retries a given function until it returns a nil error or the quit channel is
 // closed. returns true if it exited in the former case, false in the latter.
-// errors are propagated through the errs channel, which must be drained. the
-// retry rate is limited to once per second, to avoid spinning on functions that
-// fail quickly.
-func retryOrQuit(f func() error, errs chan<- error, quit <-chan struct{}) bool {
+// errors are sent to the given logger with the given string as the message.
+func RetryOrQuit(f func() error, quit <-chan struct{}, logger logging.Logger, errtext string) bool {
 	for err := f(); err != nil; err = f() {
-		errs <- err
+		logger.WithError(err).Errorln(errtext)
 		select {
 		case <-quit:
 			return false
@@ -91,10 +84,10 @@ func retryOrQuit(f func() error, errs chan<- error, quit <-chan struct{}) bool {
 	return true
 }
 
-func (u update) run(quit <-chan struct{}, errs chan<- error) {
+func (u update) Run(quit <-chan struct{}) (ret bool) {
 	u.logger.NoFields().Debugln("Locking")
 	// TODO: implement API for blocking locks and use that instead of retrying
-	if !retryOrQuit(u.lockRCs, errs, quit) {
+	if !RetryOrQuit(u.lockRCs, quit, u.logger, "Could not lock update") {
 		return
 	}
 
@@ -106,27 +99,25 @@ func (u update) run(quit <-chan struct{}, errs chan<- error) {
 		// - network error, session will probably time out soon
 		// either way no point retrying
 		if err := u.lock.Unlock(u.lockPath(u.OldRC)); err != nil {
-			errs <- err
+			u.logger.WithError(err).Warnln("Could not unlock old RC for updates")
 		}
 		if err := u.lock.Unlock(u.lockPath(u.NewRC)); err != nil {
-			errs <- err
+			u.logger.WithError(err).Warnln("Could not unlock new RC for updates")
 		}
-		close(errs)
 	}()
 
 	u.logger.NoFields().Debugln("Enabling")
-	if !retryOrQuit(u.enable, errs, quit) {
+	if !RetryOrQuit(u.enable, quit, u.logger, "Could not enable/disable RCs") {
 		return
 	}
 
 	u.logger.NoFields().Debugln("Launching health watch")
 	var newFields rcf.RC
 	var err error
-	if !retryOrQuit(func() error {
-		// close over newFields so that it can be propagated out of this function
+	if !RetryOrQuit(func() error {
 		newFields, err = u.rcs.Get(u.NewRC)
 		return err
-	}, errs, quit) {
+	}, quit, u.logger, "Could not read new RC") {
 		return
 	}
 
@@ -142,16 +133,20 @@ ROLL_LOOP:
 		case <-quit:
 			return
 		case <-hErrs:
-			errs <- err
+			u.logger.WithError(err).Errorln("Could not read health checks")
 		case checks := <-hChecks:
 			newNodes, err := u.countHealthy(u.NewRC, checks)
 			if err != nil {
-				errs <- err
+				u.logger.WithErrorAndFields(err, logrus.Fields{
+					"new": newNodes,
+				}).Errorln("Could not count nodes on new RC")
 				break
 			}
 			oldNodes, err := u.countHealthy(u.OldRC, checks)
 			if err != nil {
-				errs <- err
+				u.logger.WithErrorAndFields(err, logrus.Fields{
+					"old": oldNodes,
+				}).Errorln("Could not count nodes on old RC")
 				break
 			}
 
@@ -188,9 +183,17 @@ ROLL_LOOP:
 					"next": next,
 				}).Infoln("Undergoing next update")
 				if u.DeletePods {
-					u.rcs.AddDesiredReplicas(u.OldRC, -next)
+					err = u.rcs.AddDesiredReplicas(u.OldRC, -next)
+					if err != nil {
+						u.logger.WithError(err).Errorln("Could not decrement old replica count")
+						break
+					}
 				}
-				u.rcs.AddDesiredReplicas(u.NewRC, next)
+				err = u.rcs.AddDesiredReplicas(u.NewRC, next)
+				if err != nil {
+					u.logger.WithError(err).Errorln("Could not increment new replica count")
+					break
+				}
 			} else {
 				u.logger.WithFields(logrus.Fields{
 					"old": oldNodes,
@@ -202,15 +205,16 @@ ROLL_LOOP:
 
 	// rollout complete, clean up old RC
 	u.logger.NoFields().Infoln("Cleaning up old RC")
-	if !retryOrQuit(func() error { return u.rcs.SetDesiredReplicas(u.OldRC, 0) }, errs, quit) {
+	if !RetryOrQuit(func() error { return u.rcs.SetDesiredReplicas(u.OldRC, 0) }, quit, u.logger, "Could not zero old replica count") {
 		return
 	}
-	if !retryOrQuit(func() error { return u.rcs.Enable(u.OldRC) }, errs, quit) {
+	if !RetryOrQuit(func() error { return u.rcs.Enable(u.OldRC) }, quit, u.logger, "Could not enable old RC") {
 		return
 	}
-	if !retryOrQuit(func() error { return u.rcs.Delete(u.OldRC, false) }, errs, quit) {
+	if !RetryOrQuit(func() error { return u.rcs.Delete(u.OldRC, false) }, quit, u.logger, "Could not delete old RC") {
 		return
 	}
+	return true // finally if we make it here, we can return true
 }
 
 func (u update) lockPath(id rcf.ID) string {
