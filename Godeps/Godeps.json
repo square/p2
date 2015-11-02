@@ -72,19 +72,19 @@
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
-			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
+			"Rev": "c8b9e6388ef638d5a8a9d865c634befdc46a6784"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/curve25519",
-			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
+			"Rev": "c8b9e6388ef638d5a8a9d865c634befdc46a6784"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp",
-			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
+			"Rev": "c8b9e6388ef638d5a8a9d865c634befdc46a6784"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ssh",
-			"Rev": "aedad9a179ec1ea11b7064c57cbc6dc30d7724ec"
+			"Rev": "c8b9e6388ef638d5a8a9d865c634befdc46a6784"
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v2",
