@@ -22,6 +22,7 @@
   - [Default Values](#default-values)
   - [Place-holders in Help](#place-holders-in-help)
   - [Consuming all remaining arguments](#consuming-all-remaining-arguments)
+  - [Supporting -h for help](#supporting--h-for-help)
   - [Custom help](#custom-help)
 
 <!-- /MarkdownTOC -->
@@ -490,6 +491,10 @@ And use it like so:
 ```go
 ips := IPList(kingpin.Arg("ips", "IP addresses to ping."))
 ```
+
+### Supporting -h for help
+
+`kingpin.CommandLine.HelpFlag.Short('-h')`
 
 ### Custom help
 
