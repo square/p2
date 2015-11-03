@@ -15,7 +15,15 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-type SV struct {
+type SV interface {
+	Start(service *Service) (string, error)
+	Stop(service *Service, timeout time.Duration) (string, error)
+	Stat(service *Service) (*StatResult, error)
+	Restart(service *Service, timeout time.Duration) (string, error)
+	Once(service *Service) (string, error)
+}
+
+type sv struct {
 	Bin string
 }
 
@@ -24,7 +32,7 @@ const (
 	STATUS_RUN  = "run"
 )
 
-var DefaultSV = &SV{"/usr/bin/sv"}
+var DefaultSV = &sv{"/usr/bin/sv"}
 
 var statOutput = regexp.MustCompile(`(run|down): ([/\w\_\-\.]+): \(pid ([\d]+)\) (\d+s); (run|down): log: \(pid ([\d]+)\) (\d+s)`)
 
@@ -49,7 +57,7 @@ var (
 	SuperviseOkMissing           = errors.New("The supervise/ok file is missing")
 )
 
-func (sv *SV) waitForSupervision(service *Service) error {
+func (sv *sv) waitForSupervision(service *Service) error {
 	maxWait := time.After(10 * time.Second)
 	for {
 		if _, err := os.Stat(filepath.Join(service.Path, "supervise")); !os.IsNotExist(err) {
@@ -64,7 +72,7 @@ func (sv *SV) waitForSupervision(service *Service) error {
 	}
 }
 
-func (sv *SV) execCmdOnService(service *Service, cmd *exec.Cmd) (string, error) {
+func (sv *sv) execCmdOnService(service *Service, cmd *exec.Cmd) (string, error) {
 	err := sv.waitForSupervision(service)
 	if err != nil {
 		return "", err
@@ -79,7 +87,7 @@ func (sv *SV) execCmdOnService(service *Service, cmd *exec.Cmd) (string, error) 
 	return buffer.String(), nil
 }
 
-func (sv *SV) execCmdOrTimeout(service *Service, nonTimeoutCmd, timeoutCmd string, timeout time.Duration) (string, error) {
+func (sv *sv) execCmdOrTimeout(service *Service, nonTimeoutCmd, timeoutCmd string, timeout time.Duration) (string, error) {
 	var cmd *exec.Cmd
 	if timeout > 0 {
 		cmd = exec.Command(sv.Bin, "-w", strconv.FormatInt(int64(timeout.Seconds()), 10), timeoutCmd, service.Path)
@@ -89,24 +97,24 @@ func (sv *SV) execCmdOrTimeout(service *Service, nonTimeoutCmd, timeoutCmd strin
 	return convertToErr(sv.execCmdOnService(service, cmd))
 }
 
-func (sv *SV) execCmd(service *Service, cmd string) (string, error) {
+func (sv *sv) execCmd(service *Service, cmd string) (string, error) {
 	return sv.execCmdOrTimeout(service, cmd, "", 0)
 }
 
-func (sv *SV) execOnService(service *Service, svVerb string) (string, error) {
+func (sv *sv) execOnService(service *Service, svVerb string) (string, error) {
 	cmd := exec.Command(sv.Bin, svVerb, service.Path)
 	return sv.execCmdOnService(service, cmd)
 }
 
-func (sv *SV) Start(service *Service) (string, error) {
+func (sv *sv) Start(service *Service) (string, error) {
 	return convertToErr(sv.execOnService(service, "start"))
 }
 
-func (sv *SV) Stop(service *Service, timeout time.Duration) (string, error) {
+func (sv *sv) Stop(service *Service, timeout time.Duration) (string, error) {
 	return sv.execCmdOrTimeout(service, "stop", "force-stop", timeout)
 }
 
-func (sv *SV) Stat(service *Service) (*StatResult, error) {
+func (sv *sv) Stat(service *Service) (*StatResult, error) {
 	out, err := convertToErr(sv.execOnService(service, "stat"))
 	if err != nil {
 		return nil, err
@@ -116,11 +124,11 @@ func (sv *SV) Stat(service *Service) (*StatResult, error) {
 
 // If timeout is passed, will use the force-restart command to send a kill. If no timeout
 // is provided, will just send a TERM.
-func (sv *SV) Restart(service *Service, timeout time.Duration) (string, error) {
+func (sv *sv) Restart(service *Service, timeout time.Duration) (string, error) {
 	return sv.execCmdOrTimeout(service, "restart", "force-restart", timeout)
 }
 
-func (sv *SV) Once(service *Service) (string, error) {
+func (sv *sv) Once(service *Service) (string, error) {
 	return sv.execCmd(service, "once")
 }
 

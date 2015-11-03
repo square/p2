@@ -34,9 +34,9 @@ type Launchable interface {
 	// PostActive runs a Hoist-specific "post-activate" script in the launchable.
 	PostActivate() (string, error)
 	// Launch begins execution.
-	Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error
+	Launch(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error
 	// Halt stops execution.
-	Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error
+	Halt(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error
 	// MakeCurrent adjusts a "current" symlink for this launchable name to point to this
 	// launchable's version.
 	MakeCurrent() error

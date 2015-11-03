@@ -48,7 +48,7 @@ type Pod struct {
 	Id             string
 	path           string
 	logger         logging.Logger
-	SV             *runit.SV
+	SV             runit.SV
 	ServiceBuilder *runit.ServiceBuilder
 	P2Exec         string
 	DefaultTimeout time.Duration // this is the default timeout for stopping and restarting services in this pod

@@ -229,7 +229,7 @@ func (l *Launchable) makeLast() error {
 }
 
 // Launch allows the launchable to begin execution.
-func (l *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+func (l *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
 	err := l.start(serviceBuilder, sv)
 	if err != nil {
 		return launch.StartError(err)
@@ -259,7 +259,7 @@ func (l *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv runit.SV) er
 	return nil
 }
 
-func (l *Launchable) stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+func (l *Launchable) stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
 	executables, err := l.Executables(serviceBuilder)
 	if err != nil {
 		return err
@@ -285,7 +285,7 @@ func (l *Launchable) stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) er
 }
 
 // Halt causes the launchable to halt execution if it is running.
-func (l *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+func (l *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
 	// "disable" script not supported for containers
 	err := l.stop(serviceBuilder, sv)
 	if err != nil {

@@ -58,7 +58,7 @@ func (hl *Launchable) If() launch.Launchable {
 	return LaunchAdapter{Launchable: hl}
 }
 
-func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
 	// the error return from os/exec.Run is almost always meaningless
 	// ("exit status 1")
 	// since the output is more useful to the user, that's what we'll preserve
@@ -81,7 +81,7 @@ func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) e
 	return nil
 }
 
-func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
 	err := hl.start(serviceBuilder, sv)
 	if err != nil {
 		return launch.StartError(err)
@@ -160,7 +160,7 @@ func (hl *Launchable) InvokeBinScript(script string) (string, error) {
 	return buffer.String(), nil
 }
 
-func (hl *Launchable) stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+func (hl *Launchable) stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
 	executables, err := hl.Executables(serviceBuilder)
 	if err != nil {
 		return err
@@ -180,7 +180,7 @@ func (hl *Launchable) stop(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) e
 
 // Start will take a launchable and start every runit service associated with the launchable.
 // All services will attempt to be started.
-func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv *runit.SV) error {
+func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
 	executables, err := hl.Executables(serviceBuilder)
 	if err != nil {
 		return err
