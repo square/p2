@@ -322,3 +322,31 @@ func TestLaunchWithFailingStart(t *testing.T) {
 	_, ok := err.(launch.StartError)
 	Assert(t).IsTrue(ok, "Expected start error to be returned")
 }
+
+func TestOnceIfRestartNever(t *testing.T) {
+	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+
+	// If the launchable isn't intended to be restarted, the launchable
+	// should launch using 'sv once' instead of 'sv restart'
+	hl.RestartPolicy = runit.RestartPolicyNever
+
+	sv := runit.NewRecordingSV()
+	err := hl.Launch(sb, sv)
+	Assert(t).IsNil(err, "Unexpected error when launching")
+	Assert(t).AreEqual(sv.(*runit.RecordingSV).LastCommand, "once", "Expected 'once' command to be used for a launchable with RestartPolicyNever")
+}
+
+func TestRestartIfRestartAlways(t *testing.T) {
+	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+
+	// If the launchable is intended to be restarted, the launchable
+	// should launch using 'sv restart'
+	hl.RestartPolicy = runit.RestartPolicyAlways
+
+	sv := runit.NewRecordingSV()
+	err := hl.Launch(sb, sv)
+	Assert(t).IsNil(err, "Unexpected error when launching")
+	Assert(t).AreEqual(sv.(*runit.RecordingSV).LastCommand, "restart", "Expected 'restart' command to be used for a launchable with RestartPolicyAlways")
+}
