@@ -350,7 +350,7 @@ func (r RCtl) Farm() {
 		HealthChecker: r.hcheck,
 		Labeler:       r.labeler,
 		Scheduler:     r.sched,
-	}, r.kps, r.rls, rlSub.Chan(), r.logger).Start(nil)
+	}, r.kps, r.rls, r.rcs, rlSub.Chan(), r.logger).Start(nil)
 }
 
 func (r RCtl) ScheduleUpdate(oldID, newID string, want, need int, deletes bool) {

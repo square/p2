@@ -32,6 +32,10 @@ func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, lock kp.Lock)
 	return NewUpdate(u, f.KPStore, f.RCStore, f.HealthChecker, f.Labeler, f.Scheduler, l, lock)
 }
 
+type RCGetter interface {
+	Get(id fields.ID) (fields.RC, error)
+}
+
 // The Farm is responsible for spawning and reaping rolling updates as they are
 // added to and deleted from Consul. Multiple farms can exist simultaneously,
 // but each one must hold a different Consul session. This ensures that the
@@ -40,6 +44,7 @@ type Farm struct {
 	factory  Factory
 	kps      kp.Store
 	rls      rollstore.Store
+	rcs      RCGetter
 	sessions <-chan string
 
 	children map[fields.ID]childRU
@@ -57,6 +62,7 @@ func NewFarm(
 	factory Factory,
 	kps kp.Store,
 	rls rollstore.Store,
+	rcs RCGetter,
 	sessions <-chan string,
 	logger logging.Logger,
 ) *Farm {
@@ -64,6 +70,7 @@ func NewFarm(
 		factory:  factory,
 		kps:      kps,
 		rls:      rls,
+		rcs:      rcs,
 		sessions: sessions,
 		logger:   logger,
 		children: make(map[fields.ID]childRU),
@@ -122,6 +129,14 @@ START_LOOP:
 				rlLogger := rlf.logger.SubLogger(logrus.Fields{
 					"ru": rlField.NewRC,
 				})
+				rcField, err := rlf.rcs.Get(rlField.NewRC)
+				if err != nil {
+					rlLogger.WithError(err).Errorln("Could not read new RC")
+					continue
+				}
+				rlLogger = rlLogger.SubLogger(logrus.Fields{
+					"pod": rcField.Manifest.ID(),
+				})
 				if _, ok := rlf.children[rlField.NewRC]; ok {
 					// this one is already ours, skip
 					rlLogger.NoFields().Debugln("Got update already owned by self")
@@ -129,7 +144,7 @@ START_LOOP:
 					continue
 				}
 
-				err := rlf.lock.Lock(kp.LockPath(kp.RollPath(rlField.NewRC.String())))
+				err = rlf.lock.Lock(kp.LockPath(kp.RollPath(rlField.NewRC.String())))
 				if _, ok := err.(kp.AlreadyLockedError); ok {
 					// someone else must have gotten it first - log and move to
 					// the next one

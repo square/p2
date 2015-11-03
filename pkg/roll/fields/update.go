@@ -54,4 +54,10 @@ type Update struct {
 	// Regardless of the value of DeletePods, the old RC and all its pods will
 	// be removed when the update is complete.
 	DeletePods bool
+	// If LeaveOld is set to true, the update will not delete the old RC when
+	// complete. Instead, the old RC will be left in whatever state it is in
+	// when the update ends. This is useful if, for example, you want to perform
+	// a partial rollout using one update, and leave the old RC so that another
+	// update can be created to finish the rollout.
+	LeaveOld bool
 }

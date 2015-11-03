@@ -203,16 +203,18 @@ ROLL_LOOP:
 		}
 	}
 
-	// rollout complete, clean up old RC
-	u.logger.NoFields().Infoln("Cleaning up old RC")
-	if !RetryOrQuit(func() error { return u.rcs.SetDesiredReplicas(u.OldRC, 0) }, quit, u.logger, "Could not zero old replica count") {
-		return
-	}
-	if !RetryOrQuit(func() error { return u.rcs.Enable(u.OldRC) }, quit, u.logger, "Could not enable old RC") {
-		return
-	}
-	if !RetryOrQuit(func() error { return u.rcs.Delete(u.OldRC, false) }, quit, u.logger, "Could not delete old RC") {
-		return
+	// rollout complete, clean up old RC if told to do so
+	if !u.LeaveOld {
+		u.logger.NoFields().Infoln("Cleaning up old RC")
+		if !RetryOrQuit(func() error { return u.rcs.SetDesiredReplicas(u.OldRC, 0) }, quit, u.logger, "Could not zero old replica count") {
+			return
+		}
+		if !RetryOrQuit(func() error { return u.rcs.Enable(u.OldRC) }, quit, u.logger, "Could not enable old RC") {
+			return
+		}
+		if !RetryOrQuit(func() error { return u.rcs.Delete(u.OldRC, false) }, quit, u.logger, "Could not delete old RC") {
+			return
+		}
 	}
 	return true // finally if we make it here, we can return true
 }
