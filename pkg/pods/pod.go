@@ -350,7 +350,7 @@ func (pod *Pod) Uninstall() error {
 	// remove services for this pod, then prune the old
 	// service dirs away
 	err = os.Remove(filepath.Join(pod.ServiceBuilder.ConfigRoot, pod.Id+".yaml"))
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	err = pod.ServiceBuilder.Prune()
