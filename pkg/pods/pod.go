@@ -157,7 +157,7 @@ func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 			successes = append(successes, false)
 		} else {
 			if out != "" {
-				pod.logInfo(out)
+				pod.logger.WithField("output", out).Infoln("Successfully post-activated")
 			}
 			successes = append(successes, true)
 		}
