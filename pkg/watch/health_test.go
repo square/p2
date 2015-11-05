@@ -1,6 +1,8 @@
 package watch
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -82,17 +84,18 @@ func TestUpdateStatus(t *testing.T) {
 }
 
 func TestResultFromCheck(t *testing.T) {
-	http.HandleFunc("/_status", statusHandler)
-	go http.ListenAndServe("localhost:8080", nil)
-	client := http.DefaultClient
-	sc := StatusChecker{
-		ID:   "hello",
-		Node: "localhost:8080",
-	}
+	sc := StatusChecker{}
+	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader([]byte(`HTTP/1.1 200 OK
+Content-Length: 6
+Content-Type: text/plain; charset=utf-8
+Date: Thu, 05 Nov 2015 18:54:23 GMT
 
-	resp, _ := client.Get("http://localhost:8080/_status")
+output`))), nil)
+	Assert(t).IsNil(err, "should have had no error reading from bytes buffer")
+
 	val, _ := sc.resultFromCheck(resp, nil)
 	Assert(t).AreEqual(health.Passing, val.Status, "200 should correspond to health.Passing")
+	Assert(t).AreEqual("output", val.Output, "body of response should have been captured")
 
 	resp.StatusCode = 282
 	val, _ = sc.resultFromCheck(resp, nil)
@@ -102,13 +105,10 @@ func TestResultFromCheck(t *testing.T) {
 	val, _ = sc.resultFromCheck(resp, nil)
 	Assert(t).AreEqual(health.Critical, val.Status, "!2** should correspond to health.Critical")
 
-	resp.StatusCode = 400
 	val, _ = sc.resultFromCheck(nil, nil)
 	Assert(t).AreEqual(health.Critical, val.Status, "resp == nil should correspond to health.Critical")
 
-	resp.StatusCode = 400
-	err := fmt.Errorf("an error")
-	val, _ = sc.resultFromCheck(nil, err)
+	val, _ = sc.resultFromCheck(nil, fmt.Errorf("an error"))
 	Assert(t).AreEqual(health.Critical, val.Status, "err != nil should correspond to health.Critical")
 }
 
