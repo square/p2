@@ -55,7 +55,7 @@ func TestStagedContents(t *testing.T) {
 	sb := FakeServiceBuilder()
 	defer sb.Cleanup()
 
-	err := sb.stage(fakeTemplate)
+	err := sb.stage(fakeTemplate, RestartPolicyAlways)
 	Assert(t).IsNil(err, "should have staged")
 
 	info, err := os.Stat(filepath.Join(sb.StagingRoot, "foo"))
@@ -79,6 +79,35 @@ func TestStagedContents(t *testing.T) {
 	info, err = os.Stat(filepath.Join(sb.StagingRoot, "foo", "log", "main"))
 	Assert(t).IsNil(err, "should have statted staging log main")
 	Assert(t).IsTrue(info.IsDir(), "staging log main should have been a dir")
+
+	// There should be no 'down' file if the restart policy is 'always'
+	_, err = os.Stat(filepath.Join(sb.StagingRoot, "foo", "down"))
+	Assert(t).IsNotNil(err, "down file should not have existed when restart policy is 'always'")
+	Assert(t).IsTrue(os.IsNotExist(err), "down file should not have existed when restart policy is 'always'")
+}
+
+func TestDownFile(t *testing.T) {
+	sb := FakeServiceBuilder()
+	defer sb.Cleanup()
+
+	err := sb.stage(fakeTemplate, RestartPolicyNever)
+	Assert(t).IsNil(err, "should have staged")
+
+	// There should be a 'down' file if the restart policy is 'never' to
+	// prevent runit from starting the process automatically
+	_, err = os.Stat(filepath.Join(sb.StagingRoot, "foo", "down"))
+	Assert(t).IsNil(err, "down file should have existed when restart policy is 'always'")
+
+	// Now stage it again as RestartPolicyAlways and make sure 'down' file
+	// is removed
+	err = sb.stage(fakeTemplate, RestartPolicyAlways)
+	Assert(t).IsNil(err, "should have staged")
+
+	// There should be a 'down' file if the restart policy is 'never' to
+	// prevent runit from starting the process automatically
+	_, err = os.Stat(filepath.Join(sb.StagingRoot, "foo", "down"))
+	Assert(t).IsNotNil(err, "down file should have been removed when restart policy is 'always'")
+	Assert(t).IsTrue(os.IsNotExist(err), "down file should not have existed when restart policy is 'always'")
 }
 
 func verifyRuby18(t *testing.T, filename, displayName string) {
@@ -97,7 +126,7 @@ func TestRuby18Yaml(t *testing.T) {
 	sb := FakeServiceBuilder()
 	defer sb.Cleanup()
 
-	err := sb.stage(fakeTemplate)
+	err := sb.stage(fakeTemplate, RestartPolicyAlways)
 	Assert(t).IsNil(err, "should have staged")
 
 	verifyRuby18(t, filepath.Join(sb.StagingRoot, "foo", "run"), "run script")
@@ -127,13 +156,13 @@ func TestPrune(t *testing.T) {
 	defer sb.Cleanup()
 
 	// first create the service
-	err := sb.Activate("foo", fakeTemplate)
+	err := sb.Activate("foo", fakeTemplate, RestartPolicyAlways)
 	Assert(t).IsNil(err, "should have activated service")
 	_, err = os.Readlink(filepath.Join(sb.RunitRoot, "foo"))
 	Assert(t).IsNil(err, "should have created activation symlink")
 
 	// now remove the service's yaml file
-	err = sb.Activate("foo", map[string]ServiceTemplate{})
+	err = sb.Activate("foo", map[string]ServiceTemplate{}, RestartPolicyAlways)
 	Assert(t).IsNil(err, "should have activated service")
 	// symlink should still exist, haven't pruned yet
 	_, err = os.Readlink(filepath.Join(sb.RunitRoot, "foo"))

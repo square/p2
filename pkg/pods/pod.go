@@ -48,7 +48,7 @@ type Pod struct {
 	Id             string
 	path           string
 	logger         logging.Logger
-	SV             *runit.SV
+	SV             runit.SV
 	ServiceBuilder *runit.ServiceBuilder
 	P2Exec         string
 	DefaultTimeout time.Duration // this is the default timeout for stopping and restarting services in this pod
@@ -163,7 +163,7 @@ func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 		}
 	}
 
-	err = pod.buildRunitServices(launchables)
+	err = pod.buildRunitServices(launchables, manifest.GetRestartPolicy())
 
 	success := true
 	for i, launchable := range launchables {
@@ -215,7 +215,7 @@ func (pod *Pod) Services(manifest Manifest) ([]runit.Service, error) {
 
 // Write servicebuilder *.yaml file and run servicebuilder, which will register runit services for this
 // pod.
-func (pod *Pod) buildRunitServices(launchables []launch.Launchable) error {
+func (pod *Pod) buildRunitServices(launchables []launch.Launchable, restartPolicy runit.RestartPolicy) error {
 	// if the service is new, building the runit services also starts them
 	sbTemplate := make(map[string]runit.ServiceTemplate)
 	for _, launchable := range launchables {
@@ -233,7 +233,7 @@ func (pod *Pod) buildRunitServices(launchables []launch.Launchable) error {
 			}
 		}
 	}
-	err := pod.ServiceBuilder.Activate(pod.Id, sbTemplate)
+	err := pod.ServiceBuilder.Activate(pod.Id, sbTemplate, restartPolicy)
 	if err != nil {
 		return err
 	}
@@ -393,7 +393,7 @@ func (pod *Pod) Verify(manifest Manifest, authPolicy auth.Policy) error {
 		if stanza.DigestLocation == "" {
 			continue
 		}
-		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser())
+		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser(), manifest.GetRestartPolicy())
 		if err != nil {
 			return err
 		}
@@ -521,7 +521,7 @@ func (pod *Pod) Launchables(manifest Manifest) ([]launch.Launchable, error) {
 	launchables := make([]launch.Launchable, 0, len(launchableStanzas))
 
 	for _, launchableStanza := range launchableStanzas {
-		launchable, err := pod.getLaunchable(launchableStanza, manifest.RunAsUser())
+		launchable, err := pod.getLaunchable(launchableStanza, manifest.RunAsUser(), manifest.GetRestartPolicy())
 		if err != nil {
 			return nil, err
 		}
@@ -531,7 +531,7 @@ func (pod *Pod) Launchables(manifest Manifest) ([]launch.Launchable, error) {
 	return launchables, nil
 }
 
-func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser string) (launch.Launchable, error) {
+func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
 	launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
 	launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
 
@@ -557,6 +557,7 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 			P2Exec:           pod.P2Exec,
 			ExecNoLimit:      true,
 			RestartTimeout:   restartTimeout,
+			RestartPolicy:    restartPolicy,
 			CgroupConfig:     launchableStanza.CgroupConfig,
 			CgroupConfigName: launchableStanza.LaunchableId,
 		}
@@ -570,6 +571,7 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 			RootDir:        launchableRootDir,
 			P2Exec:         pod.P2Exec,
 			RestartTimeout: restartTimeout,
+			RestartPolicy:  restartPolicy,
 			CgroupConfig:   launchableStanza.CgroupConfig,
 		}
 		ret.CgroupConfig.Name = launchableId
