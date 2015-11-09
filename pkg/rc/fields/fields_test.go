@@ -14,19 +14,18 @@ func TestJSONMarshal(t *testing.T) {
 	mb.SetID("hello")
 	m := mb.GetManifest()
 
-	f := &fields.RC{
+	rc1 := fields.RC{
 		ID:       "hello",
 		Manifest: m,
 	}
 
-	b, err := json.Marshal(f)
+	b, err := json.Marshal(&rc1)
 	Assert(t).IsNil(err, "should have marshaled")
-	Assert(t).AreEqual(string(b),
-		`{"ID":"hello","Manifest":"id: hello\nlaunchables: {}\nconfig: {}\n","NodeSelector":"","PodLabels":null,"ReplicasDesired":0,"Disabled":false}`,
-		"should have marshaled to equal values")
+	t.Log("serialized format:", string(b))
 
-	err = json.Unmarshal(b, f)
+	var rc2 fields.RC
+	err = json.Unmarshal(b, &rc2)
 	Assert(t).IsNil(err, "should have unmarshaled")
-	Assert(t).AreEqual(f.ID.String(), "hello", "should have unmarshaled to hello")
-	Assert(t).AreEqual(f.Manifest.ID(), "hello", "should have unmarshaled manifest to hello")
+	Assert(t).AreEqual(rc1.ID, rc2.ID, "RC ID changed when serialized")
+	Assert(t).AreEqual(rc1.Manifest.ID(), rc2.Manifest.ID(), "Manifest ID changed when serialized")
 }

@@ -8,31 +8,51 @@ import (
 	"github.com/square/p2/pkg/pods"
 )
 
+// ID is a named type alias for Resource Controller IDs. This is preferred to the raw
+// string format so that Go will typecheck its uses.
 type ID string
 
+// String implements fmt.Stringer
 func (id ID) String() string {
 	return string(id)
 }
 
+// RC holds the runtime state of a Resource Controller as saved in Consul.
 type RC struct {
-	ID              ID
-	Manifest        pods.Manifest
-	NodeSelector    labels.Selector
-	PodLabels       labels.Set
+	// GUID for this controller
+	ID ID
+
+	// The pod manifest that should be scheduled on nodes
+	Manifest pods.Manifest
+
+	// Defines the set of nodes on which the manifest can be scheduled
+	NodeSelector labels.Selector
+
+	// A set of labels that will be added to every pod scheduled by this controller
+	PodLabels labels.Set
+
+	// The desired number of instances of the manifest that should be scheduled
 	ReplicasDesired int
-	Disabled        bool
+
+	// When disabled, this controller will not make any scheduling changes
+	Disabled bool
 }
 
-type jsonRC struct {
-	ID              ID
-	Manifest        string
-	NodeSelector    string
-	PodLabels       labels.Set
-	ReplicasDesired int
-	Disabled        bool
+// RawRC defines the JSON format used to store data into Consul. It should only be used
+// while (de-)serializing the RC state. Prefer using the "RC" when possible.
+type RawRC struct {
+	ID              ID         `json:"id"`
+	Manifest        string     `json:"manifest"`
+	NodeSelector    string     `json:"node_selector"`
+	PodLabels       labels.Set `json:"pod_labels"`
+	ReplicasDesired int        `json:"replicas_desired"`
+	Disabled        bool       `json:"disabled"`
 }
 
-// the RC struct contains interfaces (pods.Manifest, labels.Selector), and
+// MarshalJSON implements the json.Marshaler interface for serializing the RC to JSON
+// format.
+//
+// The RC struct contains interfaces (pods.Manifest, labels.Selector), and
 // unmarshaling into a nil, non-empty interface is impossible (unless the value
 // is a JSON null), because the unmarshaler doesn't know what structure to
 // allocate there
@@ -53,7 +73,7 @@ func (rc RC) MarshalJSON() ([]byte, error) {
 		nodeSel = rc.NodeSelector.String()
 	}
 
-	return json.Marshal(jsonRC{
+	return json.Marshal(RawRC{
 		ID:              rc.ID,
 		Manifest:        string(manifest),
 		NodeSelector:    nodeSel,
@@ -65,29 +85,31 @@ func (rc RC) MarshalJSON() ([]byte, error) {
 
 var _ json.Marshaler = RC{}
 
+// UnmarshalJSON implements the json.Unmarshaler interface for deserializing the JSON
+// representation of an RC.
 func (rc *RC) UnmarshalJSON(b []byte) error {
-	var jrc jsonRC
-	if err := json.Unmarshal(b, &jrc); err != nil {
+	var rawRC RawRC
+	if err := json.Unmarshal(b, &rawRC); err != nil {
 		return err
 	}
 
-	m, err := pods.ManifestFromBytes([]byte(jrc.Manifest))
+	m, err := pods.ManifestFromBytes([]byte(rawRC.Manifest))
 	if err != nil {
 		return err
 	}
 
-	nodeSel, err := labels.Parse(jrc.NodeSelector)
+	nodeSel, err := labels.Parse(rawRC.NodeSelector)
 	if err != nil {
 		return err
 	}
 
 	*rc = RC{
-		ID:              jrc.ID,
+		ID:              rawRC.ID,
 		Manifest:        m,
 		NodeSelector:    nodeSel,
-		PodLabels:       jrc.PodLabels,
-		ReplicasDesired: jrc.ReplicasDesired,
-		Disabled:        jrc.Disabled,
+		PodLabels:       rawRC.PodLabels,
+		ReplicasDesired: rawRC.ReplicasDesired,
+		Disabled:        rawRC.Disabled,
 	}
 	return nil
 }
