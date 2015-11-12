@@ -184,7 +184,8 @@ func (c *PreparerConfig) GetStore() (kp.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return kp.NewConsulStore(opts), nil
+	client := kp.NewConsulClient(opts)
+	return kp.NewConsulStore(client), nil
 }
 
 func (c *PreparerConfig) getOpts() (kp.Options, error) {

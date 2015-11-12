@@ -106,9 +106,9 @@ func VerifyConsulUp(timeout string) error {
 		return nil
 	}
 
-	store := kp.NewConsulStore(kp.Options{
+	store := kp.NewConsulStore(kp.NewConsulClient(kp.Options{
 		Token: *consulToken, // not actually necessary because this endpoint is unauthenticated
-	})
+	}))
 	consulIsUp := make(chan struct{})
 	go func() {
 		for {
@@ -131,9 +131,9 @@ func VerifyConsulUp(timeout string) error {
 func VerifyReality(waitTime time.Duration, consulID, agentID string) error {
 	quit := make(chan struct{})
 	defer close(quit)
-	store := kp.NewConsulStore(kp.Options{
+	store := kp.NewConsulStore(kp.NewConsulClient(kp.Options{
 		Token: *consulToken,
-	})
+	}))
 	hostname, _ := os.Hostname()
 	waitChan := time.After(waitTime)
 	hasConsul := false
@@ -165,9 +165,9 @@ func VerifyReality(waitTime time.Duration, consulID, agentID string) error {
 }
 
 func ScheduleForThisHost(manifest pods.Manifest, alsoReality bool) error {
-	store := kp.NewConsulStore(kp.Options{
+	store := kp.NewConsulStore(kp.NewConsulClient(kp.Options{
 		Token: *consulToken,
-	})
+	}))
 	hostname, err := os.Hostname()
 	if err != nil {
 		return err

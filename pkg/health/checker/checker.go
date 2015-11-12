@@ -43,7 +43,7 @@ func NewConsulHealthChecker(opts kp.Options) ConsulHealthChecker {
 	return consulHealthChecker{
 		client:      client,
 		health:      client.Health(),
-		consulStore: kp.NewConsulStore(opts),
+		consulStore: kp.NewConsulStore(client),
 		WaitTime:    1 * time.Minute,
 	}
 }

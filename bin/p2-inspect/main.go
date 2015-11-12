@@ -22,7 +22,8 @@ var (
 func main() {
 	kingpin.Version(version.VERSION)
 	_, opts := flags.ParseWithConsulOptions()
-	store := kp.NewConsulStore(opts)
+	client := kp.NewConsulClient(opts)
+	store := kp.NewConsulStore(client)
 
 	intents, _, err := store.ListPods(kp.INTENT_TREE)
 	if err != nil {

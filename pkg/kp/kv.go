@@ -102,9 +102,9 @@ type consulStore struct {
 	client *api.Client
 }
 
-func NewConsulStore(opts Options) Store {
+func NewConsulStore(client *api.Client) Store {
 	return &consulStore{
-		client: NewConsulClient(opts),
+		client: client,
 	}
 }
 

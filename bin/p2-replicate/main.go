@@ -45,7 +45,8 @@ func main() {
 
 	kingpin.Version(version.VERSION)
 	_, opts := flags.ParseWithConsulOptions()
-	store := kp.NewConsulStore(opts)
+	client := kp.NewConsulClient(opts)
+	store := kp.NewConsulStore(client)
 	healthChecker := checker.NewConsulHealthChecker(opts)
 
 	manifest, err := pods.ManifestFromURI(*manifestUri)
