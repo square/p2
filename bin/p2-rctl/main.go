@@ -127,7 +127,7 @@ func main() {
 		kps:        kp.NewConsulStore(client),
 		labeler:    labeler,
 		sched:      sched,
-		hcheck:     checker.NewConsulHealthChecker(opts),
+		hcheck:     checker.NewConsulHealthChecker(client),
 		logger:     logger,
 	}
 

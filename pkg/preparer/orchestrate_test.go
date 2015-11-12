@@ -174,10 +174,6 @@ func (f *FakeStore) DeletePod(string) (time.Duration, error) {
 	return 0, nil
 }
 
-func (f *FakeStore) RegisterService(pods.Manifest, string) error {
-	return nil
-}
-
 func (f *FakeStore) WatchPods(string, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult) {}
 
 func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks, string) {

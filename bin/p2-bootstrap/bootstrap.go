@@ -179,10 +179,7 @@ func ScheduleForThisHost(manifest pods.Manifest, alsoReality bool) error {
 
 	if alsoReality {
 		_, err = store.SetPod(kp.RealityPath(hostname, manifest.ID()), manifest)
-		if err != nil {
-			return err
-		}
-		return store.RegisterService(manifest, "")
+		return err
 	}
 	return nil
 }

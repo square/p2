@@ -37,7 +37,6 @@ type Store interface {
 	GetHealth(service, node string) (WatchResult, error)
 	GetServiceHealth(service string) (map[string]WatchResult, error)
 	WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult)
-	RegisterService(pods.Manifest, string) error
 	Ping() error
 	ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error)
 	LockHolder(key string) (string, string, error)

@@ -44,7 +44,6 @@ type Preparer struct {
 	podRoot      string
 	caFile       string
 	authPolicy   auth.Policy
-	consulHealth bool
 }
 
 type PreparerConfig struct {
@@ -57,7 +56,6 @@ type PreparerConfig struct {
 	CertFile             string                 `yaml:"cert_file,omitempty"`
 	KeyFile              string                 `yaml:"key_file,omitempty"`
 	ConsulCAFile         string                 `yaml:"consul_ca_file,omitempty"`
-	NoConsulHealth       bool                   `yaml:"no_consul_health,omitempty"`
 	PodRoot              string                 `yaml:"pod_root,omitempty"`
 	StatusPort           int                    `yaml:"status_port"`
 	StatusSocket         string                 `yaml:"status_socket"`
@@ -336,6 +334,5 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		podRoot:      preparerConfig.PodRoot,
 		authPolicy:   authPolicy,
 		caFile:       consulCAFile,
-		consulHealth: !preparerConfig.NoConsulHealth,
 	}, nil
 }

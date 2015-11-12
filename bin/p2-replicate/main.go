@@ -47,7 +47,7 @@ func main() {
 	_, opts := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(opts)
 	store := kp.NewConsulStore(client)
-	healthChecker := checker.NewConsulHealthChecker(opts)
+	healthChecker := checker.NewConsulHealthChecker(client)
 
 	manifest, err := pods.ManifestFromURI(*manifestUri)
 	if err != nil {

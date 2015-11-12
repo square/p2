@@ -58,7 +58,7 @@ func main() {
 		}
 	}
 
-	hchecker := checker.NewConsulHealthChecker(opts)
+	hchecker := checker.NewConsulHealthChecker(client)
 	for podId := range statusMap {
 		resultMap, err := hchecker.Service(podId)
 		if err != nil {

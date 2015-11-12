@@ -32,7 +32,6 @@ type Store interface {
 	ListPods(keyPrefix string) ([]kp.ManifestResult, time.Duration, error)
 	SetPod(string, pods.Manifest) (time.Duration, error)
 	DeletePod(key string) (time.Duration, error)
-	RegisterService(pods.Manifest, string) error
 	WatchPods(string, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult)
 }
 
@@ -242,14 +241,6 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 	}
 
 	p.tryRunHooks(hooks.AFTER_INSTALL, pod, pair.Intent, logger)
-
-	if p.consulHealth {
-		err = p.store.RegisterService(pair.Intent, p.caFile)
-		if err != nil {
-			logger.WithError(err).Errorln("Service registration failed")
-			return false
-		}
-	}
 
 	if pair.Reality != nil {
 		success, err := pod.Halt(pair.Reality)
