@@ -10,7 +10,7 @@ import (
 
 type ConsulTestFixture struct {
 	TestServer *testutil.TestServer
-	Store      *consulStore
+	Store      Store
 	Client     *api.Client
 	T          *testing.T
 }
@@ -29,13 +29,14 @@ func NewConsulTestFixture(t *testing.T) *ConsulTestFixture {
 		}
 	}()
 	server := testutil.NewTestServer(t)
-	store := NewConsulStore(Options{
+	client := NewConsulClient(Options{
 		Address: server.HTTPAddr,
-	}).(*consulStore)
+	})
+	store := NewConsulStore(client)
 	return &ConsulTestFixture{
 		TestServer: server,
 		Store:      store,
-		Client:     store.client,
+		Client:     client,
 		T:          t,
 	}
 }

@@ -44,7 +44,6 @@ type Preparer struct {
 	podRoot      string
 	caFile       string
 	authPolicy   auth.Policy
-	consulHealth bool
 }
 
 type PreparerConfig struct {
@@ -57,14 +56,12 @@ type PreparerConfig struct {
 	CertFile             string                 `yaml:"cert_file,omitempty"`
 	KeyFile              string                 `yaml:"key_file,omitempty"`
 	ConsulCAFile         string                 `yaml:"consul_ca_file,omitempty"`
-	NoConsulHealth       bool                   `yaml:"no_consul_health,omitempty"`
 	PodRoot              string                 `yaml:"pod_root,omitempty"`
 	StatusPort           int                    `yaml:"status_port"`
 	StatusSocket         string                 `yaml:"status_socket"`
 	Auth                 map[string]interface{} `yaml:"auth,omitempty"`
 	ExtraLogDestinations []LogDestination       `yaml:"extra_log_destinations,omitempty"`
 	WriteKVHealth        bool                   `yaml:"write_kv_health,omitempty"`
-	UseSessionHealth     bool                   `yaml:"use_session_health,omitempty"`
 	LogLevel             string                 `yaml:"log_level,omitempty"`
 
 	// Params defines a collection of miscellaneous runtime parameters defined throughout the
@@ -185,7 +182,8 @@ func (c *PreparerConfig) GetStore() (kp.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return kp.NewConsulStore(opts), nil
+	client := kp.NewConsulClient(opts)
+	return kp.NewConsulStore(client), nil
 }
 
 func (c *PreparerConfig) getOpts() (kp.Options, error) {
@@ -203,11 +201,10 @@ func (c *PreparerConfig) getOpts() (kp.Options, error) {
 	}
 
 	return kp.Options{
-		Address:          c.ConsulAddress,
-		HTTPS:            c.ConsulHttps,
-		Token:            token,
-		Client:           client,
-		UseSessionHealth: c.UseSessionHealth,
+		Address: c.ConsulAddress,
+		HTTPS:   c.ConsulHttps,
+		Token:   token,
+		Client:  client,
 	}, err
 }
 
@@ -337,6 +334,5 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		podRoot:      preparerConfig.PodRoot,
 		authPolicy:   authPolicy,
 		caFile:       consulCAFile,
-		consulHealth: !preparerConfig.NoConsulHealth,
 	}, nil
 }

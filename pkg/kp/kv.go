@@ -37,7 +37,6 @@ type Store interface {
 	GetHealth(service, node string) (WatchResult, error)
 	GetServiceHealth(service string) (map[string]WatchResult, error)
 	WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult)
-	RegisterService(pods.Manifest, string) error
 	Ping() error
 	ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error)
 	LockHolder(key string) (string, string, error)
@@ -99,14 +98,12 @@ func (r WatchResult) IsStale() bool {
 }
 
 type consulStore struct {
-	client           *api.Client
-	UseSessionHealth bool
+	client *api.Client
 }
 
-func NewConsulStore(opts Options) Store {
+func NewConsulStore(client *api.Client) Store {
 	return &consulStore{
-		client:           NewConsulClient(opts),
-		UseSessionHealth: opts.UseSessionHealth,
+		client: client,
 	}
 }
 
@@ -370,8 +367,5 @@ func HealthPath(service, node string) string {
 }
 
 func (c consulStore) NewHealthManager(node string, logger logging.Logger) HealthManager {
-	if c.UseSessionHealth {
-		return c.newSessionHealthManager(node, logger)
-	}
-	return c.newSimpleHealthManager(node, logger)
+	return c.newSessionHealthManager(node, logger)
 }

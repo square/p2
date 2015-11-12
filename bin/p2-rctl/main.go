@@ -124,10 +124,10 @@ func main() {
 		baseClient: client,
 		rcs:        rcstore.NewConsul(client, 3),
 		rls:        rollstore.NewConsul(client),
-		kps:        kp.NewConsulStore(opts),
+		kps:        kp.NewConsulStore(client),
 		labeler:    labeler,
 		sched:      sched,
-		hcheck:     checker.NewConsulHealthChecker(opts),
+		hcheck:     checker.NewConsulHealthChecker(client),
 		logger:     logger,
 	}
 

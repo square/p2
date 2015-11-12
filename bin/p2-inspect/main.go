@@ -22,7 +22,8 @@ var (
 func main() {
 	kingpin.Version(version.VERSION)
 	_, opts := flags.ParseWithConsulOptions()
-	store := kp.NewConsulStore(opts)
+	client := kp.NewConsulClient(opts)
+	store := kp.NewConsulStore(client)
 
 	intents, _, err := store.ListPods(kp.INTENT_TREE)
 	if err != nil {
@@ -57,7 +58,7 @@ func main() {
 		}
 	}
 
-	hchecker := checker.NewConsulHealthChecker(opts)
+	hchecker := checker.NewConsulHealthChecker(client)
 	for podId := range statusMap {
 		resultMap, err := hchecker.Service(podId)
 		if err != nil {

@@ -80,9 +80,10 @@ func makeStore(t *testing.T) (kp.Store, *testutil.TestServer) {
 		}
 	})
 
-	store := kp.NewConsulStore(kp.Options{
+	client := kp.NewConsulClient(kp.Options{
 		Address: server.HTTPAddr,
 	})
+	store := kp.NewConsulStore(client)
 	return store, server
 }
 

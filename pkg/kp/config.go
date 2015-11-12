@@ -22,9 +22,6 @@ type Options struct {
 	// See the "wait" parameter:
 	// https://consul.io/intro/getting-started/kv.html
 	WaitTime time.Duration
-
-	// Feature flag to use the new session-based health manager
-	UseSessionHealth bool
 }
 
 func NewConsulClient(opts Options) *api.Client {
