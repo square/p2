@@ -25,7 +25,7 @@ func TestHealthBasic(t *testing.T) {
 	defer f.Close()
 
 	waiter := f.NewKeyWaiter(hKey)
-	manager := f.Store.newSessionHealthManager("node", logging.TestLogger())
+	manager := f.Store.NewHealthManager("node", logging.TestLogger())
 	defer manager.Close()
 	updater := manager.NewUpdater("svc", "svc")
 
@@ -59,7 +59,7 @@ func TestHealthUpdate(t *testing.T) {
 	f := NewConsulTestFixture(t)
 	defer f.Close()
 
-	manager := f.Store.newSessionHealthManager("node", logging.TestLogger())
+	manager := f.Store.NewHealthManager("node", logging.TestLogger())
 	defer manager.Close()
 	updater := manager.NewUpdater("svc", "svc")
 	waiter := f.NewKeyWaiter(hKey)

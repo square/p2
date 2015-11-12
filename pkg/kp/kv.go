@@ -99,14 +99,12 @@ func (r WatchResult) IsStale() bool {
 }
 
 type consulStore struct {
-	client           *api.Client
-	UseSessionHealth bool
+	client *api.Client
 }
 
 func NewConsulStore(opts Options) Store {
 	return &consulStore{
-		client:           NewConsulClient(opts),
-		UseSessionHealth: opts.UseSessionHealth,
+		client: NewConsulClient(opts),
 	}
 }
 
@@ -370,8 +368,5 @@ func HealthPath(service, node string) string {
 }
 
 func (c consulStore) NewHealthManager(node string, logger logging.Logger) HealthManager {
-	if c.UseSessionHealth {
-		return c.newSessionHealthManager(node, logger)
-	}
-	return c.newSimpleHealthManager(node, logger)
+	return c.newSessionHealthManager(node, logger)
 }
