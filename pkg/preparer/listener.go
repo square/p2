@@ -49,7 +49,7 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 		select {
 		case <-quit:
 			l.Logger.NoFields().Infoln("Terminating hook listener")
-			watcherQuit <- struct{}{}
+			close(watcherQuit)
 			return
 		case err := <-watcherErrCh:
 			l.Logger.WithError(err).Errorln("Error while watching pods")
