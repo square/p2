@@ -69,11 +69,9 @@ func main() {
 
 	// Launch health checking watch. This watch tracks health of
 	// all pods on this host and writes the information to consul
-	if preparerConfig.WriteKVHealth {
-		quitMonitorPodHealth := make(chan struct{})
-		go watch.MonitorPodHealth(preparerConfig, &logger, quitMonitorPodHealth)
-		quitChans = append(quitChans, quitMonitorPodHealth)
-	}
+	quitMonitorPodHealth := make(chan struct{})
+	go watch.MonitorPodHealth(preparerConfig, &logger, quitMonitorPodHealth)
+	quitChans = append(quitChans, quitMonitorPodHealth)
 
 	waitForTermination(logger, quitMainUpdate, quitChans)
 

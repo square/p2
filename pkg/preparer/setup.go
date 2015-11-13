@@ -61,7 +61,6 @@ type PreparerConfig struct {
 	StatusSocket         string                 `yaml:"status_socket"`
 	Auth                 map[string]interface{} `yaml:"auth,omitempty"`
 	ExtraLogDestinations []LogDestination       `yaml:"extra_log_destinations,omitempty"`
-	WriteKVHealth        bool                   `yaml:"write_kv_health,omitempty"`
 	LogLevel             string                 `yaml:"log_level,omitempty"`
 
 	// Params defines a collection of miscellaneous runtime parameters defined throughout the
