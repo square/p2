@@ -12,6 +12,7 @@ import (
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
@@ -299,7 +300,7 @@ func (c consulStore) ListPods(keyPrefix string) ([]ManifestResult, time.Duration
 // WatchPods watches the key-value store for any changes under the given key
 // prefix. The resulting manifests are emitted on podChan. WatchPods does not
 // return in the event of an error, but it will emit the error on errChan. To
-// terminate WatchPods, emit on quitChan.
+// terminate WatchPods, close quitChan.
 //
 // All the values under the given key prefix must be pod manifests. Emitted
 // manifests might be unchanged from the last time they were read. It is the
@@ -307,31 +308,37 @@ func (c consulStore) ListPods(keyPrefix string) ([]ManifestResult, time.Duration
 func (c consulStore) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult) {
 	defer close(podChan)
 
-	var curIndex uint64 = 0
+	unsafeErrors := make(chan error)
+	go func() {
+		for err := range unsafeErrors {
+			select {
+			case <-quitChan:
+				return
+			case errChan <- NewKVError("list", keyPrefix, err):
+			}
+		}
+	}()
 
-	for {
+	kvPairsChan := make(chan api.KVPairs)
+	go consulutil.WatchPrefix(keyPrefix, c.client.KV(), kvPairsChan, quitChan, unsafeErrors)
+	for kvPairs := range kvPairsChan {
+		manifests := make([]ManifestResult, 0, len(kvPairs))
+		for _, pair := range kvPairs {
+			manifest, err := pods.ManifestFromBytes(pair.Value)
+			if err != nil {
+				select {
+				case <-quitChan:
+					return
+				case errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value):
+				}
+			} else {
+				manifests = append(manifests, ManifestResult{manifest, pair.Key})
+			}
+		}
 		select {
 		case <-quitChan:
 			return
-		case <-time.After(1 * time.Second):
-			pairs, meta, err := c.client.KV().List(keyPrefix, &api.QueryOptions{
-				WaitIndex: curIndex,
-			})
-			if err != nil {
-				errChan <- NewKVError("list", keyPrefix, err)
-			} else {
-				curIndex = meta.LastIndex
-				next := make([]ManifestResult, 0, len(pairs))
-				for _, pair := range pairs {
-					manifest, err := pods.ManifestFromBytes(pair.Value)
-					if err != nil {
-						errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value)
-					} else {
-						next = append(next, ManifestResult{manifest, pair.Key})
-					}
-				}
-				podChan <- next
-			}
+		case podChan <- manifests:
 		}
 	}
 }
