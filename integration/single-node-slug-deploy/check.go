@@ -240,7 +240,7 @@ mkdir -p $HOOKED_POD_HOME
 	if err != nil {
 		return err
 	}
-	return exec.Command("p2-schedule", "--hook-type", "before_install", manifestPath).Run()
+	return exec.Command("p2-schedule", "--hook", manifestPath).Run()
 }
 
 func executeBin2Pod(cmd *exec.Cmd) (string, error) {

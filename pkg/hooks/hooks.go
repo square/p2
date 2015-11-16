@@ -160,11 +160,5 @@ func (h *HookDir) RunHookType(hookType HookType, pod Pod, manifest pods.Manifest
 		"event":    hookType.String(),
 	})
 	logger.NoFields().Infof("Running %s hooks", hookType.String())
-
-	typedPath := path.Join(h.dirpath, hookType.String())
-	if err := h.runHooks(typedPath, hookType, pod, manifest, logger); err != nil {
-		return err
-	}
-	// run global hooks as well
 	return h.runHooks(h.dirpath, hookType, pod, manifest, logger)
 }
