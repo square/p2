@@ -85,7 +85,7 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 	Assert(t).IsNil(err, "should have generated manifest from signed bytes")
 
 	fakeIntent := fakeStoreWithManifests(kp.ManifestResult{
-		Path:     path.Join(hookPrefix, "before_install/users"),
+		Path:     path.Join(hookPrefix, "users"),
 		Manifest: manifest,
 	})
 
@@ -106,11 +106,11 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 	default:
 	}
 
-	currentAlias := path.Join(destDir, "before_install", "users", "create", "current", "bin", "launch")
+	currentAlias := path.Join(destDir, "users", "create", "current", "bin", "launch")
 	_, err = os.Stat(currentAlias)
 	Assert(t).IsNil(err, fmt.Sprintf("%s should have been created", currentAlias))
 
-	hookFile := path.Join(execDir, "before_install", "users__create__launch")
+	hookFile := path.Join(execDir, "users__create__launch")
 	_, err = os.Stat(hookFile)
 	Assert(t).IsNil(err, "should have created the user launch script")
 }

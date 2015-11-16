@@ -1,10 +1,7 @@
 package preparer
 
 import (
-	"path"
 	"path/filepath"
-	"regexp"
-	"strings"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/auth"
@@ -12,10 +9,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/util"
 )
-
-var eventPrefix = regexp.MustCompile("/?([a-zA-Z\\_]+)\\/.+")
 
 type IntentStore interface {
 	WatchPods(watchPath string, quit <-chan struct{}, errCh chan<- error, manifests chan<- []kp.ManifestResult)
@@ -82,25 +76,7 @@ func (l *HookListener) installHook(result kp.ManifestResult) error {
 		return err
 	}
 
-	// Figure out what event we're setting a hook pod for. For example,
-	// if we find a pod at /hooks/before_install/usercreate, then the
-	// event is called "before_install"
-	event, err := l.determineEvent(result.Path)
-	if err != nil {
-		sub.WithError(err).Errorln("Couldn't determine hook path")
-		return err
-	} else if event == "" {
-		if _, err := hooks.AsHookType(result.Manifest.ID()); err == nil {
-			// this manifest's ID is actually a hook type! since it's a global
-			// hook, it would be installed into a directory that contained other
-			// hooks. we have to bail
-			sub.NoFields().Errorln("Global hook pod's ID collides with hook type")
-			return util.Errorf("Global hook pod %s would overwrite hook type directory", result.Manifest.ID())
-		}
-	}
-
-	// a global hook has event="", which will be cleaned out of the path afterwards
-	hookPod := pods.NewPod(result.Manifest.ID(), path.Join(l.DestinationDir, event, result.Manifest.ID()))
+	hookPod := pods.NewPod(result.Manifest.ID(), filepath.Join(l.DestinationDir, result.Manifest.ID()))
 
 	// Figure out if we even need to install anything.
 	// Hooks aren't running services and so there isn't a need
@@ -137,26 +113,11 @@ func (l *HookListener) installHook(result kp.ManifestResult) error {
 	}
 
 	// Now that the pod is installed, link it up to the exec dir.
-	err = hooks.InstallHookScripts(filepath.Join(l.ExecDir, event), hookPod, result.Manifest, sub)
+	err = hooks.InstallHookScripts(l.ExecDir, hookPod, result.Manifest, sub)
 	if err != nil {
 		sub.WithError(err).Errorln("Could not write hook link")
 		return err
 	}
 	sub.NoFields().Infoln("Updated hook")
 	return nil
-}
-
-func (l *HookListener) determineEvent(pathInIntent string) (string, error) {
-	// The structure of a path in the hooks that we'll
-	// accept from consul is {prefix}/{event}/{podID}
-	split := strings.Split(pathInIntent, l.HookPrefix)
-	if len(split) == 0 {
-		return "", util.Errorf("The intent path %s didn't start with %s as expected", pathInIntent, l.HookPrefix)
-	}
-	tail := strings.Join(split[1:], "")
-	matches := eventPrefix.FindStringSubmatch(tail)
-	if len(matches) == 0 {
-		return "", nil // no event, global hook
-	}
-	return matches[1], nil
 }
