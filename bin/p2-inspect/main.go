@@ -10,6 +10,7 @@ import (
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/inspect"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/version"
 )
@@ -28,7 +29,7 @@ func main() {
 	intents, _, err := store.ListPods(kp.INTENT_TREE)
 	if err != nil {
 		message := "Could not list intent kvpairs: %s"
-		if kvErr, ok := err.(kp.KVError); ok {
+		if kvErr, ok := err.(consulutil.KVError); ok {
 			log.Fatalf(message, kvErr.UnsafeError)
 		} else {
 			log.Fatalf(message, err)
@@ -37,7 +38,7 @@ func main() {
 	realities, _, err := store.ListPods(kp.REALITY_TREE)
 	if err != nil {
 		message := "Could not list reality kvpairs: %s"
-		if kvErr, ok := err.(kp.KVError); ok {
+		if kvErr, ok := err.(consulutil.KVError); ok {
 			log.Fatalf(message, kvErr.UnsafeError)
 		} else {
 			log.Fatalf(message, err)

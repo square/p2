@@ -10,6 +10,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 
 	"github.com/square/p2/pkg/health"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util/limit"
 	"github.com/square/p2/pkg/util/param"
@@ -258,7 +259,7 @@ func processHealthUpdater(
 				go sendHealthUpdate(writeLogger, w, nil, false, func() error {
 					_, err := client.KV().Delete(key, nil)
 					if err != nil {
-						return NewKVError("delete", key, err)
+						return consulutil.NewKVError("delete", key, err)
 					}
 					return nil
 				})
@@ -287,7 +288,7 @@ func processHealthUpdater(
 					go sendHealthUpdate(writeLogger, w, localHealth, doThrottle, func() error {
 						ok, _, err := client.KV().Acquire(kv, nil)
 						if err != nil {
-							return NewKVError("acquire", kv.Key, err)
+							return consulutil.NewKVError("acquire", kv.Key, err)
 						}
 						if !ok {
 							return fmt.Errorf("write denied")
@@ -298,7 +299,7 @@ func processHealthUpdater(
 					go sendHealthUpdate(writeLogger, w, localHealth, doThrottle, func() error {
 						_, err := client.KV().Put(kv, nil)
 						if err != nil {
-							return NewKVError("put", kv.Key, err)
+							return consulutil.NewKVError("put", kv.Key, err)
 						}
 						return nil
 					})

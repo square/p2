@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
+
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -91,7 +93,7 @@ func (c consulStore) NewUnmanagedLock(session, name string) Lock {
 func (c consulStore) LockHolder(key string) (string, string, error) {
 	kvp, _, err := c.client.KV().Get(key, nil)
 	if err != nil {
-		return "", "", NewKVError("get", key, err)
+		return "", "", consulutil.NewKVError("get", key, err)
 	}
 	if kvp == nil || kvp.Session == "" {
 		return "", "", nil
@@ -120,7 +122,7 @@ func (l Lock) Lock(key string) error {
 	}, nil)
 
 	if err != nil {
-		return NewKVError("acquire lock", key, err)
+		return consulutil.NewKVError("acquire lock", key, err)
 	}
 	if success {
 		return nil
@@ -133,7 +135,7 @@ func (l Lock) Lock(key string) error {
 func (l Lock) Unlock(key string) error {
 	kvp, meta, err := l.client.KV().Get(key, nil)
 	if err != nil {
-		return NewKVError("get", key, err)
+		return consulutil.NewKVError("get", key, err)
 	}
 	if kvp == nil {
 		return nil
@@ -147,7 +149,7 @@ func (l Lock) Unlock(key string) error {
 		ModifyIndex: meta.LastIndex,
 	}, nil)
 	if err != nil {
-		return NewKVError("deletecas", key, err)
+		return consulutil.NewKVError("deletecas", key, err)
 	}
 	if !success {
 		// the key has been mutated since we checked it - probably someone
