@@ -84,7 +84,7 @@ type listReply struct {
 
 // SafeList performs a KV List operation that can be canceled. When the "done" channel is
 // closed, CanceledError will be immediately returned. (The HTTP RPC can't be canceled,
-// but it will be ignored.)
+// but it will be ignored.) Errors from Consul will be wrapped in a KVError value.
 func SafeList(
 	clientKV ConsulLister,
 	done <-chan struct{},
@@ -94,6 +94,9 @@ func SafeList(
 	resultChan := make(chan listReply, 1)
 	go func() {
 		pairs, queryMeta, err := clientKV.List(prefix, options)
+		if err != nil {
+			err = NewKVError("list", prefix, err)
+		}
 		resultChan <- listReply{pairs, queryMeta, err}
 	}()
 	select {

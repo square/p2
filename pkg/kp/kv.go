@@ -251,19 +251,8 @@ func (c consulStore) ListPods(keyPrefix string) ([]ManifestResult, time.Duration
 func (c consulStore) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult) {
 	defer close(podChan)
 
-	unsafeErrors := make(chan error)
-	go func() {
-		for err := range unsafeErrors {
-			select {
-			case <-quitChan:
-				return
-			case errChan <- consulutil.NewKVError("list", keyPrefix, err):
-			}
-		}
-	}()
-
 	kvPairsChan := make(chan api.KVPairs)
-	go consulutil.WatchPrefix(keyPrefix, c.client.KV(), kvPairsChan, quitChan, unsafeErrors)
+	go consulutil.WatchPrefix(keyPrefix, c.client.KV(), kvPairsChan, quitChan, errChan)
 	for kvPairs := range kvPairsChan {
 		manifests := make([]ManifestResult, 0, len(kvPairs))
 		for _, pair := range kvPairs {
