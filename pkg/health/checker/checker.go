@@ -6,6 +6,7 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 )
@@ -90,7 +91,7 @@ func (c consulHealthChecker) WatchService(
 				WaitIndex: curIndex,
 			})
 			if err != nil {
-				errCh <- kp.NewKVError("list", kp.HealthPath(serviceID, ""), err)
+				errCh <- consulutil.NewKVError("list", kp.HealthPath(serviceID, ""), err)
 			} else {
 				out := make(map[string]health.Result)
 				for _, result := range results {

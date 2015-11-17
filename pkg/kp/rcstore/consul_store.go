@@ -10,6 +10,7 @@ import (
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
@@ -107,7 +108,7 @@ func (s *consulStore) innerCreate(manifest pods.Manifest, nodeSelector klabels.S
 	}, nil)
 
 	if err != nil {
-		return fields.RC{}, kp.NewKVError("cas", rcp, err)
+		return fields.RC{}, consulutil.NewKVError("cas", rcp, err)
 	}
 	if !success {
 		return fields.RC{}, CASError(rcp)

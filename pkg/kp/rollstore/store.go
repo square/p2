@@ -8,6 +8,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	rcf "github.com/square/p2/pkg/rc/fields"
 	rollf "github.com/square/p2/pkg/roll/fields"
 )
@@ -45,7 +46,7 @@ func (s consulStore) Get(id rcf.ID) (rollf.Update, error) {
 	key := kp.RollPath(id.String())
 	kvp, _, err := s.kv.Get(key, nil)
 	if err != nil {
-		return rollf.Update{}, kp.NewKVError("get", key, err)
+		return rollf.Update{}, consulutil.NewKVError("get", key, err)
 	}
 
 	var ret rollf.Update
@@ -70,7 +71,7 @@ func (s consulStore) Put(u rollf.Update) error {
 		ModifyIndex: 0,
 	}, nil)
 	if err != nil {
-		return kp.NewKVError("cas", key, err)
+		return consulutil.NewKVError("cas", key, err)
 	}
 	if !success {
 		return fmt.Errorf("update with new RC ID %s already exists", u.NewRC)
@@ -82,7 +83,7 @@ func (s consulStore) Delete(id rcf.ID) error {
 	key := kp.RollPath(id.String())
 	_, err := s.kv.Delete(key, nil)
 	if err != nil {
-		return kp.NewKVError("delete", key, err)
+		return consulutil.NewKVError("delete", key, err)
 	}
 	return nil
 }
@@ -95,7 +96,7 @@ func (s consulStore) Lock(id rcf.ID, session string) (bool, error) {
 		Session: session,
 	}, nil)
 	if err != nil {
-		return false, kp.NewKVError("acquire", key, err)
+		return false, consulutil.NewKVError("acquire", key, err)
 	}
 	return success, nil
 }
@@ -117,7 +118,7 @@ func (s consulStore) Watch(quit <-chan struct{}) (<-chan []rollf.Update, <-chan 
 					WaitIndex: currentIndex,
 				})
 				if err != nil {
-					errCh <- kp.NewKVError("list", kp.ROLL_TREE, err)
+					errCh <- consulutil.NewKVError("list", kp.ROLL_TREE, err)
 				} else {
 					currentIndex = meta.LastIndex
 

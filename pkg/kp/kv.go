@@ -6,8 +6,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
-	"runtime"
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
@@ -16,14 +14,10 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
-	"github.com/square/p2/pkg/util/param"
 )
 
 // Healthcheck TTL
 const TTL = 60 * time.Second
-
-// Show detailed error messages from Consul (use only when debugging)
-var showConsulErrors = param.Bool("show_consul_errors_unsafe", false)
 
 type ManifestResult struct {
 	Manifest pods.Manifest
@@ -108,57 +102,6 @@ func NewConsulStore(client *api.Client) Store {
 	}
 }
 
-// KVError encapsulates an error in a Store operation. Errors returned from the
-// Consul API cannot be exposed because they may contain the URL of the request,
-// which includes an ACL token as a query parameter.
-type KVError struct {
-	Op          string
-	Key         string
-	UnsafeError error
-	filename    string
-	function    string
-	lineNumber  int
-}
-
-var _ util.CallsiteError = KVError{}
-
-func (err KVError) Error() string {
-	cerr := ""
-	if *showConsulErrors {
-		cerr = fmt.Sprintf(": %s", err.UnsafeError)
-	}
-	return fmt.Sprintf("%s failed for path %s%s", err.Op, err.Key, cerr)
-}
-
-func (err KVError) Filename() string {
-	return err.filename
-}
-
-func (err KVError) Function() string {
-	return err.function
-}
-
-func (err KVError) LineNumber() int {
-	return err.lineNumber
-}
-
-func NewKVError(op string, key string, unsafeError error) KVError {
-	var function string
-	// Skip one stack frame to get the file & line number of caller.
-	pc, file, line, ok := runtime.Caller(1)
-	if ok {
-		function = runtime.FuncForPC(pc).Name()
-	}
-	return KVError{
-		Op:          op,
-		Key:         key,
-		UnsafeError: unsafeError,
-		filename:    filepath.Base(file),
-		function:    function,
-		lineNumber:  line,
-	}
-}
-
 func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error) {
 	key := HealthPath(res.Service, res.Node)
 
@@ -180,7 +123,7 @@ func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error
 		retDur = writeMeta.RequestTime
 	}
 	if err != nil {
-		return now, retDur, NewKVError("put", key, err)
+		return now, retDur, consulutil.NewKVError("put", key, err)
 	}
 	return now, retDur, nil
 }
@@ -190,16 +133,16 @@ func (c consulStore) GetHealth(service, node string) (WatchResult, error) {
 	key := HealthPath(service, node)
 	res, _, err := c.client.KV().Get(key, nil)
 	if err != nil {
-		return WatchResult{}, NewKVError("get", key, err)
+		return WatchResult{}, consulutil.NewKVError("get", key, err)
 	} else if res == nil {
 		return WatchResult{}, nil
 	}
 	err = json.Unmarshal(res.Value, healthRes)
 	if err != nil {
-		return WatchResult{}, NewKVError("get", key, err)
+		return WatchResult{}, consulutil.NewKVError("get", key, err)
 	}
 	if healthRes.IsStale() {
-		return *healthRes, NewKVError("get", key, fmt.Errorf("stale health entry"))
+		return *healthRes, consulutil.NewKVError("get", key, fmt.Errorf("stale health entry"))
 	}
 	return *healthRes, nil
 }
@@ -209,7 +152,7 @@ func (c consulStore) GetServiceHealth(service string) (map[string]WatchResult, e
 	key := HealthPath(service, "")
 	res, _, err := c.client.KV().List(key, nil)
 	if err != nil {
-		return healthRes, NewKVError("list", key, err)
+		return healthRes, consulutil.NewKVError("list", key, err)
 	} else if res == nil {
 		return healthRes, nil
 	}
@@ -217,7 +160,7 @@ func (c consulStore) GetServiceHealth(service string) (map[string]WatchResult, e
 		watch := &WatchResult{}
 		err = json.Unmarshal(kvp.Value, watch)
 		if err != nil {
-			return healthRes, NewKVError("get", key, err)
+			return healthRes, consulutil.NewKVError("get", key, err)
 		}
 		// maps key to result (eg /health/hello/nodename)
 		healthRes[kvp.Key] = *watch
@@ -245,7 +188,7 @@ func (c consulStore) SetPod(key string, manifest pods.Manifest) (time.Duration, 
 		retDur = writeMeta.RequestTime
 	}
 	if err != nil {
-		return retDur, NewKVError("put", key, err)
+		return retDur, consulutil.NewKVError("put", key, err)
 	}
 	return retDur, nil
 }
@@ -255,7 +198,7 @@ func (c consulStore) SetPod(key string, manifest pods.Manifest) (time.Duration, 
 func (c consulStore) DeletePod(key string) (time.Duration, error) {
 	writeMeta, err := c.client.KV().Delete(key, nil)
 	if err != nil {
-		return 0, NewKVError("delete", key, err)
+		return 0, consulutil.NewKVError("delete", key, err)
 	}
 	return writeMeta.RequestTime, nil
 }
@@ -266,7 +209,7 @@ func (c consulStore) DeletePod(key string) (time.Duration, error) {
 func (c consulStore) Pod(key string) (pods.Manifest, time.Duration, error) {
 	kvPair, writeMeta, err := c.client.KV().Get(key, nil)
 	if err != nil {
-		return nil, 0, NewKVError("get", key, err)
+		return nil, 0, consulutil.NewKVError("get", key, err)
 	}
 	if kvPair == nil {
 		return nil, writeMeta.RequestTime, pods.NoCurrentManifest
@@ -282,7 +225,7 @@ func (c consulStore) Pod(key string) (pods.Manifest, time.Duration, error) {
 func (c consulStore) ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error) {
 	kvPairs, queryMeta, err := c.client.KV().List(keyPrefix, nil)
 	if err != nil {
-		return nil, 0, NewKVError("list", keyPrefix, err)
+		return nil, 0, consulutil.NewKVError("list", keyPrefix, err)
 	}
 	var ret []ManifestResult
 
@@ -308,19 +251,8 @@ func (c consulStore) ListPods(keyPrefix string) ([]ManifestResult, time.Duration
 func (c consulStore) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult) {
 	defer close(podChan)
 
-	unsafeErrors := make(chan error)
-	go func() {
-		for err := range unsafeErrors {
-			select {
-			case <-quitChan:
-				return
-			case errChan <- NewKVError("list", keyPrefix, err):
-			}
-		}
-	}()
-
 	kvPairsChan := make(chan api.KVPairs)
-	go consulutil.WatchPrefix(keyPrefix, c.client.KV(), kvPairsChan, quitChan, unsafeErrors)
+	go consulutil.WatchPrefix(keyPrefix, c.client.KV(), kvPairsChan, quitChan, errChan)
 	for kvPairs := range kvPairsChan {
 		manifests := make([]ManifestResult, 0, len(kvPairs))
 		for _, pair := range kvPairs {
@@ -358,7 +290,7 @@ func (c consulStore) WatchPods(keyPrefix string, quitChan <-chan struct{}, errCh
 func (c consulStore) Ping() error {
 	_, qm, err := c.client.Catalog().Nodes(&api.QueryOptions{RequireConsistent: true})
 	if err != nil {
-		return NewKVError("ping", "/catalog/nodes", err)
+		return consulutil.NewKVError("ping", "/catalog/nodes", err)
 	}
 	if qm == nil || !qm.KnownLeader {
 		return util.Errorf("No known leader")
