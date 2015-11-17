@@ -106,3 +106,36 @@ func SafeList(
 		return r.pairs, r.queryMeta, r.err
 	}
 }
+
+type ConsulGetter interface {
+	Get(key string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
+}
+
+type getReply struct {
+	kvp       *api.KVPair
+	queryMeta *api.QueryMeta
+	err       error
+}
+
+// Like SafeList, but for a single key instead of a list.
+func SafeGet(
+	clientKV ConsulGetter,
+	done <-chan struct{},
+	key string,
+	options *api.QueryOptions,
+) (*api.KVPair, *api.QueryMeta, error) {
+	resultChan := make(chan getReply, 1)
+	go func() {
+		kvp, queryMeta, err := clientKV.Get(key, options)
+		if err != nil {
+			err = NewKVError("get", key, err)
+		}
+		resultChan <- getReply{kvp, queryMeta, err}
+	}()
+	select {
+	case <-done:
+		return nil, nil, CanceledError
+	case r := <-resultChan:
+		return r.kvp, r.queryMeta, r.err
+	}
+}

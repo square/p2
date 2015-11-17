@@ -55,6 +55,51 @@ func WatchPrefix(
 	}
 }
 
+// WatchSingle has the same semantics as WatchPrefix, but for a single key in
+// Consul. If the key is deleted, a nil will be sent on the output channel, but
+// the watch will not be terminated. In addition, if updates happen in rapid
+// succession, intervening updates may be missed. If these semantics are
+// undesirable, consider WatchNewKeys instead.
+func WatchSingle(
+	key string,
+	clientKV ConsulGetter,
+	outKVP chan<- *api.KVPair,
+	done <-chan struct{},
+	outErrors chan<- error,
+) {
+	defer close(outKVP)
+	var currentIndex uint64
+	timer := time.NewTimer(time.Duration(0))
+
+	for {
+		select {
+		case <-done:
+			return
+		case <-timer.C:
+		}
+		timer.Reset(250 * time.Millisecond) // upper bound on request rate
+		kvp, queryMeta, err := SafeGet(clientKV, done, key, &api.QueryOptions{
+			WaitIndex: currentIndex,
+		})
+		switch err {
+		case CanceledError:
+			return
+		case nil:
+			currentIndex = queryMeta.LastIndex
+			select {
+			case <-done:
+			case outKVP <- kvp:
+			}
+		default:
+			select {
+			case <-done:
+			case outErrors <- err:
+			}
+			timer.Reset(2 * time.Second) // backoff
+		}
+	}
+}
+
 type NewKeyHandler func(key string) chan<- *api.KVPair
 
 type keyMeta struct {
