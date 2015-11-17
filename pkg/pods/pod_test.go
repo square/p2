@@ -258,8 +258,9 @@ func TestBuildRunitServices(t *testing.T) {
 	outFilePath := filepath.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
+	testManifest := &manifest{RestartPolicy: runit.RestartPolicyAlways}
+	pod.buildRunitServices([]launch.Launchable{hl.If()}, testManifest)
 
-	pod.buildRunitServices([]launch.Launchable{hl.If()}, runit.RestartPolicyAlways)
 	f, err := os.Open(outFilePath)
 	defer f.Close()
 	bytes, err := ioutil.ReadAll(f)
