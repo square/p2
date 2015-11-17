@@ -3,7 +3,6 @@ package rollstore
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 
@@ -104,36 +103,33 @@ func (s consulStore) Lock(id rcf.ID, session string) (bool, error) {
 func (s consulStore) Watch(quit <-chan struct{}) (<-chan []rollf.Update, <-chan error) {
 	outCh := make(chan []rollf.Update)
 	errCh := make(chan error)
+	inCh := make(chan api.KVPairs)
+
+	go consulutil.WatchPrefix(kp.ROLL_TREE, s.kv, inCh, quit, errCh)
 
 	go func() {
 		defer close(outCh)
 		defer close(errCh)
-		var currentIndex uint64 = 0
-		for {
-			select {
-			case <-quit:
-				return
-			case <-time.After(1 * time.Second):
-				listed, meta, err := s.kv.List(kp.ROLL_TREE, &api.QueryOptions{
-					WaitIndex: currentIndex,
-				})
-				if err != nil {
-					errCh <- consulutil.NewKVError("list", kp.ROLL_TREE, err)
-				} else {
-					currentIndex = meta.LastIndex
 
-					out := make([]rollf.Update, 0, len(listed))
-					for _, kvp := range listed {
-						var next rollf.Update
-						err = json.Unmarshal(kvp.Value, &next)
-						if err != nil {
-							errCh <- err
-						} else {
-							out = append(out, next)
-						}
+		for listed := range inCh {
+			out := make([]rollf.Update, 0, len(listed))
+			for _, kvp := range listed {
+				var next rollf.Update
+				if err := json.Unmarshal(kvp.Value, &next); err != nil {
+					select {
+					case errCh <- err:
+					case <-quit:
+						// stop processing this kvp list; inCh should be closed
+						// in a moment
+						break
 					}
-					outCh <- out
+				} else {
+					out = append(out, next)
 				}
+			}
+			select {
+			case outCh <- out:
+			case <-quit:
 			}
 		}
 	}()

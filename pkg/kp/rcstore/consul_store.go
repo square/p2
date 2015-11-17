@@ -3,7 +3,6 @@ package rcstore
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/pborman/uuid"
@@ -139,31 +138,25 @@ func (s *consulStore) List() ([]fields.RC, error) {
 func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan error) {
 	outCh := make(chan []fields.RC)
 	errCh := make(chan error)
+	inCh := make(chan api.KVPairs)
+
+	go consulutil.WatchPrefix(kp.RC_TREE, s.kv, inCh, quit, errCh)
 
 	go func() {
 		defer close(outCh)
 		defer close(errCh)
-		var currentIndex uint64 = 0
 
-		for {
-			select {
-			case <-quit:
-				return
-			case <-time.After(1 * time.Second):
-				listed, meta, err := s.kv.List(kp.RC_TREE, &api.QueryOptions{
-					WaitIndex: currentIndex,
-				})
-				if err != nil {
-					// TODO: wrap error types for security
-					errCh <- err
-				} else {
-					currentIndex = meta.LastIndex
-					out, err := s.kvpsToRCs(listed)
-					if err != nil {
-						errCh <- err
-					} else {
-						outCh <- out
-					}
+		for listed := range inCh {
+			out, err := s.kvpsToRCs(listed)
+			if err != nil {
+				select {
+				case errCh <- err:
+				case <-quit:
+				}
+			} else {
+				select {
+				case outCh <- out:
+				case <-quit:
 				}
 			}
 		}
@@ -306,38 +299,32 @@ func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC,
 func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
 	updated := make(chan struct{})
 	errors := make(chan error)
-	var curIndex uint64 = 0
+	input := make(chan *api.KVPair)
+
+	go consulutil.WatchSingle(kp.RCPath(rc.ID.String()), s.kv, input, quit, errors)
 
 	go func() {
 		defer close(updated)
 		defer close(errors)
 
-		for {
-			select {
-			case <-quit:
-				return
-			case <-time.After(1 * time.Second):
-				kvp, meta, err := s.kv.Get(kp.RCPath(rc.ID.String()), &api.QueryOptions{
-					WaitIndex: curIndex,
-				})
-				if err != nil {
-					errors <- err
-				} else {
-					curIndex = meta.LastIndex
-					if kvp == nil {
-						// seems this RC got deleted from under us. quitting
-						// would be unexpected, so we'll just wait for it to
-						// reappear in consul
-						continue
-					}
-
-					newRC, err := s.kvpToRC(kvp)
-					if err != nil {
-						errors <- err
-					} else {
-						*rc = newRC
-						updated <- struct{}{}
-					}
+		for kvp := range input {
+			if kvp == nil {
+				// seems this RC got deleted from under us. quitting
+				// would be unexpected, so we'll just wait for it to
+				// reappear in consul
+				continue
+			}
+			newRC, err := s.kvpToRC(kvp)
+			if err != nil {
+				select {
+				case errors <- err:
+				case <-quit:
+				}
+			} else {
+				*rc = newRC
+				select {
+				case updated <- struct{}{}:
+				case <-quit:
 				}
 			}
 		}
