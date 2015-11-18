@@ -64,13 +64,13 @@ func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv runit.SV) er
 	// since the output is more useful to the user, that's what we'll preserve
 	out, err := hl.disable()
 	if err != nil {
-		return launch.DisableError(util.Errorf("%s", out))
+		return launch.DisableError{util.Errorf("%s", out)}
 	}
 
 	// probably want to do something with output at some point
 	err = hl.stop(serviceBuilder, sv)
 	if err != nil {
-		return launch.StopError(err)
+		return launch.StopError{err}
 	}
 
 	err = hl.makeLast()
@@ -84,13 +84,13 @@ func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv runit.SV) er
 func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
 	err := hl.start(serviceBuilder, sv)
 	if err != nil {
-		return launch.StartError(err)
+		return launch.StartError{err}
 	}
 
 	// same as disable
 	out, err := hl.enable()
 	if err != nil {
-		return launch.EnableError(util.Errorf("%s", out))
+		return launch.EnableError{util.Errorf("%s", out)}
 	}
 	return nil
 }
