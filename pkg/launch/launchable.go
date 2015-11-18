@@ -9,10 +9,21 @@ import (
 	"github.com/square/p2/pkg/uri"
 )
 
-type DisableError error
-type EnableError error
-type StartError error
-type StopError error
+type DisableError struct{ Inner error }
+
+func (e DisableError) Error() string { return e.Inner.Error() }
+
+type EnableError struct{ Inner error }
+
+func (e EnableError) Error() string { return e.Inner.Error() }
+
+type StartError struct{ Inner error }
+
+func (e StartError) Error() string { return e.Inner.Error() }
+
+type StopError struct{ Inner error }
+
+func (e StopError) Error() string { return e.Inner.Error() }
 
 // Launchable describes a type of app that can be downloaded and launched.
 type Launchable interface {

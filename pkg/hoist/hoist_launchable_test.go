@@ -268,6 +268,8 @@ func TestHaltWithFailingDisable(t *testing.T) {
 	Assert(t).IsNotNil(err, "Expected error while halting")
 	_, ok := err.(launch.DisableError)
 	Assert(t).IsTrue(ok, "Expected disable error to be returned")
+	_, ok = err.(launch.StopError)
+	Assert(t).IsFalse(ok, "Did not expect stop error to be returned")
 }
 
 func TestHaltWithPassingDisable(t *testing.T) {
@@ -290,6 +292,8 @@ func TestLaunchWithFailingEnable(t *testing.T) {
 	Assert(t).IsNotNil(err, "Expected error while launching")
 	_, ok := err.(launch.EnableError)
 	Assert(t).IsTrue(ok, "Expected enable error to be returned")
+	_, ok = err.(launch.StartError)
+	Assert(t).IsFalse(ok, "Did not expect start error to be returned")
 }
 
 func TestLaunchWithPassingEnable(t *testing.T) {
@@ -310,6 +314,8 @@ func TestHaltWithFailingStop(t *testing.T) {
 	Assert(t).IsNotNil(err, "Expected error while halting")
 	_, ok := err.(launch.StopError)
 	Assert(t).IsTrue(ok, "Expected stop error to be returned")
+	_, ok = err.(launch.DisableError)
+	Assert(t).IsFalse(ok, "Did not expect disable error to be returned")
 }
 
 func TestLaunchWithFailingStart(t *testing.T) {
@@ -321,6 +327,8 @@ func TestLaunchWithFailingStart(t *testing.T) {
 	Assert(t).IsNotNil(err, "Expected error while launching")
 	_, ok := err.(launch.StartError)
 	Assert(t).IsTrue(ok, "Expected start error to be returned")
+	_, ok = err.(launch.EnableError)
+	Assert(t).IsFalse(ok, "Did not expect enable error to be returned")
 }
 
 func TestOnceIfRestartNever(t *testing.T) {
