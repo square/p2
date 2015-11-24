@@ -231,11 +231,11 @@ func (r replication) updateOne(node string, done chan<- string, quitCh <-chan st
 		_, err = r.store.SetPod(kp.IntentPath(node, r.manifest.ID()), r.manifest)
 	}
 
-	realityResults := make(chan []kp.ManifestResult)
+	realityResults := make(chan kp.ManifestResult)
 	realityErr := make(chan error)
 	realityQuit := make(chan struct{})
 	defer close(realityQuit)
-	go r.store.WatchPods(kp.RealityPath(node, r.manifest.ID()), realityQuit, realityErr, realityResults)
+	go r.store.WatchPod(kp.RealityPath(node, r.manifest.ID()), realityQuit, realityErr, realityResults)
 REALITY_LOOP:
 	for {
 		select {
@@ -248,17 +248,14 @@ REALITY_LOOP:
 			case <-quitCh:
 			}
 		case mResult := <-realityResults:
-			// We expect len(mResult) == 0 if the pod key doesn't
-			// exist yet, that's okay just wait longer
-			if len(mResult) == 1 {
-				receivedSHA, _ := mResult[0].Manifest.SHA()
+			// if the pod key doesn't exist yet, that's okay just wait longer
+			if mResult.Manifest != nil {
+				receivedSHA, _ := mResult.Manifest.SHA()
 				if receivedSHA == targetSHA {
 					break REALITY_LOOP
 				} else {
 					nodeLogger.WithFields(logrus.Fields{"current": receivedSHA, "target": targetSHA}).Infoln("Waiting for current")
 				}
-			} else if len(mResult) > 1 {
-				nodeLogger.WithField("n", len(mResult)).Errorf("Got %d results from reality but was expecting only 1", len(mResult))
 			}
 		}
 	}
