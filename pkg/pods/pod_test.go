@@ -105,7 +105,13 @@ config:
 
 	pod := NewPod(manifest.ID(), PodPath(podTemp, manifest.ID()))
 
-	err = pod.setupConfig(manifest)
+	launchables := make([]launch.Launchable, 0)
+	for _, stanza := range manifest.GetLaunchableStanzas() {
+		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser(), manifest.GetRestartPolicy())
+		Assert(t).IsNil(err, "There shouldn't have been an error getting launchable")
+		launchables = append(launchables, launchable)
+	}
+	err = pod.setupConfig(manifest, launchables)
 	Assert(t).IsNil(err, "There shouldn't have been an error setting up config")
 
 	configFileName, err := manifest.ConfigFileName()
@@ -135,6 +141,12 @@ config:
 	platEnv, err := ioutil.ReadFile(filepath.Join(pod.EnvDir(), "PLATFORM_CONFIG_PATH"))
 	Assert(t).IsNil(err, "should not have erred reading the platform config env file")
 	Assert(t).AreEqual(platformConfigPath, string(platEnv), "The env path to platform config didn't match")
+
+	for _, launchable := range launchables {
+		launchableHomeEnv, err := ioutil.ReadFile(filepath.Join(launchable.EnvDir(), "LAUNCHABLE_HOME"))
+		Assert(t).IsNil(err, "should not have erred reading the launchable home env file")
+		Assert(t).AreEqual(launchable.Path(), string(launchableHomeEnv), "The launchable home path did not match expected")
+	}
 }
 
 func TestLogLaunchableError(t *testing.T) {
