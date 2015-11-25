@@ -19,7 +19,7 @@ func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuild
 		Location:  "testLaunchable.tar.gz",
 		Id:        "testPod__testLaunchable",
 		RunAs:     "testPod",
-		ConfigDir: tempDir,
+		PodEnvDir: tempDir,
 		Fetcher:   uri.DefaultFetcher,
 		RootDir:   launchableInstallDir,
 		P2Exec:    util.From(runtime.Caller(0)).ExpandPath("fake_p2-exec"),
@@ -44,8 +44,8 @@ func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuild
 }
 
 func CleanupFakeLaunchable(h *Launchable, s *runit.ServiceBuilder) {
-	if os.TempDir() != h.ConfigDir {
-		os.RemoveAll(h.ConfigDir)
+	if os.TempDir() != h.PodEnvDir {
+		os.RemoveAll(h.PodEnvDir)
 	}
 	if os.TempDir() != s.RunitRoot {
 		os.RemoveAll(s.RunitRoot)

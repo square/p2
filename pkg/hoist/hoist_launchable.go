@@ -27,7 +27,7 @@ type Launchable struct {
 	Location         string              // A URL where we can download the artifact from.
 	Id               string              // A unique identifier for this launchable, used when creating runit services
 	RunAs            string              // The user to assume when launching the executable
-	ConfigDir        string              // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
+	PodEnvDir        string              // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
 	Fetcher          uri.Fetcher         // Callback that downloads the file from the remote location.
 	RootDir          string              // The root directory of the launchable, containing N:N>=1 installs.
 	P2Exec           string              // Struct that can be used to build a p2-exec invocation with appropriate flags
@@ -143,7 +143,7 @@ func (hl *Launchable) InvokeBinScript(script string) (string, error) {
 	p2ExecArgs := p2exec.P2ExecArgs{
 		Command:          []string{cmdPath},
 		User:             hl.RunAs,
-		EnvDir:           hl.ConfigDir,
+		EnvDir:           hl.PodEnvDir,
 		NoLimits:         hl.ExecNoLimit,
 		CgroupConfigName: hl.CgroupConfigName,
 		CgroupName:       cgroupName,
@@ -234,7 +234,7 @@ func (hl *Launchable) Executables(
 		p2ExecArgs := p2exec.P2ExecArgs{
 			Command:          []string{filepath.Join(serviceDir, service.Name())},
 			User:             hl.RunAs,
-			EnvDir:           hl.ConfigDir,
+			EnvDir:           hl.PodEnvDir,
 			NoLimits:         hl.ExecNoLimit,
 			CgroupConfigName: hl.CgroupConfigName,
 			CgroupName:       hl.Id,
@@ -357,6 +357,14 @@ func (hl *Launchable) flipSymlink(newLinkPath string) error {
 	}
 
 	return os.Rename(tempLinkPath, newLinkPath)
+}
+
+func (hl *Launchable) EnvDir() string {
+	return filepath.Join(hl.RootDir, "env")
+}
+
+func (hl *Launchable) Path() string {
+	return hl.RootDir
 }
 
 func (hl *Launchable) InstallDir() string {

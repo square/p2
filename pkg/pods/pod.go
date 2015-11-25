@@ -362,14 +362,6 @@ func (pod *Pod) Install(manifest Manifest) error {
 		return util.Errorf("Could not create pod home: %s", err)
 	}
 
-	// we may need to write config files to a unique directory per pod version, depending on restart semantics. Need
-	// to think about this more.
-	err = pod.setupConfig(manifest)
-	if err != nil {
-		pod.logError(err, "Could not setup config")
-		return util.Errorf("Could not setup config: %s", err)
-	}
-
 	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return err
@@ -381,6 +373,14 @@ func (pod *Pod) Install(manifest Manifest) error {
 			pod.logLaunchableError(launchable.ID(), err, "Unable to install launchable")
 			return err
 		}
+	}
+
+	// we may need to write config files to a unique directory per pod version, depending on restart semantics. Need
+	// to think about this more.
+	err = pod.setupConfig(manifest, launchables)
+	if err != nil {
+		pod.logError(err, "Could not setup config")
+		return util.Errorf("Could not setup config: %s", err)
 	}
 
 	pod.logInfo("Successfully installed")
@@ -423,12 +423,26 @@ func (pod *Pod) Verify(manifest Manifest, authPolicy auth.Policy) error {
 	return nil
 }
 
-// setupConfig creates two directories in the pod's home directory, called "env" and "config."
-// the "config" directory contains the pod's config file, named with pod's ID and the
-// SHA of its manifest's content. The "env" directory contains environment files
-// (as described in http://smarden.org/runit/chpst.8.html, with the -e option) and includes a
-// single file called CONFIG_PATH, which points at the file written in the "config" directory.
-func (pod *Pod) setupConfig(manifest Manifest) error {
+// setupConfig does the following:
+//
+// 1) creates a directory in the pod's home directory called "config" which
+// contains YAML configuration files (named with pod's ID and the SHA of its
+// manifest's content) the path to which will be exported to a pods launchables
+// via the CONFIG_PATH environment variable
+//
+// 2) writes an "env" directory in the pod's home directory called "env" which
+// contains environment variables written as files that will be exported to all
+// processes started by all launchables (as described in
+// http://smarden.org/runit/chpst.8.html, with the -e option), including
+// CONFIG_PATH
+//
+// 3) writes an "env" directory for each launchable. The "env" directory
+// contains environment files specific to a launchable (such as
+// LAUNCHABLE_HOME)
+//
+// We may wish to provide a "config" directory per launchable at some point as
+// well, so that launchables can have different config namespaces
+func (pod *Pod) setupConfig(manifest Manifest, launchables []launch.Launchable) error {
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
 		return util.Errorf("Could not determine pod UID/GID: %s", err)
@@ -494,6 +508,17 @@ func (pod *Pod) setupConfig(manifest Manifest) error {
 		return err
 	}
 
+	for _, launchable := range launchables {
+		err = util.MkdirChownAll(launchable.EnvDir(), uid, gid, 0755)
+		if err != nil {
+			return util.Errorf("Could not create the environment dir for pod %s launchable %s: %s", manifest.ID(), launchable.ID(), err)
+		}
+		err = writeEnvFile(launchable.EnvDir(), "LAUNCHABLE_HOME", launchable.Path(), uid, gid)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -551,7 +576,7 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 			Location:         launchableStanza.Location,
 			Id:               launchableId,
 			RunAs:            runAsUser,
-			ConfigDir:        pod.EnvDir(),
+			PodEnvDir:        pod.EnvDir(),
 			Fetcher:          uri.DefaultFetcher,
 			RootDir:          launchableRootDir,
 			P2Exec:           pod.P2Exec,

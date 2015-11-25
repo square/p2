@@ -32,7 +32,7 @@ func TestInstall(t *testing.T) {
 		Location:  testLocation,
 		Id:        "hello",
 		RunAs:     currentUser.Username,
-		ConfigDir: launchableHome,
+		PodEnvDir: launchableHome,
 		Fetcher:   fetcher,
 		RootDir:   launchableHome,
 	}
@@ -63,7 +63,7 @@ func TestInstallDir(t *testing.T) {
 		Location:  testLocation,
 		Id:        "testLaunchable",
 		RunAs:     "testuser",
-		ConfigDir: tempDir,
+		PodEnvDir: tempDir,
 		Fetcher:   uri.DefaultFetcher,
 		RootDir:   tempDir,
 	}
