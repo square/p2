@@ -20,13 +20,15 @@ import (
 )
 
 var (
-	username       = kingpin.Flag("user", "the user to execute as").Short('u').String()
-	envDir         = kingpin.Flag("env", "a directory of env files to add to the environment").Short('e').String()
-	launchableName = kingpin.Flag("launchable", "the key in $PLATFORM_CONFIG_PATH containing the cgroup parameters").Short('l').String()
-	cgroupName     = kingpin.Flag("cgroup", "the name of the cgroup that should be created").Short('c').String()
-	nolim          = kingpin.Flag("nolimit", "remove rlimits").Short('n').Bool()
-	clearEnv       = kingpin.Flag("clearenv", "clear all environment variables before loading envDir").Bool()
-	workDir        = kingpin.Flag("workdir", "set working directory").Short('w').String()
+	username = kingpin.Flag("user", "The user to execute as.").Short('u').String()
+	envDir   = kingpin.Flag("env",
+		"A directory of env files to add to the environment. May be specified more than once. In the case of conflicting variable names, the directory appearing last will win.",
+	).Short('e').Strings()
+	launchableName = kingpin.Flag("launchable", "The key in $PLATFORM_CONFIG_PATH containing the cgroup parameters.").Short('l').String()
+	cgroupName     = kingpin.Flag("cgroup", "The name of the cgroup that should be created.").Short('c').String()
+	nolim          = kingpin.Flag("nolimit", "Remove rlimits.").Short('n').Bool()
+	clearEnv       = kingpin.Flag("clearenv", "Clear all environment variables before loading envDir(s).").Bool()
+	workDir        = kingpin.Flag("workdir", "Set working directory.").Short('w').String()
 
 	cmd = kingpin.Arg("command", "the command to execute").Required().Strings()
 )
@@ -39,8 +41,8 @@ func main() {
 		os.Clearenv()
 	}
 
-	if *envDir != "" {
-		err := loadEnvDir(*envDir)
+	for _, dir := range *envDir {
+		err := loadEnvDir(dir)
 		if err != nil {
 			log.Fatal(err)
 		}
