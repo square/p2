@@ -92,10 +92,6 @@ func (l *Launchable) EnvDir() string {
 	return filepath.Join(l.RootDir, "env")
 }
 
-func (l *Launchable) Path() string {
-	return l.RootDir
-}
-
 // InstallDir is the directory where this launchable should be installed.
 func (l *Launchable) InstallDir() string {
 	launchableName := l.Version()

@@ -143,9 +143,9 @@ config:
 	Assert(t).AreEqual(platformConfigPath, string(platEnv), "The env path to platform config didn't match")
 
 	for _, launchable := range launchables {
-		launchableHomeEnv, err := ioutil.ReadFile(filepath.Join(launchable.EnvDir(), "LAUNCHABLE_HOME"))
-		Assert(t).IsNil(err, "should not have erred reading the launchable home env file")
-		Assert(t).AreEqual(launchable.Path(), string(launchableHomeEnv), "The launchable home path did not match expected")
+		launchableRootEnv, err := ioutil.ReadFile(filepath.Join(launchable.EnvDir(), "LAUNCHABLE_ROOT"))
+		Assert(t).IsNil(err, "should not have erred reading the launchable root env file")
+		Assert(t).AreEqual(launchable.InstallDir(), string(launchableRootEnv), "The launchable root path did not match expected")
 	}
 }
 

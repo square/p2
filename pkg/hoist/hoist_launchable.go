@@ -363,10 +363,6 @@ func (hl *Launchable) EnvDir() string {
 	return filepath.Join(hl.RootDir, "env")
 }
 
-func (hl *Launchable) Path() string {
-	return hl.RootDir
-}
-
 func (hl *Launchable) InstallDir() string {
 	launchableName := hl.Version()
 	return filepath.Join(hl.RootDir, "installs", launchableName)
