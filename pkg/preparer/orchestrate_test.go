@@ -170,6 +170,10 @@ func (f *FakeStore) SetPod(string, pods.Manifest) (time.Duration, error) {
 	return 0, nil
 }
 
+func (f *FakeStore) Pod(key string) (pods.Manifest, time.Duration, error) {
+	return nil, 0, fmt.Errorf("not implemented")
+}
+
 func (f *FakeStore) DeletePod(string) (time.Duration, error) {
 	return 0, nil
 }

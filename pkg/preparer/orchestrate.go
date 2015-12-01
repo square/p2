@@ -31,6 +31,7 @@ type Hooks interface {
 type Store interface {
 	ListPods(keyPrefix string) ([]kp.ManifestResult, time.Duration, error)
 	SetPod(string, pods.Manifest) (time.Duration, error)
+	Pod(key string) (pods.Manifest, time.Duration, error)
 	DeletePod(key string) (time.Duration, error)
 	WatchPods(string, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult)
 }
@@ -166,6 +167,30 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				// TODO better solution: force the preparer to have a 0s default timeout, prevent KILLs
 				if pod.Id == POD_ID {
 					pod.DefaultTimeout = time.Duration(0)
+				}
+
+				// podChan is being fed values gathered from a kp.Watch() in
+				// WatchForPodManifestsForNode(). If the watch returns a new pair of
+				// intent/reality values before the previous change has finished
+				// processing in resolvePair(), the reality value will be stale. This
+				// leads to a bug where the preparer will appear to update a package
+				// and when that is finished, "update" it again.
+				//
+				// The correct solution probably involves watching reality and intent
+				// and feeding updated pairs to a control loop.
+				//
+				// This is a quick fix to ensure that the reality value being used is
+				// up-to-date. The de-bouncing logic in this method should ensure that the
+				// intent value is fresh (to the extent that Consul is timely). Fetching
+				// the reality value again ensures its freshness too.
+				reality, _, err := p.store.Pod(kp.RealityPath(p.node, nextLaunch.ID))
+				if err == pods.NoCurrentManifest {
+					nextLaunch.Reality = nil
+				} else if err != nil {
+					manifestLogger.WithError(err).Errorln("Error getting reality manifest")
+					break
+				} else {
+					nextLaunch.Reality = reality
 				}
 
 				ok := p.resolvePair(nextLaunch, pod, manifestLogger)
