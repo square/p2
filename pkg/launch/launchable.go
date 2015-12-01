@@ -36,8 +36,6 @@ type Launchable interface {
 	// EnvDir is the directory in which launchable environment variables
 	// will be expressed as files
 	EnvDir() string
-	// The root directory for the launchable.
-	Path() string
 	// Executables gets a list of the commands that are part of this launchable.
 	Executables(serviceBuilder *runit.ServiceBuilder) ([]Executable, error)
 	// Installed returns true if this launchable is already installed.

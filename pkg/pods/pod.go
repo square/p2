@@ -438,7 +438,7 @@ func (pod *Pod) Verify(manifest Manifest, authPolicy auth.Policy) error {
 //
 // 3) writes an "env" directory for each launchable. The "env" directory
 // contains environment files specific to a launchable (such as
-// LAUNCHABLE_HOME)
+// LAUNCHABLE_ROOT)
 //
 // We may wish to provide a "config" directory per launchable at some point as
 // well, so that launchables can have different config namespaces
@@ -513,7 +513,7 @@ func (pod *Pod) setupConfig(manifest Manifest, launchables []launch.Launchable) 
 		if err != nil {
 			return util.Errorf("Could not create the environment dir for pod %s launchable %s: %s", manifest.ID(), launchable.ID(), err)
 		}
-		err = writeEnvFile(launchable.EnvDir(), "LAUNCHABLE_HOME", launchable.Path(), uid, gid)
+		err = writeEnvFile(launchable.EnvDir(), "LAUNCHABLE_ROOT", launchable.InstallDir(), uid, gid)
 		if err != nil {
 			return err
 		}
