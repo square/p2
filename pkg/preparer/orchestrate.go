@@ -9,6 +9,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/util/size"
 )
 
 // The Pod ID of the preparer.
@@ -22,6 +23,7 @@ type Pod interface {
 	Uninstall() error
 	Verify(pods.Manifest, auth.Policy) error
 	Halt(pods.Manifest) (bool, error)
+	Prune(size.ByteCount, pods.Manifest)
 }
 
 type Hooks interface {
@@ -292,6 +294,8 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 		}
 
 		p.tryRunHooks(hooks.AFTER_LAUNCH, pod, pair.Intent, logger)
+
+		pod.Prune(p.maxLaunchableDiskUsage, pair.Intent) // errors are logged internally
 	}
 	return err == nil && ok
 }

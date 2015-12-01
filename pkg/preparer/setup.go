@@ -16,10 +16,12 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
+	"github.com/square/p2/pkg/util/size"
 )
 
 // DefaultConsulAddress is the default location for Consul when none is configured.
@@ -36,32 +38,34 @@ type LogDestination struct {
 }
 
 type Preparer struct {
-	node         string
-	store        Store
-	hooks        Hooks
-	hookListener HookListener
-	Logger       logging.Logger
-	podRoot      string
-	caFile       string
-	authPolicy   auth.Policy
+	node                   string
+	store                  Store
+	hooks                  Hooks
+	hookListener           HookListener
+	Logger                 logging.Logger
+	podRoot                string
+	caFile                 string
+	authPolicy             auth.Policy
+	maxLaunchableDiskUsage size.ByteCount
 }
 
 type PreparerConfig struct {
-	NodeName             string                 `yaml:"node_name"`
-	ConsulAddress        string                 `yaml:"consul_address"`
-	ConsulHttps          bool                   `yaml:"consul_https,omitempty"`
-	ConsulTokenPath      string                 `yaml:"consul_token_path,omitempty"`
-	HooksDirectory       string                 `yaml:"hooks_directory"`
-	CAFile               string                 `yaml:"ca_file,omitempty"`
-	CertFile             string                 `yaml:"cert_file,omitempty"`
-	KeyFile              string                 `yaml:"key_file,omitempty"`
-	ConsulCAFile         string                 `yaml:"consul_ca_file,omitempty"`
-	PodRoot              string                 `yaml:"pod_root,omitempty"`
-	StatusPort           int                    `yaml:"status_port"`
-	StatusSocket         string                 `yaml:"status_socket"`
-	Auth                 map[string]interface{} `yaml:"auth,omitempty"`
-	ExtraLogDestinations []LogDestination       `yaml:"extra_log_destinations,omitempty"`
-	LogLevel             string                 `yaml:"log_level,omitempty"`
+	NodeName               string                 `yaml:"node_name"`
+	ConsulAddress          string                 `yaml:"consul_address"`
+	ConsulHttps            bool                   `yaml:"consul_https,omitempty"`
+	ConsulTokenPath        string                 `yaml:"consul_token_path,omitempty"`
+	HooksDirectory         string                 `yaml:"hooks_directory"`
+	CAFile                 string                 `yaml:"ca_file,omitempty"`
+	CertFile               string                 `yaml:"cert_file,omitempty"`
+	KeyFile                string                 `yaml:"key_file,omitempty"`
+	ConsulCAFile           string                 `yaml:"consul_ca_file,omitempty"`
+	PodRoot                string                 `yaml:"pod_root,omitempty"`
+	StatusPort             int                    `yaml:"status_port"`
+	StatusSocket           string                 `yaml:"status_socket"`
+	Auth                   map[string]interface{} `yaml:"auth,omitempty"`
+	ExtraLogDestinations   []LogDestination       `yaml:"extra_log_destinations,omitempty"`
+	LogLevel               string                 `yaml:"log_level,omitempty"`
+	MaxLaunchableDiskUsage string                 `yaml:"max_launchable_disk_usage"`
 
 	// Params defines a collection of miscellaneous runtime parameters defined throughout the
 	// source files.
@@ -305,6 +309,14 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		return nil, err
 	}
 
+	maxLaunchableDiskUsage := launch.DefaultAllowableDiskUsage
+	if preparerConfig.MaxLaunchableDiskUsage != "" {
+		maxLaunchableDiskUsage, err = size.Parse(preparerConfig.MaxLaunchableDiskUsage)
+		if err != nil {
+			return nil, util.Errorf("Unparseable value for max_launchable_disk_usage %v, %v", preparerConfig.MaxLaunchableDiskUsage, err)
+		}
+	}
+
 	listener := HookListener{
 		Intent:         store,
 		HookPrefix:     kp.HOOK_TREE,
@@ -325,13 +337,14 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	}
 
 	return &Preparer{
-		node:         preparerConfig.NodeName,
-		store:        store,
-		hooks:        hooks.Hooks(preparerConfig.HooksDirectory, &logger),
-		hookListener: listener,
-		Logger:       logger,
-		podRoot:      preparerConfig.PodRoot,
-		authPolicy:   authPolicy,
-		caFile:       consulCAFile,
+		node:                   preparerConfig.NodeName,
+		store:                  store,
+		hooks:                  hooks.Hooks(preparerConfig.HooksDirectory, &logger),
+		hookListener:           listener,
+		Logger:                 logger,
+		podRoot:                preparerConfig.PodRoot,
+		authPolicy:             authPolicy,
+		caFile:                 consulCAFile,
+		maxLaunchableDiskUsage: maxLaunchableDiskUsage,
 	}, nil
 }

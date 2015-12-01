@@ -19,6 +19,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
+	"github.com/square/p2/pkg/util/size"
 )
 
 type TestPod struct {
@@ -26,6 +27,10 @@ type TestPod struct {
 	installed, uninstalled, launched, launchSuccess, halted, haltSuccess bool
 	installErr, uninstallErr, launchErr, haltError, currentManifestError error
 	configDir, envDir                                                    string
+}
+
+func (t *TestPod) Prune(_ size.ByteCount, _ pods.Manifest) {
+	return
 }
 
 func (t *TestPod) ManifestSHA() (string, error) {

@@ -7,7 +7,10 @@ import (
 
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
+	"github.com/square/p2/pkg/util/size"
 )
+
+const DefaultAllowableDiskUsage = 10 * size.Gibibyte
 
 type DisableError struct{ Inner error }
 
@@ -54,6 +57,10 @@ type Launchable interface {
 	// MakeCurrent adjusts a "current" symlink for this launchable name to point to this
 	// launchable's version.
 	MakeCurrent() error
+	// Prune performs necessary cleanup for a particular launchable's resources, should it
+	// be necessary. The provided argument is guidance for how many bytes on disk a particular
+	// launchable should consume
+	Prune(size.ByteCount) error
 }
 
 // Executable describes a command and its arguments that should be executed to start a
