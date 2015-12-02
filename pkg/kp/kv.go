@@ -31,6 +31,7 @@ type Store interface {
 	PutHealth(res WatchResult) (time.Time, time.Duration, error)
 	GetHealth(service, node string) (WatchResult, error)
 	GetServiceHealth(service string) (map[string]WatchResult, error)
+	WatchPod(key string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
 	WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult)
 	Ping() error
 	ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error)
@@ -238,6 +239,36 @@ func (c consulStore) ListPods(keyPrefix string) ([]ManifestResult, time.Duration
 	}
 
 	return ret, queryMeta.RequestTime, nil
+}
+
+// WatchPod is like WatchPods, but for a single key only. The output channel
+// may contain nil manifests, if the target key does not exist.
+func (c consulStore) WatchPod(key string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult) {
+	defer close(podChan)
+
+	kvpChan := make(chan *api.KVPair)
+	go consulutil.WatchSingle(key, c.client.KV(), kvpChan, quitChan, errChan)
+	for pair := range kvpChan {
+		out := ManifestResult{Path: key}
+		if pair != nil {
+			manifest, err := pods.ManifestFromBytes(pair.Value)
+			if err != nil {
+				select {
+				case <-quitChan:
+					return
+				case errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value):
+					continue
+				}
+			} else {
+				out.Manifest = manifest
+			}
+		}
+		select {
+		case <-quitChan:
+			return
+		case podChan <- out:
+		}
+	}
 }
 
 // WatchPods watches the key-value store for any changes under the given key
