@@ -20,6 +20,7 @@ import (
 	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
+	"github.com/square/p2/pkg/util/size"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 )
@@ -191,6 +192,20 @@ func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 	}
 
 	return success, nil
+}
+
+func (pod *Pod) Prune(max size.ByteCount, manifest Manifest) {
+	launchables, err := pod.Launchables(manifest)
+	if err != nil {
+		return
+	}
+	for _, l := range launchables {
+		err := l.Prune(max)
+		if err != nil {
+			pod.logLaunchableError(l.ID(), err, "Could not prune directory")
+			// Don't return here. We want to prune other launchables if possible.
+		}
+	}
 }
 
 func (pod *Pod) Services(manifest Manifest) ([]runit.Service, error) {

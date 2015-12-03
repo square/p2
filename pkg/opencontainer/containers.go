@@ -23,6 +23,7 @@ import (
 	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
+	"github.com/square/p2/pkg/util/size"
 )
 
 // The name of the OpenContainer spec file in the container's root.
@@ -300,5 +301,10 @@ func (l *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv runit.SV) err
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (l *Launchable) Prune(max size.ByteCount) error {
+	// No-op for now
 	return nil
 }
