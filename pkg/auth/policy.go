@@ -15,6 +15,14 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
+// These string constants are used to determine the requested auth policy type
+// both in the "auth" section of preparer config and in p2-launch flags
+const (
+	NULL_POLICY    = "none"
+	KEYRING_POLICY = "keyring"
+	USER_POLICY    = "user"
+)
+
 // A Policy encapsulates the behavior a p2 node needs to authorize
 // its actions. It is possible for implementations to rely on other
 // services for these behaviors, so these calls may be slow or

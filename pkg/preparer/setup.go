@@ -258,9 +258,9 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	switch t, _ := preparerConfig.Auth["type"].(string); t {
 	case "":
 		return nil, util.Errorf("must specify authorization policy type")
-	case "none":
+	case auth.NULL_POLICY:
 		authPolicy = auth.NullPolicy{}
-	case "keyring":
+	case auth.KEYRING_POLICY:
 		var authConfig KeyringAuth
 		err := castYaml(preparerConfig.Auth, &authConfig)
 		if err != nil {
@@ -276,7 +276,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		if err != nil {
 			return nil, util.Errorf("error configuring keyring auth: %s", err)
 		}
-	case "user":
+	case auth.USER_POLICY:
 		var userConfig UserAuth
 		err := castYaml(preparerConfig.Auth, &userConfig)
 		if err != nil {
