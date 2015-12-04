@@ -4,7 +4,7 @@ package p2exec
 // applicable flags
 type P2ExecArgs struct {
 	User             string
-	EnvDir           string
+	EnvDirs          []string
 	NoLimits         bool
 	CgroupName       string
 	CgroupConfigName string
@@ -22,8 +22,8 @@ func (args P2ExecArgs) CommandLine() []string {
 		cmd = append(cmd, "-u", args.User)
 	}
 
-	if args.EnvDir != "" {
-		cmd = append(cmd, "-e", args.EnvDir)
+	for _, envDir := range args.EnvDirs {
+		cmd = append(cmd, "-e", envDir)
 	}
 
 	if args.CgroupConfigName != "" {

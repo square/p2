@@ -143,7 +143,7 @@ func (hl *Launchable) InvokeBinScript(script string) (string, error) {
 	p2ExecArgs := p2exec.P2ExecArgs{
 		Command:          []string{cmdPath},
 		User:             hl.RunAs,
-		EnvDir:           hl.PodEnvDir,
+		EnvDirs:          []string{hl.PodEnvDir, hl.EnvDir()},
 		NoLimits:         hl.ExecNoLimit,
 		CgroupConfigName: hl.CgroupConfigName,
 		CgroupName:       cgroupName,
@@ -234,7 +234,7 @@ func (hl *Launchable) Executables(
 		p2ExecArgs := p2exec.P2ExecArgs{
 			Command:          []string{filepath.Join(serviceDir, service.Name())},
 			User:             hl.RunAs,
-			EnvDir:           hl.PodEnvDir,
+			EnvDirs:          []string{hl.PodEnvDir, hl.EnvDir()},
 			NoLimits:         hl.ExecNoLimit,
 			CgroupConfigName: hl.CgroupConfigName,
 			CgroupName:       hl.Id,
