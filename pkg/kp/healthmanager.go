@@ -122,6 +122,7 @@ func (m *consulHealthManager) NewUpdater(pod, service string) HealthUpdater {
 			sub.Chan(),
 			m.logger.SubLogger(logrus.Fields{
 				"service": service,
+				"pod":     pod,
 				"node":    m.node,
 			}),
 		)
