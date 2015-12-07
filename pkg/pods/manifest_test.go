@@ -6,6 +6,9 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/square/p2/pkg/cgroups"
+	"github.com/square/p2/pkg/util/size"
+
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 )
 
@@ -35,6 +38,9 @@ launchables:
     launchable_type: hoist
     launchable_id: web
     location: https://localhost:4444/foo/bar/baz.tar.gz
+    cgroup:
+      cpus: 4
+      memory: 1.0G
 config:
   ENVIRONMENT: staging
 status_port: 8000
@@ -76,6 +82,7 @@ func TestPodManifestCanBeWritten(t *testing.T) {
 			LaunchableType: "hoist",
 			LaunchableId:   "web",
 			Location:       "https://localhost:4444/foo/bar/baz.tar.gz",
+			CgroupConfig:   cgroups.NewCGroup(4, 1*size.Gibibyte),
 		},
 	}
 	builder.SetLaunchables(launchables)
@@ -107,11 +114,25 @@ func TestPodManifestCanWriteItsConfigStanzaSeparately(t *testing.T) {
 
 func TestPodManifestCanReportItsSHA(t *testing.T) {
 	config := testPod()
-	manifest, err := ManifestFromBytes(bytes.NewBufferString(config).Bytes())
+	manifest, err := ManifestFromBytes([]byte(config))
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 	val, err := manifest.SHA()
 	Assert(t).IsNil(err, "should not have erred when getting SHA")
-	Assert(t).AreEqual("17acfa1ce4bdd9674524f8faed383bf365d168c81d9d981d63173a33a7fed5a1", val, "SHA mismatched expectations")
+	Assert(t).AreEqual("b3b8aa6c2e7b52ace2fd4b524d84aaa71bc39eb0ef7a254ffe1752011a84e97a", val, "SHA mismatched expectations - if this was expected, change the assertion value")
+}
+
+func TestPodManifestLaunchablesCGroups(t *testing.T) {
+	config := testPod()
+	manifest, _ := ManifestFromBytes([]byte(config))
+	launchables := manifest.GetLaunchableStanzas()
+	Assert(t).AreEqual(len(launchables), 1, "Expected exactly one launchable in the manifest")
+	for _, launchable := range launchables {
+		cgroup := launchable.CgroupConfig
+		Assert(t).AreEqual(cgroup.CPUs, 4, "Expected cgroup to have 4 CPUs")
+		memory, err := cgroup.MemoryByteCount()
+		Assert(t).IsNil(err, "Should not have erred parsing cgroup memory size")
+		Assert(t).AreEqual(memory, 1*size.Gibibyte, "Should have matched on memory bytecount")
+	}
 }
 
 func TestNilPodManifestHasEmptySHA(t *testing.T) {

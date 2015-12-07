@@ -91,7 +91,7 @@ launchables:
     location: https://localhost:4444/foo/bar/baz.tar.gz
     cgroup:
       cpus: 4
-      memory: 4294967296
+      memory: 4G
 config:
   ENVIRONMENT: staging
 `
@@ -134,7 +134,7 @@ config:
 	expectedPlatConfig := `web:
   cgroup:
     cpus: 4
-    memory: 4294967296
+    memory: 4G
 `
 	Assert(t).AreEqual(expectedPlatConfig, string(platConfig), "the platform config didn't match")
 
