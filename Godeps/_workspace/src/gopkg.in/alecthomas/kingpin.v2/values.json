@@ -1,6 +1,6 @@
 [
   {"type": "bool", "parser": "strconv.ParseBool(s)"},
-  {"type": "string", "parser": "s, error(nil)", "format": "string(*f)", "plural": "Strings"},
+  {"type": "string", "parser": "s, error(nil)", "format": "string(*f.v)", "plural": "Strings"},
   {"type": "uint", "parser": "strconv.ParseUint(s, 0, 64)", "plural": "Uints"},
   {"type": "uint8", "parser": "strconv.ParseUint(s, 0, 8)"},
   {"type": "uint16", "parser": "strconv.ParseUint(s, 0, 16)"},
@@ -18,5 +18,7 @@
   {"name": "TCPAddr", "Type": "*net.TCPAddr", "plural": "TCPList", "no_value_parser": true},
   {"name": "ExistingFile", "Type": "string", "plural": "ExistingFiles", "no_value_parser": true},
   {"name": "ExistingDir", "Type": "string", "plural": "ExistingDirs", "no_value_parser": true},
-  {"name": "ExistingFileOrDir", "Type": "string", "plural": "ExistingFilesOrDirs", "no_value_parser": true}
+  {"name": "ExistingFileOrDir", "Type": "string", "plural": "ExistingFilesOrDirs", "no_value_parser": true},
+  {"name": "Regexp", "Type": "*regexp.Regexp", "parser": "regexp.Compile(s)"},
+  {"name": "ResolvedIP", "Type": "net.IP", "parser": "resolveHost(s)", "help": "Resolve a hostname or IP to an IP."}
 ]

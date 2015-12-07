@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/alecthomas/kingpin"
+	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
 )
 
 // Context for "ls" command
