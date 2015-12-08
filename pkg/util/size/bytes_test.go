@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
+
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 )
 
@@ -45,5 +47,94 @@ func TestSizeString(t *testing.T) {
 
 	for value, expected := range tests {
 		Assert(t).AreEqual(expected, value.String(), fmt.Sprintf("Strings didn't match %f", value))
+	}
+}
+
+type Container struct {
+	Count ByteCount
+}
+
+// Should accept integer representation
+func TestYAMLInt(t *testing.T) {
+	t.Parallel()
+	var yt Container
+	err := yaml.Unmarshal([]byte(`count: 5`), &yt)
+	Assert(t).IsNil(err, "unexpected unmarshal error")
+	Assert(t).AreEqual(ByteCount(5), yt.Count, "error parsing integer representation")
+}
+
+// Should accept quoted string without a suffix
+func TestYAMLStr(t *testing.T) {
+	t.Parallel()
+	var yt Container
+	err := yaml.Unmarshal([]byte(`count: "6"`), &yt)
+	Assert(t).IsNil(err, "unexpected unmarshal error")
+	Assert(t).AreEqual(ByteCount(6), yt.Count, "error parsing string representation")
+}
+
+// Should accept quoted string with a suffix
+func TestYAMLStrUnit(t *testing.T) {
+	t.Parallel()
+	var yt Container
+	err := yaml.Unmarshal([]byte(`count: "7K"`), &yt)
+	Assert(t).IsNil(err, "unexpected unmarshal error")
+	Assert(t).AreEqual(ByteCount(7168), yt.Count, "error parsing string suffix")
+}
+
+// Should accept an unquoted string with a suffix
+func TestYAMLStrUnquoted(t *testing.T) {
+	t.Parallel()
+	var yt Container
+	err := yaml.Unmarshal([]byte(`count: 8M`), &yt)
+	Assert(t).IsNil(err, "unexpected unmarshal error")
+	Assert(t).AreEqual(ByteCount(8388608), yt.Count, "error parsing unquoted string")
+}
+
+// For compatibility with old config formats, the output should be parsable as an int
+func TestYAMLCompat(t *testing.T) {
+	t.Parallel()
+	var yt Container
+	var it struct {
+		Count int
+	}
+	yt.Count = ByteCount(1024)
+	data, err := yaml.Marshal(yt)
+	Assert(t).IsNil(err, "unexpected marshal error")
+	t.Logf("`%#v` marshals into: `%s`", yt, string(data))
+	err = yaml.Unmarshal(data, &it)
+	Assert(t).IsNil(err, "could not unmarshal into int")
+	Assert(t).AreEqual(1024, it.Count, "bad value unmarshaling into int")
+}
+
+// Should raise an error if the parse fails
+func TestYAMLErr(t *testing.T) {
+	t.Parallel()
+	var yt Container
+	err := yaml.Unmarshal([]byte(`count: not a number`), &yt)
+	Assert(t).IsNotNil(err, "parse should not have succeeded")
+}
+
+func TestYAMLConsistency(t *testing.T) {
+	t.Parallel()
+	values := []string{
+		`10`,
+		`4K`,
+		`"10000"`,
+		`"2000G"`,
+	}
+	for _, value := range values {
+		t.Log("Trying value: ", value)
+		var count ByteCount
+		err := yaml.Unmarshal([]byte(value), &count)
+		Assert(t).IsNil(err, "unexpected unmarshal error")
+		data, err := yaml.Marshal(count)
+		Assert(t).IsNil(err, "unexpected marshal error")
+		data2, err := yaml.Marshal(&count)
+		Assert(t).IsNil(err, "unexpected marshal error")
+		Assert(t).AreEqual(string(data), string(data2), "value and pointer marshal differently")
+		var count2 ByteCount
+		err = yaml.Unmarshal(data, &count2)
+		Assert(t).IsNil(err, "unexpected unmarshal error")
+		Assert(t).AreEqual(count, count2, "value did not survive ")
 	}
 }

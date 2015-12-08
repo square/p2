@@ -12,17 +12,15 @@ import (
 func TestMarshalIntegerByteCount(t *testing.T) {
 	integeredMemory := []byte(`memory: 500`)
 	config := Config{}
-	yaml.Unmarshal(integeredMemory, &config)
-	memory, err := config.MemoryByteCount()
-	Assert(t).IsNil(err, "Should not have erred getting the byte count")
-	Assert(t).AreEqual(memory, size.ByteCount(500), "Should have unmarshaled the integer representation of bytes")
+	err := yaml.Unmarshal(integeredMemory, &config)
+	Assert(t).IsNil(err, "Should not have erred unmarshaling")
+	Assert(t).AreEqual(config.Memory, size.ByteCount(500), "Should have unmarshaled the integer representation of bytes")
 }
 
 func TestMarshalStringByteCount(t *testing.T) {
 	integeredMemory := []byte(`memory: 500G`)
 	config := Config{}
-	yaml.Unmarshal(integeredMemory, &config)
-	memory, err := config.MemoryByteCount()
-	Assert(t).IsNil(err, "Should not have erred getting the byte count")
-	Assert(t).AreEqual(memory, 500*size.Gibibyte, "Should have unmarshaled the integer representation of bytes")
+	err := yaml.Unmarshal(integeredMemory, &config)
+	Assert(t).IsNil(err, "Should not have erred unmarshaling")
+	Assert(t).AreEqual(config.Memory, 500*size.Gibibyte, "Should have unmarshaled the integer representation of bytes")
 }

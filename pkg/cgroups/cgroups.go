@@ -169,11 +169,7 @@ func (subsys Subsystems) Write(config Config) error {
 	if err != nil {
 		return err
 	}
-	memory, err := config.MemoryByteCount()
-	if err != nil {
-		return err
-	}
-	return subsys.SetMemory(config.Name, int(memory))
+	return subsys.SetMemory(config.Name, int(config.Memory))
 }
 
 func (subsys Subsystems) AddPID(name string, pid int) error {
