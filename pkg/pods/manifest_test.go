@@ -40,7 +40,7 @@ launchables:
     location: https://localhost:4444/foo/bar/baz.tar.gz
     cgroup:
       cpus: 4
-      memory: 1.0G
+      memory: 1073741824
 config:
   ENVIRONMENT: staging
 status_port: 8000
@@ -82,7 +82,10 @@ func TestPodManifestCanBeWritten(t *testing.T) {
 			LaunchableType: "hoist",
 			LaunchableId:   "web",
 			Location:       "https://localhost:4444/foo/bar/baz.tar.gz",
-			CgroupConfig:   cgroups.NewCGroup(4, 1*size.Gibibyte),
+			CgroupConfig: cgroups.Config{
+				CPUs:   4,
+				Memory: 1 * size.Gibibyte,
+			},
 		},
 	}
 	builder.SetLaunchables(launchables)
@@ -118,7 +121,11 @@ func TestPodManifestCanReportItsSHA(t *testing.T) {
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 	val, err := manifest.SHA()
 	Assert(t).IsNil(err, "should not have erred when getting SHA")
-	Assert(t).AreEqual("b3b8aa6c2e7b52ace2fd4b524d84aaa71bc39eb0ef7a254ffe1752011a84e97a", val, "SHA mismatched expectations - if this was expected, change the assertion value")
+	Assert(t).AreEqual(
+		"fda3c8130dd7e2850b80bbbc0e56dcd3add02d4d67bed5cd3f8679db04854c58",
+		val,
+		"SHA mismatched expectations - if this was expected, change the assertion value",
+	)
 }
 
 func TestPodManifestLaunchablesCGroups(t *testing.T) {
@@ -129,9 +136,7 @@ func TestPodManifestLaunchablesCGroups(t *testing.T) {
 	for _, launchable := range launchables {
 		cgroup := launchable.CgroupConfig
 		Assert(t).AreEqual(cgroup.CPUs, 4, "Expected cgroup to have 4 CPUs")
-		memory, err := cgroup.MemoryByteCount()
-		Assert(t).IsNil(err, "Should not have erred parsing cgroup memory size")
-		Assert(t).AreEqual(memory, 1*size.Gibibyte, "Should have matched on memory bytecount")
+		Assert(t).AreEqual(cgroup.Memory, 1*size.Gibibyte, "Should have matched on memory bytecount")
 	}
 }
 

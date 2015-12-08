@@ -134,7 +134,7 @@ config:
 	expectedPlatConfig := `web:
   cgroup:
     cpus: 4
-    memory: 4G
+    memory: 4294967296
 `
 	Assert(t).AreEqual(expectedPlatConfig, string(platConfig), "the platform config didn't match")
 
