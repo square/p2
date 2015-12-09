@@ -51,7 +51,7 @@ func (app *fakeApplicator) GetLabels(labelType Type, id string) (Labeled, error)
 	return Labeled{
 		ID:        id,
 		LabelType: labelType,
-		Labels:    entry,
+		Labels:    copySet(entry),
 	}, nil
 }
 
@@ -68,10 +68,20 @@ func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type) 
 			results = append(results, Labeled{
 				ID:        id,
 				LabelType: labelType,
-				Labels:    set,
+				Labels:    copySet(set),
 			})
 		}
 	}
 
 	return results, nil
+}
+
+// avoid returning elements of the inner data map, otherwise concurrent callers
+// may cause races when mutating them
+func copySet(in labels.Set) labels.Set {
+	ret := make(labels.Set, len(in))
+	for k, v := range in {
+		ret[k] = v
+	}
+	return ret
 }
