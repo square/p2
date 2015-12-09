@@ -1,6 +1,8 @@
 package labels
 
 import (
+	"sync"
+
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 )
 
@@ -10,6 +12,9 @@ type fakeApplicatorData map[Type]map[string]labels.Set
 
 type fakeApplicator struct {
 	data fakeApplicatorData
+	// since entry() may mutate the map, every read can potentially trigger a
+	// write. no point using rwmutex here
+	mutex sync.Mutex
 }
 
 var _ Applicator = &fakeApplicator{}
@@ -30,23 +35,31 @@ func (app *fakeApplicator) entry(labelType Type, id string) map[string]string {
 }
 
 func (app *fakeApplicator) SetLabel(labelType Type, id, name, value string) error {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
 	entry := app.entry(labelType, id)
 	entry[name] = value
 	return nil
 }
 
 func (app *fakeApplicator) RemoveAllLabels(labelType Type, id string) error {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
 	delete(app.data[labelType], id)
 	return nil
 }
 
 func (app *fakeApplicator) RemoveLabel(labelType Type, id, name string) error {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
 	entry := app.entry(labelType, id)
 	delete(entry, name)
 	return nil
 }
 
 func (app *fakeApplicator) GetLabels(labelType Type, id string) (Labeled, error) {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
 	entry := app.entry(labelType, id)
 	return Labeled{
 		ID:        id,
@@ -56,6 +69,8 @@ func (app *fakeApplicator) GetLabels(labelType Type, id string) (Labeled, error)
 }
 
 func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
 	forType, ok := app.data[labelType]
 	if !ok {
 		return []Labeled{}, nil
