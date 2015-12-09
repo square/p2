@@ -284,6 +284,7 @@ func (c consulStore) WatchPods(keyPrefix string, quitChan <-chan struct{}, errCh
 
 	kvPairsChan := make(chan api.KVPairs)
 	go consulutil.WatchPrefix(keyPrefix, c.client.KV(), kvPairsChan, quitChan, errChan)
+WATCH_LOOP:
 	for kvPairs := range kvPairsChan {
 		manifests := make([]ManifestResult, 0, len(kvPairs))
 		for _, pair := range kvPairs {
@@ -294,6 +295,11 @@ func (c consulStore) WatchPods(keyPrefix string, quitChan <-chan struct{}, errCh
 					return
 				case errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value):
 				}
+				// do not send the partially built list, since we know it's incomplete
+				// and some callers may care about elements being removed
+				// TODO(sjung): those callers should probably be refactored to
+				// use NewKeyWatcher instead
+				continue WATCH_LOOP
 			} else {
 				manifests = append(manifests, ManifestResult{manifest, pair.Key})
 			}
