@@ -47,6 +47,9 @@ func (s consulStore) Get(id rcf.ID) (rollf.Update, error) {
 	if err != nil {
 		return rollf.Update{}, consulutil.NewKVError("get", key, err)
 	}
+	if kvp == nil {
+		return rollf.Update{}, nil
+	}
 
 	var ret rollf.Update
 	err = json.Unmarshal(kvp.Value, &ret)
