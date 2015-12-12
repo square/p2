@@ -55,6 +55,7 @@ type StatError error
 var (
 	NotRunning         StatError = errors.New("RunSV is not running and must be started")
 	SuperviseOkMissing           = errors.New("The supervise/ok file is missing")
+	Killed                       = errors.New("The process was forcibly killed")
 )
 
 func (sv *sv) waitForSupervision(service *Service) error {
@@ -166,6 +167,8 @@ func convertToErr(msg string, original error) (string, error) {
 		return msg, NotRunning
 	} else if strings.Contains(msg, "supervise/ok") {
 		return msg, SuperviseOkMissing
+	} else if len(msg) > 6 && msg[0:6] == "kill: " {
+		return msg, Killed
 	} else {
 		return msg, original
 	}
