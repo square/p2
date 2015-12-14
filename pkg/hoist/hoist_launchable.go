@@ -168,7 +168,7 @@ func (hl *Launchable) stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) er
 
 	for _, executable := range executables {
 		_, err := sv.Stop(&executable.Service, hl.RestartTimeout)
-		if err != nil {
+		if err != nil && err != runit.Killed {
 			// TODO: FAILURE SCENARIO (what should we do here?)
 			// 1) does `sv stop` ever exit nonzero?
 			// 2) should we keep stopping them all anyway?
@@ -193,7 +193,7 @@ func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv runit.SV) e
 		} else {
 			_, err = sv.Once(&executable.Service)
 		}
-		if err != nil && err != runit.SuperviseOkMissing {
+		if err != nil && err != runit.SuperviseOkMissing && err != runit.Killed {
 			return err
 		}
 	}
