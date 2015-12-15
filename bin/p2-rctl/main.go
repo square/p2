@@ -73,21 +73,19 @@ var (
 	cmdDisable = kingpin.Command(CMD_DISABLE, "Disable replication controller")
 	disableID  = cmdDisable.Arg("id", "replication controller uuid to disable").Required().String()
 
-	cmdRoll    = kingpin.Command(CMD_ROLL, "Rolling update from one replication controller to another")
-	rollOldID  = cmdRoll.Flag("old", "old replication controller uuid").Required().Short('o').String()
-	rollNewID  = cmdRoll.Flag("new", "new replication controller uuid").Required().Short('n').String()
-	rollWant   = cmdRoll.Flag("desired", "number of replicas desired").Required().Short('d').Int()
-	rollNeed   = cmdRoll.Flag("minimum", "minimum number of healthy replicas during update").Required().Short('m').Int()
-	rollDelete = cmdRoll.Flag("delete", "delete pods during update").Bool()
+	cmdRoll   = kingpin.Command(CMD_ROLL, "Rolling update from one replication controller to another")
+	rollOldID = cmdRoll.Flag("old", "old replication controller uuid").Required().Short('o').String()
+	rollNewID = cmdRoll.Flag("new", "new replication controller uuid").Required().Short('n').String()
+	rollWant  = cmdRoll.Flag("desired", "number of replicas desired").Required().Short('d').Int()
+	rollNeed  = cmdRoll.Flag("minimum", "minimum number of healthy replicas during update").Required().Short('m').Int()
 
 	cmdFarm = kingpin.Command(CMD_FARM, "Start farms for replication controllers and rolling updates")
 
-	cmdSchedup    = kingpin.Command(CMD_SCHEDUP, "Schedule new rolling update (will be run by farm)")
-	schedupOldID  = cmdSchedup.Flag("old", "old replication controller uuid").Required().Short('o').String()
-	schedupNewID  = cmdSchedup.Flag("new", "new replication controller uuid").Required().Short('n').String()
-	schedupWant   = cmdSchedup.Flag("desired", "number of replicas desired").Required().Short('d').Int()
-	schedupNeed   = cmdSchedup.Flag("minimum", "minimum number of healthy replicas during update").Required().Short('m').Int()
-	schedupDelete = cmdSchedup.Flag("delete", "delete pods during update").Bool()
+	cmdSchedup   = kingpin.Command(CMD_SCHEDUP, "Schedule new rolling update (will be run by farm)")
+	schedupOldID = cmdSchedup.Flag("old", "old replication controller uuid").Required().Short('o').String()
+	schedupNewID = cmdSchedup.Flag("new", "new replication controller uuid").Required().Short('n').String()
+	schedupWant  = cmdSchedup.Flag("desired", "number of replicas desired").Required().Short('d').Int()
+	schedupNeed  = cmdSchedup.Flag("minimum", "minimum number of healthy replicas during update").Required().Short('m').Int()
 )
 
 func main() {
@@ -147,11 +145,11 @@ func main() {
 	case CMD_DISABLE:
 		rctl.Disable(*disableID)
 	case CMD_ROLL:
-		rctl.RollingUpdate(*rollOldID, *rollNewID, *rollWant, *rollNeed, *rollDelete)
+		rctl.RollingUpdate(*rollOldID, *rollNewID, *rollWant, *rollNeed)
 	case CMD_FARM:
 		rctl.Farm()
 	case CMD_SCHEDUP:
-		rctl.ScheduleUpdate(*schedupOldID, *schedupNewID, *schedupWant, *schedupNeed, *schedupDelete)
+		rctl.ScheduleUpdate(*schedupOldID, *schedupNewID, *schedupWant, *schedupNeed)
 	}
 }
 
@@ -270,7 +268,7 @@ func (r RCtl) Disable(id string) {
 	r.logger.WithField("id", id).Infoln("Disabled replication controller")
 }
 
-func (r RCtl) RollingUpdate(oldID, newID string, want, need int, deletes bool) {
+func (r RCtl) RollingUpdate(oldID, newID string, want, need int) {
 	if want < need {
 		r.logger.WithFields(logrus.Fields{
 			"want": want,
@@ -299,7 +297,6 @@ func (r RCtl) RollingUpdate(oldID, newID string, want, need int, deletes bool) {
 			NewRC:           rc_fields.ID(newID),
 			DesiredReplicas: want,
 			MinimumReplicas: need,
-			DeletePods:      deletes,
 		}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, lock).Run(quit)
 		close(result)
 	}()
@@ -353,13 +350,12 @@ func (r RCtl) Farm() {
 	}, r.kps, r.rls, r.rcs, rlSub.Chan(), r.logger).Start(nil)
 }
 
-func (r RCtl) ScheduleUpdate(oldID, newID string, want, need int, deletes bool) {
+func (r RCtl) ScheduleUpdate(oldID, newID string, want, need int) {
 	err := r.rls.Put(roll_fields.Update{
 		OldRC:           rc_fields.ID(oldID),
 		NewRC:           rc_fields.ID(newID),
 		DesiredReplicas: want,
 		MinimumReplicas: need,
-		DeletePods:      deletes,
 	})
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not create rolling update")

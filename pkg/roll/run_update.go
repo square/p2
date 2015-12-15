@@ -174,12 +174,10 @@ ROLL_LOOP:
 					"new":  newNodes,
 					"next": next,
 				}).Infoln("Undergoing next update")
-				if u.DeletePods {
-					err = u.rcs.AddDesiredReplicas(u.OldRC, -next)
-					if err != nil {
-						u.logger.WithError(err).Errorln("Could not decrement old replica count")
-						break
-					}
+				err = u.rcs.AddDesiredReplicas(u.OldRC, -next)
+				if err != nil {
+					u.logger.WithError(err).Errorln("Could not decrement old replica count")
+					break
 				}
 				err = u.rcs.AddDesiredReplicas(u.NewRC, next)
 				if err != nil {
@@ -268,17 +266,16 @@ func (u update) unlockRCs(done <-chan struct{}) {
 	wg.Wait()
 }
 
+// enable sets the old & new RCs to a known-good state to start a rolling update:
+// the old RC should be disabled and the new RC should be enabled.
 func (u update) enable() error {
-	err := u.rcs.Enable(u.NewRC)
+	// Disable the old RC first to make sure that the two RCs don't fight each other.
+	err := u.rcs.Disable(u.OldRC)
 	if err != nil {
 		return err
 	}
 
-	if !u.DeletePods {
-		err = u.rcs.Disable(u.OldRC)
-	} else {
-		err = u.rcs.Enable(u.OldRC)
-	}
+	err = u.rcs.Enable(u.NewRC)
 	if err != nil {
 		return err
 	}
@@ -334,7 +331,7 @@ func (u update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNode
 // - want: the number of nodes desired on the new RC (ie the target)
 // - need: the number of nodes that must always be up (ie the minimum)
 // given these four arguments, rollAlgorithm returns the number of nodes to add
-// to the new RC (and, if DeletePods=true, to delete from the old)
+// to the new RC and to delete from the old
 //
 // returns zero under the following circumstances:
 // - new >= want (the update is done)
