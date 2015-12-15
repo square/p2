@@ -133,8 +133,8 @@ func loadToken(path string) (string, error) {
 	return strings.TrimSpace(string(token)), nil
 }
 
-// getTLSClient constructs an HTTP client that uses keys/certificates in the given files.
-func getTLSClient(certFile, keyFile, caFile string) (*http.Client, error) {
+// getTLSConfig constructs a tls.Config that uses keys/certificates in the given files.
+func getTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 	var certs []tls.Certificate
 	if certFile != "" || keyFile != "" {
 		if certFile == "" || keyFile == "" {
@@ -161,7 +161,7 @@ func getTLSClient(certFile, keyFile, caFile string) (*http.Client, error) {
 	}
 
 	if len(certs) == 0 && cas == nil {
-		return http.DefaultClient, nil
+		return nil, nil
 	}
 
 	tlsConfig := &tls.Config{
@@ -169,14 +169,7 @@ func getTLSClient(certFile, keyFile, caFile string) (*http.Client, error) {
 		ClientCAs:    cas,
 		RootCAs:      cas,
 	}
-	return &http.Client{Transport: &http.Transport{
-		TLSClientConfig: tlsConfig,
-		// same dialer as http.DefaultTransport
-		Dial: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).Dial,
-	}}, nil
+	return tlsConfig, nil
 }
 
 // GetStore constructs a key-value store from the given configuration.
@@ -197,7 +190,7 @@ func (c *PreparerConfig) getOpts() (kp.Options, error) {
 	}
 
 	if c.ConsulHttps {
-		client, err = c.GetClient()
+		client, err = c.GetClient(30 * time.Second) // 30 seconds is the net/http default
 		if err != nil {
 			return kp.Options{}, err
 		}
@@ -211,8 +204,19 @@ func (c *PreparerConfig) getOpts() (kp.Options, error) {
 	}, err
 }
 
-func (c *PreparerConfig) GetClient() (*http.Client, error) {
-	return getTLSClient(c.CertFile, c.KeyFile, c.CAFile)
+func (c *PreparerConfig) GetClient(cxnTimeout time.Duration) (*http.Client, error) {
+	tlsConfig, err := getTLSConfig(c.CertFile, c.KeyFile, c.CAFile)
+	if err != nil {
+		return nil, err
+	}
+	return &http.Client{Transport: &http.Transport{
+		TLSClientConfig: tlsConfig,
+		// same dialer as http.DefaultTransport
+		Dial: (&net.Dialer{
+			Timeout:   cxnTimeout,
+			KeepAlive: cxnTimeout,
+		}).Dial,
+	}}, nil
 }
 
 func addHooks(preparerConfig *PreparerConfig, logger logging.Logger) {
