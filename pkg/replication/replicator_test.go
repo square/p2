@@ -10,11 +10,11 @@ import (
 )
 
 func TestInitializeReplication(t *testing.T) {
-	replicator, store, server := testReplicatorAndServer(t)
-	defer server.Stop()
+	replicator, store, f := testReplicatorAndServer(t)
+	defer f.Stop()
 
 	// Make the kv store look like preparer is installed on test nodes
-	setupPreparers(server)
+	setupPreparers(f.Server)
 
 	// err being nil ensures that checking preparers and locking the hosts
 	// succeeded
@@ -39,8 +39,8 @@ func TestInitializeReplication(t *testing.T) {
 }
 
 func TestInitializeReplicationFailsIfNoPreparers(t *testing.T) {
-	replicator, _, server := testReplicatorAndServer(t)
-	defer server.Stop()
+	replicator, _, f := testReplicatorAndServer(t)
+	defer f.Stop()
 
 	// We expect an error here because the reality keys for the preparer
 	// have no data, which in production would mean that the preparer is
@@ -61,14 +61,14 @@ func TestInitializeReplicationFailsIfNoPreparers(t *testing.T) {
 }
 
 func TestInitializeReplicationFailsIfLockExists(t *testing.T) {
-	replicator, store, server := testReplicatorAndServer(t)
-	defer server.Stop()
+	replicator, store, f := testReplicatorAndServer(t)
+	defer f.Stop()
 
 	// This makes it look like the preparers are installed on the hosts
 	// we're deploying to
 	for _, node := range testNodes {
 		key := fmt.Sprintf("reality/%s/p2-preparer", node)
-		server.SetKV(key, []byte(testPreparerManifest))
+		f.Server.SetKV(key, []byte(testPreparerManifest))
 	}
 
 	// Claim a lock on a host and verify that InitializeReplication fails
@@ -99,14 +99,14 @@ func TestInitializeReplicationFailsIfLockExists(t *testing.T) {
 }
 
 func TestInitializeReplicationCanOverrideLocks(t *testing.T) {
-	replicator, store, server := testReplicatorAndServer(t)
-	defer server.Stop()
+	replicator, store, f := testReplicatorAndServer(t)
+	defer f.Stop()
 
 	// This makes it look like the preparers are installed on the hosts
 	// we're deploying to
 	for _, node := range testNodes {
 		key := fmt.Sprintf("reality/%s/p2-preparer", node)
-		server.SetKV(key, []byte(testPreparerManifest))
+		f.Server.SetKV(key, []byte(testPreparerManifest))
 	}
 
 	// Claim a lock on a host and verify that InitializeReplication fails

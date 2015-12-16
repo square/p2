@@ -13,11 +13,11 @@ import (
 )
 
 func TestEnact(t *testing.T) {
-	replicator, _, server := testReplicatorAndServer(t)
-	defer server.Stop()
+	replicator, _, f := testReplicatorAndServer(t)
+	defer f.Stop()
 
 	// Make the kv store look like preparer is installed on test nodes
-	setupPreparers(server)
+	setupPreparers(f.Server)
 
 	replication, errCh, err := replicator.InitializeReplication(false)
 	if err != nil {
@@ -27,7 +27,7 @@ func TestEnact(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	failIfErrors(errCh, doneCh, t)
-	imitatePreparers(server, doneCh)
+	imitatePreparers(f.Server, doneCh)
 
 	go func() {
 		replication.Enact()
@@ -42,8 +42,8 @@ func TestEnact(t *testing.T) {
 
 func TestWaitsForHealthy(t *testing.T) {
 	active := 1
-	store, server := makeStore(t)
-	defer server.Stop()
+	store, f := makeStore(t)
+	defer f.Stop()
 
 	healthChecker, resultsCh := channelHealthChecker(testNodes, t)
 	threshold := health.Passing
@@ -62,7 +62,7 @@ func TestWaitsForHealthy(t *testing.T) {
 	}
 
 	// Make the kv store look like preparer is installed on test nodes
-	setupPreparers(server)
+	setupPreparers(f.Server)
 
 	replication, errCh, err := replicator.InitializeReplication(false)
 	if err != nil {
@@ -72,7 +72,7 @@ func TestWaitsForHealthy(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	failIfErrors(errCh, doneCh, t)
-	imitatePreparers(server, doneCh)
+	imitatePreparers(f.Server, doneCh)
 
 	// If replication finishes before we mark all nodes as healthy, the
 	// test fails. This bool tracks whether replication ending is okay
@@ -133,8 +133,8 @@ func TestWaitsForHealthy(t *testing.T) {
 
 func TestReplicationStopsIfCanceled(t *testing.T) {
 	active := 1
-	store, server := makeStore(t)
-	defer server.Stop()
+	store, f := makeStore(t)
+	defer f.Stop()
 
 	healthChecker, resultsCh := channelHealthChecker(testNodes, t)
 	threshold := health.Passing
@@ -154,7 +154,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 	}
 
 	// Make the kv store look like preparer is installed on test nodes
-	setupPreparers(server)
+	setupPreparers(f.Server)
 
 	replication, errCh, err := replicator.InitializeReplication(false)
 	if err != nil {
@@ -164,7 +164,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	failIfErrors(errCh, doneCh, t)
-	imitatePreparers(server, doneCh)
+	imitatePreparers(f.Server, doneCh)
 
 	// If replication finishes before we cancel it, test fails. This bool
 	// tracks whether replication ending is okay
@@ -205,7 +205,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 
 	// One node should have been updated because active == 1, the other
 	// should not have been because health never passed
-	realityBytes := server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId))
+	realityBytes := f.Server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId))
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {
 		t.Fatalf("Unable to get bytes from manifest: %s", err)
@@ -215,7 +215,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 		t.Fatalf("Expected reality for %s to be %s: was %s", testNodes[0], string(manifestBytes), string(realityBytes))
 	}
 
-	realityBytes = server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[1], testPodId))
+	realityBytes = f.Server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[1], testPodId))
 	if bytes.Equal(realityBytes, manifestBytes) {
 		t.Fatalf("The second node shouldn't have been deployed to but it was")
 	}
@@ -223,15 +223,15 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 
 func TestStopsIfLockDestroyed(t *testing.T) {
 	active := 1
-	store, server := makeStore(t)
-	defer server.Stop()
+	store, f := makeStore(t)
+	defer f.Stop()
 
 	healthChecker, resultsCh := channelHealthChecker(testNodes, t)
 	threshold := health.Passing
 	manifest := basicManifest()
 
 	// Make the kv store look like preparer is installed on test nodes
-	setupPreparers(server)
+	setupPreparers(f.Server)
 
 	// Create the replication manually for this test so we can trigger lock
 	// renewals on a faster interval (to keep test short)
@@ -278,7 +278,7 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 			t.Fatalf("Did not get expected lock renewal error within timeout")
 		}
 	}()
-	imitatePreparers(server, doneCh)
+	imitatePreparers(f.Server, doneCh)
 
 	go func() {
 		replication.Enact()
@@ -328,7 +328,7 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 	go func() {
 		realityKey := fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId)
 		for range time.Tick(10 * time.Millisecond) {
-			if bytes.Equal(server.GetKV(realityKey), manifestBytes) {
+			if bytes.Equal(f.Server.GetKV(realityKey), manifestBytes) {
 				close(firstNodeDeployed)
 				return
 			}
@@ -381,13 +381,13 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 
 	// One node should have been updated because active == 1, the other
 	// should not have been because health never passed
-	realityBytes := server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId))
+	realityBytes := f.Server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId))
 
 	if !bytes.Equal(realityBytes, manifestBytes) {
 		t.Fatalf("Expected reality for %s to be %s: was %s", testNodes[0], string(manifestBytes), string(realityBytes))
 	}
 
-	realityBytes = server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[1], testPodId))
+	realityBytes = f.Server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[1], testPodId))
 	if bytes.Equal(realityBytes, manifestBytes) {
 		t.Fatalf("The second node shouldn't have been deployed to but it was")
 	}

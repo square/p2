@@ -2,10 +2,9 @@ package replication
 
 import (
 	"fmt"
-	"io/ioutil"
-	"sync/atomic"
 	"testing"
 
+	"github.com/square/p2/pkg/consultest"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
@@ -24,9 +23,10 @@ const (
 	testPreparerManifest = `id: p2-preparer`
 )
 
-func testReplicatorAndServer(t *testing.T) (Replicator, kp.Store, *testutil.TestServer) {
+func testReplicatorAndServer(t *testing.T) (Replicator, kp.Store, consultest.Fixture) {
 	active := 1
-	store, server := makeStore(t)
+	store, f := makeStore(t)
+	defer f.StopOnPanic()
 
 	healthChecker := happyHealthChecker()
 	threshold := health.Passing
@@ -44,47 +44,14 @@ func testReplicatorAndServer(t *testing.T) (Replicator, kp.Store, *testutil.Test
 	if err != nil {
 		t.Fatalf("Unable to initialize replicator: %s", err)
 	}
-	return replicator, store, server
+	return replicator, store, f
 }
 
-func makeStore(t *testing.T) (kp.Store, *testutil.TestServer) {
-	if testing.Short() {
-		t.Skip("skipping test dependendent on consul because of short mode")
-	}
-
-	// testutil.NewTestServerConfig will skip the test if "consul" isn't in the system path.
-	// We'd rather the test fail.
-	defer func() {
-		if t.Skipped() {
-			t.Fatalf("test skipped by testutil package")
-		}
-	}()
-
-	// Create server
-	server := testutil.NewTestServerConfig(t, func(c *testutil.TestServerConfig) {
-		// consul output in test output is noisy
-		c.Stdout = ioutil.Discard
-		c.Stderr = ioutil.Discard
-
-		// If ports are left to their defaults, this test conflicts
-		// with the test consul servers in pkg/kp
-		var offset uint64
-		idx := int(atomic.AddUint64(&offset, 1))
-		c.Ports = &testutil.TestPortConfig{
-			DNS:     26000 + idx,
-			HTTP:    27000 + idx,
-			RPC:     28000 + idx,
-			SerfLan: 29000 + idx,
-			SerfWan: 30000 + idx,
-			Server:  31000 + idx,
-		}
-	})
-
-	client := kp.NewConsulClient(kp.Options{
-		Address: server.HTTPAddr,
-	})
-	store := kp.NewConsulStore(client)
-	return store, server
+func makeStore(t *testing.T) (kp.Store, consultest.Fixture) {
+	f := consultest.NewFixture(t)
+	defer f.StopOnPanic()
+	store := kp.NewConsulStore(f.Client)
+	return store, f
 }
 
 // Adds preparer manifest to reality tree to fool replication library into
