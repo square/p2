@@ -2,6 +2,7 @@ package roll
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
@@ -87,24 +88,15 @@ func RetryOrQuit(f func() error, quit <-chan struct{}, logger logging.Logger, er
 func (u update) Run(quit <-chan struct{}) (ret bool) {
 	u.logger.NoFields().Debugln("Locking")
 	// TODO: implement API for blocking locks and use that instead of retrying
-	if !RetryOrQuit(u.lockRCs, quit, u.logger, "Could not lock update") {
+	if !RetryOrQuit(
+		func() error { return u.lockRCs(quit) },
+		quit,
+		u.logger,
+		"Could not lock update",
+	) {
 		return
 	}
-
-	// release both locks on termination
-	defer func() {
-		// failure to unlock probably means:
-		// - session was already invalidated, lock was already released when
-		//   that happened
-		// - network error, session will probably time out soon
-		// either way no point retrying
-		if err := u.lock.Unlock(u.lockPath(u.OldRC)); err != nil {
-			u.logger.WithError(err).Warnln("Could not unlock old RC for updates")
-		}
-		if err := u.lock.Unlock(u.lockPath(u.NewRC)); err != nil {
-			u.logger.WithError(err).Warnln("Could not unlock new RC for updates")
-		}
-	}()
+	defer u.unlockRCs(quit)
 
 	u.logger.NoFields().Debugln("Enabling")
 	if !RetryOrQuit(u.enable, quit, u.logger, "Could not enable/disable RCs") {
@@ -226,7 +218,7 @@ func (u update) lockPath(id rcf.ID) string {
 	return kp.LockPath(kp.RCPath(id.String(), "update"))
 }
 
-func (u update) lockRCs() error {
+func (u update) lockRCs(done <-chan struct{}) error {
 	newPath := u.lockPath(u.NewRC)
 	oldPath := u.lockPath(u.OldRC)
 
@@ -238,16 +230,42 @@ func (u update) lockRCs() error {
 	}
 
 	err = u.lock.Lock(oldPath)
+	if err != nil {
+		// The second key couldn't be locked, so release the first key before retrying.
+		RetryOrQuit(
+			func() error { return u.lock.Unlock(newPath) },
+			done,
+			u.logger,
+			fmt.Sprintf("unlocking %s", newPath),
+		)
+	}
 	if _, ok := err.(kp.AlreadyLockedError); ok {
-		// release the other lock - no point checking this error, we can't
-		// really act on it
-		u.lock.Unlock(newPath)
 		return fmt.Errorf("could not lock old %s", u.OldRC)
 	} else if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// unlockRCs releases the locks on the old and new RCs. To avoid a system-wide deadlock in
+// RCs,  this method ensures that the locks are always released, either by retying until
+// individual releases are successful or until the session is reset.
+func (u update) unlockRCs(done <-chan struct{}) {
+	wg := sync.WaitGroup{}
+	for _, path := range []string{u.lockPath(u.NewRC), u.lockPath(u.OldRC)} {
+		wg.Add(1)
+		go func(path string) {
+			RetryOrQuit(
+				func() error { return u.lock.Unlock(path) },
+				done,
+				u.logger,
+				fmt.Sprintf("unlocking %s", path),
+			)
+			wg.Done()
+		}(path)
+	}
+	wg.Wait()
 }
 
 func (u update) enable() error {
