@@ -153,6 +153,17 @@ func main() {
 	}
 }
 
+// SessionName returns a node identifier for use when creating Consul sessions.
+func SessionName() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown hostname"
+	}
+	// Current time of "Jan 2, 2006, 15:04:05" turns into "2006-01-02-15-04-05"
+	timeStr := time.Now().Format("2006-01-02-15-04-05")
+	return fmt.Sprintf("p2-rctl:%s:%s", hostname, timeStr)
+}
+
 // rctl is a struct for the data structures shared between commands
 // each member function represents a single command that takes over from main
 // and terminates the program on failure
@@ -279,6 +290,7 @@ func (r RCtl) RollingUpdate(oldID, newID string, want, need int) {
 	quit := make(chan struct{})
 
 	go kp.ConsulSessionManager(api.SessionEntry{
+		Name:      SessionName(),
 		LockDelay: 5 * time.Second,
 		Behavior:  api.SessionBehaviorDelete,
 		TTL:       "15s",
@@ -330,6 +342,7 @@ LOOP:
 func (r RCtl) Farm() {
 	sessions := make(chan string)
 	go kp.ConsulSessionManager(api.SessionEntry{
+		Name:      SessionName(),
 		LockDelay: 5 * time.Second,
 		Behavior:  api.SessionBehaviorDelete,
 		TTL:       "15s",
