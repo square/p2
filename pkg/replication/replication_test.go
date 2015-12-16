@@ -3,6 +3,7 @@ package replication
 import (
 	"bytes"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,11 +14,12 @@ import (
 )
 
 func TestEnact(t *testing.T) {
-	replicator, _, server := testReplicatorAndServer(t)
-	defer server.Stop()
+	var wg sync.WaitGroup
+	replicator, _, f := testReplicatorAndServer(t)
+	defer f.Stop()
 
 	// Make the kv store look like preparer is installed on test nodes
-	setupPreparers(server)
+	setupPreparers(f.Server)
 
 	replication, errCh, err := replicator.InitializeReplication(false)
 	if err != nil {
@@ -27,7 +29,7 @@ func TestEnact(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	failIfErrors(errCh, doneCh, t)
-	imitatePreparers(server, doneCh)
+	imitatePreparers(f.Server, doneCh, &wg)
 
 	go func() {
 		replication.Enact()
@@ -38,12 +40,14 @@ func TestEnact(t *testing.T) {
 		t.Fatalf("Replication did not finish within timeout period")
 	case <-doneCh:
 	}
+	wg.Wait()
 }
 
 func TestWaitsForHealthy(t *testing.T) {
+	var wg sync.WaitGroup
 	active := 1
-	store, server := makeStore(t)
-	defer server.Stop()
+	store, f := makeStore(t)
+	defer f.Stop()
 
 	healthChecker, resultsCh := channelHealthChecker(testNodes, t)
 	threshold := health.Passing
@@ -62,7 +66,7 @@ func TestWaitsForHealthy(t *testing.T) {
 	}
 
 	// Make the kv store look like preparer is installed on test nodes
-	setupPreparers(server)
+	setupPreparers(f.Server)
 
 	replication, errCh, err := replicator.InitializeReplication(false)
 	if err != nil {
@@ -72,7 +76,7 @@ func TestWaitsForHealthy(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	failIfErrors(errCh, doneCh, t)
-	imitatePreparers(server, doneCh)
+	imitatePreparers(f.Server, doneCh, &wg)
 
 	// If replication finishes before we mark all nodes as healthy, the
 	// test fails. This bool tracks whether replication ending is okay
@@ -129,12 +133,14 @@ func TestWaitsForHealthy(t *testing.T) {
 		t.Fatalf("Replication took longer than test timeout")
 	case <-doneCh:
 	}
+	wg.Wait()
 }
 
 func TestReplicationStopsIfCanceled(t *testing.T) {
+	var wg sync.WaitGroup
 	active := 1
-	store, server := makeStore(t)
-	defer server.Stop()
+	store, f := makeStore(t)
+	defer f.Stop()
 
 	healthChecker, resultsCh := channelHealthChecker(testNodes, t)
 	threshold := health.Passing
@@ -154,7 +160,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 	}
 
 	// Make the kv store look like preparer is installed on test nodes
-	setupPreparers(server)
+	setupPreparers(f.Server)
 
 	replication, errCh, err := replicator.InitializeReplication(false)
 	if err != nil {
@@ -164,7 +170,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	failIfErrors(errCh, doneCh, t)
-	imitatePreparers(server, doneCh)
+	imitatePreparers(f.Server, doneCh, &wg)
 
 	// If replication finishes before we cancel it, test fails. This bool
 	// tracks whether replication ending is okay
@@ -205,7 +211,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 
 	// One node should have been updated because active == 1, the other
 	// should not have been because health never passed
-	realityBytes := server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId))
+	realityBytes := f.Server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId))
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {
 		t.Fatalf("Unable to get bytes from manifest: %s", err)
@@ -215,23 +221,25 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 		t.Fatalf("Expected reality for %s to be %s: was %s", testNodes[0], string(manifestBytes), string(realityBytes))
 	}
 
-	realityBytes = server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[1], testPodId))
+	realityBytes = f.Server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[1], testPodId))
 	if bytes.Equal(realityBytes, manifestBytes) {
 		t.Fatalf("The second node shouldn't have been deployed to but it was")
 	}
+	wg.Wait()
 }
 
 func TestStopsIfLockDestroyed(t *testing.T) {
+	var wg sync.WaitGroup
 	active := 1
-	store, server := makeStore(t)
-	defer server.Stop()
+	store, f := makeStore(t)
+	defer f.Stop()
 
 	healthChecker, resultsCh := channelHealthChecker(testNodes, t)
 	threshold := health.Passing
 	manifest := basicManifest()
 
 	// Make the kv store look like preparer is installed on test nodes
-	setupPreparers(server)
+	setupPreparers(f.Server)
 
 	// Create the replication manually for this test so we can trigger lock
 	// renewals on a faster interval (to keep test short)
@@ -278,7 +286,7 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 			t.Fatalf("Did not get expected lock renewal error within timeout")
 		}
 	}()
-	imitatePreparers(server, doneCh)
+	imitatePreparers(f.Server, doneCh, &wg)
 
 	go func() {
 		replication.Enact()
@@ -328,7 +336,7 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 	go func() {
 		realityKey := fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId)
 		for range time.Tick(10 * time.Millisecond) {
-			if bytes.Equal(server.GetKV(realityKey), manifestBytes) {
+			if bytes.Equal(f.Server.GetKV(realityKey), manifestBytes) {
 				close(firstNodeDeployed)
 				return
 			}
@@ -381,21 +389,22 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 
 	// One node should have been updated because active == 1, the other
 	// should not have been because health never passed
-	realityBytes := server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId))
+	realityBytes := f.Server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId))
 
 	if !bytes.Equal(realityBytes, manifestBytes) {
 		t.Fatalf("Expected reality for %s to be %s: was %s", testNodes[0], string(manifestBytes), string(realityBytes))
 	}
 
-	realityBytes = server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[1], testPodId))
+	realityBytes = f.Server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[1], testPodId))
 	if bytes.Equal(realityBytes, manifestBytes) {
 		t.Fatalf("The second node shouldn't have been deployed to but it was")
 	}
+	wg.Wait()
 }
 
 // Imitate preparers by copying data from /intent tree to /reality tree
 // to simulate deployment
-func imitatePreparers(server *testutil.TestServer, quitCh <-chan struct{}) {
+func imitatePreparers(server *testutil.TestServer, quitCh <-chan struct{}, wg *sync.WaitGroup) {
 	// testutil.Server calls t.Fatalf() if a key doesn't exist, so put some
 	// dummy data into /intent and /reality for the test pod so we don't
 	// accidentally fail tests by merely testing a key
@@ -408,7 +417,9 @@ func imitatePreparers(server *testutil.TestServer, quitCh <-chan struct{}) {
 	}
 
 	// Now do the actual copies
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case <-quitCh:

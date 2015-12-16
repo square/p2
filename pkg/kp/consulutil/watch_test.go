@@ -2,13 +2,12 @@ package consulutil
 
 import (
 	"bytes"
-	"net"
-	"strconv"
 	"sync"
 	"testing"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/testutil"
+
+	"github.com/square/p2/pkg/consultest"
 )
 
 // PairRecord is a record of a single update to the Consul KV store
@@ -133,26 +132,6 @@ func kvEqual(a, b *api.KVPair) bool {
 	return a.Key == b.Key && (bytes.Compare(a.Value, b.Value) == 0)
 }
 
-func getPorts(t *testing.T, count int) []int {
-	ports := make([]int, count)
-	for i := 0; i < count; i++ {
-		l, err := net.Listen("tcp", "localhost:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer l.Close()
-		_, portStr, err := net.SplitHostPort(l.Addr().String())
-		if err != nil {
-			t.Fatal(err)
-		}
-		ports[i], err = strconv.Atoi(portStr)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	return ports
-}
-
 func testLogger(t *testing.T) chan<- error {
 	c := make(chan error)
 	go func() {
@@ -163,43 +142,13 @@ func testLogger(t *testing.T) chan<- error {
 	return c
 }
 
-func initTestServer(t *testing.T) (*testutil.TestServer, *api.Client) {
-	if testing.Short() {
-		t.Skip("skipping test dependent on consul because of short mode")
-	}
-	defer func() {
-		// if consul is not in the $PATH, NewTestServer will skip the test,
-		// which should be treated as an error
-		if t.Skipped() {
-			t.Error("failing skipped test")
-		}
-	}()
-	server := testutil.NewTestServerConfig(t, func(c *testutil.TestServerConfig) {
-		ports := getPorts(t, 6)
-		c.Ports = &testutil.TestPortConfig{
-			DNS:     ports[0],
-			HTTP:    ports[1],
-			RPC:     ports[2],
-			SerfLan: ports[3],
-			SerfWan: ports[4],
-			Server:  ports[5],
-		}
-	})
-	client, err := api.NewClient(&api.Config{
-		Address: server.HTTPAddr,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return server, client
-}
-
 // TestWatchPrefix verifies some basic operations of the WatchPrefix() funciton. It should
 // find existing data, send new updates when the data changes, and ignore changes outside
 // its prefix.
 func TestWatchPrefix(t *testing.T) {
-	server, client := initTestServer(t)
-	defer server.Stop()
+	t.Parallel()
+	f := consultest.NewFixture(t)
+	defer f.Stop()
 
 	done := make(chan struct{})
 	defer func() {
@@ -214,20 +163,20 @@ func TestWatchPrefix(t *testing.T) {
 	kv3a := &api.KVPair{Key: "something", Value: []byte("different")}
 
 	// Process existing data
-	client.KV().Put(kv1a, nil)
-	go WatchPrefix("prefix/", client.KV(), pairsChan, done, testLogger(t))
+	f.Client.KV().Put(kv1a, nil)
+	go WatchPrefix("prefix/", f.Client.KV(), pairsChan, done, testLogger(t))
 	pairs := kvToMap(<-pairsChan)
 	if !kvMatch(pairs, kv1a) {
 		t.Error("existing data not recognized")
 	}
 
 	// Get an updates when the data changes (create, modify, delete)
-	client.KV().Put(kv1b, nil)
+	f.Client.KV().Put(kv1b, nil)
 	pairs = kvToMap(<-pairsChan)
 	if !kvMatch(pairs, kv1b) {
 		t.Error("value not updated")
 	}
-	client.KV().Put(kv2a, nil)
+	f.Client.KV().Put(kv2a, nil)
 	pairs = kvToMap(<-pairsChan)
 	if !kvMatch(pairs, kv2a) {
 		t.Error("did not find new value")
@@ -235,15 +184,15 @@ func TestWatchPrefix(t *testing.T) {
 	if !kvMatch(pairs, kv1b) {
 		t.Error("old value disappeared")
 	}
-	client.KV().Delete(kv1a.Key, nil)
+	f.Client.KV().Delete(kv1a.Key, nil)
 	pairs = kvToMap(<-pairsChan)
 	if _, ok := pairs[kv1a.Key]; ok {
 		t.Error("did not register deletion")
 	}
 
 	// The watcher should ignore kv3a, which is outside its prefix
-	client.KV().Put(kv3a, nil)
-	client.KV().Delete(kv2a.Key, nil)
+	f.Client.KV().Put(kv3a, nil)
+	f.Client.KV().Delete(kv2a.Key, nil)
 	pairs = kvToMap(<-pairsChan)
 	if _, ok := pairs[kv3a.Key]; ok {
 		t.Error("found a key with the wrong prefix")
@@ -259,8 +208,9 @@ func TestWatchPrefix(t *testing.T) {
 }
 
 func TestWatchSingle(t *testing.T) {
-	server, client := initTestServer(t)
-	defer server.Stop()
+	t.Parallel()
+	f := consultest.NewFixture(t)
+	defer f.Stop()
 
 	done := make(chan struct{})
 	defer func() {
@@ -274,28 +224,28 @@ func TestWatchSingle(t *testing.T) {
 	kv2a := &api.KVPair{Key: "hello/goodbye", Value: []byte("foo")}
 
 	// Process existing data
-	client.KV().Put(kv1a, nil)
-	go WatchSingle("hello", client.KV(), kvpChan, done, testLogger(t))
+	f.Client.KV().Put(kv1a, nil)
+	go WatchSingle("hello", f.Client.KV(), kvpChan, done, testLogger(t))
 	if !kvEqual(kv1a, <-kvpChan) {
 		t.Error("existing data not recognized")
 	}
 
 	// Get updates when the data changes (modify, delete, create)
-	client.KV().Put(kv1b, nil)
+	f.Client.KV().Put(kv1b, nil)
 	if !kvEqual(kv1b, <-kvpChan) {
 		t.Error("value not updated")
 	}
-	client.KV().Delete("hello", nil)
+	f.Client.KV().Delete("hello", nil)
 	if !kvEqual(nil, <-kvpChan) {
 		t.Error("value not deleted")
 	}
-	client.KV().Put(kv1a, nil)
+	f.Client.KV().Put(kv1a, nil)
 	if !kvEqual(kv1a, <-kvpChan) {
 		t.Error("value not recreated")
 	}
 
 	// Ignore other keys
-	client.KV().Put(kv2a, nil)
+	f.Client.KV().Put(kv2a, nil)
 	select {
 	case <-kvpChan:
 		t.Error("found a key that was not being watched")

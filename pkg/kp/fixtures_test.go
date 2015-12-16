@@ -5,45 +5,26 @@ import (
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/testutil"
+
+	"github.com/square/p2/pkg/consultest"
 )
 
 type ConsulTestFixture struct {
-	TestServer *testutil.TestServer
-	Store      Store
-	Client     *api.Client
-	T          *testing.T
+	consultest.Fixture
+	Store Store
 }
 
 // Create a new test fixture that spins up a local Consul server.
 func NewConsulTestFixture(t *testing.T) *ConsulTestFixture {
-	if testing.Short() {
-		t.Skip("skipping test dependent on consul because of short mode")
-	}
-
-	// testutil.NewTestServerConfig will skip the test if "consul" isn't in the system path.
-	// We'd rather the test fail.
-	defer func() {
-		if t.Skipped() {
-			t.Error("failing skipped test")
-		}
-	}()
-	server := testutil.NewTestServer(t)
-	client := NewConsulClient(Options{
-		Address: server.HTTPAddr,
-	})
-	store := NewConsulStore(client)
-	return &ConsulTestFixture{
-		TestServer: server,
-		Store:      store,
-		Client:     client,
-		T:          t,
-	}
+	f := new(ConsulTestFixture)
+	f.Fixture = consultest.NewFixture(t)
+	defer f.Fixture.StopOnPanic()
+	f.Store = NewConsulStore(f.Client)
+	return f
 }
 
 func (f *ConsulTestFixture) Close() {
-	f.TestServer.Stop()
-	time.Sleep(50 * time.Millisecond)
+	f.Fixture.Stop()
 }
 
 func (f *ConsulTestFixture) CreateSession() string {
