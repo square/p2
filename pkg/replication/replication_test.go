@@ -3,6 +3,7 @@ package replication
 import (
 	"bytes"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 )
 
 func TestEnact(t *testing.T) {
+	var wg sync.WaitGroup
 	replicator, _, f := testReplicatorAndServer(t)
 	defer f.Stop()
 
@@ -27,7 +29,7 @@ func TestEnact(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	failIfErrors(errCh, doneCh, t)
-	imitatePreparers(f.Server, doneCh)
+	imitatePreparers(f.Server, doneCh, &wg)
 
 	go func() {
 		replication.Enact()
@@ -38,9 +40,11 @@ func TestEnact(t *testing.T) {
 		t.Fatalf("Replication did not finish within timeout period")
 	case <-doneCh:
 	}
+	wg.Wait()
 }
 
 func TestWaitsForHealthy(t *testing.T) {
+	var wg sync.WaitGroup
 	active := 1
 	store, f := makeStore(t)
 	defer f.Stop()
@@ -72,7 +76,7 @@ func TestWaitsForHealthy(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	failIfErrors(errCh, doneCh, t)
-	imitatePreparers(f.Server, doneCh)
+	imitatePreparers(f.Server, doneCh, &wg)
 
 	// If replication finishes before we mark all nodes as healthy, the
 	// test fails. This bool tracks whether replication ending is okay
@@ -129,9 +133,11 @@ func TestWaitsForHealthy(t *testing.T) {
 		t.Fatalf("Replication took longer than test timeout")
 	case <-doneCh:
 	}
+	wg.Wait()
 }
 
 func TestReplicationStopsIfCanceled(t *testing.T) {
+	var wg sync.WaitGroup
 	active := 1
 	store, f := makeStore(t)
 	defer f.Stop()
@@ -164,7 +170,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	failIfErrors(errCh, doneCh, t)
-	imitatePreparers(f.Server, doneCh)
+	imitatePreparers(f.Server, doneCh, &wg)
 
 	// If replication finishes before we cancel it, test fails. This bool
 	// tracks whether replication ending is okay
@@ -219,9 +225,11 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 	if bytes.Equal(realityBytes, manifestBytes) {
 		t.Fatalf("The second node shouldn't have been deployed to but it was")
 	}
+	wg.Wait()
 }
 
 func TestStopsIfLockDestroyed(t *testing.T) {
+	var wg sync.WaitGroup
 	active := 1
 	store, f := makeStore(t)
 	defer f.Stop()
@@ -278,7 +286,7 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 			t.Fatalf("Did not get expected lock renewal error within timeout")
 		}
 	}()
-	imitatePreparers(f.Server, doneCh)
+	imitatePreparers(f.Server, doneCh, &wg)
 
 	go func() {
 		replication.Enact()
@@ -391,11 +399,12 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 	if bytes.Equal(realityBytes, manifestBytes) {
 		t.Fatalf("The second node shouldn't have been deployed to but it was")
 	}
+	wg.Wait()
 }
 
 // Imitate preparers by copying data from /intent tree to /reality tree
 // to simulate deployment
-func imitatePreparers(server *testutil.TestServer, quitCh <-chan struct{}) {
+func imitatePreparers(server *testutil.TestServer, quitCh <-chan struct{}, wg *sync.WaitGroup) {
 	// testutil.Server calls t.Fatalf() if a key doesn't exist, so put some
 	// dummy data into /intent and /reality for the test pod so we don't
 	// accidentally fail tests by merely testing a key
@@ -408,7 +417,9 @@ func imitatePreparers(server *testutil.TestServer, quitCh <-chan struct{}) {
 	}
 
 	// Now do the actual copies
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case <-quitCh:
