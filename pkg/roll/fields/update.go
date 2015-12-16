@@ -34,26 +34,6 @@ type Update struct {
 	// of live nodes when the update starts. Enforcing this constraint is the
 	// responsibility of the backend that executes Updates.
 	MinimumReplicas int
-	// If DeletePods is set to true, the update will explicitly lower the
-	// replica count of the old RC before raising the new one. This causes the
-	// old RC to delete some of its pods. If set to false, the old RC will be
-	// disabled until the update is finished.
-	//
-	// DeletePods=false is a good choice when scheduling a new pod on a node will
-	// also stop the old one (eg hoist artifacts). In that case, deleting the
-	// old pod is not necessary and may cause unnecessary slowdowns. Using
-	// DeletePods=true is more suited to pods that are independent of each
-	// other (eg linux containers), where it is desired to remove the old pods
-	// throughout the rollout.
-	//
-	// Be certain that the delete command cannot delete a newly scheduled pod.
-	// Otherwise, if DeletePods=true, the delete issued by the old RC may race
-	// with the scheduling issued by the new RC. In these situations, setting
-	// DeletePods=false is the correct choice.
-	//
-	// Regardless of the value of DeletePods, the old RC and all its pods will
-	// be removed when the update is complete.
-	DeletePods bool
 	// If LeaveOld is set to true, the update will not delete the old RC when
 	// complete. Instead, the old RC will be left in whatever state it is in
 	// when the update ends. This is useful if, for example, you want to perform
