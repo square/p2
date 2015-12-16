@@ -281,7 +281,7 @@ func (r RCtl) RollingUpdate(oldID, newID string, want, need int, deletes bool) {
 	quit := make(chan struct{})
 
 	go kp.ConsulSessionManager(api.SessionEntry{
-		LockDelay: 1 * time.Nanosecond,
+		LockDelay: 5 * time.Second,
 		Behavior:  api.SessionBehaviorDelete,
 		TTL:       "15s",
 	}, r.baseClient, sessions, quit, r.logger)
@@ -333,7 +333,7 @@ LOOP:
 func (r RCtl) Farm() {
 	sessions := make(chan string)
 	go kp.ConsulSessionManager(api.SessionEntry{
-		LockDelay: 1 * time.Nanosecond,
+		LockDelay: 5 * time.Second,
 		Behavior:  api.SessionBehaviorDelete,
 		TTL:       "15s",
 	}, r.baseClient, sessions, nil, r.logger)
