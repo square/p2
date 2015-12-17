@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
+	"github.com/square/p2/pkg/util/param"
 )
 
 // These constants should probably all be something the p2 user can set
@@ -18,6 +19,9 @@ import (
 
 // Duration between health checks
 const HEALTHCHECK_INTERVAL = 1 * time.Second
+
+// Maximum allowed time for a single check, in seconds
+var HEALTHCHECK_TIMEOUT = param.Int64("healthcheck_timeout", 5)
 
 // Contains method for watching the consul reality store to
 // track services running on a node. A manager method:
@@ -66,7 +70,7 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 	healthManager := store.NewHealthManager(config.NodeName, *logger)
 	// if GetClient fails it means the certfile/keyfile/cafile were
 	// invalid or did not exist. It makes sense to throw a fatal error
-	client, err := config.GetClient()
+	client, err := config.GetClient(time.Duration(*HEALTHCHECK_TIMEOUT) * time.Second)
 	if err != nil {
 		logger.WithError(err).Fatalln("failed to get http client for this preparer")
 	}
