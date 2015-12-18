@@ -36,6 +36,7 @@ var (
 const DEFAULT_PATH = "/data/pods"
 
 var DefaultP2Exec = "/usr/local/bin/p2-exec"
+var defaultLogExec = []string{"chpst", "-unobody", "svlogd", "-tt", "./main"}
 
 func init() {
 	Log = logging.NewLogger(logrus.Fields{})
@@ -53,6 +54,7 @@ type Pod struct {
 	ServiceBuilder *runit.ServiceBuilder
 	P2Exec         string
 	DefaultTimeout time.Duration // this is the default timeout for stopping and restarting services in this pod
+	LogExec        runit.LogExec // this is exposed to support a gradual rollout of p2-log-bridge
 }
 
 func NewPod(id string, path string) *Pod {
@@ -164,7 +166,7 @@ func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 		}
 	}
 
-	err = pod.buildRunitServices(launchables, manifest.GetRestartPolicy())
+	err = pod.buildRunitServices(launchables, manifest)
 
 	success := true
 	for i, launchable := range launchables {
@@ -230,7 +232,7 @@ func (pod *Pod) Services(manifest Manifest) ([]runit.Service, error) {
 
 // Write servicebuilder *.yaml file and run servicebuilder, which will register runit services for this
 // pod.
-func (pod *Pod) buildRunitServices(launchables []launch.Launchable, restartPolicy runit.RestartPolicy) error {
+func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest Manifest) error {
 	// if the service is new, building the runit services also starts them
 	sbTemplate := make(map[string]runit.ServiceTemplate)
 	for _, launchable := range launchables {
@@ -244,11 +246,12 @@ func (pod *Pod) buildRunitServices(launchables []launch.Launchable, restartPolic
 				return util.Errorf("Duplicate executable %q for launchable %q", executable.Service.Name, launchable.ID())
 			}
 			sbTemplate[executable.Service.Name] = runit.ServiceTemplate{
+				Log: pod.logExec(),
 				Run: executable.Exec,
 			}
 		}
 	}
-	err := pod.ServiceBuilder.Activate(pod.Id, sbTemplate, restartPolicy)
+	err := pod.ServiceBuilder.Activate(pod.Id, sbTemplate, newManifest.GetRestartPolicy())
 	if err != nil {
 		return err
 	}
@@ -640,4 +643,11 @@ func (p *Pod) logLaunchableWarning(launchableId string, err error, message strin
 
 func (p *Pod) logInfo(message string) {
 	p.logger.WithFields(logrus.Fields{}).Info(message)
+}
+
+func (p *Pod) logExec() runit.LogExec {
+	if len(p.LogExec) == 0 {
+		return defaultLogExec
+	}
+	return p.LogExec
 }

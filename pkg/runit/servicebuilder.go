@@ -30,8 +30,9 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
 )
 
-// This is in the runit package to avoid import cycles, it should probably move somewhere else
+// These are in the runit package to avoid import cycles.
 type RestartPolicy string
+type LogExec []string
 
 const (
 	RestartPolicyAlways RestartPolicy = "always"

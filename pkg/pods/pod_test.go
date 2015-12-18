@@ -258,19 +258,22 @@ func TestBuildRunitServices(t *testing.T) {
 	outFilePath := filepath.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
+	testManifest := &manifest{RestartPolicy: runit.RestartPolicyAlways}
+	pod.buildRunitServices([]launch.Launchable{hl.If()}, testManifest)
 
-	pod.buildRunitServices([]launch.Launchable{hl.If()}, runit.RestartPolicyAlways)
 	f, err := os.Open(outFilePath)
 	defer f.Close()
 	bytes, err := ioutil.ReadAll(f)
 	Assert(t).IsNil(err, "Got an unexpected error reading the servicebuilder yaml file")
 
-	expectedMap := map[string]interface{}{
-		executables[0].Service.Name: map[string]interface{}{
-			"run": executables[0].Exec,
+	expectedMap := map[string]runit.ServiceTemplate{
+		executables[0].Service.Name: runit.ServiceTemplate{
+			Run: executables[0].Exec,
+			Log: defaultLogExec,
 		},
-		executables[1].Service.Name: map[string]interface{}{
-			"run": executables[1].Exec,
+		executables[1].Service.Name: runit.ServiceTemplate{
+			Run: executables[1].Exec,
+			Log: defaultLogExec,
 		},
 	}
 	expected, err := yaml.Marshal(expectedMap)
