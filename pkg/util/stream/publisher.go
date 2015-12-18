@@ -44,12 +44,13 @@ func (p *StringValuePublisher) read() {
 		subs := p.subscribers
 		p.mutex.Unlock()
 		for _, s := range subs {
-			s.waitForReady()
-			select {
-			case s.values <- val:
-				// This send might block if the subscriber has quit receiving from its
-				// values channel.
-			case <-s.canceled:
+			if ok := s.waitForReady(); ok {
+				select {
+				case s.values <- val:
+					// This send might block if the subscriber has quit receiving from its
+					// values channel.
+				case <-s.canceled:
+				}
 			}
 		}
 	}
@@ -61,13 +62,16 @@ func (p *StringValuePublisher) read() {
 	p.closed = true
 	p.mutex.Unlock()
 	for _, s := range subs {
-		s.waitForReady()
-		s.close()
+		if ok := s.waitForReady(); ok {
+			s.close()
+		}
 	}
 }
 
 // Subscribe creates a new subscription to the publisher's data stream. If a nil channel
-// argument is passed, one will be created for the caller.
+// argument is passed, one will be created for the caller. If a channel is provided, the
+// subscription takes ownership of the channel and will close it if the publisher's input
+// is closed.
 func (p *StringValuePublisher) Subscribe(values chan string) *StringSubscription {
 	if values == nil {
 		values = make(chan string)
@@ -125,21 +129,29 @@ func (s *StringSubscription) Unsubscribe() {
 	close(s.canceled)
 }
 
-// waitForReady blocks until either (1) the subscription has received its first value and
-// is ready to receive further streaming values, or (2) the subscription is canceled.
-func (s *StringSubscription) waitForReady() {
+// waitForReady blocks until the sendFirst() goroutine finishes executing. At that point,
+// either (1) the subscription has received its first value and is ready to receive
+// further streaming values, or (2) the subscription has been canceled and there should be
+// no further attempts to send values.
+//
+// Returns false if the subscription has been canceled. Returns true if the subscriber
+// hasn't yet canceled.
+func (s *StringSubscription) waitForReady() bool {
+	<-s.initialized
 	select {
-	case <-s.initialized:
 	case <-s.canceled:
+		return false
+	default:
+		return true
 	}
 }
 
 // sendFirst sends the first value to the subscription stream, then marks the subscription
 // as ready for more streaming data.
 func (s *StringSubscription) sendFirst(val string) {
+	defer close(s.initialized)
 	select {
 	case s.values <- val:
-		close(s.initialized)
 	case <-s.canceled:
 	}
 }
