@@ -7,11 +7,12 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/util/param"
 )
 
-// SessionRetryTimeout specifies how long to wait between retries when establishing a
+// SessionRetrySeconds specifies how long to wait between retries when establishing a
 // session to Consul.
-const SessionRetryTimeout = 5 * time.Second
+var SessionRetrySeconds = param.Int("session_retry_seconds", 5)
 
 // SessionManager continually creates and maintains Consul sessions. It is intended to be
 // run in its own goroutine. If one session expires, a new one will be created. As
@@ -47,7 +48,7 @@ func SessionManager(
 		id, _, err := client.Session().CreateNoChecks(&config, nil)
 		if err != nil {
 			logger.WithError(err).Error("session manager: error creating Consul session")
-			time.Sleep(SessionRetryTimeout)
+			time.Sleep(time.Duration(*SessionRetrySeconds) * time.Second)
 			continue
 		}
 		sessionLogger := logger.SubLogger(logrus.Fields{
