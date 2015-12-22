@@ -1,4 +1,4 @@
-package kp
+package consulutil
 
 import (
 	"time"
@@ -13,8 +13,8 @@ import (
 // session to Consul.
 const SessionRetryTimeout = 5 * time.Second
 
-// ConsulSessionManager continually creates and maintains Consul sessions. It is intended
-// to be run in its own goroutine. If one session expires, a new one will be created. As
+// SessionManager continually creates and maintains Consul sessions. It is intended to be
+// run in its own goroutine. If one session expires, a new one will be created. As
 // sessions come and go, the session ID (or "" for an expired session) will be sent on the
 // output channel.
 //
@@ -26,7 +26,7 @@ const SessionRetryTimeout = 5 * time.Second
 //   done:    Close this channel to close the current session (if any) and stop creating
 //            new sessions.
 //   logger:  Errors will be logged to this logger.
-func ConsulSessionManager(
+func SessionManager(
 	config api.SessionEntry,
 	client *api.Client,
 	output chan<- string,

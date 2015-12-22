@@ -64,7 +64,7 @@ func (c consulStore) newSessionHealthManager(
 	done := make(chan struct{})
 	// Current time of "Jan 2, 15:04:05" turns into "0102-150405"
 	timeStr := time.Now().Format("0102-150405")
-	go ConsulSessionManager(
+	go consulutil.SessionManager(
 		api.SessionEntry{
 			Name:      fmt.Sprintf("health:%s:%d:%s", node, os.Getpid(), timeStr),
 			LockDelay: 1 * time.Millisecond,

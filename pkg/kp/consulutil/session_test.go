@@ -1,21 +1,23 @@
-package kp
+package consulutil
 
 import (
 	"testing"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 
+	"github.com/square/p2/pkg/consultest"
 	"github.com/square/p2/pkg/logging"
 )
 
 // A basic test of the ConsulSessionManager: create a session, then quit.
 func TestSessionBasics(t *testing.T) {
-	f := NewConsulTestFixture(t)
-	defer f.Close()
+	t.Parallel()
+	f := consultest.NewFixture(t)
+	defer f.Stop()
 
 	sessions := make(chan string)
 	done := make(chan struct{})
-	go ConsulSessionManager(
+	go SessionManager(
 		api.SessionEntry{
 			Behavior: api.SessionBehaviorDelete,
 			TTL:      "10s",
