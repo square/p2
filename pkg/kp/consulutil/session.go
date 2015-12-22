@@ -72,3 +72,90 @@ func SessionManager(
 		}
 	}
 }
+
+// WithSession executes the function f when there is an active session. When that session
+// ends, f is signaled to exit. Once f finishes, a new execution will start when a new
+// session begins.
+//
+// This function runs until the input stream of sessions is closed. Closing the "done"
+// argument provides a shortcut to exit this function when also tearing down the session
+// producer. In either case, any running f will be terminated before returning. A panic in
+// f will also propagate upwards, causing the function to exit.
+func WithSession(
+	done <-chan struct{},
+	sessions <-chan string,
+	f func(done <-chan struct{}, session string),
+) {
+	// Start an asynchronous controller that will tell this goroutine when to execute the
+	// user's function
+	sentry := make(chan struct{})
+	defer close(sentry)
+	executions := make(chan execution)
+	go withSessionController(sentry, executions, done, sessions)
+
+	// Run the user's function when the controller says to
+	for e := range executions {
+		f(e.done, e.session)
+		close(e.finished)
+	}
+}
+
+type execution struct {
+	finished chan<- struct{} // Signal from the executor that it has finished
+	done     <-chan struct{} // Signal to the executor that it should abort
+	session  string          // The session acquired
+}
+
+func withSessionController(
+	sentry <-chan struct{}, // Will be closed when the executor exits
+	executions chan<- execution, // Sends work to the executor
+	done <-chan struct{}, // Outside signal to tear down all executions
+	sessions <-chan string, // Sequence of session updates
+) {
+	var curSession string      // The current session identifier
+	var fSession string        // The session f was last executed with
+	var fRunning chan struct{} // If non-nil, f is running. F will close it when it stops
+	var fDone chan struct{}    // If non-nil, f is running. Close to tell f to stop.
+
+	// When exiting, stop all current and future work
+	defer func() {
+		if fDone != nil {
+			close(fDone)
+		}
+	}()
+	defer close(executions)
+
+	for {
+		if fDone != nil && (fRunning == nil || curSession != fSession) {
+			// F needs to be cleaned up or stopped
+			close(fDone)
+			fDone = nil
+		}
+		if fRunning == nil && curSession != fSession && curSession != "" {
+			// Start f if it isn't running and if the session has changed
+			fSession = curSession
+			fRunning = make(chan struct{})
+			fDone = make(chan struct{})
+			select {
+			case executions <- execution{fRunning, fDone, fSession}:
+			case <-sentry:
+				return
+			}
+		}
+
+		select {
+		case s, ok := <-sessions: // Session changed
+			if !ok {
+				// Implicit request to exit, because there will be no more sessions
+				return
+			}
+			curSession = s
+		case <-fRunning: // F has exited
+			fRunning = nil
+		case <-sentry: // The executor exited
+			return
+		case <-done: // Explicit request to exit
+			return
+		}
+	}
+}
