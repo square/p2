@@ -40,20 +40,25 @@ type Store interface {
 	WatchPods(string, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult)
 }
 
-func (p *Preparer) WatchForHooks(quit chan struct{}) {
+// Watches for updates to hooks until a signal is received on 'quit'. Returns a
+// channel that will be signalled when the first update occurs, so that other
+// routines may wait until hooks have synced at least once
+func (p *Preparer) WatchForHooks(quit chan struct{}) chan struct{} {
 	hookErrCh := make(chan error)
 	hookQuitCh := make(chan struct{})
 
-	go p.hookListener.Sync(hookQuitCh, hookErrCh)
-	for {
-		select {
-		case <-quit:
-			hookQuitCh <- struct{}{}
-			return
-		case err := <-hookErrCh:
-			p.Logger.WithError(err).Errorln("Error updating hooks")
+	go func() {
+		for {
+			select {
+			case <-quit:
+				hookQuitCh <- struct{}{}
+				return
+			case err := <-hookErrCh:
+				p.Logger.WithError(err).Errorln("Error updating hooks")
+			}
 		}
-	}
+	}()
+	return p.hookListener.Sync(hookQuitCh, hookErrCh)
 }
 
 func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
