@@ -4,6 +4,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -64,6 +65,14 @@ func NewFarm(
 // Start is not safe for concurrent execution. Do not execute multiple
 // concurrent instances of Start.
 func (rcf *Farm) Start(quit <-chan struct{}) {
+	consulutil.WithSession(quit, rcf.sessions, func(sessionQuit <-chan struct{}, session string) {
+		rcf.logger.WithField("session", session).Infoln("Acquired new session")
+		rcf.lock = rcf.kpStore.NewUnmanagedLock(session, "")
+		rcf.mainLoop(sessionQuit)
+	})
+}
+
+func (rcf *Farm) mainLoop(quit <-chan struct{}) {
 	subQuit := make(chan struct{})
 	defer close(subQuit)
 	rcWatch, rcErr := rcf.rcStore.WatchNew(subQuit)
@@ -72,35 +81,14 @@ START_LOOP:
 	for {
 		select {
 		case <-quit:
-			rcf.logger.NoFields().Infoln("Halt requested, releasing replication controllers")
+			rcf.logger.NoFields().Infoln("Session expired, releasing replication controllers")
+			rcf.lock = nil
 			rcf.releaseChildren()
 			return
-		case session := <-rcf.sessions:
-			if session == "" {
-				// our session has expired, we must assume our locked children
-				// have all been released and that someone else may have
-				// claimed them by now
-				rcf.logger.NoFields().Errorln("Session expired, releasing replication controllers")
-				rcf.lock = nil
-				rcf.releaseChildren()
-			} else {
-				// a new session has been acquired - only happens after an
-				// expiration message, so len(children)==0
-				rcf.logger.WithField("session", session).Infoln("Acquired new session")
-				lock := rcf.kpStore.NewUnmanagedLock(session, "")
-				rcf.lock = lock
-				// TODO: restart the watch so that you get updates right away?
-			}
 		case err := <-rcErr:
 			rcf.logger.WithError(err).Errorln("Could not read consul replication controllers")
 		case rcFields := <-rcWatch:
 			rcf.logger.WithField("n", len(rcFields)).Debugln("Received replication controller update")
-			if rcf.lock == nil {
-				// we can't claim new nodes because our session is invalidated.
-				// raise an error and ignore this update
-				rcf.logger.NoFields().Warnln("Received replication controller update, but do not have session to acquire locks")
-				continue
-			}
 
 			// track which children were found in the returned set
 			foundChildren := make(map[fields.ID]struct{})

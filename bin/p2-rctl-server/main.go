@@ -96,8 +96,7 @@ func main() {
 		Behavior:  api.SessionBehaviorDelete,
 		TTL:       "15s",
 	}, client, sessions, nil, logger)
-	firstSession := <-sessions
-	pub := stream.NewStringValuePublisher(sessions, firstSession)
+	pub := stream.NewStringValuePublisher(sessions, "")
 	rcSub := pub.Subscribe(nil)
 	rlSub := pub.Subscribe(nil)
 
