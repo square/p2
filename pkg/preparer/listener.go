@@ -29,35 +29,47 @@ type HookListener struct {
 // any pods listed there in a hook pod directory. Following that, it will
 // remove old links named by the same pod in the same event directory and
 // symlink in the new pod's launchables.
-func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
+// It returns a channel that will be signalled when the first update occurs, so
+// that other routines may wait until hooks have synced at least once
+func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) chan struct{} {
 
 	watchPath := l.HookPrefix
 
 	watcherQuit := make(chan struct{})
 	watcherErrCh := make(chan error)
 	podChan := make(chan []kp.ManifestResult)
+	hooksSyncedCh := make(chan struct{})
 
 	go l.Intent.WatchPods(watchPath, watcherQuit, watcherErrCh, podChan)
 
-	for {
-		select {
-		case <-quit:
-			l.Logger.NoFields().Infoln("Terminating hook listener")
-			close(watcherQuit)
-			return
-		case err := <-watcherErrCh:
-			l.Logger.WithError(err).Errorln("Error while watching pods")
-			errCh <- err
-		case results := <-podChan:
-			// results could be empty, but we don't support hook deletion yet.
-			for _, result := range results {
-				err := l.installHook(result)
-				if err != nil {
-					errCh <- err
+	hooksSynced := false
+	go func() {
+		for {
+			select {
+			case <-quit:
+				l.Logger.NoFields().Infoln("Terminating hook listener")
+				close(watcherQuit)
+				return
+			case err := <-watcherErrCh:
+				l.Logger.WithError(err).Errorln("Error while watching pods")
+				errCh <- err
+			case results := <-podChan:
+				// results could be empty, but we don't support hook deletion yet.
+				for _, result := range results {
+					err := l.installHook(result)
+					if err != nil {
+						errCh <- err
+					}
+				}
+				if !hooksSynced {
+					hooksSynced = true
+					hooksSyncedCh <- struct{}{}
+					close(hooksSyncedCh)
 				}
 			}
 		}
-	}
+	}()
+	return hooksSyncedCh
 }
 
 func (l *HookListener) installHook(result kp.ManifestResult) error {

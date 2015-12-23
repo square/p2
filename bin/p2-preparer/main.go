@@ -64,8 +64,24 @@ func main() {
 	quitHookUpdate := make(chan struct{})
 	quitChans := []chan struct{}{quitHookUpdate}
 
-	go prep.WatchForPodManifestsForNode(quitMainUpdate)
-	go prep.WatchForHooks(quitHookUpdate)
+	hooksSynced := make(chan struct{})
+	go func() {
+		logger.NoFields().Infoln("Starting hook synchronization")
+		hooksSynced <- <-prep.WatchForHooks(quitHookUpdate)
+	}()
+
+	// We want to guarantee that hooks are synced before we start
+	// installing pods.
+	go func() {
+		logger.NoFields().Infoln("Waiting for first hook sync before managing pods")
+		select {
+		case <-quitMainUpdate:
+			return
+		case <-hooksSynced:
+			logger.NoFields().Infoln("Hooks synced, starting to manage pods")
+			prep.WatchForPodManifestsForNode(quitMainUpdate)
+		}
+	}()
 
 	// Launch health checking watch. This watch tracks health of
 	// all pods on this host and writes the information to consul
