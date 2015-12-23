@@ -61,4 +61,14 @@ type Applicator interface {
 
 	// Return all objects of the given type that match the given selector
 	GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error)
+
+	// Watch a label selector of a give type and see updates to that set
+	// of Labeled over time. If an error occurs, the Applicator implementation
+	// is responsible for handling it and recovering gracefully.
+	//
+	// The watch may be terminated by the underlying implementation without signaling on
+	// the quit channel - this will be indicated by the closing of the result channel. For
+	// this reason, the safest way to process the result of this channel is to use
+	// it in a for loop.
+	WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan []Labeled
 }

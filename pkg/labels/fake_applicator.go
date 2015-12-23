@@ -91,6 +91,21 @@ func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type) 
 	return results, nil
 }
 
+func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan []Labeled {
+	ch := make(chan []Labeled)
+	go func() {
+		for {
+			res, _ := app.GetMatches(selector, labelType)
+			select {
+			case <-quitCh:
+				return
+			case ch <- res:
+			}
+		}
+	}()
+	return ch
+}
+
 // avoid returning elements of the inner data map, otherwise concurrent callers
 // may cause races when mutating them
 func copySet(in labels.Set) labels.Set {
