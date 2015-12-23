@@ -2,6 +2,7 @@ package preparer
 
 import (
 	"path/filepath"
+	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/auth"
@@ -13,6 +14,7 @@ import (
 
 type IntentStore interface {
 	WatchPods(watchPath string, quit <-chan struct{}, errCh chan<- error, manifests chan<- []kp.ManifestResult)
+	ListPods(keyPrefix string) ([]kp.ManifestResult, time.Duration, error)
 }
 
 type HookListener struct {
@@ -58,6 +60,29 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 			}
 		}
 	}
+}
+
+// Sync the hooks just once. This is useful at preparer startup so that hooks
+// will be synced before normal pod management begins
+func (l *HookListener) SyncOnce() error {
+	pods, _, err := l.Intent.ListPods(l.HookPrefix)
+	if err != nil {
+		return err
+	}
+
+	// pods could be empty, but we don't support hook deletion yet.
+	// NOTE: the error handling is slightly different than in the Sync()
+	// case. Any error aborts proceeding. This is intentional because a
+	// hook error when starting the preparer likely means degraded service,
+	// whereas a hook error in an already-running preparer probably means a
+	// temporary breakage in the hook
+	for _, result := range pods {
+		err := l.installHook(result)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (l *HookListener) installHook(result kp.ManifestResult) error {
