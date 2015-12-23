@@ -125,6 +125,9 @@ func (manifest *manifest) SetLaunchables(launchableStanzas map[string]Launchable
 }
 
 func (manifest *manifest) GetConfig() map[interface{}]interface{} {
+	if manifest.Config == nil {
+		return make(map[interface{}]interface{})
+	}
 	return manifest.Config
 }
 
