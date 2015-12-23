@@ -64,6 +64,11 @@ func main() {
 	quitHookUpdate := make(chan struct{})
 	quitChans := []chan struct{}{quitHookUpdate}
 
+	// Guarantee that hooks are synced before any other pods are processed
+	err = prep.SyncHooksOnce()
+	if err != nil {
+		logger.WithError(err).Fatalln("Could not do initial sync of hooks")
+	}
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
 	go prep.WatchForHooks(quitHookUpdate)
 

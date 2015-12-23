@@ -56,6 +56,12 @@ func (p *Preparer) WatchForHooks(quit chan struct{}) {
 	}
 }
 
+// Sync the hooks just once. This is useful at preparer startup so that hooks
+// will be synced before normal pod management begins
+func (p *Preparer) SyncHooksOnce() error {
+	return p.hookListener.SyncOnce()
+}
+
 func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	pods.Log = p.Logger
 	path := kp.IntentPath(p.node)

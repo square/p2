@@ -9,6 +9,7 @@ import (
 	"path"
 	"runtime"
 	"testing"
+	"time"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp"
@@ -47,7 +48,11 @@ func (f *fakeIntentStore) WatchPods(watchedPath string, quitCh <-chan struct{}, 
 	<-quitCh
 }
 
-func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
+func (f *fakeIntentStore) ListPods(keyPrefix string) ([]kp.ManifestResult, time.Duration, error) {
+	return f.manifests, 0, nil
+}
+
+func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
 	hookPrefix := "hooks"
 	destDir, _ := ioutil.TempDir("", "pods")
 	defer os.RemoveAll(destDir)
@@ -98,19 +103,38 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 		authPolicy:     auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil},
 	}
 
+	return listener, fakeIntent.quit
+}
+
+func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
+	listener, quit := testHookListener(t)
+
 	errCh := make(chan error, 1)
-	listener.Sync(fakeIntent.quit, errCh)
+	listener.Sync(quit, errCh)
 	select {
 	case err := <-errCh:
-		Assert(t).IsNil(err, "There should not have been an error in the call to sync")
+		Assert(t).IsNil(err, "There should not have been an error in the call to Sync()")
 	default:
 	}
 
-	currentAlias := path.Join(destDir, "users", "create", "current", "bin", "launch")
+	currentAlias := path.Join(listener.DestinationDir, "users", "create", "current", "bin", "launch")
+	_, err := os.Stat(currentAlias)
+	Assert(t).IsNil(err, fmt.Sprintf("%s should have been created", currentAlias))
+
+	hookFile := path.Join(listener.ExecDir, "users__create__launch")
+	_, err = os.Stat(hookFile)
+	Assert(t).IsNil(err, "should have created the user launch script")
+}
+
+func TestSyncHooksOnce(t *testing.T) {
+	listener, _ := testHookListener(t)
+	err := listener.SyncOnce()
+	Assert(t).IsNil(err, "There should not have been an error in the call to SyncOnce()")
+	currentAlias := path.Join(listener.DestinationDir, "users", "create", "current", "bin", "launch")
 	_, err = os.Stat(currentAlias)
 	Assert(t).IsNil(err, fmt.Sprintf("%s should have been created", currentAlias))
 
-	hookFile := path.Join(execDir, "users__create__launch")
+	hookFile := path.Join(listener.ExecDir, "users__create__launch")
 	_, err = os.Stat(hookFile)
 	Assert(t).IsNil(err, "should have created the user launch script")
 }
