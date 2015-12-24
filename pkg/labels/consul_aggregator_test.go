@@ -86,7 +86,7 @@ func TestQuitAggregateAfterResults(t *testing.T) {
 	select {
 	case <-success:
 	case <-time.After(time.Second):
-		t.Fatal("Should still be waiting or processing results after a second")
+		t.Fatal("Should not be waiting or processing results after a second")
 	}
 }
 
