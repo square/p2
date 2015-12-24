@@ -52,7 +52,7 @@ type consulAggregator struct {
 	path           string
 	kv             consulutil.ConsulLister
 	watchers       *selectorWatch
-	labeledCache   []Labeled // cached contents of the label subtree
+	labeledCache   *[]Labeled // cached contents of the label subtree
 	aggregatorQuit chan struct{}
 }
 
@@ -89,6 +89,11 @@ func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{})
 	} else {
 		c.watchers.append(watch)
 	}
+	// send first value immediately to take advantage of the cache.
+	if c.labeledCache != nil {
+		c.doMatch(watch)
+	}
+
 	go func() {
 		select {
 		case <-quitCh:
@@ -131,9 +136,12 @@ func (c *consulAggregator) Aggregate() {
 		case <-c.aggregatorQuit:
 			return
 		case pairs := <-outPairs:
-			// Convert watch result to []Labeled
-			c.labeledCache = make([]Labeled, len(pairs))
+			c.watcherLock.Lock()
+
+			cache := make([]Labeled, len(pairs))
+			c.labeledCache = &cache
 			for i, kvp := range pairs {
+				// TODO: only send results to watchers if selector results changed
 				val, err := convertKVPToLabeled(kvp)
 				if err != nil {
 					c.logger.WithErrorAndFields(err, logrus.Fields{
@@ -142,24 +150,14 @@ func (c *consulAggregator) Aggregate() {
 					}).Errorln("Invalid key encountered, skipping this value")
 					continue
 				}
-				c.labeledCache[i] = val
+				cache[i] = val
 			}
 
 			// Iterate over each watcher and send the []Labeled
 			// that match the watcher's selector to the watcher's out channel.
-			c.watcherLock.Lock()
 			watcher := c.watchers
 			for watcher != nil {
-				matches := []Labeled{}
-				for _, labeled := range c.labeledCache {
-					if watcher.selector.Matches(labeled.Labels) {
-						matches = append(matches, labeled)
-					}
-				}
-				select {
-				case watcher.resultCh <- &matches:
-				case <-watcher.canceled:
-				}
+				c.doMatch(watcher)
 				watcher = watcher.next
 			}
 			c.watcherLock.Unlock()
@@ -170,5 +168,18 @@ func (c *consulAggregator) Aggregate() {
 		case <-loopTime:
 		}
 
+	}
+}
+
+func (c *consulAggregator) doMatch(watcher *selectorWatch) {
+	matches := []Labeled{}
+	for _, labeled := range *c.labeledCache {
+		if watcher.selector.Matches(labeled.Labels) {
+			matches = append(matches, labeled)
+		}
+	}
+	select {
+	case watcher.resultCh <- &matches:
+	case <-watcher.canceled:
 	}
 }
