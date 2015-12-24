@@ -14,10 +14,17 @@ import (
 
 type fakeLabelStore struct {
 	data map[string][]byte
+	// If this channel is set, fakeApplicator will wait to return content until
+	// this channel receives a value
+	watchTrigger chan struct{}
 }
 
 func (f *fakeLabelStore) List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
 	var ret api.KVPairs
+
+	if f.watchTrigger != nil {
+		<-f.watchTrigger
+	}
 
 	for k, v := range f.data {
 		if strings.HasPrefix(k, prefix) {

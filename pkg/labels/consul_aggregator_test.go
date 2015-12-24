@@ -10,8 +10,6 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 )
 
-// defer the _result_ of this function to change the time for the duration
-// of the calling function
 func alterAggregationTime(dur time.Duration) {
 	AggregationRateCap = dur
 }
@@ -24,16 +22,11 @@ func fakeLabeledPods() map[string][]byte {
 	}
 }
 
+// Check that two clients can share an aggregator
 func TestTwoClients(t *testing.T) {
 	alterAggregationTime(time.Millisecond)
-	// fake KV lister
-	// fake label data generator
-	// create aggregator
-	// watch with timeout, selector for 1/2 of results
-	// fail if timeout elapses
-	// fail if selected wrong results
-	// cache results?
-	fakeKV := &fakeLabelStore{fakeLabeledPods()}
+
+	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger)
 	go aggreg.Aggregate()
 	defer aggreg.Quit()
@@ -47,12 +40,16 @@ func TestTwoClients(t *testing.T) {
 		select {
 		case <-time.After(time.Second):
 			t.Fatal("Should not have taken a second to get results")
-		case labeled := <-labeledChannel1:
+		case labeledPtr := <-labeledChannel1:
+			Assert(t).IsNotNil(labeledPtr, "ptr should not have been nil")
+			labeled := *labeledPtr
 			Assert(t).AreNotEqual("green", checked, "Should not have already checked the green selector result")
 			checked = "green" // ensure that both sides get checked
 			Assert(t).AreEqual(1, len(labeled), "Should have received one result from the color watch")
 			Assert(t).AreEqual("emeralda", labeled[0].ID, "should have received the emerald app")
-		case labeled := <-labeledChannel2:
+		case labeledPtr := <-labeledChannel2:
+			Assert(t).IsNotNil(labeledPtr, "ptr should not have been nil")
+			labeled := *labeledPtr
 			Assert(t).AreNotEqual("canary", checked, "Should not have already checked the canary selector result")
 			checked = "canary" // ensure that both sides get checked
 			Assert(t).AreEqual(2, len(labeled), "Should have received two results from the canary watch")
@@ -67,10 +64,10 @@ func TestTwoClients(t *testing.T) {
 	}
 }
 
-func TestQuitAggregate(t *testing.T) {
+func TestQuitAggregateAfterResults(t *testing.T) {
 	alterAggregationTime(time.Millisecond)
 
-	fakeKV := &fakeLabelStore{fakeLabeledPods()}
+	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger)
 	go aggreg.Aggregate()
 
@@ -93,10 +90,34 @@ func TestQuitAggregate(t *testing.T) {
 	}
 }
 
+func TestQuitAggregateBeforeResults(t *testing.T) {
+	alterAggregationTime(time.Millisecond)
+
+	// this channel prevents the List from returning, so the aggregator
+	// must quit prior to entering the loop
+	trigger := make(chan struct{})
+	fakeKV := &fakeLabelStore{fakeLabeledPods(), trigger}
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger)
+	go aggreg.Aggregate()
+
+	quitCh := make(chan struct{})
+	res := aggreg.Watch(labels.Everything().Add("color", labels.EqualsOperator, []string{"green"}), quitCh)
+
+	// Quit now. We expect that the aggregator will close the res channels
+	aggreg.Quit()
+
+	select {
+	case labeled := <-res:
+		Assert(t).IsNotNil(labeled, "Should not have received any results")
+	case <-time.After(time.Second):
+		t.Fatal("Should still be waiting or processing results after a second")
+	}
+}
+
 func TestQuitIndividualWatch(t *testing.T) {
 	alterAggregationTime(time.Millisecond)
 
-	fakeKV := &fakeLabelStore{fakeLabeledPods()}
+	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger)
 	go aggreg.Aggregate()
 
@@ -113,12 +134,16 @@ func TestQuitIndividualWatch(t *testing.T) {
 		select {
 		case <-time.After(time.Second):
 			t.Fatalf("Should not have taken a second to get results on iteration %v", i)
-		case labeled := <-labeledChannel2:
+		case labeledPtr := <-labeledChannel2:
+			Assert(t).IsNotNil(labeledPtr, "ptr should not have been nil")
+			labeled := *labeledPtr
 			Assert(t).AreEqual(1, len(labeled), "Should have one result with a production deployment")
 			Assert(t).AreEqual("maroono", labeled[0].ID, "Should have received maroono as the one production deployment")
 		}
 	}
 
+	// drain the first channel to show that it was closed. We do this
+	// in a loop since it is possible that a value was sent on the channel
 	success := make(chan struct{})
 	go func() {
 		for _ = range labeledChannel1 {

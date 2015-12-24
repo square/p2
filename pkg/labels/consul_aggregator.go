@@ -18,7 +18,7 @@ var AggregationRateCap = 10 * time.Second
 // linked list of watches with control channels
 type selectorWatch struct {
 	selector labels.Selector
-	resultCh chan []Labeled
+	resultCh chan *[]Labeled
 	canceled chan struct{}
 	next     *selectorWatch
 }
@@ -68,8 +68,8 @@ func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logg
 
 // Add a new selector to the aggregator. New values on the output channel may not appear
 // right away.
-func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{}) chan []Labeled {
-	resCh := make(chan []Labeled)
+func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{}) chan *[]Labeled {
+	resCh := make(chan *[]Labeled)
 	select {
 	case <-c.aggregatorQuit:
 		c.logger.WithField("selector", selector.String()).Warnln("New selector added after aggregator was closed")
@@ -100,10 +100,10 @@ func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{})
 }
 
 func (c *consulAggregator) removeWatch(watch *selectorWatch) {
-	close(watch.canceled)
-	close(watch.resultCh)
 	c.watcherLock.Lock()
 	defer c.watcherLock.Unlock()
+	close(watch.canceled)
+	close(watch.resultCh)
 	if c.watchers == watch {
 		c.watchers = c.watchers.next
 	} else {
@@ -157,7 +157,7 @@ func (c *consulAggregator) Aggregate() {
 					}
 				}
 				select {
-				case watcher.resultCh <- matches:
+				case watcher.resultCh <- &matches:
 				case <-watcher.canceled:
 				}
 				watcher = watcher.next
