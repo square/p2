@@ -11,6 +11,7 @@ import (
 type fakeApplicatorData map[Type]map[string]labels.Set
 
 type fakeApplicator struct {
+	// KV data that will be returned by queries
 	data fakeApplicatorData
 	// since entry() may mutate the map, every read can potentially trigger a
 	// write. no point using rwmutex here
@@ -89,6 +90,21 @@ func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type) 
 	}
 
 	return results, nil
+}
+
+func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan *[]Labeled {
+	ch := make(chan *[]Labeled)
+	go func() {
+		for {
+			res, _ := app.GetMatches(selector, labelType)
+			select {
+			case <-quitCh:
+				return
+			case ch <- &res:
+			}
+		}
+	}()
+	return ch
 }
 
 // avoid returning elements of the inner data map, otherwise concurrent callers

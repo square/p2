@@ -15,6 +15,7 @@ type httpApplicator struct {
 	client *http.Client
 	// The endpoint that will be queried for matches.
 	// GetMatches will add to this endpoint a query parameter with key "selector" and value selector.String()
+	// WatchMatches will add the above "selector" as well as "watch=true"
 	matchesEndpoint *url.URL
 	logger          logging.Logger
 }
@@ -88,4 +89,9 @@ func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type) ([
 	}
 
 	return labeled, nil
+}
+
+func (h *httpApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan *[]Labeled {
+	panic("Not implemented")
+	return nil
 }

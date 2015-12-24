@@ -32,21 +32,27 @@ type consulKV interface {
 }
 
 type consulApplicator struct {
-	kv      consulKV
-	logger  logging.Logger
-	retries int
+	kv          consulKV
+	logger      logging.Logger
+	retries     int
+	aggregators map[Type]*consulAggregator
 }
 
 func NewConsulApplicator(client *api.Client, retries int) *consulApplicator {
 	return &consulApplicator{
-		logger:  logging.DefaultLogger,
-		kv:      client.KV(),
-		retries: retries,
+		logger:      logging.DefaultLogger,
+		kv:          client.KV(),
+		retries:     retries,
+		aggregators: map[Type]*consulAggregator{},
 	}
 }
 
+func typePath(labelType Type) string {
+	return path.Join(labelRoot, labelType.String())
+}
+
 func objectPath(labelType Type, id string) string {
-	return path.Join(labelRoot, labelType.String(), id)
+	return path.Join(typePath(labelType), id)
 }
 
 func (c *consulApplicator) getLabels(labelType Type, id string) (Labeled, uint64, error) {
@@ -68,8 +74,8 @@ func (c *consulApplicator) GetLabels(labelType Type, id string) (Labeled, error)
 }
 
 func (c *consulApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
-	// TODO: Label selector result caching
-	allMatches, _, err := c.kv.List(path.Join(labelRoot, labelType.String()), nil)
+	// TODO: use aggregator to enable caching
+	allMatches, _, err := c.kv.List(typePath(labelType), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -186,6 +192,29 @@ func convertLabeledToKVP(l Labeled) (*api.KVPair, error) {
 		Key:   objectPath(l.LabelType, l.ID),
 		Value: value,
 	}, nil
+}
+
+// The current schema of labels in Consul is optimized for label retrieval on a single
+// object of a given ID. This layout is less effective when attempting to perform a
+// watch on the results of an arbitrary label selector, which is necessarily un-indexable.
+// This implementation will perform the simplest possible optimization, which is to cache
+// the entire contents of the tree under the given label type and share it with other watches.
+//
+// Due to the possibility that this tree might change quite frequently in environments
+// with lots of concurrent deployments, the aggregated result from Consul will only be queried
+// by a maximum frequency of once per LabelAggregationCap.
+//
+// Preparers should not use the consulApplicator's implementation of WatchMatches directly due
+// to the cost of querying for this subtree on any sizeable fleet of machines. Instead, preparers should
+// use the httpApplicator from a server that exposes the results of this (or another)
+// implementation's watch.
+func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan *[]Labeled {
+	aggregator, ok := c.aggregators[labelType]
+	if !ok {
+		aggregator = NewConsulAggregator(labelType, c.kv, c.logger)
+		c.aggregators[labelType] = aggregator
+	}
+	return aggregator.Watch(selector, quitCh)
 }
 
 // confirm at compile time that consulApplicator is an implementation of the Applicator interface
