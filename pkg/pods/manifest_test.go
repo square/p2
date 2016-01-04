@@ -223,3 +223,10 @@ config:
 	builtManifest := builder.GetManifest()
 	Assert(t).AreEqual(builtManifest.ID(), "thepod", "Expected manifest ID to be preserved when converted to ManifestBuilder and back")
 }
+
+func TestGetConfigInitializesIfEmpty(t *testing.T) {
+	builder := NewManifestBuilder()
+	manifest := builder.GetManifest()
+	config := manifest.GetConfig()
+	Assert(t).IsNotNil(config, "Expected returned config to be instantiated by GetConfig() if not set")
+}
