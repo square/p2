@@ -144,7 +144,7 @@ func getTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 		}
 		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 		if err != nil {
-			return nil, err
+			return nil, util.Errorf("Could not load keypair: %s", err)
 		}
 		certs = append(certs, cert)
 	}
