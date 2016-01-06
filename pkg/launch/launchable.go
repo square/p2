@@ -32,6 +32,8 @@ func (e StopError) Error() string { return e.Inner.Error() }
 type Launchable interface {
 	// Type returns a text description of the type of launchable.
 	Type() string
+	// ID returns a (pod-wise) unique ID for this launchable.
+	ID() string
 	// ServiceID returns a (host-wise) unique ID for this launchable.
 	// Unlike ID(), ServiceID() must be unique for all instances of a launchable
 	// on a single host, even if are multiple pods have the same launchable ID.

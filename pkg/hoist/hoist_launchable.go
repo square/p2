@@ -25,6 +25,7 @@ import (
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type Launchable struct {
 	Location         string              // A URL where we can download the artifact from.
+	Id               string              // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
 	ServiceId        string              // A (host-wise) unique identifier for this launchable, used when creating runit services
 	RunAs            string              // The user to assume when launching the executable
 	PodEnvDir        string              // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
@@ -41,6 +42,10 @@ type Launchable struct {
 // LaunchAdapter adapts a hoist.Launchable to the launch.Launchable interface.
 type LaunchAdapter struct {
 	*Launchable
+}
+
+func (a LaunchAdapter) ID() string {
+	return a.Launchable.Id
 }
 
 func (a LaunchAdapter) ServiceID() string {

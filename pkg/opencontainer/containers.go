@@ -38,6 +38,7 @@ var RuncPath = param.String("runc_path", "/usr/local/bin/runc")
 // Launchable represents an installation of a container.
 type Launchable struct {
 	Location       string              // A URL where we can download the artifact from.
+	ID_            string              // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
 	ServiceID_     string              // A (host-wise) unique identifier for this launchable, used when creating runit services
 	RunAs          string              // The user to assume when launching the executable
 	RootDir        string              // The root directory of the launchable, containing N:N>=1 installs.
@@ -66,6 +67,11 @@ func (l *Launchable) getSpec() (*LinuxSpec, error) {
 	}
 	l.spec = &spec
 	return l.spec, nil
+}
+
+// ID implements the launch.Launchable interface. It returns the name of this launchable.
+func (l *Launchable) ID() string {
+	return l.ID_
 }
 
 func (l *Launchable) ServiceID() string {

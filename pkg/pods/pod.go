@@ -592,6 +592,7 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 	if launchableStanza.LaunchableType == "hoist" {
 		ret := &hoist.Launchable{
 			Location:         launchableStanza.Location,
+			Id:               launchableStanza.LaunchableId,
 			ServiceId:        serviceId,
 			RunAs:            runAsUser,
 			PodEnvDir:        pod.EnvDir(),
@@ -609,6 +610,7 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 	} else if *ExperimentalOpencontainer && launchableStanza.LaunchableType == "opencontainer" {
 		ret := &opencontainer.Launchable{
 			Location:       launchableStanza.Location,
+			ID_:            launchableStanza.LaunchableId,
 			ServiceID_:     serviceId,
 			RunAs:          runAsUser,
 			RootDir:        launchableRootDir,

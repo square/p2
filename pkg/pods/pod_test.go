@@ -50,6 +50,7 @@ func TestGetLaunchable(t *testing.T) {
 	for _, stanza := range launchableStanzas {
 		l, _ := pod.getLaunchable(stanza, "foouser", runit.RestartPolicyAlways)
 		launchable := l.(hoist.LaunchAdapter).Launchable
+		Assert(t).AreEqual("hello", launchable.Id, "Launchable Id did not have expected value")
 		Assert(t).AreEqual("hello__hello", launchable.ServiceId, "Launchable ServiceId did not have expected value")
 		Assert(t).AreEqual("hoisted-hello_def456.tar.gz", launchable.Location, "Launchable location did not have expected value")
 		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
