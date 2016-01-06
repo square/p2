@@ -2,7 +2,7 @@ id: hello
 launchables:
   app:
     launchable_type: hoist
-    launchable_id: hello
+    launchable_id: app
     location: http://localhost:8000/foo/bar/baz/hello_def456.tar.gz
 
 config:

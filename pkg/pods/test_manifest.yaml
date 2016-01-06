@@ -10,7 +10,7 @@ id: hello
 launchables:
   app:
     launchable_type: hoist
-    launchable_id: hello
+    launchable_id: app
     location: hoisted-hello_def456.tar.gz
 
 config:
