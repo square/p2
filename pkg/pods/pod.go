@@ -531,6 +531,10 @@ func (pod *Pod) setupConfig(manifest Manifest, launchables []launch.Launchable) 
 		if err != nil {
 			return util.Errorf("Could not create the environment dir for pod %s launchable %s: %s", manifest.ID(), launchable.ServiceID(), err)
 		}
+		err = writeEnvFile(launchable.EnvDir(), "LAUNCHABLE_ID", launchable.ID(), uid, gid)
+		if err != nil {
+			return err
+		}
 		err = writeEnvFile(launchable.EnvDir(), "LAUNCHABLE_ROOT", launchable.InstallDir(), uid, gid)
 		if err != nil {
 			return err
