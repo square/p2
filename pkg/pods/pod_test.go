@@ -50,7 +50,7 @@ func TestGetLaunchable(t *testing.T) {
 	for _, stanza := range launchableStanzas {
 		l, _ := pod.getLaunchable(stanza, "foouser", runit.RestartPolicyAlways)
 		launchable := l.(hoist.LaunchAdapter).Launchable
-		Assert(t).AreEqual("hello__hello", launchable.Id, "LaunchableId did not have expected value")
+		Assert(t).AreEqual("hello__hello", launchable.ServiceId, "Launchable ServiceId did not have expected value")
 		Assert(t).AreEqual("hoisted-hello_def456.tar.gz", launchable.Location, "Launchable location did not have expected value")
 		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
 		Assert(t).IsTrue(launchable.ExecNoLimit, "GetLaunchable() should always set ExecNoLimit to true for hoist launchables")
@@ -153,12 +153,12 @@ func TestLogLaunchableError(t *testing.T) {
 	out := bytes.Buffer{}
 	Log.SetLogOut(&out)
 
-	testLaunchable := &hoist.Launchable{Id: "TestLaunchable"}
+	testLaunchable := &hoist.Launchable{ServiceId: "TestLaunchable"}
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
 	pod := PodFromManifestId(testManifest.ID())
-	pod.logLaunchableError(testLaunchable.Id, testErr, message)
+	pod.logLaunchableError(testLaunchable.ServiceId, testErr, message)
 
 	output, err := ioutil.ReadAll(&out)
 	Assert(t).IsNil(err, "Got an error reading the logging output")

@@ -17,7 +17,7 @@ func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuild
 
 	launchable := &Launchable{
 		Location:  "testLaunchable.tar.gz",
-		Id:        "testPod__testLaunchable",
+		ServiceId: "testPod__testLaunchable",
 		RunAs:     "testPod",
 		PodEnvDir: tempDir,
 		Fetcher:   uri.DefaultFetcher,
