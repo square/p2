@@ -213,16 +213,16 @@ func (l *Launchable) flipSymlink(newLinkPath string) error {
 	tempLinkPath := filepath.Join(dir, l.ServiceID_)
 	err = os.Symlink(l.InstallDir(), tempLinkPath)
 	if err != nil {
-		return util.Errorf("Couldn't create symlink for hoist launchable %s: %s", l.ServiceID_, err)
+		return util.Errorf("Couldn't create symlink for OpenContainer launchable %s: %s", l.ServiceID_, err)
 	}
 
 	uid, gid, err := user.IDs(l.RunAs)
 	if err != nil {
-		return util.Errorf("Couldn't retrieve UID/GID for hoist launchable %s user %s: %s", l.ServiceID_, l.RunAs, err)
+		return util.Errorf("Couldn't retrieve UID/GID for OpenContainer launchable %s user %s: %s", l.ServiceID_, l.RunAs, err)
 	}
 	err = os.Lchown(tempLinkPath, uid, gid)
 	if err != nil {
-		return util.Errorf("Couldn't lchown symlink for hoist launchable %s: %s", l.ServiceID_, err)
+		return util.Errorf("Couldn't lchown symlink for OpenContainer launchable %s: %s", l.ServiceID_, err)
 	}
 
 	return os.Rename(tempLinkPath, newLinkPath)
