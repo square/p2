@@ -38,7 +38,8 @@ var RuncPath = param.String("runc_path", "/usr/local/bin/runc")
 // Launchable represents an installation of a container.
 type Launchable struct {
 	Location       string              // A URL where we can download the artifact from.
-	ID_            string              // A unique identifier for this launchable, used when creating runit services
+	ID_            string              // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
+	ServiceID_     string              // A (host-wise) unique identifier for this launchable, used when creating runit services
 	RunAs          string              // The user to assume when launching the executable
 	RootDir        string              // The root directory of the launchable, containing N:N>=1 installs.
 	P2Exec         string              // The path to p2-exec
@@ -73,6 +74,10 @@ func (l *Launchable) ID() string {
 	return l.ID_
 }
 
+func (l *Launchable) ServiceID() string {
+	return l.ServiceID_
+}
+
 // The version of the artifact is currently derived from the location, using
 // the naming scheme <the-app>_<unique-version-string>.tar.gz
 func (hl *Launchable) Version() string {
@@ -102,16 +107,16 @@ func (l *Launchable) InstallDir() string {
 // Executables gets a list of the runit services that will be built for this launchable.
 func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch.Executable, error) {
 	if !l.Installed() {
-		return []launch.Executable{}, util.Errorf("%s is not installed", l.ID_)
+		return []launch.Executable{}, util.Errorf("%s is not installed", l.ServiceID_)
 	}
 
 	uid, gid, err := user.IDs(l.RunAs)
 	if err != nil {
-		return nil, util.Errorf("%s: unknown runas user: %s", l.ID_, l.RunAs)
+		return nil, util.Errorf("%s: unknown runas user: %s", l.ServiceID_, l.RunAs)
 	}
 	lspec, err := l.getSpec()
 	if err != nil {
-		return nil, util.Errorf("%s: loading container specification: %s", l.ID_, err)
+		return nil, util.Errorf("%s: loading container specification: %s", l.ServiceID_, err)
 	}
 	expectedPlatform := Platform{
 		OS:   "linux",
@@ -120,21 +125,21 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 	if lspec.Platform != expectedPlatform {
 		return nil, util.Errorf(
 			"%s: unsupported container platform: %#v expected %#v",
-			l.ID_,
+			l.ServiceID_,
 			lspec.Platform,
 			expectedPlatform,
 		)
 	}
 	if filepath.Base(lspec.Root.Path) != lspec.Root.Path {
-		return nil, util.Errorf("%s: invalid container root: %s", l.ID_, lspec.Root.Path)
+		return nil, util.Errorf("%s: invalid container root: %s", l.ServiceID_, lspec.Root.Path)
 	}
 	luser := lspec.Process.User
 	if uid != int(luser.UID) || gid != int(luser.GID) {
 		return nil, util.Errorf("%s: cannot execute as %s(%d:%d): container expects %d:%d",
-			l.ID_, l.RunAs, uid, gid, luser.UID, luser.GID)
+			l.ServiceID_, l.RunAs, uid, gid, luser.UID, luser.GID)
 	}
 
-	serviceName := l.ID_ + "__container"
+	serviceName := l.ServiceID_ + "__container"
 	return []launch.Executable{{
 		Service: runit.Service{
 			Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
@@ -200,24 +205,24 @@ func (l *Launchable) PostActivate() (string, error) {
 }
 
 func (l *Launchable) flipSymlink(newLinkPath string) error {
-	dir, err := ioutil.TempDir(l.RootDir, l.ID_)
+	dir, err := ioutil.TempDir(l.RootDir, l.ServiceID_)
 	if err != nil {
 		return util.Errorf("Couldn't create temporary directory for symlink: %s", err)
 	}
 	defer os.RemoveAll(dir)
-	tempLinkPath := filepath.Join(dir, l.ID_)
+	tempLinkPath := filepath.Join(dir, l.ServiceID_)
 	err = os.Symlink(l.InstallDir(), tempLinkPath)
 	if err != nil {
-		return util.Errorf("Couldn't create symlink for hoist launchable %s: %s", l.ID_, err)
+		return util.Errorf("Couldn't create symlink for OpenContainer launchable %s: %s", l.ServiceID_, err)
 	}
 
 	uid, gid, err := user.IDs(l.RunAs)
 	if err != nil {
-		return util.Errorf("Couldn't retrieve UID/GID for hoist launchable %s user %s: %s", l.ID_, l.RunAs, err)
+		return util.Errorf("Couldn't retrieve UID/GID for OpenContainer launchable %s user %s: %s", l.ServiceID_, l.RunAs, err)
 	}
 	err = os.Lchown(tempLinkPath, uid, gid)
 	if err != nil {
-		return util.Errorf("Couldn't lchown symlink for hoist launchable %s: %s", l.ID_, err)
+		return util.Errorf("Couldn't lchown symlink for OpenContainer launchable %s: %s", l.ServiceID_, err)
 	}
 
 	return os.Rename(tempLinkPath, newLinkPath)
@@ -282,7 +287,7 @@ func (l *Launchable) stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) err
 			)
 			err = cmd.Run()
 			if err != nil {
-				return util.Errorf("%s: error stopping container: %s", l.ID_, err)
+				return util.Errorf("%s: error stopping container: %s", l.ServiceID_, err)
 			}
 		}
 	}

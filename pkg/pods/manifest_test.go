@@ -21,7 +21,7 @@ func TestPodManifestCanBeRead(t *testing.T) {
 	Assert(t).AreEqual("hello", manifest.ID(), "Id read from manifest didn't have expected value")
 	Assert(t).AreEqual(manifest.GetLaunchableStanzas()["app"].Location, "hoisted-hello_def456.tar.gz", "Location read from manifest didn't have expected value")
 	Assert(t).AreEqual("hoist", manifest.GetLaunchableStanzas()["app"].LaunchableType, "LaunchableType read from manifest didn't have expected value")
-	Assert(t).AreEqual("hello", manifest.GetLaunchableStanzas()["app"].LaunchableId, "LaunchableId read from manifest didn't have expected value")
+	Assert(t).AreEqual("app", manifest.GetLaunchableStanzas()["app"].LaunchableId, "LaunchableId read from manifest didn't have expected value")
 
 	Assert(t).AreEqual("staging", manifest.GetConfig()["ENVIRONMENT"], "Should have read the ENVIRONMENT from the config stanza")
 	hoptoad := manifest.GetConfig()["hoptoad"].(map[interface{}]interface{})

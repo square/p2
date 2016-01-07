@@ -32,8 +32,15 @@ func (e StopError) Error() string { return e.Inner.Error() }
 type Launchable interface {
 	// Type returns a text description of the type of launchable.
 	Type() string
-	// ID returns the name of this launchable.
+	// ID returns a (pod-wise) unique ID for this launchable.
 	ID() string
+	// ServiceID returns a (host-wise) unique ID for this launchable.
+	// Unlike ID(), ServiceID() must be unique for all instances of a launchable
+	// on a single host, even if are multiple pods have the same launchable ID.
+	// This is because runit requires service names to be unique.
+	// In practice this usually means this will return some concatenation of the
+	// pod ID and the launchable ID.
+	ServiceID() string
 	// InstallDir is the directory where this launchable is or will be placed.
 	InstallDir() string
 	// EnvDir is the directory in which launchable environment variables

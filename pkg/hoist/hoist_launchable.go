@@ -25,7 +25,8 @@ import (
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type Launchable struct {
 	Location         string              // A URL where we can download the artifact from.
-	Id               string              // A unique identifier for this launchable, used when creating runit services
+	Id               string              // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
+	ServiceId        string              // A (host-wise) unique identifier for this launchable, used when creating runit services
 	RunAs            string              // The user to assume when launching the executable
 	PodEnvDir        string              // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
 	Fetcher          uri.Fetcher         // Callback that downloads the file from the remote location.
@@ -45,6 +46,10 @@ type LaunchAdapter struct {
 
 func (a LaunchAdapter) ID() string {
 	return a.Launchable.Id
+}
+
+func (a LaunchAdapter) ServiceID() string {
+	return a.Launchable.ServiceId
 }
 
 func (a LaunchAdapter) Fetcher() uri.Fetcher {
@@ -112,7 +117,7 @@ func (hl *Launchable) disable() (string, error) {
 
 	// providing a disable script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
-		return output, util.Errorf("Could not disable %s: %s", hl.Id, err)
+		return output, util.Errorf("Could not disable %s: %s", hl.ServiceId, err)
 	}
 
 	return output, nil
@@ -123,7 +128,7 @@ func (hl *Launchable) enable() (string, error) {
 
 	// providing an enable script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
-		return output, util.Errorf("Could not enable %s: %s", hl.Id, err)
+		return output, util.Errorf("Could not enable %s: %s", hl.ServiceId, err)
 	}
 
 	return output, nil
@@ -136,7 +141,7 @@ func (hl *Launchable) InvokeBinScript(script string) (string, error) {
 		return "", err
 	}
 
-	cgroupName := hl.Id
+	cgroupName := hl.ServiceId
 	if hl.CgroupConfigName == "" {
 		cgroupName = ""
 	}
@@ -205,7 +210,7 @@ func (hl *Launchable) Executables(
 	serviceBuilder *runit.ServiceBuilder,
 ) ([]launch.Executable, error) {
 	if !hl.Installed() {
-		return []launch.Executable{}, util.Errorf("%s is not installed", hl.Id)
+		return []launch.Executable{}, util.Errorf("%s is not installed", hl.ServiceId)
 	}
 
 	binLaunchPath := filepath.Join(hl.InstallDir(), "bin", "launch")
@@ -230,14 +235,14 @@ func (hl *Launchable) Executables(
 
 	var executables []launch.Executable
 	for _, service := range services {
-		serviceName := fmt.Sprintf("%s__%s", hl.Id, service.Name())
+		serviceName := fmt.Sprintf("%s__%s", hl.ServiceId, service.Name())
 		p2ExecArgs := p2exec.P2ExecArgs{
 			Command:          []string{filepath.Join(serviceDir, service.Name())},
 			User:             hl.RunAs,
 			EnvDirs:          []string{hl.PodEnvDir, hl.EnvDir()},
 			NoLimits:         hl.ExecNoLimit,
 			CgroupConfigName: hl.CgroupConfigName,
-			CgroupName:       hl.Id,
+			CgroupName:       hl.ServiceId,
 		}
 		execCmd := append([]string{hl.P2Exec}, p2ExecArgs.CommandLine()...)
 
@@ -306,13 +311,13 @@ func (*Launchable) Type() string {
 
 func (hl *Launchable) AppManifest() (*artifact.AppManifest, error) {
 	if !hl.Installed() {
-		return nil, util.Errorf("%s has not been installed yet", hl.Id)
+		return nil, util.Errorf("%s has not been installed yet", hl.ServiceId)
 	}
 	manPath := filepath.Join(hl.InstallDir(), "app-manifest.yaml")
 	if _, err := os.Stat(manPath); os.IsNotExist(err) {
 		manPath = filepath.Join(hl.InstallDir(), "app-manifest.yml")
 		if _, err = os.Stat(manPath); os.IsNotExist(err) {
-			return nil, util.Errorf("No app manifest was found in the Hoist launchable %s", hl.Id)
+			return nil, util.Errorf("No app manifest was found in the Hoist launchable %s", hl.ServiceId)
 		}
 	}
 	return artifact.ManifestFromPath(manPath)
@@ -336,24 +341,24 @@ func (hl *Launchable) makeLast() error {
 }
 
 func (hl *Launchable) flipSymlink(newLinkPath string) error {
-	dir, err := ioutil.TempDir(hl.RootDir, hl.Id)
+	dir, err := ioutil.TempDir(hl.RootDir, hl.ServiceId)
 	if err != nil {
 		return util.Errorf("Couldn't create temporary directory for symlink: %s", err)
 	}
 	defer os.RemoveAll(dir)
-	tempLinkPath := filepath.Join(dir, hl.Id)
+	tempLinkPath := filepath.Join(dir, hl.ServiceId)
 	err = os.Symlink(hl.InstallDir(), tempLinkPath)
 	if err != nil {
-		return util.Errorf("Couldn't create symlink for hoist launchable %s: %s", hl.Id, err)
+		return util.Errorf("Couldn't create symlink for hoist launchable %s: %s", hl.ServiceId, err)
 	}
 
 	uid, gid, err := user.IDs(hl.RunAs)
 	if err != nil {
-		return util.Errorf("Couldn't retrieve UID/GID for hoist launchable %s user %s: %s", hl.Id, hl.RunAs, err)
+		return util.Errorf("Couldn't retrieve UID/GID for hoist launchable %s user %s: %s", hl.ServiceId, hl.RunAs, err)
 	}
 	err = os.Lchown(tempLinkPath, uid, gid)
 	if err != nil {
-		return util.Errorf("Couldn't lchown symlink for hoist launchable %s: %s", hl.Id, err)
+		return util.Errorf("Couldn't lchown symlink for hoist launchable %s: %s", hl.ServiceId, err)
 	}
 
 	return os.Rename(tempLinkPath, newLinkPath)

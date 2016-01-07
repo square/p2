@@ -112,10 +112,10 @@ func (pod *Pod) Halt(manifest Manifest) (bool, error) {
 			// noop
 		case launch.DisableError:
 			// do not set success to false on a disable error
-			pod.logLaunchableWarning(launchable.ID(), err, "Could not disable launchable")
+			pod.logLaunchableWarning(launchable.ServiceID(), err, "Could not disable launchable")
 		default:
 			// this case intentionally includes launch.StopError
-			pod.logLaunchableError(launchable.ID(), err, "Could not halt launchable")
+			pod.logLaunchableError(launchable.ServiceID(), err, "Could not halt launchable")
 			success = false
 		}
 	}
@@ -156,7 +156,7 @@ func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 		if err != nil {
 			// if a launchable's post-activate fails, we probably can't
 			// launch it, but this does not break the entire pod
-			pod.logLaunchableError(launchable.ID(), err, out)
+			pod.logLaunchableError(launchable.ServiceID(), err, out)
 			successes = append(successes, false)
 		} else {
 			if out != "" {
@@ -179,10 +179,10 @@ func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 			// noop
 		case launch.EnableError:
 			// do not set success to false on an enable error
-			pod.logLaunchableWarning(launchable.ID(), err, "Could not enable launchable")
+			pod.logLaunchableWarning(launchable.ServiceID(), err, "Could not enable launchable")
 		default:
 			// this case intentionally includes launch.StartError
-			pod.logLaunchableError(launchable.ID(), err, "Could not launch launchable")
+			pod.logLaunchableError(launchable.ServiceID(), err, "Could not launch launchable")
 			success = false
 		}
 	}
@@ -204,7 +204,7 @@ func (pod *Pod) Prune(max size.ByteCount, manifest Manifest) {
 	for _, l := range launchables {
 		err := l.Prune(max)
 		if err != nil {
-			pod.logLaunchableError(l.ID(), err, "Could not prune directory")
+			pod.logLaunchableError(l.ServiceID(), err, "Could not prune directory")
 			// Don't return here. We want to prune other launchables if possible.
 		}
 	}
@@ -238,12 +238,12 @@ func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest 
 	for _, launchable := range launchables {
 		executables, err := launchable.Executables(pod.ServiceBuilder)
 		if err != nil {
-			pod.logLaunchableError(launchable.ID(), err, "Unable to list executables")
+			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to list executables")
 			continue
 		}
 		for _, executable := range executables {
 			if _, ok := sbTemplate[executable.Service.Name]; ok {
-				return util.Errorf("Duplicate executable %q for launchable %q", executable.Service.Name, launchable.ID())
+				return util.Errorf("Duplicate executable %q for launchable %q", executable.Service.Name, launchable.ServiceID())
 			}
 			sbTemplate[executable.Service.Name] = runit.ServiceTemplate{
 				Log: pod.logExec(),
@@ -388,7 +388,7 @@ func (pod *Pod) Install(manifest Manifest) error {
 	for _, launchable := range launchables {
 		err := launchable.Install()
 		if err != nil {
-			pod.logLaunchableError(launchable.ID(), err, "Unable to install launchable")
+			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
 			return err
 		}
 	}
@@ -529,7 +529,11 @@ func (pod *Pod) setupConfig(manifest Manifest, launchables []launch.Launchable) 
 	for _, launchable := range launchables {
 		err = util.MkdirChownAll(launchable.EnvDir(), uid, gid, 0755)
 		if err != nil {
-			return util.Errorf("Could not create the environment dir for pod %s launchable %s: %s", manifest.ID(), launchable.ID(), err)
+			return util.Errorf("Could not create the environment dir for pod %s launchable %s: %s", manifest.ID(), launchable.ServiceID(), err)
+		}
+		err = writeEnvFile(launchable.EnvDir(), "LAUNCHABLE_ID", launchable.ID(), uid, gid)
+		if err != nil {
+			return err
 		}
 		err = writeEnvFile(launchable.EnvDir(), "LAUNCHABLE_ROOT", launchable.InstallDir(), uid, gid)
 		if err != nil {
@@ -576,7 +580,7 @@ func (pod *Pod) Launchables(manifest Manifest) ([]launch.Launchable, error) {
 
 func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
 	launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
-	launchableId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
+	serviceId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
 
 	restartTimeout := pod.DefaultTimeout
 
@@ -592,7 +596,8 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 	if launchableStanza.LaunchableType == "hoist" {
 		ret := &hoist.Launchable{
 			Location:         launchableStanza.Location,
-			Id:               launchableId,
+			Id:               launchableStanza.LaunchableId,
+			ServiceId:        serviceId,
 			RunAs:            runAsUser,
 			PodEnvDir:        pod.EnvDir(),
 			Fetcher:          uri.DefaultFetcher,
@@ -604,12 +609,13 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 			CgroupConfig:     launchableStanza.CgroupConfig,
 			CgroupConfigName: launchableStanza.LaunchableId,
 		}
-		ret.CgroupConfig.Name = ret.Id
+		ret.CgroupConfig.Name = ret.ServiceId
 		return ret.If(), nil
 	} else if *ExperimentalOpencontainer && launchableStanza.LaunchableType == "opencontainer" {
 		ret := &opencontainer.Launchable{
 			Location:       launchableStanza.Location,
-			ID_:            launchableId,
+			ID_:            launchableStanza.LaunchableId,
+			ServiceID_:     serviceId,
 			RunAs:          runAsUser,
 			RootDir:        launchableRootDir,
 			P2Exec:         pod.P2Exec,
@@ -617,7 +623,7 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 			RestartPolicy:  restartPolicy,
 			CgroupConfig:   launchableStanza.CgroupConfig,
 		}
-		ret.CgroupConfig.Name = launchableId
+		ret.CgroupConfig.Name = serviceId
 		return ret, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported", launchableStanza.LaunchableType)

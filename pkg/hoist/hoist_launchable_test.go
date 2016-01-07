@@ -31,6 +31,7 @@ func TestInstall(t *testing.T) {
 	launchable := &Launchable{
 		Location:  testLocation,
 		Id:        "hello",
+		ServiceId: "hoisted-hello__hello",
 		RunAs:     currentUser.Username,
 		PodEnvDir: launchableHome,
 		Fetcher:   fetcher,
@@ -62,6 +63,7 @@ func TestInstallDir(t *testing.T) {
 	launchable := &Launchable{
 		Location:  testLocation,
 		Id:        "testLaunchable",
+		ServiceId: "testPod__testLaunchable",
 		RunAs:     "testuser",
 		PodEnvDir: tempDir,
 		Fetcher:   uri.DefaultFetcher,
