@@ -115,3 +115,24 @@ func (f Fixture) StopOnPanic() {
 		panic(r)
 	}
 }
+
+func (f Fixture) GetKV(key string) []byte {
+	p, _, err := f.Client.KV().Get(key, nil)
+	if err != nil {
+		f.T.Fatal(err)
+	}
+	if p == nil {
+		f.T.Fatalf("key does not exist: %s", key)
+	}
+	return p.Value
+}
+
+func (f Fixture) SetKV(key string, val []byte) {
+	_, err := f.Client.KV().Put(&api.KVPair{
+		Key:   key,
+		Value: val,
+	}, nil)
+	if err != nil {
+		f.T.Fatal(err)
+	}
+}

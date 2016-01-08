@@ -12,7 +12,6 @@ import (
 	"github.com/square/p2/pkg/pods"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/testutil"
 )
 
 var testNodes = []string{"node1", "node2"}
@@ -56,10 +55,10 @@ func makeStore(t *testing.T) (kp.Store, consultest.Fixture) {
 
 // Adds preparer manifest to reality tree to fool replication library into
 // thinking it is installed on the test nodes
-func setupPreparers(server *testutil.TestServer) {
+func setupPreparers(fixture consultest.Fixture) {
 	for _, node := range testNodes {
 		key := fmt.Sprintf("reality/%s/p2-preparer", node)
-		server.SetKV(key, []byte(testPreparerManifest))
+		fixture.SetKV(key, []byte(testPreparerManifest))
 	}
 }
 

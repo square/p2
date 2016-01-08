@@ -26,7 +26,7 @@ func TestLock(t *testing.T) {
 		t.Fatalf("Unable to acquire lock: %s", err)
 	}
 
-	bytes := fixture.Server.GetKV(key)
+	bytes := fixture.GetKV(key)
 	if string(bytes) != lockMessage {
 		t.Errorf("Expected lock message for '%s' to be '%s', was '%s'", key, lockMessage, string(bytes))
 	}
