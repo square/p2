@@ -66,7 +66,7 @@ func (c consulStore) newSessionHealthManager(
 	go ConsulSessionManager(
 		api.SessionEntry{
 			Name:      fmt.Sprintf("health:%s:%d:%s", node, os.Getpid(), timeStr),
-			LockDelay: 1 * time.Nanosecond,
+			LockDelay: 1 * time.Millisecond,
 			Behavior:  api.SessionBehaviorDelete,
 			TTL:       fmt.Sprintf("%ds", *SessionTTLSec),
 		},
