@@ -7,10 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/consultest"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
-
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/testutil"
 )
 
 func TestEnact(t *testing.T) {
@@ -19,7 +18,7 @@ func TestEnact(t *testing.T) {
 	defer f.Stop()
 
 	// Make the kv store look like preparer is installed on test nodes
-	setupPreparers(f.Server)
+	setupPreparers(f)
 
 	replication, errCh, err := replicator.InitializeReplication(false)
 	if err != nil {
@@ -29,7 +28,7 @@ func TestEnact(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	failIfErrors(errCh, doneCh, t)
-	imitatePreparers(f.Server, doneCh, &wg)
+	imitatePreparers(f, doneCh, &wg)
 
 	go func() {
 		replication.Enact()
@@ -66,7 +65,7 @@ func TestWaitsForHealthy(t *testing.T) {
 	}
 
 	// Make the kv store look like preparer is installed on test nodes
-	setupPreparers(f.Server)
+	setupPreparers(f)
 
 	replication, errCh, err := replicator.InitializeReplication(false)
 	if err != nil {
@@ -76,7 +75,7 @@ func TestWaitsForHealthy(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	failIfErrors(errCh, doneCh, t)
-	imitatePreparers(f.Server, doneCh, &wg)
+	imitatePreparers(f, doneCh, &wg)
 
 	// If replication finishes before we mark all nodes as healthy, the
 	// test fails. This bool tracks whether replication ending is okay
@@ -160,7 +159,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 	}
 
 	// Make the kv store look like preparer is installed on test nodes
-	setupPreparers(f.Server)
+	setupPreparers(f)
 
 	replication, errCh, err := replicator.InitializeReplication(false)
 	if err != nil {
@@ -170,7 +169,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	failIfErrors(errCh, doneCh, t)
-	imitatePreparers(f.Server, doneCh, &wg)
+	imitatePreparers(f, doneCh, &wg)
 
 	// If replication finishes before we cancel it, test fails. This bool
 	// tracks whether replication ending is okay
@@ -211,7 +210,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 
 	// One node should have been updated because active == 1, the other
 	// should not have been because health never passed
-	realityBytes := f.Server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId))
+	realityBytes := f.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId))
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {
 		t.Fatalf("Unable to get bytes from manifest: %s", err)
@@ -221,7 +220,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 		t.Fatalf("Expected reality for %s to be %s: was %s", testNodes[0], string(manifestBytes), string(realityBytes))
 	}
 
-	realityBytes = f.Server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[1], testPodId))
+	realityBytes = f.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[1], testPodId))
 	if bytes.Equal(realityBytes, manifestBytes) {
 		t.Fatalf("The second node shouldn't have been deployed to but it was")
 	}
@@ -239,7 +238,7 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 	manifest := basicManifest()
 
 	// Make the kv store look like preparer is installed on test nodes
-	setupPreparers(f.Server)
+	setupPreparers(f)
 
 	// Create the replication manually for this test so we can trigger lock
 	// renewals on a faster interval (to keep test short)
@@ -286,7 +285,7 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 			t.Fatalf("Did not get expected lock renewal error within timeout")
 		}
 	}()
-	imitatePreparers(f.Server, doneCh, &wg)
+	imitatePreparers(f, doneCh, &wg)
 
 	go func() {
 		replication.Enact()
@@ -336,7 +335,7 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 	go func() {
 		realityKey := fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId)
 		for range time.Tick(10 * time.Millisecond) {
-			if bytes.Equal(f.Server.GetKV(realityKey), manifestBytes) {
+			if bytes.Equal(f.GetKV(realityKey), manifestBytes) {
 				close(firstNodeDeployed)
 				return
 			}
@@ -389,13 +388,13 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 
 	// One node should have been updated because active == 1, the other
 	// should not have been because health never passed
-	realityBytes := f.Server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId))
+	realityBytes := f.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[0], testPodId))
 
 	if !bytes.Equal(realityBytes, manifestBytes) {
 		t.Fatalf("Expected reality for %s to be %s: was %s", testNodes[0], string(manifestBytes), string(realityBytes))
 	}
 
-	realityBytes = f.Server.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[1], testPodId))
+	realityBytes = f.GetKV(fmt.Sprintf("reality/%s/%s", testNodes[1], testPodId))
 	if bytes.Equal(realityBytes, manifestBytes) {
 		t.Fatalf("The second node shouldn't have been deployed to but it was")
 	}
@@ -404,16 +403,16 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 
 // Imitate preparers by copying data from /intent tree to /reality tree
 // to simulate deployment
-func imitatePreparers(server *testutil.TestServer, quitCh <-chan struct{}, wg *sync.WaitGroup) {
+func imitatePreparers(fixture consultest.Fixture, quitCh <-chan struct{}, wg *sync.WaitGroup) {
 	// testutil.Server calls t.Fatalf() if a key doesn't exist, so put some
 	// dummy data into /intent and /reality for the test pod so we don't
 	// accidentally fail tests by merely testing a key
 	dummyManifest := []byte("id: wrong_manifest")
 	for _, node := range testNodes {
 		intentKey := fmt.Sprintf("intent/%s/%s", node, testPodId)
-		server.SetKV(intentKey, dummyManifest)
+		fixture.SetKV(intentKey, dummyManifest)
 		realityKey := fmt.Sprintf("reality/%s/%s", node, testPodId)
-		server.SetKV(realityKey, dummyManifest)
+		fixture.SetKV(realityKey, dummyManifest)
 	}
 
 	// Now do the actual copies
@@ -428,9 +427,9 @@ func imitatePreparers(server *testutil.TestServer, quitCh <-chan struct{}, wg *s
 				for _, node := range testNodes {
 					intentKey := fmt.Sprintf("intent/%s/%s", node, testPodId)
 					realityKey := fmt.Sprintf("reality/%s/%s", node, testPodId)
-					intentBytes := server.GetKV(intentKey)
+					intentBytes := fixture.GetKV(intentKey)
 					if !bytes.Equal(intentBytes, dummyManifest) {
-						server.SetKV(realityKey, intentBytes)
+						fixture.SetKV(realityKey, intentBytes)
 					}
 				}
 			}

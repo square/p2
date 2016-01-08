@@ -34,6 +34,10 @@ type AlreadyLockedError struct {
 const (
 	lockTTL         = "15s"
 	renewalInterval = 10 * time.Second
+
+	// Consul's minimum lock delay is 1ms. Requesting a lock delay of 0 will be
+	// interpreted as "use the default," which is 15s at this time.
+	lockDelay = 1 * time.Millisecond
 )
 
 func (err AlreadyLockedError) Error() string {
@@ -42,12 +46,8 @@ func (err AlreadyLockedError) Error() string {
 
 func (c consulStore) NewLock(name string, renewalCh <-chan time.Time) (Lock, chan error, error) {
 	session, _, err := c.client.Session().CreateNoChecks(&api.SessionEntry{
-		Name: name,
-		// if the lock delay is zero, it becomes the default value, which is 15s
-		// we want to release locks right away (so that a losing process does
-		// not delay a winning one), so we must set the shortest possible delay
-		// that is nonzero
-		LockDelay: 1 * time.Nanosecond,
+		Name:      name,
+		LockDelay: lockDelay,
 		// locks should only be used with ephemeral keys
 		Behavior: api.SessionBehaviorDelete,
 		TTL:      lockTTL,
@@ -108,6 +108,7 @@ func (c consulStore) LockHolder(key string) (string, string, error) {
 
 func (c consulStore) DestroyLockHolder(id string) error {
 	_, err := c.client.Session().Destroy(id, nil)
+	time.Sleep(lockDelay)
 	return err
 }
 

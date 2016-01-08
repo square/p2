@@ -14,7 +14,7 @@ func TestInitializeReplication(t *testing.T) {
 	defer f.Stop()
 
 	// Make the kv store look like preparer is installed on test nodes
-	setupPreparers(f.Server)
+	setupPreparers(f)
 
 	// err being nil ensures that checking preparers and locking the hosts
 	// succeeded
@@ -68,7 +68,7 @@ func TestInitializeReplicationFailsIfLockExists(t *testing.T) {
 	// we're deploying to
 	for _, node := range testNodes {
 		key := fmt.Sprintf("reality/%s/p2-preparer", node)
-		f.Server.SetKV(key, []byte(testPreparerManifest))
+		f.SetKV(key, []byte(testPreparerManifest))
 	}
 
 	// Claim a lock on a host and verify that InitializeReplication fails
@@ -106,7 +106,7 @@ func TestInitializeReplicationCanOverrideLocks(t *testing.T) {
 	// we're deploying to
 	for _, node := range testNodes {
 		key := fmt.Sprintf("reality/%s/p2-preparer", node)
-		f.Server.SetKV(key, []byte(testPreparerManifest))
+		f.SetKV(key, []byte(testPreparerManifest))
 	}
 
 	// Claim a lock on a host and verify that InitializeReplication fails
