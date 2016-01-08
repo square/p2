@@ -25,7 +25,6 @@ const (
 func testReplicatorAndServer(t *testing.T) (Replicator, kp.Store, consultest.Fixture) {
 	active := 1
 	store, f := makeStore(t)
-	defer f.StopOnPanic()
 
 	healthChecker := happyHealthChecker()
 	threshold := health.Passing
@@ -48,7 +47,6 @@ func testReplicatorAndServer(t *testing.T) (Replicator, kp.Store, consultest.Fix
 
 func makeStore(t *testing.T) (kp.Store, consultest.Fixture) {
 	f := consultest.NewFixture(t)
-	defer f.StopOnPanic()
 	store := kp.NewConsulStore(f.Client)
 	return store, f
 }
