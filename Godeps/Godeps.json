@@ -32,48 +32,44 @@
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/acl",
-			"Comment": "v0.6.0-rc1",
-			"Rev": "b087331c2b87e243d845d3d5c1e9896a0f498afb"
+			"Comment": "v0.6.1",
+			"Rev": "68969ce5f4499cbe3a4f946917be2e580f1b1936"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/api",
-			"Comment": "v0.6.0-rc1",
-			"Rev": "b087331c2b87e243d845d3d5c1e9896a0f498afb"
+			"Comment": "v0.6.1",
+			"Rev": "68969ce5f4499cbe3a4f946917be2e580f1b1936"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/consul/structs",
-			"Comment": "v0.6.0-rc1",
-			"Rev": "b087331c2b87e243d845d3d5c1e9896a0f498afb"
+			"Comment": "v0.6.1",
+			"Rev": "68969ce5f4499cbe3a4f946917be2e580f1b1936"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/testutil",
-			"Comment": "v0.6.0-rc1",
-			"Rev": "b087331c2b87e243d845d3d5c1e9896a0f498afb"
+			"Comment": "v0.6.1",
+			"Rev": "68969ce5f4499cbe3a4f946917be2e580f1b1936"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/go-cleanhttp",
-			"Rev": "5df5ddc69534f1a4697289f1dca2193fbb40213f"
+			"Rev": "ce617e79981a8fff618bb643d155133a8f38db96"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/go-msgpack/codec",
 			"Rev": "fa3f63826f7c23912c15263591e65d54d080b458"
 		},
 		{
-			"ImportPath": "github.com/hashicorp/go-multierror",
-			"Rev": "56912fb08d85084aa318edcf2bba735b97cf35c5"
-		},
-		{
 			"ImportPath": "github.com/hashicorp/golang-lru",
-			"Rev": "7f9ef20a0256f494e24126014135cf893ab71e9e"
+			"Rev": "5c7531c003d8bf158b0fe5063649a2f41a822146"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/hcl",
-			"Rev": "54864211433d45cb780682431585b3e573b49e4a"
+			"Rev": "197e8d3cf42199cfd53cd775deb37f3637234635"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/serf/coordinate",
-			"Comment": "v0.6.4-150-ge9ac4bb",
-			"Rev": "e9ac4bb0c5721826d5cd3d1cd582c12fbc664bb8"
+			"Comment": "v0.7.0-1-g39c7c06",
+			"Rev": "39c7c06298b480560202bec00c2c77e974e88792"
 		},
 		{
 			"ImportPath": "github.com/pborman/uuid",
