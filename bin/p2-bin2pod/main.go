@@ -160,8 +160,7 @@ func addManifestConfig(manifestBuilder pods.ManifestBuilder) error {
 		}
 		podConfig[res[0]] = res[1]
 	}
-	manifestBuilder.SetConfig(podConfig)
-	return nil
+	return manifestBuilder.SetConfig(podConfig)
 }
 
 func writeManifest(workingDir string, manifest pods.Manifest) (string, error) {

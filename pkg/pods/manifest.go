@@ -33,7 +33,7 @@ type LaunchableStanza struct {
 type ManifestBuilder interface {
 	GetManifest() Manifest
 	SetID(string)
-	SetConfig(config map[interface{}]interface{})
+	SetConfig(config map[interface{}]interface{}) error
 	SetRunAsUser(user string)
 	SetStatusPort(port int)
 	SetStatusHTTP(statusHTTP bool)
@@ -125,14 +125,45 @@ func (manifest *manifest) SetLaunchables(launchableStanzas map[string]Launchable
 }
 
 func (manifest *manifest) GetConfig() map[interface{}]interface{} {
-	if manifest.Config == nil {
-		return make(map[interface{}]interface{})
+	configCopy := make(map[interface{}]interface{})
+
+	// We want to make a deep copy of the config and return that. We will
+	// take advantage of YAML marshaling to do this by first serializing
+	// the config data, and then unmarshaling it into a new map
+	bytes, err := yaml.Marshal(manifest.Config)
+	if err != nil {
+		// We panic here because our code maintains an invariant that
+		// manifest.Config can be serialized to yaml successfully. See
+		// the test in SetConfig()
+		panic(err)
 	}
-	return manifest.Config
+
+	err = yaml.Unmarshal(bytes, &configCopy)
+	if err != nil {
+		// We panic here because our code maintains an invariant that
+		// manifest.Config can be unserialized from yaml successfully.
+		// See the test in SetConfig()
+		panic(err)
+	}
+
+	return configCopy
 }
 
-func (m manifestBuilder) SetConfig(config map[interface{}]interface{}) {
-	m.Config = config
+func (m manifestBuilder) SetConfig(config map[interface{}]interface{}) error {
+	// Confirm that the data passed in can be successfully serialized as YAML
+	bytes, err := yaml.Marshal(config)
+	if err != nil {
+		return err
+	}
+
+	configCopy := make(map[interface{}]interface{})
+	err = yaml.Unmarshal(bytes, &configCopy)
+	if err != nil {
+		return err
+	}
+
+	m.Config = configCopy
+	return nil
 }
 
 func (manifest *manifest) GetStatusPort() int {
