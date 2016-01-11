@@ -292,38 +292,22 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 		close(doneCh)
 	}()
 
-	// Report healthy for one node, and unhealthy for the rest so
-	// replication cannot finish without interruption
-	for i, node := range testNodes {
-		if i == 0 {
-			go func(node string) {
-				for {
-					select {
-					case resultsCh[node] <- health.Result{
-						ID:     testPodId,
-						Status: health.Passing,
-					}:
-					case <-doneCh:
-						return
-					}
-					time.Sleep(500 * time.Millisecond)
+	// Report unhealthy for all nodes so replication cannot finish without
+	// interruption
+	for _, node := range testNodes {
+		go func(node string) {
+			for {
+				select {
+				case resultsCh[node] <- health.Result{
+					ID:     testPodId,
+					Status: health.Critical,
+				}:
+				case <-doneCh:
+					return
 				}
-			}(node)
-		} else {
-			go func(node string) {
-				for {
-					select {
-					case resultsCh[node] <- health.Result{
-						ID:     testPodId,
-						Status: health.Critical,
-					}:
-					case <-doneCh:
-						return
-					}
-					time.Sleep(500 * time.Millisecond)
-				}
-			}(node)
-		}
+				time.Sleep(500 * time.Millisecond)
+			}
+		}(node)
 	}
 
 	// Wait for the first node to be deployed
