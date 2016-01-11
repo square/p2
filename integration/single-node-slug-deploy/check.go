@@ -128,7 +128,7 @@ func generatePreparerPod(workdir string) (string, error) {
 	}
 	builder := manifest.GetBuilder()
 	builder.SetID("p2-preparer")
-	builder.SetConfig(map[interface{}]interface{}{
+	err = builder.SetConfig(map[interface{}]interface{}{
 		"preparer": map[interface{}]interface{}{
 			"auth": map[string]string{
 				"type":    "keyring",
@@ -140,6 +140,10 @@ func generatePreparerPod(workdir string) (string, error) {
 			"status_port": preparerStatusPort,
 		},
 	})
+	if err != nil {
+		return "", err
+	}
+
 	builder.SetRunAsUser("root")
 	builder.SetStatusPort(preparerStatusPort)
 	builder.SetStatusHTTP(true)

@@ -2,6 +2,7 @@ package pods
 
 import (
 	"bytes"
+	"errors"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/util/size"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
 )
 
 func TestPodManifestCanBeRead(t *testing.T) {
@@ -89,9 +91,10 @@ func TestPodManifestCanBeWritten(t *testing.T) {
 		},
 	}
 	builder.SetLaunchables(launchables)
-	builder.SetConfig(map[interface{}]interface{}{
+	err := builder.SetConfig(map[interface{}]interface{}{
 		"ENVIRONMENT": "staging",
 	})
+	Assert(t).IsNil(err, "Should not have erred setting config for test manifest")
 	builder.SetStatusPort(8000)
 
 	manifest := builder.GetManifest()
@@ -229,4 +232,45 @@ func TestGetConfigInitializesIfEmpty(t *testing.T) {
 	manifest := builder.GetManifest()
 	config := manifest.GetConfig()
 	Assert(t).IsNotNil(config, "Expected returned config to be instantiated by GetConfig() if not set")
+}
+
+func TestGetConfigReturnsCopy(t *testing.T) {
+	builder := NewManifestBuilder()
+	manifest := builder.GetManifest()
+	config := manifest.GetConfig()
+	config2 := manifest.GetConfig()
+	config["foo"] = "bar"
+	Assert(t).IsNil(config2["foo"], "config2 should have been unaffected by a change to config1")
+}
+
+type CantMarshal struct{}
+
+var _ yaml.Marshaler = CantMarshal{}
+
+func (CantMarshal) MarshalYAML() (interface{}, error) {
+	return nil, errors.New("Can't yaml marshal this type")
+}
+
+func TestSetConfigErrsIfBadYAML(t *testing.T) {
+	cantMarshalConfig := make(map[interface{}]interface{})
+	cantMarshalConfig["foo"] = CantMarshal{}
+
+	builder := NewManifestBuilder()
+	err := builder.SetConfig(cantMarshalConfig)
+	Assert(t).IsNotNil(err, "Should have erred setting config with a type that cannot be marshaled as YAML")
+}
+
+func TestSetConfigCopies(t *testing.T) {
+	builder := NewManifestBuilder()
+	config := map[interface{}]interface{}{
+		"foo": "bar",
+	}
+
+	err := builder.SetConfig(config)
+	Assert(t).IsNil(err, "Should not have errored setting config")
+	manifest := builder.GetManifest()
+	manifestConfig := manifest.GetConfig()
+	Assert(t).AreEqual(manifestConfig["foo"], "bar", "Should have been able to read config values out unchanged after setting them")
+	config["foo"] = "baz"
+	Assert(t).AreEqual(manifestConfig["foo"], "bar", "Config values shouldn't have changed when mutating the original input due to deep copy")
 }
