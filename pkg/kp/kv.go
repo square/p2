@@ -30,6 +30,7 @@ type Store interface {
 	DeletePod(key string) (time.Duration, error)
 	PutHealth(res WatchResult) (time.Time, time.Duration, error)
 	GetHealth(service, node string) (WatchResult, error)
+	DeleteHealth(service, node string) (time.Duration, error)
 	GetServiceHealth(service string) (map[string]WatchResult, error)
 	WatchPod(key string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
 	WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult)
@@ -146,6 +147,15 @@ func (c consulStore) GetHealth(service, node string) (WatchResult, error) {
 		return *healthRes, consulutil.NewKVError("get", key, fmt.Errorf("stale health entry"))
 	}
 	return *healthRes, nil
+}
+
+func (c consulStore) DeleteHealth(service, node string) (time.Duration, error) {
+	key := HealthPath(service, node)
+	writeMeta, err := c.client.KV().Delete(key, nil)
+	if err != nil {
+		return 0, consulutil.NewKVError("delete", key, err)
+	}
+	return writeMeta.RequestTime, nil
 }
 
 func (c consulStore) GetServiceHealth(service string) (map[string]WatchResult, error) {
