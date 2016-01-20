@@ -57,7 +57,7 @@ func lossyCopy(src io.Reader, lines chan []byte, logger logging.Logger) {
 	}
 }
 
-// Tee will copy to faithfulWriter without dropping messages, it will copy
+// Tee will copy to durableWriter without dropping messages, it will copy
 // through a buffer to better handle mismatched latencies. Lines written to
 // lossyWriter will be copied in a best effort way with respect to latency and
 // buffered through a go channel.
