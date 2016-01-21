@@ -51,9 +51,21 @@ func lossyCopy(src io.Reader, lines chan []byte, logger logging.Logger) {
 	droppedLines := 0
 	scanner := bufio.NewScanner(src)
 	scanner.Split(scanFullLines)
-	var line []byte
+	var buf []byte
 	for scanner.Scan() {
-		line = scanner.Bytes() // consume a line regardless of the state of the writer
+		rawLine := scanner.Bytes() // consume a line regardless of the state of the writer
+
+		// The token slices returned by the Scanner are potentially backed by the same
+		// array, whose contents changes over time as new input is read. Since the lines
+		// will be handled asynchronously, we have to make a copy now. Copy into a large
+		// buffer to prevent too much churn on the garbage collector.
+		if len(rawLine) > len(buf) || len(buf) == 0 {
+			buf = make([]byte, bufio.MaxScanTokenSize)
+		}
+		n := copy(buf, rawLine)
+		line := buf[:n]
+		buf = buf[n:]
+
 		select {
 		case lines <- line:
 		default:
