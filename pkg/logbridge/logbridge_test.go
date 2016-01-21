@@ -152,8 +152,12 @@ func TestErrorCases(t *testing.T) {
 	reader = bytes.NewReader(input)
 	LossyCopy(retriableErrorWriter, reader, bridgeCapacity, logging.DefaultLogger)
 
-	if len(retriableErrorWriter.bytes) != bridgeCapacity {
-		t.Errorf("Expected bridge to successfully retry writes that result in error. Expected %d Got %d", bridgeCapacity, len(retriableErrorWriter.bytes))
+	if len(retriableErrorWriter.bytes) != len(input) {
+		t.Errorf(
+			"Expected bridge to successfully retry writes that result in error. Expected %d Got %d",
+			len(input),
+			len(retriableErrorWriter.bytes),
+		)
 	}
 }
 

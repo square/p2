@@ -2,6 +2,7 @@ package logbridge
 
 import (
 	"bufio"
+	"bytes"
 	"io"
 	"time"
 
@@ -26,6 +27,22 @@ func LossyCopy(dest io.Writer, src io.Reader, capacity int, logger logging.Logge
 	}
 }
 
+// scanFullLines is a SplitFunc for a bufio.Scanner that splits at each newline and,
+// unlike the the default splitter, returns the entire line with a trailing newline. This
+// method is derived from bufio.ScanLines.
+func scanFullLines(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if i := bytes.IndexByte(data, '\n'); i >= 0 {
+		return i + 1, data[0 : i+1], nil
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
+}
+
 // This function will scan lines from src and send them on the lines channel,
 // except when the channel is full in which case it will skip the line
 func lossyCopy(src io.Reader, lines chan []byte, logger logging.Logger) {
@@ -33,6 +50,7 @@ func lossyCopy(src io.Reader, lines chan []byte, logger logging.Logger) {
 
 	droppedLines := 0
 	scanner := bufio.NewScanner(src)
+	scanner.Split(scanFullLines)
 	var line []byte
 	for scanner.Scan() {
 		line = scanner.Bytes() // consume a line regardless of the state of the writer
