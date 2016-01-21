@@ -66,6 +66,7 @@ func NewPod(id string, path string) *Pod {
 		ServiceBuilder: runit.DefaultBuilder,
 		P2Exec:         DefaultP2Exec,
 		DefaultTimeout: 60 * time.Second,
+		LogExec:        defaultLogExec,
 	}
 }
 
@@ -246,7 +247,7 @@ func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest 
 				return util.Errorf("Duplicate executable %q for launchable %q", executable.Service.Name, launchable.ServiceID())
 			}
 			sbTemplate[executable.Service.Name] = runit.ServiceTemplate{
-				Log: pod.logExec(),
+				Log: pod.LogExec,
 				Run: executable.Exec,
 			}
 		}
@@ -649,11 +650,4 @@ func (p *Pod) logLaunchableWarning(launchableId string, err error, message strin
 
 func (p *Pod) logInfo(message string) {
 	p.logger.WithFields(logrus.Fields{}).Info(message)
-}
-
-func (p *Pod) logExec() runit.LogExec {
-	if len(p.LogExec) == 0 {
-		return defaultLogExec
-	}
-	return p.LogExec
 }

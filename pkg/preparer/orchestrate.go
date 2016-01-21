@@ -1,6 +1,8 @@
 package preparer
 
 import (
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
@@ -16,7 +18,7 @@ import (
 // Used because the preparer special-cases itself in a few places.
 const POD_ID = "p2-preparer"
 
-var logBridgeExec = []string{"/usr/local/bin/p2-log-bridge", "start"}
+const svlogdExec = "svlogd -tt ./main"
 
 type Pod interface {
 	hooks.Pod
@@ -180,7 +182,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				}
 				for _, testPodId := range p.logExecTestGroup {
 					if pod.Id == testPodId {
-						pod.LogExec = logBridgeExec
+						pod.LogExec = logBridgeExec(pod)
 					}
 				}
 
@@ -215,6 +217,21 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				}
 			}
 		}
+	}
+}
+
+func logBridgeExec(pod *pods.Pod) []string {
+	return []string{
+		pod.P2Exec,
+		"-u",
+		"nobody",
+		"-e",
+		pod.EnvDir(),
+		"--",
+		filepath.Join(os.Getenv("POD_HOME"), "p2-log-bridge", "current", "bin", "p2-log-bridge"),
+		"bridge",
+		"-logExec",
+		svlogdExec,
 	}
 }
 
