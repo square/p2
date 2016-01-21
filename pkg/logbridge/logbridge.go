@@ -47,7 +47,7 @@ func lossyCopy(src io.Reader, lines chan []byte, logger logging.Logger) {
 				select {
 				case lines <- []byte(warningMessage):
 				case <-time.After(100 * time.Millisecond):
-					// best effort warning of dropped messages. If this doesn't suceed expediently, forget it and get back to work
+					// best effort warning of dropped messages. If this doesn't succeed expediently, forget it and get back to work
 				}
 			}
 		}
@@ -57,12 +57,11 @@ func lossyCopy(src io.Reader, lines chan []byte, logger logging.Logger) {
 	}
 }
 
-// Tee will copy to faithfulWriter without dropping messages, it will copy
-// through a buffer to better handle mismatched latencies. Lines written to
-// lossyWriter will be copied in a best effort way with respect to latency and
-// buffered through a go channel.
+// Tee will copy to durableWriter without dropping messages. Lines written to
+// lossyWriter will be copied best effort with respect to latency on the
+// writer. Writes to lossyWriter are buffered through a go channel.
 func Tee(r io.Reader, durableWriter io.Writer, lossyWriter io.Writer, logger logging.Logger) {
-	tr := io.TeeReader(r, bufio.NewWriterSize(durableWriter, 1<<10))
+	tr := io.TeeReader(r, durableWriter)
 
 	LossyCopy(lossyWriter, tr, 1<<10, logger)
 }
