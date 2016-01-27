@@ -124,7 +124,7 @@ func (c *consulAggregator) Aggregate() {
 	outPairs := make(chan api.KVPairs)
 	done := make(chan struct{})
 	outErrors := make(chan error)
-	go consulutil.WatchPrefix(c.path, c.kv, outPairs, done, outErrors)
+	go consulutil.WatchPrefix(c.path+"/", c.kv, outPairs, done, outErrors)
 	for {
 		loopTime := time.After(AggregationRateCap)
 		select {

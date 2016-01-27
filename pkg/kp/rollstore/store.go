@@ -108,7 +108,7 @@ func (s consulStore) Watch(quit <-chan struct{}) (<-chan []rollf.Update, <-chan 
 	errCh := make(chan error)
 	inCh := make(chan api.KVPairs)
 
-	go consulutil.WatchPrefix(kp.ROLL_TREE, s.kv, inCh, quit, errCh)
+	go consulutil.WatchPrefix(kp.ROLL_TREE+"/", s.kv, inCh, quit, errCh)
 
 	go func() {
 		defer close(outCh)

@@ -35,7 +35,7 @@ type Hooks interface {
 }
 
 type Store interface {
-	ListPods(keyPrefix string) ([]kp.ManifestResult, time.Duration, error)
+	ListPods(path string) ([]kp.ManifestResult, time.Duration, error)
 	SetPod(string, pods.Manifest) (time.Duration, error)
 	Pod(key string) (pods.Manifest, time.Duration, error)
 	DeletePod(key string) (time.Duration, error)

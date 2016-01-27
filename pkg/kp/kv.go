@@ -32,9 +32,9 @@ type Store interface {
 	GetHealth(service, node string) (WatchResult, error)
 	GetServiceHealth(service string) (map[string]WatchResult, error)
 	WatchPod(key string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
-	WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult)
+	WatchPods(path string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult)
 	Ping() error
-	ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error)
+	ListPods(path string) ([]ManifestResult, time.Duration, error)
 	LockHolder(key string) (string, string, error)
 	DestroyLockHolder(id string) error
 	NewLock(name string, renewalCh <-chan time.Time) (Lock, chan error, error)
@@ -220,10 +220,11 @@ func (c consulStore) Pod(key string) (pods.Manifest, time.Duration, error) {
 }
 
 // ListPods reads all the pod manifests from the key-value store under the given
-// key prefix. In the event of an error, the nil slice is returned.
+// path. In the event of an error, the nil slice is returned.
 //
-// All the values under the given key prefix must be pod manifests.
-func (c consulStore) ListPods(keyPrefix string) ([]ManifestResult, time.Duration, error) {
+// All the values under the given path must be pod manifests.
+func (c consulStore) ListPods(path string) ([]ManifestResult, time.Duration, error) {
+	keyPrefix := path + "/"
 	kvPairs, queryMeta, err := c.client.KV().List(keyPrefix, nil)
 	if err != nil {
 		return nil, 0, consulutil.NewKVError("list", keyPrefix, err)
@@ -272,14 +273,15 @@ func (c consulStore) WatchPod(key string, quitChan <-chan struct{}, errChan chan
 }
 
 // WatchPods watches the key-value store for any changes under the given key
-// prefix. The resulting manifests are emitted on podChan. WatchPods does not
+// path. The resulting manifests are emitted on podChan. WatchPods does not
 // return in the event of an error, but it will emit the error on errChan. To
 // terminate WatchPods, close quitChan.
 //
-// All the values under the given key prefix must be pod manifests. Emitted
+// All the values under the given path must be pod manifests. Emitted
 // manifests might be unchanged from the last time they were read. It is the
 // caller's responsibility to filter out unchanged manifests.
-func (c consulStore) WatchPods(keyPrefix string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult) {
+func (c consulStore) WatchPods(path string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult) {
+	keyPrefix := path + "/"
 	defer close(podChan)
 
 	kvPairsChan := make(chan api.KVPairs)
