@@ -75,7 +75,7 @@ func (c *consulApplicator) GetLabels(labelType Type, id string) (Labeled, error)
 
 func (c *consulApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
 	// TODO: use aggregator to enable caching
-	allMatches, _, err := c.kv.List(typePath(labelType), nil)
+	allMatches, _, err := c.kv.List(typePath(labelType)+"/", nil)
 	if err != nil {
 		return nil, err
 	}

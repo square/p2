@@ -48,7 +48,7 @@ func (f *fakeIntentStore) WatchPods(watchedPath string, quitCh <-chan struct{}, 
 	<-quitCh
 }
 
-func (f *fakeIntentStore) ListPods(keyPrefix string) ([]kp.ManifestResult, time.Duration, error) {
+func (f *fakeIntentStore) ListPods(path string) ([]kp.ManifestResult, time.Duration, error) {
 	return f.manifests, 0, nil
 }
 

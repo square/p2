@@ -128,7 +128,7 @@ func (s *consulStore) Get(id fields.ID) (fields.RC, error) {
 }
 
 func (s *consulStore) List() ([]fields.RC, error) {
-	listed, _, err := s.kv.List(kp.RC_TREE, nil)
+	listed, _, err := s.kv.List(kp.RC_TREE+"/", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +140,7 @@ func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan
 	errCh := make(chan error)
 	inCh := make(chan api.KVPairs)
 
-	go consulutil.WatchPrefix(kp.RC_TREE, s.kv, inCh, quit, errCh)
+	go consulutil.WatchPrefix(kp.RC_TREE+"/", s.kv, inCh, quit, errCh)
 
 	go func() {
 		defer close(outCh)

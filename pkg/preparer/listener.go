@@ -14,7 +14,7 @@ import (
 
 type IntentStore interface {
 	WatchPods(watchPath string, quit <-chan struct{}, errCh chan<- error, manifests chan<- []kp.ManifestResult)
-	ListPods(keyPrefix string) ([]kp.ManifestResult, time.Duration, error)
+	ListPods(path string) ([]kp.ManifestResult, time.Duration, error)
 }
 
 type HookListener struct {
