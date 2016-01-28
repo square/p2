@@ -6,6 +6,7 @@ import (
 
 	"github.com/square/p2/pkg/config"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -35,7 +36,7 @@ func (h *HookEnv) Pod() (*pods.Pod, error) {
 		return nil, util.Errorf("No pod home given for pod ID %s", id)
 	}
 
-	return pods.NewPod(id, path), nil
+	return pods.NewPod(types.PodID(id), path), nil
 }
 
 func (h *HookEnv) Config() (*config.Config, error) {

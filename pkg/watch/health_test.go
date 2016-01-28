@@ -14,6 +14,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 )
 
 type MockHealthManager struct {
@@ -24,7 +25,7 @@ func (m *MockHealthManager) Reset() {
 	*m = MockHealthManager{}
 }
 
-func (m *MockHealthManager) NewUpdater(pod, service string) kp.HealthUpdater {
+func (m *MockHealthManager) NewUpdater(pod types.PodID, service string) kp.HealthUpdater {
 	m.UpdaterCreated += 1
 	return m
 }
@@ -44,7 +45,7 @@ func TestUpdatePods(t *testing.T) {
 	var reality []kp.ManifestResult
 	// ids for current: 0, 1, 2, 3
 	for i := 0; i < 4; i++ {
-		current = append(current, *newWatch(strconv.Itoa(i)))
+		current = append(current, *newWatch(types.PodID(strconv.Itoa(i))))
 	}
 	// ids for reality: 1, 2, test
 	for i := 1; i < 3; i++ {
@@ -61,7 +62,7 @@ func TestUpdatePods(t *testing.T) {
 
 	Assert(t).AreEqual(current[1].manifest.ID(), pods[0].manifest.ID(), "pod with id:1 should have been returned")
 	Assert(t).AreEqual(current[2].manifest.ID(), pods[1].manifest.ID(), "pod with id:1 should have been returned")
-	Assert(t).AreEqual("test", pods[2].manifest.ID(), "should have added pod with id:test to list")
+	Assert(t).AreEqual("test", string(pods[2].manifest.ID()), "should have added pod with id:test to list")
 }
 
 func TestUpdateStatus(t *testing.T) {
@@ -112,7 +113,7 @@ output`))), nil)
 	Assert(t).AreEqual(health.Critical, val.Status, "err != nil should correspond to health.Critical")
 }
 
-func newWatch(id string) *PodWatch {
+func newWatch(id types.PodID) *PodWatch {
 	ch := make(chan bool, 1)
 	return &PodWatch{
 		manifest:   newManifestResult(id).Manifest,
@@ -120,7 +121,7 @@ func newWatch(id string) *PodWatch {
 	}
 }
 
-func newManifestResult(id string) kp.ManifestResult {
+func newManifestResult(id types.PodID) kp.ManifestResult {
 	builder := pods.NewManifestBuilder()
 	builder.SetID(id)
 	builder.SetStatusPort(1) // StatusPort must != 0 for updatePods to use it

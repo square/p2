@@ -86,7 +86,7 @@ func (r replicator) InitializeReplication(overrideLock bool) (Replication, chan 
 // Checks that the preparer is running on every host being deployed to.
 func (r replicator) checkPreparers() error {
 	for _, host := range r.nodes {
-		_, _, err := r.store.Pod(kp.RealityPath(host, preparer.POD_ID))
+		_, _, err := r.store.Pod(kp.RealityPath(host, string(preparer.POD_ID)))
 		if err != nil {
 			return util.Errorf("Could not verify %v state on %q: %v", preparer.POD_ID, host, err)
 		}

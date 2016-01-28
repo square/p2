@@ -101,7 +101,10 @@ func (l *HookListener) installHook(result kp.ManifestResult) error {
 		return err
 	}
 
-	hookPod := pods.NewPod(result.Manifest.ID(), filepath.Join(l.DestinationDir, result.Manifest.ID()))
+	hookPod := pods.NewPod(
+		result.Manifest.ID(),
+		filepath.Join(l.DestinationDir, string(result.Manifest.ID())),
+	)
 
 	// Figure out if we even need to install anything.
 	// Hooks aren't running services and so there isn't a need

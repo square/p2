@@ -11,12 +11,13 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util/size"
 )
 
 // The Pod ID of the preparer.
 // Used because the preparer special-cases itself in a few places.
-const POD_ID = "p2-preparer"
+const POD_ID = types.PodID("p2-preparer")
 
 const svlogdExec = "svlogd -tt ./main"
 
@@ -78,12 +79,12 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	// we will have one long running goroutine for each app installed on this
 	// host. We keep a map of podId => podChan so we can send the new manifests
 	// that come in to the appropriate goroutine
-	podChanMap := make(map[string]chan ManifestPair)
+	podChanMap := make(map[types.PodID]chan ManifestPair)
 	// we can't use a shared quit channel for all the goroutines - otherwise,
 	// we would exit the program before the goroutines actually accepted the
 	// quit signal. to be sure that each goroutine is done, we have to block and
 	// wait for it to receive the signal
-	quitChanMap := make(map[string]chan struct{})
+	quitChanMap := make(map[types.PodID]chan struct{})
 
 	for {
 		select {
@@ -169,7 +170,12 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				// non-nil intent manifests need to be authorized first
 				working = p.authorize(nextLaunch.Intent, manifestLogger)
 				if !working {
-					p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pods.NewPod(nextLaunch.ID, pods.PodPath(p.podRoot, nextLaunch.ID)), nextLaunch.Intent, manifestLogger)
+					p.tryRunHooks(
+						hooks.AFTER_AUTH_FAIL,
+						pods.NewPod(nextLaunch.ID, pods.PodPath(p.podRoot, nextLaunch.ID)),
+						nextLaunch.Intent,
+						manifestLogger,
+					)
 				}
 			}
 		case <-time.After(1 * time.Second):
@@ -200,7 +206,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				// up-to-date. The de-bouncing logic in this method should ensure that the
 				// intent value is fresh (to the extent that Consul is timely). Fetching
 				// the reality value again ensures its freshness too.
-				reality, _, err := p.store.Pod(kp.RealityPath(p.node, nextLaunch.ID))
+				reality, _, err := p.store.Pod(kp.RealityPath(p.node, string(nextLaunch.ID)))
 				if err == pods.NoCurrentManifest {
 					nextLaunch.Reality = nil
 				} else if err != nil {
@@ -316,7 +322,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 		logger.WithError(err).
 			Errorln("Launch failed")
 	} else {
-		duration, err := p.store.SetPod(kp.RealityPath(p.node, pair.ID), pair.Intent)
+		duration, err := p.store.SetPod(kp.RealityPath(p.node, string(pair.ID)), pair.Intent)
 		if err != nil {
 			logger.WithErrorAndFields(err, logrus.Fields{
 				"duration": duration}).
@@ -347,7 +353,7 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 	}
 	logger.NoFields().Infoln("Successfully uninstalled")
 
-	dur, err := p.store.DeletePod(kp.RealityPath(p.node, pair.ID))
+	dur, err := p.store.DeletePod(kp.RealityPath(p.node, string(pair.ID)))
 	if err != nil {
 		logger.WithErrorAndFields(err, logrus.Fields{"duration": dur}).
 			Errorln("Could not delete pod from reality store")

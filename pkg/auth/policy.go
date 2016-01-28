@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
 
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -54,7 +55,7 @@ type Policy interface {
 // auth.Manifest mirrors pods.Manifest, listing only the data
 // accessors that auth logic cares about.
 type Manifest interface {
-	ID() string
+	ID() types.PodID
 	RunAsUser() string
 	Signed
 }
@@ -117,12 +118,12 @@ var _ Policy = NullPolicy{}
 // exists, deployment is authorized iff the signer is on the keyring.
 type FixedKeyringPolicy struct {
 	Keyring             openpgp.KeyRing
-	AuthorizedDeployers map[string][]string
+	AuthorizedDeployers map[types.PodID][]string
 }
 
 func LoadKeyringPolicy(
 	keyringPath string,
-	authorizedDeployers map[string][]string,
+	authorizedDeployers map[types.PodID][]string,
 ) (Policy, error) {
 	keyring, err := LoadKeyring(keyringPath)
 	if err != nil {
@@ -156,7 +157,7 @@ func (p FixedKeyringPolicy) AuthorizeApp(manifest Manifest, logger logging.Logge
 		}
 		if !found {
 			return Error{
-				util.Errorf("manifest signer not authorized to deploy " + manifest.ID()),
+				util.Errorf("manifest signer not authorized to deploy " + string(manifest.ID())),
 				map[string]interface{}{"signer_key": signerId},
 			}
 		}
@@ -264,13 +265,13 @@ var _ Policy = FixedKeyringPolicy{}
 // examining mtime).
 type FileKeyringPolicy struct {
 	KeyringFilename     string
-	AuthorizedDeployers map[string][]string
+	AuthorizedDeployers map[types.PodID][]string
 	keyringWatcher      util.FileWatcher
 }
 
 func NewFileKeyringPolicy(
 	keyringPath string,
-	authorizedDeployers map[string][]string,
+	authorizedDeployers map[types.PodID][]string,
 ) (Policy, error) {
 	watcher, err := util.NewFileWatcher(
 		func(path string) (interface{}, error) {
@@ -426,7 +427,7 @@ func (dp DeployPol) Authorized(appUser string, email string) bool {
 type UserPolicy struct {
 	keyringWatcher util.FileWatcher
 	deployWatcher  util.FileWatcher
-	preparerApp    string
+	preparerApp    types.PodID
 	preparerUser   string
 }
 
@@ -435,7 +436,7 @@ var _ Policy = UserPolicy{}
 func NewUserPolicy(
 	keyringPath string,
 	deployPolicyPath string,
-	preparerApp string,
+	preparerApp types.PodID,
 	preparerUser string,
 ) (p Policy, err error) {
 	keyringWatcher, err := util.NewFileWatcher(

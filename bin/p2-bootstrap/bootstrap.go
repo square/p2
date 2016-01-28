@@ -8,6 +8,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/version"
 )
@@ -128,7 +129,7 @@ func VerifyConsulUp(timeout string) error {
 	}
 }
 
-func VerifyReality(waitTime time.Duration, consulID, agentID string) error {
+func VerifyReality(waitTime time.Duration, consulID types.PodID, agentID types.PodID) error {
 	quit := make(chan struct{})
 	defer close(quit)
 	store := kp.NewConsulStore(kp.NewConsulClient(kp.Options{
@@ -172,13 +173,13 @@ func ScheduleForThisHost(manifest pods.Manifest, alsoReality bool) error {
 	if err != nil {
 		return err
 	}
-	_, err = store.SetPod(kp.IntentPath(hostname, manifest.ID()), manifest)
+	_, err = store.SetPod(kp.IntentPath(hostname, string(manifest.ID())), manifest)
 	if err != nil {
 		return err
 	}
 
 	if alsoReality {
-		_, err = store.SetPod(kp.RealityPath(hostname, manifest.ID()), manifest)
+		_, err = store.SetPod(kp.RealityPath(hostname, string(manifest.ID())), manifest)
 		return err
 	}
 	return nil

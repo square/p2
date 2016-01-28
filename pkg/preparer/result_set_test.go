@@ -8,11 +8,12 @@ import (
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 )
 
 func podWithID(id string) pods.Manifest {
 	builder := pods.NewManifestBuilder()
-	builder.SetID(id)
+	builder.SetID(types.PodID(id))
 	return builder.GetManifest()
 }
 

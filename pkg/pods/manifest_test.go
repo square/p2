@@ -20,7 +20,7 @@ func TestPodManifestCanBeRead(t *testing.T) {
 
 	manifest, err := ManifestFromPath(testPath)
 	Assert(t).IsNil(err, "Should not have failed to get pod manifest.")
-	Assert(t).AreEqual("hello", manifest.ID(), "Id read from manifest didn't have expected value")
+	Assert(t).AreEqual("hello", string(manifest.ID()), "Id read from manifest didn't have expected value")
 	Assert(t).AreEqual(manifest.GetLaunchableStanzas()["app"].Location, "hoisted-hello_def456.tar.gz", "Location read from manifest didn't have expected value")
 	Assert(t).AreEqual("hoist", manifest.GetLaunchableStanzas()["app"].LaunchableType, "LaunchableType read from manifest didn't have expected value")
 	Assert(t).AreEqual("app", manifest.GetLaunchableStanzas()["app"].LaunchableId, "LaunchableId read from manifest didn't have expected value")
@@ -155,7 +155,7 @@ func TestRunAs(t *testing.T) {
 	manifest, err := ManifestFromBytes([]byte(config))
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 
-	Assert(t).AreEqual(manifest.RunAsUser(), manifest.ID(), "RunAsUser() didn't match expectations")
+	Assert(t).AreEqual(manifest.RunAsUser(), string(manifest.ID()), "RunAsUser() didn't match expectations")
 
 	config += `run_as: specialuser`
 	manifest, err = ManifestFromBytes([]byte(config))
@@ -189,7 +189,7 @@ func TestManifestBuilder(t *testing.T) {
 	builder.SetID("testpod")
 	manifest := builder.GetManifest()
 
-	Assert(t).AreEqual(manifest.ID(), "testpod", "id of built manifest did not match expected")
+	Assert(t).AreEqual(string(manifest.ID()), "testpod", "id of built manifest did not match expected")
 }
 
 func TestManifestBuilderStripsFields(t *testing.T) {
@@ -224,7 +224,7 @@ config:
 
 	builder := manifest.GetBuilder()
 	builtManifest := builder.GetManifest()
-	Assert(t).AreEqual(builtManifest.ID(), "thepod", "Expected manifest ID to be preserved when converted to ManifestBuilder and back")
+	Assert(t).AreEqual(string(builtManifest.ID()), "thepod", "Expected manifest ID to be preserved when converted to ManifestBuilder and back")
 }
 
 func TestGetConfigInitializesIfEmpty(t *testing.T) {

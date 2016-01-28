@@ -41,9 +41,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("Could not read manifest at %s: %s\n", manifestPath, err)
 		}
-		path := kp.IntentPath(*nodeName, manifest.ID())
+		path := kp.IntentPath(*nodeName, string(manifest.ID()))
 		if *hookGlobal {
-			path = kp.HookPath(manifest.ID())
+			path = kp.HookPath(string(manifest.ID()))
 		}
 		duration, err := store.SetPod(path, manifest)
 		if err != nil {

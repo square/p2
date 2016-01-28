@@ -18,6 +18,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
 )
@@ -402,7 +403,7 @@ func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{
 		Keyring:             openpgp.EntityList{fakeSigner},
-		AuthorizedDeployers: map[string][]string{POD_ID: {"nobodylol"}},
+		AuthorizedDeployers: map[types.PodID][]string{POD_ID: {"nobodylol"}},
 	}
 
 	Assert(t).IsFalse(
@@ -423,7 +424,7 @@ func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{
 		Keyring:             openpgp.EntityList{fakeSigner},
-		AuthorizedDeployers: map[string][]string{POD_ID: {sig}},
+		AuthorizedDeployers: map[types.PodID][]string{POD_ID: {sig}},
 	}
 
 	Assert(t).IsTrue(

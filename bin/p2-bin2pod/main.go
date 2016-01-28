@@ -13,6 +13,7 @@ import (
 
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/version"
 )
@@ -51,11 +52,11 @@ type Result struct {
 	FinalLocation string `json:"final_location"`
 }
 
-func podId() string {
+func podId() types.PodID {
 	if *id != "" {
-		return *id
+		return types.PodID(*id)
 	}
-	return path.Base(*executable)
+	return types.PodID(path.Base(*executable))
 }
 
 func activeDir() string {
@@ -78,7 +79,7 @@ func main() {
 	manifestBuilder.SetID(podId())
 
 	stanza := pods.LaunchableStanza{}
-	stanza.LaunchableId = podId()
+	stanza.LaunchableId = string(podId())
 	stanza.LaunchableType = "hoist"
 
 	workingDir := activeDir()
@@ -99,7 +100,7 @@ func main() {
 	}
 
 	manifestBuilder.SetLaunchables(map[string]pods.LaunchableStanza{
-		podId(): stanza,
+		string(podId()): stanza,
 	})
 
 	if err != nil {

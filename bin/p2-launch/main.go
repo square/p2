@@ -7,6 +7,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/version"
 
@@ -81,7 +82,7 @@ func authorize(manifest pods.Manifest) error {
 
 		policy, err = auth.NewFileKeyringPolicy(
 			*keyring,
-			map[string][]string{
+			map[types.PodID][]string{
 				preparer.POD_ID: *allowedUsers,
 			},
 		)
@@ -100,7 +101,7 @@ func authorize(manifest pods.Manifest) error {
 			*keyring,
 			*deployPolicy,
 			preparer.POD_ID,
-			preparer.POD_ID,
+			string(preparer.POD_ID),
 		)
 		if err != nil {
 			return err

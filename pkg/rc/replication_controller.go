@@ -212,7 +212,7 @@ func (rc *replicationController) CurrentNodes() ([]string, error) {
 // If forEachLabel encounters any error applying the function, it returns that error immediately.
 // The function is not further applied to subsequent labels on an error.
 func (rc *replicationController) forEachLabel(node string, f func(id, k, v string) error) error {
-	id := node + "/" + rc.Manifest.ID()
+	id := node + "/" + string(rc.Manifest.ID())
 
 	// user-requested labels.
 	for k, v := range rc.PodLabels {
@@ -226,7 +226,7 @@ func (rc *replicationController) forEachLabel(node string, f func(id, k, v strin
 
 func (rc *replicationController) schedule(node string) error {
 	// First, schedule the new pod.
-	intentPath := kp.IntentPath(node, rc.Manifest.ID())
+	intentPath := kp.IntentPath(node, string(rc.Manifest.ID()))
 	rc.logger.NoFields().Infof("Scheduling on %s", intentPath)
 	_, err := rc.kpStore.SetPod(intentPath, rc.Manifest)
 	if err != nil {
@@ -243,7 +243,7 @@ func (rc *replicationController) schedule(node string) error {
 }
 
 func (rc *replicationController) unschedule(node string) error {
-	intentPath := kp.IntentPath(node, rc.Manifest.ID())
+	intentPath := kp.IntentPath(node, string(rc.Manifest.ID()))
 	rc.logger.NoFields().Infof("Uncheduling from %s", intentPath)
 
 	// TODO: As above in schedule, it could be the case that RemoveLabel fails.

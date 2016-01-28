@@ -16,6 +16,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 )
@@ -32,7 +33,7 @@ type LaunchableStanza struct {
 
 type ManifestBuilder interface {
 	GetManifest() Manifest
-	SetID(string)
+	SetID(types.PodID)
 	SetConfig(config map[interface{}]interface{}) error
 	SetRunAsUser(user string)
 	SetStatusPort(port int)
@@ -57,7 +58,7 @@ type manifestBuilder struct {
 // Read-only immutable interface for manifests. To programatically build a
 // manifest, use ManifestBuilder
 type Manifest interface {
-	ID() string
+	ID() types.PodID
 	RunAsUser() string
 	Write(out io.Writer) error
 	ConfigFileName() (string, error)
@@ -80,7 +81,7 @@ type Manifest interface {
 var _ Manifest = &manifest{}
 
 type manifest struct {
-	Id                string                      `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
+	Id                types.PodID                 `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
 	RunAs             string                      `yaml:"run_as,omitempty"`
 	LaunchableStanzas map[string]LaunchableStanza `yaml:"launchables"`
 	Config            map[interface{}]interface{} `yaml:"config"`
@@ -108,11 +109,11 @@ func (m *manifest) GetBuilder() ManifestBuilder {
 	return builder
 }
 
-func (manifest *manifest) ID() string {
+func (manifest *manifest) ID() types.PodID {
 	return manifest.Id
 }
 
-func (m manifestBuilder) SetID(id string) {
+func (m manifestBuilder) SetID(id types.PodID) {
 	m.manifest.Id = id
 }
 
@@ -186,7 +187,7 @@ func (manifest *manifest) RunAsUser() string {
 	if manifest.RunAs != "" {
 		return manifest.RunAs
 	}
-	return manifest.ID()
+	return string(manifest.ID())
 }
 
 func (mb manifestBuilder) SetRunAsUser(user string) {
@@ -342,7 +343,7 @@ func (manifest *manifest) ConfigFileName() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return manifest.Id + "_" + sha + ".yaml", nil
+	return string(manifest.Id) + "_" + sha + ".yaml", nil
 }
 
 func (manifest *manifest) PlatformConfigFileName() (string, error) {
@@ -350,7 +351,7 @@ func (manifest *manifest) PlatformConfigFileName() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return manifest.Id + "_" + sha + ".platform.yaml", nil
+	return string(manifest.Id) + "_" + sha + ".platform.yaml", nil
 }
 
 // Returns readers needed to verify the signature on the

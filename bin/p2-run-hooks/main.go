@@ -8,6 +8,7 @@ import (
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -29,7 +30,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	pod := pods.NewPod(path.Base(*PodDir), *PodDir)
+	pod := pods.NewPod(types.PodID(path.Base(*PodDir)), *PodDir)
 
 	var manifest pods.Manifest
 	if *Manifest != "" {
