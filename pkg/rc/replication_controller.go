@@ -167,11 +167,32 @@ func (rc *replicationController) meetDesires() error {
 			}
 		}
 	} else if len(current) > rc.ReplicasDesired {
+		eligible, err := rc.eligibleNodes()
+		if err != nil {
+			return err
+		}
+
+		// If we need to downsize the number of nodes, prefer any in current that are not eligible anymore.
+		// TODO: evaluate changes to 'eligible' more frequently
+		preferred := sets.NewString(current...).Difference(sets.NewString(eligible...))
+		rest := sets.NewString(current...).Difference(preferred)
 		toUnschedule := len(current) - rc.ReplicasDesired
 		rc.logger.NoFields().Infof("Need to unschedule %d nodes out of %s", toUnschedule, current)
 
 		for i := 0; i < toUnschedule; i++ {
-			err := rc.unschedule(current[i])
+			unscheduleFrom, ok := preferred.PopAny()
+			if !ok {
+				var ok bool
+				unscheduleFrom, ok = rest.PopAny()
+				if !ok {
+					// This should be mathematically impossible unless replicasDesired was negative
+					return util.Errorf(
+						"Unable to unschedule enough nodes to meet replicas desired: %d replicas desired, %d current.",
+						rc.ReplicasDesired, len(current),
+					)
+				}
+			}
+			err := rc.unschedule(unscheduleFrom)
 			if err != nil {
 				return err
 			}

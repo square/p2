@@ -1,6 +1,7 @@
 package rc
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -126,6 +127,7 @@ func TestSchedule(t *testing.T) {
 	Assert(t).IsNil(err, "expected no error labeling node2")
 
 	quit := make(chan struct{})
+	defer close(quit)
 	rc.WatchDesires(quit)
 
 	rcStore.SetDesiredReplicas(rc.ID(), 1)
@@ -183,6 +185,7 @@ func TestScheduleTwice(t *testing.T) {
 	Assert(t).IsNil(err, "expected no error labeling node2")
 
 	quit := make(chan struct{})
+	defer close(quit)
 	rc.WatchDesires(quit)
 
 	rcStore.SetDesiredReplicas(rc.ID(), 1)
@@ -219,6 +222,7 @@ func TestUnschedule(t *testing.T) {
 	Assert(t).IsNil(err, "expected no error labeling node2")
 
 	quit := make(chan struct{})
+	defer close(quit)
 	rc.WatchDesires(quit)
 
 	rcStore.SetDesiredReplicas(rc.ID(), 1)
@@ -236,4 +240,40 @@ func TestUnschedule(t *testing.T) {
 	scheduled = scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 0, "expected a pod to have been unlabeled")
 	Assert(t).AreEqual(len(kp.manifests), 0, "expected manifest to have been unscheduled")
+}
+
+func TestPreferUnscheduleIneligible(t *testing.T) {
+	rcStore, kp, applicator, rc := setup(t)
+	for i := 0; i < 1000; i++ {
+		nodeName := fmt.Sprintf("node%d", i)
+		err := applicator.SetLabel(labels.NODE, nodeName, "nodeQuality", "good")
+		Assert(t).IsNil(err, "expected no error labeling "+nodeName)
+	}
+
+	quit := make(chan struct{})
+	defer close(quit)
+	rc.WatchDesires(quit)
+
+	rcStore.SetDesiredReplicas(rc.ID(), 1000)
+	numNodes := waitForNodes(t, rc, 1000)
+	Assert(t).AreEqual(numNodes, 1000, "took too long to schedule")
+
+	scheduled := scheduledPods(t, applicator)
+	Assert(t).AreEqual(len(scheduled), 1000, "expected 1000 pods to have been labeled")
+	Assert(t).AreEqual(len(kp.manifests), 1000, "expected a manifest to have been scheduled on 1000 nodes")
+
+	// Make node503 ineligible, so that it will be preferred for unscheduling
+	// when we decrease ReplicasDesired
+	err := applicator.SetLabel(labels.NODE, "node503", "nodeQuality", "bad")
+	Assert(t).IsNil(err, "expected no error marking node503 as bad")
+
+	rcStore.SetDesiredReplicas(rc.ID(), 999)
+	numNodes = waitForNodes(t, rc, 999)
+	Assert(t).AreEqual(numNodes, 999, "took too long to unschedule")
+
+	currentNodes, err := rc.CurrentNodes()
+	Assert(t).IsNil(err, "expected no error finding current nodes for rc")
+	for _, node := range currentNodes {
+		Assert(t).AreNotEqual(node, "node503", "node503 should have been the one unscheduled, but it's still present")
+	}
 }
