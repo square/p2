@@ -75,7 +75,7 @@ func (r replication) lockHosts(overrideLock bool, lockMessage string) error {
 	}
 
 	for _, host := range r.nodes {
-		lockPath := kp.LockPath(kp.IntentPath(host, r.manifest.ID()))
+		lockPath := kp.LockPath(kp.IntentPath(host, string(r.manifest.ID())))
 		err := r.lock(lock, lockPath, overrideLock)
 
 		if err != nil {
@@ -128,7 +128,7 @@ func (r replication) Enact() {
 
 	// Sort nodes from least healthy to most healthy to maximize overall
 	// cluster health
-	healthResults, err := r.health.Service(r.manifest.ID())
+	healthResults, err := r.health.Service(string(r.manifest.ID()))
 	if err != nil {
 		err = replicationError{
 			err:     err,
@@ -223,19 +223,30 @@ func (r replication) updateOne(node string, done chan<- string, quitCh <-chan st
 	nodeLogger := r.logger.SubLogger(logrus.Fields{"node": node})
 	nodeLogger.WithField("sha", targetSHA).Infoln("Updating node")
 
-	_, err := r.store.SetPod(kp.IntentPath(node, r.manifest.ID()), r.manifest)
+	_, err := r.store.SetPod(
+		kp.IntentPath(node, string(r.manifest.ID())),
+		r.manifest,
+	)
 	for err != nil {
 		nodeLogger.WithError(err).Errorln("Could not write intent store")
 		r.errCh <- err
 		time.Sleep(1 * time.Second)
-		_, err = r.store.SetPod(kp.IntentPath(node, r.manifest.ID()), r.manifest)
+		_, err = r.store.SetPod(
+			kp.IntentPath(node, string(r.manifest.ID())),
+			r.manifest,
+		)
 	}
 
 	realityResults := make(chan kp.ManifestResult)
 	realityErr := make(chan error)
 	realityQuit := make(chan struct{})
 	defer close(realityQuit)
-	go r.store.WatchPod(kp.RealityPath(node, r.manifest.ID()), realityQuit, realityErr, realityResults)
+	go r.store.WatchPod(
+		kp.RealityPath(node, string(r.manifest.ID())),
+		realityQuit,
+		realityErr,
+		realityResults,
+	)
 REALITY_LOOP:
 	for {
 		select {
@@ -265,7 +276,13 @@ REALITY_LOOP:
 	healthErr := make(chan error)
 	healthQuit := make(chan struct{})
 	defer close(healthQuit)
-	go r.health.WatchNodeService(node, r.manifest.ID(), healthResults, healthErr, healthQuit)
+	go r.health.WatchNodeService(
+		node,
+		string(r.manifest.ID()),
+		healthResults,
+		healthErr,
+		healthQuit,
+	)
 HEALTH_LOOP:
 	for {
 		select {

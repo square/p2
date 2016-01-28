@@ -117,7 +117,7 @@ func (u update) Run(quit <-chan struct{}) (ret bool) {
 	hErrs := make(chan error)
 	hQuit := make(chan struct{})
 	defer close(hQuit)
-	go u.hcheck.WatchService(newFields.Manifest.ID(), hChecks, hErrs, hQuit)
+	go u.hcheck.WatchService(string(newFields.Manifest.ID()), hChecks, hErrs, hQuit)
 
 ROLL_LOOP:
 	for {
@@ -306,7 +306,7 @@ func (u update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNode
 
 	for _, node := range nodes {
 		// TODO: is reality checking an rc-layer concern?
-		realManifest, _, err := u.kps.Pod(kp.RealityPath(node, rcFields.Manifest.ID()))
+		realManifest, _, err := u.kps.Pod(kp.RealityPath(node, string(rcFields.Manifest.ID())))
 		if err != nil {
 			return ret, err
 		}

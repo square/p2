@@ -13,6 +13,7 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -47,7 +48,7 @@ type Store interface {
 type HealthManager interface {
 	// NewUpdater creates a new object for publishing a single service's health. Each
 	// service should have its own updater.
-	NewUpdater(pod, service string) HealthUpdater
+	NewUpdater(pod types.PodID, service string) HealthUpdater
 
 	// Close removes all published health statuses and releases all manager resources.
 	Close()
@@ -65,7 +66,7 @@ type HealthUpdater interface {
 }
 
 type WatchResult struct {
-	Id      string
+	Id      types.PodID
 	Node    string
 	Service string
 	Status  string

@@ -14,17 +14,18 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
 
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/types"
 )
 
 // TestSigned is a stand-in for an auth.Manifest or auth.Digest.
 type TestSigned struct {
-	Id        string
+	Id        types.PodID
 	User      string
 	Plaintext []byte
 	Signature []byte
 }
 
-func (s TestSigned) ID() string {
+func (s TestSigned) ID() types.PodID {
 	return s.Id
 }
 
@@ -167,7 +168,7 @@ func TestKeyring(t *testing.T) {
 
 	policy, err := LoadKeyringPolicy(
 		keyfile,
-		map[string][]string{
+		map[types.PodID][]string{
 			"restricted": {fmt.Sprintf("%X", ents[1].PrimaryKey.Fingerprint)},
 		},
 	)
@@ -292,10 +293,10 @@ func TestDpolChanges(t *testing.T) {
 	logger := logging.TestLogger()
 
 	// Test every combination of app/user and check it against the expectation matrix
-	tester := func(expected map[string][3]bool) {
+	tester := func(expected map[types.PodID][3]bool) {
 		for app, results := range expected {
 			for signer := range results {
-				err = policy.AuthorizeApp(TestSigned{app, app, msg, sigs[signer]}, logger)
+				err = policy.AuthorizeApp(TestSigned{app, string(app), msg, sigs[signer]}, logger)
 				if err != nil && results[signer] {
 					t.Errorf(
 						"app %s signer %d: expected authorized, got error: %s",
@@ -314,7 +315,7 @@ func TestDpolChanges(t *testing.T) {
 		}
 	}
 
-	tester(map[string][3]bool{
+	tester(map[types.PodID][3]bool{
 		"foo": {true, false, false},
 		"bar": {true, true, false},
 		"baz": {true, false, true},
@@ -339,7 +340,7 @@ func TestDpolChanges(t *testing.T) {
 		polfile,
 	)
 
-	tester(map[string][3]bool{
+	tester(map[types.PodID][3]bool{
 		"foo": {true, true, false},
 		"bar": {true, false, false},
 		"baz": {false, false, true},

@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util/param"
 )
 
@@ -46,10 +47,9 @@ type PodWatch struct {
 }
 
 // StatusChecker holds all the data required to perform
-// a status check on a particular service (ID corresponds
-// to service name to be consistent with pods.Manifest).
+// a status check on a particular service
 type StatusChecker struct {
-	ID     string
+	ID     types.PodID
 	Node   string
 	URI    string
 	Client *http.Client
@@ -162,7 +162,7 @@ func updatePods(
 			}
 			newPod := PodWatch{
 				manifest:      man.Manifest,
-				updater:       healthManager.NewUpdater(man.Manifest.ID(), man.Manifest.ID()),
+				updater:       healthManager.NewUpdater(man.Manifest.ID(), string(man.Manifest.ID())),
 				statusChecker: sc,
 				shutdownCh:    make(chan bool, 1),
 				logger:        logger,
@@ -219,7 +219,7 @@ func (sc *StatusChecker) Check() (health.Result, error) {
 		return health.Result{
 			ID:      sc.ID,
 			Node:    sc.Node,
-			Service: sc.ID,
+			Service: string(sc.ID),
 			Status:  health.Passing,
 			Output:  "(no health check defined)",
 		}, nil
@@ -230,7 +230,7 @@ func (sc *StatusChecker) resultFromCheck(resp *http.Response, err error) (health
 	res := health.Result{
 		ID:      sc.ID,
 		Node:    sc.Node,
-		Service: sc.ID,
+		Service: string(sc.ID),
 	}
 	if err != nil || resp == nil {
 		res.Status = health.Critical

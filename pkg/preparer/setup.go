@@ -19,6 +19,7 @@ import (
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/util/size"
@@ -47,7 +48,7 @@ type Preparer struct {
 	caFile                 string
 	authPolicy             auth.Policy
 	maxLaunchableDiskUsage size.ByteCount
-	logExecTestGroup       []string
+	logExecTestGroup       []types.PodID
 }
 
 type PreparerConfig struct {
@@ -67,7 +68,7 @@ type PreparerConfig struct {
 	ExtraLogDestinations   []LogDestination       `yaml:"extra_log_destinations,omitempty"`
 	LogLevel               string                 `yaml:"log_level,omitempty"`
 	MaxLaunchableDiskUsage string                 `yaml:"max_launchable_disk_usage"`
-	LogExecTestGroup       []string               `yaml:"log_exec_test_group",omitempty`
+	LogExecTestGroup       []types.PodID          `yaml:"log_exec_test_group",omitempty`
 
 	// Params defines a collection of miscellaneous runtime parameters defined throughout the
 	// source files.
@@ -277,7 +278,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		}
 		authPolicy, err = auth.NewFileKeyringPolicy(
 			authConfig.KeyringPath,
-			map[string][]string{POD_ID: authConfig.AuthorizedDeployers},
+			map[types.PodID][]string{POD_ID: authConfig.AuthorizedDeployers},
 		)
 		if err != nil {
 			return nil, util.Errorf("error configuring keyring auth: %s", err)
@@ -298,7 +299,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 			userConfig.KeyringPath,
 			userConfig.DeployPolicyPath,
 			POD_ID,
-			POD_ID,
+			string(POD_ID),
 		)
 		if err != nil {
 			return nil, util.Errorf("error configuring user auth: %s", err)

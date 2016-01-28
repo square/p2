@@ -16,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/opencontainer"
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
@@ -42,12 +43,12 @@ func init() {
 	Log = logging.NewLogger(logrus.Fields{})
 }
 
-func PodPath(root, manifestId string) string {
-	return filepath.Join(root, manifestId)
+func PodPath(root string, manifestId types.PodID) string {
+	return filepath.Join(root, string(manifestId))
 }
 
 type Pod struct {
-	Id             string
+	Id             types.PodID
 	path           string
 	logger         logging.Logger
 	SV             runit.SV
@@ -57,7 +58,7 @@ type Pod struct {
 	LogExec        runit.LogExec // this is exposed to support a gradual rollout of p2-log-bridge
 }
 
-func NewPod(id string, path string) *Pod {
+func NewPod(id types.PodID, path string) *Pod {
 	return &Pod{
 		Id:             id,
 		path:           path,
@@ -81,7 +82,7 @@ func ExistingPod(path string) (*Pod, error) {
 	return NewPod(manifest.ID(), path), nil
 }
 
-func PodFromManifestId(manifestId string) *Pod {
+func PodFromManifestId(manifestId types.PodID) *Pod {
 	return NewPod(manifestId, PodPath(DEFAULT_PATH, manifestId))
 }
 
@@ -252,7 +253,7 @@ func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest 
 			}
 		}
 	}
-	err := pod.ServiceBuilder.Activate(pod.Id, sbTemplate, newManifest.GetRestartPolicy())
+	err := pod.ServiceBuilder.Activate(string(pod.Id), sbTemplate, newManifest.GetRestartPolicy())
 	if err != nil {
 		return err
 	}
@@ -353,7 +354,7 @@ func (pod *Pod) Uninstall() error {
 
 	// remove services for this pod, then prune the old
 	// service dirs away
-	err = os.Remove(filepath.Join(pod.ServiceBuilder.ConfigRoot, pod.Id+".yaml"))
+	err = os.Remove(filepath.Join(pod.ServiceBuilder.ConfigRoot, string(pod.Id)+".yaml"))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -581,7 +582,12 @@ func (pod *Pod) Launchables(manifest Manifest) ([]launch.Launchable, error) {
 
 func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
 	launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
-	serviceId := strings.Join([]string{pod.Id, "__", launchableStanza.LaunchableId}, "")
+	serviceId := strings.Join(
+		[]string{
+			string(pod.Id),
+			"__",
+			launchableStanza.LaunchableId,
+		}, "")
 
 	restartTimeout := pod.DefaultTimeout
 

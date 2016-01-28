@@ -1,8 +1,12 @@
 package health
 
+import (
+	"github.com/square/p2/pkg/types"
+)
+
 // Result stores the health state of a service.
 type Result struct {
-	ID      string
+	ID      types.PodID
 	Node    string
 	Service string
 	Status  HealthState

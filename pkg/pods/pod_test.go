@@ -16,13 +16,14 @@ import (
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 )
 
 func getTestPod() *Pod {
-	return NewPod("hello", "/data/pods/test")
+	return NewPod(types.PodID("hello"), "/data/pods/test")
 }
 
 func getTestPodManifest(t *testing.T) Manifest {
@@ -212,7 +213,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 
 	poddir, err := ioutil.TempDir("", "poddir")
 	Assert(t).IsNil(err, "couldn't create tempdir")
-	pod := NewPod("testPod", poddir)
+	pod := NewPod(types.PodID("testPod"), poddir)
 
 	// set the RunAs user to the user running the test, because when we
 	// write files we need an owner. Unset them after the write so that the

@@ -138,7 +138,7 @@ func TestSchedule(t *testing.T) {
 
 	for k, v := range kp.manifests {
 		Assert(t).AreEqual(k, "intent/node2/testPod", "expected manifest scheduled on the right node")
-		Assert(t).AreEqual(v.ID(), "testPod", "expected manifest with correct ID")
+		Assert(t).AreEqual(string(v.ID()), "testPod", "expected manifest with correct ID")
 	}
 }
 
@@ -163,7 +163,7 @@ func TestSchedulePartial(t *testing.T) {
 
 	for k, v := range kp.manifests {
 		Assert(t).AreEqual(k, "intent/node2/testPod", "expected manifest scheduled on the right node")
-		Assert(t).AreEqual(v.ID(), "testPod", "expected manifest with correct ID")
+		Assert(t).AreEqual(string(v.ID()), "testPod", "expected manifest with correct ID")
 	}
 
 	select {
@@ -206,7 +206,7 @@ func TestScheduleTwice(t *testing.T) {
 		if k != "intent/node1/testPod" && k != "intent/node2/testPod" {
 			Assert(t).Fail("expected manifest scheduled on the right node")
 		}
-		Assert(t).AreEqual(v.ID(), "testPod", "expected manifest with correct ID")
+		Assert(t).AreEqual(string(v.ID()), "testPod", "expected manifest with correct ID")
 	}
 }
 

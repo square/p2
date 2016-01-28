@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util/limit"
 	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/util/stream"
@@ -98,14 +99,14 @@ func (m *consulHealthManager) Close() {
 // service health and which health it has published.
 type consulHealthUpdater struct {
 	node    string           // The node this updater is bound to
-	pod     string           // The pod ID this updater is bound to
+	pod     types.PodID      // The pod ID this updater is bound to
 	service string           // The service this updater is bound to
 	checker chan WatchResult // Stream of health updates from a checker
 }
 
 // NewUpdater creates a new HealthUpdater that can be used to update an app's health status
 // on this node.
-func (m *consulHealthManager) NewUpdater(pod, service string) HealthUpdater {
+func (m *consulHealthManager) NewUpdater(pod types.PodID, service string) HealthUpdater {
 	checksStream := make(chan WatchResult)
 	u := &consulHealthUpdater{
 		node:    m.node,

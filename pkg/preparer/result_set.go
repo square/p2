@@ -5,12 +5,13 @@ import (
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 )
 
 type ManifestPair struct {
 	// save the ID in a separate field, so that the user of this object doesn't
 	// have to check both manifests
-	ID      string
+	ID      types.PodID
 	Intent  pods.Manifest
 	Reality pods.Manifest
 }
@@ -26,7 +27,7 @@ func ZipResultSets(intent, reality []kp.ManifestResult) (ret []ManifestPair) {
 
 	// this is like a union algorithm, we want to exhaust both lists
 	for intentIndex < len(intent) || realityIndex < len(reality) {
-		var iID, rID string
+		var iID, rID types.PodID
 		// since one of the lists may go off-the-end before the other, we have
 		// to guard any indexing into the lists to avoid out-of-range panics
 		if intentIndex < len(intent) {
@@ -70,7 +71,7 @@ func (s sortByID) Len() int           { return len(s) }
 func (s sortByID) Less(i, j int) bool { return s[i].Manifest.ID() < s[j].Manifest.ID() }
 func (s sortByID) Swap(i, j int)      { tmp := s[i]; s[i] = s[j]; s[j] = tmp }
 
-func checkResultsForID(intent []kp.ManifestResult, id string) bool {
+func checkResultsForID(intent []kp.ManifestResult, id types.PodID) bool {
 	for _, result := range intent {
 		if result.Manifest.ID() == id {
 			return true
