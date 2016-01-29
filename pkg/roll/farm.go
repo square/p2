@@ -144,7 +144,12 @@ START_LOOP:
 					continue
 				}
 
-				err = rlf.lock.Lock(kp.LockPath(kp.RollPath(rlField.NewRC.String())))
+				lockPath, err := rollstore.RollLockPath(rlField.NewRC)
+				if err != nil {
+					rlLogger.WithError(err).Errorln("Unable to compute roll lock path")
+				}
+
+				err = rlf.lock.Lock(lockPath)
 				if _, ok := err.(kp.AlreadyLockedError); ok {
 					// someone else must have gotten it first - log and move to
 					// the next one
@@ -199,7 +204,12 @@ func (rlf *Farm) releaseChild(id fields.ID) {
 
 	// if our lock is active, attempt to gracefully release it
 	if rlf.lock != nil {
-		err := rlf.lock.Unlock(kp.LockPath(kp.RollPath(id.String())))
+		lockPath, err := rollstore.RollLockPath(id)
+		if err != nil {
+			rlf.logger.WithError(err).Errorln("Unable to compute roll lock path")
+		}
+
+		err = rlf.lock.Unlock(lockPath)
 		if err != nil {
 			rlf.logger.WithField("ru", id).Warnln("Could not release update lock")
 		}

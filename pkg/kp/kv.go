@@ -26,16 +26,17 @@ type ManifestResult struct {
 }
 
 type Store interface {
-	SetPod(key string, manifest pods.Manifest) (time.Duration, error)
-	Pod(key string) (pods.Manifest, time.Duration, error)
-	DeletePod(key string) (time.Duration, error)
+	SetPod(podPrefix PodPrefix, nodename string, manifest pods.Manifest) (time.Duration, error)
+	Pod(podPrefix PodPrefix, nodename string, podId types.PodID) (pods.Manifest, time.Duration, error)
+	DeletePod(podPrefix PodPrefix, nodename string, podId types.PodID) (time.Duration, error)
 	PutHealth(res WatchResult) (time.Time, time.Duration, error)
 	GetHealth(service, node string) (WatchResult, error)
 	GetServiceHealth(service string) (map[string]WatchResult, error)
-	WatchPod(key string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
-	WatchPods(path string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult)
+	WatchPod(podPrefix PodPrefix, nodename string, podId types.PodID, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
+	WatchPods(podPrefix PodPrefix, nodename string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult)
 	Ping() error
-	ListPods(path string) ([]ManifestResult, time.Duration, error)
+	ListPods(podPrefix PodPrefix, nodename string) ([]ManifestResult, time.Duration, error)
+	AllPods(podPrefix PodPrefix) ([]ManifestResult, time.Duration, error)
 	LockHolder(key string) (string, string, error)
 	DestroyLockHolder(id string) error
 	NewLock(name string, renewalCh <-chan time.Time) (Lock, chan error, error)
@@ -171,11 +172,15 @@ func (c consulStore) GetServiceHealth(service string) (map[string]WatchResult, e
 	return healthRes, nil
 }
 
-// SetPod writes a pod manifest into the consul key-value store. The key should
-// not have a leading or trailing slash.
-func (c consulStore) SetPod(key string, manifest pods.Manifest) (time.Duration, error) {
+// SetPod writes a pod manifest into the consul key-value store.
+func (c consulStore) SetPod(podPrefix PodPrefix, nodename string, manifest pods.Manifest) (time.Duration, error) {
 	buf := bytes.Buffer{}
 	err := manifest.Write(&buf)
+	if err != nil {
+		return 0, err
+	}
+
+	key, err := podPath(podPrefix, nodename, manifest.ID())
 	if err != nil {
 		return 0, err
 	}
@@ -197,7 +202,12 @@ func (c consulStore) SetPod(key string, manifest pods.Manifest) (time.Duration, 
 
 // DeletePod deletes a pod manifest from the key-value store. No error will be
 // returned if the key didn't exist.
-func (c consulStore) DeletePod(key string) (time.Duration, error) {
+func (c consulStore) DeletePod(podPrefix PodPrefix, nodename string, podId types.PodID) (time.Duration, error) {
+	key, err := podPath(podPrefix, nodename, podId)
+	if err != nil {
+		return 0, err
+	}
+
 	writeMeta, err := c.client.KV().Delete(key, nil)
 	if err != nil {
 		return 0, consulutil.NewKVError("delete", key, err)
@@ -208,7 +218,12 @@ func (c consulStore) DeletePod(key string) (time.Duration, error) {
 // Pod reads a pod manifest from the key-value store. If the given key does not
 // exist, a nil *PodManifest will be returned, along with a pods.NoCurrentManifest
 // error.
-func (c consulStore) Pod(key string) (pods.Manifest, time.Duration, error) {
+func (c consulStore) Pod(podPrefix PodPrefix, nodename string, podId types.PodID) (pods.Manifest, time.Duration, error) {
+	key, err := podPath(podPrefix, nodename, podId)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	kvPair, writeMeta, err := c.client.KV().Get(key, nil)
 	if err != nil {
 		return nil, 0, consulutil.NewKVError("get", key, err)
@@ -220,12 +235,27 @@ func (c consulStore) Pod(key string) (pods.Manifest, time.Duration, error) {
 	return manifest, writeMeta.RequestTime, err
 }
 
-// ListPods reads all the pod manifests from the key-value store under the given
-// path. In the event of an error, the nil slice is returned.
+// ListPods reads all the pod manifests from the key-value store for a
+// specified host under a given tree. In the event of an error, the nil slice
+// is returned.
 //
 // All the values under the given path must be pod manifests.
-func (c consulStore) ListPods(path string) ([]ManifestResult, time.Duration, error) {
-	keyPrefix := path + "/"
+func (c consulStore) ListPods(podPrefix PodPrefix, nodename string) ([]ManifestResult, time.Duration, error) {
+	keyPrefix, err := nodePath(podPrefix, nodename)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return c.listPods(keyPrefix + "/")
+}
+
+// Lists all pods under a tree regardless of node name
+func (c consulStore) AllPods(podPrefix PodPrefix) ([]ManifestResult, time.Duration, error) {
+	keyPrefix := string(podPrefix) + "/"
+	return c.listPods(keyPrefix)
+}
+
+func (c consulStore) listPods(keyPrefix string) ([]ManifestResult, time.Duration, error) {
 	kvPairs, queryMeta, err := c.client.KV().List(keyPrefix, nil)
 	if err != nil {
 		return nil, 0, consulutil.NewKVError("list", keyPrefix, err)
@@ -245,8 +275,25 @@ func (c consulStore) ListPods(path string) ([]ManifestResult, time.Duration, err
 
 // WatchPod is like WatchPods, but for a single key only. The output channel
 // may contain nil manifests, if the target key does not exist.
-func (c consulStore) WatchPod(key string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult) {
+func (c consulStore) WatchPod(
+	podPrefix PodPrefix,
+	nodename string,
+	podId types.PodID,
+	quitChan <-chan struct{},
+	errChan chan<- error,
+	podChan chan<- ManifestResult,
+) {
+
 	defer close(podChan)
+
+	key, err := podPath(podPrefix, nodename, podId)
+	if err != nil {
+		select {
+		case <-quitChan:
+		case errChan <- err:
+		}
+		return
+	}
 
 	kvpChan := make(chan *api.KVPair)
 	go consulutil.WatchSingle(key, c.client.KV(), kvpChan, quitChan, errChan)
@@ -273,17 +320,31 @@ func (c consulStore) WatchPod(key string, quitChan <-chan struct{}, errChan chan
 	}
 }
 
-// WatchPods watches the key-value store for any changes under the given key
-// path. The resulting manifests are emitted on podChan. WatchPods does not
-// return in the event of an error, but it will emit the error on errChan. To
-// terminate WatchPods, close quitChan.
+// WatchPods watches the key-value store for any changes to pods for a given
+// host under a given tree.  The resulting manifests are emitted on podChan.
+// WatchPods does not return in the event of an error, but it will emit the
+// error on errChan. To terminate WatchPods, close quitChan.
 //
 // All the values under the given path must be pod manifests. Emitted
 // manifests might be unchanged from the last time they were read. It is the
 // caller's responsibility to filter out unchanged manifests.
-func (c consulStore) WatchPods(path string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult) {
-	keyPrefix := path + "/"
+func (c consulStore) WatchPods(
+	podPrefix PodPrefix,
+	nodename string,
+	quitChan <-chan struct{},
+	errChan chan<- error,
+	podChan chan<- []ManifestResult,
+) {
 	defer close(podChan)
+
+	keyPrefix, err := nodePath(podPrefix, nodename)
+	if err != nil {
+		select {
+		case <-quitChan:
+		case errChan <- err:
+		}
+		return
+	}
 
 	kvPairsChan := make(chan api.KVPairs)
 	go consulutil.WatchPrefix(keyPrefix, c.client.KV(), kvPairsChan, quitChan, errChan)

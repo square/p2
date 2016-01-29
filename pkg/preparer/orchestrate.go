@@ -36,11 +36,17 @@ type Hooks interface {
 }
 
 type Store interface {
-	ListPods(path string) ([]kp.ManifestResult, time.Duration, error)
-	SetPod(string, pods.Manifest) (time.Duration, error)
-	Pod(key string) (pods.Manifest, time.Duration, error)
-	DeletePod(key string) (time.Duration, error)
-	WatchPods(string, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult)
+	ListPods(podPrefix kp.PodPrefix, nodeName string) ([]kp.ManifestResult, time.Duration, error)
+	SetPod(podPrefix kp.PodPrefix, noeName string, podManifest pods.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodeName string, podId types.PodID) (pods.Manifest, time.Duration, error)
+	DeletePod(podPrefix kp.PodPrefix, nodeName string, podId types.PodID) (time.Duration, error)
+	WatchPods(
+		podPrefix kp.PodPrefix,
+		nodeName string,
+		quitChan <-chan struct{},
+		errorChan chan<- error,
+		podChan chan<- []kp.ManifestResult,
+	)
 }
 
 func (p *Preparer) WatchForHooks(quit chan struct{}) {
@@ -67,14 +73,13 @@ func (p *Preparer) SyncHooksOnce() error {
 
 func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	pods.Log = p.Logger
-	path := kp.IntentPath(p.node)
 
 	// This allows us to signal the goroutine watching consul to quit
 	quitChan := make(chan struct{})
 	errChan := make(chan error)
 	podChan := make(chan []kp.ManifestResult)
 
-	go p.store.WatchPods(path, quitChan, errChan, podChan)
+	go p.store.WatchPods(kp.INTENT_TREE, p.node, quitChan, errChan, podChan)
 
 	// we will have one long running goroutine for each app installed on this
 	// host. We keep a map of podId => podChan so we can send the new manifests
@@ -92,7 +97,7 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 			p.Logger.WithError(err).
 				Errorln("there was an error reading the manifest")
 		case intentResults := <-podChan:
-			realityResults, _, err := p.store.ListPods(kp.RealityPath(p.node))
+			realityResults, _, err := p.store.ListPods(kp.REALITY_TREE, p.node)
 			if err != nil {
 				p.Logger.WithError(err).Errorln("Could not check reality")
 			} else {
@@ -206,7 +211,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				// up-to-date. The de-bouncing logic in this method should ensure that the
 				// intent value is fresh (to the extent that Consul is timely). Fetching
 				// the reality value again ensures its freshness too.
-				reality, _, err := p.store.Pod(kp.RealityPath(p.node, string(nextLaunch.ID)))
+				reality, _, err := p.store.Pod(kp.REALITY_TREE, p.node, nextLaunch.ID)
 				if err == pods.NoCurrentManifest {
 					nextLaunch.Reality = nil
 				} else if err != nil {
@@ -322,7 +327,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 		logger.WithError(err).
 			Errorln("Launch failed")
 	} else {
-		duration, err := p.store.SetPod(kp.RealityPath(p.node, string(pair.ID)), pair.Intent)
+		duration, err := p.store.SetPod(kp.REALITY_TREE, p.node, pair.Intent)
 		if err != nil {
 			logger.WithErrorAndFields(err, logrus.Fields{
 				"duration": duration}).
@@ -353,7 +358,7 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 	}
 	logger.NoFields().Infoln("Successfully uninstalled")
 
-	dur, err := p.store.DeletePod(kp.RealityPath(p.node, string(pair.ID)))
+	dur, err := p.store.DeletePod(kp.REALITY_TREE, p.node, pair.ID)
 	if err != nil {
 		logger.WithErrorAndFields(err, logrus.Fields{"duration": dur}).
 			Errorln("Could not delete pod from reality store")

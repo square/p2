@@ -75,8 +75,12 @@ func (r replication) lockHosts(overrideLock bool, lockMessage string) error {
 	}
 
 	for _, host := range r.nodes {
-		lockPath := kp.LockPath(kp.IntentPath(host, string(r.manifest.ID())))
-		err := r.lock(lock, lockPath, overrideLock)
+		lockPath, err := kp.PodLockPath(kp.INTENT_TREE, host, r.manifest.ID())
+		if err != nil {
+			return err
+		}
+
+		err = r.lock(lock, lockPath, overrideLock)
 
 		if err != nil {
 			return err
@@ -224,7 +228,8 @@ func (r replication) updateOne(node string, done chan<- string, quitCh <-chan st
 	nodeLogger.WithField("sha", targetSHA).Infoln("Updating node")
 
 	_, err := r.store.SetPod(
-		kp.IntentPath(node, string(r.manifest.ID())),
+		kp.INTENT_TREE,
+		node,
 		r.manifest,
 	)
 	for err != nil {
@@ -232,7 +237,8 @@ func (r replication) updateOne(node string, done chan<- string, quitCh <-chan st
 		r.errCh <- err
 		time.Sleep(1 * time.Second)
 		_, err = r.store.SetPod(
-			kp.IntentPath(node, string(r.manifest.ID())),
+			kp.INTENT_TREE,
+			node,
 			r.manifest,
 		)
 	}
@@ -242,7 +248,9 @@ func (r replication) updateOne(node string, done chan<- string, quitCh <-chan st
 	realityQuit := make(chan struct{})
 	defer close(realityQuit)
 	go r.store.WatchPod(
-		kp.RealityPath(node, string(r.manifest.ID())),
+		kp.REALITY_TREE,
+		node,
+		r.manifest.ID(),
 		realityQuit,
 		realityErr,
 		realityResults,

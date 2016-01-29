@@ -209,18 +209,17 @@ ROLL_LOOP:
 	return true // finally if we make it here, we can return true
 }
 
-func (u update) lockPath(id rcf.ID) string {
-	// RUs want to lock the RCs they're mutating, but this lock is separate
-	// from the RC lock (which is held by the rc.WatchDesires goroutine), so the
-	// key being locked is different
-	return kp.LockPath(kp.RCPath(id.String(), "update"))
-}
-
 func (u update) lockRCs(done <-chan struct{}) error {
-	newPath := u.lockPath(u.NewRC)
-	oldPath := u.lockPath(u.OldRC)
+	newPath, err := rcstore.RCUpdateLockPath(u.NewRC)
+	if err != nil {
+		return err
+	}
+	oldPath, err := rcstore.RCUpdateLockPath(u.OldRC)
+	if err != nil {
+		return err
+	}
 
-	err := u.lock.Lock(newPath)
+	err = u.lock.Lock(newPath)
 	if _, ok := err.(kp.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock new %s", u.NewRC)
 	} else if err != nil {
@@ -251,17 +250,27 @@ func (u update) lockRCs(done <-chan struct{}) error {
 // individual releases are successful or until the session is reset.
 func (u update) unlockRCs(done <-chan struct{}) {
 	wg := sync.WaitGroup{}
-	for _, path := range []string{u.lockPath(u.NewRC), u.lockPath(u.OldRC)} {
+	for _, rcID := range []rcf.ID{u.NewRC, u.OldRC} {
 		wg.Add(1)
-		go func(path string) {
+		go func(rcID rcf.ID) {
+			defer wg.Done()
+			path, err := rcstore.RCUpdateLockPath(rcID)
+			if err != nil {
+				// If the path is invalid, there's no point in
+				// attempting to unlock
+				u.logger.WithError(err).
+					Errorln("Could not compute RCUpdateLockPath to unlock the RC")
+				return
+			}
 			RetryOrQuit(
-				func() error { return u.lock.Unlock(path) },
+				func() error {
+					return u.lock.Unlock(path)
+				},
 				done,
 				u.logger,
-				fmt.Sprintf("unlocking %s", path),
+				fmt.Sprintf("unlocking rc: %s", rcID),
 			)
-			wg.Done()
-		}(path)
+		}(rcID)
 	}
 	wg.Wait()
 }
@@ -306,7 +315,7 @@ func (u update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNode
 
 	for _, node := range nodes {
 		// TODO: is reality checking an rc-layer concern?
-		realManifest, _, err := u.kps.Pod(kp.RealityPath(node, string(rcFields.Manifest.ID())))
+		realManifest, _, err := u.kps.Pod(kp.REALITY_TREE, node, rcFields.Manifest.ID())
 		if err != nil {
 			return ret, err
 		}

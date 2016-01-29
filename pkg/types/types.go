@@ -4,3 +4,4 @@
 package types
 
 type PodID string
+type RCID string

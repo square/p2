@@ -41,11 +41,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("Could not read manifest at %s: %s\n", manifestPath, err)
 		}
-		path := kp.IntentPath(*nodeName, string(manifest.ID()))
+		podPrefix := kp.INTENT_TREE
 		if *hookGlobal {
-			path = kp.HookPath(string(manifest.ID()))
+			podPrefix = kp.HOOK_TREE
 		}
-		duration, err := store.SetPod(path, manifest)
+		duration, err := store.SetPod(podPrefix, *nodeName, manifest)
 		if err != nil {
 			log.Fatalf("Could not write manifest %s to intent store: %s\n", manifest.ID(), err)
 		}

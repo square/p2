@@ -264,9 +264,12 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 	}
 
 	for _, host := range testNodes {
-		lockPath := kp.LockPath(kp.IntentPath(host, string(manifest.ID())))
-		err := replication.lock(lock, lockPath, false)
+		lockPath, err := kp.PodLockPath(kp.INTENT_TREE, host, manifest.ID())
+		if err != nil {
+			t.Fatalf("Unable to compute lock path for pod: %s", err)
+		}
 
+		err = replication.lock(lock, lockPath, false)
 		if err != nil {
 			t.Fatalf("Unable to perform initial replication lock: %s", err)
 		}
@@ -344,7 +347,11 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 	}
 
 	// Destroy lock holder so the next renewal will fail
-	lockPath := kp.LockPath(kp.IntentPath(testNodes[0], string(manifest.ID())))
+	lockPath, err := kp.PodLockPath(kp.INTENT_TREE, testNodes[0], manifest.ID())
+	if err != nil {
+		t.Fatalf("Unable to compute pod lock path")
+	}
+
 	_, id, err := store.LockHolder(lockPath)
 	if err != nil {
 		t.Fatalf("Unable to determine lock holder in order to destroy the lock: %s", err)

@@ -81,7 +81,13 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 	watchQuitCh := make(chan struct{})
 	watchErrCh := make(chan error)
 	watchPodCh := make(chan []kp.ManifestResult)
-	go store.WatchPods(kp.RealityPath(node), watchQuitCh, watchErrCh, watchPodCh)
+	go store.WatchPods(
+		kp.REALITY_TREE,
+		node,
+		watchQuitCh,
+		watchErrCh,
+		watchPodCh,
+	)
 
 	for {
 		select {
