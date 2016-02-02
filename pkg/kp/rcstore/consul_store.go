@@ -13,6 +13,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/util"
 )
 
 const (
@@ -340,5 +341,9 @@ func (s *consulStore) forEachLabel(rc fields.RC, f func(id, k, v string) error) 
 	id := rc.ID.String()
 	// As of this writing the only label we want is the pod ID.
 	// There may be more in the future.
+
+	if rc.Manifest == nil {
+		return util.Errorf("RC manifest is nil, cannot compute its ID")
+	}
 	return f(id, PodIDLabel, string(rc.Manifest.ID()))
 }

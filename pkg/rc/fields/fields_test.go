@@ -29,3 +29,12 @@ func TestJSONMarshal(t *testing.T) {
 	Assert(t).AreEqual(rc1.ID, rc2.ID, "RC ID changed when serialized")
 	Assert(t).AreEqual(rc1.Manifest.ID(), rc2.Manifest.ID(), "Manifest ID changed when serialized")
 }
+
+func TestJSONUnmarshalEmpty(t *testing.T) {
+	rc := fields.RC{}
+	b, err := json.Marshal(&rc)
+	Assert(t).IsNil(err, "should have marshaled")
+
+	err = json.Unmarshal(b, &rc)
+	Assert(t).IsNil(err, "Unexpected error unmarshaling an empty RC")
+}

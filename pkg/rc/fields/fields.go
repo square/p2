@@ -89,13 +89,17 @@ var _ json.Marshaler = RC{}
 // representation of an RC.
 func (rc *RC) UnmarshalJSON(b []byte) error {
 	var rawRC RawRC
-	if err := json.Unmarshal(b, &rawRC); err != nil {
+	err := json.Unmarshal(b, &rawRC)
+	if err != nil {
 		return err
 	}
 
-	m, err := pods.ManifestFromBytes([]byte(rawRC.Manifest))
-	if err != nil {
-		return err
+	var m pods.Manifest
+	if len(rawRC.Manifest) != 0 {
+		m, err = pods.ManifestFromBytes([]byte(rawRC.Manifest))
+		if err != nil {
+			return err
+		}
 	}
 
 	nodeSel, err := labels.Parse(rawRC.NodeSelector)
