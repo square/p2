@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
@@ -14,6 +15,9 @@ import (
 // ExtractTarGz reads a gzipped tar stream and extracts all files to the destination
 // directory. If an owner name is specified, all files will be created to be owned by that
 // user; otherwise, the tar specifies ownership.
+//
+// If any file would be extracted outside of the destination directory due to relative paths
+// containing '..', the archive will be rejected with an error.
 func ExtractTarGz(owner string, fp io.Reader, dest string) (err error) {
 	fz, err := gzip.NewReader(fp)
 	if err != nil {
@@ -53,6 +57,16 @@ func ExtractTarGz(owner string, fp io.Reader, dest string) (err error) {
 			uid, gid = hdr.Uid, hdr.Gid
 		} else {
 			uid, gid = ownerUID, ownerGID
+		}
+
+		// Error on all files that would end up outside the destination directory.
+		if !strings.HasPrefix(fpath, dest) {
+			return util.Errorf(
+				"cannot extract %s, as its target %s is outside the root directory %s",
+				hdr.Name,
+				fpath,
+				dest,
+			)
 		}
 
 		parent := filepath.Dir(fpath)
