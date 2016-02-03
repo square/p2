@@ -55,6 +55,16 @@ func ExtractTarGz(owner string, fp io.Reader, dest string) (err error) {
 			uid, gid = ownerUID, ownerGID
 		}
 
+		parent := filepath.Dir(fpath)
+		if err := util.MkdirChownAll(parent, ownerUID, ownerGID, 0755); err != nil {
+			return util.Errorf(
+				"error creating directory %s (parent of %s): %s",
+				parent,
+				hdr.Name,
+				err,
+			)
+		}
+
 		switch hdr.Typeflag {
 		case tar.TypeSymlink:
 			err = os.Symlink(hdr.Linkname, fpath)
