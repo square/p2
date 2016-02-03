@@ -26,7 +26,6 @@ import (
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
-	"github.com/square/p2/pkg/util/stream"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -39,7 +38,6 @@ const (
 	CMD_ENABLE   = "enable"
 	CMD_DISABLE  = "disable"
 	CMD_ROLL     = "rolling-update"
-	CMD_FARM     = "farm"
 	CMD_SCHEDUP  = "schedule-update"
 )
 
@@ -78,8 +76,6 @@ var (
 	rollNewID = cmdRoll.Flag("new", "new replication controller uuid").Required().Short('n').String()
 	rollWant  = cmdRoll.Flag("desired", "number of replicas desired").Required().Short('d').Int()
 	rollNeed  = cmdRoll.Flag("minimum", "minimum number of healthy replicas during update").Required().Short('m').Int()
-
-	cmdFarm = kingpin.Command(CMD_FARM, "Start farms for replication controllers and rolling updates")
 
 	cmdSchedup   = kingpin.Command(CMD_SCHEDUP, "Schedule new rolling update (will be run by farm)")
 	schedupOldID = cmdSchedup.Flag("old", "old replication controller uuid").Required().Short('o').String()
@@ -146,8 +142,6 @@ func main() {
 		rctl.Disable(*disableID)
 	case CMD_ROLL:
 		rctl.RollingUpdate(*rollOldID, *rollNewID, *rollWant, *rollNeed)
-	case CMD_FARM:
-		rctl.Farm()
 	case CMD_SCHEDUP:
 		rctl.ScheduleUpdate(*schedupOldID, *schedupNewID, *schedupWant, *schedupNeed)
 	}
@@ -337,30 +331,6 @@ LOOP:
 			break LOOP
 		}
 	}
-}
-
-func (r RCtl) Farm() {
-	sessions := make(chan string)
-	go kp.ConsulSessionManager(api.SessionEntry{
-		Name:      SessionName(),
-		LockDelay: 5 * time.Second,
-		Behavior:  api.SessionBehaviorDelete,
-		TTL:       "15s",
-	}, r.baseClient, sessions, nil, r.logger)
-	firstSession := <-sessions
-
-	pub := stream.NewStringValuePublisher(sessions, firstSession)
-	rcSub := pub.Subscribe(nil)
-	rlSub := pub.Subscribe(nil)
-
-	go rc.NewFarm(r.kps, r.rcs, r.sched, r.labeler, rcSub.Chan(), r.logger).Start(nil)
-	roll.NewFarm(roll.UpdateFactory{
-		KPStore:       r.kps,
-		RCStore:       r.rcs,
-		HealthChecker: r.hcheck,
-		Labeler:       r.labeler,
-		Scheduler:     r.sched,
-	}, r.kps, r.rls, r.rcs, rlSub.Chan(), r.logger).Start(nil)
 }
 
 func (r RCtl) ScheduleUpdate(oldID, newID string, want, need int) {
