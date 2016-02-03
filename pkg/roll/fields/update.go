@@ -15,7 +15,7 @@ type Update struct {
 	// uniquely identified by their new RC's ID.
 	NewRC fields.ID
 	// When the new RC's replica count equals this number, the Update is
-	// considered to be complete. This should be at least equal to the minimum.
+	// considered to be complete.
 	DesiredReplicas int
 	// During the course of the update, pods may be restarted or removed. This
 	// number specifies the minimum number of replicas that must be alive
