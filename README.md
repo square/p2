@@ -85,7 +85,7 @@ libraries require only one of these or are dependency-free.
 * [Consul](https://consul.io/)
 * [Runit](http://smarden.org/runit/), which includes chpst
 
-## Desireable Features
+## Desirable Features
 
 Adding Docker support is a big next step, but will ultimately help us migrate to using Docker (or equally excellent RunC implementation) at Square. 
 
