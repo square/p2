@@ -12,7 +12,8 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-func testExtraction(t *testing.T, tarfile string,
+func testExtractionWithSetup(t *testing.T, tarfile string,
+	setup func(string) error,
 	check func(error, string),
 ) {
 	tarPath := util.From(runtime.Caller(0)).ExpandPath(tarfile)
@@ -27,12 +28,19 @@ func testExtraction(t *testing.T, tarfile string,
 	err = os.Mkdir(dest, 0755)
 	Assert(t).IsNil(err, "expected no error creating destdir")
 
+	err = setup(dest)
+	Assert(t).IsNil(err, "expected no error performing test-specific setup")
+
 	user, err := user.Current()
 	Assert(t).IsNil(err, "expected no error getting current user")
 
 	err = ExtractTarGz(user.Username, file, dest)
 
 	check(err, dest)
+}
+
+func testExtraction(t *testing.T, tarfile string, check func(error, string)) {
+	testExtractionWithSetup(t, tarfile, func(string) error { return nil }, check)
 }
 
 func TestFileWithoutDir(t *testing.T) {
