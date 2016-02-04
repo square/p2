@@ -47,7 +47,7 @@ func TestFileWithoutDir(t *testing.T) {
 	testExtraction(t, "file_without_dir.tar.gz", func(tarErr error, dest string) {
 		Assert(t).IsNil(tarErr, "expected no error extracting tarball")
 
-		_, err := os.Stat(filepath.Join(dest, "a", "b"))
+		_, err := os.Stat(filepath.Join(dest, "a", "b", "c"))
 		Assert(t).IsNil(err, "expected no error statting extracted file")
 	})
 }
