@@ -11,8 +11,8 @@ install:
   - gem install rake
   - go get github.com/tools/godep
   - rake install
-  - sudo wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
-  - sudo unzip 0.5.2_linux_amd64.zip
+  - wget https://releases.hashicorp.com/consul/0.5.2/consul_0.5.2_linux_amd64.zip
+  - unzip consul_0.5.2_linux_amd64.zip
   - sudo mv consul /usr/bin/
 
 script:
