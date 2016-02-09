@@ -15,6 +15,11 @@ import (
 func (uuid *UUID) Scan(src interface{}) error {
 	switch src.(type) {
 	case string:
+		// if an empty UUID comes from a table, we return a null UUID
+		if src.(string) == "" {
+			return nil
+		}
+
 		// see uuid.Parse for required string format
 		parsed := Parse(src.(string))
 
@@ -24,14 +29,27 @@ func (uuid *UUID) Scan(src interface{}) error {
 
 		*uuid = parsed
 	case []byte:
-		// assumes a simple slice of bytes, just check validity and store
-		u := UUID(src.([]byte))
+		b := src.([]byte)
 
-		if u.Variant() == Invalid {
-			return errors.New("Scan: invalid UUID format")
+		// if an empty UUID comes from a table, we return a null UUID
+		if len(b) == 0 {
+			return nil
 		}
 
-		*uuid = u
+		// assumes a simple slice of bytes if 16 bytes
+		// otherwise attempts to parse
+		if len(b) == 16 {
+			*uuid = UUID(b)
+		} else {
+			u := Parse(string(b))
+
+			if u == nil {
+				return errors.New("Scan: invalid UUID format")
+			}
+
+			*uuid = u
+		}
+
 	default:
 		return fmt.Errorf("Scan: unable to scan type %T into UUID", src)
 	}

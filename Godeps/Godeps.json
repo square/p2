@@ -194,7 +194,7 @@
 		},
 		{
 			"ImportPath": "github.com/pborman/uuid",
-			"Rev": "cccd189d45f7ac3368a0d127efb7f4d08ae0b655"
+			"Rev": "ae80070655697e171ccb9b7a5b8671393599a471"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
