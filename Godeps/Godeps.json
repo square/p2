@@ -11,8 +11,8 @@
 		},
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
-			"Comment": "v0.8.7",
-			"Rev": "418b41d23a1bf978c06faea5313ba194650ac088"
+			"Comment": "v0.9.0",
+			"Rev": "be52937128b38f1d99787bb476c789e2af1147f1"
 		},
 		{
 			"ImportPath": "github.com/alecthomas/template",
@@ -49,7 +49,7 @@
 		},
 		{
 			"ImportPath": "github.com/davecgh/go-spew/spew",
-			"Rev": "2df174808ee097f90d259e432cc04442cf60be21"
+			"Rev": "5215b55f46b2b919f50a1df0eaa5886afe4e3b3d"
 		},
 		{
 			"ImportPath": "github.com/elazarl/go-bindata-assetfs",
@@ -194,23 +194,23 @@
 		},
 		{
 			"ImportPath": "github.com/pborman/uuid",
-			"Rev": "cccd189d45f7ac3368a0d127efb7f4d08ae0b655"
+			"Rev": "ae80070655697e171ccb9b7a5b8671393599a471"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
-			"Rev": "c8b9e6388ef638d5a8a9d865c634befdc46a6784"
+			"Rev": "1f22c0103821b9390939b6776727195525381532"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/curve25519",
-			"Rev": "c8b9e6388ef638d5a8a9d865c634befdc46a6784"
+			"Rev": "1f22c0103821b9390939b6776727195525381532"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp",
-			"Rev": "c8b9e6388ef638d5a8a9d865c634befdc46a6784"
+			"Rev": "1f22c0103821b9390939b6776727195525381532"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ssh",
-			"Rev": "c8b9e6388ef638d5a8a9d865c634befdc46a6784"
+			"Rev": "1f22c0103821b9390939b6776727195525381532"
 		},
 		{
 			"ImportPath": "golang.org/x/sys/unix",
@@ -218,8 +218,8 @@
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v2",
-			"Comment": "v2.1.8",
-			"Rev": "8852570bd3865e9c4d4cb7cf5001c4295b07cad5"
+			"Comment": "v2.1.10",
+			"Rev": "24b74030480f0aa98802b51ff4622a7eb09dfddd"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
