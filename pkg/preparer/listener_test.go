@@ -22,10 +22,9 @@ import (
 )
 
 type fakeIntentStore struct {
-	manifests   []kp.ManifestResult
-	quit        chan struct{}
-	errToSend   error
-	watchedPath string
+	manifests []kp.ManifestResult
+	quit      chan struct{}
+	errToSend error
 }
 
 func fakeStoreWithManifests(manifests ...kp.ManifestResult) *fakeIntentStore {
@@ -35,8 +34,7 @@ func fakeStoreWithManifests(manifests ...kp.ManifestResult) *fakeIntentStore {
 	}
 }
 
-func (f *fakeIntentStore) WatchPods(watchedPath string, quitCh <-chan struct{}, errCh chan<- error, podCh chan<- []kp.ManifestResult) {
-	f.watchedPath = watchedPath
+func (f *fakeIntentStore) WatchPods(podPrefix kp.PodPrefix, nodeName string, quitCh <-chan struct{}, errCh chan<- error, podCh chan<- []kp.ManifestResult) {
 	go func() {
 		podCh <- f.manifests
 		if f.errToSend != nil {
@@ -48,12 +46,12 @@ func (f *fakeIntentStore) WatchPods(watchedPath string, quitCh <-chan struct{}, 
 	<-quitCh
 }
 
-func (f *fakeIntentStore) ListPods(path string) ([]kp.ManifestResult, time.Duration, error) {
+func (f *fakeIntentStore) ListPods(podPrefix kp.PodPrefix, nodeName string) ([]kp.ManifestResult, time.Duration, error) {
 	return f.manifests, 0, nil
 }
 
 func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
-	hookPrefix := "hooks"
+	hookPrefix := kp.HOOK_TREE
 	destDir, _ := ioutil.TempDir("", "pods")
 	defer os.RemoveAll(destDir)
 	execDir, err := ioutil.TempDir("", "exec")
@@ -90,7 +88,7 @@ func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
 	Assert(t).IsNil(err, "should have generated manifest from signed bytes")
 
 	fakeIntent := fakeStoreWithManifests(kp.ManifestResult{
-		Path:     path.Join(hookPrefix, "users"),
+		Path:     path.Join(string(hookPrefix), "users"),
 		Manifest: manifest,
 	})
 

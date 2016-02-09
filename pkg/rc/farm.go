@@ -116,7 +116,13 @@ START_LOOP:
 					continue
 				}
 
-				err := rcf.lock.Lock(kp.LockPath(kp.RCPath(rcField.ID.String())))
+				lockPath, err := rcstore.RCLockPath(rcField.ID)
+				if err != nil {
+					rcf.logger.WithError(err).Errorln("Could not compute path for rc lock")
+					continue
+				}
+
+				err = rcf.lock.Lock(lockPath)
 				if _, ok := err.(kp.AlreadyLockedError); ok {
 					// someone else must have gotten it first - log and move to
 					// the next one
@@ -150,6 +156,9 @@ START_LOOP:
 					for err := range newChild.WatchDesires(childQuit) {
 						rcLogger.WithError(err).Errorln("Got error in replication controller loop")
 					}
+
+					// NOTE: if WatchDesires experiences an unrecoverable error, we don't release the replication controller.
+					// However, it is unlikely that another farm instance would fare any better so that's okay
 				}()
 			}
 
@@ -172,7 +181,13 @@ func (rcf *Farm) releaseChild(id fields.ID) {
 
 	// if our lock is active, attempt to gracefully release it on this rc
 	if rcf.lock != nil {
-		err := rcf.lock.Unlock(kp.LockPath(kp.RCPath(id.String())))
+		lockPath, err := rcstore.RCLockPath(id)
+		if err != nil {
+			rcf.logger.WithField("rc", id).WithError(err).Errorln("Could not compute rc lock path for releasing")
+			return
+		}
+
+		err = rcf.lock.Unlock(lockPath)
 		if err != nil {
 			rcf.logger.WithField("rc", id).Warnln("Could not release replication controller lock")
 		}

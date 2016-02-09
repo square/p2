@@ -13,6 +13,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -45,8 +46,15 @@ type ReplicationController interface {
 // These methods are the same as the methods of the same name in kp.Store.
 // Replication controllers have no need of any methods other than these.
 type kpStore interface {
-	SetPod(key string, manifest pods.Manifest) (time.Duration, error)
-	DeletePod(key string) (time.Duration, error)
+	SetPod(
+		podPrefix kp.PodPrefix,
+		nodeName string,
+		manifest pods.Manifest,
+	) (time.Duration, error)
+	DeletePod(podPrefix kp.PodPrefix,
+		nodeName string,
+		manifestID types.PodID,
+	) (time.Duration, error)
 }
 
 type replicationController struct {
@@ -246,10 +254,8 @@ func (rc *replicationController) forEachLabel(node string, f func(id, k, v strin
 }
 
 func (rc *replicationController) schedule(node string) error {
-	// First, schedule the new pod.
-	intentPath := kp.IntentPath(node, string(rc.Manifest.ID()))
-	rc.logger.NoFields().Infof("Scheduling on %s", intentPath)
-	_, err := rc.kpStore.SetPod(intentPath, rc.Manifest)
+	rc.logger.NoFields().Infof("Scheduling on %s", node)
+	_, err := rc.kpStore.SetPod(kp.INTENT_TREE, node, rc.Manifest)
 	if err != nil {
 		return err
 	}
@@ -264,8 +270,7 @@ func (rc *replicationController) schedule(node string) error {
 }
 
 func (rc *replicationController) unschedule(node string) error {
-	intentPath := kp.IntentPath(node, string(rc.Manifest.ID()))
-	rc.logger.NoFields().Infof("Uncheduling from %s", intentPath)
+	rc.logger.NoFields().Infof("Uncheduling from %s", node)
 
 	// TODO: As above in schedule, it could be the case that RemoveLabel fails.
 	// This again means that currentNodes() is no longer aware of a pod.
@@ -278,6 +283,6 @@ func (rc *replicationController) unschedule(node string) error {
 		return err
 	}
 
-	_, err = rc.kpStore.DeletePod(intentPath)
+	_, err = rc.kpStore.DeletePod(kp.INTENT_TREE, node, rc.Manifest.ID())
 	return err
 }

@@ -146,7 +146,7 @@ func VerifyReality(waitTime time.Duration, consulID types.PodID, agentID types.P
 				"Consul and/or Preparer weren't in the reality store within %s (consul=%t, preparer=%t)",
 				waitTime, hasConsul, hasPreparer)
 		case <-time.After(100 * time.Millisecond):
-			results, _, err := store.ListPods(kp.RealityPath(hostname))
+			results, _, err := store.ListPods(kp.REALITY_TREE, hostname)
 			if err != nil {
 				log.Printf("Error looking for pods: %s\n", err)
 				continue
@@ -173,13 +173,13 @@ func ScheduleForThisHost(manifest pods.Manifest, alsoReality bool) error {
 	if err != nil {
 		return err
 	}
-	_, err = store.SetPod(kp.IntentPath(hostname, string(manifest.ID())), manifest)
+	_, err = store.SetPod(kp.INTENT_TREE, hostname, manifest)
 	if err != nil {
 		return err
 	}
 
 	if alsoReality {
-		_, err = store.SetPod(kp.RealityPath(hostname, string(manifest.ID())), manifest)
+		_, err = store.SetPod(kp.REALITY_TREE, hostname, manifest)
 		return err
 	}
 	return nil

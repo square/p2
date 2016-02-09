@@ -3,6 +3,7 @@ package rollstore
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 
@@ -10,7 +11,10 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	rcf "github.com/square/p2/pkg/rc/fields"
 	rollf "github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/util"
 )
+
+const rollTree string = "rolls"
 
 // Store persists Updates into Consul. Updates are uniquely identified by their
 // new RC's ID.
@@ -42,7 +46,11 @@ func NewConsul(c *api.Client) Store {
 }
 
 func (s consulStore) Get(id rcf.ID) (rollf.Update, error) {
-	key := kp.RollPath(id.String())
+	key, err := RollPath(id)
+	if err != nil {
+		return rollf.Update{}, nil
+	}
+
 	kvp, _, err := s.kv.Get(key, nil)
 	if err != nil {
 		return rollf.Update{}, consulutil.NewKVError("get", key, err)
@@ -65,9 +73,13 @@ func (s consulStore) Put(u rollf.Update) error {
 		return err
 	}
 
-	key := kp.RollPath(u.NewRC.String())
+	key, err := RollPath(u.NewRC)
+	if err != nil {
+		return err
+	}
+
 	success, _, err := s.kv.CAS(&api.KVPair{
-		Key:   kp.RollPath(u.NewRC.String()),
+		Key:   key,
 		Value: b,
 		// it must not already exist
 		ModifyIndex: 0,
@@ -82,8 +94,12 @@ func (s consulStore) Put(u rollf.Update) error {
 }
 
 func (s consulStore) Delete(id rcf.ID) error {
-	key := kp.RollPath(id.String())
-	_, err := s.kv.Delete(key, nil)
+	key, err := RollPath(id)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.kv.Delete(key, nil)
 	if err != nil {
 		return consulutil.NewKVError("delete", key, err)
 	}
@@ -91,7 +107,11 @@ func (s consulStore) Delete(id rcf.ID) error {
 }
 
 func (s consulStore) Lock(id rcf.ID, session string) (bool, error) {
-	key := kp.LockPath(kp.RollPath(id.String()))
+	key, err := RollLockPath(id)
+	if err != nil {
+		return false, err
+	}
+
 	success, _, err := s.kv.Acquire(&api.KVPair{
 		Key:     key,
 		Value:   []byte(session),
@@ -108,7 +128,7 @@ func (s consulStore) Watch(quit <-chan struct{}) (<-chan []rollf.Update, <-chan 
 	errCh := make(chan error)
 	inCh := make(chan api.KVPairs)
 
-	go consulutil.WatchPrefix(kp.ROLL_TREE+"/", s.kv, inCh, quit, errCh)
+	go consulutil.WatchPrefix(rollTree+"/", s.kv, inCh, quit, errCh)
 
 	go func() {
 		defer close(outCh)
@@ -138,4 +158,21 @@ func (s consulStore) Watch(quit <-chan struct{}) (<-chan []rollf.Update, <-chan 
 	}()
 
 	return outCh, errCh
+}
+
+func RollPath(rcId rcf.ID) (string, error) {
+	if rcId == "" {
+		return "", util.Errorf("rcId not specified when computing roll path")
+	}
+	return path.Join(rollTree, string(rcId)), nil
+}
+
+// Roll paths are computed using the id of the new replication controller
+func RollLockPath(rcId rcf.ID) (string, error) {
+	subRollPath, err := RollPath(rcId)
+	if err != nil {
+		return "", err
+	}
+
+	return path.Join(kp.LOCK_TREE, subRollPath), nil
 }

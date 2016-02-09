@@ -13,13 +13,28 @@ import (
 )
 
 type IntentStore interface {
-	WatchPods(watchPath string, quit <-chan struct{}, errCh chan<- error, manifests chan<- []kp.ManifestResult)
-	ListPods(path string) ([]kp.ManifestResult, time.Duration, error)
+	WatchPods(
+		podPrefix kp.PodPrefix,
+		hostname string,
+		quit <-chan struct{},
+		errCh chan<- error,
+		manifests chan<- []kp.ManifestResult,
+	)
+	ListPods(
+		podPrefix kp.PodPrefix,
+		hostname string,
+	) ([]kp.ManifestResult, time.Duration, error)
 }
 
 type HookListener struct {
-	Intent         IntentStore
-	HookPrefix     string // The prefix in the intent store to watch
+	Intent     IntentStore
+	HookPrefix kp.PodPrefix // The prefix in the intent store to watch
+
+	// Note: node is currently unused because hooks are not scheduled by
+	// hostname, however there are future plans to change this behavior, so
+	// the hostname is passed to WatchPods and ListPods even though it is
+	// ignored
+	Node           string // The host to watch for hooks for
 	DestinationDir string // The destination directory for downloaded pods that will act as hooks
 	ExecDir        string // The directory that will actually be executed by the HookDir
 	Logger         logging.Logger
@@ -33,13 +48,11 @@ type HookListener struct {
 // symlink in the new pod's launchables.
 func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 
-	watchPath := l.HookPrefix
-
 	watcherQuit := make(chan struct{})
 	watcherErrCh := make(chan error)
 	podChan := make(chan []kp.ManifestResult)
 
-	go l.Intent.WatchPods(watchPath, watcherQuit, watcherErrCh, podChan)
+	go l.Intent.WatchPods(l.HookPrefix, l.Node, watcherQuit, watcherErrCh, podChan)
 
 	for {
 		select {
@@ -65,7 +78,7 @@ func (l *HookListener) Sync(quit <-chan struct{}, errCh chan<- error) {
 // Sync the hooks just once. This is useful at preparer startup so that hooks
 // will be synced before normal pod management begins
 func (l *HookListener) SyncOnce() error {
-	pods, _, err := l.Intent.ListPods(l.HookPrefix)
+	pods, _, err := l.Intent.ListPods(l.HookPrefix, l.Node)
 	if err != nil {
 		return err
 	}

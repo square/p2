@@ -2,13 +2,16 @@ package rc
 
 import (
 	"fmt"
+	"path"
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
@@ -18,12 +21,14 @@ type fakeKpStore struct {
 	manifests map[string]pods.Manifest
 }
 
-func (s *fakeKpStore) SetPod(key string, manifest pods.Manifest) (time.Duration, error) {
+func (s *fakeKpStore) SetPod(podPrefix kp.PodPrefix, nodeName string, manifest pods.Manifest) (time.Duration, error) {
+	key := path.Join(string(podPrefix), nodeName, string(manifest.ID()))
 	s.manifests[key] = manifest
 	return 0, nil
 }
 
-func (s *fakeKpStore) DeletePod(key string) (time.Duration, error) {
+func (s *fakeKpStore) DeletePod(podPrefix kp.PodPrefix, nodeName string, podID types.PodID) (time.Duration, error) {
+	key := path.Join(string(podPrefix), nodeName, string(podID))
 	delete(s.manifests, key)
 	return 0, nil
 }

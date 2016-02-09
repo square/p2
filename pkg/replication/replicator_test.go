@@ -26,7 +26,11 @@ func TestInitializeReplication(t *testing.T) {
 
 	// Confirm that the appropriate kv keys have been locked
 	for _, node := range testNodes {
-		lockPath := kp.LockPath(kp.IntentPath(node, testPodId))
+		lockPath, err := kp.PodLockPath(kp.INTENT_TREE, node, testPodId)
+		if err != nil {
+			t.Fatalf("Unable to compute pod lock path: %s", err)
+		}
+
 		lockHolder, _, err := store.LockHolder(lockPath)
 		if err != nil {
 			t.Fatalf("Unexpected error checking for lock holder: %s", err)
@@ -45,18 +49,18 @@ func TestInitializeReplicationFailsIfNoPreparers(t *testing.T) {
 	// We expect an error here because the reality keys for the preparer
 	// have no data, which in production would mean that the preparer is
 	// not installed on the hosts being replicated to
-	_, _, err := replicator.InitializeReplication(false)
-	if err == nil {
+	_, _, testErr := replicator.InitializeReplication(false)
+	if testErr == nil {
 		t.Fatalf("Expected error due to preparer not existing in reality, but no error occurred")
 	}
 
-	matched, err := regexp.MatchString(fmt.Sprintf("verify %s state", preparer.POD_ID), err.Error())
+	matched, err := regexp.MatchString(fmt.Sprintf("verify %s state", preparer.POD_ID), testErr.Error())
 	if err != nil {
 		t.Fatalf("Unable to compare error message to expected string")
 	}
 
 	if !matched {
-		t.Fatalf("Expected error message to be related to preparer state, but was %s", err.Error())
+		t.Fatalf("Expected error message to be related to preparer state, but was %s", testErr.Error())
 	}
 }
 
@@ -77,24 +81,28 @@ func TestInitializeReplicationFailsIfLockExists(t *testing.T) {
 		t.Fatalf("Unable to set up competing lock: %s", err)
 	}
 	defer lock.Destroy()
-	lockPath := kp.LockPath(kp.IntentPath(testNodes[0], testPodId))
+	lockPath, err := kp.PodLockPath(kp.INTENT_TREE, testNodes[0], testPodId)
+	if err != nil {
+		t.Fatalf("Unable to compute pod lock path: %s", err)
+	}
+
 	err = lock.Lock(lockPath)
 	if err != nil {
 		t.Fatalf("Unable to set up competing lock: %s", err)
 	}
 
-	_, _, err = replicator.InitializeReplication(false)
-	if err == nil {
+	_, _, testErr := replicator.InitializeReplication(false)
+	if testErr == nil {
 		t.Fatalf("Expected error due to competing lock, but no error occurred")
 	}
 
-	matched, err := regexp.MatchString("already held", err.Error())
+	matched, err := regexp.MatchString("already held", testErr.Error())
 	if err != nil {
 		t.Fatalf("Unable to compare error message to expected string")
 	}
 
 	if !matched {
-		t.Fatalf("Expected error message to be related to a lock already being held, but was %s", err.Error())
+		t.Fatalf("Expected error message to be related to a lock already being held, but was %s", testErr.Error())
 	}
 }
 
@@ -115,7 +123,11 @@ func TestInitializeReplicationCanOverrideLocks(t *testing.T) {
 		t.Fatalf("Unable to set up competing lock: %s", err)
 	}
 	defer lock.Destroy()
-	lockPath := kp.LockPath(kp.IntentPath(testNodes[0], testPodId))
+	lockPath, err := kp.PodLockPath(kp.INTENT_TREE, testNodes[0], testPodId)
+	if err != nil {
+		t.Fatalf("Unable to compute pod lock path: %s", err)
+	}
+
 	err = lock.Lock(lockPath)
 	if err != nil {
 		t.Fatalf("Unable to set up competing lock: %s", err)

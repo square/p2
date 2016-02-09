@@ -32,23 +32,23 @@ func main() {
 		*nodeName = hostname
 	}
 
-	path := kp.IntentPath(*nodeName)
+	podPrefix := kp.INTENT_TREE
 	if *watchReality {
-		path = kp.RealityPath(*nodeName)
+		podPrefix = kp.REALITY_TREE
 	} else if *hooks {
-		path = kp.HookPath()
+		podPrefix = kp.HOOK_TREE
 	}
-	log.Printf("Watching manifests at %s\n", path)
+	log.Printf("Watching manifests at %s/%s/\n", podPrefix, *nodeName)
 
 	quit := make(chan struct{})
 	errChan := make(chan error)
 	podCh := make(chan []kp.ManifestResult)
-	go store.WatchPods(path, quit, errChan, podCh)
+	go store.WatchPods(podPrefix, *nodeName, quit, errChan, podCh)
 	for {
 		select {
 		case results := <-podCh:
 			if len(results) == 0 {
-				fmt.Println(fmt.Sprintf("No manifest exists at key %s (it may have been deleted)", path))
+				fmt.Println(fmt.Sprintf("No manifests exist for %s under %s (they may have been deleted)", *nodeName, podPrefix))
 			} else {
 				for _, result := range results {
 					fmt.Println("")

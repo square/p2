@@ -8,7 +8,6 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/pborman/uuid"
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 
-	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pods"
@@ -83,7 +82,10 @@ func (s *consulStore) Create(manifest pods.Manifest, nodeSelector klabels.Select
 // these parts of Create may require a retry
 func (s *consulStore) innerCreate(manifest pods.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
 	id := fields.ID(uuid.New())
-	rcp := kp.RCPath(id.String())
+	rcp, err := rcPath(id)
+	if err != nil {
+		return fields.RC{}, err
+	}
 	rc := fields.RC{
 		ID:              id,
 		Manifest:        manifest,
@@ -116,7 +118,12 @@ func (s *consulStore) innerCreate(manifest pods.Manifest, nodeSelector klabels.S
 }
 
 func (s *consulStore) Get(id fields.ID) (fields.RC, error) {
-	kvp, _, err := s.kv.Get(kp.RCPath(id.String()), nil)
+	rcp, err := rcPath(id)
+	if err != nil {
+		return fields.RC{}, err
+	}
+
+	kvp, _, err := s.kv.Get(rcp, nil)
 	if err != nil {
 		return fields.RC{}, err
 	}
@@ -128,7 +135,7 @@ func (s *consulStore) Get(id fields.ID) (fields.RC, error) {
 }
 
 func (s *consulStore) List() ([]fields.RC, error) {
-	listed, _, err := s.kv.List(kp.RC_TREE+"/", nil)
+	listed, _, err := s.kv.List(rcTree+"/", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +147,7 @@ func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan
 	errCh := make(chan error)
 	inCh := make(chan api.KVPairs)
 
-	go consulutil.WatchPrefix(kp.RC_TREE+"/", s.kv, inCh, quit, errCh)
+	go consulutil.WatchPrefix(rcTree+"/", s.kv, inCh, quit, errCh)
 
 	go func() {
 		defer close(outCh)
@@ -242,7 +249,11 @@ func (s *consulStore) retryMutate(id fields.ID, mutator func(fields.RC) (fields.
 // if the mutator returns an error, it will be propagated out
 // if the returned RC has id="", then it will be deleted
 func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
-	rcp := kp.RCPath(id.String())
+	rcp, err := rcPath(id)
+	if err != nil {
+		return err
+	}
+
 	kvp, meta, err := s.kv.Get(rcp, nil)
 	if err != nil {
 		return err
@@ -298,10 +309,19 @@ func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC,
 
 func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
 	updated := make(chan struct{})
+
+	rcp, err := rcPath(rc.ID)
+	if err != nil {
+		errors := make(chan error, 1)
+		errors <- err
+		close(errors)
+		close(updated)
+		return updated, errors
+	}
+
 	errors := make(chan error)
 	input := make(chan *api.KVPair)
-
-	go consulutil.WatchSingle(kp.RCPath(rc.ID.String()), s.kv, input, quit, errors)
+	go consulutil.WatchSingle(rcp, s.kv, input, quit, errors)
 
 	go func() {
 		defer close(updated)

@@ -327,6 +327,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	listener := HookListener{
 		Intent:         store,
 		HookPrefix:     kp.HOOK_TREE,
+		Node:           preparerConfig.NodeName,
 		DestinationDir: path.Join(pods.DEFAULT_PATH, "hooks"),
 		ExecDir:        preparerConfig.HooksDirectory,
 		Logger:         logger,
