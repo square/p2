@@ -21,6 +21,8 @@ const rollTree string = "rolls"
 type Store interface {
 	// retrieve this Update
 	Get(rcf.ID) (rollf.Update, error)
+	// retrieve all updates
+	List() ([]rollf.Update, error)
 	// put this Update into the store. Updates are immutable - if another Update
 	// exists with this newRC ID, an error is returned
 	Put(rollf.Update) error
@@ -35,8 +37,19 @@ type Store interface {
 	Watch(<-chan struct{}) (<-chan []rollf.Update, <-chan error)
 }
 
+// Interface that allows us to inject a test implementation of the consul api
+type KV interface {
+	Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
+	List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
+	CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error)
+	Delete(key string, w *api.WriteOptions) (*api.WriteMeta, error)
+	Acquire(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error)
+}
+
+var _ KV = &api.KV{}
+
 type consulStore struct {
-	kv *api.KV
+	kv KV
 }
 
 var _ Store = consulStore{}
@@ -59,10 +72,22 @@ func (s consulStore) Get(id rcf.ID) (rollf.Update, error) {
 		return rollf.Update{}, nil
 	}
 
-	var ret rollf.Update
-	err = json.Unmarshal(kvp.Value, &ret)
+	return kvpToRU(kvp)
+}
+
+func (s consulStore) List() ([]rollf.Update, error) {
+	listed, _, err := s.kv.List(rollTree+"/", nil)
 	if err != nil {
-		return rollf.Update{}, err
+		return nil, err
+	}
+
+	ret := make([]rollf.Update, 0, len(listed))
+	for _, kvp := range listed {
+		ru, err := kvpToRU(kvp)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, ru)
 	}
 	return ret, nil
 }
@@ -175,4 +200,13 @@ func RollLockPath(rcId rcf.ID) (string, error) {
 	}
 
 	return path.Join(kp.LOCK_TREE, subRollPath), nil
+}
+
+func kvpToRU(kvp *api.KVPair) (rollf.Update, error) {
+	ru := rollf.Update{}
+	err := json.Unmarshal(kvp.Value, &ru)
+	if err != nil {
+		return ru, util.Errorf("Unable to unmarshal value as rolling update: %s", err)
+	}
+	return ru, nil
 }
