@@ -47,6 +47,11 @@ func (s HealthState) Int() int {
 	}
 }
 
+// Returns whether the given string matches a particular health state
+func (s HealthState) Is(state string) bool {
+	return ToHealthState(state) == s
+}
+
 // Compare two HealthStates. Return 0 if equal, a value less than 0 if a < b and a value
 // greater than 0 if a > b. The ordering is Passing > Warning > Unknown > Critical.
 func Compare(a, b HealthState) int {

@@ -293,6 +293,8 @@ func (p *Preparer) resolvePair(pair ManifestPair, pod Pod, logger logging.Logger
 func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger logging.Logger) bool {
 	p.tryRunHooks(hooks.BEFORE_INSTALL, pod, pair.Intent, logger)
 
+	logger.NoFields().Infoln("Installing pod and launchables")
+
 	err := pod.Install(pair.Intent)
 	if err != nil {
 		// install failed, abort and retry
@@ -311,6 +313,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 	p.tryRunHooks(hooks.AFTER_INSTALL, pod, pair.Intent, logger)
 
 	if pair.Reality != nil {
+		logger.NoFields().Infoln("Invoking the disable hook and halting runit services")
 		success, err := pod.Halt(pair.Reality)
 		if err != nil {
 			logger.WithError(err).
@@ -321,6 +324,8 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 	}
 
 	p.tryRunHooks(hooks.BEFORE_LAUNCH, pod, pair.Intent, logger)
+
+	logger.NoFields().Infoln("Setting up new runit services and running the enable hook")
 
 	ok, err := pod.Launch(pair.Intent)
 	if err != nil {
