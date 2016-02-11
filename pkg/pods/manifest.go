@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path"
 
 	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp/clearsign"
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
@@ -31,13 +32,20 @@ type LaunchableStanza struct {
 	CgroupConfig            cgroups.Config `yaml:"cgroup,omitempty"`
 }
 
+type StatusStanza struct {
+	HTTP bool   `yaml:"http,omitempty"`
+	Path string `yaml:"path,omitempty"`
+	Port int    `yaml:"port,omitempty"`
+}
+
 type ManifestBuilder interface {
 	GetManifest() Manifest
 	SetID(types.PodID)
 	SetConfig(config map[interface{}]interface{}) error
 	SetRunAsUser(user string)
-	SetStatusPort(port int)
 	SetStatusHTTP(statusHTTP bool)
+	SetStatusPath(statusPath string)
+	SetStatusPort(port int)
 	SetLaunchables(launchableStanzas map[string]LaunchableStanza)
 }
 
@@ -68,8 +76,9 @@ type Manifest interface {
 	GetLaunchableStanzas() map[string]LaunchableStanza
 	GetConfig() map[interface{}]interface{}
 	SHA() (string, error)
-	GetStatusPort() int
 	GetStatusHTTP() bool
+	GetStatusPath() string
+	GetStatusPort() int
 	Marshal() ([]byte, error)
 	SignatureData() (plaintext, signature []byte)
 	GetRestartPolicy() runit.RestartPolicy
@@ -87,6 +96,7 @@ type manifest struct {
 	Config            map[interface{}]interface{} `yaml:"config"`
 	StatusPort        int                         `yaml:"status_port,omitempty"`
 	StatusHTTP        bool                        `yaml:"status_http,omitempty"`
+	Status            StatusStanza                `yaml:"status,omitempty"`
 	RestartPolicy     runit.RestartPolicy         `yaml:"restart_policy,omitempty"`
 
 	// Used to track the original bytes so that we don't reorder them when
@@ -167,20 +177,39 @@ func (m manifestBuilder) SetConfig(config map[interface{}]interface{}) error {
 	return nil
 }
 
-func (manifest *manifest) GetStatusPort() int {
-	return manifest.StatusPort
-}
-
-func (manifest *manifest) SetStatusPort(port int) {
-	manifest.StatusPort = port
-}
-
 func (manifest *manifest) GetStatusHTTP() bool {
-	return manifest.StatusHTTP
+	if manifest.StatusHTTP {
+		return true
+	}
+	return manifest.Status.HTTP
 }
 
 func (manifest *manifest) SetStatusHTTP(statusHTTP bool) {
-	manifest.StatusHTTP = statusHTTP
+	manifest.StatusHTTP = false
+	manifest.Status.HTTP = statusHTTP
+}
+
+func (manifest *manifest) GetStatusPath() string {
+	if manifest.Status.Path != "" {
+		return path.Join("/", manifest.Status.Path)
+	}
+	return "/_status"
+}
+
+func (manifest *manifest) SetStatusPath(statusPath string) {
+	manifest.Status.Path = statusPath
+}
+
+func (manifest *manifest) GetStatusPort() int {
+	if manifest.StatusPort != 0 {
+		return manifest.StatusPort
+	}
+	return manifest.Status.Port
+}
+
+func (manifest *manifest) SetStatusPort(port int) {
+	manifest.StatusPort = 0
+	manifest.Status.Port = port
 }
 
 func (manifest *manifest) RunAsUser() string {
