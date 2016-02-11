@@ -94,6 +94,7 @@ func runDirectory(dirpath string, environment []string, logger logging.Logger) e
 		if f.IsDir() {
 			continue
 		}
+		logger.WithField("path", fullpath).Infof("Executing hook %s", f.Name())
 		cmd := exec.Command(fullpath)
 		hookOut := &bytes.Buffer{}
 		cmd.Stdout = hookOut

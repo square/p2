@@ -207,6 +207,14 @@ func processHealthUpdater(
 			// The local health checker sent a new result
 			if ok {
 				logger.NoFields().Debug("new health status: ", h.Status)
+				if !healthEquiv(localHealth, &h) {
+					msg := fmt.Sprintf("Service %s is now %s", h.Service, h.Status)
+					if health.Passing.Is(h.Status) {
+						logger.NoFields().Infoln(msg)
+					} else {
+						logger.NoFields().Warnln(msg)
+					}
+				}
 				localHealth = &h
 			} else {
 				logger.NoFields().Debug("check stream closed")
@@ -232,7 +240,7 @@ func processHealthUpdater(
 				remoteHealth = result.Health
 				if result.Throttle && throttle == nil {
 					throttle = time.After(time.Duration(*HealthResumeLimit) * bucketRefreshRate)
-					logger.NoFields().Warning("health is flapping; throttling updates")
+					logger.NoFields().Warningf("Service %s health is flapping; throttling updates", result.Health.Service)
 				}
 			}
 		case <-throttle:
