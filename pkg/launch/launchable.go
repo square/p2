@@ -74,6 +74,7 @@ type Launchable interface {
 // service running.
 type Executable struct {
 	Service       runit.Service
+	LogAgent      runit.Service
 	Exec          []string
 	RestartPolicy runit.RestartPolicy
 }

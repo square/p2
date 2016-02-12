@@ -201,6 +201,11 @@ func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv runit.SV) e
 		if err != nil && err != runit.SuperviseOkMissing && err != runit.Killed {
 			return err
 		}
+
+		if _, err = sv.Restart(&executable.LogAgent, hl.RestartTimeout); err != nil {
+			return err
+		}
+
 	}
 
 	return nil
@@ -250,6 +255,10 @@ func (hl *Launchable) Executables(
 			Service: runit.Service{
 				Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
 				Name: serviceName,
+			},
+			LogAgent: runit.Service{
+				Path: filepath.Join(serviceBuilder.RunitRoot, serviceName, "log"),
+				Name: serviceName + " logAgent",
 			},
 			Exec: execCmd,
 		})

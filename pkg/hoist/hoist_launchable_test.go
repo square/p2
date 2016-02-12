@@ -344,7 +344,10 @@ func TestOnceIfRestartNever(t *testing.T) {
 	sv := runit.NewRecordingSV()
 	err := hl.Launch(sb, sv)
 	Assert(t).IsNil(err, "Unexpected error when launching")
-	Assert(t).AreEqual(sv.(*runit.RecordingSV).LastCommand, "once", "Expected 'once' command to be used for a launchable with RestartPolicyNever")
+	commands := sv.(*runit.RecordingSV).Commands
+	Assert(t).AreEqual(len(commands), 2, "expected 2 commands to be issued")
+	Assert(t).AreEqual(commands[0], "once", "Expected 'once' command to be used for a launchable with RestartPolicyNever")
+	Assert(t).AreEqual(commands[1], "restart", "Expected 'restart' command to be used for a the logAgent")
 }
 
 func TestRestartIfRestartAlways(t *testing.T) {
@@ -358,5 +361,19 @@ func TestRestartIfRestartAlways(t *testing.T) {
 	sv := runit.NewRecordingSV()
 	err := hl.Launch(sb, sv)
 	Assert(t).IsNil(err, "Unexpected error when launching")
-	Assert(t).AreEqual(sv.(*runit.RecordingSV).LastCommand, "restart", "Expected 'restart' command to be used for a launchable with RestartPolicyAlways")
+	Assert(t).AreEqual(sv.(*runit.RecordingSV).LastCommand(), "restart", "Expected 'restart' command to be used for a launchable with RestartPolicyAlways")
+}
+
+func TestRestartServiceAndLogAgent(t *testing.T) {
+	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+	sv := runit.NewRecordingSV()
+
+	hl.RestartPolicy = runit.RestartPolicyAlways
+	hl.start(sb, sv)
+
+	commands := sv.(*runit.RecordingSV).Commands
+	Assert(t).AreEqual(len(commands), 2, "Expected 2 restart commands to be issued")
+	Assert(t).AreEqual(commands[0], "restart", "Expected 2 restart commands to be issued")
+	Assert(t).AreEqual(commands[1], "restart", "Expected 2 restart commands to be issued")
 }

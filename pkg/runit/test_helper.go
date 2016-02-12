@@ -19,38 +19,37 @@ func ErringSV() SV {
 }
 
 func NewRecordingSV() SV {
-	return &RecordingSV{}
+	return &RecordingSV{Commands: make([]string, 0)}
 }
 
 type RecordingSV struct {
-	LastCommand string
+	Commands []string
 }
 
-func (r *RecordingSV) setLastCommand(command string) (string, error) {
-	if r.LastCommand != "" {
-		return "", util.Errorf("This recording SV has already been issued a command, it must be cleared first")
-	}
-	r.LastCommand = command
+func (r *RecordingSV) LastCommand() string {
+	return r.Commands[len(r.Commands)-1]
+}
+
+func (r *RecordingSV) recordCommand(command string) (string, error) {
+	r.Commands = append(r.Commands, command)
 	return "success", nil
 }
 
 func (r *RecordingSV) Start(service *Service) (string, error) {
-	return r.setLastCommand("start")
+	return r.recordCommand("start")
 }
 func (r *RecordingSV) Stop(service *Service, timeout time.Duration) (string, error) {
-	return r.setLastCommand("stop")
+	return r.recordCommand("stop")
 }
 func (r *RecordingSV) Stat(service *Service) (*StatResult, error) {
-	_, err := r.setLastCommand("stat")
+	_, err := r.recordCommand("stat")
 	return nil, err
 }
-
 func (r *RecordingSV) Restart(service *Service, timeout time.Duration) (string, error) {
-	return r.setLastCommand("restart")
+	return r.recordCommand("restart")
 }
-
 func (r *RecordingSV) Once(service *Service) (string, error) {
-	return r.setLastCommand("once")
+	return r.recordCommand("once")
 }
 
 func FakeChpst() string {
