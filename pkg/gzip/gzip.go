@@ -3,6 +3,7 @@ package gzip
 import (
 	"archive/tar"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,6 +19,9 @@ import (
 //
 // If any file would be extracted outside of the destination directory due to relative paths
 // containing '..', the archive will be rejected with an error.
+// Similarly, if any file would be extracted outside of the destination directory due to symlinks
+// (a tarball contains dir/file but dir is a symlink to /usr, for example), the archive will be
+// rejected with an error.
 func ExtractTarGz(owner string, fp io.Reader, dest string) (err error) {
 	fz, err := gzip.NewReader(fp)
 	if err != nil {
@@ -43,6 +47,11 @@ func ExtractTarGz(owner string, fp io.Reader, dest string) (err error) {
 		return util.Errorf("error setting ownership of root directory %s: %s", dest, err)
 	}
 
+	realDest, err := filepath.EvalSymlinks(dest)
+	if err != nil {
+		return util.Errorf("error evaluating symlink of root directory %s: %s", dest, err)
+	}
+
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -60,12 +69,29 @@ func ExtractTarGz(owner string, fp io.Reader, dest string) (err error) {
 		}
 
 		// Error on all files that would end up outside the destination directory.
-		if !strings.HasPrefix(fpath, dest) {
+		existing := firstExistingParent(fpath)
+		if realParent, err := filepath.EvalSymlinks(existing); err == nil {
+			if !strings.HasPrefix(realParent, realDest) {
+				errorDest := dest
+				errorExtra := ""
+				if realParent != existing {
+					errorDest = realDest
+					errorExtra = fmt.Sprintf(" (due to symlink %s -> %s)", existing, realParent)
+				}
+				return util.Errorf(
+					"cannot extract %s, as its target %s is outside the root directory %s%s",
+					hdr.Name,
+					fpath,
+					errorDest,
+					errorExtra,
+				)
+			}
+		} else {
 			return util.Errorf(
-				"cannot extract %s, as its target %s is outside the root directory %s",
-				hdr.Name,
+				"error evaluating symlinks of %s (parent of %s): %s",
+				existing,
 				fpath,
-				dest,
+				err,
 			)
 		}
 
@@ -164,4 +190,11 @@ func ExtractTarGz(owner string, fp io.Reader, dest string) (err error) {
 		}
 	}
 	return nil
+}
+
+func firstExistingParent(path string) string {
+	for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
+		path = filepath.Dir(path)
+	}
+	return path
 }
