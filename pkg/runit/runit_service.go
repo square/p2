@@ -58,6 +58,8 @@ var (
 	Killed                       = errors.New("The process was forcibly killed")
 )
 
+const DefaultTimeout = 7 * time.Second // This is runit's default wait period for commands that stop a process
+
 func (sv *sv) waitForSupervision(service *Service) error {
 	maxWait := time.After(10 * time.Second)
 	for {
