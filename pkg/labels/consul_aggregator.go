@@ -18,7 +18,7 @@ var AggregationRateCap = 10 * time.Second
 // linked list of watches with control channels
 type selectorWatch struct {
 	selector labels.Selector
-	resultCh chan *[]Labeled
+	resultCh chan WatchResult
 	canceled chan struct{}
 	next     *selectorWatch
 }
@@ -52,7 +52,7 @@ type consulAggregator struct {
 	path           string
 	kv             consulutil.ConsulLister
 	watchers       *selectorWatch
-	labeledCache   *[]Labeled // cached contents of the label subtree
+	labeledCache   []Labeled // cached contents of the label subtree
 	aggregatorQuit chan struct{}
 }
 
@@ -68,8 +68,8 @@ func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logg
 
 // Add a new selector to the aggregator. New values on the output channel may not appear
 // right away.
-func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{}) chan *[]Labeled {
-	resCh := make(chan *[]Labeled)
+func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{}) chan WatchResult {
+	resCh := make(chan WatchResult)
 	select {
 	case <-c.aggregatorQuit:
 		c.logger.WithField("selector", selector.String()).Warnln("New selector added after aggregator was closed")
@@ -133,13 +133,15 @@ func (c *consulAggregator) Aggregate() {
 	for {
 		loopTime := time.After(AggregationRateCap)
 		select {
+		case err := <-outErrors:
+			c.logger.WithError(err).Errorln("Error during watch")
 		case <-c.aggregatorQuit:
 			return
 		case pairs := <-outPairs:
 			c.watcherLock.Lock()
 
 			cache := make([]Labeled, len(pairs))
-			c.labeledCache = &cache
+			c.labeledCache = cache
 			for i, kvp := range pairs {
 				// TODO: only send results to watchers if selector results changed
 				val, err := convertKVPToLabeled(kvp)
@@ -166,6 +168,8 @@ func (c *consulAggregator) Aggregate() {
 		case <-c.aggregatorQuit:
 			return
 		case <-loopTime:
+			// we purposely don't case outErrors here, since loopTime lets us
+			// back off of Consul watches
 		}
 
 	}
@@ -173,13 +177,13 @@ func (c *consulAggregator) Aggregate() {
 
 func (c *consulAggregator) doMatch(watcher *selectorWatch) {
 	matches := []Labeled{}
-	for _, labeled := range *c.labeledCache {
+	for _, labeled := range c.labeledCache {
 		if watcher.selector.Matches(labeled.Labels) {
 			matches = append(matches, labeled)
 		}
 	}
 	select {
-	case watcher.resultCh <- &matches:
+	case watcher.resultCh <- WatchResult{matches, true}:
 	case <-watcher.canceled:
 	}
 }

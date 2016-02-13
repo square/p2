@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
@@ -32,10 +33,11 @@ type consulKV interface {
 }
 
 type consulApplicator struct {
-	kv          consulKV
-	logger      logging.Logger
-	retries     int
-	aggregators map[Type]*consulAggregator
+	kv            consulKV
+	logger        logging.Logger
+	retries       int
+	aggregators   map[Type]*consulAggregator
+	aggregatorMux sync.Mutex
 }
 
 func NewConsulApplicator(client *api.Client, retries int) *consulApplicator {
@@ -208,7 +210,9 @@ func convertLabeledToKVP(l Labeled) (*api.KVPair, error) {
 // to the cost of querying for this subtree on any sizeable fleet of machines. Instead, preparers should
 // use the httpApplicator from a server that exposes the results of this (or another)
 // implementation's watch.
-func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan *[]Labeled {
+func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan WatchResult {
+	c.aggregatorMux.Lock()
+	defer c.aggregatorMux.Unlock()
 	aggregator, ok := c.aggregators[labelType]
 	if !ok {
 		aggregator = NewConsulAggregator(labelType, c.kv, c.logger)
