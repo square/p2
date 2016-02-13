@@ -529,6 +529,12 @@ func (pod *Pod) setupConfig(manifest Manifest, launchables []launch.Launchable) 
 	}
 
 	for _, launchable := range launchables {
+		// we need to remove any unset env vars from a previous pod
+		os.RemoveAll(launchable.EnvDir())
+		if err != nil {
+			return err
+		}
+
 		err = util.MkdirChownAll(launchable.EnvDir(), uid, gid, 0755)
 		if err != nil {
 			return util.Errorf("Could not create the environment dir for pod %s launchable %s: %s", manifest.ID(), launchable.ServiceID(), err)
@@ -540,6 +546,13 @@ func (pod *Pod) setupConfig(manifest Manifest, launchables []launch.Launchable) 
 		err = writeEnvFile(launchable.EnvDir(), "LAUNCHABLE_ROOT", launchable.InstallDir(), uid, gid)
 		if err != nil {
 			return err
+		}
+		// last, write the user-supplied env variables to ensure priority of user-supplied values
+		for envName, value := range launchable.EnvVars() {
+			err = writeEnvFile(launchable.EnvDir(), envName, fmt.Sprint(value), uid, gid)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -615,20 +628,22 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 			RestartPolicy:    restartPolicy,
 			CgroupConfig:     launchableStanza.CgroupConfig,
 			CgroupConfigName: launchableStanza.LaunchableId,
+			SuppliedEnvVars:  launchableStanza.Env,
 		}
 		ret.CgroupConfig.Name = ret.ServiceId
 		return ret.If(), nil
 	} else if *ExperimentalOpencontainer && launchableStanza.LaunchableType == "opencontainer" {
 		ret := &opencontainer.Launchable{
-			Location:       launchableStanza.Location,
-			ID_:            launchableStanza.LaunchableId,
-			ServiceID_:     serviceId,
-			RunAs:          runAsUser,
-			RootDir:        launchableRootDir,
-			P2Exec:         pod.P2Exec,
-			RestartTimeout: restartTimeout,
-			RestartPolicy:  restartPolicy,
-			CgroupConfig:   launchableStanza.CgroupConfig,
+			Location:        launchableStanza.Location,
+			ID_:             launchableStanza.LaunchableId,
+			ServiceID_:      serviceId,
+			RunAs:           runAsUser,
+			RootDir:         launchableRootDir,
+			P2Exec:          pod.P2Exec,
+			RestartTimeout:  restartTimeout,
+			RestartPolicy:   restartPolicy,
+			CgroupConfig:    launchableStanza.CgroupConfig,
+			SuppliedEnvVars: launchableStanza.Env,
 		}
 		ret.CgroupConfig.Name = serviceId
 		return ret, nil

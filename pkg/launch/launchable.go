@@ -68,6 +68,9 @@ type Launchable interface {
 	// be necessary. The provided argument is guidance for how many bytes on disk a particular
 	// launchable should consume
 	Prune(size.ByteCount) error
+
+	// Env vars that will be exported to the launchable for its launch script and other hooks.
+	EnvVars() map[string]string
 }
 
 // Executable describes a command and its arguments that should be executed to start a
