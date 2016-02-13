@@ -45,6 +45,23 @@ launchables:
       memory: 1073741824
 config:
   ENVIRONMENT: staging
+status:
+  port: 8000
+`
+}
+
+func testPodOldStatus() string {
+	return `id: thepod
+launchables:
+  my-app:
+    launchable_type: hoist
+    launchable_id: web
+    location: https://localhost:4444/foo/bar/baz.tar.gz
+    cgroup:
+      cpus: 4
+      memory: 1073741824
+config:
+  ENVIRONMENT: staging
 status_port: 8000
 `
 }
@@ -119,7 +136,7 @@ func TestPodManifestCanWriteItsConfigStanzaSeparately(t *testing.T) {
 }
 
 func TestPodManifestCanReportItsSHA(t *testing.T) {
-	config := testPod()
+	config := testPodOldStatus()
 	manifest, err := ManifestFromBytes([]byte(config))
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 	val, err := manifest.SHA()
@@ -148,6 +165,61 @@ func TestNilPodManifestHasEmptySHA(t *testing.T) {
 	content, err := manifest.SHA()
 	Assert(t).IsNotNil(err, "Should have had an error when attempting to read SHA from nil manifest")
 	Assert(t).AreEqual(content, "", "the SHA should have been empty")
+}
+
+func TestStatusHTTP(t *testing.T) {
+	tests := []struct {
+		config   string
+		expected bool
+	}{
+		{`{ id: thepod }`, false},
+		{`{ id: thepod, status_http: false }`, false},
+		{`{ id: thepod, status_http: true }`, true},
+		{`{ id: thepod, status: { http: false }, status_http: true }`, true},
+		{`{ id: thepod, status: { http: true } }`, true},
+	}
+	for _, test := range tests {
+		manifest, err := ManifestFromBytes([]byte(test.config))
+		Assert(t).IsNil(err, "should not have erred when building manifest")
+
+		Assert(t).AreEqual(test.expected, manifest.GetStatusHTTP(), "uses the correct protocol")
+	}
+}
+
+func TestStatusPath(t *testing.T) {
+	tests := []struct {
+		config   string
+		expected string
+	}{
+		{`{ id: thepod, status: { port: 5 } }`, "/_status"},
+		{`{ id: thepod, status: { path: _status } }`, "/_status"},
+		{`{ id: thepod, status: { path: _foobar } }`, "/_foobar"},
+		{`{ id: thepod, status: { path: /_foobar } }`, "/_foobar"},
+	}
+	for _, test := range tests {
+		manifest, err := ManifestFromBytes([]byte(test.config))
+		Assert(t).IsNil(err, "should not have erred when building manifest")
+
+		Assert(t).AreEqual(test.expected, manifest.GetStatusPath(), "uses the correct path")
+	}
+}
+
+func TestStatusPort(t *testing.T) {
+	tests := []struct {
+		config   string
+		expected int
+	}{
+		{`{ id: thepod, status_port: 555 }`, 555},
+		{`{ id: thepod }`, 0},
+		{`{ id: thepod, status: { port: 123 }, status_port: 456 }`, 456},
+		{`{ id: thepod, status: { port: 398 } }`, 398},
+	}
+	for _, test := range tests {
+		manifest, err := ManifestFromBytes([]byte(test.config))
+		Assert(t).IsNil(err, "should not have erred when building manifest")
+
+		Assert(t).AreEqual(test.expected, manifest.GetStatusPort(), "uses the correct port")
+	}
 }
 
 func TestRunAs(t *testing.T) {

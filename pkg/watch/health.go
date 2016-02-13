@@ -126,6 +126,7 @@ func updatePods(
 		for _, man := range reality {
 			if man.Manifest.ID() == pod.manifest.ID() &&
 				man.Manifest.GetStatusHTTP() == pod.manifest.GetStatusHTTP() &&
+				man.Manifest.GetStatusPath() == pod.manifest.GetStatusPath() &&
 				man.Manifest.GetStatusPort() == pod.manifest.GetStatusPort() {
 				inReality = true
 				break
@@ -162,9 +163,9 @@ func updatePods(
 			if man.Manifest.GetStatusPort() == 0 {
 				sc.URI = ""
 			} else if man.Manifest.GetStatusHTTP() {
-				sc.URI = fmt.Sprintf("http://%s:%d/_status", node, man.Manifest.GetStatusPort())
+				sc.URI = fmt.Sprintf("http://%s:%d%s", node, man.Manifest.GetStatusPort(), man.Manifest.GetStatusPath())
 			} else {
-				sc.URI = fmt.Sprintf("https://%s:%d/_status", node, man.Manifest.GetStatusPort())
+				sc.URI = fmt.Sprintf("https://%s:%d%s", node, man.Manifest.GetStatusPort(), man.Manifest.GetStatusPath())
 			}
 			newPod := PodWatch{
 				manifest:      man.Manifest,
