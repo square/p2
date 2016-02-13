@@ -40,16 +40,16 @@ func TestTwoClients(t *testing.T) {
 		select {
 		case <-time.After(time.Second):
 			t.Fatal("Should not have taken a second to get results")
-		case labeledPtr := <-labeledChannel1:
-			Assert(t).IsNotNil(labeledPtr, "ptr should not have been nil")
-			labeled := *labeledPtr
+		case labeledWatch := <-labeledChannel1:
+			Assert(t).IsTrue(labeledWatch.Valid, "valid should not have been true")
+			labeled := labeledWatch.Labeled
 			Assert(t).AreNotEqual("green", checked, "Should not have already checked the green selector result")
 			checked = "green" // ensure that both sides get checked
 			Assert(t).AreEqual(1, len(labeled), "Should have received one result from the color watch")
 			Assert(t).AreEqual("emeralda", labeled[0].ID, "should have received the emerald app")
-		case labeledPtr := <-labeledChannel2:
-			Assert(t).IsNotNil(labeledPtr, "ptr should not have been nil")
-			labeled := *labeledPtr
+		case labeledWatch := <-labeledChannel2:
+			Assert(t).IsTrue(labeledWatch.Valid, "valid should not have been true")
+			labeled := labeledWatch.Labeled
 			Assert(t).AreNotEqual("canary", checked, "Should not have already checked the canary selector result")
 			checked = "canary" // ensure that both sides get checked
 			Assert(t).AreEqual(2, len(labeled), "Should have received two results from the canary watch")
@@ -134,9 +134,9 @@ func TestQuitIndividualWatch(t *testing.T) {
 		select {
 		case <-time.After(time.Second):
 			t.Fatalf("Should not have taken a second to get results on iteration %v", i)
-		case labeledPtr := <-labeledChannel2:
-			Assert(t).IsNotNil(labeledPtr, "ptr should not have been nil")
-			labeled := *labeledPtr
+		case labeledWatch := <-labeledChannel2:
+			Assert(t).IsTrue(labeledWatch.Valid, "valid should not have been true")
+			labeled := labeledWatch.Labeled
 			Assert(t).AreEqual(1, len(labeled), "Should have one result with a production deployment")
 			Assert(t).AreEqual("maroono", labeled[0].ID, "Should have received maroono as the one production deployment")
 		}

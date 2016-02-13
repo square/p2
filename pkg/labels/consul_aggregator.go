@@ -18,7 +18,8 @@ var DefaultAggregationRate = 10 * time.Second
 // linked list of watches with control channels
 type selectorWatch struct {
 	selector labels.Selector
-	resultCh chan *[]Labeled
+	resultCh chan WatchResult
+	canceled chan struct{}
 	next     *selectorWatch
 }
 
@@ -69,8 +70,8 @@ func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logg
 
 // Add a new selector to the aggregator. New values on the output channel may not appear
 // right away.
-func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{}) chan *[]Labeled {
-	resCh := make(chan *[]Labeled, 1)
+func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{}) chan WatchResult {
+	resCh := make(chan WatchResult, 1)
 	select {
 	case <-c.aggregatorQuit:
 		c.logger.WithField("selector", selector.String()).Warnln("New selector added after aggregator was closed")
@@ -127,11 +128,15 @@ func (c *consulAggregator) Aggregate() {
 	for {
 		loopTime := time.After(c.aggregationRate)
 		select {
+		case err := <-outErrors:
+			c.logger.WithError(err).Errorln("Error during watch")
 		case <-c.aggregatorQuit:
 			return
 		case pairs := <-outPairs:
-			// Convert watch result to []Labeled
-			c.labeledCache = make([]Labeled, len(pairs))
+			c.watcherLock.Lock()
+
+			cache := make([]Labeled, len(pairs))
+			c.labeledCache = cache
 			for i, kvp := range pairs {
 				val, err := convertKVPToLabeled(kvp)
 				if err != nil {
@@ -146,7 +151,6 @@ func (c *consulAggregator) Aggregate() {
 
 			// Iterate over each watcher and send the []Labeled
 			// that match the watcher's selector to the watcher's out channel.
-			c.watcherLock.Lock()
 			watcher := c.watchers
 			for watcher != nil {
 				matches := []Labeled{}
@@ -173,7 +177,7 @@ func (c *consulAggregator) Aggregate() {
 				}
 				// ... then send the newer value.
 				select {
-				case watcher.resultCh <- &matches:
+				case watcher.resultCh <- WatchResult{matches, true}:
 				default:
 				}
 				watcher = watcher.next
@@ -184,7 +188,8 @@ func (c *consulAggregator) Aggregate() {
 		case <-c.aggregatorQuit:
 			return
 		case <-loopTime:
+			// we purposely don't case outErrors here, since loopTime lets us
+			// back off of Consul watches
 		}
-
 	}
 }

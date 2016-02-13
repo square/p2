@@ -54,6 +54,11 @@ func (l Labeled) SameAs(o Labeled) bool {
 	return l.ID == o.ID && l.LabelType == o.LabelType
 }
 
+type WatchResult struct {
+	Labeled []Labeled
+	Valid   bool // Will be false if the underlying watcher has terminated
+}
+
 // General purpose backing store for labels and assignment
 // to P2 objects
 type Applicator interface {
@@ -81,7 +86,7 @@ type Applicator interface {
 	//
 	// The watch may be terminated by the underlying implementation without signaling on
 	// the quit channel - this will be indicated by the closing of the result channel. For
-	// this reason, the safest way to process the result of this channel is to use
-	// it in a for loop. Alternatively, you may check for nullity of the result []Labeled
-	WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan *[]Labeled
+	// this reason, the resulting WatchResult have a Valid flag to help determine if
+	// the channel has been closed.
+	WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan WatchResult
 }
