@@ -1,6 +1,8 @@
 package fields
 
 import (
+	"time"
+
 	"github.com/square/p2/pkg/rc/fields"
 )
 
@@ -40,4 +42,12 @@ type Update struct {
 	// a partial rollout using one update, and leave the old RC so that another
 	// update can be created to finish the rollout.
 	LeaveOld bool
+
+	// RollDelay adds a period of mandatory sleep between rolling updates to the
+	// next set of nodes. This can be useful for creating a buffer period between
+	// a pod instance becoming healthy and clients to that instance resuming
+	// normal operation. In some pathological cases, applications may become
+	// unhealthy after being healthy for a short duration. Naive implementations like
+	// p2-replicate do not handle such after-the-fact unhealthiness. Default is 0.
+	RollDelay time.Duration
 }
