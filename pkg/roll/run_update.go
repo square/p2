@@ -16,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/rc"
 	rcf "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/util"
 )
 
 type update struct {
@@ -180,22 +181,12 @@ ROLL_LOOP:
 						return
 					}
 
-					// Check health again following the roll delay. If things have gotten
-					// worse since we last looked, or there is an error, we break this iteration.
-					checks, err = u.hcheck.Service(newFields.Manifest.ID().String())
-					afterDelayNew, err := u.countHealthy(u.NewRC, checks)
+					// determine the new value of `next`, which may have changed
+					// following the delay.
+					next, err = u.shouldRollAfterDelay(newFields)
 
 					if err != nil {
-						u.logger.WithError(err).Errorln("Could not count nodes after delay, skipping this iteration")
-						break
-					}
-
-					if afterDelayNew.Healthy < newNodes.Healthy {
-						u.logger.WithFields(logrus.Fields{
-							"beforeDelay": newNodes.Healthy,
-							"afterDelay":  afterDelayNew.Healthy,
-							"delay":       u.RollDelay,
-						}).Errorf("Healthy node count on the new RC dropped after %v roll delay, skipping this iteration", u.RollDelay)
+						u.logger.NoFields().Errorln(err)
 						break
 					}
 				}
@@ -363,6 +354,33 @@ func (u update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNode
 		}
 	}
 	return ret, err
+}
+
+func (u update) shouldRollAfterDelay(newFields rcf.RC) (int, error) {
+	// Check health again following the roll delay. If things have gotten
+	// worse since we last looked, or there is an error, we break this iteration.
+	checks, err := u.hcheck.Service(newFields.Manifest.ID().String())
+	if err != nil {
+		return 0, util.Errorf("Could not retrieve health following delay: %v", err)
+	}
+
+	afterDelayNew, err := u.countHealthy(u.NewRC, checks)
+	if err != nil {
+		return 0, util.Errorf("Could not determine new service health: %v", err)
+	}
+
+	afterDelayOld, err := u.countHealthy(u.OldRC, checks)
+	if err != nil {
+		return 0, util.Errorf("Could not determine old service health: %v", err)
+	}
+
+	afterDelayNext := rollAlgorithm(afterDelayOld.Healthy, afterDelayNew.Healthy, u.DesiredReplicas, u.MinimumReplicas)
+
+	if afterDelayNext <= 0 {
+		return 0, util.Errorf("No nodes can be safely updated after %v roll delay, will wait again", u.RollDelay)
+	}
+
+	return afterDelayNext, nil
 }
 
 // the roll algorithm defines how to mutate RCs over time. it takes four args:
