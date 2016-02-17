@@ -37,15 +37,16 @@ var RuncPath = param.String("runc_path", "/usr/local/bin/runc")
 
 // Launchable represents an installation of a container.
 type Launchable struct {
-	Location       string              // A URL where we can download the artifact from.
-	ID_            string              // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
-	ServiceID_     string              // A (host-wise) unique identifier for this launchable, used when creating runit services
-	RunAs          string              // The user to assume when launching the executable
-	RootDir        string              // The root directory of the launchable, containing N:N>=1 installs.
-	P2Exec         string              // The path to p2-exec
-	RestartTimeout time.Duration       // How long to wait when restarting the services in this launchable.
-	RestartPolicy  runit.RestartPolicy // Dictates whether the container should be automatically restarted upon exit.
-	CgroupConfig   cgroups.Config      // Cgroup parameters to use with p2-exec
+	Location        string              // A URL where we can download the artifact from.
+	ID_             string              // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
+	ServiceID_      string              // A (host-wise) unique identifier for this launchable, used when creating runit services
+	RunAs           string              // The user to assume when launching the executable
+	RootDir         string              // The root directory of the launchable, containing N:N>=1 installs.
+	P2Exec          string              // The path to p2-exec
+	RestartTimeout  time.Duration       // How long to wait when restarting the services in this launchable.
+	RestartPolicy   runit.RestartPolicy // Dictates whether the container should be automatically restarted upon exit.
+	CgroupConfig    cgroups.Config      // Cgroup parameters to use with p2-exec
+	SuppliedEnvVars map[string]string   // User-supplied env variables
 
 	spec *LinuxSpec // The container's "config.json"
 }
@@ -76,6 +77,10 @@ func (l *Launchable) ID() string {
 
 func (l *Launchable) ServiceID() string {
 	return l.ServiceID_
+}
+
+func (l *Launchable) EnvVars() map[string]string {
+	return l.SuppliedEnvVars
 }
 
 // The version of the artifact is currently derived from the location, using
@@ -147,7 +152,7 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 		},
 		Exec: append(
 			[]string{l.P2Exec},
-			p2exec.P2ExecArgs{
+			p2exec.P2ExecArgs{ // TODO: support environment variables
 				NoLimits: true,
 				WorkDir:  l.InstallDir(),
 				Command:  []string{*RuncPath, "start"},

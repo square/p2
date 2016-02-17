@@ -94,6 +94,8 @@ launchables:
     cgroup:
       cpus: 4
       memory: 4G
+    env:
+      ENABLED_BLAMS: 5
 config:
   ENVIRONMENT: staging
 `
@@ -113,6 +115,8 @@ config:
 		Assert(t).IsNil(err, "There shouldn't have been an error getting launchable")
 		launchables = append(launchables, launchable)
 	}
+	Assert(t).IsTrue(len(launchables) > 0, "Test setup error: no launchables from launchable stanzas")
+
 	err = pod.setupConfig(manifest, launchables)
 	Assert(t).IsNil(err, "There shouldn't have been an error setting up config")
 
@@ -152,6 +156,10 @@ config:
 		launchableRootEnv, err := ioutil.ReadFile(filepath.Join(launchable.EnvDir(), "LAUNCHABLE_ROOT"))
 		Assert(t).IsNil(err, "should not have erred reading the launchable root env file")
 		Assert(t).AreEqual(launchable.InstallDir(), string(launchableRootEnv), "The launchable root path did not match expected")
+
+		enableBlamSetting, err := ioutil.ReadFile(filepath.Join(launchable.EnvDir(), "ENABLED_BLAMS"))
+		Assert(t).IsNil(err, "should not have erred reading custom env var")
+		Assert(t).AreEqual("5", string(enableBlamSetting), "The user-supplied custom env var was wrong")
 	}
 }
 

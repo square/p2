@@ -37,6 +37,7 @@ type Launchable struct {
 	CgroupConfigName string              // The string in PLATFORM_CONFIG to pass to p2-exec
 	RestartTimeout   time.Duration       // How long to wait when restarting the services in this launchable.
 	RestartPolicy    runit.RestartPolicy // Dictates whether the launchable should be automatically restarted upon exit.
+	SuppliedEnvVars  map[string]string   // A map of user-supplied environment variables to be exported for this launchable
 }
 
 // LaunchAdapter adapts a hoist.Launchable to the launch.Launchable interface.
@@ -384,4 +385,8 @@ func (hl *Launchable) AllInstallsDir() string {
 func (hl *Launchable) InstallDir() string {
 	launchableName := hl.Version()
 	return filepath.Join(hl.AllInstallsDir(), launchableName)
+}
+
+func (hl *Launchable) EnvVars() map[string]string {
+	return hl.SuppliedEnvVars
 }

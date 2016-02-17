@@ -23,13 +23,14 @@ import (
 )
 
 type LaunchableStanza struct {
-	LaunchableType          string         `yaml:"launchable_type"`
-	LaunchableId            string         `yaml:"launchable_id"`
-	Location                string         `yaml:"location"`
-	DigestLocation          string         `yaml:"digest_location,omitempty"`
-	DigestSignatureLocation string         `yaml:"digest_signature_location,omitempty"`
-	RestartTimeout          string         `yaml:"restart_timeout,omitempty"`
-	CgroupConfig            cgroups.Config `yaml:"cgroup,omitempty"`
+	LaunchableType          string            `yaml:"launchable_type"`
+	LaunchableId            string            `yaml:"launchable_id"`
+	Location                string            `yaml:"location"`
+	DigestLocation          string            `yaml:"digest_location,omitempty"`
+	DigestSignatureLocation string            `yaml:"digest_signature_location,omitempty"`
+	RestartTimeout          string            `yaml:"restart_timeout,omitempty"`
+	CgroupConfig            cgroups.Config    `yaml:"cgroup,omitempty"`
+	Env                     map[string]string `yaml:"env,omitempty"`
 }
 
 type StatusStanza struct {
