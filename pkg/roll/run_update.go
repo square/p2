@@ -16,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/rc"
 	rcf "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/util"
 )
 
 type update struct {
@@ -157,7 +158,7 @@ ROLL_LOOP:
 				// become healthy - this ensures that, when the old RC is
 				// cleaned up, we do not accidentally remove the nodes we just
 				// assigned to the new RC
-				// normal execution of this algorithm will never cause
+				// normal execution of this rollAlgorithm will never cause
 				// newDesired > u.Desired, but if Run is resuming from an unusual
 				// situation, we don't want to get stuck
 				u.logger.WithFields(logrus.Fields{
@@ -167,13 +168,34 @@ ROLL_LOOP:
 				break ROLL_LOOP
 			}
 
-			next := algorithm(oldNodes.Healthy, newNodes.Healthy, u.DesiredReplicas, u.MinimumReplicas)
+			next := rollAlgorithm(oldNodes.Healthy, newNodes.Healthy, u.DesiredReplicas, u.MinimumReplicas)
 			if next > 0 {
+				// apply the delay only if we've already added to the new RC, since there's
+				// no value in sitting around doing nothing before anything has happened.
+				if newNodes.Desired > 0 && u.RollDelay > time.Duration(0) {
+					u.logger.WithField("delay", u.RollDelay).Infof("Waiting %v before continuing deploy", u.RollDelay)
+
+					select {
+					case <-time.After(u.RollDelay):
+					case <-quit:
+						return
+					}
+
+					// determine the new value of `next`, which may have changed
+					// following the delay.
+					next, err = u.shouldRollAfterDelay(newFields)
+
+					if err != nil {
+						u.logger.NoFields().Errorln(err)
+						break
+					}
+				}
+
 				u.logger.WithFields(logrus.Fields{
 					"old":  oldNodes,
 					"new":  newNodes,
 					"next": next,
-				}).Infoln("Undergoing next update")
+				}).Infof("Adding %v new nodes", next)
 				err = u.rcs.AddDesiredReplicas(u.OldRC, -next)
 				if err != nil {
 					u.logger.WithError(err).Errorln("Could not decrement old replica count")
@@ -334,50 +356,77 @@ func (u update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNode
 	return ret, err
 }
 
+func (u update) shouldRollAfterDelay(newFields rcf.RC) (int, error) {
+	// Check health again following the roll delay. If things have gotten
+	// worse since we last looked, or there is an error, we break this iteration.
+	checks, err := u.hcheck.Service(newFields.Manifest.ID().String())
+	if err != nil {
+		return 0, util.Errorf("Could not retrieve health following delay: %v", err)
+	}
+
+	afterDelayNew, err := u.countHealthy(u.NewRC, checks)
+	if err != nil {
+		return 0, util.Errorf("Could not determine new service health: %v", err)
+	}
+
+	afterDelayOld, err := u.countHealthy(u.OldRC, checks)
+	if err != nil {
+		return 0, util.Errorf("Could not determine old service health: %v", err)
+	}
+
+	afterDelayNext := rollAlgorithm(afterDelayOld.Healthy, afterDelayNew.Healthy, u.DesiredReplicas, u.MinimumReplicas)
+
+	if afterDelayNext <= 0 {
+		return 0, util.Errorf("No nodes can be safely updated after %v roll delay, will wait again", u.RollDelay)
+	}
+
+	return afterDelayNext, nil
+}
+
 // the roll algorithm defines how to mutate RCs over time. it takes four args:
-// - old: the number of nodes on the old RC
-// - new: the number of nodes on the new RC
-// - want: the number of nodes desired on the new RC (ie the target)
-// - need: the number of nodes that must always be up (ie the minimum)
+// - old: the number of healthy nodes on the old RC
+// - new: the number of healthy nodes on the new RC
+// - desired: the number of nodes desired on the new RC (ie the target)
+// - minHealthy: the number of nodes that must always be up (ie the minimum)
 // given these four arguments, rollAlgorithm returns the number of nodes to add
 // to the new RC and to delete from the old
 //
 // returns zero under the following circumstances:
-// - new >= want (the update is done)
-// - old+new <= need (at or below the minimum, update has to block)
-func algorithm(old, new, want, need int) int {
+// - new >= desired (the update is done)
+// - old+new <= minHealthy (at or below the minimum, update has to block)
+func rollAlgorithm(old, new, desired, minHealthy int) int {
 	// how much "headroom" do we have between the number of nodes that are
 	// currently healthy, and the number that must be healthy?
 	// if we schedule more than this, we'll go below the minimum
-	difference := old + new - need
+	headroom := old + new - minHealthy
 
 	// how many nodes do we have left to go? we can't schedule more than this
 	// or we'll go over the target
-	// note that remaining < difference is possible depending on how many
+	// note that remaining < headroom is possible depending on how many
 	// old nodes are still alive
-	remaining := want - new
+	remaining := desired - new
 
 	// heuristic time:
 	if remaining <= 0 {
 		// no nodes remaining, noop out
 		return 0
 	}
-	if new >= need {
+	if new >= minHealthy {
 		// minimum is satisfied by new nodes, doesn't matter how many old ones
-		// we kill. this includes the edge case where need==0
+		// we kill. this includes the edge case where minHealthy==0
 		return remaining
 	}
-	if difference <= 0 {
-		// the case of need==0 was caught above. in this case, need>0 and
-		// difference is non-positive. this means that we are at, or below, the
+	if headroom <= 0 {
+		// the case of minHealthy==0 was caught above. in this case, minHealthy>0 and
+		// headroom is non-positive. this means that we are at, or below, the
 		// minimum, and we cannot schedule new nodes because we might take
 		// down an old one (which would go below the minimum)
 		return 0
 	}
-	// remaining>0 and difference>0. each one imposes an upper bound on how
+	// remaining>0 and headroom>0. each one imposes an upper bound on how
 	// many we can schedule at once, so return the minimum of the two
-	if remaining < difference {
+	if remaining < headroom {
 		return remaining
 	}
-	return difference
+	return headroom
 }

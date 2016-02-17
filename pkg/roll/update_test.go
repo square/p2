@@ -10,14 +10,14 @@ import (
 )
 
 func TestWouldBlock(t *testing.T) {
-	// in the following cases, algorithm should return 0
-	Assert(t).AreEqual(algorithm(1, 1, 3, 4), 0, "should do nothing if below minimum")
-	Assert(t).AreEqual(algorithm(1, 1, 2, 4), 0, "should do nothing if at minimum")
-	Assert(t).AreEqual(algorithm(1, 4, 3, 4), 0, "should do nothing if done")
+	// in the following cases, rollAlgorithm should return 0
+	Assert(t).AreEqual(rollAlgorithm(1, 1, 3, 4), 0, "should do nothing if below minimum")
+	Assert(t).AreEqual(rollAlgorithm(1, 1, 2, 4), 0, "should do nothing if at minimum")
+	Assert(t).AreEqual(rollAlgorithm(1, 4, 3, 4), 0, "should do nothing if done")
 
-	Assert(t).AreEqual(algorithm(2, 2, 6, 3), 1, "should schedule difference if minimum must be maintained")
-	Assert(t).AreEqual(algorithm(1, 3, 6, 3), 3, "should schedule remaining if minimum is satisfied by new")
-	Assert(t).AreEqual(algorithm(3, 0, 6, 0), 6, "should schedule remaining if no minimum")
+	Assert(t).AreEqual(rollAlgorithm(2, 2, 6, 3), 1, "should schedule difference if minimum must be maintained")
+	Assert(t).AreEqual(rollAlgorithm(1, 3, 6, 3), 3, "should schedule remaining if minimum is satisfied by new")
+	Assert(t).AreEqual(rollAlgorithm(3, 0, 6, 0), 6, "should schedule remaining if no minimum")
 }
 
 func TestSimulateRollingUpgradeDisable(t *testing.T) {
@@ -27,7 +27,7 @@ func TestSimulateRollingUpgradeDisable(t *testing.T) {
 	}
 }
 
-// this fuzzer tests the rolling upgrade algorithm in an environment where new
+// this fuzzer tests the rolling upgrade rollAlgorithm in an environment where new
 // pods replace old pods (eg hoist artifacts). it creates an imaginary list of
 // nodes, some of which may have old pods on them, and attempts to run a rolling
 // upgrade across this list.
@@ -104,13 +104,13 @@ func SimulateRollingUpgradeDisable(t *testing.T, full, nonew bool) {
 		Assert(t).IsTrue(len(old)+len(new) >= minimum, fmt.Sprintf("went below %d minimum nodes (nodes %v)\n", minimum, nodes))
 		Assert(t).IsTrue(len(new) <= target, fmt.Sprintf("went above %d target nodes (nodes %v)\n", target, nodes))
 		if len(new) == target {
-			Assert(t).AreEqual(algorithm(len(old), len(new), target, minimum), 0, "update should be done")
+			Assert(t).AreEqual(rollAlgorithm(len(old), len(new), target, minimum), 0, "update should be done")
 			t.Logf("Simulation complete\n\n")
 			break
 		}
 
 		// calculate the next update
-		nextUpdate := algorithm(len(old), len(new), target, minimum)
+		nextUpdate := rollAlgorithm(len(old), len(new), target, minimum)
 		t.Logf("Scheduling %d new out of %v eligible\n", nextUpdate, eligible)
 		Assert(t).AreNotEqual(nextUpdate, 0, "got noop update, would never terminate")
 		// choose nodes from the eligible list, randomly, and put the new pod
