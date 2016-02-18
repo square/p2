@@ -530,7 +530,7 @@ func (pod *Pod) setupConfig(manifest Manifest, launchables []launch.Launchable) 
 
 	for _, launchable := range launchables {
 		// we need to remove any unset env vars from a previous pod
-		os.RemoveAll(launchable.EnvDir())
+		err = os.RemoveAll(launchable.EnvDir())
 		if err != nil {
 			return err
 		}
