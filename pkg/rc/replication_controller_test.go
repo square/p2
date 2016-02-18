@@ -33,11 +33,20 @@ func (s *fakeKpStore) DeletePod(podPrefix kp.PodPrefix, nodeName string, podID t
 	return 0, nil
 }
 
+func (s *fakeKpStore) Pod(podPrefix kp.PodPrefix, nodeName string, podID types.PodID) (
+	pods.Manifest, time.Duration, error) {
+	key := path.Join(string(podPrefix), nodeName, string(podID))
+	if manifest, ok := s.manifests[key]; ok {
+		return manifest, 0, nil
+	}
+	return nil, 0, pods.NoCurrentManifest
+}
+
 func setup(t *testing.T) (
 	rcStore rcstore.Store,
 	kpStore fakeKpStore,
 	applicator labels.Applicator,
-	rc ReplicationController) {
+	rc *replicationController) {
 
 	rcStore = rcstore.NewFake()
 
@@ -61,7 +70,7 @@ func setup(t *testing.T) (
 		NewApplicatorScheduler(applicator),
 		applicator,
 		logging.DefaultLogger,
-	)
+	).(*replicationController)
 
 	return
 }
@@ -75,23 +84,23 @@ func scheduledPods(t *testing.T, pods labels.Applicator) []labels.Labeled {
 
 func waitForNodes(t *testing.T, rc ReplicationController, desired int) int {
 	timeout := time.After(1 * time.Second)
-	currentNodes, err := rc.CurrentNodes()
+	current, err := rc.CurrentPods()
 	Assert(t).IsNil(err, "expected no error getting current nodes")
 	timedOut := false
 
-	for len(currentNodes) != desired && !timedOut {
+	for len(current) != desired && !timedOut {
 		select {
 		case <-time.Tick(100 * time.Millisecond):
 			// TODO: this tick within the loop means we are constantly rechecking something.
 			// Does this imply we want a rc.WatchCurrentNodes() ?
 			var err error
-			currentNodes, err = rc.CurrentNodes()
+			current, err = rc.CurrentPods()
 			Assert(t).IsNil(err, "expected no error getting current nodes")
 		case <-timeout:
 			timedOut = true
 		}
 	}
-	return len(currentNodes)
+	return len(current)
 }
 
 func TestDoNothing(t *testing.T) {
@@ -276,9 +285,93 @@ func TestPreferUnscheduleIneligible(t *testing.T) {
 	numNodes = waitForNodes(t, rc, 999)
 	Assert(t).AreEqual(numNodes, 999, "took too long to unschedule")
 
-	currentNodes, err := rc.CurrentNodes()
+	current, err := rc.CurrentPods()
 	Assert(t).IsNil(err, "expected no error finding current nodes for rc")
-	for _, node := range currentNodes {
-		Assert(t).AreNotEqual(node, "node503", "node503 should have been the one unscheduled, but it's still present")
+	for _, pod := range current {
+		Assert(t).AreNotEqual(pod.Node, "node503", "node503 should have been the one unscheduled, but it's still present")
 	}
+}
+
+func TestConsistencyNoChange(t *testing.T) {
+	_, kvStore, applicator, rc := setup(t)
+	rcSHA, _ := rc.Manifest.SHA()
+	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
+	Assert(t).IsNil(err, "expected no error assigning label")
+
+	// Install manifest on a single node
+	rc.ReplicasDesired = 1
+	err = rc.meetDesires()
+	Assert(t).IsNil(err, "unexpected error scheduling nodes")
+	numNodes := waitForNodes(t, rc, 1)
+	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
+
+	// Verify that the node is consistent
+	manifest, _, err := kvStore.Pod(kp.INTENT_TREE, "node1", "testPod")
+	Assert(t).IsNil(err, "could not fetch intent")
+	sha, _ := manifest.SHA()
+	Assert(t).AreEqual(rcSHA, sha, "controller did not set intent initially")
+
+	// Make no changes
+
+	// The controller shouldn't alter the node
+	err = rc.meetDesires()
+	Assert(t).IsNil(err, "unexpected error scheduling nodes")
+	manifest, _, err = kvStore.Pod(kp.INTENT_TREE, "node1", "testPod")
+	Assert(t).IsNil(err, "could not fetch intent")
+	sha, _ = manifest.SHA()
+	Assert(t).AreEqual(rcSHA, sha, "controller modified the node's intent")
+}
+
+func TestConsistencyModify(t *testing.T) {
+	_, kvStore, applicator, rc := setup(t)
+	rcSHA, _ := rc.Manifest.SHA()
+	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
+	Assert(t).IsNil(err, "expected no error assigning label")
+
+	// Install manifest on a single node
+	rc.ReplicasDesired = 1
+	err = rc.meetDesires()
+	Assert(t).IsNil(err, "unexpected error scheduling nodes")
+
+	// Modify the intent manifest
+	b := rc.Manifest.GetBuilder()
+	b.SetConfig(map[interface{}]interface{}{"test": true})
+	manifest2 := b.GetManifest()
+	sha2, _ := manifest2.SHA()
+	Assert(t).AreNotEqual(rcSHA, sha2, "failed to set different intent manifest")
+	kvStore.SetPod(kp.INTENT_TREE, "node1", manifest2)
+
+	// Controller should force the node back to the canonical manifest
+	err = rc.meetDesires()
+	Assert(t).IsNil(err, "unexpected error scheduling nodes")
+	manifest, _, err := kvStore.Pod(kp.INTENT_TREE, "node1", "testPod")
+	Assert(t).IsNil(err, "could not fetch intent")
+	sha, _ := manifest.SHA()
+	Assert(t).AreEqual(rcSHA, sha, "controller did not reset intent")
+}
+
+func TestConsistencyDelete(t *testing.T) {
+	_, kvStore, applicator, rc := setup(t)
+	rcSHA, _ := rc.Manifest.SHA()
+	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
+	Assert(t).IsNil(err, "expected no error assigning label")
+
+	// Install manifest on a single node
+	rc.ReplicasDesired = 1
+	err = rc.meetDesires()
+	Assert(t).IsNil(err, "unexpected error scheduling nodes")
+
+	// Delete the intent manifest
+	_, err = kvStore.DeletePod(kp.INTENT_TREE, "node1", "testPod")
+	Assert(t).IsNil(err, "unexpected error deleting intent manifest")
+	_, _, err = kvStore.Pod(kp.INTENT_TREE, "node1", "testPod")
+	Assert(t).AreEqual(pods.NoCurrentManifest, err, "unexpected pod result")
+
+	// Controller should force the node back to the canonical manifest
+	err = rc.meetDesires()
+	Assert(t).IsNil(err, "unexpected error scheduling nodes")
+	manifest, _, err := kvStore.Pod(kp.INTENT_TREE, "node1", "testPod")
+	Assert(t).IsNil(err, "could not fetch intent")
+	sha, _ := manifest.SHA()
+	Assert(t).AreEqual(rcSHA, sha, "controller did not reset intent")
 }

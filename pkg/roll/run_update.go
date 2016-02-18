@@ -329,13 +329,14 @@ func (u update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNode
 	}
 	ret.Desired = rcFields.ReplicasDesired
 
-	nodes, err := rc.New(rcFields, u.kps, u.rcs, u.sched, u.labeler, u.logger).CurrentNodes()
+	currentPods, err := rc.New(rcFields, u.kps, u.rcs, u.sched, u.labeler, u.logger).CurrentPods()
 	if err != nil {
 		return ret, err
 	}
-	ret.Current = len(nodes)
+	ret.Current = len(currentPods)
 
-	for _, node := range nodes {
+	for _, pod := range currentPods {
+		node := pod.Node
 		// TODO: is reality checking an rc-layer concern?
 		realManifest, _, err := u.kps.Pod(kp.REALITY_TREE, node, rcFields.Manifest.ID())
 		if err != nil {
