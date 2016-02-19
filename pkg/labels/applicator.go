@@ -13,10 +13,18 @@ func (l Type) String() string {
 	return string(l)
 }
 
+// These types (with the exception of RC) are named such that the path to an
+// objects labels is the same as the path to the object but with labelRoot
+// prepended.
+// Example: the labels for /intent/foo.com/slug are at
+// /labels/intent/foo.com/slug.
+// Note: the tree name for RCs is pluralized, while the label is not, so this
+// doesn't hold true for RCs
 const (
 	POD  = Type("pod")
 	NODE = Type("node")
 	RC   = Type("replication_controller")
+	RU   = Type("rolls")
 )
 
 var InvalidType error = errors.New("Invalid type provided")
@@ -29,6 +37,8 @@ func AsType(v string) (Type, error) {
 		return NODE, nil
 	case RC.String():
 		return RC, nil
+	case RU.String():
+		return RU, nil
 	default:
 		return Type(""), InvalidType
 	}
