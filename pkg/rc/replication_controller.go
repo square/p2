@@ -1,6 +1,7 @@
 package rc
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -35,12 +36,20 @@ type ReplicationController interface {
 	// The error channel will be closed in response.
 	WatchDesires(quit <-chan struct{}) <-chan error
 
-	// CurrentNodes() returns all nodes that this replication controller is currently scheduled on,
-	// by selecting pods labeled with the replication controller's ID.
-	CurrentNodes() ([]string, error)
+	// CurrentPods() returns all pods managed by this replication controller.
+	CurrentPods() (PodLocations, error)
+}
 
-	// Internal: meetDesires synchronously schedules or unschedules pods to meet desired state.
-	meetDesires() error
+type PodLocation struct{ Node, PodID string }
+type PodLocations []PodLocation
+
+// Nodes returns a list of just the locations' nodes.
+func (l PodLocations) Nodes() []string {
+	nodes := make([]string, len(l))
+	for i, pod := range l {
+		nodes[i] = pod.Node
+	}
+	return nodes
 }
 
 // These methods are the same as the methods of the same name in kp.Store.
@@ -51,6 +60,13 @@ type kpStore interface {
 		nodeName string,
 		manifest pods.Manifest,
 	) (time.Duration, error)
+
+	Pod(
+		podPrefix kp.PodPrefix,
+		nodeName string,
+		podId types.PodID,
+	) (pods.Manifest, time.Duration, error)
+
 	DeletePod(podPrefix kp.PodPrefix,
 		nodeName string,
 		manifestID types.PodID,
@@ -141,72 +157,129 @@ func (rc *replicationController) meetDesires() error {
 		return nil
 	}
 
-	current, err := rc.CurrentNodes()
+	current, err := rc.CurrentPods()
 	if err != nil {
 		return err
 	}
+
 	rc.logger.NoFields().Infof("Currently on nodes %s", current)
 
+	nodesChanged := false
 	if rc.ReplicasDesired > len(current) {
-		eligible, err := rc.eligibleNodes()
+		err := rc.addPods(current)
 		if err != nil {
 			return err
 		}
-
-		// TODO: With Docker or runc we would not be constrained to running only once per node.
-		// So it may be the case that we need to make the Scheduler interface smarter and use it here.
-		possible := sets.NewString(eligible...).Difference(sets.NewString(current...))
-		toSchedule := rc.ReplicasDesired - len(current)
-
-		rc.logger.NoFields().Infof("Need to schedule %d nodes out of %s", toSchedule, possible)
-
-		for i := 0; i < toSchedule; i++ {
-			scheduleOn, ok := possible.PopAny()
-			if !ok {
-				return util.Errorf(
-					"Not enough nodes to meet desire: %d replicas desired, %d current, %d eligible. Scheduled on %d nodes instead.",
-					rc.ReplicasDesired, len(current), len(eligible), i,
-				)
-			}
-
-			err := rc.schedule(scheduleOn)
-			if err != nil {
-				return err
-			}
-		}
+		nodesChanged = true
 	} else if len(current) > rc.ReplicasDesired {
-		eligible, err := rc.eligibleNodes()
+		err := rc.removePods(current)
 		if err != nil {
 			return err
 		}
-
-		// If we need to downsize the number of nodes, prefer any in current that are not eligible anymore.
-		// TODO: evaluate changes to 'eligible' more frequently
-		preferred := sets.NewString(current...).Difference(sets.NewString(eligible...))
-		rest := sets.NewString(current...).Difference(preferred)
-		toUnschedule := len(current) - rc.ReplicasDesired
-		rc.logger.NoFields().Infof("Need to unschedule %d nodes out of %s", toUnschedule, current)
-
-		for i := 0; i < toUnschedule; i++ {
-			unscheduleFrom, ok := preferred.PopAny()
-			if !ok {
-				var ok bool
-				unscheduleFrom, ok = rest.PopAny()
-				if !ok {
-					// This should be mathematically impossible unless replicasDesired was negative
-					return util.Errorf(
-						"Unable to unschedule enough nodes to meet replicas desired: %d replicas desired, %d current.",
-						rc.ReplicasDesired, len(current),
-					)
-				}
-			}
-			err := rc.unschedule(unscheduleFrom)
-			if err != nil {
-				return err
-			}
-		}
+		nodesChanged = true
 	} else {
 		rc.logger.NoFields().Debugln("Taking no action")
+	}
+
+	if nodesChanged {
+		current, err = rc.CurrentPods()
+		if err != nil {
+			return err
+		}
+	}
+
+	return rc.ensureConsistency(current)
+}
+
+func (rc *replicationController) addPods(current PodLocations) error {
+	currentNodes := current.Nodes()
+	eligible, err := rc.eligibleNodes()
+	if err != nil {
+		return err
+	}
+
+	// TODO: With Docker or runc we would not be constrained to running only once per node.
+	// So it may be the case that we need to make the Scheduler interface smarter and use it here.
+	possible := sets.NewString(eligible...).Difference(sets.NewString(currentNodes...))
+	toSchedule := rc.ReplicasDesired - len(currentNodes)
+
+	rc.logger.NoFields().Infof("Need to schedule %d nodes out of %s", toSchedule, possible)
+
+	for i := 0; i < toSchedule; i++ {
+		scheduleOn, ok := possible.PopAny()
+		if !ok {
+			return util.Errorf(
+				"Not enough nodes to meet desire: %d replicas desired, %d currentNodes, %d eligible. Scheduled on %d nodes instead.",
+				rc.ReplicasDesired, len(currentNodes), len(eligible), i,
+			)
+		}
+
+		err := rc.schedule(scheduleOn)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (rc *replicationController) removePods(current PodLocations) error {
+	currentNodes := current.Nodes()
+	eligible, err := rc.eligibleNodes()
+	if err != nil {
+		return err
+	}
+
+	// If we need to downsize the number of nodes, prefer any in current that are not eligible anymore.
+	// TODO: evaluate changes to 'eligible' more frequently
+	preferred := sets.NewString(currentNodes...).Difference(sets.NewString(eligible...))
+	rest := sets.NewString(currentNodes...).Difference(preferred)
+	toUnschedule := len(current) - rc.ReplicasDesired
+	rc.logger.NoFields().Infof("Need to unschedule %d nodes out of %s", toUnschedule, current)
+
+	for i := 0; i < toUnschedule; i++ {
+		unscheduleFrom, ok := preferred.PopAny()
+		if !ok {
+			var ok bool
+			unscheduleFrom, ok = rest.PopAny()
+			if !ok {
+				// This should be mathematically impossible unless replicasDesired was negative
+				return util.Errorf(
+					"Unable to unschedule enough nodes to meet replicas desired: %d replicas desired, %d current.",
+					rc.ReplicasDesired, len(current),
+				)
+			}
+		}
+		err := rc.unschedule(unscheduleFrom)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (rc *replicationController) ensureConsistency(current PodLocations) error {
+	manifestSHA, err := rc.Manifest.SHA()
+	if err != nil {
+		return err
+	}
+	for _, pod := range current {
+		intent, _, err := rc.kpStore.Pod(kp.INTENT_TREE, pod.Node, types.PodID(pod.PodID))
+		if err != nil && err != pods.NoCurrentManifest {
+			return err
+		}
+		var intentSHA string
+		if intent != nil {
+			intentSHA, err = intent.SHA()
+			if err != nil {
+				rc.logger.WithError(err).WithField("node", pod.Node).Warn("Could not hash manifest to determine consistency of intent")
+			}
+			if intentSHA == manifestSHA {
+				continue
+			}
+		}
+
+		rc.logger.WithField("node", pod.Node).WithField("intentManifestSHA", intentSHA).Info("Found inconsistency in scheduled manifest")
+		rc.schedule(pod.Node)
 	}
 
 	return nil
@@ -216,22 +289,23 @@ func (rc *replicationController) eligibleNodes() ([]string, error) {
 	return rc.scheduler.EligibleNodes(rc.Manifest, rc.NodeSelector)
 }
 
-func (rc *replicationController) CurrentNodes() ([]string, error) {
+func (rc *replicationController) CurrentPods() (PodLocations, error) {
 	selector := klabels.Everything().Add(RCIDLabel, klabels.EqualsOperator, []string{rc.ID().String()})
 
-	pods, err := rc.podApplicator.GetMatches(selector, labels.POD)
+	podMatches, err := rc.podApplicator.GetMatches(selector, labels.POD)
 	if err != nil {
-		return []string{}, nil
+		return nil, err
 	}
 
-	// ID will be something like <nodename>/<podid>.
-	// We just want the nodename.
-	result := make([]string, len(pods))
-	for i, node := range pods {
+	result := make(PodLocations, len(podMatches))
+	for i, node := range podMatches {
+		// ID will be something like <nodename>/<podid>.
 		parts := strings.SplitN(node.ID, "/", 2)
-		// If it so happens that node.ID contains no "/",
-		// then parts[0] is the entire string, so we're OK
-		result[i] = parts[0]
+		if len(parts) < 2 {
+			return nil, fmt.Errorf("malformed pod label %s", node.ID)
+		}
+		result[i].Node = parts[0]
+		result[i].PodID = parts[1]
 	}
 	return result, nil
 }
@@ -255,34 +329,25 @@ func (rc *replicationController) forEachLabel(node string, f func(id, k, v strin
 
 func (rc *replicationController) schedule(node string) error {
 	rc.logger.NoFields().Infof("Scheduling on %s", node)
-	_, err := rc.kpStore.SetPod(kp.INTENT_TREE, node, rc.Manifest)
+	err := rc.forEachLabel(node, func(podID, k, v string) error {
+		return rc.podApplicator.SetLabel(labels.POD, podID, k, v)
+	})
 	if err != nil {
 		return err
 	}
 
-	// Then we set the labels.
-	// TODO: It could be the case that these SetLabel fail.
-	// In this case, we've scheduled a pod but currentNodes() will never be aware of it.
-	// We could consider cleaning the now-orphaned pod up?
-	return rc.forEachLabel(node, func(id, k, v string) error {
-		return rc.podApplicator.SetLabel(labels.POD, id, k, v)
-	})
+	_, err = rc.kpStore.SetPod(kp.INTENT_TREE, node, rc.Manifest)
+	return err
 }
 
 func (rc *replicationController) unschedule(node string) error {
 	rc.logger.NoFields().Infof("Uncheduling from %s", node)
-
-	// TODO: As above in schedule, it could be the case that RemoveLabel fails.
-	// This again means that currentNodes() is no longer aware of a pod.
-	// But the pod is still running (we haven't called DeletePod yet)
-	// So, the pod gets orphaned. Any way to clean it up?
-	err := rc.forEachLabel(node, func(id, k, _ string) error {
-		return rc.podApplicator.RemoveLabel(labels.POD, id, k)
-	})
+	_, err := rc.kpStore.DeletePod(kp.INTENT_TREE, node, rc.Manifest.ID())
 	if err != nil {
 		return err
 	}
 
-	_, err = rc.kpStore.DeletePod(kp.INTENT_TREE, node, rc.Manifest.ID())
-	return err
+	return rc.forEachLabel(node, func(podID, k, _ string) error {
+		return rc.podApplicator.RemoveLabel(labels.POD, podID, k)
+	})
 }
