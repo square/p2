@@ -2,19 +2,31 @@ package logging
 
 import (
 	"os"
+	"sync/atomic"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 )
 
+// ProcessCounter is a Logrus hook that appends a sequence number to all entries. This
+// hook should appear before other hooks that externalize data, to ensure that they see
+// the added fields.
 type ProcessCounter struct {
-	counter int
+	counter uint64
 }
 
-func (p *ProcessCounter) Fields() logrus.Fields {
-	fields := logrus.Fields{
-		"Counter": p.counter,
-		"PID":     os.Getpid(),
+func (ProcessCounter) Levels() []logrus.Level {
+	return []logrus.Level{
+		logrus.PanicLevel,
+		logrus.FatalLevel,
+		logrus.ErrorLevel,
+		logrus.WarnLevel,
+		logrus.InfoLevel,
+		logrus.DebugLevel,
 	}
-	p.counter++
-	return fields
+}
+
+func (p *ProcessCounter) Fire(entry *logrus.Entry) error {
+	entry.Data["Counter"] = atomic.AddUint64(&p.counter, 1) - 1
+	entry.Data["PID"] = os.Getpid()
+	return nil
 }

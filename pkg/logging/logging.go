@@ -1,3 +1,5 @@
+// The logging package is a wrapper around github.com/Sirupsen/logrus that provides some
+// convenience methods and improved error reporting.
 package logging
 
 import (
@@ -5,62 +7,59 @@ import (
 	"os"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+
 	"github.com/square/p2/pkg/util"
 )
 
-// the process counter increments for every sent message over logrus. If
-// messages are missed, the process counter can be inspected and missed
-// messages will present gaps in the counter.
-
+// processCounter is a singleton instance of the counter, so that all messages can be
+// sequentially ordered and lost messages can be detected.
 var processCounter ProcessCounter
 
+// Logger is a thin wrapper around a logrus.Entry that lets us extend and override some of
+// Entry's methods.
 type Logger struct {
-	Logger     *logrus.Logger
-	baseFields logrus.Fields
+	*logrus.Entry
 }
 
 type OutType string
 
+// Recognized output hook types
 const (
-	OUT_SOCKET = OutType("socket")
+	OutSocket = OutType("socket")
 )
 
-var DefaultLogger Logger
-
-func init() {
-	DefaultLogger = NewLogger(logrus.Fields{})
-}
+var DefaultLogger = NewLogger(logrus.Fields{})
 
 func NewLogger(baseFields logrus.Fields) Logger {
-	logger := Logger{logrus.New(), baseFields}
-	logger.Logger.Formatter = new(logrus.JSONFormatter)
-	return logger
+	logger := logrus.New()
+	logger.Formatter = new(logrus.JSONFormatter)
+	logger.Hooks.Add(&processCounter)
+	return Logger{logrus.NewEntry(logger).WithFields(baseFields)}
 }
 
-func (l *Logger) SetLogOut(out io.Writer) {
+func (l Logger) SetLogOut(out io.Writer) {
 	l.Logger.Out = out
 }
 
-func (l *Logger) AddHook(outType OutType, dest string) error {
-	if outType == OUT_SOCKET {
-		socketHook := SocketHook{socketPath: dest}
-		l.Logger.Hooks.Add(socketHook)
-	} else {
+func (l Logger) AddHook(outType OutType, dest string) error {
+	switch outType {
+	case OutSocket:
+		l.Logger.Hooks.Add(SocketHook{socketPath: dest})
+	default:
 		return util.Errorf("Unsupported log output type: %s", outType)
 	}
-
 	return nil
 }
 
-func (l *Logger) SubLogger(fields logrus.Fields) Logger {
-	return Logger{l.Logger, Merge(l.baseFields, fields)}
+func (l Logger) SubLogger(fields logrus.Fields) Logger {
+	return l.WithFields(fields)
 }
 
-func (l *Logger) NoFields() *logrus.Entry {
-	return l.WithFields(logrus.Fields{})
+func (l Logger) NoFields() Logger {
+	return l
 }
 
-func (l *Logger) WithError(err error) *logrus.Entry {
+func (l Logger) WithError(err error) Logger {
 	fields := logrus.Fields{
 		"err": err.Error(),
 	}
@@ -75,33 +74,16 @@ func (l *Logger) WithError(err error) *logrus.Entry {
 	return l.WithFields(fields)
 }
 
-func (l *Logger) WithFields(fields logrus.Fields) *logrus.Entry {
-	return l.Logger.WithFields(Merge(Merge(l.baseFields, fields), processCounter.Fields()))
+func (l Logger) WithFields(fields logrus.Fields) Logger {
+	return Logger{l.Entry.WithFields(fields)}
 }
 
-func (l *Logger) WithErrorAndFields(err error, fields logrus.Fields) *logrus.Entry {
-	errorFields := l.WithError(err).Data
-	return l.WithFields(Merge(
-		errorFields,
-		fields,
-	))
+func (l Logger) WithErrorAndFields(err error, fields logrus.Fields) Logger {
+	return l.WithError(err).WithFields(fields)
 }
 
-func (l *Logger) WithField(key string, value interface{}) *logrus.Entry {
-	return l.WithFields(logrus.Fields{
-		key: value,
-	})
-}
-
-func Merge(template, additional logrus.Fields) logrus.Fields {
-	combined := logrus.Fields{}
-	for key, value := range template {
-		combined[key] = value
-	}
-	for key, value := range additional {
-		combined[key] = value
-	}
-	return combined
+func (l Logger) WithField(key string, value interface{}) Logger {
+	return Logger{l.Entry.WithField(key, value)}
 }
 
 func TestLogger() Logger {

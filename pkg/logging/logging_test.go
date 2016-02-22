@@ -2,7 +2,6 @@ package logging
 
 import (
 	"encoding/json"
-	"fmt"
 	"net"
 	"os"
 	"testing"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
-	"github.com/square/p2/pkg/util"
 )
 
 func TestLoggingCanMergeFields(t *testing.T) {
@@ -22,7 +20,7 @@ func TestLoggingCanMergeFields(t *testing.T) {
 		"foo": "z",
 		"baz": "q",
 	}
-	res := Merge(fields1, fields2)
+	res := NewLogger(nil).WithFields(fields1).WithFields(fields2).Data
 	Assert(t).AreEqual("z", res["foo"], "Should have taken new value's foo")
 	Assert(t).AreEqual("b", res["bar"], "Should have taken old value's bar")
 	Assert(t).AreEqual("q", res["baz"], "Should have taken old value's baz")
@@ -37,12 +35,12 @@ func TestSubLoggerMergesFields(t *testing.T) {
 		"foo": "z",
 		"baz": "q",
 	})
-	res := sub.baseFields
+	res := sub.NoFields().Data
 	Assert(t).AreEqual("z", res["foo"], "Should have taken new value's foo")
 	Assert(t).AreEqual("b", res["bar"], "Should have taken old value's bar")
 	Assert(t).AreEqual("q", res["baz"], "Should have taken old value's baz")
 
-	Assert(t).AreEqual("a", logger.baseFields["foo"], "Should not have overwritten original")
+	Assert(t).AreEqual("a", logger.NoFields().Data["foo"], "Should not have overwritten original")
 }
 
 func TestLoggingMergeDoesNotModifyOriginalMap(t *testing.T) {
@@ -52,8 +50,9 @@ func TestLoggingMergeDoesNotModifyOriginalMap(t *testing.T) {
 	fields2 := logrus.Fields{
 		"foo": "b",
 	}
-	Merge(fields1, fields2)
-
+	logger := NewLogger(nil)
+	logger.WithFields(fields1).WithFields(fields2) // merges fields
+	logger.WithFields(fields1)
 	Assert(t).AreEqual("a", fields1["foo"], "Should not have modified the original fields")
 }
 
@@ -89,19 +88,22 @@ func (f *fakeStackError) Error() string {
 }
 
 func TestWithError(t *testing.T) {
-	var fakeError util.CallsiteError
-	fakeError = &fakeStackError{
+	err := &fakeStackError{
 		lineNumber: 45,
 		filename:   "foo.go",
 		function:   "foo.New",
 	}
 
 	logger := NewLogger(logrus.Fields{})
-	entry := logger.WithError(fakeError)
+	entry := logger.WithError(err)
 
-	Assert(t).AreEqual(entry.Data["line_number"], 45, fmt.Sprintf("Expected line number to be 45, was %d", entry.Data["line_number"]))
-	Assert(t).AreEqual(entry.Data["filename"], "foo.go", fmt.Sprintf("Expected filename to be foo.go, was %s", entry.Data["filename"]))
-	Assert(t).AreEqual(entry.Data["function"], "foo.New", fmt.Sprintf("Expected function to be foo.New, was %s", entry.Data["function"]))
+	Assert(t).AreEqual(entry.Data["line_number"], 45, "bad line number")
+	Assert(t).AreEqual(entry.Data["filename"], "foo.go", "bad filename")
+	Assert(t).AreEqual(entry.Data["function"], "foo.New", "bad function")
+
+	Assert(t).AreEqual(45, logger.WithField("a", 1).WithError(err).Data["line_number"], "no error when chained second")
+	Assert(t).AreEqual(45, logger.WithError(err).WithField("a", 1).Data["line_number"], "no error when chained first")
+	Assert(t).AreEqual(45, logger.WithErrorAndFields(err, logrus.Fields{"a": 1}).Data["line_number"], "no error with combined call")
 }
 
 func TestAddSocketHook(t *testing.T) {
@@ -128,7 +130,7 @@ func TestAddSocketHook(t *testing.T) {
 	time.Sleep(1 * time.Millisecond)
 
 	// Add socket hook and log something
-	err = logger.AddHook(OUT_SOCKET, socket_location)
+	err = logger.AddHook(OutSocket, socket_location)
 	Assert(t).IsNil(err, "Got an unexpected error when adding a socket logging hook")
 	logger.WithFields(logrus.Fields{}).Error("some message")
 
