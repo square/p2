@@ -4,6 +4,7 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
@@ -11,7 +12,10 @@ import (
 )
 
 type Replicator interface {
-	InitializeReplication(overrideLock bool) (Replication, chan error, error)
+	InitializeReplication(
+		overrideLock bool,
+		ignoreControllers bool,
+	) (Replication, chan error, error)
 }
 
 // Replicator creates replications
@@ -21,6 +25,7 @@ type replicator struct {
 	nodes     []string
 	active    int // maximum number of nodes to update concurrently
 	store     kp.Store
+	labeler   labels.Applicator
 	health    checker.ConsulHealthChecker
 	threshold health.HealthState // minimum state to treat as "healthy"
 
@@ -33,6 +38,7 @@ func NewReplicator(
 	nodes []string,
 	active int,
 	store kp.Store,
+	labeler labels.Applicator,
 	health checker.ConsulHealthChecker,
 	threshold health.HealthState,
 	lockMessage string,
@@ -46,6 +52,7 @@ func NewReplicator(
 		nodes:       nodes,
 		active:      active,
 		store:       store,
+		labeler:     labeler,
 		health:      health,
 		threshold:   threshold,
 		lockMessage: lockMessage,
@@ -55,7 +62,10 @@ func NewReplicator(
 // Initializes a replication after performing some initial validation.
 // Validation errors are returned immediately, and asynchronous errors are
 // passed on the returned channel
-func (r replicator) InitializeReplication(overrideLock bool) (Replication, chan error, error) {
+func (r replicator) InitializeReplication(
+	overrideLock bool,
+	ignoreControllers bool,
+) (Replication, chan error, error) {
 	err := r.checkPreparers()
 	if err != nil {
 		return nil, nil, err
@@ -66,6 +76,7 @@ func (r replicator) InitializeReplication(overrideLock bool) (Replication, chan 
 		active:    r.active,
 		nodes:     r.nodes,
 		store:     r.store,
+		labeler:   r.labeler,
 		manifest:  r.manifest,
 		health:    r.health,
 		threshold: r.threshold,
@@ -79,6 +90,13 @@ func (r replicator) InitializeReplication(overrideLock bool) (Replication, chan 
 	err = replication.lockHosts(overrideLock, r.lockMessage)
 	if err != nil {
 		return nil, errCh, err
+	}
+	if !ignoreControllers {
+		err = replication.checkForManaged()
+		if err != nil {
+			replication.Cancel()
+			return nil, errCh, err
+		}
 	}
 	return replication, errCh, nil
 }

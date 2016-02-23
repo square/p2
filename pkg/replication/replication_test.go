@@ -10,6 +10,7 @@ import (
 	"github.com/square/p2/pkg/consultest"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/labels"
 )
 
 func TestEnact(t *testing.T) {
@@ -20,7 +21,7 @@ func TestEnact(t *testing.T) {
 	// Make the kv store look like preparer is installed on test nodes
 	setupPreparers(f)
 
-	replication, errCh, err := replicator.InitializeReplication(false)
+	replication, errCh, err := replicator.InitializeReplication(false, false)
 	if err != nil {
 		t.Fatalf("Unable to initialize replication: %s", err)
 	}
@@ -56,6 +57,7 @@ func TestWaitsForHealthy(t *testing.T) {
 		testNodes,
 		active,
 		store,
+		labels.NewFakeApplicator(),
 		healthChecker,
 		threshold,
 		testLockMessage,
@@ -67,7 +69,7 @@ func TestWaitsForHealthy(t *testing.T) {
 	// Make the kv store look like preparer is installed on test nodes
 	setupPreparers(f)
 
-	replication, errCh, err := replicator.InitializeReplication(false)
+	replication, errCh, err := replicator.InitializeReplication(false, false)
 	if err != nil {
 		t.Fatalf("Unable to initialize replication: %s", err)
 	}
@@ -150,6 +152,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 		testNodes,
 		active,
 		store,
+		labels.NewFakeApplicator(),
 		healthChecker,
 		threshold,
 		testLockMessage,
@@ -161,7 +164,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 	// Make the kv store look like preparer is installed on test nodes
 	setupPreparers(f)
 
-	replication, errCh, err := replicator.InitializeReplication(false)
+	replication, errCh, err := replicator.InitializeReplication(false, false)
 	if err != nil {
 		t.Fatalf("Unable to initialize replication: %s", err)
 	}

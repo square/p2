@@ -1,14 +1,18 @@
 package replication
 
 import (
+	"path"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
@@ -47,6 +51,7 @@ type replication struct {
 	active    int
 	nodes     []string
 	store     kp.Store
+	labeler   labels.Applicator
 	manifest  pods.Manifest
 	health    checker.ConsulHealthChecker
 	threshold health.HealthState // minimum state to treat as "healthy"
@@ -124,6 +129,30 @@ func (r replication) lock(lock kp.Lock, lockPath string, overrideLock bool) erro
 	}
 
 	return err
+}
+
+// checkForManaged() checks whether there are any existing pods that this replication
+// would modify that are already managed by a controller. If there is such a pod, the
+// change should go through its controller, not here.
+func (r replication) checkForManaged() error {
+	var badNodes []string
+	for _, node := range r.nodes {
+		podID := path.Join(node, string(r.manifest.ID()))
+		labels, err := r.labeler.GetLabels(labels.POD, podID)
+		if err != nil {
+			return err
+		}
+		if labels.Labels.Has(rc.RCIDLabel) {
+			badNodes = append(badNodes, node)
+		}
+	}
+	if len(badNodes) > 0 {
+		return util.Errorf(
+			"cannot replicate to nodes already manged by a controller: %s",
+			strings.Join(badNodes, ", "),
+		)
+	}
+	return nil
 }
 
 // Execute the replication.
