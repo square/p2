@@ -42,10 +42,15 @@ func (f BasicFetcher) Open(srcUri string) (io.ReadCloser, error) {
 		return nil, err
 	}
 	switch u.Scheme {
-	case "", "file":
+	case "":
 		// Assume a schemeless URI is a path to a local file
+		return os.Open(srcUri)
+	case "file":
+		if u.Path == "" {
+			return nil, util.Errorf("%s: invalid path in URI", srcUri)
+		}
 		if !filepath.IsAbs(u.Path) {
-			return nil, util.Errorf("%q: not an absolute path", u.Path)
+			return nil, util.Errorf("%q: file URIs must use an absolute path", u.Path)
 		}
 		return os.Open(u.Path)
 	case "http", "https":
