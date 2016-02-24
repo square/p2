@@ -15,6 +15,7 @@ import (
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/rc/fields"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/util"
 )
 
 type Factory interface {
@@ -120,6 +121,12 @@ START_LOOP:
 				rcField, err := rlf.rcs.Get(rlField.NewRC)
 				if err != nil {
 					rlLogger.WithError(err).Errorln("Could not read new RC")
+					continue
+				}
+
+				if rcField.Manifest == nil {
+					err := util.Errorf("Received unexpectedly empty RC")
+					rlLogger.WithError(err)
 					continue
 				}
 				rlLogger = rlLogger.SubLogger(logrus.Fields{
