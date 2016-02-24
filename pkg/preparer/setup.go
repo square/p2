@@ -48,6 +48,8 @@ type Preparer struct {
 	caFile                 string
 	authPolicy             auth.Policy
 	maxLaunchableDiskUsage size.ByteCount
+	finishExec             []string
+	logExec                []string
 }
 
 type PreparerConfig struct {
@@ -67,6 +69,8 @@ type PreparerConfig struct {
 	ExtraLogDestinations   []LogDestination       `yaml:"extra_log_destinations,omitempty"`
 	LogLevel               string                 `yaml:"log_level,omitempty"`
 	MaxLaunchableDiskUsage string                 `yaml:"max_launchable_disk_usage"`
+	FinishExec             []string               `yaml:"finish_exec,omitempty"`
+	LogExec                []string               `yaml:"log_exec,omitempty"` // If specifying a path to an executable, we assume it has been specified relative to this preparer's POD_HOME
 
 	// Params defines a collection of miscellaneous runtime parameters defined throughout the
 	// source files.
@@ -342,6 +346,20 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		consulCAFile = preparerConfig.CAFile
 	}
 
+	var logExec []string
+	if len(preparerConfig.LogExec) > 0 {
+		logExec = preparerConfig.LogExec
+	} else {
+		logExec = pods.DefaultLogExec
+	}
+
+	var finishExec []string
+	if len(preparerConfig.FinishExec) > 0 {
+		finishExec = preparerConfig.FinishExec
+	} else {
+		finishExec = pods.DefaultFinishExec
+	}
+
 	return &Preparer{
 		node:                   preparerConfig.NodeName,
 		store:                  store,
@@ -352,5 +370,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		authPolicy:             authPolicy,
 		caFile:                 consulCAFile,
 		maxLaunchableDiskUsage: maxLaunchableDiskUsage,
+		finishExec:             finishExec,
+		logExec:                logExec,
 	}, nil
 }

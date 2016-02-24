@@ -1,8 +1,6 @@
 package preparer
 
 import (
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
@@ -191,7 +189,8 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				if pod.Id == POD_ID {
 					pod.DefaultTimeout = time.Duration(0)
 				}
-				pod.LogExec = logBridgeExec(pod)
+				pod.SetLogBridgeExec(p.logExec)
+				pod.SetFinishExec(p.finishExec)
 
 				// podChan is being fed values gathered from a kp.Watch() in
 				// WatchForPodManifestsForNode(). If the watch returns a new pair of
@@ -224,21 +223,6 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				}
 			}
 		}
-	}
-}
-
-func logBridgeExec(pod *pods.Pod) []string {
-	return []string{
-		pod.P2Exec,
-		"-u",
-		"nobody",
-		"-e",
-		pod.EnvDir(),
-		"--",
-		filepath.Join(os.Getenv("POD_HOME"), "p2-log-bridge", "current", "bin", "p2-log-bridge"),
-		"bridge",
-		"-logExec",
-		svlogdExec,
 	}
 }
 

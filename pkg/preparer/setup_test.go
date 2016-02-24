@@ -20,6 +20,7 @@ func TestLoadConfigWillMarshalYaml(t *testing.T) {
 	Assert(t).AreEqual("/etc/p2/hooks", preparerConfig.HooksDirectory, "did not read the hooks directory correctly")
 	Assert(t).AreEqual("/etc/p2.keyring", preparerConfig.Auth["keyring"], "did not read the keyring path correctly")
 	Assert(t).AreEqual(1, len(preparerConfig.ExtraLogDestinations), "should have picked up 1 log destination")
+
 	destination := preparerConfig.ExtraLogDestinations[0]
 	Assert(t).AreEqual(logging.OutSocket, destination.Type, "should have been the socket type")
 	Assert(t).AreEqual("/var/log/p2-socket.out", destination.Path, "should have parsed path correctly")

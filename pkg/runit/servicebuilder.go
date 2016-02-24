@@ -24,6 +24,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/square/p2/pkg/util"
 
@@ -32,7 +33,7 @@ import (
 
 // These are in the runit package to avoid import cycles.
 type RestartPolicy string
-type LogExec []string
+type Exec []string
 
 const (
 	RestartPolicyAlways RestartPolicy = "always"
@@ -50,11 +51,12 @@ const yamlSeparator = "--- "
 type ServiceTemplate struct {
 	Run      []string `yaml:"run"`
 	Log      []string `yaml:"log,omitempty"`
+	Finish   []string `yaml:"finish,omitempty"`
 	Sleep    *int     `yaml:"sleep,omitempty"`
 	LogSleep *int     `yaml:"logsleep,omitempty"`
 }
 
-func (s ServiceTemplate) RunScript() ([]byte, error) {
+func (s ServiceTemplate) runScript() ([]byte, error) {
 	if len(s.Run) == 0 {
 		return nil, util.Errorf("empty run script")
 	}
@@ -83,7 +85,7 @@ __END__
 	return []byte(ret), nil
 }
 
-func (s ServiceTemplate) LogScript() ([]byte, error) {
+func (s ServiceTemplate) logScript() ([]byte, error) {
 	sleep := 2
 	if s.LogSleep != nil && *s.LogSleep >= 0 {
 		sleep = *s.LogSleep
@@ -111,6 +113,19 @@ __END__
 %s
 `, sleep, yamlSeparator, args)
 	return []byte(ret), nil
+}
+
+func (s ServiceTemplate) finishScript() ([]byte, error) {
+	finish_exec := s.Finish
+	if len(finish_exec) == 0 {
+		finish_exec = []string{"/bin/true", "# finish not implemented"}
+	}
+	finishScript := fmt.Sprintf(`#!/bin/bash
+exit_code=$1
+%s
+`, strings.Join(finish_exec, " "))
+
+	return []byte(finishScript), nil
 }
 
 type ServiceBuilder struct {
@@ -195,7 +210,7 @@ func (s *ServiceBuilder) stage(templates map[string]ServiceTemplate, restartPoli
 			return err
 		}
 
-		runScript, err := template.RunScript()
+		runScript, err := template.runScript()
 		if err != nil {
 			return err
 		}
@@ -203,11 +218,19 @@ func (s *ServiceBuilder) stage(templates map[string]ServiceTemplate, restartPoli
 			return err
 		}
 
-		logScript, err := template.LogScript()
+		logScript, err := template.logScript()
 		if err != nil {
 			return err
 		}
 		if _, err := util.WriteIfChanged(filepath.Join(stageDir, "log", "run"), logScript, 0755); err != nil {
+			return err
+		}
+
+		finishScript, err := template.finishScript()
+		if err != nil {
+			return err
+		}
+		if _, err := util.WriteIfChanged(filepath.Join(stageDir, "finish"), finishScript, 0755); err != nil {
 			return err
 		}
 

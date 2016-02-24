@@ -15,6 +15,7 @@ import (
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/opencontainer"
+	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
@@ -35,9 +36,10 @@ var (
 )
 
 const DEFAULT_PATH = "/data/pods"
+const DefaultP2Exec = "/usr/local/bin/p2-exec"
 
-var DefaultP2Exec = "/usr/local/bin/p2-exec"
-var defaultLogExec = []string{"chpst", "-unobody", "svlogd", "-tt", "./main"}
+var DefaultFinishExec = []string{"/bin/true"} // type must match preparerconfig
+var DefaultLogExec = []string{"svlogd", "-tt", "./main"}
 
 func init() {
 	Log = logging.NewLogger(logrus.Fields{})
@@ -55,7 +57,8 @@ type Pod struct {
 	ServiceBuilder *runit.ServiceBuilder
 	P2Exec         string
 	DefaultTimeout time.Duration // this is the default timeout for stopping and restarting services in this pod
-	LogExec        runit.LogExec // this is exposed to support a gradual rollout of p2-log-bridge
+	LogExec        runit.Exec
+	FinishExec     runit.Exec
 }
 
 func NewPod(id types.PodID, path string) *Pod {
@@ -67,7 +70,8 @@ func NewPod(id types.PodID, path string) *Pod {
 		ServiceBuilder: runit.DefaultBuilder,
 		P2Exec:         DefaultP2Exec,
 		DefaultTimeout: 60 * time.Second,
-		LogExec:        defaultLogExec,
+		LogExec:        DefaultLogExec,
+		FinishExec:     DefaultFinishExec,
 	}
 }
 
@@ -248,8 +252,9 @@ func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest 
 				return util.Errorf("Duplicate executable %q for launchable %q", executable.Service.Name, launchable.ServiceID())
 			}
 			sbTemplate[executable.Service.Name] = runit.ServiceTemplate{
-				Log: pod.LogExec,
-				Run: executable.Exec,
+				Log:    pod.LogExec,
+				Run:    executable.Exec,
+				Finish: pod.FinishExecForLaunchable(launchable),
 			}
 		}
 	}
@@ -591,6 +596,30 @@ func (pod *Pod) Launchables(manifest Manifest) ([]launch.Launchable, error) {
 	}
 
 	return launchables, nil
+}
+
+func (pod *Pod) SetFinishExec(finishExec []string) {
+	pod.FinishExec = finishExec
+}
+
+func (pod *Pod) FinishExecForLaunchable(launchable launch.Launchable) runit.Exec {
+	p2ExecArgs := p2exec.P2ExecArgs{
+		Command: pod.FinishExec,
+		User:    "nobody",
+		EnvDirs: []string{pod.EnvDir(), launchable.EnvDir()},
+	}
+
+	return append([]string{pod.P2Exec}, p2ExecArgs.CommandLine()...)
+}
+
+func (pod *Pod) SetLogBridgeExec(logExec []string) {
+	p2ExecArgs := p2exec.P2ExecArgs{
+		Command: logExec,
+		User:    "nobody",
+		EnvDirs: []string{pod.EnvDir()},
+	}
+
+	pod.LogExec = append([]string{pod.P2Exec}, p2ExecArgs.CommandLine()...)
 }
 
 func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
