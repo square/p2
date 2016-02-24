@@ -8,6 +8,7 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 
@@ -34,6 +35,7 @@ func testReplicatorAndServer(t *testing.T) (Replicator, kp.Store, consultest.Fix
 		testNodes,
 		active,
 		store,
+		labels.NewConsulApplicator(f.Client, 1),
 		healthChecker,
 		threshold,
 		testLockMessage,

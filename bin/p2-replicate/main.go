@@ -15,6 +15,7 @@ import (
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/flags"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/replication"
@@ -22,11 +23,12 @@ import (
 )
 
 var (
-	manifestUri  = kingpin.Arg("manifest", "a path or url to a pod manifest that will be replicated.").Required().String()
-	hosts        = kingpin.Arg("hosts", "Hosts to replicate to").Required().Strings()
-	minNodes     = kingpin.Flag("min-nodes", "The minimum number of healthy nodes that must remain up while replicating.").Default("1").Short('m').Int()
-	threshold    = kingpin.Flag("threshold", "The minimum health level to treat as healthy. One of (in order) passing, warning, unknown, critical.").String()
-	overrideLock = kingpin.Flag("override-lock", "Override any lock holders").Bool()
+	manifestUri       = kingpin.Arg("manifest", "a path or url to a pod manifest that will be replicated.").Required().String()
+	hosts             = kingpin.Arg("hosts", "Hosts to replicate to").Required().Strings()
+	minNodes          = kingpin.Flag("min-nodes", "The minimum number of healthy nodes that must remain up while replicating.").Default("1").Short('m').Int()
+	threshold         = kingpin.Flag("threshold", "The minimum health level to treat as healthy. One of (in order) passing, warning, unknown, critical.").String()
+	overrideLock      = kingpin.Flag("override-lock", "Override any lock holders").Bool()
+	ignoreControllers = kingpin.Flag("ignore-controllers", "Deploy even if there are controllers managing some of the hosts").Bool()
 )
 
 func main() {
@@ -47,6 +49,7 @@ func main() {
 	_, opts := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(opts)
 	store := kp.NewConsulStore(client)
+	labeler := labels.NewConsulApplicator(client, 3)
 	healthChecker := checker.NewConsulHealthChecker(client)
 
 	manifest, err := pods.ManifestFromURI(*manifestUri)
@@ -79,6 +82,7 @@ func main() {
 		*hosts,
 		len(*hosts)-*minNodes,
 		store,
+		labeler,
 		healthChecker,
 		health.HealthState(*threshold),
 		lockMessage,
@@ -87,7 +91,10 @@ func main() {
 		log.Fatalf("Could not initialize replicator: %s", err)
 	}
 
-	replication, errCh, err := repl.InitializeReplication(*overrideLock)
+	replication, errCh, err := repl.InitializeReplication(
+		*overrideLock,
+		*ignoreControllers,
+	)
 	if err != nil {
 		log.Fatalf("Unable to initialize replication: %s", err)
 	}
