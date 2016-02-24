@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/preparer"
@@ -103,6 +104,46 @@ func TestInitializeReplicationFailsIfLockExists(t *testing.T) {
 
 	if !matched {
 		t.Fatalf("Expected error message to be related to a lock already being held, but was %s", testErr.Error())
+	}
+}
+
+func TestInitializeReplicationReleasesLocks(t *testing.T) {
+	replicator, store, f := testReplicatorAndServer(t)
+	defer f.Stop()
+	setupPreparers(f)
+
+	// Claim a lock on test node 1
+	lock, _, err := store.NewLock("competing lock", nil)
+	if err != nil {
+		t.Fatalf("Unable to set up competing lock: %s", err)
+	}
+	defer lock.Destroy()
+	lockPath1, err := kp.PodLockPath(kp.INTENT_TREE, testNodes[1], testPodId)
+	if err != nil {
+		t.Fatalf("Unable to compute pod lock path: %s", err)
+	}
+	err = lock.Lock(lockPath1)
+	if err != nil {
+		t.Fatalf("Unable to set up competing lock: %s", err)
+	}
+
+	// Replication should start acquiring locks but fail to complete because of the lock
+	// on test node 1
+	_, _, testErr := replicator.InitializeReplication(false)
+	if testErr == nil {
+		t.Fatalf("Expected error due to competing lock, but no error occurred")
+	}
+
+	// After a failed attempt at replication (+ Consul lock delay), test node 0 should
+	// still be lockable
+	time.Sleep(10 * time.Millisecond)
+	lockPath0, err := kp.PodLockPath(kp.INTENT_TREE, testNodes[0], testPodId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = lock.Lock(lockPath0)
+	if err != nil {
+		t.Fatalf("unable to acquire lock. replicator probably didn't release its lock on error: %v", err)
 	}
 }
 

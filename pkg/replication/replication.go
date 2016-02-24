@@ -77,12 +77,14 @@ func (r replication) lockHosts(overrideLock bool, lockMessage string) error {
 	for _, host := range r.nodes {
 		lockPath, err := kp.PodLockPath(kp.INTENT_TREE, host, r.manifest.ID())
 		if err != nil {
+			lock.Destroy()
 			return err
 		}
 
 		err = r.lock(lock, lockPath, overrideLock)
 
 		if err != nil {
+			lock.Destroy()
 			return err
 		}
 	}
