@@ -119,16 +119,15 @@ START_LOOP:
 					"ru": rlField.NewRC,
 				})
 				rcField, err := rlf.rcs.Get(rlField.NewRC)
-				if err != nil {
+				if rcstore.IsNotExist(err) {
+					err := util.Errorf("Expected RC %s to exist", rlField.NewRC)
+					rlLogger.WithError(err).Errorln()
+					continue
+				} else if err != nil {
 					rlLogger.WithError(err).Errorln("Could not read new RC")
 					continue
 				}
 
-				if rcField.Manifest == nil {
-					err := util.Errorf("Received unexpectedly empty RC")
-					rlLogger.WithError(err)
-					continue
-				}
 				rlLogger = rlLogger.SubLogger(logrus.Fields{
 					"pod": rcField.Manifest.ID(),
 				})

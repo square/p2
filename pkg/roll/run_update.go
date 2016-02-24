@@ -109,7 +109,13 @@ func (u update) Run(quit <-chan struct{}) (ret bool) {
 	var err error
 	if !RetryOrQuit(func() error {
 		newFields, err = u.rcs.Get(u.NewRC)
-		return err
+		if rcstore.IsNotExist(err) {
+			return util.Errorf("Replication controller %s is unexpectedly empty", u.NewRC)
+		} else if err != nil {
+			return err
+		}
+
+		return nil
 	}, quit, u.logger, "Could not read new RC") {
 		return
 	}
@@ -324,9 +330,13 @@ type rcNodeCounts struct {
 func (u update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNodeCounts, error) {
 	ret := rcNodeCounts{}
 	rcFields, err := u.rcs.Get(id)
-	if err != nil {
+	if rcstore.IsNotExist(err) {
+		err := util.Errorf("RC %s did not exist", id)
+		return ret, err
+	} else if err != nil {
 		return ret, err
 	}
+
 	ret.Desired = rcFields.ReplicasDesired
 
 	currentPods, err := rc.New(rcFields, u.kps, u.rcs, u.sched, u.labeler, u.logger).CurrentPods()
