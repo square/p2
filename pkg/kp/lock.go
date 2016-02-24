@@ -10,7 +10,14 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-type Lock struct {
+type Lock interface {
+	Lock(key string) error
+	Unlock(key string) error
+	Renew() error
+	Destroy() error
+}
+
+type lock struct {
 	client  *api.Client
 	session string
 	name    string
@@ -54,7 +61,7 @@ func (c consulStore) NewLock(name string, renewalCh <-chan time.Time) (Lock, cha
 	}, nil)
 
 	if err != nil {
-		return Lock{}, nil, util.Errorf("Could not create lock")
+		return lock{}, nil, util.Errorf("Could not create lock")
 	}
 
 	if renewalCh == nil {
@@ -63,7 +70,7 @@ func (c consulStore) NewLock(name string, renewalCh <-chan time.Time) (Lock, cha
 
 	quitCh := make(chan struct{})
 	renewalErrCh := make(chan error, 1)
-	lock := Lock{
+	lock := lock{
 		client:       c.client,
 		session:      session,
 		name:         name,
@@ -82,7 +89,7 @@ func (c consulStore) NewLock(name string, renewalCh <-chan time.Time) (Lock, cha
 // for that session. Use this constructor when the session already exists and
 // should not be managed by the lock itself.
 func (c consulStore) NewUnmanagedLock(session, name string) Lock {
-	return Lock{
+	return lock{
 		client:  c.client,
 		session: session,
 		name:    name,
@@ -115,7 +122,7 @@ func (c consulStore) DestroyLockHolder(id string) error {
 // attempts to acquire the lock on the targeted key
 // keys used for locking/synchronization should be ephemeral (ie their value
 // does not matter and you don't care if they're deleted)
-func (l Lock) Lock(key string) error {
+func (l lock) Lock(key string) error {
 	success, _, err := l.client.KV().Acquire(&api.KVPair{
 		Key:     key,
 		Value:   []byte(l.name),
@@ -133,7 +140,7 @@ func (l Lock) Lock(key string) error {
 
 // attempts to unlock the targeted key - since lock keys are ephemeral, this
 // will delete it, but only if it is held by the current lock
-func (l Lock) Unlock(key string) error {
+func (l lock) Unlock(key string) error {
 	kvp, meta, err := l.client.KV().Get(key, nil)
 	if err != nil {
 		return consulutil.NewKVError("get", key, err)
@@ -160,7 +167,7 @@ func (l Lock) Unlock(key string) error {
 	return nil
 }
 
-func (l Lock) continuallyRenew() {
+func (l lock) continuallyRenew() {
 	defer close(l.renewalErrCh)
 	for {
 		select {
@@ -178,7 +185,7 @@ func (l Lock) continuallyRenew() {
 }
 
 // refresh the TTL on this lock
-func (l Lock) Renew() error {
+func (l lock) Renew() error {
 	entry, _, err := l.client.Session().Renew(l.session, nil)
 	if err != nil {
 		return util.Errorf("Could not renew lock")
@@ -191,7 +198,7 @@ func (l Lock) Renew() error {
 }
 
 // destroy a lock, releasing and deleting all the keys it holds
-func (l Lock) Destroy() error {
+func (l lock) Destroy() error {
 	if l.quitCh != nil {
 		close(l.quitCh)
 	}
