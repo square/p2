@@ -68,12 +68,6 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 		logger.WithError(err).Fatalln("error creating health monitor KV store")
 	}
 	healthManager := store.NewHealthManager(config.NodeName, *logger)
-	// if GetClient fails it means the certfile/keyfile/cafile were
-	// invalid or did not exist. It makes sense to throw a fatal error
-	client, err := config.GetClient(time.Duration(*HEALTHCHECK_TIMEOUT) * time.Second)
-	if err != nil {
-		logger.WithError(err).Fatalln("failed to get http client for this preparer")
-	}
 
 	node := config.NodeName
 	pods := []PodWatch{}
@@ -89,13 +83,25 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 		watchPodCh,
 	)
 
+	// if GetClient fails it means the certfile/keyfile/cafile were
+	// invalid or did not exist. It makes sense to throw a fatal error
+	secureClient, err := config.GetClient(time.Duration(*HEALTHCHECK_TIMEOUT) * time.Second)
+	if err != nil {
+		logger.WithError(err).Fatalln("failed to get http client for this preparer")
+	}
+
+	insecureClient, err := config.GetInsecureClient(time.Duration(*HEALTHCHECK_TIMEOUT) * time.Second)
+	if err != nil {
+		logger.WithError(err).Fatalln("failed to get http client for this preparer")
+	}
+
 	for {
 		select {
 		case results := <-watchPodCh:
 			// check if pods have been added or removed
 			// starts monitor routine for new pods
 			// kills monitor routine for removed pods
-			pods = updatePods(healthManager, client, pods, results, node, logger)
+			pods = updatePods(healthManager, secureClient, insecureClient, pods, results, node, logger)
 		case err := <-watchErrCh:
 			logger.WithError(err).Errorln("there was an error reading reality manifests for health monitor")
 		case <-shutdownCh:
@@ -113,7 +119,8 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 // need to be monitored.
 func updatePods(
 	healthManager kp.HealthManager,
-	client *http.Client,
+	secureClient *http.Client,
+	insecureClient *http.Client,
 	current []PodWatch,
 	reality []kp.ManifestResult,
 	node string,
@@ -152,6 +159,16 @@ func updatePods(
 			}
 		}
 
+		var client *http.Client
+		var statusHost string
+		if man.Manifest.GetStatusLocalhostOnly() {
+			statusHost = "localhost"
+			client = insecureClient
+		} else {
+			statusHost = node
+			client = secureClient
+		}
+
 		// if a manifest is in reality but not current a podwatch is created
 		// with that manifest and added to newCurrent
 		if missing {
@@ -163,9 +180,9 @@ func updatePods(
 			if man.Manifest.GetStatusPort() == 0 {
 				sc.URI = ""
 			} else if man.Manifest.GetStatusHTTP() {
-				sc.URI = fmt.Sprintf("http://%s:%d%s", node, man.Manifest.GetStatusPort(), man.Manifest.GetStatusPath())
+				sc.URI = fmt.Sprintf("http://%s:%d%s", statusHost, man.Manifest.GetStatusPort(), man.Manifest.GetStatusPath())
 			} else {
-				sc.URI = fmt.Sprintf("https://%s:%d%s", node, man.Manifest.GetStatusPort(), man.Manifest.GetStatusPath())
+				sc.URI = fmt.Sprintf("https://%s:%d%s", statusHost, man.Manifest.GetStatusPort(), man.Manifest.GetStatusPath())
 			}
 			newPod := PodWatch{
 				manifest:      man.Manifest,

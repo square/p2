@@ -222,6 +222,22 @@ func (c *PreparerConfig) GetClient(cxnTimeout time.Duration) (*http.Client, erro
 	}}, nil
 }
 
+func (c *PreparerConfig) GetInsecureClient(cxnTimeout time.Duration) (*http.Client, error) {
+	tlsConfig, err := getTLSConfig(c.CertFile, c.KeyFile, c.CAFile)
+	if err != nil {
+		return nil, err
+	}
+	tlsConfig.InsecureSkipVerify = true
+	return &http.Client{Transport: &http.Transport{
+		TLSClientConfig: tlsConfig,
+		// same dialer as http.DefaultTransport
+		Dial: (&net.Dialer{
+			Timeout:   cxnTimeout,
+			KeepAlive: cxnTimeout,
+		}).Dial,
+	}}, nil
+}
+
 func addHooks(preparerConfig *PreparerConfig, logger logging.Logger) {
 	for _, dest := range preparerConfig.ExtraLogDestinations {
 		logger.WithFields(logrus.Fields{

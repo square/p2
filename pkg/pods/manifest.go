@@ -34,9 +34,10 @@ type LaunchableStanza struct {
 }
 
 type StatusStanza struct {
-	HTTP bool   `yaml:"http,omitempty"`
-	Path string `yaml:"path,omitempty"`
-	Port int    `yaml:"port,omitempty"`
+	HTTP          bool   `yaml:"http,omitempty"`
+	Path          string `yaml:"path,omitempty"`
+	Port          int    `yaml:"port,omitempty"`
+	LocalhostOnly bool   `yaml:"localhost_only,omitempty"`
 }
 
 type ManifestBuilder interface {
@@ -80,6 +81,7 @@ type Manifest interface {
 	GetStatusHTTP() bool
 	GetStatusPath() string
 	GetStatusPort() int
+	GetStatusLocalhostOnly() bool
 	Marshal() ([]byte, error)
 	SignatureData() (plaintext, signature []byte)
 	GetRestartPolicy() runit.RestartPolicy
@@ -211,6 +213,14 @@ func (manifest *manifest) GetStatusPort() int {
 func (manifest *manifest) SetStatusPort(port int) {
 	manifest.StatusPort = 0
 	manifest.Status.Port = port
+}
+
+func (manifest *manifest) GetStatusLocalhostOnly() bool {
+	return manifest.Status.LocalhostOnly
+}
+
+func (manifest *manifest) SetStatusLocalhostOnly(localhostOnly bool) {
+	manifest.Status.LocalhostOnly = localhostOnly
 }
 
 func (manifest *manifest) RunAsUser() string {
