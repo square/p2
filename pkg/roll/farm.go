@@ -48,7 +48,7 @@ type Farm struct {
 	sessions <-chan string
 
 	children map[fields.ID]childRU
-	lock     *kp.Lock
+	lock     kp.Lock
 
 	logger logging.Logger
 }
@@ -109,7 +109,7 @@ START_LOOP:
 				// expiration message, so len(children)==0
 				rlf.logger.WithField("session", session).Infoln("Acquired new session")
 				lock := rlf.kps.NewUnmanagedLock(session, "")
-				rlf.lock = &lock
+				rlf.lock = lock
 				// TODO: restart the watch so that you get updates right away?
 			}
 		case err := <-rlErr:
@@ -166,7 +166,7 @@ START_LOOP:
 				// at this point the ru is ours, time to spin it up
 				rlLogger.NoFields().Infoln("Acquired lock on new update, spawning")
 
-				newChild := rlf.factory.New(rlField, rlLogger, *rlf.lock)
+				newChild := rlf.factory.New(rlField, rlLogger, rlf.lock)
 				childQuit := make(chan struct{})
 				rlf.children[rlField.NewRC] = childRU{ru: newChild, quit: childQuit}
 				foundChildren[rlField.NewRC] = struct{}{}

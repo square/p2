@@ -26,7 +26,7 @@ type Farm struct {
 	sessions <-chan string
 
 	children map[fields.ID]childRC
-	lock     *kp.Lock
+	lock     kp.Lock
 
 	logger logging.Logger
 }
@@ -88,7 +88,7 @@ START_LOOP:
 				// expiration message, so len(children)==0
 				rcf.logger.WithField("session", session).Infoln("Acquired new session")
 				lock := rcf.kpStore.NewUnmanagedLock(session, "")
-				rcf.lock = &lock
+				rcf.lock = lock
 				// TODO: restart the watch so that you get updates right away?
 			}
 		case err := <-rcErr:
