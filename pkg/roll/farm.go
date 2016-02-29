@@ -7,6 +7,7 @@ import (
 
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/kp/rollstore"
 	"github.com/square/p2/pkg/labels"
@@ -85,6 +86,14 @@ func NewFarm(
 // Start is not safe for concurrent execution. Do not execute multiple
 // concurrent instances of Start.
 func (rlf *Farm) Start(quit <-chan struct{}) {
+	consulutil.WithSession(quit, rlf.sessions, func(sessionQuit <-chan struct{}, session string) {
+		rlf.logger.WithField("session", session).Infoln("Acquired new session")
+		rlf.lock = rlf.kps.NewUnmanagedLock(session, "")
+		rlf.mainLoop(sessionQuit)
+	})
+}
+
+func (rlf *Farm) mainLoop(quit <-chan struct{}) {
 	subQuit := make(chan struct{})
 	defer close(subQuit)
 	rlWatch, rlErr := rlf.rls.Watch(subQuit)
@@ -93,35 +102,14 @@ START_LOOP:
 	for {
 		select {
 		case <-quit:
-			rlf.logger.NoFields().Infoln("Halt requested, releasing updates")
+			rlf.logger.NoFields().Infoln("Session expired, releasing updates")
+			rlf.lock = nil
 			rlf.releaseChildren()
 			return
-		case session := <-rlf.sessions:
-			if session == "" {
-				// our session has expired, we must assume our locked children
-				// have all been released and that someone else may have
-				// claimed them by now
-				rlf.logger.NoFields().Errorln("Session expired, releasing updates")
-				rlf.lock = nil
-				rlf.releaseChildren()
-			} else {
-				// a new session has been acquired - only happens after an
-				// expiration message, so len(children)==0
-				rlf.logger.WithField("session", session).Infoln("Acquired new session")
-				lock := rlf.kps.NewUnmanagedLock(session, "")
-				rlf.lock = lock
-				// TODO: restart the watch so that you get updates right away?
-			}
 		case err := <-rlErr:
 			rlf.logger.WithError(err).Errorln("Could not read consul updates")
 		case rlFields := <-rlWatch:
 			rlf.logger.WithField("n", len(rlFields)).Debugln("Received update update")
-			if rlf.lock == nil {
-				// we can't claim new nodes because our session is invalidated.
-				// raise an error and ignore this update
-				rlf.logger.NoFields().Warnln("Received update update, but do not have session to acquire locks")
-				continue
-			}
 
 			// track which children were found in the returned set
 			foundChildren := make(map[fields.ID]struct{})

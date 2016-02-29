@@ -14,6 +14,7 @@ import (
 
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/kp/rollstore"
@@ -89,14 +90,13 @@ func main() {
 
 	// Start acquiring sessions
 	sessions := make(chan string)
-	go kp.ConsulSessionManager(api.SessionEntry{
+	go consulutil.SessionManager(api.SessionEntry{
 		Name:      SessionName(),
 		LockDelay: 5 * time.Second,
 		Behavior:  api.SessionBehaviorDelete,
 		TTL:       "15s",
 	}, client, sessions, nil, logger)
-	firstSession := <-sessions
-	pub := stream.NewStringValuePublisher(sessions, firstSession)
+	pub := stream.NewStringValuePublisher(sessions, "")
 	rcSub := pub.Subscribe(nil)
 	rlSub := pub.Subscribe(nil)
 

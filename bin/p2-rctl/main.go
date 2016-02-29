@@ -16,6 +16,7 @@ import (
 
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/kp/rollstore"
@@ -283,7 +284,7 @@ func (r RCtl) RollingUpdate(oldID, newID string, want, need int) {
 	sessions := make(chan string)
 	quit := make(chan struct{})
 
-	go kp.ConsulSessionManager(api.SessionEntry{
+	go consulutil.SessionManager(api.SessionEntry{
 		Name:      SessionName(),
 		LockDelay: 5 * time.Second,
 		Behavior:  api.SessionBehaviorDelete,
