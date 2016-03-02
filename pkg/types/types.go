@@ -5,12 +5,6 @@ package types
 
 type PodID string
 
-type RCID string
-
 func (p PodID) String() string {
 	return string(p)
-}
-
-func (r RCID) String() string {
-	return string(r)
 }

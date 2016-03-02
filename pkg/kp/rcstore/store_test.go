@@ -5,72 +5,68 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/kptest"
+	"github.com/square/p2/pkg/rc/fields"
 )
 
-const testRCId = "abcd-1234"
+const testRCId = fields.ID("abcd-1234")
 
-func TestRCPathHappy(t *testing.T) {
-	rcPath, err := rcPath(testRCId)
+func TestLockForOwnership(t *testing.T) {
+	kpStore := kptest.NewFakePodStore(nil, nil)
+
+	session, _, err := kpStore.NewSession("test rc ownership session", nil)
 	if err != nil {
-		t.Fatalf("Unable to compute rc path: %s", err)
+		t.Fatalf("Unable to create fake session in fake store: %s", err)
 	}
 
-	expected := fmt.Sprintf("%s/%s", rcTree, testRCId)
-	if rcPath != expected {
-		t.Errorf("Unexpected value for rcPath, wanted '%s' got '%s'",
-			expected,
-			rcPath,
-		)
-	}
-}
-
-func TestRCPathErrorNoID(t *testing.T) {
-	_, err := rcPath("")
-	if err == nil {
-		t.Errorf("Should have errored retrieving rc path with empty rcID")
-	}
-}
-
-func TestRCLockPath(t *testing.T) {
-	rcLockPath, err := RCLockPath(testRCId)
+	rcstore := consulStore{}
+	unlocker, err := rcstore.LockForOwnership(testRCId, session)
 	if err != nil {
-		t.Fatalf("Unable to compute rc lock path: %s", err)
+		t.Fatalf("Unable to lock rc for ownership: %s", err)
 	}
 
-	expected := fmt.Sprintf("%s/%s/%s", kp.LOCK_TREE, rcTree, testRCId)
-	if rcLockPath != expected {
-		t.Errorf("Unexpected value for rcLockPath, wanted '%s' got '%s'",
-			expected,
-			rcLockPath,
-		)
+	expectedKey := fmt.Sprintf("%s/%s/%s", kp.LOCK_TREE, rcTree, testRCId)
+	if unlocker.Key() != expectedKey {
+		t.Errorf("Key did not match expected: wanted '%s' but got '%s'", expectedKey, unlocker.Key())
 	}
 }
 
-func TestRCLockPathErrorNoID(t *testing.T) {
-	_, err := RCLockPath("")
-	if err == nil {
-		t.Errorf("Expected error computing rc lock path with no id")
-	}
-}
+func TestLockForMutation(t *testing.T) {
+	kpStore := kptest.NewFakePodStore(nil, nil)
 
-func TestRCUpdateLockPath(t *testing.T) {
-	rcUpdateLockPath, err := RCUpdateLockPath(testRCId)
+	session, _, err := kpStore.NewSession("test rc mutation session", nil)
 	if err != nil {
-		t.Fatalf("Unable to compute rc update lock path: %s", err)
+		t.Fatalf("Unable to create fake session in fake store: %s", err)
 	}
 
-	expected := fmt.Sprintf("%s/%s/%s/update", kp.LOCK_TREE, rcTree, testRCId)
-	if rcUpdateLockPath != expected {
-		t.Errorf("Unexpected value for rcUpdateLockPath, wanted '%s' got '%s'",
-			expected,
-			rcUpdateLockPath,
-		)
+	rcstore := consulStore{}
+	unlocker, err := rcstore.LockForMutation(testRCId, session)
+	if err != nil {
+		t.Fatalf("Unable to lock rc for mutation: %s", err)
+	}
+
+	expectedKey := fmt.Sprintf("%s/%s/%s/%s", kp.LOCK_TREE, rcTree, testRCId, mutationSuffix)
+	if unlocker.Key() != expectedKey {
+		t.Errorf("Key did not match expected: wanted '%s' but got '%s'", expectedKey, unlocker.Key())
 	}
 }
 
-func TestRCUpdateLockPathErrorNoID(t *testing.T) {
-	_, err := RCUpdateLockPath("")
-	if err == nil {
-		t.Errorf("Expected error computing rc update lock path with no id")
+func TestLockForUpdateCreation(t *testing.T) {
+	kpStore := kptest.NewFakePodStore(nil, nil)
+
+	session, _, err := kpStore.NewSession("test rc update creation session", nil)
+	if err != nil {
+		t.Fatalf("Unable to create fake session in fake store: %s", err)
+	}
+
+	rcstore := consulStore{}
+	unlocker, err := rcstore.LockForUpdateCreation(testRCId, session)
+	if err != nil {
+		t.Fatalf("Unable to lock rc for update creation: %s", err)
+	}
+
+	expectedKey := fmt.Sprintf("%s/%s/%s/%s", kp.LOCK_TREE, rcTree, testRCId, updateCreationSuffix)
+	if unlocker.Key() != expectedKey {
+		t.Errorf("Key did not match expected: wanted '%s' but got '%s'", expectedKey, unlocker.Key())
 	}
 }

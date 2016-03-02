@@ -240,16 +240,8 @@ ROLL_LOOP:
 	return true // finally if we make it here, we can return true
 }
 
-func (u *update) lockRCs(done <-chan struct{}) error {
-	newPath, err := rcstore.RCUpdateLockPath(u.NewRC)
-	if err != nil {
-		return err
-	}
-	oldPath, err := rcstore.RCUpdateLockPath(u.OldRC)
-	if err != nil {
-		return err
-	}
-	newUnlocker, err := u.session.Lock(newPath)
+func (u update) lockRCs(done <-chan struct{}) error {
+	newUnlocker, err := u.rcs.LockForMutation(u.NewRC, u.session)
 	if _, ok := err.(kp.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock new %s", u.NewRC)
 	} else if err != nil {
@@ -257,7 +249,7 @@ func (u *update) lockRCs(done <-chan struct{}) error {
 	}
 	u.newRCUnlocker = newUnlocker
 
-	oldUnlocker, err := u.session.Lock(oldPath)
+	oldUnlocker, err := u.rcs.LockForMutation(u.OldRC, u.session)
 	if err != nil {
 		// The second key couldn't be locked, so release the first key before retrying.
 		RetryOrQuit(
