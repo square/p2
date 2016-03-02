@@ -191,11 +191,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				if pod.Id == POD_ID {
 					pod.DefaultTimeout = time.Duration(0)
 				}
-				for _, testPodId := range p.logExecTestGroup {
-					if pod.Id == testPodId {
-						pod.LogExec = logBridgeExec(pod)
-					}
-				}
+				pod.LogExec = logBridgeExec(pod)
 
 				// podChan is being fed values gathered from a kp.Watch() in
 				// WatchForPodManifestsForNode(). If the watch returns a new pair of

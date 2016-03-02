@@ -48,7 +48,6 @@ type Preparer struct {
 	caFile                 string
 	authPolicy             auth.Policy
 	maxLaunchableDiskUsage size.ByteCount
-	logExecTestGroup       []types.PodID
 }
 
 type PreparerConfig struct {
@@ -68,7 +67,6 @@ type PreparerConfig struct {
 	ExtraLogDestinations   []LogDestination       `yaml:"extra_log_destinations,omitempty"`
 	LogLevel               string                 `yaml:"log_level,omitempty"`
 	MaxLaunchableDiskUsage string                 `yaml:"max_launchable_disk_usage"`
-	LogExecTestGroup       []types.PodID          `yaml:"log_exec_test_group",omitempty`
 
 	// Params defines a collection of miscellaneous runtime parameters defined throughout the
 	// source files.
@@ -354,6 +352,5 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		authPolicy:             authPolicy,
 		caFile:                 consulCAFile,
 		maxLaunchableDiskUsage: maxLaunchableDiskUsage,
-		logExecTestGroup:       preparerConfig.LogExecTestGroup,
 	}, nil
 }
