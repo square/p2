@@ -39,8 +39,8 @@ type Store interface {
 	AllPods(podPrefix PodPrefix) ([]ManifestResult, time.Duration, error)
 	LockHolder(key string) (string, string, error)
 	DestroyLockHolder(id string) error
-	NewLock(name string, renewalCh <-chan time.Time) (Lock, chan error, error)
-	NewUnmanagedLock(session, name string) Lock
+	NewSession(name string, renewalCh <-chan time.Time) (Session, chan error, error)
+	NewUnmanagedSession(session, name string) Session
 	NewHealthManager(node string, logger logging.Logger) HealthManager
 }
 

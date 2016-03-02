@@ -30,7 +30,10 @@ type update struct {
 
 	logger logging.Logger
 
-	lock kp.Lock
+	session kp.Session
+
+	oldRCUnlocker kp.Unlocker
+	newRCUnlocker kp.Unlocker
 }
 
 // Create a new Update. The kp.Store, rcstore.Store, labels.Applicator and
@@ -45,7 +48,7 @@ func NewUpdate(
 	labeler labels.Applicator,
 	sched rc.Scheduler,
 	logger logging.Logger,
-	lock kp.Lock,
+	session kp.Session,
 ) Update {
 	return update{
 		Update:  f,
@@ -55,7 +58,7 @@ func NewUpdate(
 		labeler: labeler,
 		sched:   sched,
 		logger:  logger,
-		lock:    lock,
+		session: session,
 	}
 }
 
@@ -246,22 +249,22 @@ func (u update) lockRCs(done <-chan struct{}) error {
 	if err != nil {
 		return err
 	}
-
-	err = u.lock.Lock(newPath)
+	newUnlocker, err := u.session.Lock(newPath)
 	if _, ok := err.(kp.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock new %s", u.NewRC)
 	} else if err != nil {
 		return err
 	}
+	u.newRCUnlocker = newUnlocker
 
-	err = u.lock.Lock(oldPath)
+	oldUnlocker, err := u.session.Lock(oldPath)
 	if err != nil {
 		// The second key couldn't be locked, so release the first key before retrying.
 		RetryOrQuit(
-			func() error { return u.lock.Unlock(newPath) },
+			func() error { return newUnlocker.Unlock() },
 			done,
 			u.logger,
-			fmt.Sprintf("unlocking %s", newPath),
+			fmt.Sprintf("unlocking %s", newUnlocker.Key()),
 		)
 	}
 	if _, ok := err.(kp.AlreadyLockedError); ok {
@@ -269,36 +272,29 @@ func (u update) lockRCs(done <-chan struct{}) error {
 	} else if err != nil {
 		return err
 	}
+	u.oldRCUnlocker = oldUnlocker
 
 	return nil
 }
 
 // unlockRCs releases the locks on the old and new RCs. To avoid a system-wide deadlock in
-// RCs,  this method ensures that the locks are always released, either by retying until
+// RCs, this method ensures that the locks are always released, either by retrying until
 // individual releases are successful or until the session is reset.
 func (u update) unlockRCs(done <-chan struct{}) {
 	wg := sync.WaitGroup{}
-	for _, rcID := range []rcf.ID{u.NewRC, u.OldRC} {
+	for _, unlocker := range []kp.Unlocker{u.newRCUnlocker, u.oldRCUnlocker} {
 		wg.Add(1)
-		go func(rcID rcf.ID) {
+		go func(unlocker kp.Unlocker) {
 			defer wg.Done()
-			path, err := rcstore.RCUpdateLockPath(rcID)
-			if err != nil {
-				// If the path is invalid, there's no point in
-				// attempting to unlock
-				u.logger.WithError(err).
-					Errorln("Could not compute RCUpdateLockPath to unlock the RC")
-				return
-			}
 			RetryOrQuit(
 				func() error {
-					return u.lock.Unlock(path)
+					return unlocker.Unlock()
 				},
 				done,
 				u.logger,
-				fmt.Sprintf("unlocking rc: %s", rcID),
+				fmt.Sprintf("unlocking rc: %s", unlocker.Key()),
 			)
-		}(rcID)
+		}(unlocker)
 	}
 	wg.Wait()
 }

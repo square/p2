@@ -291,11 +291,11 @@ func (r RCtl) RollingUpdate(oldID, newID string, want, need int) {
 		TTL:       "15s",
 	}, r.baseClient, sessions, quit, r.logger)
 
-	session := <-sessions
-	if session == "" {
+	sessionID := <-sessions
+	if sessionID == "" {
 		r.logger.NoFields().Fatalln("Could not acquire session")
 	}
-	lock := r.kps.NewUnmanagedLock(session, "")
+	session := r.kps.NewUnmanagedSession(sessionID, "")
 
 	result := make(chan bool, 1)
 	go func() {
@@ -304,7 +304,7 @@ func (r RCtl) RollingUpdate(oldID, newID string, want, need int) {
 			NewRC:           rc_fields.ID(newID),
 			DesiredReplicas: want,
 			MinimumReplicas: need,
-		}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, lock).Run(quit)
+		}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, session).Run(quit)
 		close(result)
 	}()
 
