@@ -203,7 +203,7 @@ func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv runit.SV) e
 			return err
 		}
 
-		if _, err = sv.Restart(&executable.LogAgent, runit.DefaultTimeout); err != nil {
+		if _, err = sv.Restart(&executable.LogAgent, runit.DefaultTimeout); err != nil && err != runit.Killed {
 			return err
 		}
 
