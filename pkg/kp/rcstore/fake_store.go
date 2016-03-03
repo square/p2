@@ -1,6 +1,7 @@
 package rcstore
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
@@ -193,13 +194,16 @@ func (s *fakeStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{},
 }
 
 func (s *fakeStore) LockForMutation(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
-	panic("LockForMutation not implemented")
+	key := fmt.Sprintf("%s/%s", rcID, "mutation_lock")
+	return session.Lock(key)
 }
 
 func (s *fakeStore) LockForOwnership(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
-	panic("LockForOwnership not implemented")
+	key := fmt.Sprintf("%s/%s", rcID, "ownership_lock")
+	return session.Lock(key)
 }
 
 func (s *fakeStore) LockForUpdateCreation(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
-	panic("LockForUpdateCreation not implemented")
+	key := fmt.Sprintf("%s/%s", rcID, "update_creation_lock")
+	return session.Lock(key)
 }

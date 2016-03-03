@@ -3,9 +3,12 @@ package rollstore
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/kptest"
+	"github.com/square/p2/pkg/kp/rcstore"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/util"
@@ -19,7 +22,7 @@ const (
 )
 
 func TestRollPath(t *testing.T) {
-	rollPath, err := RollPath(testRCId)
+	rollPath, err := RollPath(fields.ID(testRCId))
 	if err != nil {
 		t.Fatalf("Unable to compute roll path: %s", err)
 	}
@@ -41,7 +44,7 @@ func TestRollPathErrorNoID(t *testing.T) {
 }
 
 func TestRollLockPath(t *testing.T) {
-	rollLockPath, err := RollLockPath(testRCId)
+	rollLockPath, err := RollLockPath(fields.ID(testRCId))
 	if err != nil {
 		t.Fatalf("Unable to compute roll lock path: %s", err)
 	}
@@ -64,9 +67,10 @@ func TestRollLockPathErrorNoID(t *testing.T) {
 
 type fakeKV struct {
 	entries map[string]*api.KVPair
+	mu      sync.Mutex
 }
 
-func newRollStore(entries map[rc_fields.ID]*api.KVPair) (consulStore, error) {
+func newRollStore(entries map[fields.ID]*api.KVPair) (consulStore, error) {
 	storeFields := make(map[string]*api.KVPair)
 	for k, v := range entries {
 		path, err := RollPath(k)
@@ -79,14 +83,20 @@ func newRollStore(entries map[rc_fields.ID]*api.KVPair) (consulStore, error) {
 		kv: fakeKV{
 			entries: storeFields,
 		},
+		store:   kptest.NewFakePodStore(nil, nil),
+		rcstore: rcstore.NewFake(),
 	}, nil
 }
 
 func (f fakeKV) Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return f.entries[key], nil, nil
 }
 
 func (f fakeKV) List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	ret := make(api.KVPairs, 0)
 	for _, v := range f.entries {
 		ret = append(ret, v)
@@ -95,7 +105,16 @@ func (f fakeKV) List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.Quer
 }
 
 func (f fakeKV) CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
-	return false, nil, util.Errorf("Not implemented")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if keyPair, ok := f.entries[p.Key]; ok {
+		if keyPair.ModifyIndex != p.ModifyIndex {
+			return false, nil, util.Errorf("CAS error for %s", p.Key)
+		}
+	}
+
+	f.entries[p.Key] = p
+	return true, nil, nil
 }
 func (f fakeKV) Delete(key string, w *api.WriteOptions) (*api.WriteMeta, error) {
 	return nil, util.Errorf("Not implemented")
@@ -105,8 +124,8 @@ func (f fakeKV) Acquire(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMet
 }
 
 func TestGet(t *testing.T) {
-	entries := map[rc_fields.ID]*api.KVPair{
-		testRCId: &api.KVPair{
+	entries := map[fields.ID]*api.KVPair{
+		fields.ID(testRCId): &api.KVPair{
 			Value: testRollValue(t, testRCId),
 		},
 	}
@@ -115,7 +134,7 @@ func TestGet(t *testing.T) {
 		t.Fatalf("Unable to initialize fake roll store: %s", err)
 	}
 
-	entry, err := rcStore.Get(testRCId)
+	entry, err := rcStore.Get(fields.ID(testRCId))
 	if err != nil {
 		t.Fatalf("Unexpected error retrieving roll from roll store: %s", err)
 	}
@@ -126,11 +145,11 @@ func TestGet(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	entries := map[rc_fields.ID]*api.KVPair{
-		testRCId: &api.KVPair{
+	entries := map[fields.ID]*api.KVPair{
+		fields.ID(testRCId): &api.KVPair{
 			Value: testRollValue(t, testRCId),
 		},
-		testRCId2: &api.KVPair{
+		fields.ID(testRCId2): &api.KVPair{
 			Value: testRollValue(t, testRCId2),
 		},
 	}
@@ -168,6 +187,39 @@ func TestList(t *testing.T) {
 	}
 	if !matched {
 		t.Errorf("Expected to find a roll with NewRC of %s", testRCId2)
+	}
+}
+
+func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
+	rcStore, err := newRollStore(nil)
+	if err != nil {
+		t.Fatalf("Unable to create roll store for test: %s", err)
+	}
+
+	newRCID := rc_fields.ID("new_rc")
+	oldRCID := rc_fields.ID("old_rc")
+
+	update := fields.Update{
+		NewRC: newRCID,
+		OldRC: oldRCID,
+	}
+
+	err = rcStore.CreateRollingUpdateFromExistingRCs(update)
+	if err != nil {
+		t.Fatalf("Unexpected error creating update: %s", err)
+	}
+
+	storedUpdate, err := rcStore.Get(update.ID())
+	if err != nil {
+		t.Fatalf("Unable to retrieve value put in roll store: %s", err)
+	}
+
+	if storedUpdate.NewRC != newRCID {
+		t.Errorf("Stored update didn't have expected new rc value: wanted '%s' but got '%s'", newRCID, storedUpdate.NewRC)
+	}
+
+	if storedUpdate.OldRC != oldRCID {
+		t.Errorf("Stored update didn't have expected old rc value: wanted '%s' but got '%s'", oldRCID, storedUpdate.OldRC)
 	}
 }
 

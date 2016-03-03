@@ -1,27 +1,65 @@
 package rollstore
 
 import (
-	rcf "github.com/square/p2/pkg/rc/fields"
-	rollf "github.com/square/p2/pkg/roll/fields"
+	"time"
+
+	"github.com/square/p2/pkg/pods"
+	rc_fields "github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/roll/fields"
+
+	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 )
 
 // Store persists Updates into Consul. Updates are uniquely identified by their
 // new RC's ID.
+// NOTE: the interface is cluttered with methods for creating rolling updates
+// for various situations. A generic solution (e.g. Create(req
+// RollingUpdateRequest)) was explored and ultimately deemed too difficult to
+// understand all of the involved situations and the ways they would behave due
+// to the different locking needs of each scenario
 type Store interface {
 	// retrieve this Update
-	Get(rcf.ID) (rollf.Update, error)
+	Get(fields.ID) (fields.Update, error)
 	// retrieve all updates
-	List() ([]rollf.Update, error)
-	// put this Update into the store. Updates are immutable - if another Update
-	// exists with this newRC ID, an error is returned
-	Put(rollf.Update) error
+	List() ([]fields.Update, error)
+	// Creates a rolling update from two existing RCs. Will check that the
+	// RCs actually exist before applying the update, and acquire locks on
+	// them in a deterministic order to guarantee that no two RUs will
+	// operate on the same RC and will avoid deadlock scenarios
+	CreateRollingUpdateFromExistingRCs(update fields.Update) error
+	// Creates a rolling update using an existing RC with a known ID as the
+	// old replication controller, and creates the new replication controller.
+	CreateRollingUpdateFromOneExistingRCWithID(
+		oldRCID rc_fields.ID,
+		desiredReplicas int,
+		minimumReplicas int,
+		leaveOld bool,
+		rollDelay time.Duration,
+		newRCManifest pods.Manifest,
+		newRCNodeSelector klabels.Selector,
+		newRCPodLabels klabels.Set,
+	) error
+	// Creates a rolling update using a label selector to identify the old
+	// replication controller to be used.  If one does not exist, one will
+	// be created to serve as a "dummy" old replication controller. The new
+	// replication controller will be created.
+	CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
+		oldRCSelector klabels.Selector,
+		desiredReplicas int,
+		minimumReplicas int,
+		leaveOld bool,
+		rollDelay time.Duration,
+		newRCManifest pods.Manifest,
+		newRCNodeSelector klabels.Selector,
+		newRCPodLabels klabels.Set,
+	) error
 	// delete this Update from the store
-	Delete(rcf.ID) error
+	Delete(fields.ID) error
 	// take a lock on this ID. Before taking ownership of an Update, its new RC
 	// ID, and old RC ID if any, should both be locked. If the error return is
 	// nil, then the boolean indicates whether the lock was successfully taken.
-	Lock(rcf.ID, string) (bool, error)
+	Lock(fields.ID, string) (bool, error)
 	// Watch for changes to the store and generate a list of Updates for each
 	// change. This function does not block.
-	Watch(<-chan struct{}) (<-chan []rollf.Update, <-chan error)
+	Watch(<-chan struct{}) (<-chan []fields.Update, <-chan error)
 }

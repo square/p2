@@ -118,7 +118,7 @@ func main() {
 	rctl := RCtl{
 		baseClient: client,
 		rcs:        rcstore.NewConsul(client, 3),
-		rls:        rollstore.NewConsul(client),
+		rls:        rollstore.NewConsul(client, nil),
 		kps:        kp.NewConsulStore(client),
 		labeler:    labeler,
 		sched:      sched,
@@ -335,7 +335,7 @@ LOOP:
 }
 
 func (r RCtl) ScheduleUpdate(oldID, newID string, want, need int) {
-	err := r.rls.Put(roll_fields.Update{
+	err := r.rls.CreateRollingUpdateFromExistingRCs(roll_fields.Update{
 		OldRC:           rc_fields.ID(oldID),
 		NewRC:           rc_fields.ID(newID),
 		DesiredReplicas: want,

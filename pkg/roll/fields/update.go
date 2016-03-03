@@ -6,6 +6,8 @@ import (
 	"github.com/square/p2/pkg/rc/fields"
 )
 
+type ID string
+
 // An Update (roll.Update, borrowed from kubectl's "rolling-update" command)
 // represents a transition from one replication controller to another. The IDs
 // represent the two RCs involved in the transition.
@@ -50,4 +52,10 @@ type Update struct {
 	// unhealthy after being healthy for a short duration. Naive implementations like
 	// p2-replicate do not handle such after-the-fact unhealthiness. Default is 0.
 	RollDelay time.Duration
+}
+
+// Implementation detail: a rolling updates ID matches that of it's NewRC. We may
+// change this at some point
+func (u Update) ID() ID {
+	return ID(u.NewRC)
 }

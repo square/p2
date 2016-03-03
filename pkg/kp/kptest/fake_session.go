@@ -15,6 +15,8 @@ type fakeSession struct {
 	locks     map[string]bool
 	mu        sync.Mutex
 	destroyed bool
+
+	renewalErrCh chan error
 }
 
 var _ kp.Session = &fakeSession{}
@@ -69,5 +71,6 @@ func (f *fakeSession) Destroy() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.destroyed = true
+	close(f.renewalErrCh)
 	return nil
 }

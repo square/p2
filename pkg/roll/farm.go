@@ -174,7 +174,7 @@ START_LOOP:
 					continue
 				}
 
-				lockPath, err := rollstore.RollLockPath(rlField.NewRC)
+				lockPath, err := rollstore.RollLockPath(roll_fields.ID(rlField.NewRC))
 				if err != nil {
 					rlLogger.WithError(err).Errorln("Unable to compute roll lock path")
 				}
@@ -205,7 +205,7 @@ START_LOOP:
 				}
 				foundChildren[rlField.NewRC] = struct{}{}
 
-				go func(id fields.ID) {
+				go func(id roll_fields.ID) {
 					if !newChild.Run(childQuit) {
 						// returned false, farm must have asked us to quit
 						return
@@ -216,7 +216,7 @@ START_LOOP:
 						rlLogger.WithError(err).Errorln("Could not delete update")
 						time.Sleep(1 * time.Second)
 					}
-				}(rlField.NewRC) // do not close over rlField, it's a loop variable
+				}(roll_fields.ID(rlField.NewRC)) // do not close over rlField, it's a loop variable
 			}
 
 			// now remove any children that were not found in the result set

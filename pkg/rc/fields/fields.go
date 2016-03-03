@@ -2,6 +2,7 @@ package fields
 
 import (
 	"encoding/json"
+	"sort"
 
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 
@@ -115,3 +116,20 @@ func (rc *RC) UnmarshalJSON(b []byte) error {
 }
 
 var _ json.Unmarshaler = &RC{}
+
+// Implements sort.Interface to make a list of ids sortable lexicographically
+type IDs []ID
+
+var _ sort.Interface = make(IDs, 0)
+
+func (ids IDs) Len() int {
+	return len(ids)
+}
+
+func (ids IDs) Less(i, j int) bool {
+	return ids[i] < ids[j]
+}
+
+func (ids IDs) Swap(i, j int) {
+	ids[i], ids[j] = ids[j], ids[i]
+}

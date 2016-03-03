@@ -97,9 +97,9 @@ func (f *FakePodStore) GetHealth(service, node string) (kp.WatchResult, error) {
 
 func (f *FakePodStore) NewSession(name string, renewalCh <-chan time.Time) (kp.Session, chan error, error) {
 	renewalErrCh := make(chan error)
-	close(renewalErrCh)
 	return &fakeSession{
-		locks: make(map[string]bool),
+		locks:        make(map[string]bool),
+		renewalErrCh: renewalErrCh,
 	}, renewalErrCh, nil
 }
 
