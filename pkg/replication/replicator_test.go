@@ -80,19 +80,19 @@ func TestInitializeReplicationFailsIfLockExists(t *testing.T) {
 	}
 
 	// Claim a lock on a host and verify that InitializeReplication fails
-	lock, _, err := store.NewLock("competing lock", nil)
+	session, _, err := store.NewSession("competing session", nil)
 	if err != nil {
-		t.Fatalf("Unable to set up competing lock: %s", err)
+		t.Fatalf("Unable to set up competing session: %s", err)
 	}
-	defer lock.Destroy()
+	defer session.Destroy()
 	lockPath, err := kp.PodLockPath(kp.INTENT_TREE, testNodes[0], testPodId)
 	if err != nil {
 		t.Fatalf("Unable to compute pod lock path: %s", err)
 	}
 
-	err = lock.Lock(lockPath)
+	_, err = session.Lock(lockPath)
 	if err != nil {
-		t.Fatalf("Unable to set up competing lock: %s", err)
+		t.Fatalf("Unable to acquire lock with competing session: %s", err)
 	}
 
 	_, _, testErr := replicator.InitializeReplication(false, false)
@@ -116,16 +116,16 @@ func TestInitializeReplicationReleasesLocks(t *testing.T) {
 	setupPreparers(f)
 
 	// Claim a lock on test node 1
-	lock, _, err := store.NewLock("competing lock", nil)
+	session, _, err := store.NewSession("competing session", nil)
 	if err != nil {
-		t.Fatalf("Unable to set up competing lock: %s", err)
+		t.Fatalf("Unable to set up competing session: %s", err)
 	}
-	defer lock.Destroy()
+	defer session.Destroy()
 	lockPath1, err := kp.PodLockPath(kp.INTENT_TREE, testNodes[1], testPodId)
 	if err != nil {
 		t.Fatalf("Unable to compute pod lock path: %s", err)
 	}
-	err = lock.Lock(lockPath1)
+	_, err = session.Lock(lockPath1)
 	if err != nil {
 		t.Fatalf("Unable to set up competing lock: %s", err)
 	}
@@ -144,7 +144,7 @@ func TestInitializeReplicationReleasesLocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = lock.Lock(lockPath0)
+	_, err = session.Lock(lockPath0)
 	if err != nil {
 		t.Fatalf("unable to acquire lock. replicator probably didn't release its lock on error: %v", err)
 	}
@@ -162,17 +162,17 @@ func TestInitializeReplicationCanOverrideLocks(t *testing.T) {
 	}
 
 	// Claim a lock on a host and verify that InitializeReplication fails
-	lock, _, err := store.NewLock("competing lock", nil)
+	session, _, err := store.NewSession("competing session", nil)
 	if err != nil {
-		t.Fatalf("Unable to set up competing lock: %s", err)
+		t.Fatalf("Unable to set up competing session: %s", err)
 	}
-	defer lock.Destroy()
+	defer session.Destroy()
 	lockPath, err := kp.PodLockPath(kp.INTENT_TREE, testNodes[0], testPodId)
 	if err != nil {
 		t.Fatalf("Unable to compute pod lock path: %s", err)
 	}
 
-	err = lock.Lock(lockPath)
+	_, err = session.Lock(lockPath)
 	if err != nil {
 		t.Fatalf("Unable to set up competing lock: %s", err)
 	}
