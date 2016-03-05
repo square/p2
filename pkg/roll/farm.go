@@ -16,6 +16,8 @@ import (
 	"github.com/square/p2/pkg/rc/fields"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/util"
+
+	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 )
 
 type Factory interface {
@@ -42,6 +44,11 @@ type RCGetter interface {
 // added to and deleted from Consul. Multiple farms can exist simultaneously,
 // but each one must hold a different Consul session. This ensures that the
 // farms do not instantiate the same rolling update multiple times.
+//
+// Roll farms take an RC selector that is used to decide whether this farm should
+// pick up a particular RU request. This can be used to assist in RU partitioning
+// of work or to create test environments. Note that this is _not_ required for RU farms
+// to cooperatively schedule work.
 type Farm struct {
 	factory  Factory
 	kps      kp.Store
@@ -53,6 +60,9 @@ type Farm struct {
 	session  kp.Session
 
 	logger logging.Logger
+
+	labeler    labels.Applicator
+	rcSelector klabels.Selector
 }
 
 type childRU struct {
@@ -68,15 +78,19 @@ func NewFarm(
 	rcs RCGetter,
 	sessions <-chan string,
 	logger logging.Logger,
+	labeler labels.Applicator,
+	rcSelector klabels.Selector,
 ) *Farm {
 	return &Farm{
-		factory:  factory,
-		kps:      kps,
-		rls:      rls,
-		rcs:      rcs,
-		sessions: sessions,
-		logger:   logger,
-		children: make(map[fields.ID]childRU),
+		factory:    factory,
+		kps:        kps,
+		rls:        rls,
+		rcs:        rcs,
+		sessions:   sessions,
+		logger:     logger,
+		children:   make(map[fields.ID]childRU),
+		labeler:    labeler,
+		rcSelector: rcSelector,
 	}
 }
 
@@ -116,6 +130,7 @@ START_LOOP:
 			// track which children were found in the returned set
 			foundChildren := make(map[fields.ID]struct{})
 			for _, rlField := range rlFields {
+
 				rlLogger := rlf.logger.SubLogger(logrus.Fields{
 					"ru": rlField.NewRC,
 				})
@@ -139,6 +154,26 @@ START_LOOP:
 					continue
 				}
 
+				shouldWorkOnOld, err := rlf.shouldWorkOn(rlField.OldRC)
+				if err != nil {
+					rlLogger.WithError(err).Errorf("Could not determine if should work on RC %s, skipping", rlField.OldRC)
+					continue
+				}
+				if !shouldWorkOnOld {
+					rlLogger.WithField("old_rc", rlField.OldRC).Infof("Ignoring roll for old RC %s, not meant for this farm", rlField.OldRC)
+					continue
+				}
+
+				shouldWorkOnNew, err := rlf.shouldWorkOn(rlField.NewRC)
+				if err != nil {
+					rlLogger.WithError(err).Errorf("Could not determine if should work on RC %s, skipping", rlField.NewRC)
+					continue
+				}
+				if !shouldWorkOnNew {
+					rlLogger.WithField("new_rc", rlField.NewRC).Infof("Ignoring roll for new RC %s, not meant for this farm", rlField.NewRC)
+					continue
+				}
+
 				lockPath, err := rollstore.RollLockPath(rlField.NewRC)
 				if err != nil {
 					rlLogger.WithError(err).Errorln("Unable to compute roll lock path")
@@ -159,7 +194,7 @@ START_LOOP:
 				}
 
 				// at this point the ru is ours, time to spin it up
-				rlLogger.NoFields().Infoln("Acquired lock on new update, spawning")
+				rlLogger.WithField("new_rc", rlField.NewRC).Infof("Acquired lock on update %s -> %s, spawning", rlField.OldRC, rlField.NewRC)
 
 				newChild := rlf.factory.New(rlField, rlLogger, rlf.session)
 				childQuit := make(chan struct{})
@@ -193,6 +228,18 @@ START_LOOP:
 			}
 		}
 	}
+}
+
+// test if the farm should work on the given replication controller ID
+func (rlf *Farm) shouldWorkOn(rcID fields.ID) (bool, error) {
+	if rlf.rcSelector.Empty() {
+		return true, nil
+	}
+	labels, err := rlf.labeler.GetLabels(labels.RC, rcID.String())
+	if err != nil {
+		return false, err
+	}
+	return rlf.rcSelector.Matches(labels.Labels), nil
 }
 
 // close one child

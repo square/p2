@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
 
+	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
@@ -108,5 +109,5 @@ func main() {
 		HealthChecker: healthChecker,
 		Labeler:       labeler,
 		Scheduler:     scheduler,
-	}, kpStore, rollStore, rcStore, rlSub.Chan(), logger).Start(nil)
+	}, kpStore, rollStore, rcStore, rlSub.Chan(), logger, labeler, klabels.Everything()).Start(nil)
 }
