@@ -6,6 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/rc/fields"
+
+	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"github.com/square/p2/pkg/labels"
+
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 )
 
@@ -18,6 +23,35 @@ func TestWouldBlock(t *testing.T) {
 	Assert(t).AreEqual(rollAlgorithm(2, 2, 6, 3), 1, "should schedule difference if minimum must be maintained")
 	Assert(t).AreEqual(rollAlgorithm(1, 3, 6, 3), 3, "should schedule remaining if minimum is satisfied by new")
 	Assert(t).AreEqual(rollAlgorithm(3, 0, 6, 0), 6, "should schedule remaining if no minimum")
+}
+
+func TestWouldWorkOn(t *testing.T) {
+	fakeLabels := labels.NewFakeApplicator()
+	fakeLabels.SetLabel(labels.RC, "abc-123", "color", "red")
+	fakeLabels.SetLabel(labels.RC, "def-456", "color", "blue")
+
+	f := &Farm{
+		labeler:    fakeLabels,
+		rcSelector: klabels.Everything().Add("color", klabels.EqualsOperator, []string{"red"}),
+	}
+
+	workOn, err := f.shouldWorkOn(fields.ID("abc-123"))
+	Assert(t).IsNil(err, "should not have erred on abc-123")
+	Assert(t).IsTrue(workOn, "should have worked on abc-123, but didn't")
+
+	dontWorkOn, err := f.shouldWorkOn(fields.ID("def-456"))
+	Assert(t).IsNil(err, "should not have erred on def-456")
+	Assert(t).IsFalse(dontWorkOn, "should not have worked on def-456, but did")
+
+	dontWorkOn, err = f.shouldWorkOn(fields.ID("987-cba"))
+	Assert(t).IsNil(err, "should not have erred on 987-cba")
+	Assert(t).IsFalse(dontWorkOn, "should not have worked on 987-cba, but did")
+
+	f.rcSelector = klabels.Everything()
+
+	workOn, err = f.shouldWorkOn(fields.ID("def-456"))
+	Assert(t).IsNil(err, "should not have erred on def-456")
+	Assert(t).IsTrue(workOn, "should have worked on def-456, but didn't")
 }
 
 func TestSimulateRollingUpgradeDisable(t *testing.T) {
