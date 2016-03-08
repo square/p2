@@ -118,7 +118,7 @@ START_LOOP:
 					rcLogger.NoFields().Debugln("Lock on replication controller was denied")
 					continue
 				} else if err != nil {
-					rcLogger.NoFields().Errorln("Got error while locking replication controller - session may be expired")
+					rcLogger.WithError(err).Errorln("Got error while locking replication controller - session may be expired")
 					// stop processing this update and go back to the select
 					// chances are this error is a network problem or session
 					// expiry, and all the others in this update would also fail
