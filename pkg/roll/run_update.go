@@ -50,7 +50,7 @@ func NewUpdate(
 	logger logging.Logger,
 	session kp.Session,
 ) Update {
-	return update{
+	return &update{
 		Update:  f,
 		kps:     kps,
 		rcs:     rcs,
@@ -89,7 +89,7 @@ func RetryOrQuit(f func() error, quit <-chan struct{}, logger logging.Logger, er
 	return true
 }
 
-func (u update) Run(quit <-chan struct{}) (ret bool) {
+func (u *update) Run(quit <-chan struct{}) (ret bool) {
 	u.logger.NoFields().Debugln("Locking")
 	// TODO: implement API for blocking locks and use that instead of retrying
 	if !RetryOrQuit(
@@ -240,7 +240,7 @@ ROLL_LOOP:
 	return true // finally if we make it here, we can return true
 }
 
-func (u update) lockRCs(done <-chan struct{}) error {
+func (u *update) lockRCs(done <-chan struct{}) error {
 	newPath, err := rcstore.RCUpdateLockPath(u.NewRC)
 	if err != nil {
 		return err
@@ -280,7 +280,7 @@ func (u update) lockRCs(done <-chan struct{}) error {
 // unlockRCs releases the locks on the old and new RCs. To avoid a system-wide deadlock in
 // RCs, this method ensures that the locks are always released, either by retrying until
 // individual releases are successful or until the session is reset.
-func (u update) unlockRCs(done <-chan struct{}) {
+func (u *update) unlockRCs(done <-chan struct{}) {
 	wg := sync.WaitGroup{}
 	for _, unlocker := range []kp.Unlocker{u.newRCUnlocker, u.oldRCUnlocker} {
 		wg.Add(1)
@@ -301,7 +301,7 @@ func (u update) unlockRCs(done <-chan struct{}) {
 
 // enable sets the old & new RCs to a known-good state to start a rolling update:
 // the old RC should be disabled and the new RC should be enabled.
-func (u update) enable() error {
+func (u *update) enable() error {
 	// Disable the old RC first to make sure that the two RCs don't fight each other.
 	err := u.rcs.Disable(u.OldRC)
 	if err != nil {
@@ -323,7 +323,7 @@ type rcNodeCounts struct {
 	Healthy int // the number of real nodes that are healthy
 }
 
-func (u update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNodeCounts, error) {
+func (u *update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNodeCounts, error) {
 	ret := rcNodeCounts{}
 	rcFields, err := u.rcs.Get(id)
 	if rcstore.IsNotExist(err) {
@@ -363,7 +363,7 @@ func (u update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNode
 	return ret, err
 }
 
-func (u update) shouldRollAfterDelay(newFields rcf.RC) (int, error) {
+func (u *update) shouldRollAfterDelay(newFields rcf.RC) (int, error) {
 	// Check health again following the roll delay. If things have gotten
 	// worse since we last looked, or there is an error, we break this iteration.
 	checks, err := u.hcheck.Service(newFields.Manifest.ID().String())
