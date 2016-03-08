@@ -283,18 +283,22 @@ func (u update) lockRCs(done <-chan struct{}) error {
 func (u update) unlockRCs(done <-chan struct{}) {
 	wg := sync.WaitGroup{}
 	for _, unlocker := range []kp.Unlocker{u.newRCUnlocker, u.oldRCUnlocker} {
-		wg.Add(1)
-		go func(unlocker kp.Unlocker) {
-			defer wg.Done()
-			RetryOrQuit(
-				func() error {
-					return unlocker.Unlock()
-				},
-				done,
-				u.logger,
-				fmt.Sprintf("unlocking rc: %s", unlocker.Key()),
-			)
-		}(unlocker)
+		// unlockRCs is called whenever Run() exits, so we have to
+		// handle the case where we didn't lock anything yet
+		if unlocker != nil {
+			wg.Add(1)
+			go func(unlocker kp.Unlocker) {
+				defer wg.Done()
+				RetryOrQuit(
+					func() error {
+						return unlocker.Unlock()
+					},
+					done,
+					u.logger,
+					fmt.Sprintf("unlocking rc: %s", unlocker.Key()),
+				)
+			}(unlocker)
+		}
 	}
 	wg.Wait()
 }
