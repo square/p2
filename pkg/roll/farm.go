@@ -186,7 +186,7 @@ START_LOOP:
 					rlLogger.NoFields().Debugln("Lock on update was denied")
 					continue
 				} else if err != nil {
-					rlLogger.NoFields().Errorln("Got error while locking update - session may be expired")
+					rlLogger.WithError(err).Errorln("Got error while locking update - session may be expired")
 					// stop processing this update and go back to the select
 					// chances are this error is a network problem or session
 					// expiry, and all the others in this update would also fail
