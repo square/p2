@@ -17,6 +17,18 @@ type fakeSession struct {
 	destroyed bool
 
 	renewalErrCh chan error
+
+	// list of locks held to release when session is destroyed
+	locksHeld map[string]bool
+}
+
+func newFakeSession(globalLocks map[string]bool, lockMutex sync.Mutex, renewalErrCh chan error) kp.Session {
+	return &fakeSession{
+		locks:        globalLocks,
+		mu:           lockMutex,
+		renewalErrCh: renewalErrCh,
+		locksHeld:    make(map[string]bool),
+	}
 }
 
 var _ kp.Session = &fakeSession{}
@@ -34,6 +46,7 @@ func (u *fakeUnlocker) Unlock() error {
 	}
 
 	u.session.locks[u.key] = false
+	delete(u.session.locksHeld, u.key)
 	return nil
 }
 
@@ -56,6 +69,7 @@ func (f *fakeSession) Lock(key string) (kp.Unlocker, error) {
 	}
 
 	f.locks[key] = true
+	f.locksHeld[key] = true
 	return &fakeUnlocker{
 		key:     key,
 		session: f,
@@ -71,6 +85,9 @@ func (f *fakeSession) Destroy() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.destroyed = true
+	for k, _ := range f.locksHeld {
+		delete(f.locks, k)
+	}
 	close(f.renewalErrCh)
 	return nil
 }
