@@ -70,14 +70,20 @@ type fakeKV struct {
 	mu      sync.Mutex
 }
 
-func newRollStore(entries map[fields.ID]*api.KVPair) (consulStore, error) {
+func newRollStore(t *testing.T, entries []fields.Update) (consulStore, error) {
 	storeFields := make(map[string]*api.KVPair)
-	for k, v := range entries {
-		path, err := RollPath(k)
+	for _, u := range entries {
+		path, err := RollPath(fields.ID(u.NewRC))
 		if err != nil {
 			return consulStore{}, err
 		}
-		storeFields[path] = v
+		json, err := json.Marshal(u)
+		if err != nil {
+			t.Fatalf("Unable to marshal test field as JSON: %s", err)
+		}
+		storeFields[path] = &api.KVPair{
+			Value: json,
+		}
 	}
 	return consulStore{
 		kv: fakeKV{
@@ -124,12 +130,7 @@ func (f fakeKV) Acquire(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMet
 }
 
 func TestGet(t *testing.T) {
-	entries := map[fields.ID]*api.KVPair{
-		fields.ID(testRCId): &api.KVPair{
-			Value: testRollValue(t, testRCId),
-		},
-	}
-	rcStore, err := newRollStore(entries)
+	rcStore, err := newRollStore(t, []fields.Update{testRollValue(testRCId)})
 	if err != nil {
 		t.Fatalf("Unable to initialize fake roll store: %s", err)
 	}
@@ -145,15 +146,8 @@ func TestGet(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	entries := map[fields.ID]*api.KVPair{
-		fields.ID(testRCId): &api.KVPair{
-			Value: testRollValue(t, testRCId),
-		},
-		fields.ID(testRCId2): &api.KVPair{
-			Value: testRollValue(t, testRCId2),
-		},
-	}
-	rcStore, err := newRollStore(entries)
+	entries := []fields.Update{testRollValue(testRCId), testRollValue(testRCId2)}
+	rcStore, err := newRollStore(t, entries)
 	if err != nil {
 		t.Fatalf("Unable to initialize fake roll store: %s", err)
 	}
@@ -191,7 +185,7 @@ func TestList(t *testing.T) {
 }
 
 func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
-	rcStore, err := newRollStore(nil)
+	rcStore, err := newRollStore(t, nil)
 	if err != nil {
 		t.Fatalf("Unable to create roll store for test: %s", err)
 	}
@@ -223,15 +217,9 @@ func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
 	}
 }
 
-func testRollValue(t *testing.T, id rc_fields.ID) []byte {
+func testRollValue(id rc_fields.ID) fields.Update {
 	// not a full update, just enough for a smoke test
-	update := fields.Update{
+	return fields.Update{
 		NewRC: id,
 	}
-
-	json, err := json.Marshal(update)
-	if err != nil {
-		t.Fatalf("Unable to marshal test field as JSON: %s", err)
-	}
-	return json
 }
