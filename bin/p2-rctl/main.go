@@ -335,7 +335,7 @@ LOOP:
 }
 
 func (r RCtl) ScheduleUpdate(oldID, newID string, want, need int) {
-	err := r.rls.CreateRollingUpdateFromExistingRCs(roll_fields.Update{
+	_, err := r.rls.CreateRollingUpdateFromExistingRCs(roll_fields.Update{
 		OldRC:           rc_fields.ID(oldID),
 		NewRC:           rc_fields.ID(newID),
 		DesiredReplicas: want,

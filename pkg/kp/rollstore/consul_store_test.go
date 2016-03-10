@@ -70,12 +70,12 @@ type fakeKV struct {
 	mu      sync.Mutex
 }
 
-func newRollStore(t *testing.T, entries []fields.Update) (consulStore, error) {
+func newRollStore(t *testing.T, entries []fields.Update) consulStore {
 	storeFields := make(map[string]*api.KVPair)
 	for _, u := range entries {
 		path, err := RollPath(fields.ID(u.NewRC))
 		if err != nil {
-			return consulStore{}, err
+			t.Fatalf("Unable to create roll store for test: %s", err)
 		}
 		json, err := json.Marshal(u)
 		if err != nil {
@@ -91,7 +91,7 @@ func newRollStore(t *testing.T, entries []fields.Update) (consulStore, error) {
 		},
 		store:   kptest.NewFakePodStore(nil, nil),
 		rcstore: rcstore.NewFake(),
-	}, nil
+	}
 }
 
 func (f fakeKV) Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
@@ -130,10 +130,7 @@ func (f fakeKV) Acquire(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMet
 }
 
 func TestGet(t *testing.T) {
-	rollstore, err := newRollStore(t, []fields.Update{testRollValue(testRCId)})
-	if err != nil {
-		t.Fatalf("Unable to initialize fake roll store: %s", err)
-	}
+	rollstore := newRollStore(t, []fields.Update{testRollValue(testRCId)})
 
 	entry, err := rollstore.Get(fields.ID(testRCId))
 	if err != nil {
@@ -147,10 +144,7 @@ func TestGet(t *testing.T) {
 
 func TestList(t *testing.T) {
 	entries := []fields.Update{testRollValue(testRCId), testRollValue(testRCId2)}
-	rollstore, err := newRollStore(t, entries)
-	if err != nil {
-		t.Fatalf("Unable to initialize fake roll store: %s", err)
-	}
+	rollstore := newRollStore(t, entries)
 
 	rolls, err := rollstore.List()
 	if err != nil {
@@ -185,10 +179,7 @@ func TestList(t *testing.T) {
 }
 
 func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
-	rollstore, err := newRollStore(t, nil)
-	if err != nil {
-		t.Fatalf("Unable to create roll store for test: %s", err)
-	}
+	rollstore := newRollStore(t, nil)
 
 	newRCID := rc_fields.ID("new_rc")
 	oldRCID := rc_fields.ID("old_rc")
@@ -198,7 +189,7 @@ func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
 		OldRC: oldRCID,
 	}
 
-	err = rollstore.CreateRollingUpdateFromExistingRCs(update)
+	_, err := rollstore.CreateRollingUpdateFromExistingRCs(update)
 	if err != nil {
 		t.Fatalf("Unexpected error creating update: %s", err)
 	}
@@ -226,17 +217,15 @@ func TestCreateExistingRCsMutualExclusion(t *testing.T) {
 		OldRC: newRCID,
 		NewRC: rc_fields.ID("some_other_rc"),
 	}
-	rollstore, err := newRollStore(t, []fields.Update{conflictingEntry})
-	if err != nil {
-		t.Fatalf("Unable to create roll store for test: %s", err)
-	}
+
+	rollstore := newRollStore(t, []fields.Update{conflictingEntry})
 
 	update := fields.Update{
 		NewRC: newRCID,
 		OldRC: oldRCID,
 	}
 
-	err = rollstore.CreateRollingUpdateFromExistingRCs(update)
+	_, err := rollstore.CreateRollingUpdateFromExistingRCs(update)
 	if err == nil {
 		t.Fatal("Expected update creation to fail due to conflict")
 	}
@@ -251,10 +240,7 @@ func TestCreateFailsIfCantAcquireLock(t *testing.T) {
 	newRCID := rc_fields.ID("new_rc")
 	oldRCID := rc_fields.ID("old_rc")
 
-	rollstore, err := newRollStore(t, nil)
-	if err != nil {
-		t.Fatalf("Unable to create roll store for test: %s", err)
-	}
+	rollstore := newRollStore(t, nil)
 
 	update := fields.Update{
 		NewRC: newRCID,
@@ -274,7 +260,7 @@ func TestCreateFailsIfCantAcquireLock(t *testing.T) {
 		t.Fatalf("Unable to acquire conflicting lock on old rc: %s", err)
 	}
 
-	err = rollstore.CreateRollingUpdateFromExistingRCs(update)
+	_, err = rollstore.CreateRollingUpdateFromExistingRCs(update)
 	if err == nil {
 		t.Fatal("Expected update creation to fail due to lock conflict")
 	}

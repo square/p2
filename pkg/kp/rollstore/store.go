@@ -26,7 +26,7 @@ type Store interface {
 	// RCs actually exist before applying the update, and acquire locks on
 	// them in a deterministic order to guarantee that no two RUs will
 	// operate on the same RC and will avoid deadlock scenarios
-	CreateRollingUpdateFromExistingRCs(update fields.Update) error
+	CreateRollingUpdateFromExistingRCs(update fields.Update) (fields.Update, error)
 	// Creates a rolling update using an existing RC with a known ID as the
 	// old replication controller, and creates the new replication controller.
 	CreateRollingUpdateFromOneExistingRCWithID(
@@ -38,7 +38,7 @@ type Store interface {
 		newRCManifest pods.Manifest,
 		newRCNodeSelector klabels.Selector,
 		newRCPodLabels klabels.Set,
-	) error
+	) (fields.Update, error)
 	// Creates a rolling update using a label selector to identify the old
 	// replication controller to be used.  If one does not exist, one will
 	// be created to serve as a "dummy" old replication controller. The new
@@ -52,7 +52,7 @@ type Store interface {
 		newRCManifest pods.Manifest,
 		newRCNodeSelector klabels.Selector,
 		newRCPodLabels klabels.Set,
-	) error
+	) (fields.Update, error)
 	// delete this Update from the store
 	Delete(fields.ID) error
 	// take a lock on this ID. Before taking ownership of an Update, its new RC

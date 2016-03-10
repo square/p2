@@ -186,22 +186,22 @@ func (s consulStore) checkForConflictingUpdates(rcIDs rc_fields.IDs) error {
 //      labels on replication controllers referring back to the RUs that they
 //      refer to. Then a constant lookup can be done for those labels, and the
 //      operation can be aborted.
-func (s consulStore) CreateRollingUpdateFromExistingRCs(u roll_fields.Update) error {
+func (s consulStore) CreateRollingUpdateFromExistingRCs(u roll_fields.Update) (roll_fields.Update, error) {
 	session, renewalErrCh, err := s.newRUCreationSession()
 	if err != nil {
-		return err
+		return roll_fields.Update{}, err
 	}
 	defer session.Destroy()
 
 	rcIDs := rc_fields.IDs{u.NewRC, u.OldRC}
 	err = s.lockRCs(rcIDs, session)
 	if err != nil {
-		return err
+		return roll_fields.Update{}, err
 	}
 
 	err = s.checkForConflictingUpdates(rcIDs)
 	if err != nil {
-		return err
+		return roll_fields.Update{}, err
 	}
 
 	return s.attemptRUCreation(u, renewalErrCh)
@@ -219,7 +219,7 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	newRCManifest pods.Manifest,
 	newRCNodeSelector klabels.Selector,
 	newRCPodLabels klabels.Set,
-) (err error) {
+) (u roll_fields.Update, err error) {
 	// There are cases where this function will create the new RC and
 	// subsequently fail, in which case we need to do some cleanup.
 
@@ -237,30 +237,30 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	var renewalErrCh chan error
 	session, renewalErrCh, err = s.newRUCreationSession()
 	if err != nil {
-		return err
+		return roll_fields.Update{}, err
 	}
 	defer session.Destroy()
 
 	rcIDs := rc_fields.IDs{oldRCID}
 	err = s.lockRCs(rcIDs, session)
 	if err != nil {
-		return err
+		return roll_fields.Update{}, err
 	}
 
 	err = s.checkForConflictingUpdates(rcIDs)
 	if err != nil {
-		return err
+		return roll_fields.Update{}, err
 	}
 
 	// Now create the new RC, first checking if our session is still valid
 	var newRCID rc_fields.ID
 	select {
 	case err = <-renewalErrCh:
-		return
+		return roll_fields.Update{}, err
 	default:
 		rc, err := s.rcstore.Create(newRCManifest, newRCNodeSelector, newRCPodLabels)
 		if err != nil {
-			return err
+			return roll_fields.Update{}, err
 		}
 
 		newRCCleanup = func() {
@@ -276,7 +276,7 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 		// update creations can use it
 		err = s.lockRCs(rc_fields.IDs{newRCID}, session)
 		if err != nil {
-			return err
+			return roll_fields.Update{}, err
 		}
 	}
 
@@ -285,10 +285,10 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	// RC between when we created it and locked it
 	err = s.checkForConflictingUpdates(rcIDs)
 	if err != nil {
-		return err
+		return roll_fields.Update{}, err
 	}
 
-	u := roll_fields.Update{
+	u = roll_fields.Update{
 		OldRC:           oldRCID,
 		NewRC:           newRCID,
 		DesiredReplicas: desiredReplicas,
@@ -315,7 +315,7 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	newRCManifest pods.Manifest,
 	newRCNodeSelector klabels.Selector,
 	newRCPodLabels klabels.Set,
-) (err error) {
+) (u roll_fields.Update, err error) {
 	// This function may or may not create old and new RCs and subsequently
 	// fail, so we defer a function that does any cleanup (if applicable)
 	var cleanupOldRC func()
@@ -335,19 +335,19 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 	session, renewalErrCh, err := s.newRUCreationSession()
 	if err != nil {
-		return err
+		return roll_fields.Update{}, err
 	}
 	defer session.Destroy()
 
 	// Check if any RCs match the oldRCSelector
 	matches, err := s.labeler.GetMatches(oldRCSelector, labels.RC)
 	if err != nil {
-		return err
+		return roll_fields.Update{}, err
 	}
 
 	var oldRCID rc_fields.ID
 	if len(matches) > 1 {
-		return util.Errorf(
+		return roll_fields.Update{}, util.Errorf(
 			"Can't create update: old RC selector %s was ambiguous, provided %d matches",
 			oldRCSelector.String(),
 			len(matches),
@@ -356,7 +356,7 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		oldRCID = rc_fields.ID(matches[0].ID)
 	} else {
 		if leaveOld {
-			return util.Errorf(
+			return roll_fields.Update{}, util.Errorf(
 				"Can't create an update with LeaveOld set if there is no old RC (sel=%s)",
 				oldRCSelector.String(),
 			)
@@ -366,7 +366,7 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		// removed when the update completes anyway
 		rc, err := s.rcstore.Create(newRCManifest, newRCNodeSelector, newRCPodLabels)
 		if err != nil {
-			return err
+			return roll_fields.Update{}, err
 		}
 
 		oldRCID = rc.ID
@@ -381,24 +381,24 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	// Lock the old RC to guarantee that no new updates can use it
 	err = s.lockRCs(rc_fields.IDs{oldRCID}, session)
 	if err != nil {
-		return err
+		return roll_fields.Update{}, err
 	}
 
 	// Check for updates that exist that operate on the old RC
 	err = s.checkForConflictingUpdates(rc_fields.IDs{oldRCID})
 	if err != nil {
-		return err
+		return roll_fields.Update{}, err
 	}
 
 	// Create the new RC
 	var newRCID rc_fields.ID
 	select {
 	case err = <-renewalErrCh:
-		return err
+		return roll_fields.Update{}, err
 	default:
 		rc, err := s.rcstore.Create(newRCManifest, newRCNodeSelector, newRCPodLabels)
 		if err != nil {
-			return err
+			return roll_fields.Update{}, err
 		}
 
 		newRCID = rc.ID
@@ -415,17 +415,17 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	// with another parallel update creation
 	err = s.lockRCs(rc_fields.IDs{newRCID}, session)
 	if err != nil {
-		return err
+		return roll_fields.Update{}, err
 	}
 
 	// Check once again for conflicting updates in case a racing update
 	// creation grabbed the new RC we just created
 	err = s.checkForConflictingUpdates(rc_fields.IDs{newRCID})
 	if err != nil {
-		return err
+		return roll_fields.Update{}, err
 	}
 
-	u := roll_fields.Update{
+	u = roll_fields.Update{
 		OldRC:           oldRCID,
 		NewRC:           newRCID,
 		DesiredReplicas: desiredReplicas,
@@ -532,15 +532,15 @@ func kvpToRU(kvp *api.KVPair) (roll_fields.Update, error) {
 // Attempts to create a rolling update. Checks sessionErrCh for session renewal
 // errors just before actually doing the creation to minimize the likelihood of
 // race conditions resulting in conflicting RUs
-func (s consulStore) attemptRUCreation(u roll_fields.Update, sessionErrCh chan error) error {
+func (s consulStore) attemptRUCreation(u roll_fields.Update, sessionErrCh chan error) (roll_fields.Update, error) {
 	b, err := json.Marshal(u)
 	if err != nil {
-		return err
+		return u, err
 	}
 
 	key, err := RollPath(roll_fields.ID(u.NewRC))
 	if err != nil {
-		return err
+		return u, err
 	}
 
 	// Confirm that our lock session is still valid, and then create the
@@ -551,21 +551,21 @@ func (s consulStore) attemptRUCreation(u roll_fields.Update, sessionErrCh chan e
 		if err == nil {
 			err = util.Errorf("Cannot create ru because session was destroyed")
 		}
-		return err
+		return u, err
 	default:
 		success, _, err := s.kv.CAS(&api.KVPair{
 			Key:   key,
 			Value: b,
 		}, nil)
 		if err != nil {
-			return consulutil.NewKVError("cas", key, err)
+			return u, consulutil.NewKVError("cas", key, err)
 		}
 
 		// Shouldn't be possible if our session is still valid, preventing other insertions
 		if !success {
-			return util.Errorf("update with new RC ID %s already exists", u.NewRC)
+			return u, util.Errorf("update with new RC ID %s already exists", u.NewRC)
 		}
 	}
 
-	return nil
+	return u, nil
 }
