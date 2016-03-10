@@ -9,11 +9,13 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/kp/rcstore"
+	"github.com/square/p2/pkg/pods"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
+	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 )
 
 const (
@@ -271,9 +273,132 @@ func TestCreateFailsIfCantAcquireLock(t *testing.T) {
 	}
 }
 
+func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
+	oldRCID := rc_fields.ID("old_rc")
+
+	rollstore := newRollStore(t, nil)
+
+	newUpdate, err := rollstore.CreateRollingUpdateFromOneExistingRCWithID(
+		oldRCID,
+		1,
+		0,
+		false,
+		0,
+		testManifest(),
+		testNodeSelector(),
+		nil,
+	)
+
+	if err != nil {
+		t.Fatalf("Unable to create rolling update: %s", err)
+	}
+
+	storedUpdate, err := rollstore.Get(fields.ID(newUpdate.NewRC))
+	if err != nil {
+		t.Fatalf("Unable to retrieve value put in roll store: %s", err)
+	}
+
+	if storedUpdate.NewRC != newUpdate.NewRC {
+		t.Errorf("Stored update didn't have expected new rc value: wanted '%s' but got '%s'", newUpdate.NewRC, storedUpdate.NewRC)
+	}
+
+	if storedUpdate.OldRC != oldRCID {
+		t.Errorf("Stored update didn't have expected old rc value: wanted '%s' but got '%s'", oldRCID, storedUpdate.OldRC)
+	}
+}
+
+func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T) {
+	oldRCID := rc_fields.ID("old_rc")
+
+	conflictingEntry := fields.Update{
+		OldRC: rc_fields.ID("some_other_rc"),
+		NewRC: oldRCID,
+	}
+
+	rollstore := newRollStore(t, []fields.Update{conflictingEntry})
+
+	newUpdate, err := rollstore.CreateRollingUpdateFromOneExistingRCWithID(
+		oldRCID,
+		1,
+		0,
+		false,
+		0,
+		testManifest(),
+		testNodeSelector(),
+		nil,
+	)
+
+	if err == nil {
+		t.Fatalf("Should have erred creating conflicting update")
+	}
+
+	update, err := rollstore.Get(fields.ID(newUpdate.NewRC))
+	if err != nil {
+		t.Fatalf("Should not have erred checking for update creation: %s", err)
+	}
+
+	if update.NewRC != "" {
+		t.Fatalf("Update was created but shouldn't have been: %s", err)
+	}
+}
+
+func TestCreateRollingUpdateFromOneExistingRCWithIDFailsIfCantAcquireLock(t *testing.T) {
+	oldRCID := rc_fields.ID("old_rc")
+
+	rollstore := newRollStore(t, nil)
+
+	// Grab an update creation lock on the old RC and make sure the
+	// creation fails
+	session, _, err := rollstore.store.NewSession("conflicting session", nil)
+	if err != nil {
+		t.Fatalf("Unable to create session for conflicting lock: %s", err)
+	}
+	defer session.Destroy()
+
+	_, err = rollstore.rcstore.LockForUpdateCreation(oldRCID, session)
+	if err != nil {
+		t.Fatalf("Unable to acquire conflicting lock on old rc: %s", err)
+	}
+
+	newUpdate, err := rollstore.CreateRollingUpdateFromOneExistingRCWithID(
+		oldRCID,
+		1,
+		0,
+		false,
+		0,
+		testManifest(),
+		testNodeSelector(),
+		nil,
+	)
+
+	if err == nil {
+		t.Fatalf("Should have erred creating conflicting update")
+	}
+
+	update, err := rollstore.Get(fields.ID(newUpdate.NewRC))
+	if err != nil {
+		t.Fatalf("Should nothave erred checking for update creation: %s", err)
+	}
+
+	if update.NewRC != "" {
+		t.Fatalf("Update was created but shouldn't have been: %s", err)
+	}
+}
+
 func testRollValue(id rc_fields.ID) fields.Update {
 	// not a full update, just enough for a smoke test
 	return fields.Update{
 		NewRC: id,
 	}
+}
+
+func testManifest() pods.Manifest {
+	builder := pods.NewManifestBuilder()
+	builder.SetID("slug")
+	return builder.GetManifest()
+}
+
+func testNodeSelector() klabels.Selector {
+	return klabels.Everything().
+		Add("some_key", klabels.EqualsOperator, []string{"some_value"})
 }
