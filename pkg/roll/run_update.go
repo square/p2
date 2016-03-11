@@ -429,7 +429,7 @@ func (u *update) shouldRollAfterDelay(newFields rcf.RC) (int, int, error) {
 	return afterDelayRemove, afterDelayAdd, nil
 }
 
-func (u *update) rollAlgorithmParams(oldHealth, newHealth rcNodeCounts) (oldHealthy, newHealthy, desired, minHealthy int) {
+func (u *update) rollAlgorithmParams(oldHealth, newHealth rcNodeCounts) (oldHealthy, newHealthy, currentDesired, targetDesired, minHealthy int) {
 	// We conservatively treat Unknown nodes as healthy on the old side.
 	oldHealthy = oldHealth.Healthy + oldHealth.Unknown
 	if oldHealth.Desired < oldHealthy {
@@ -444,17 +444,19 @@ func (u *update) rollAlgorithmParams(oldHealth, newHealth rcNodeCounts) (oldHeal
 		oldHealthy = oldHealth.Desired
 	}
 	newHealthy = newHealth.Healthy
-	desired = u.DesiredReplicas
+	currentDesired = oldHealth.Desired + newHealth.Desired
+	targetDesired = u.DesiredReplicas
 	minHealthy = u.MinimumReplicas
 	return
 }
 
-// the roll algorithm defines how to mutate RCs over time. it takes four args:
+// the roll algorithm defines how to mutate RCs over time. it takes five args:
 // - old: the number of healthy nodes on the old RC
 // - new: the number of healthy nodes on the new RC
-// - desired: the number of nodes desired on the new RC (ie the target)
+// - currentDesired: the number of nodes currently desired in total between the old and new RCs
+// - targetDesired: the number of nodes desired on the new RC (ie the target) in the final state
 // - minHealthy: the number of nodes that must always be up (ie the minimum)
-// given these four arguments, rollAlgorithm returns the number of nodes to add
+// given these five arguments, rollAlgorithm returns the number of nodes to add
 // to the new RC and to delete from the old
 //
 // Returns two values, both of which are a positive number or zero:
@@ -464,17 +466,35 @@ func (u *update) rollAlgorithmParams(oldHealth, newHealth rcNodeCounts) (oldHeal
 // Under the following circumstances, both return values will be zero:
 // - new >= desired (the update is done)
 // - old+new <= minHealthy (at or below the minimum, update has to block)
-func rollAlgorithm(old, new, desired, minHealthy int) (nodesToRemove, nodesToAdd int) {
+func rollAlgorithm(old, new, currentDesired, targetDesired, minHealthy int) (nodesToRemove, nodesToAdd int) {
 	// how much "headroom" do we have between the number of nodes that are
 	// currently healthy, and the number that must be healthy?
 	// if we schedule more than this, we'll go below the minimum
+	// Note that this can go negative (if old + new don't satisfy minHealthy).
 	headroom := old + new - minHealthy
+
+	capacityIncrease := targetDesired - currentDesired
+	if capacityIncrease > 0 {
+		// If we intend to schedule new nodes (nodes not currently managed by either RC),
+		// then we increase headroom by the capacity difference.
+		// Note that headroom could previously have been negative.
+		// This means we will schedule some number between 0 and capacityIncrease.
+		// For example, with old = new = 0, minHealthy = 2, capacityIncrease = 3,
+		// we'll schedule 0 - 2 + 3 = 1 node.
+		// This conservatively respects minimum health,
+		// on the assumption that there may be healthy nodes we don't know about.
+		// This is particularly useful when migrating from other deployment systems.
+		headroom += capacityIncrease
+	} else {
+		// We're not yet sure what the effects of a capacity decrease in a rolling update will be.
+		capacityIncrease = 0
+	}
 
 	// how many nodes do we have left to go? we can't schedule more than this
 	// or we'll go over the target
 	// note that remaining < headroom is possible depending on how many
 	// old nodes are still alive
-	remaining := desired - new
+	remaining := targetDesired - new
 
 	// heuristic time:
 	if remaining <= 0 {
@@ -484,7 +504,7 @@ func rollAlgorithm(old, new, desired, minHealthy int) (nodesToRemove, nodesToAdd
 	if new >= minHealthy {
 		// minimum is satisfied by new nodes, doesn't matter how many old ones
 		// we kill. this includes the edge case where minHealthy==0
-		return remaining, remaining
+		return clampToZero(remaining - capacityIncrease), remaining
 	}
 	if headroom <= 0 {
 		// the case of minHealthy==0 was caught above. in this case, minHealthy>0 and
@@ -494,9 +514,21 @@ func rollAlgorithm(old, new, desired, minHealthy int) (nodesToRemove, nodesToAdd
 		return 0, 0
 	}
 	// remaining>0 and headroom>0. each one imposes an upper bound on how
-	// many we can schedule at once, so return the minimum of the two
+	// many nodes we can add at once, so nodesToAdd is their minimum.
+	// nodesToRemove is the same number minus any capacity increase
+	// (so the net number of nodes added equals the capacity increase)
 	if remaining < headroom {
-		return remaining, remaining
+		nodesToAdd = remaining
+	} else {
+		nodesToAdd = headroom
 	}
-	return headroom, headroom
+	nodesToRemove = clampToZero(nodesToAdd - capacityIncrease)
+	return
+}
+
+func clampToZero(n int) int {
+	if n < 0 {
+		return 0
+	}
+	return n
 }
