@@ -307,20 +307,38 @@ func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 	if storedUpdate.OldRC != oldRCID {
 		t.Errorf("Stored update didn't have expected old rc value: wanted '%s' but got '%s'", oldRCID, storedUpdate.OldRC)
 	}
+
+	_, err = rollstore.rcstore.Get(newUpdate.NewRC)
+	if err != nil {
+		t.Fatalf("Shouldn't have failed to fetch new RC: %s", err)
+	}
 }
 
 func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T) {
-	oldRCID := rc_fields.ID("old_rc")
+	rollstore := newRollStore(t, nil)
 
-	conflictingEntry := fields.Update{
-		OldRC: rc_fields.ID("some_other_rc"),
-		NewRC: oldRCID,
+	// create the old RC
+	oldRC, err := rollstore.rcstore.Create(testManifest(), nil, nil)
+	if err != nil {
+		t.Fatalf("Failed to create old rc: %s", err)
 	}
 
-	rollstore := newRollStore(t, []fields.Update{conflictingEntry})
+	_, err = rollstore.CreateRollingUpdateFromOneExistingRCWithID(
+		oldRC.ID,
+		1,
+		0,
+		false,
+		0,
+		testManifest(),
+		testNodeSelector(),
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Unable to create conflicting update: %s", err)
+	}
 
 	newUpdate, err := rollstore.CreateRollingUpdateFromOneExistingRCWithID(
-		oldRCID,
+		oldRC.ID,
 		1,
 		0,
 		false,
@@ -341,6 +359,15 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 
 	if update.NewRC != "" {
 		t.Fatalf("Update was created but shouldn't have been: %s", err)
+	}
+
+	rcs, err := rollstore.rcstore.List()
+	if err != nil {
+		t.Fatalf("Shouldn't have failed to list RCs: %s", err)
+	}
+
+	if len(rcs) != 2 {
+		t.Fatalf("There shouldn't be any new RCs after a failed update: expect 2 but were %d", len(rcs))
 	}
 }
 
@@ -385,6 +412,15 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDFailsIfCantAcquireLock(t *tes
 	if update.NewRC != "" {
 		t.Fatalf("Update was created but shouldn't have been: %s", err)
 	}
+
+	rcs, err := rollstore.rcstore.List()
+	if err != nil {
+		t.Fatalf("Shouldn't have failed to list RCs: %s", err)
+	}
+
+	if len(rcs) != 0 {
+		t.Fatalf("There shouldn't be any new RCs after a failed update: expect 0 but were %d", len(rcs))
+	}
 }
 
 func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist(t *testing.T) {
@@ -411,6 +447,16 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist
 
 	if u.NewRC == "" {
 		t.Fatalf("Update shouldn't have been empty")
+	}
+
+	_, err = rollstore.rcstore.Get(u.NewRC)
+	if err != nil {
+		t.Fatalf("Shouldn't have failed to fetch newly created new rc: %s", err)
+	}
+
+	_, err = rollstore.rcstore.Get(u.OldRC)
+	if err != nil {
+		t.Fatalf("Shouldn't have failed to fetch newly created old rc: %s", err)
 	}
 }
 
@@ -457,6 +503,12 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *t
 	if u.OldRC != oldRC.ID {
 		t.Errorf("Created update didn't have expected old rc ID, wanted '%s' but got '%s'", oldRC.ID, u.OldRC)
 	}
+
+	_, err = rollstore.rcstore.Get(u.NewRC)
+	if err != nil {
+		t.Fatalf("Shouldn't have failed to fetch newly created new rc: %s", err)
+	}
+
 }
 
 func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenTwoMatches(t *testing.T) {
