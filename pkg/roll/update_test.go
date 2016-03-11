@@ -6,12 +6,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/health"
+	checkertest "github.com/square/p2/pkg/health/checker/test"
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/rc"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/types"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
@@ -221,4 +227,185 @@ func SimulateRollingUpgradeDisable(t *testing.T, full, nonew bool) {
 			nodes[eligible[index]] = 1
 		}
 	}
+}
+
+func podWithIDAndPort(id string, port int) pods.Manifest {
+	builder := pods.NewManifestBuilder()
+	builder.SetID(types.PodID(id))
+	builder.SetStatusPort(port)
+	return builder.GetManifest()
+}
+
+func assignManifestsToNodes(
+	podID types.PodID,
+	nodes map[string]bool,
+	pods map[kptest.FakePodStoreKey]pods.Manifest,
+	ifCurrent, ifNotCurrent pods.Manifest,
+) {
+	for node, current := range nodes {
+		key := kptest.FakePodStoreKeyFor(kp.REALITY_TREE, node, podID)
+		if current {
+			pods[key] = ifCurrent
+		} else {
+			pods[key] = ifNotCurrent
+		}
+	}
+}
+
+func createRC(
+	rcs rcstore.Store,
+	applicator labels.Applicator,
+	manifest pods.Manifest,
+	desired int,
+	nodes map[string]bool,
+) (rc_fields.RC, error) {
+	created, err := rcs.Create(manifest, nil, nil)
+	if err != nil {
+		return rc_fields.RC{}, fmt.Errorf("Error creating RC: %s", err)
+	}
+
+	podID := string(manifest.ID())
+
+	for node := range nodes {
+		if err = applicator.SetLabel(labels.POD, node+"/"+podID, rc.RCIDLabel, string(created.ID)); err != nil {
+			return rc_fields.RC{}, fmt.Errorf("Error applying RC ID label: %s", err)
+		}
+	}
+
+	return created, rcs.SetDesiredReplicas(created.ID, desired)
+}
+
+func updateWithHealth(t *testing.T,
+	desiredOld, desiredNew int,
+	oldNodes, newNodes map[string]bool,
+	checks map[string]health.Result,
+) (update, pods.Manifest, pods.Manifest) {
+	podID := "mypod"
+
+	oldManifest := podWithIDAndPort(podID, 9001)
+	newManifest := podWithIDAndPort(podID, 9002)
+
+	podMap := map[kptest.FakePodStoreKey]pods.Manifest{}
+	assignManifestsToNodes(types.PodID(podID), oldNodes, podMap, oldManifest, newManifest)
+	assignManifestsToNodes(types.PodID(podID), newNodes, podMap, newManifest, oldManifest)
+	kps := kptest.NewFakePodStore(podMap, nil)
+
+	rcs := rcstore.NewFake()
+	applicator := labels.NewFakeApplicator()
+
+	oldRC, err := createRC(rcs, applicator, oldManifest, desiredOld, oldNodes)
+	Assert(t).IsNil(err, "expected no error setting up old RC")
+
+	newRC, err := createRC(rcs, applicator, newManifest, desiredNew, newNodes)
+	Assert(t).IsNil(err, "expected no error setting up new RC")
+
+	return update{
+		kps:     kps,
+		rcs:     rcs,
+		hcheck:  checkertest.NewSingleService(string(podID), checks),
+		labeler: applicator,
+		Update: fields.Update{
+			OldRC: oldRC.ID,
+			NewRC: newRC.ID,
+		},
+	}, oldManifest, newManifest
+}
+
+func updateWithUniformHealth(t *testing.T, numNodes int, status health.HealthState) (update, map[string]health.Result) {
+	current := map[string]bool{}
+	checks := map[string]health.Result{}
+
+	for i := 0; i < numNodes; i++ {
+		node := fmt.Sprintf("node%d", i)
+		current[node] = true
+		checks[node] = health.Result{Status: status}
+	}
+
+	upd, _, _ := updateWithHealth(t, numNodes, 0, current, nil, nil)
+	return upd, checks
+}
+
+func TestCountHealthyNormal(t *testing.T) {
+	upd, checks := updateWithUniformHealth(t, 3, health.Passing)
+	counts, err := upd.countHealthy(upd.OldRC, checks)
+	Assert(t).IsNil(err, "expected no error counting health")
+	expected := rcNodeCounts{
+		Desired: 3,
+		Current: 3,
+		Real:    3,
+		Healthy: 3,
+	}
+	Assert(t).AreEqual(counts, expected, "incorrect health counts")
+}
+
+func TestShouldRollInitial(t *testing.T) {
+	checks := map[string]health.Result{
+		"node1": {Status: health.Passing},
+		"node2": {Status: health.Passing},
+		"node3": {Status: health.Passing},
+	}
+	upd, _, manifest := updateWithHealth(t, 3, 0, map[string]bool{
+		"node1": true,
+		"node2": true,
+		"node3": true,
+	}, nil, checks)
+	upd.DesiredReplicas = 3
+	upd.MinimumReplicas = 2
+
+	roll, err := upd.shouldRollAfterDelay(rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	Assert(t).IsNil(err, "expected no error determining nodes to roll")
+	Assert(t).AreEqual(roll, 1, "expected to only roll one node")
+}
+
+func TestShouldRollMidwayUnhealthy(t *testing.T) {
+	checks := map[string]health.Result{
+		"node1": {Status: health.Passing},
+		"node2": {Status: health.Passing},
+		"node3": {Status: health.Critical},
+	}
+	upd, _, manifest := updateWithHealth(t, 2, 1, map[string]bool{
+		"node1": true,
+		"node2": true,
+	}, map[string]bool{
+		"node3": true,
+	}, checks)
+	upd.DesiredReplicas = 3
+	upd.MinimumReplicas = 2
+
+	roll, _ := upd.shouldRollAfterDelay(rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	Assert(t).AreEqual(roll, 0, "expected to roll no nodes")
+}
+
+func TestShouldRollMidwayUnhealthyMigration(t *testing.T) {
+	checks := map[string]health.Result{
+		"node3": {Status: health.Critical},
+	}
+	upd, _, manifest := updateWithHealth(t, 2, 1, nil, map[string]bool{
+		"node3": true,
+	}, checks)
+	upd.DesiredReplicas = 3
+	upd.MinimumReplicas = 2
+
+	roll, _ := upd.shouldRollAfterDelay(rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	Assert(t).AreEqual(roll, 0, "expected to roll no nodes")
+}
+
+func TestShouldRollMidwayHealthy(t *testing.T) {
+	checks := map[string]health.Result{
+		"node1": {Status: health.Passing},
+		"node2": {Status: health.Passing},
+		"node3": {Status: health.Passing},
+	}
+	upd, _, manifest := updateWithHealth(t, 2, 1, map[string]bool{
+		"node1": true,
+		"node2": true,
+	}, map[string]bool{
+		"node3": true,
+	}, checks)
+	upd.DesiredReplicas = 3
+	upd.MinimumReplicas = 2
+
+	roll, err := upd.shouldRollAfterDelay(rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	Assert(t).IsNil(err, "expected no error determining nodes to roll")
+	Assert(t).AreEqual(roll, 1, "expected to roll one node")
 }
