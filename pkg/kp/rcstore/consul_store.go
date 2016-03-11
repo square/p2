@@ -3,20 +3,25 @@ package rcstore
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/pborman/uuid"
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/util"
 )
 
 const (
 	// This label is applied to an RC, to identify the ID of its pod manifest.
-	PodIDLabel = "pod_id"
+	PodIDLabel           = "pod_id"
+	mutationSuffix       = "update"
+	updateCreationSuffix = "update_creation"
 )
 
 type kvPair struct {
@@ -82,7 +87,7 @@ func (s *consulStore) Create(manifest pods.Manifest, nodeSelector klabels.Select
 // these parts of Create may require a retry
 func (s *consulStore) innerCreate(manifest pods.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
 	id := fields.ID(uuid.New())
-	rcp, err := rcPath(id)
+	rcp, err := s.rcPath(id)
 	if err != nil {
 		return fields.RC{}, err
 	}
@@ -118,7 +123,7 @@ func (s *consulStore) innerCreate(manifest pods.Manifest, nodeSelector klabels.S
 }
 
 func (s *consulStore) Get(id fields.ID) (fields.RC, error) {
-	rcp, err := rcPath(id)
+	rcp, err := s.rcPath(id)
 	if err != nil {
 		return fields.RC{}, err
 	}
@@ -249,7 +254,7 @@ func (s *consulStore) retryMutate(id fields.ID, mutator func(fields.RC) (fields.
 // if the mutator returns an error, it will be propagated out
 // if the returned RC has id="", then it will be deleted
 func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
-	rcp, err := rcPath(id)
+	rcp, err := s.rcPath(id)
 	if err != nil {
 		return err
 	}
@@ -310,7 +315,7 @@ func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC,
 func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
 	updated := make(chan struct{})
 
-	rcp, err := rcPath(rc.ID)
+	rcp, err := s.rcPath(rc.ID)
 	if err != nil {
 		errors := make(chan error, 1)
 		errors <- err
@@ -351,6 +356,61 @@ func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{
 	}()
 
 	return updated, errors
+}
+
+func (s *consulStore) rcPath(rcID fields.ID) (string, error) {
+	if rcID == "" {
+		return "", util.Errorf("Lock requested for empty RC id")
+	}
+
+	return path.Join(rcTree, string(rcID)), nil
+}
+
+func (s *consulStore) rcLockPath(rcID fields.ID) (string, error) {
+	rcPath, err := s.rcPath(rcID)
+	if err != nil {
+		return "", err
+	}
+
+	return path.Join(kp.LOCK_TREE, rcPath), nil
+}
+
+// Acquires a lock on the RC that should be used by RC farm goroutines, whose
+// job it is to carry out the intent of the RC
+func (s *consulStore) LockForOwnership(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
+	lockPath, err := s.rcLockPath(rcID)
+	if err != nil {
+		return nil, err
+	}
+
+	return session.Lock(lockPath)
+}
+
+// Acquires a lock on the RC with the intent of mutating it. Must be held by
+// goroutines in the rolling update farm as well as any other tool that may
+// mutate an RC
+func (s *consulStore) LockForMutation(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
+	baseLockPath, err := s.rcLockPath(rcID)
+	if err != nil {
+		return nil, err
+	}
+
+	// This is called "update" for backwards compatibility reasons, it
+	// should probably be named "mutate"
+	return session.Lock(path.Join(baseLockPath, mutationSuffix))
+}
+
+// Acquires a lock on the RC for ensuring that no two rolling updates are
+// created that operate on the same replication controllers.  A lock on both
+// the intended "new" and "old" replication controllers should be held before
+// the update is created.
+func (s *consulStore) LockForUpdateCreation(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
+	baseLockPath, err := s.rcLockPath(rcID)
+	if err != nil {
+		return nil, err
+	}
+
+	return session.Lock(path.Join(baseLockPath, updateCreationSuffix))
 }
 
 // forEachLabel Attempts to apply the supplied function to labels of the replication controller.

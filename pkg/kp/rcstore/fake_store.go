@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/util"
@@ -189,4 +190,16 @@ func (s *fakeStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{},
 	}()
 
 	return updatesOut, errors
+}
+
+func (s *fakeStore) LockForMutation(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
+	panic("LockForMutation not implemented")
+}
+
+func (s *fakeStore) LockForOwnership(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
+	panic("LockForOwnership not implemented")
+}
+
+func (s *fakeStore) LockForUpdateCreation(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
+	panic("LockForUpdateCreation not implemented")
 }

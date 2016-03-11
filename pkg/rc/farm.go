@@ -105,13 +105,7 @@ START_LOOP:
 					continue
 				}
 
-				lockPath, err := rcstore.RCLockPath(rcField.ID)
-				if err != nil {
-					rcf.logger.WithError(err).Errorln("Could not compute path for rc lock")
-					continue
-				}
-
-				rcUnlocker, err := rcf.session.Lock(lockPath)
+				rcUnlocker, err := rcf.rcStore.LockForOwnership(rcField.ID, rcf.session)
 				if _, ok := err.(kp.AlreadyLockedError); ok {
 					// someone else must have gotten it first - log and move to
 					// the next one

@@ -2,14 +2,12 @@ package rcstore
 
 import (
 	"errors"
-	"path"
 
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
-	"github.com/square/p2/pkg/util"
 )
 
 const rcTree string = "replication_controllers"
@@ -54,36 +52,20 @@ type Store interface {
 	// Send a value on `quitChannel` to stop watching.
 	// The two output channels will be closed in response.
 	Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error)
-}
 
-func rcPath(rcId fields.ID) (string, error) {
-	if rcId == "" {
-		return "", util.Errorf("rcId not specified when computing rc path")
-	}
-	return path.Join(rcTree, string(rcId)), nil
-}
+	// Locks an RC for ownership, e.g. by a process carrying out the intent
+	// of a replication controller by ensuring that ReplicasDesired copies
+	// of Manifest are running
+	LockForOwnership(rcID fields.ID, session kp.Session) (kp.Unlocker, error)
 
-func RCLockPath(rcId fields.ID) (string, error) {
-	subRCPath, err := rcPath(rcId)
-	if err != nil {
-		return "", err
-	}
+	// Locks an RC for mutation, e.g. by a running rolling update or any
+	// tool making a change
+	LockForMutation(rcID fields.ID, session kp.Session) (kp.Unlocker, error)
 
-	return path.Join(kp.LOCK_TREE, subRCPath), nil
-}
-
-// Replication controllers have potential for two locks:
-// 1) the key itself, held by a replication controller goroutine that is
-// responsible for making sure its desires are met
-// 2) an "update" key under the replication controller key, held by the
-// goroutine running a rolling update that will mutate a replication controller
-func RCUpdateLockPath(rcId fields.ID) (string, error) {
-	rcPath, err := rcPath(rcId)
-	if err != nil {
-		return "", err
-	}
-
-	return path.Join(kp.LOCK_TREE, rcPath, "update"), nil
+	// Locks an RC for the purposes of RU creation. We want to guarantee
+	// that no two RUs are admitted that operate on the same RCs, which is
+	// accomplished by locking them first
+	LockForUpdateCreation(rcID fields.ID, session kp.Session) (kp.Unlocker, error)
 }
 
 func IsNotExist(err error) bool {
