@@ -201,18 +201,22 @@ func (rc *replicationController) addPods(current PodLocations) error {
 	// TODO: With Docker or runc we would not be constrained to running only once per node.
 	// So it may be the case that we need to make the Scheduler interface smarter and use it here.
 	possible := sets.NewString(eligible...).Difference(sets.NewString(currentNodes...))
+
+	// Users want deterministic ordering of nodes being populated to a new
+	// RC. Move nodes in sorted order by hostname to achieve this
+	possibleSorted := possible.List()
 	toSchedule := rc.ReplicasDesired - len(currentNodes)
 
 	rc.logger.NoFields().Infof("Need to schedule %d nodes out of %s", toSchedule, possible)
 
 	for i := 0; i < toSchedule; i++ {
-		scheduleOn, ok := possible.PopAny()
-		if !ok {
+		if len(possibleSorted) < i+1 {
 			return util.Errorf(
 				"Not enough nodes to meet desire: %d replicas desired, %d currentNodes, %d eligible. Scheduled on %d nodes instead.",
 				rc.ReplicasDesired, len(currentNodes), len(eligible), i,
 			)
 		}
+		scheduleOn := possibleSorted[i]
 
 		err := rc.schedule(scheduleOn)
 		if err != nil {
