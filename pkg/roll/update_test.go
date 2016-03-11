@@ -338,6 +338,78 @@ func TestCountHealthyNormal(t *testing.T) {
 	Assert(t).AreEqual(counts, expected, "incorrect health counts")
 }
 
+func TestCountHealthAllUnhealthy(t *testing.T) {
+	upd, checks := updateWithUniformHealth(t, 3, health.Critical)
+	counts, err := upd.countHealthy(upd.OldRC, checks)
+	Assert(t).IsNil(err, "expected no error counting health")
+	expected := rcNodeCounts{
+		Desired:   3,
+		Current:   3,
+		Real:      3,
+		Unhealthy: 3,
+	}
+	Assert(t).AreEqual(counts, expected, "incorrect health counts")
+}
+
+func TestCountHealthAllExplicitUnknown(t *testing.T) {
+	upd, checks := updateWithUniformHealth(t, 3, health.Unknown)
+	counts, err := upd.countHealthy(upd.OldRC, checks)
+	Assert(t).IsNil(err, "expected no error counting health")
+	expected := rcNodeCounts{
+		Desired: 3,
+		Current: 3,
+		Real:    3,
+		Unknown: 3,
+	}
+	Assert(t).AreEqual(counts, expected, "incorrect health counts")
+}
+
+func TestCountHealthAllImplicitUnknown(t *testing.T) {
+	upd, _ := updateWithUniformHealth(t, 3, health.Unknown)
+	counts, err := upd.countHealthy(upd.OldRC, nil)
+	Assert(t).IsNil(err, "expected no error counting health")
+	expected := rcNodeCounts{
+		Desired: 3,
+		Current: 3,
+		Real:    3,
+		Unknown: 3,
+	}
+	Assert(t).AreEqual(counts, expected, "incorrect health counts")
+}
+
+func TestCountHealthNonReal(t *testing.T) {
+	upd, _, _ := updateWithHealth(t, 3, 0, map[string]bool{"node1": true, "node2": true, "node3": false}, nil, nil)
+	checks := map[string]health.Result{
+		"node1": {Status: health.Passing},
+		"node2": {Status: health.Passing},
+		"node3": {Status: health.Critical},
+	}
+	counts, err := upd.countHealthy(upd.OldRC, checks)
+	Assert(t).IsNil(err, "expected no error counting health")
+	expected := rcNodeCounts{
+		Desired: 3,
+		Current: 3,
+		Real:    2,
+		Healthy: 2,
+		Unknown: 0,
+	}
+	Assert(t).AreEqual(counts, expected, "incorrect health counts")
+}
+
+func TestCountHealthNonCurrent(t *testing.T) {
+	upd, _, _ := updateWithHealth(t, 3, 0, map[string]bool{}, nil, nil)
+	checks := map[string]health.Result{
+		"node1": {Status: health.Critical},
+	}
+	counts, err := upd.countHealthy(upd.OldRC, checks)
+	Assert(t).IsNil(err, "expected no error counting health")
+	expected := rcNodeCounts{
+		Desired: 3,
+		Unknown: 3,
+	}
+	Assert(t).AreEqual(counts, expected, "incorrect health counts")
+}
+
 func TestShouldRollInitial(t *testing.T) {
 	checks := map[string]health.Result{
 		"node1": {Status: health.Passing},

@@ -334,10 +334,12 @@ func (u *update) enable() error {
 }
 
 type rcNodeCounts struct {
-	Desired int // the number of nodes the RC wants to be on
-	Current int // the number of nodes the RC has scheduled itself on
-	Real    int // the number of current nodes that have finished scheduling
-	Healthy int // the number of real nodes that are healthy
+	Desired   int // the number of nodes the RC wants to be on
+	Current   int // the number of nodes the RC has scheduled itself on
+	Real      int // the number of current nodes that have finished scheduling
+	Healthy   int // the number of real nodes that are healthy
+	Unhealthy int // the number of real nodes that are unhealthy
+	Unknown   int // the number of real nodes that are of unknown health
 }
 
 func (u *update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNodeCounts, error) {
@@ -358,6 +360,13 @@ func (u *update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNod
 	}
 	ret.Current = len(currentPods)
 
+	if ret.Desired > ret.Current {
+		// This implies that the RC hasn't yet scheduled pods that it desires to have.
+		// We consider their health to be unknown in this case.
+		// Note that the below loop over `range currentPods` may also increase `ret.Unknown`.
+		ret.Unknown = ret.Desired - ret.Current
+	}
+
 	for _, pod := range currentPods {
 		node := pod.Node
 		// TODO: is reality checking an rc-layer concern?
@@ -373,8 +382,16 @@ func (u *update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNod
 			// don't check health if the update isn't even done there yet
 			continue
 		}
-		if hres, ok := checks[node]; ok && hres.Status == health.Passing {
-			ret.Healthy++
+		if hres, ok := checks[node]; ok {
+			if hres.Status == health.Passing {
+				ret.Healthy++
+			} else if hres.Status == health.Unknown {
+				ret.Unknown++
+			} else {
+				ret.Unhealthy++
+			}
+		} else {
+			ret.Unknown++
 		}
 	}
 	return ret, err
