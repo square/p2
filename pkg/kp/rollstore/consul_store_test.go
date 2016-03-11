@@ -9,6 +9,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/kp/rcstore"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pods"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
@@ -93,6 +94,7 @@ func newRollStore(t *testing.T, entries []fields.Update) consulStore {
 		},
 		store:   kptest.NewFakePodStore(nil, nil),
 		rcstore: rcstore.NewFake(),
+		labeler: labels.NewFakeApplicator(),
 	}
 }
 
@@ -382,6 +384,268 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDFailsIfCantAcquireLock(t *tes
 
 	if update.NewRC != "" {
 		t.Fatalf("Update was created but shouldn't have been: %s", err)
+	}
+}
+
+func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist(t *testing.T) {
+	rollstore := newRollStore(t, nil)
+
+	// Make a selector that won't match anything
+	oldRCSelector := klabels.Everything().
+		Add("is_test_rc", klabels.EqualsOperator, []string{"true"})
+
+	u, err := rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
+		oldRCSelector,
+		1,
+		0,
+		false,
+		0,
+		testManifest(),
+		testNodeSelector(),
+		nil,
+	)
+
+	if err != nil {
+		t.Fatalf("Shouldn't have failed to create update: %s", err)
+	}
+
+	if u.NewRC == "" {
+		t.Fatalf("Update shouldn't have been empty")
+	}
+}
+
+func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *testing.T) {
+	rollstore := newRollStore(t, nil)
+
+	// Put an RC in the rcstore that matches our label selector
+	oldRC, err := rollstore.rcstore.Create(
+		testManifest(),
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Unable to create fake rc for test")
+	}
+
+	err = rollstore.labeler.SetLabel(labels.RC, string(oldRC.ID), "is_test_rc", "true")
+	if err != nil {
+		t.Fatalf("Unable to appropriately label old rc for test")
+	}
+
+	oldRCSelector := klabels.Everything().
+		Add("is_test_rc", klabels.EqualsOperator, []string{"true"})
+
+	u, err := rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
+		oldRCSelector,
+		1,
+		0,
+		false,
+		0,
+		testManifest(),
+		testNodeSelector(),
+		nil,
+	)
+
+	if err != nil {
+		t.Fatalf("Shouldn't have failed to create update: %s", err)
+	}
+
+	if u.NewRC == "" {
+		t.Fatalf("Update shouldn't have been empty")
+	}
+
+	if u.OldRC != oldRC.ID {
+		t.Errorf("Created update didn't have expected old rc ID, wanted '%s' but got '%s'", oldRC.ID, u.OldRC)
+	}
+}
+
+func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenTwoMatches(t *testing.T) {
+	rollstore := newRollStore(t, nil)
+
+	// Put two RC in the rcstore that matches our label selector
+	firstRC, err := rollstore.rcstore.Create(
+		testManifest(),
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Unable to create first fake rc for test")
+	}
+
+	err = rollstore.labeler.SetLabel(labels.RC, string(firstRC.ID), "is_test_rc", "true")
+	if err != nil {
+		t.Fatalf("Unable to appropriately label first rc for test")
+	}
+
+	secondRC, err := rollstore.rcstore.Create(
+		testManifest(),
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Unable to create second rc for test")
+	}
+
+	err = rollstore.labeler.SetLabel(labels.RC, string(secondRC.ID), "is_test_rc", "true")
+	if err != nil {
+		t.Fatalf("Unable to appropriately label second rc for test")
+	}
+
+	oldRCSelector := klabels.Everything().
+		Add("is_test_rc", klabels.EqualsOperator, []string{"true"})
+
+	u, err := rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
+		oldRCSelector,
+		1,
+		0,
+		false,
+		0,
+		testManifest(),
+		testNodeSelector(),
+		nil,
+	)
+
+	if err == nil {
+		t.Fatal("Should have failed to create update when two RCs match old selector")
+	}
+
+	if u.NewRC != "" {
+		t.Fatal("Update should have been empty")
+	}
+}
+
+func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenExistingIsLocked(t *testing.T) {
+	rollstore := newRollStore(t, nil)
+
+	// Put an RC in the rcstore that matches our label selector
+	oldRC, err := rollstore.rcstore.Create(
+		testManifest(),
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Unable to create fake rc for test")
+	}
+
+	err = rollstore.labeler.SetLabel(labels.RC, string(oldRC.ID), "is_test_rc", "true")
+	if err != nil {
+		t.Fatalf("Unable to appropriately label old rc for test")
+	}
+
+	// Grab an update creation lock on the old RC and make sure that
+	// creation fails
+	session, _, err := rollstore.store.NewSession("conflicting session", nil)
+	if err != nil {
+		t.Fatalf("Unable to create session for conflicting lock: %s", err)
+	}
+	defer session.Destroy()
+
+	_, err = rollstore.rcstore.LockForUpdateCreation(oldRC.ID, session)
+	if err != nil {
+		t.Fatalf("Unable to acquire conflicting lock on old rc: %s", err)
+	}
+
+	oldRCSelector := klabels.Everything().
+		Add("is_test_rc", klabels.EqualsOperator, []string{"true"})
+
+	u, err := rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
+		oldRCSelector,
+		1,
+		0,
+		false,
+		0,
+		testManifest(),
+		testNodeSelector(),
+		nil,
+	)
+
+	if err == nil {
+		t.Fatalf("Should have failed to create update due to lock being held")
+	}
+
+	if u.NewRC != "" {
+		t.Fatalf("Update should have been empty")
+	}
+}
+
+func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConflict(t *testing.T) {
+	rollstore := newRollStore(t, nil)
+
+	// Put an RC in the rcstore that matches our label selector
+	oldRC, err := rollstore.rcstore.Create(
+		testManifest(),
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Unable to create fake rc for test")
+	}
+
+	err = rollstore.labeler.SetLabel(labels.RC, string(oldRC.ID), "is_test_rc", "true")
+	if err != nil {
+		t.Fatalf("Unable to appropriately label old rc for test")
+	}
+
+	oldRCSelector := klabels.Everything().
+		Add("is_test_rc", klabels.EqualsOperator, []string{"true"})
+
+	// First one should succeed
+	u, err := rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
+		oldRCSelector,
+		1,
+		0,
+		false,
+		0,
+		testManifest(),
+		testNodeSelector(),
+		nil,
+	)
+
+	if err != nil {
+		t.Fatalf("Should have succeeded in update creation: %s", err)
+	}
+
+	if u.NewRC == "" {
+		t.Fatalf("Update shouldn't be empty")
+	}
+
+	// Second one should fail
+	_, err = rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
+		oldRCSelector,
+		1,
+		0,
+		false,
+		0,
+		testManifest(),
+		testNodeSelector(),
+		nil,
+	)
+
+	if err == nil {
+		t.Fatalf("Second update creation should have failed due to using the same old RC")
+	}
+}
+
+func TestLeaveOldInvalidIfNoOldRC(t *testing.T) {
+	rollstore := newRollStore(t, nil)
+
+	// Make a selector that won't match anything
+	oldRCSelector := klabels.Everything().
+		Add("is_test_rc", klabels.EqualsOperator, []string{"true"})
+
+	_, err := rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
+		oldRCSelector,
+		1,
+		0,
+		true,
+		0,
+		testManifest(),
+		testNodeSelector(),
+		nil,
+	)
+
+	if err == nil {
+		t.Fatalf("Should have failed to create update due to LeaveOld being set when there's no old RC")
 	}
 }
 
