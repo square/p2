@@ -1,6 +1,8 @@
 package rc
 
 import (
+	"sync"
+
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 
 	"github.com/square/p2/pkg/kp"
@@ -9,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/util"
 )
 
 // The Farm is responsible for spawning and reaping replication controllers
@@ -27,6 +30,7 @@ type Farm struct {
 	sessions <-chan string
 
 	children map[fields.ID]childRC
+	childMu  sync.Mutex
 	session  kp.Session
 
 	logger logging.Logger
@@ -138,29 +142,48 @@ START_LOOP:
 				}
 				foundChildren[rcField.ID] = struct{}{}
 
-				go func() {
+				go func(id fields.ID) {
+					defer func() {
+						if r := recover(); r != nil {
+							err := util.Errorf("Caught panic in rc farm: %s", r)
+							rcLogger.WithError(err).
+								WithField("rc_id", rcField.ID).
+								Errorln("Caught panic in rc farm")
+						}
+					}()
 					// disabled-ness is handled in watchdesires
 					for err := range newChild.WatchDesires(childQuit) {
 						rcLogger.WithError(err).Errorln("Got error in replication controller loop")
 					}
 
-					// NOTE: if WatchDesires experiences an unrecoverable error, we don't release the replication controller.
-					// However, it is unlikely that another farm instance would fare any better so that's okay
-				}()
+					// Release the child so that another farm can reattempt
+					rcf.childMu.Lock()
+					defer rcf.childMu.Unlock()
+					if _, ok := rcf.children[id]; ok {
+						rcf.releaseChild(id)
+					}
+				}(rcField.ID)
 			}
 
 			// now remove any children that were not found in the result set
-			rcf.logger.NoFields().Debugln("Pruning replication controllers that have disappeared")
-			for id := range rcf.children {
-				if _, ok := foundChildren[id]; !ok {
-					rcf.releaseChild(id)
-				}
-			}
+			rcf.releaseDeletedChildren(foundChildren)
+		}
+	}
+}
+
+func (rcf *Farm) releaseDeletedChildren(foundChildren map[fields.ID]struct{}) {
+	rcf.childMu.Lock()
+	defer rcf.childMu.Unlock()
+	rcf.logger.NoFields().Debugln("Pruning replication controllers that have disappeared")
+	for id := range rcf.children {
+		if _, ok := foundChildren[id]; !ok {
+			rcf.releaseChild(id)
 		}
 	}
 }
 
 // close one child
+// should only be called with rcf.childMu locked
 func (rcf *Farm) releaseChild(id fields.ID) {
 	rcf.logger.WithField("rc", id).Infoln("Releasing replication controller")
 	close(rcf.children[id].quit)
@@ -178,6 +201,8 @@ func (rcf *Farm) releaseChild(id fields.ID) {
 
 // close all children
 func (rcf *Farm) releaseChildren() {
+	rcf.childMu.Lock()
+	defer rcf.childMu.Unlock()
 	for id := range rcf.children {
 		// it's safe to delete this element during iteration,
 		// because we have already iterated over it
