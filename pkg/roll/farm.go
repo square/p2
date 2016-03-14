@@ -206,6 +206,14 @@ START_LOOP:
 				foundChildren[rlField.NewRC] = struct{}{}
 
 				go func(id fields.ID) {
+					defer func() {
+						if r := recover(); r != nil {
+							err := util.Errorf("Caught panic in roll farm: %s", r)
+							rlLogger.WithError(err).
+								WithField("new_rc", rlField.NewRC).
+								Errorln("Caught panic in roll farm")
+						}
+					}()
 					if !newChild.Run(childQuit) {
 						// returned false, farm must have asked us to quit
 						return
