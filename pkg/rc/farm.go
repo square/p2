@@ -9,6 +9,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/util"
 )
 
 // The Farm is responsible for spawning and reaping replication controllers
@@ -139,6 +140,14 @@ START_LOOP:
 				foundChildren[rcField.ID] = struct{}{}
 
 				go func() {
+					defer func() {
+						if r := recover(); r != nil {
+							err := util.Errorf("Caught panic in rc farm: %s", r)
+							rcLogger.WithError(err).
+								WithField("rc_id", rcField.ID).
+								Errorln("Caught panic in rc farm")
+						}
+					}()
 					// disabled-ness is handled in watchdesires
 					for err := range newChild.WatchDesires(childQuit) {
 						rcLogger.WithError(err).Errorln("Got error in replication controller loop")
