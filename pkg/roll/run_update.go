@@ -152,24 +152,19 @@ ROLL_LOOP:
 				break
 			}
 
-			if newNodes.Desired > newNodes.Healthy {
-				// we assume replication controllers do in fact "work", ie healthy
-				// and current converge towards desired
-				// in this case, they have not yet met, so we block
-				u.logger.WithFields(logrus.Fields{
-					"old": oldNodes,
-					"new": newNodes,
-				}).Debugln("Blocking for more healthy new nodes")
-				break
-			}
-			if newNodes.Desired >= u.DesiredReplicas {
-				// note that we only exit the loop AFTER the desired nodes
-				// become healthy - this ensures that, when the old RC is
-				// cleaned up, we do not accidentally remove the nodes we just
-				// assigned to the new RC
-				// normal execution of this rollAlgorithm will never cause
-				// newDesired > u.Desired, but if Run is resuming from an unusual
-				// situation, we don't want to get stuck
+			if newNodes.Desired >= u.DesiredReplicas && newNodes.Healthy >= u.MinimumReplicas {
+				// We only ask for u.MinimumReplicas nodes to be healthy
+				// before declaring an upgrade to be complete.
+				// This is so that if a deployer intentionally deploys a known-bad SHA
+				// for which no nodes become healthy (specifying minimum == 0),
+				// we don't leave an RU and old RC lying around.
+				// The RU and RC would have required manual intervention to clean up.
+				//
+				// The above condition contains a >= instead of a ==.
+				// This is despite the fact that normally rollAlgorithm will never cause
+				// newDesired > u.Desired.
+				// The benefit of using >= is that it allows termination even if Run
+				// resumes from an unusual state.
 				u.logger.WithFields(logrus.Fields{
 					"old": oldNodes,
 					"new": newNodes,
