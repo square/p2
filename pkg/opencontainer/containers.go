@@ -1,4 +1,4 @@
-// The "opencontainer" package implements support for launching serivces packaged in an
+// The "opencontainer" package implements support for launching services packaged in an
 // OpenContainer image. Containers can be used by specifying "type: opencontainer" in a
 // launchable's configuration in a pod manifest.
 //
