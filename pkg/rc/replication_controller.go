@@ -345,7 +345,7 @@ func (rc *replicationController) schedule(node string) error {
 }
 
 func (rc *replicationController) unschedule(node string) error {
-	rc.logger.NoFields().Infof("Uncheduling from %s", node)
+	rc.logger.NoFields().Infof("Unscheduling from %s", node)
 	_, err := rc.kpStore.DeletePod(kp.INTENT_TREE, node, rc.Manifest.ID())
 	if err != nil {
 		return err
