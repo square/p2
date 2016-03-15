@@ -150,7 +150,7 @@ func TestWithSessionSlowF(t *testing.T) {
 }
 
 // TestWithSessionPanic verifies that if a session function panics, the panic value is
-// propagated out of the WithSesssion() call.
+// propagated out of the WithSession() call.
 func TestWithSessionPanic(t *testing.T) {
 	t.Parallel()
 	sessions := make(chan string, 1)
