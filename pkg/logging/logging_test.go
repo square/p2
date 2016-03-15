@@ -143,7 +143,7 @@ func TestAddSocketHook(t *testing.T) {
 	case logMessage := <-out:
 		messageStruct := SocketHookLogMessage{}
 		err := json.Unmarshal(logMessage, &messageStruct)
-		Assert(t).IsNil(err, "Got an unexpected error when unmarshalling the JSON log message")
+		Assert(t).IsNil(err, "Got an unexpected error when unmarshaling the JSON log message")
 		Assert(t).AreEqual(messageStruct.Message, "some message", "Did not get the expected log message on the socket")
 		break
 	case <-time.After(5 * time.Second):
