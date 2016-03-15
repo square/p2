@@ -6,12 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/square/p2/pkg/rc/fields"
-
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"github.com/square/p2/pkg/kp/kptest"
+	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
+	"github.com/square/p2/pkg/logging"
+	rc_fields "github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/roll/fields"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
+	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 )
 
 func TestWouldBlock(t *testing.T) {
@@ -35,23 +38,46 @@ func TestWouldWorkOn(t *testing.T) {
 		rcSelector: klabels.Everything().Add("color", klabels.EqualsOperator, []string{"red"}),
 	}
 
-	workOn, err := f.shouldWorkOn(fields.ID("abc-123"))
+	workOn, err := f.shouldWorkOn(rc_fields.ID("abc-123"))
 	Assert(t).IsNil(err, "should not have erred on abc-123")
 	Assert(t).IsTrue(workOn, "should have worked on abc-123, but didn't")
 
-	dontWorkOn, err := f.shouldWorkOn(fields.ID("def-456"))
+	dontWorkOn, err := f.shouldWorkOn(rc_fields.ID("def-456"))
 	Assert(t).IsNil(err, "should not have erred on def-456")
 	Assert(t).IsFalse(dontWorkOn, "should not have worked on def-456, but did")
 
-	dontWorkOn, err = f.shouldWorkOn(fields.ID("987-cba"))
+	dontWorkOn, err = f.shouldWorkOn(rc_fields.ID("987-cba"))
 	Assert(t).IsNil(err, "should not have erred on 987-cba")
 	Assert(t).IsFalse(dontWorkOn, "should not have worked on 987-cba, but did")
 
 	f.rcSelector = klabels.Everything()
 
-	workOn, err = f.shouldWorkOn(fields.ID("def-456"))
+	workOn, err = f.shouldWorkOn(rc_fields.ID("def-456"))
 	Assert(t).IsNil(err, "should not have erred on def-456")
 	Assert(t).IsTrue(workOn, "should have worked on def-456, but didn't")
+}
+
+func TestLockRCs(t *testing.T) {
+	fakeStore := kptest.NewFakePodStore(nil, nil)
+	session, _, err := fakeStore.NewSession("fake rc lock session", nil)
+	Assert(t).IsNil(err, "Should not have erred getting fake session")
+
+	update := NewUpdate(fields.Update{
+		NewRC: rc_fields.ID("new_rc"),
+		OldRC: rc_fields.ID("old_rc"),
+	},
+		nil,
+		rcstore.NewFake(),
+		nil,
+		nil,
+		nil,
+		logging.DefaultLogger,
+		session,
+	).(*update)
+	err = update.lockRCs(make(<-chan struct{}))
+	Assert(t).IsNil(err, "should not have erred locking RCs")
+	Assert(t).IsNotNil(update.newRCUnlocker, "should have kp.Unlocker for unlocking new rc")
+	Assert(t).IsNotNil(update.oldRCUnlocker, "should have kp.Unlocker for unlocking old rc")
 }
 
 func TestSimulateRollingUpgradeDisable(t *testing.T) {
