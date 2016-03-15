@@ -94,7 +94,7 @@ func (*Launchable) Type() string {
 	return "opencontainer"
 }
 
-// Fetcher returns a uri.Fetcher that is capable of fetching the launcahble's files.
+// Fetcher returns a uri.Fetcher that is capable of fetching the launchable's files.
 func (l *Launchable) Fetcher() uri.Fetcher {
 	return uri.DefaultFetcher
 }

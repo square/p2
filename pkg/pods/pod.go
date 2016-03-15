@@ -30,7 +30,7 @@ var (
 	Log logging.Logger
 
 	// ExperimentalOpencontainer permits the use of the experimental "opencontainer"
-	// launcahble type.
+	// launchable type.
 	ExperimentalOpencontainer = param.Bool("experimental_opencontainer", false)
 )
 
