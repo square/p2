@@ -6,7 +6,7 @@ id: hello
 # we could alternatively give each host its own label and
 # manually schedule them this way in an initial phase.
 # label: %{foo.bar.square | bam.biz.square}
-# instances: 3 # asiprational
+# instances: 3 # aspirational
 launchables:
   app:
     launchable_type: hoist
