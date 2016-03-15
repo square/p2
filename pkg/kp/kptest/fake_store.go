@@ -2,6 +2,7 @@ package kptest
 
 import (
 	"path"
+	"sync"
 	"time"
 
 	"github.com/square/p2/pkg/kp"
@@ -15,6 +16,13 @@ import (
 type FakePodStore struct {
 	podResults    map[FakePodStoreKey]pods.Manifest
 	healthResults map[string]kp.WatchResult
+
+	// represents locks that are held. Will be shared between any
+	// fakeSessions returned by NewSession().  It is the session
+	// implementation's responsibility to release locks when destroyed, and
+	// to error when a lock is already held
+	locks   map[string]bool
+	locksMu sync.Mutex
 }
 
 var _ kp.Store = &FakePodStore{}
@@ -29,6 +37,7 @@ func NewFakePodStore(podResults map[FakePodStoreKey]pods.Manifest, healthResults
 	return &FakePodStore{
 		podResults:    podResults,
 		healthResults: healthResults,
+		locks:         make(map[string]bool),
 	}
 }
 
@@ -97,10 +106,7 @@ func (f *FakePodStore) GetHealth(service, node string) (kp.WatchResult, error) {
 
 func (f *FakePodStore) NewSession(name string, renewalCh <-chan time.Time) (kp.Session, chan error, error) {
 	renewalErrCh := make(chan error)
-	close(renewalErrCh)
-	return &fakeSession{
-		locks: make(map[string]bool),
-	}, renewalErrCh, nil
+	return newFakeSession(f.locks, f.locksMu, renewalErrCh), renewalErrCh, nil
 }
 
 func (*FakePodStore) PutHealth(res kp.WatchResult) (time.Time, time.Duration, error) {

@@ -69,7 +69,7 @@ func main() {
 	client := kp.NewConsulClient(opts)
 	kpStore := kp.NewConsulStore(client)
 	rcStore := rcstore.NewConsul(client, RetryCount)
-	rollStore := rollstore.NewConsul(client)
+	rollStore := rollstore.NewConsul(client, nil)
 	healthChecker := checker.NewConsulHealthChecker(client)
 	labeler := labels.NewConsulApplicator(client, RetryCount)
 	var scheduler rc.Scheduler
