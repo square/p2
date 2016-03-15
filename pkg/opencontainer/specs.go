@@ -61,7 +61,7 @@ type Platform struct {
 	Arch string `json:"arch"`
 }
 
-// MountPoint describes a directory that may be fullfilled by a mount in the runtime.json.
+// MountPoint describes a directory that may be fulfilled by a mount in the runtime.json.
 type MountPoint struct {
 	// Name is a unique descriptive identifier for this mount point.
 	Name string `json:"name"`
