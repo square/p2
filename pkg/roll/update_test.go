@@ -98,7 +98,7 @@ func TestRollAlgorithmParams(t *testing.T) {
 		Desired:   2048,
 	}
 	old, new, desired, minHealthy := u.rollAlgorithmParams(oldHealth, newHealth)
-	Assert(t).AreEqual(old, 4, "incorrect old healthy param")
+	Assert(t).AreEqual(old, 20, "incorrect old healthy param (want old healthy + old unknown)")
 	Assert(t).AreEqual(new, 256, "incorrect new healthy param")
 	Assert(t).AreEqual(desired, 8192, "incorrect desired param")
 	Assert(t).AreEqual(minHealthy, 4096, "incorrect min healthy param")
@@ -465,6 +465,16 @@ func TestShouldRollInitial(t *testing.T) {
 	Assert(t).AreEqual(roll, 1, "expected to only roll one node")
 }
 
+func TestShouldRollInitialMigration(t *testing.T) {
+	upd, _, manifest := updateWithHealth(t, 3, 0, nil, nil, nil)
+	upd.DesiredReplicas = 3
+	upd.MinimumReplicas = 2
+
+	roll, err := upd.shouldRollAfterDelay(rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	Assert(t).IsNil(err, "expected no error determining nodes to roll")
+	Assert(t).AreEqual(roll, 1, "expected to roll one node")
+}
+
 func TestShouldRollMidwayUnhealthy(t *testing.T) {
 	checks := map[string]health.Result{
 		"node1": {Status: health.Passing},
@@ -508,6 +518,21 @@ func TestShouldRollMidwayHealthy(t *testing.T) {
 		"node1": true,
 		"node2": true,
 	}, map[string]bool{
+		"node3": true,
+	}, checks)
+	upd.DesiredReplicas = 3
+	upd.MinimumReplicas = 2
+
+	roll, err := upd.shouldRollAfterDelay(rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	Assert(t).IsNil(err, "expected no error determining nodes to roll")
+	Assert(t).AreEqual(roll, 1, "expected to roll one node")
+}
+
+func TestShouldRollMidwayHealthyMigration(t *testing.T) {
+	checks := map[string]health.Result{
+		"node3": {Status: health.Passing},
+	}
+	upd, _, manifest := updateWithHealth(t, 2, 1, nil, map[string]bool{
 		"node3": true,
 	}, checks)
 	upd.DesiredReplicas = 3
