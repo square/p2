@@ -142,7 +142,7 @@ func testLogger(t *testing.T) chan<- error {
 	return c
 }
 
-// TestWatchPrefix verifies some basic operations of the WatchPrefix() funciton. It should
+// TestWatchPrefix verifies some basic operations of the WatchPrefix() function. It should
 // find existing data, send new updates when the data changes, and ignore changes outside
 // its prefix.
 func TestWatchPrefix(t *testing.T) {
