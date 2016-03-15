@@ -235,7 +235,7 @@ ROLL_LOOP:
 	return true // finally if we make it here, we can return true
 }
 
-func (u update) lockRCs(done <-chan struct{}) error {
+func (u *update) lockRCs(done <-chan struct{}) error {
 	newUnlocker, err := u.rcs.LockForMutation(u.NewRC, u.session)
 	if _, ok := err.(kp.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock new %s", u.NewRC)
