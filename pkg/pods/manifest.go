@@ -64,7 +64,7 @@ type manifestBuilder struct {
 	*manifest
 }
 
-// Read-only immutable interface for manifests. To programatically build a
+// Read-only immutable interface for manifests. To programmatically build a
 // manifest, use ManifestBuilder
 type Manifest interface {
 	ID() types.PodID
