@@ -76,6 +76,34 @@ func TestShouldTerminateIfCanaryFinished(t *testing.T) {
 	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldTerminate, "RU should terminate if canary node is healthy")
 }
 
+func TestRollAlgorithmParams(t *testing.T) {
+	u := &update{Update: fields.Update{
+		MinimumReplicas: 4096,
+		DesiredReplicas: 8192,
+	}}
+	oldHealth := rcNodeCounts{
+		Current:   1,
+		Real:      2,
+		Healthy:   4,
+		Unhealthy: 8,
+		Unknown:   16,
+		Desired:   32,
+	}
+	newHealth := rcNodeCounts{
+		Current:   64,
+		Real:      128,
+		Healthy:   256,
+		Unhealthy: 512,
+		Unknown:   1024,
+		Desired:   2048,
+	}
+	old, new, desired, minHealthy := u.rollAlgorithmParams(oldHealth, newHealth)
+	Assert(t).AreEqual(old, 4, "incorrect old healthy param")
+	Assert(t).AreEqual(new, 256, "incorrect new healthy param")
+	Assert(t).AreEqual(desired, 8192, "incorrect desired param")
+	Assert(t).AreEqual(minHealthy, 4096, "incorrect min healthy param")
+}
+
 func TestWouldWorkOn(t *testing.T) {
 	fakeLabels := labels.NewFakeApplicator()
 	fakeLabels.SetLabel(labels.RC, "abc-123", "color", "red")

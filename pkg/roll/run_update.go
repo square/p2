@@ -175,7 +175,7 @@ ROLL_LOOP:
 				break
 			}
 
-			next := rollAlgorithm(oldNodes.Healthy, newNodes.Healthy, u.DesiredReplicas, u.MinimumReplicas)
+			next := rollAlgorithm(u.rollAlgorithmParams(oldNodes, newNodes))
 			if next > 0 {
 				// apply the delay only if we've already added to the new RC, since there's
 				// no value in sitting around doing nothing before anything has happened.
@@ -415,13 +415,21 @@ func (u *update) shouldRollAfterDelay(newFields rcf.RC) (int, error) {
 		return 0, util.Errorf("Could not determine old service health: %v", err)
 	}
 
-	afterDelayNext := rollAlgorithm(afterDelayOld.Healthy, afterDelayNew.Healthy, u.DesiredReplicas, u.MinimumReplicas)
+	afterDelayNext := rollAlgorithm(u.rollAlgorithmParams(afterDelayOld, afterDelayNew))
 
 	if afterDelayNext <= 0 {
 		return 0, util.Errorf("No nodes can be safely updated after %v roll delay, will wait again", u.RollDelay)
 	}
 
 	return afterDelayNext, nil
+}
+
+func (u *update) rollAlgorithmParams(oldHealth, newHealth rcNodeCounts) (oldHealthy, newHealthy, desired, minHealthy int) {
+	oldHealthy = oldHealth.Healthy
+	newHealthy = newHealth.Healthy
+	desired = u.DesiredReplicas
+	minHealthy = u.MinimumReplicas
+	return
 }
 
 // the roll algorithm defines how to mutate RCs over time. it takes four args:
