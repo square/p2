@@ -234,6 +234,18 @@ func TestCreateExistingRCsMutualExclusion(t *testing.T) {
 		t.Fatal("Expected update creation to fail due to conflict")
 	}
 
+	if conflictingErr, ok := err.(*ConflictingRUError); !ok {
+		t.Error("Returned error didn't have ConflictingRUError type")
+	} else {
+		if conflictingErr.ConflictingID != conflictingEntry.ID() {
+			t.Errorf("Expected error to have conflicting ID of '%s', was '%s'", conflictingEntry.ID(), conflictingErr.ConflictingID)
+		}
+
+		if conflictingErr.ConflictingRCID != conflictingEntry.OldRC {
+			t.Errorf("Expected error to have conflicting rc ID of '%s', was '%s'", conflictingEntry.OldRC, conflictingErr.ConflictingRCID)
+		}
+	}
+
 	ru, _ := rollstore.Get(fields.ID(update.NewRC))
 	if ru.NewRC != "" || ru.OldRC != "" {
 		t.Fatal("New ru shouldn't have been created but it was")
@@ -323,7 +335,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 		t.Fatalf("Failed to create old rc: %s", err)
 	}
 
-	_, err = rollstore.CreateRollingUpdateFromOneExistingRCWithID(
+	conflictingEntry, err := rollstore.CreateRollingUpdateFromOneExistingRCWithID(
 		oldRC.ID,
 		1,
 		0,
@@ -347,9 +359,20 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 		testNodeSelector(),
 		nil,
 	)
-
 	if err == nil {
 		t.Fatalf("Should have erred creating conflicting update")
+	}
+
+	if conflictingErr, ok := err.(*ConflictingRUError); !ok {
+		t.Error("Returned error didn't have ConflictingRUError type")
+	} else {
+		if conflictingErr.ConflictingID != conflictingEntry.ID() {
+			t.Errorf("Expected error to have conflicting ID of '%s', was '%s'", conflictingEntry.ID(), conflictingErr.ConflictingID)
+		}
+
+		if conflictingErr.ConflictingRCID != conflictingEntry.OldRC {
+			t.Errorf("Expected error to have conflicting rc ID of '%s', was '%s'", conflictingEntry.OldRC, conflictingErr.ConflictingRCID)
+		}
 	}
 
 	update, err := rollstore.Get(fields.ID(newUpdate.NewRC))
@@ -642,7 +665,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 		Add("is_test_rc", klabels.EqualsOperator, []string{"true"})
 
 	// First one should succeed
-	u, err := rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
+	conflictingEntry, err := rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		oldRCSelector,
 		1,
 		0,
@@ -657,7 +680,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 		t.Fatalf("Should have succeeded in update creation: %s", err)
 	}
 
-	if u.NewRC == "" {
+	if conflictingEntry.NewRC == "" {
 		t.Fatalf("Update shouldn't be empty")
 	}
 
@@ -676,6 +699,19 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 	if err == nil {
 		t.Fatalf("Second update creation should have failed due to using the same old RC")
 	}
+
+	if conflictingErr, ok := err.(*ConflictingRUError); !ok {
+		t.Error("Returned error didn't have ConflictingRUError type")
+	} else {
+		if conflictingErr.ConflictingID != conflictingEntry.ID() {
+			t.Errorf("Expected error to have conflicting ID of '%s', was '%s'", conflictingEntry.ID(), conflictingErr.ConflictingID)
+		}
+
+		if conflictingErr.ConflictingRCID != conflictingEntry.OldRC {
+			t.Errorf("Expected error to have conflicting rc ID of '%s', was '%s'", conflictingEntry.OldRC, conflictingErr.ConflictingRCID)
+		}
+	}
+
 }
 
 func TestLeaveOldInvalidIfNoOldRC(t *testing.T) {
