@@ -179,7 +179,7 @@ func TestInitializeReplicationCanOverrideLocks(t *testing.T) {
 
 	replication, _, err := replicator.InitializeReplication(true, false)
 	if err != nil {
-		t.Fatalf("Expected InitializeReplication to override competing lock, but error occured: %s", err)
+		t.Fatalf("Expected InitializeReplication to override competing lock, but error occurred: %s", err)
 	}
 	replication.Cancel()
 }

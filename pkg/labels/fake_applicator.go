@@ -7,7 +7,7 @@ import (
 )
 
 // This is a map of type -> id -> Set
-// equivelently, of type -> id -> key -> value
+// equivalently, of type -> id -> key -> value
 type fakeApplicatorData map[Type]map[string]labels.Set
 
 type fakeApplicator struct {

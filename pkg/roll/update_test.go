@@ -66,7 +66,7 @@ func TestSimulateRollingUpgradeDisable(t *testing.T) {
 // nodes, some of which may have old pods on them, and attempts to run a rolling
 // upgrade across this list.
 //
-// the flags can comstrain the fuzzer to certain circumstances. specifically:
+// the flags can constrain the fuzzer to certain circumstances. specifically:
 // - if full=true, then every node will start off with the old pod scheduled on
 //   it, and the new pod will eventually be scheduled on every node. this
 //   simulates a common use case where you have a fixed list of nodes, all of

@@ -12,11 +12,11 @@
 //
 // Example parameter declaration:
 //
-//   var threshhold = param.Int("threshhold", 5)
+//   var threshold = param.Int("threshold", 5)
 //
 // Parameter use:
 //
-//   if numUsed >= *threshhold { ... }
+//   if numUsed >= *threshold { ... }
 //
 // Parsing from a config file:
 //

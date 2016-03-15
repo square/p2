@@ -1,4 +1,4 @@
-// The "opencontainer" package implements support for launching serivces packaged in an
+// The "opencontainer" package implements support for launching services packaged in an
 // OpenContainer image. Containers can be used by specifying "type: opencontainer" in a
 // launchable's configuration in a pod manifest.
 //
@@ -94,7 +94,7 @@ func (*Launchable) Type() string {
 	return "opencontainer"
 }
 
-// Fetcher returns a uri.Fetcher that is capable of fetching the launcahble's files.
+// Fetcher returns a uri.Fetcher that is capable of fetching the launchable's files.
 func (l *Launchable) Fetcher() uri.Fetcher {
 	return uri.DefaultFetcher
 }

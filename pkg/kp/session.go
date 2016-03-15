@@ -42,7 +42,7 @@ type consulSession struct {
 	// signals that continual renewal of session should stop
 	quitCh chan struct{}
 
-	// communicates any error occuring during renewal
+	// communicates any error occurring during renewal
 	renewalErrCh chan error
 
 	// signals when a renewal on the consul session should be performed

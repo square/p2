@@ -482,7 +482,7 @@ func (p UserPolicy) AuthorizePod(podUser string, manifest Signed, logger logging
 		return err
 	}
 
-	// Check if any of the signer's identites is authorized
+	// Check if any of the signer's identities is authorized
 	lastIdName := "(unknown)"
 	for name, id := range signer.Identities {
 		if dpol.Authorized(podUser, id.UserId.Email) {
