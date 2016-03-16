@@ -60,6 +60,9 @@ type Applicator interface {
 	// Assign a label to the object identified by the Type and ID
 	SetLabel(labelType Type, id, name, value string) error
 
+	// Assign a group of labels in a batched operation
+	SetLabels(labelType Type, id string, labels map[string]string) error
+
 	// Remove a label from the identified object
 	RemoveLabel(labelType Type, id, name string) error
 

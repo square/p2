@@ -93,18 +93,21 @@ func (c *consulApplicator) GetMatches(selector labels.Selector, labelType Type) 
 	return res, nil
 }
 
-// generalized label mutator function - pass nil value to delete that label
-func (c *consulApplicator) mutateLabel(labelType Type, id, label string, value *string) error {
+// generalized label mutator function - pass nil value for any label to delete it
+func (c *consulApplicator) mutateLabels(labelType Type, id string, labels map[string]*string) error {
 	l, index, err := c.getLabels(labelType, id)
 	if err != nil {
 		return err
 	}
 
-	if value == nil {
-		delete(l.Labels, label)
-	} else {
-		l.Labels[label] = *value
+	for key, value := range labels {
+		if value == nil {
+			delete(l.Labels, key)
+		} else {
+			l.Labels[key] = *value
+		}
 	}
+
 	setkvp, err := convertLabeledToKVP(l)
 	if err != nil {
 		return err
@@ -130,13 +133,19 @@ func (c *consulApplicator) mutateLabel(labelType Type, id, label string, value *
 	return nil
 }
 
+func labelsFromKeyValue(label string, value *string) map[string]*string {
+	return map[string]*string{
+		label: value,
+	}
+}
+
 // this function will attempt to mutateLabel. if it gets a CAS error, then it
 // will retry up to the number of attempts specified in c.Retries
-func (c *consulApplicator) retryMutate(labelType Type, id, label string, value *string) error {
-	err := c.mutateLabel(labelType, id, label, value)
+func (c *consulApplicator) retryMutate(labelType Type, id string, labels map[string]*string) error {
+	err := c.mutateLabels(labelType, id, labels)
 	for i := 0; i < c.retries; i++ {
 		if _, ok := err.(CASError); ok {
-			err = c.mutateLabel(labelType, id, label, value)
+			err = c.mutateLabels(labelType, id, labels)
 		} else {
 			break
 		}
@@ -145,11 +154,23 @@ func (c *consulApplicator) retryMutate(labelType Type, id, label string, value *
 }
 
 func (c *consulApplicator) SetLabel(labelType Type, id, label, value string) error {
-	return c.retryMutate(labelType, id, label, &value)
+	return c.retryMutate(labelType, id, labelsFromKeyValue(label, &value))
+}
+
+func (c *consulApplicator) SetLabels(labelType Type, id string, labels map[string]string) error {
+	labelsToPointers := make(map[string]*string)
+	for label, value := range labels {
+		// We can't just use &value because that would be a pointer to
+		// the iteration variable
+		var valPtr string
+		valPtr = value
+		labelsToPointers[label] = &valPtr
+	}
+	return c.retryMutate(labelType, id, labelsToPointers)
 }
 
 func (c *consulApplicator) RemoveLabel(labelType Type, id, label string) error {
-	return c.retryMutate(labelType, id, label, nil)
+	return c.retryMutate(labelType, id, labelsFromKeyValue(label, nil))
 }
 
 func (c *consulApplicator) RemoveAllLabels(labelType Type, id string) error {

@@ -145,6 +145,34 @@ func TestBasicMatch(t *testing.T) {
 	Assert(t).AreEqual(len(matches), 0, "should have had exactly zero negative matches")
 }
 
+func TestSetLabels(t *testing.T) {
+	c := &consulApplicator{
+		kv:     &fakeLabelStore{data: map[string][]byte{}},
+		logger: logging.DefaultLogger,
+	}
+
+	Assert(t).IsNil(c.SetLabel(POD, "object", "label", "value"), "should have had nil error when setting label")
+
+	matches, err := c.GetMatches(labels.Everything().Add("label", labels.EqualsOperator, []string{"value"}), POD)
+	Assert(t).IsNil(err, "should have had nil error fetching positive matches")
+	Assert(t).AreEqual(len(matches), 1, "should have had exactly one positive match")
+
+	labelsToSet := map[string]string{
+		"label1": "value1",
+		"label2": "value2",
+	}
+	Assert(t).IsNil(c.SetLabels(POD, "object", labelsToSet), "should not have erred setting multiple labels")
+
+	sel := labels.Everything().
+		Add("label", labels.EqualsOperator, []string{"value"}).
+		Add("label1", labels.EqualsOperator, []string{"value1"}).
+		Add("label2", labels.EqualsOperator, []string{"value2"})
+
+	matches, err = c.GetMatches(sel, POD)
+	Assert(t).IsNil(err, "should have had nil error fetching positive matches")
+	Assert(t).AreEqual(len(matches), 1, "should have had exactly one positive match")
+}
+
 type failOnceLabelStore struct {
 	inner      consulKV
 	succeedCAS bool
