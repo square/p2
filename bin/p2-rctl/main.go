@@ -340,7 +340,7 @@ func (r RCtl) ScheduleUpdate(oldID, newID string, want, need int) {
 		NewRC:           rc_fields.ID(newID),
 		DesiredReplicas: want,
 		MinimumReplicas: need,
-	})
+	}, nil)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not create rolling update")
 	} else {

@@ -25,10 +25,12 @@ type Store interface {
 	// Creates a rolling update from two existing RCs. Will check that the
 	// RCs actually exist before applying the update, and acquire locks on
 	// them in a deterministic order to guarantee that no two RUs will
-	// operate on the same RC and will avoid deadlock scenarios
-	CreateRollingUpdateFromExistingRCs(update fields.Update) (fields.Update, error)
+	// operate on the same RC and will avoid deadlock scenarios. Before
+	// the RU is created, newRCLabels will be applied to the new RC
+	CreateRollingUpdateFromExistingRCs(update fields.Update, newRCLabels klabels.Set) (fields.Update, error)
 	// Creates a rolling update using an existing RC with a known ID as the
-	// old replication controller, and creates the new replication controller.
+	// old replication controller, creates the new replication controller,
+	// and labels the new replication controller according to newRCLabels.
 	CreateRollingUpdateFromOneExistingRCWithID(
 		oldRCID rc_fields.ID,
 		desiredReplicas int,
@@ -38,11 +40,13 @@ type Store interface {
 		newRCManifest pods.Manifest,
 		newRCNodeSelector klabels.Selector,
 		newRCPodLabels klabels.Set,
+		newRCLabels klabels.Set,
 	) (fields.Update, error)
 	// Creates a rolling update using a label selector to identify the old
 	// replication controller to be used.  If one does not exist, one will
 	// be created to serve as a "dummy" old replication controller. The new
-	// replication controller will be created.
+	// replication controller will be created and have newRCLabels applied
+	// to it.
 	CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		oldRCSelector klabels.Selector,
 		desiredReplicas int,
@@ -52,6 +56,7 @@ type Store interface {
 		newRCManifest pods.Manifest,
 		newRCNodeSelector klabels.Selector,
 		newRCPodLabels klabels.Set,
+		newRCLabels klabels.Set,
 	) (fields.Update, error)
 	// delete this Update from the store
 	Delete(fields.ID) error
