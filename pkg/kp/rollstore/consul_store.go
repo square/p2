@@ -105,6 +105,33 @@ func (s consulStore) List() ([]roll_fields.Update, error) {
 	return ret, nil
 }
 
+// DEPRECATED: use one of the Create* functions instead
+func (s consulStore) Put(u roll_fields.Update) error {
+	b, err := json.Marshal(u)
+	if err != nil {
+		return err
+	}
+
+	key, err := RollPath(u.ID())
+	if err != nil {
+		return err
+	}
+
+	success, _, err := s.kv.CAS(&api.KVPair{
+		Key:   key,
+		Value: b,
+		// it must not already exist
+		ModifyIndex: 0,
+	}, nil)
+	if err != nil {
+		return consulutil.NewKVError("cas", key, err)
+	}
+	if !success {
+		return fmt.Errorf("update with new RC ID %s already exists", u.NewRC)
+	}
+	return nil
+}
+
 func (s consulStore) newRUCreationSession() (kp.Session, chan error, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
