@@ -22,6 +22,10 @@ type Store interface {
 	Get(fields.ID) (fields.Update, error)
 	// retrieve all updates
 	List() ([]fields.Update, error)
+	// DEPRECATED: creates a rollstore with no guarantees about atomic
+	// creation of RCs. It's easy to generate inconsistent data when using
+	// this
+	Put(u fields.Update) error
 	// Creates a rolling update from two existing RCs. Will check that the
 	// RCs actually exist before applying the update, and acquire locks on
 	// them in a deterministic order to guarantee that no two RUs will
