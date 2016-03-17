@@ -152,24 +152,32 @@ ROLL_LOOP:
 				break
 			}
 
-			if newNodes.Desired >= u.DesiredReplicas && newNodes.Healthy >= u.MinimumReplicas {
-				// We only ask for u.MinimumReplicas nodes to be healthy
-				// before declaring an upgrade to be complete.
-				// This is so that if a deployer intentionally deploys a known-bad SHA
-				// for which no nodes become healthy (specifying minimum == 0),
-				// we don't leave an RU and old RC lying around.
-				// The RU and RC would have required manual intervention to clean up.
-				//
+			if newNodes.Desired >= u.DesiredReplicas {
 				// The above condition contains a >= instead of a ==.
 				// This is despite the fact that normally rollAlgorithm will never cause
 				// newDesired > u.Desired.
 				// The benefit of using >= is that it allows termination even if Run
 				// resumes from an unusual state.
-				u.logger.WithFields(logrus.Fields{
-					"old": oldNodes,
-					"new": newNodes,
-				}).Debugln("Upgrade complete")
-				break ROLL_LOOP
+
+				if newNodes.Healthy >= u.MinimumReplicas {
+					// We only ask for u.MinimumReplicas nodes to be healthy
+					// before declaring an upgrade to be complete.
+					// This is so that if a deployer intentionally deploys a known-bad SHA
+					// for which no nodes become healthy (specifying minimum == 0),
+					// we don't leave an RU and old RC lying around.
+					// The RU and RC would have required manual intervention to clean up.
+					u.logger.WithFields(logrus.Fields{
+						"old": oldNodes,
+						"new": newNodes,
+					}).Debugln("Upgrade complete")
+					break ROLL_LOOP
+				} else {
+					u.logger.WithFields(logrus.Fields{
+						"old": oldNodes,
+						"new": newNodes,
+					}).Debugln("Upgrade almost complete, blocking for more healthy old nodes")
+					break
+				}
 			}
 
 			next := rollAlgorithm(oldNodes.Healthy, newNodes.Healthy, u.DesiredReplicas, u.MinimumReplicas)
