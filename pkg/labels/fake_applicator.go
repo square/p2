@@ -43,6 +43,16 @@ func (app *fakeApplicator) SetLabel(labelType Type, id, name, value string) erro
 	return nil
 }
 
+func (app *fakeApplicator) SetLabels(labelType Type, id string, labels map[string]string) error {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+	entry := app.entry(labelType, id)
+	for k, v := range labels {
+		entry[k] = v
+	}
+	return nil
+}
+
 func (app *fakeApplicator) RemoveAllLabels(labelType Type, id string) error {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()

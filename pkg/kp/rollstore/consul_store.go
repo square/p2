@@ -213,7 +213,7 @@ func (s consulStore) checkForConflictingUpdates(rcIDs rc_fields.IDs) error {
 //      labels on replication controllers referring back to the RUs that they
 //      refer to. Then a constant lookup can be done for those labels, and the
 //      operation can be aborted.
-func (s consulStore) CreateRollingUpdateFromExistingRCs(u roll_fields.Update) (roll_fields.Update, error) {
+func (s consulStore) CreateRollingUpdateFromExistingRCs(u roll_fields.Update, newRCLabels klabels.Set) (roll_fields.Update, error) {
 	session, renewalErrCh, err := s.newRUCreationSession()
 	if err != nil {
 		return roll_fields.Update{}, err
@@ -228,6 +228,15 @@ func (s consulStore) CreateRollingUpdateFromExistingRCs(u roll_fields.Update) (r
 
 	err = s.checkForConflictingUpdates(rcIDs)
 	if err != nil {
+		return roll_fields.Update{}, err
+	}
+
+	err = s.labeler.SetLabels(labels.RC, u.NewRC.String(), newRCLabels)
+	if err != nil {
+		// This is potentially bad, because the labels that were there
+		// before have been overwritten. However its unreasonable to
+		// expect that a rollback will succeed if the roll-forward
+		// didn't succeed, so just report the error
 		return roll_fields.Update{}, err
 	}
 
@@ -246,6 +255,7 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	newRCManifest pods.Manifest,
 	newRCNodeSelector klabels.Selector,
 	newRCPodLabels klabels.Set,
+	newRCLabels klabels.Set,
 ) (u roll_fields.Update, err error) {
 	// There are cases where this function will create the new RC and
 	// subsequently fail, in which case we need to do some cleanup.
@@ -315,6 +325,11 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 		return roll_fields.Update{}, err
 	}
 
+	err = s.labeler.SetLabels(labels.RC, newRCID.String(), newRCLabels)
+	if err != nil {
+		return roll_fields.Update{}, err
+	}
+
 	u = roll_fields.Update{
 		OldRC:           oldRCID,
 		NewRC:           newRCID,
@@ -342,6 +357,7 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	newRCManifest pods.Manifest,
 	newRCNodeSelector klabels.Selector,
 	newRCPodLabels klabels.Set,
+	newRCLabels klabels.Set,
 ) (u roll_fields.Update, err error) {
 	// This function may or may not create old and new RCs and subsequently
 	// fail, so we defer a function that does any cleanup (if applicable)
@@ -402,6 +418,8 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 			if err != nil {
 				s.logger.WithError(err).Errorf("Unable to cleanup newly-created old RC %s after update creation failure:", oldRCID)
 			}
+
+			// Any labels we wrote will be deleted by rcstore.Delete()
 		}
 	}
 
@@ -436,6 +454,8 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		if err != nil {
 			s.logger.WithError(err).Errorf("Unable to cleanup newly-created new RC %s after update creation failure:", newRCID)
 		}
+
+		// Any labels we wrote will be deleted by rcstore.Delete()
 	}
 
 	// lock newly-created new rc so it's less likely to race on it
@@ -448,6 +468,13 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	// Check once again for conflicting updates in case a racing update
 	// creation grabbed the new RC we just created
 	err = s.checkForConflictingUpdates(rc_fields.IDs{newRCID})
+	if err != nil {
+		return roll_fields.Update{}, err
+	}
+
+	// Now that we know there are no RUs in progress, and we have the
+	// update creation locks, we can safely apply labels.
+	err = s.labeler.SetLabels(labels.RC, newRCID.String(), newRCLabels)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
