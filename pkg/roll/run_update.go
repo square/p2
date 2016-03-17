@@ -73,6 +73,15 @@ type Update interface {
 	Run(quit <-chan struct{}) bool
 }
 
+// returned by shouldStop
+type ruStep int
+
+const (
+	ruShouldTerminate ruStep = iota
+	ruShouldBlock
+	ruShouldContinue
+)
+
 // retries a given function until it returns a nil error or the quit channel is
 // closed. returns true if it exited in the former case, false in the latter.
 // errors are sent to the given logger with the given string as the message.
@@ -152,32 +161,18 @@ ROLL_LOOP:
 				break
 			}
 
-			if newNodes.Desired >= u.DesiredReplicas {
-				// The above condition contains a >= instead of a ==.
-				// This is despite the fact that normally rollAlgorithm will never cause
-				// newDesired > u.Desired.
-				// The benefit of using >= is that it allows termination even if Run
-				// resumes from an unusual state.
-
-				if oldNodes.Healthy+newNodes.Healthy >= u.MinimumReplicas {
-					// We only ask for u.MinimumReplicas nodes to be healthy
-					// before declaring an upgrade to be complete.
-					// This is so that if a deployer intentionally deploys a known-bad SHA
-					// for which no nodes become healthy (specifying minimum == 0),
-					// we don't leave an RU and old RC lying around.
-					// The RU and RC would have required manual intervention to clean up.
-					u.logger.WithFields(logrus.Fields{
-						"old": oldNodes,
-						"new": newNodes,
-					}).Debugln("Upgrade complete")
-					break ROLL_LOOP
-				} else {
-					u.logger.WithFields(logrus.Fields{
-						"old": oldNodes,
-						"new": newNodes,
-					}).Debugln("Upgrade almost complete, blocking for more healthy new nodes")
-					break
-				}
+			if nextAction := u.shouldStop(oldNodes, newNodes); nextAction == ruShouldTerminate {
+				u.logger.WithFields(logrus.Fields{
+					"old": oldNodes,
+					"new": newNodes,
+				}).Debugln("Upgrade complete")
+				break ROLL_LOOP
+			} else if nextAction == ruShouldBlock {
+				u.logger.WithFields(logrus.Fields{
+					"old": oldNodes,
+					"new": newNodes,
+				}).Debugln("Upgrade almost complete, blocking for more healthy new nodes")
+				break
 			}
 
 			next := rollAlgorithm(oldNodes.Healthy, newNodes.Healthy, u.DesiredReplicas, u.MinimumReplicas)
@@ -241,6 +236,29 @@ ROLL_LOOP:
 		}
 	}
 	return true // finally if we make it here, we can return true
+}
+
+func (u *update) shouldStop(oldNodes, newNodes rcNodeCounts) ruStep {
+	if newNodes.Desired < u.DesiredReplicas {
+		// Not enough nodes scheduled on the new side, so deploy should continue.
+		return ruShouldContinue
+	}
+
+	// Enough nodes are scheduled on the new side.
+
+	if oldNodes.Healthy+newNodes.Healthy >= u.MinimumReplicas {
+		// We only ask for u.MinimumReplicas nodes to be healthy
+		// before declaring an upgrade to be complete.
+		// This is so that if a deployer intentionally deploys a known-bad SHA
+		// for which no nodes become healthy (specifying minimum == 0),
+		// we don't leave an RU and old RC lying around.
+		// The RU and RC would have required manual intervention to clean up.
+		return ruShouldTerminate
+	}
+
+	// Enough nodes are scheduled, but not enough of them are healthy.
+	// We don't need to schedule new nodes, but we can't terminate the deploy yet.
+	return ruShouldBlock
 }
 
 func (u *update) lockRCs(done <-chan struct{}) error {
