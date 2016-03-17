@@ -159,7 +159,7 @@ ROLL_LOOP:
 				// The benefit of using >= is that it allows termination even if Run
 				// resumes from an unusual state.
 
-				if newNodes.Healthy >= u.MinimumReplicas {
+				if oldNodes.Healthy+newNodes.Healthy >= u.MinimumReplicas {
 					// We only ask for u.MinimumReplicas nodes to be healthy
 					// before declaring an upgrade to be complete.
 					// This is so that if a deployer intentionally deploys a known-bad SHA
