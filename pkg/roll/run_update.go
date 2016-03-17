@@ -175,7 +175,7 @@ ROLL_LOOP:
 					u.logger.WithFields(logrus.Fields{
 						"old": oldNodes,
 						"new": newNodes,
-					}).Debugln("Upgrade almost complete, blocking for more healthy old nodes")
+					}).Debugln("Upgrade almost complete, blocking for more healthy new nodes")
 					break
 				}
 			}
