@@ -531,8 +531,8 @@ func TestCountHealthNonCurrent(t *testing.T) {
 	Assert(t).AreEqual(counts, expected, "incorrect health counts")
 }
 
-func (u *update) uniformShouldRollAfterDelay(t *testing.T, newFields rc_fields.RC) (int, error) {
-	remove, add, err := u.shouldRollAfterDelay(newFields)
+func (u *update) uniformShouldRollAfterDelay(t *testing.T, podID types.PodID) (int, error) {
+	remove, add, err := u.shouldRollAfterDelay(podID)
 	Assert(t).AreEqual(remove, add, "expected nodes removed and nodes added to be equal")
 	return add, err
 }
@@ -551,7 +551,7 @@ func TestShouldRollInitial(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	roll, err := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	roll, err := upd.uniformShouldRollAfterDelay(t, manifest.ID())
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
 	Assert(t).AreEqual(roll, 1, "expected to only roll one node")
 }
@@ -561,7 +561,7 @@ func TestShouldRollInitialUnknown(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	roll, _ := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	roll, _ := upd.uniformShouldRollAfterDelay(t, manifest.ID())
 	Assert(t).AreEqual(roll, 0, "expected to roll no nodes if health is unknown")
 }
 
@@ -570,7 +570,7 @@ func TestShouldRollInitialMigrationFromZero(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	remove, add, err := upd.shouldRollAfterDelay(rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	remove, add, err := upd.shouldRollAfterDelay(manifest.ID())
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
 	Assert(t).AreEqual(remove, 0, "expected to remove no nodes")
 	Assert(t).AreEqual(add, 1, "expected to add one node")
@@ -591,7 +591,7 @@ func TestShouldRollMidwayUnhealthy(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	roll, _ := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	roll, _ := upd.uniformShouldRollAfterDelay(t, manifest.ID())
 	Assert(t).AreEqual(roll, 0, "expected to roll no nodes")
 }
 
@@ -605,7 +605,7 @@ func TestShouldRollMidwayUnhealthyMigration(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	roll, _ := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	roll, _ := upd.uniformShouldRollAfterDelay(t, manifest.ID())
 	Assert(t).AreEqual(roll, 0, "expected to roll no nodes")
 }
 
@@ -619,7 +619,7 @@ func TestShouldRollMidwayUnhealthyMigrationFromZero(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	remove, add, _ := upd.shouldRollAfterDelay(rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	remove, add, _ := upd.shouldRollAfterDelay(manifest.ID())
 	Assert(t).AreEqual(remove, 0, "expected to remove no nodes")
 	Assert(t).AreEqual(add, 0, "expected to add no nodes")
 }
@@ -639,7 +639,7 @@ func TestShouldRollMidwayHealthy(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	roll, err := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	roll, err := upd.uniformShouldRollAfterDelay(t, manifest.ID())
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
 	Assert(t).AreEqual(roll, 1, "expected to roll one node")
 }
@@ -654,7 +654,7 @@ func TestShouldRollMidwayUnknkown(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	roll, _ := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	roll, _ := upd.uniformShouldRollAfterDelay(t, manifest.ID())
 	Assert(t).AreEqual(roll, 0, "expected to roll no nodes when old nodes all have unknown health")
 }
 
@@ -678,7 +678,7 @@ func TestShouldRollMidwayDesireLessThanHealthy(t *testing.T) {
 	upd.DesiredReplicas = 5
 	upd.MinimumReplicas = 3
 
-	roll, _ := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	roll, _ := upd.uniformShouldRollAfterDelay(t, manifest.ID())
 	Assert(t).AreEqual(roll, 0, "expected to roll no nodes")
 }
 
@@ -706,7 +706,7 @@ func TestShouldRollMidwayDesireLessThanHealthyPartial(t *testing.T) {
 	upd.DesiredReplicas = 5
 	upd.MinimumReplicas = 3
 
-	roll, err := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	roll, err := upd.uniformShouldRollAfterDelay(t, manifest.ID())
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
 	Assert(t).AreEqual(roll, 1, "expected to roll one node")
 }
@@ -730,7 +730,7 @@ func TestShouldRollWhenNewSatisfiesButNotAllDesiredHealthy(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 1
 
-	roll, err := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	roll, err := upd.uniformShouldRollAfterDelay(t, manifest.ID())
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
 	Assert(t).AreEqual(roll, 1, "expected to roll one node")
 }
@@ -745,7 +745,7 @@ func TestShouldRollMidwayHealthyMigrationFromZero(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	remove, add, err := upd.shouldRollAfterDelay(rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	remove, add, err := upd.shouldRollAfterDelay(manifest.ID())
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
 	Assert(t).AreEqual(remove, 0, "expected to remove no nodes")
 	Assert(t).AreEqual(add, 1, "expected to add one node")
@@ -763,7 +763,7 @@ func TestShouldRollMidwayHealthyMigrationFromZeroWhenNewSatisfies(t *testing.T) 
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	remove, add, err := upd.shouldRollAfterDelay(rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	remove, add, err := upd.shouldRollAfterDelay(manifest.ID())
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
 	Assert(t).AreEqual(remove, 0, "expected to remove no nodes")
 	Assert(t).AreEqual(add, 1, "expected to add one node")

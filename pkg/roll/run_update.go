@@ -17,6 +17,7 @@ import (
 	"github.com/square/p2/pkg/rc"
 	rcf "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -197,7 +198,7 @@ ROLL_LOOP:
 
 					// determine the new value of `next`, which may have changed
 					// following the delay.
-					nextRemove, nextAdd, err = u.shouldRollAfterDelay(newFields)
+					nextRemove, nextAdd, err = u.shouldRollAfterDelay(newFields.Manifest.ID())
 
 					if err != nil {
 						u.logger.NoFields().Errorln(err)
@@ -413,10 +414,10 @@ func (u *update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNod
 	return ret, err
 }
 
-func (u *update) shouldRollAfterDelay(newFields rcf.RC) (int, int, error) {
+func (u *update) shouldRollAfterDelay(podID types.PodID) (int, int, error) {
 	// Check health again following the roll delay. If things have gotten
 	// worse since we last looked, or there is an error, we break this iteration.
-	checks, err := u.hcheck.Service(newFields.Manifest.ID().String())
+	checks, err := u.hcheck.Service(podID.String())
 	if err != nil {
 		return 0, 0, util.Errorf("Could not retrieve health following delay: %v", err)
 	}
