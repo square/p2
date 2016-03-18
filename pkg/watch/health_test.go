@@ -56,7 +56,7 @@ func TestUpdatePods(t *testing.T) {
 	// ids for pods: 1, 2, test
 	// 0, 3 should have values in their shutdownCh
 	logger := logging.NewLogger(logrus.Fields{})
-	pods := updatePods(&MockHealthManager{}, nil, current, reality, "", &logger)
+	pods := updatePods(&MockHealthManager{}, nil, nil, current, reality, "", &logger)
 	Assert(t).AreEqual(true, <-current[0].shutdownCh, "this PodWatch should have been shutdown")
 	Assert(t).AreEqual(true, <-current[3].shutdownCh, "this PodWatch should have been shutdown")
 
@@ -70,7 +70,7 @@ func TestUpdateStatus(t *testing.T) {
 	healthManager := &MockHealthManager{}
 
 	reality := []kp.ManifestResult{newManifestResult("foo"), newManifestResult("bar")}
-	pods1 := updatePods(healthManager, nil, []PodWatch{}, reality, "", &logger)
+	pods1 := updatePods(healthManager, nil, nil, []PodWatch{}, reality, "", &logger)
 	Assert(t).AreEqual(2, len(pods1), "new pods were not added")
 	Assert(t).AreEqual(2, healthManager.UpdaterCreated, "new pods did not create an updaters")
 
@@ -79,7 +79,7 @@ func TestUpdateStatus(t *testing.T) {
 	builder := reality[0].Manifest.GetBuilder()
 	builder.SetStatusPort(2)
 	reality[0].Manifest = builder.GetManifest()
-	pods2 := updatePods(healthManager, nil, pods1, reality, "", &logger)
+	pods2 := updatePods(healthManager, nil, nil, pods1, reality, "", &logger)
 	Assert(t).AreEqual(2, len(pods2), "updatePods() changed the number of pods")
 	Assert(t).AreEqual(1, healthManager.UpdaterCreated, "one pod should have been refreshed")
 }
@@ -89,7 +89,7 @@ func TestUpdatePath(t *testing.T) {
 	healthManager := &MockHealthManager{}
 
 	reality := []kp.ManifestResult{newManifestResult("foo"), newManifestResult("bar")}
-	pods1 := updatePods(healthManager, nil, []PodWatch{}, reality, "bobnode", &logger)
+	pods1 := updatePods(healthManager, nil, nil, []PodWatch{}, reality, "bobnode", &logger)
 	Assert(t).AreEqual(2, len(pods1), "new pods were not added")
 	Assert(t).AreEqual(2, healthManager.UpdaterCreated, "new pods did not create an updaters")
 
@@ -98,7 +98,7 @@ func TestUpdatePath(t *testing.T) {
 	builder := reality[0].Manifest.GetBuilder()
 	builder.SetStatusPath("/_foobar")
 	reality[0].Manifest = builder.GetManifest()
-	pods2 := updatePods(healthManager, nil, pods1, reality, "bobnode", &logger)
+	pods2 := updatePods(healthManager, nil, nil, pods1, reality, "bobnode", &logger)
 	Assert(t).AreEqual(2, len(pods2), "updatePods() changed the number of pods")
 	Assert(t).AreEqual(1, healthManager.UpdaterCreated, "one pod should have been refreshed")
 	Assert(t).AreEqual("https://bobnode:1/_status", pods2[0].statusChecker.URI, "pod should be checking correct path")
