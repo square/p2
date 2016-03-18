@@ -426,6 +426,17 @@ func (u *update) shouldRollAfterDelay(newFields rcf.RC) (int, error) {
 
 func (u *update) rollAlgorithmParams(oldHealth, newHealth rcNodeCounts) (oldHealthy, newHealthy, desired, minHealthy int) {
 	oldHealthy = oldHealth.Healthy
+	if oldHealth.Desired < oldHealthy {
+		// Because of the non-atomicity of our KV stores,
+		// we may run into this situation while decrementing old RC's count:
+		// old RC has decremented desire, but not yet removed RC label from the pod.
+		// We will see this as {Desired: 1, Healthy: 2}, or similar.
+		// We assume that the old RC will eventually cause Healthy to go to 1 here.
+		// So, we should assume that oldHealthy is is the lesser of the two.
+		// Otherwise, we may over-eagerly remove more nodes from old RC.
+		// That would cause a violation of minimum health.
+		oldHealthy = oldHealth.Desired
+	}
 	newHealthy = newHealth.Healthy
 	desired = u.DesiredReplicas
 	minHealthy = u.MinimumReplicas

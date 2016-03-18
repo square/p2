@@ -104,6 +104,14 @@ func TestRollAlgorithmParams(t *testing.T) {
 	Assert(t).AreEqual(minHealthy, 4096, "incorrect min healthy param")
 }
 
+func TestRollAlgorithmParamsFewerDesiredThanHealthy(t *testing.T) {
+	u := &update{}
+	oldHealth := rcNodeCounts{Healthy: 4, Desired: 3}
+	newHealth := rcNodeCounts{}
+	old, _, _, _ := u.rollAlgorithmParams(oldHealth, newHealth)
+	Assert(t).AreEqual(old, 3, "incorrect old healthy param (expected to be old desired, since it's smaller than old healthy)")
+}
+
 func TestWouldWorkOn(t *testing.T) {
 	fakeLabels := labels.NewFakeApplicator()
 	fakeLabels.SetLabel(labels.RC, "abc-123", "color", "red")
@@ -504,6 +512,59 @@ func TestShouldRollMidwayHealthy(t *testing.T) {
 	}, checks)
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
+
+	roll, err := upd.shouldRollAfterDelay(rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	Assert(t).IsNil(err, "expected no error determining nodes to roll")
+	Assert(t).AreEqual(roll, 1, "expected to roll one node")
+}
+
+func TestShouldRollMidwayDesireLessThanHealthy(t *testing.T) {
+	checks := map[string]health.Result{
+		"node1": {Status: health.Passing},
+		"node2": {Status: health.Passing},
+		"node3": {Status: health.Passing},
+		"node4": {Status: health.Passing},
+		"node5": {Status: health.Passing},
+	}
+	upd, _, manifest := updateWithHealth(t, 3, 2, map[string]bool{
+		// This is something that may happen in a rolling update:
+		// old RC only desires three nodes, but still has all five.
+		"node1": true,
+		"node2": true,
+		"node3": true,
+		"node4": true,
+		"node5": true,
+	}, map[string]bool{}, checks)
+	upd.DesiredReplicas = 5
+	upd.MinimumReplicas = 3
+
+	roll, _ := upd.shouldRollAfterDelay(rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	Assert(t).AreEqual(roll, 0, "expected to roll no nodes")
+}
+
+func TestShouldRollMidwayDesireLessThanHealthyPartial(t *testing.T) {
+	// This test is like the above, but ensures that we are not too conservative.
+	// If we have a minimum health of 3, desire 3 on the old side,
+	// and have 1 healthy on the new side, we should have room to roll one node.
+	checks := map[string]health.Result{
+		"node1": {Status: health.Passing},
+		"node2": {Status: health.Passing},
+		"node3": {Status: health.Passing},
+		"node4": {Status: health.Passing},
+		"node5": {Status: health.Passing},
+	}
+	upd, _, manifest := updateWithHealth(t, 3, 2, map[string]bool{
+		// This is something that may happen in a rolling update:
+		// old RC only desires three nodes, but still has four of them.
+		"node1": true,
+		"node2": true,
+		"node3": true,
+		"node4": true,
+	}, map[string]bool{
+		"node5": true,
+	}, checks)
+	upd.DesiredReplicas = 5
+	upd.MinimumReplicas = 3
 
 	roll, err := upd.shouldRollAfterDelay(rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
