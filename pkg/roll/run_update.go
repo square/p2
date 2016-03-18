@@ -146,12 +146,34 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 	defer close(hQuit)
 	go u.hcheck.WatchService(string(newFields.Manifest.ID()), hChecks, hErrs, hQuit)
 
-ROLL_LOOP:
+	if updateSucceeded := u.rollLoop(newFields.Manifest.ID(), hChecks, hErrs, quit); !updateSucceeded {
+		// We were asked to quit. Do so without cleaning old RC.
+		return false
+	}
+
+	// rollout complete, clean up old RC if told to do so
+	if !u.LeaveOld {
+		u.logger.NoFields().Infoln("Cleaning up old RC")
+		if !RetryOrQuit(func() error { return u.rcs.SetDesiredReplicas(u.OldRC, 0) }, quit, u.logger, "Could not zero old replica count") {
+			return
+		}
+		if !RetryOrQuit(func() error { return u.rcs.Enable(u.OldRC) }, quit, u.logger, "Could not enable old RC") {
+			return
+		}
+		if !RetryOrQuit(func() error { return u.rcs.Delete(u.OldRC, false) }, quit, u.logger, "Could not delete old RC") {
+			return
+		}
+	}
+	return true // finally if we make it here, we can return true
+}
+
+// returns true if roll succeeded, false if asked to quit.
+func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[string]health.Result, hErrs <-chan error, quit <-chan struct{}) bool {
 	for {
 		select {
 		case <-quit:
-			return
-		case <-hErrs:
+			return false
+		case err := <-hErrs:
 			u.logger.WithError(err).Errorln("Could not read health checks")
 		case checks := <-hChecks:
 			newNodes, err := u.countHealthy(u.NewRC, checks)
@@ -174,7 +196,7 @@ ROLL_LOOP:
 					"old": oldNodes,
 					"new": newNodes,
 				}).Debugln("Upgrade complete")
-				break ROLL_LOOP
+				return true
 			} else if nextAction == ruShouldBlock {
 				u.logger.WithFields(logrus.Fields{
 					"old": oldNodes,
@@ -193,12 +215,12 @@ ROLL_LOOP:
 					select {
 					case <-time.After(u.RollDelay):
 					case <-quit:
-						return
+						return false
 					}
 
 					// determine the new value of `next`, which may have changed
 					// following the delay.
-					nextRemove, nextAdd, err = u.shouldRollAfterDelay(newFields.Manifest.ID())
+					nextRemove, nextAdd, err = u.shouldRollAfterDelay(podID)
 
 					if err != nil {
 						u.logger.NoFields().Errorln(err)
@@ -234,21 +256,6 @@ ROLL_LOOP:
 			}
 		}
 	}
-
-	// rollout complete, clean up old RC if told to do so
-	if !u.LeaveOld {
-		u.logger.NoFields().Infoln("Cleaning up old RC")
-		if !RetryOrQuit(func() error { return u.rcs.SetDesiredReplicas(u.OldRC, 0) }, quit, u.logger, "Could not zero old replica count") {
-			return
-		}
-		if !RetryOrQuit(func() error { return u.rcs.Enable(u.OldRC) }, quit, u.logger, "Could not enable old RC") {
-			return
-		}
-		if !RetryOrQuit(func() error { return u.rcs.Delete(u.OldRC, false) }, quit, u.logger, "Could not delete old RC") {
-			return
-		}
-	}
-	return true // finally if we make it here, we can return true
 }
 
 func (u *update) shouldStop(oldNodes, newNodes rcNodeCounts) ruStep {
