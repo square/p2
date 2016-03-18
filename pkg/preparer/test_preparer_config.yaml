@@ -10,3 +10,9 @@ preparer:
   extra_log_destinations:
   - type: socket
     path: /var/log/p2-socket.out
+  log_exec:
+    - log-bridge
+    - start
+  finish_exec:
+    - touch
+    - /tmp/process_did_finish

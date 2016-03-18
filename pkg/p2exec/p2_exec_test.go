@@ -25,7 +25,7 @@ func TestBuildWithArgs(t *testing.T) {
 		CgroupName:       "cgroup_name",
 	}
 
-	expected = "-n -u some_user -e some_dir -e other_dir -l some_cgroup_config_name -c cgroup_name script"
+	expected = "-n -u some_user -e some_dir -e other_dir -l some_cgroup_config_name -c cgroup_name -- script"
 	actual = strings.Join(args.CommandLine(), " ")
 	if actual != expected {
 		t.Errorf("Expected args.BuildWithArgs() to return '%s', was '%s'", expected, actual)

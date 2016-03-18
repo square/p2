@@ -81,6 +81,10 @@ func TestStagedContents(t *testing.T) {
 	Assert(t).IsNil(err, "should have statted staging log main")
 	Assert(t).IsTrue(info.IsDir(), "staging log main should have been a dir")
 
+	info, err = os.Stat(filepath.Join(sb.StagingRoot, "foo", "finish"))
+	Assert(t).IsNil(err, "should have statted staging finish")
+	Assert(t).IsTrue(info.Mode()&0100 == 0100, "finish script should have been executable")
+
 	// There should be no 'down' file if the restart policy is 'always'
 	_, err = os.Stat(filepath.Join(sb.StagingRoot, "foo", "down"))
 	Assert(t).IsNotNil(err, "down file should not have existed when restart policy is 'always'")

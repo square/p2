@@ -261,10 +261,12 @@ func TestBuildRunitServices(t *testing.T) {
 	serviceBuilder := &fakeSB.ServiceBuilder
 
 	pod := Pod{
+		P2Exec:         "/usr/bin/p2-exec",
 		Id:             "testPod",
 		path:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
-		LogExec:        defaultLogExec,
+		LogExec:        DefaultLogExec,
+		FinishExec:     DefaultFinishExec,
 	}
 	hl, sb := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	defer hoist.CleanupFakeLaunchable(hl, sb)
@@ -274,7 +276,8 @@ func TestBuildRunitServices(t *testing.T) {
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
 	testManifest := &manifest{RestartPolicy: runit.RestartPolicyAlways}
-	pod.buildRunitServices([]launch.Launchable{hl.If()}, testManifest)
+	testLaunchable := hl.If()
+	pod.buildRunitServices([]launch.Launchable{testLaunchable}, testManifest)
 
 	f, err := os.Open(outFilePath)
 	defer f.Close()
@@ -283,12 +286,14 @@ func TestBuildRunitServices(t *testing.T) {
 
 	expectedMap := map[string]runit.ServiceTemplate{
 		executables[0].Service.Name: runit.ServiceTemplate{
-			Run: executables[0].Exec,
-			Log: defaultLogExec,
+			Run:    executables[0].Exec,
+			Log:    DefaultLogExec,
+			Finish: pod.FinishExecForLaunchable(testLaunchable),
 		},
 		executables[1].Service.Name: runit.ServiceTemplate{
-			Run: executables[1].Exec,
-			Log: defaultLogExec,
+			Run:    executables[1].Exec,
+			Log:    DefaultLogExec,
+			Finish: pod.FinishExecForLaunchable(testLaunchable),
 		},
 	}
 	expected, err := yaml.Marshal(expectedMap)

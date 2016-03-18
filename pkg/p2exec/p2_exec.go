@@ -38,5 +38,9 @@ func (args P2ExecArgs) CommandLine() []string {
 		cmd = append(cmd, "-w", args.WorkDir)
 	}
 
+	if len(cmd) > 0 {
+		cmd = append(cmd, "--")
+	}
+
 	return append(cmd, args.Command...)
 }
