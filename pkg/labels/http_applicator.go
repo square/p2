@@ -44,7 +44,7 @@ func (h *httpApplicator) SetLabel(labelType Type, id, name, value string) error 
 }
 
 func (h *httpApplicator) SetLabels(labelType Type, id string, labels map[string]string) error {
-	return util.Errorf("SetLabel not implemented for HttpApplicator (type %s, id %s, labels %s)", labelType, id, labels)
+	return util.Errorf("SetLabels not implemented for HttpApplicator (type %s, id %s, labels %s)", labelType, id, labels)
 }
 
 func (h *httpApplicator) RemoveLabel(labelType Type, id, name string) error {
