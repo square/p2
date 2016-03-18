@@ -175,7 +175,7 @@ ROLL_LOOP:
 				break
 			}
 
-			next := rollAlgorithm(oldNodes.Healthy, newNodes.Healthy, u.DesiredReplicas, u.MinimumReplicas)
+			next := rollAlgorithm(u.rollAlgorithmParams(oldNodes, newNodes))
 			if next > 0 {
 				// apply the delay only if we've already added to the new RC, since there's
 				// no value in sitting around doing nothing before anything has happened.
@@ -334,10 +334,12 @@ func (u *update) enable() error {
 }
 
 type rcNodeCounts struct {
-	Desired int // the number of nodes the RC wants to be on
-	Current int // the number of nodes the RC has scheduled itself on
-	Real    int // the number of current nodes that have finished scheduling
-	Healthy int // the number of real nodes that are healthy
+	Desired   int // the number of nodes the RC wants to be on
+	Current   int // the number of nodes the RC has scheduled itself on
+	Real      int // the number of current nodes that have finished scheduling
+	Healthy   int // the number of real nodes that are healthy
+	Unhealthy int // the number of real nodes that are unhealthy
+	Unknown   int // the number of real nodes that are of unknown health
 }
 
 func (u *update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNodeCounts, error) {
@@ -358,6 +360,13 @@ func (u *update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNod
 	}
 	ret.Current = len(currentPods)
 
+	if ret.Desired > ret.Current {
+		// This implies that the RC hasn't yet scheduled pods that it desires to have.
+		// We consider their health to be unknown in this case.
+		// Note that the below loop over `range currentPods` may also increase `ret.Unknown`.
+		ret.Unknown = ret.Desired - ret.Current
+	}
+
 	for _, pod := range currentPods {
 		node := pod.Node
 		// TODO: is reality checking an rc-layer concern?
@@ -373,8 +382,16 @@ func (u *update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNod
 			// don't check health if the update isn't even done there yet
 			continue
 		}
-		if hres, ok := checks[node]; ok && hres.Status == health.Passing {
-			ret.Healthy++
+		if hres, ok := checks[node]; ok {
+			if hres.Status == health.Passing {
+				ret.Healthy++
+			} else if hres.Status == health.Unknown {
+				ret.Unknown++
+			} else {
+				ret.Unhealthy++
+			}
+		} else {
+			ret.Unknown++
 		}
 	}
 	return ret, err
@@ -398,13 +415,32 @@ func (u *update) shouldRollAfterDelay(newFields rcf.RC) (int, error) {
 		return 0, util.Errorf("Could not determine old service health: %v", err)
 	}
 
-	afterDelayNext := rollAlgorithm(afterDelayOld.Healthy, afterDelayNew.Healthy, u.DesiredReplicas, u.MinimumReplicas)
+	afterDelayNext := rollAlgorithm(u.rollAlgorithmParams(afterDelayOld, afterDelayNew))
 
 	if afterDelayNext <= 0 {
 		return 0, util.Errorf("No nodes can be safely updated after %v roll delay, will wait again", u.RollDelay)
 	}
 
 	return afterDelayNext, nil
+}
+
+func (u *update) rollAlgorithmParams(oldHealth, newHealth rcNodeCounts) (oldHealthy, newHealthy, desired, minHealthy int) {
+	oldHealthy = oldHealth.Healthy
+	if oldHealth.Desired < oldHealthy {
+		// Because of the non-atomicity of our KV stores,
+		// we may run into this situation while decrementing old RC's count:
+		// old RC has decremented desire, but not yet removed RC label from the pod.
+		// We will see this as {Desired: 1, Healthy: 2}, or similar.
+		// We assume that the old RC will eventually cause Healthy to go to 1 here.
+		// So, we should assume that oldHealthy is is the lesser of the two.
+		// Otherwise, we may over-eagerly remove more nodes from old RC.
+		// That would cause a violation of minimum health.
+		oldHealthy = oldHealth.Desired
+	}
+	newHealthy = newHealth.Healthy
+	desired = u.DesiredReplicas
+	minHealthy = u.MinimumReplicas
+	return
 }
 
 // the roll algorithm defines how to mutate RCs over time. it takes four args:

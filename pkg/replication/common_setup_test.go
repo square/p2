@@ -62,6 +62,8 @@ func setupPreparers(fixture consultest.Fixture) {
 	}
 }
 
+// TODO: these health checkers could be move to the health/checker/test package.
+
 type alwaysHappyHealthChecker struct {
 }
 
