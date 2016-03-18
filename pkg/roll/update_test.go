@@ -28,6 +28,48 @@ func TestWouldBlock(t *testing.T) {
 	Assert(t).AreEqual(rollAlgorithm(3, 0, 6, 0), 6, "should schedule remaining if no minimum")
 }
 
+func TestShouldContinue(t *testing.T) {
+	u := update{Update: fields.Update{MinimumReplicas: 2, DesiredReplicas: 3}}
+	oldNodes := rcNodeCounts{Desired: 3, Healthy: 3}
+	newNodes := rcNodeCounts{Desired: 0, Healthy: 0}
+	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldContinue, "RU should continue if there is work to be done")
+}
+
+func TestShouldContinue2(t *testing.T) {
+	u := update{Update: fields.Update{MinimumReplicas: 2, DesiredReplicas: 3}}
+	oldNodes := rcNodeCounts{Desired: 1, Healthy: 1}
+	newNodes := rcNodeCounts{Desired: 2, Healthy: 2}
+	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldContinue, "RU should continue if there is work to be done")
+}
+
+func TestShouldStopIfNodesHealthy(t *testing.T) {
+	u := update{Update: fields.Update{MinimumReplicas: 2, DesiredReplicas: 3}}
+	oldNodes := rcNodeCounts{Desired: 0, Healthy: 0}
+	newNodes := rcNodeCounts{Desired: 3, Healthy: 2}
+	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldTerminate, "RU should terminate if enough nodes are healthy")
+}
+
+func TestShouldBlockIfWaitingForHealthyNodes(t *testing.T) {
+	u := update{Update: fields.Update{MinimumReplicas: 2, DesiredReplicas: 3}}
+	oldNodes := rcNodeCounts{Desired: 0, Healthy: 0}
+	newNodes := rcNodeCounts{Desired: 3, Healthy: 1}
+	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldBlock, "RU should block if not enough nodes are healthy")
+}
+
+func TestShouldBlockIfWaitingForHealthyCanaryNodes(t *testing.T) {
+	u := update{Update: fields.Update{MinimumReplicas: 2, DesiredReplicas: 1}}
+	oldNodes := rcNodeCounts{Desired: 2, Healthy: 1}
+	newNodes := rcNodeCounts{Desired: 1, Healthy: 0}
+	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldBlock, "RU should block if canary node isn't yet healthy")
+}
+
+func TestShouldTerminateIfCanaryFinished(t *testing.T) {
+	u := update{Update: fields.Update{MinimumReplicas: 2, DesiredReplicas: 1}}
+	oldNodes := rcNodeCounts{Desired: 2, Healthy: 2}
+	newNodes := rcNodeCounts{Desired: 1, Healthy: 1}
+	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldTerminate, "RU should terminate if canary node is healthy")
+}
+
 func TestWouldWorkOn(t *testing.T) {
 	fakeLabels := labels.NewFakeApplicator()
 	fakeLabels.SetLabel(labels.RC, "abc-123", "color", "red")
