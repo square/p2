@@ -1,6 +1,7 @@
 package roll
 
 import (
+	"sync"
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
@@ -56,7 +57,8 @@ type Farm struct {
 	rcs      RCGetter
 	sessions <-chan string
 
-	children map[fields.ID]childRU
+	children map[roll_fields.ID]childRU
+	childMu  sync.Mutex
 	session  kp.Session
 
 	logger logging.Logger
@@ -88,7 +90,7 @@ func NewFarm(
 		rcs:        rcs,
 		sessions:   sessions,
 		logger:     logger,
-		children:   make(map[fields.ID]childRU),
+		children:   make(map[roll_fields.ID]childRU),
 		labeler:    labeler,
 		rcSelector: rcSelector,
 	}
@@ -128,11 +130,11 @@ START_LOOP:
 			rlf.logger.WithField("n", len(rlFields)).Debugln("Received update update")
 
 			// track which children were found in the returned set
-			foundChildren := make(map[fields.ID]struct{})
+			foundChildren := make(map[roll_fields.ID]struct{})
 			for _, rlField := range rlFields {
 
 				rlLogger := rlf.logger.SubLogger(logrus.Fields{
-					"ru": rlField.NewRC,
+					"ru": rlField.ID(),
 				})
 				rcField, err := rlf.rcs.Get(rlField.NewRC)
 				if rcstore.IsNotExist(err) {
@@ -147,10 +149,10 @@ START_LOOP:
 				rlLogger = rlLogger.SubLogger(logrus.Fields{
 					"pod": rcField.Manifest.ID(),
 				})
-				if _, ok := rlf.children[rlField.NewRC]; ok {
+				if _, ok := rlf.children[rlField.ID()]; ok {
 					// this one is already ours, skip
 					rlLogger.NoFields().Debugln("Got update already owned by self")
-					foundChildren[rlField.NewRC] = struct{}{}
+					foundChildren[rlField.ID()] = struct{}{}
 					continue
 				}
 
@@ -166,15 +168,15 @@ START_LOOP:
 
 				shouldWorkOnNew, err := rlf.shouldWorkOn(rlField.NewRC)
 				if err != nil {
-					rlLogger.WithError(err).Errorf("Could not determine if should work on RC %s, skipping", rlField.NewRC)
+					rlLogger.WithError(err).Errorf("Could not determine if should work on RC %s, skipping", rlField.ID())
 					continue
 				}
 				if !shouldWorkOnNew {
-					rlLogger.WithField("new_rc", rlField.NewRC).Infof("Ignoring roll for new RC %s, not meant for this farm", rlField.NewRC)
+					rlLogger.WithField("new_rc", rlField.ID()).Infof("Ignoring roll for new RC %s, not meant for this farm", rlField.ID())
 					continue
 				}
 
-				lockPath, err := rollstore.RollLockPath(roll_fields.ID(rlField.NewRC))
+				lockPath, err := rollstore.RollLockPath(rlField.ID())
 				if err != nil {
 					rlLogger.WithError(err).Errorln("Unable to compute roll lock path")
 				}
@@ -194,18 +196,33 @@ START_LOOP:
 				}
 
 				// at this point the ru is ours, time to spin it up
-				rlLogger.WithField("new_rc", rlField.NewRC).Infof("Acquired lock on update %s -> %s, spawning", rlField.OldRC, rlField.NewRC)
+				rlLogger.WithField("new_rc", rlField.ID()).Infof("Acquired lock on update %s -> %s, spawning", rlField.OldRC, rlField.ID())
 
 				newChild := rlf.factory.New(rlField, rlLogger, rlf.session)
 				childQuit := make(chan struct{})
-				rlf.children[rlField.NewRC] = childRU{
+				rlf.children[rlField.ID()] = childRU{
 					ru:       newChild,
 					quit:     childQuit,
 					unlocker: unlocker,
 				}
-				foundChildren[rlField.NewRC] = struct{}{}
+				foundChildren[rlField.ID()] = struct{}{}
 
 				go func(id roll_fields.ID) {
+					defer func() {
+						if r := recover(); r != nil {
+							err := util.Errorf("Caught panic in roll farm: %s", r)
+							rlLogger.WithError(err).
+								WithField("new_rc", rlField.NewRC).
+								Errorln("Caught panic in roll farm")
+
+							// Release the child so that another farm can reattempt
+							rlf.childMu.Lock()
+							defer rlf.childMu.Unlock()
+							if _, ok := rlf.children[id]; ok {
+								rlf.releaseChild(id)
+							}
+						}
+					}()
 					if !newChild.Run(childQuit) {
 						// returned false, farm must have asked us to quit
 						return
@@ -216,16 +233,22 @@ START_LOOP:
 						rlLogger.WithError(err).Errorln("Could not delete update")
 						time.Sleep(1 * time.Second)
 					}
-				}(roll_fields.ID(rlField.NewRC)) // do not close over rlField, it's a loop variable
+				}(rlField.ID()) // do not close over rlField, it's a loop variable
 			}
 
 			// now remove any children that were not found in the result set
-			rlf.logger.NoFields().Debugln("Pruning updates that have disappeared")
-			for id := range rlf.children {
-				if _, ok := foundChildren[id]; !ok {
-					rlf.releaseChild(id)
-				}
-			}
+			rlf.releaseDeletedChildren(foundChildren)
+		}
+	}
+}
+
+func (rlf *Farm) releaseDeletedChildren(foundChildren map[roll_fields.ID]struct{}) {
+	rlf.childMu.Lock()
+	defer rlf.childMu.Unlock()
+	rlf.logger.NoFields().Debugln("Pruning updates that have disappeared")
+	for id := range rlf.children {
+		if _, ok := foundChildren[id]; !ok {
+			rlf.releaseChild(id)
 		}
 	}
 }
@@ -243,7 +266,8 @@ func (rlf *Farm) shouldWorkOn(rcID fields.ID) (bool, error) {
 }
 
 // close one child
-func (rlf *Farm) releaseChild(id fields.ID) {
+// should only be called with rlf.childMu locked
+func (rlf *Farm) releaseChild(id roll_fields.ID) {
 	rlf.logger.WithField("ru", id).Infoln("Releasing update")
 	close(rlf.children[id].quit)
 
@@ -260,6 +284,8 @@ func (rlf *Farm) releaseChild(id fields.ID) {
 
 // close all children
 func (rlf *Farm) releaseChildren() {
+	rlf.childMu.Lock()
+	defer rlf.childMu.Unlock()
 	for id := range rlf.children {
 		// it's safe to delete this element during iteration,
 		// because we have already iterated over it
