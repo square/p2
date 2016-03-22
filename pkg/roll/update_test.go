@@ -35,45 +35,45 @@ func TestWouldBlock(t *testing.T) {
 }
 
 func TestShouldContinue(t *testing.T) {
-	u := update{Update: fields.Update{MinimumReplicas: 2, DesiredReplicas: 3}}
-	oldNodes := rcNodeCounts{Desired: 3, Healthy: 3}
-	newNodes := rcNodeCounts{Desired: 0, Healthy: 0}
+	u := update{Update: fields.Update{DesiredReplicas: 3}}
+	oldNodes := rcNodeCounts{Desired: 3, Current: 3}
+	newNodes := rcNodeCounts{Desired: 0, Current: 0}
 	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldContinue, "RU should continue if there is work to be done")
 }
 
 func TestShouldContinue2(t *testing.T) {
-	u := update{Update: fields.Update{MinimumReplicas: 2, DesiredReplicas: 3}}
-	oldNodes := rcNodeCounts{Desired: 1, Healthy: 1}
-	newNodes := rcNodeCounts{Desired: 2, Healthy: 2}
+	u := update{Update: fields.Update{DesiredReplicas: 3}}
+	oldNodes := rcNodeCounts{Desired: 1, Current: 1}
+	newNodes := rcNodeCounts{Desired: 2, Current: 2}
 	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldContinue, "RU should continue if there is work to be done")
 }
 
-func TestShouldStopIfNodesHealthy(t *testing.T) {
-	u := update{Update: fields.Update{MinimumReplicas: 2, DesiredReplicas: 3}}
-	oldNodes := rcNodeCounts{Desired: 0, Healthy: 0}
-	newNodes := rcNodeCounts{Desired: 3, Healthy: 2}
-	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldTerminate, "RU should terminate if enough nodes are healthy")
+func TestShouldStopIfNodesCurrent(t *testing.T) {
+	u := update{Update: fields.Update{DesiredReplicas: 3}}
+	oldNodes := rcNodeCounts{Desired: 0, Current: 0}
+	newNodes := rcNodeCounts{Desired: 3, Current: 3}
+	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldTerminate, "RU should terminate if enough nodes are current")
 }
 
-func TestShouldBlockIfWaitingForHealthyNodes(t *testing.T) {
-	u := update{Update: fields.Update{MinimumReplicas: 2, DesiredReplicas: 3}}
-	oldNodes := rcNodeCounts{Desired: 0, Healthy: 0}
-	newNodes := rcNodeCounts{Desired: 3, Healthy: 1}
-	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldBlock, "RU should block if not enough nodes are healthy")
+func TestShouldBlockIfWaitingForCurrentNodes(t *testing.T) {
+	u := update{Update: fields.Update{DesiredReplicas: 3}}
+	oldNodes := rcNodeCounts{Desired: 0, Current: 0}
+	newNodes := rcNodeCounts{Desired: 3, Current: 2}
+	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldBlock, "RU should block if not enough nodes are current")
 }
 
-func TestShouldBlockIfWaitingForHealthyCanaryNodes(t *testing.T) {
-	u := update{Update: fields.Update{MinimumReplicas: 2, DesiredReplicas: 1}}
-	oldNodes := rcNodeCounts{Desired: 2, Healthy: 1}
-	newNodes := rcNodeCounts{Desired: 1, Healthy: 0}
-	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldBlock, "RU should block if canary node isn't yet healthy")
+func TestShouldBlockIfWaitingForCurrentCanaryNodes(t *testing.T) {
+	u := update{Update: fields.Update{DesiredReplicas: 1}}
+	oldNodes := rcNodeCounts{Desired: 2, Current: 2}
+	newNodes := rcNodeCounts{Desired: 1, Current: 0}
+	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldBlock, "RU should block if canary node isn't yet current")
 }
 
 func TestShouldTerminateIfCanaryFinished(t *testing.T) {
-	u := update{Update: fields.Update{MinimumReplicas: 2, DesiredReplicas: 1}}
-	oldNodes := rcNodeCounts{Desired: 2, Healthy: 2}
-	newNodes := rcNodeCounts{Desired: 1, Healthy: 1}
-	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldTerminate, "RU should terminate if canary node is healthy")
+	u := update{Update: fields.Update{DesiredReplicas: 1}}
+	oldNodes := rcNodeCounts{Desired: 2, Current: 2}
+	newNodes := rcNodeCounts{Desired: 1, Current: 1}
+	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldTerminate, "RU should terminate if canary node is current")
 }
 
 func TestRollAlgorithmParams(t *testing.T) {
