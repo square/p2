@@ -60,7 +60,7 @@ func (s *fakeStore) Create(manifest pods.Manifest, nodeSelector labels.Selector,
 func (s *fakeStore) Get(id fields.ID) (fields.RC, error) {
 	entry, ok := s.rcs[id]
 	if !ok {
-		return fields.RC{}, util.Errorf("Nonexistent RC")
+		return fields.RC{}, NoReplicationController
 	}
 
 	return entry.RC, nil
