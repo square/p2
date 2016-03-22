@@ -102,7 +102,7 @@ func (s *consulStore) innerCreate(manifest pods.Manifest, nodeSelector klabels.S
 
 	jsonRC, err := json.Marshal(rc)
 	if err != nil {
-		return fields.RC{}, err
+		return fields.RC{}, util.Errorf("Could not marshal RC as json: %s", err)
 	}
 	success, _, err := s.kv.CAS(&api.KVPair{
 		Key:   rcp,
@@ -130,7 +130,7 @@ func (s *consulStore) Get(id fields.ID) (fields.RC, error) {
 
 	kvp, _, err := s.kv.Get(rcp, nil)
 	if err != nil {
-		return fields.RC{}, err
+		return fields.RC{}, consulutil.NewKVError("get", rcp, err)
 	}
 	if kvp == nil {
 		// ID didn't exist
@@ -142,7 +142,7 @@ func (s *consulStore) Get(id fields.ID) (fields.RC, error) {
 func (s *consulStore) List() ([]fields.RC, error) {
 	listed, _, err := s.kv.List(rcTree+"/", nil)
 	if err != nil {
-		return nil, err
+		return nil, consulutil.NewKVError("list", rcTree+"/", err)
 	}
 	return s.kvpsToRCs(listed)
 }
@@ -180,7 +180,11 @@ func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan
 func (s *consulStore) kvpToRC(kvp *api.KVPair) (fields.RC, error) {
 	rc := fields.RC{}
 	err := json.Unmarshal(kvp.Value, &rc)
-	return rc, err
+	if err != nil {
+		return rc, util.Errorf("Could not unmarshal RC ('%s') as json: %s", string(kvp.Value), err)
+	}
+
+	return rc, nil
 }
 
 func (s *consulStore) kvpsToRCs(l api.KVPairs) ([]fields.RC, error) {
@@ -261,10 +265,11 @@ func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC,
 
 	kvp, meta, err := s.kv.Get(rcp, nil)
 	if err != nil {
-		return err
+		return consulutil.NewKVError("get", rcp, err)
 	}
+
 	if kvp == nil {
-		return fmt.Errorf("replication controller %s does not exist", id)
+		return NoReplicationController
 	}
 
 	rc, err := s.kvpToRC(kvp)
@@ -294,18 +299,21 @@ func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC,
 		}
 
 		success, _, err = s.kv.DeleteCAS(newKVP, nil)
+		if err != nil {
+			return consulutil.NewKVError("delete-cas", newKVP.Key, err)
+		}
 	} else {
 		b, err := json.Marshal(newRC)
 		if err != nil {
-			return err
+			return util.Errorf("Could not marshal RC as JSON: %s", err)
 		}
 		newKVP.Value = b
 		success, _, err = s.kv.CAS(newKVP, nil)
+		if err != nil {
+			return consulutil.NewKVError("cas", newKVP.Key, err)
+		}
 	}
 
-	if err != nil {
-		return err
-	}
 	if !success {
 		return CASError(rcp)
 	}
