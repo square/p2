@@ -246,17 +246,21 @@ func (u *update) shouldStop(oldNodes, newNodes rcNodeCounts) ruStep {
 
 	// Enough nodes are scheduled on the new side.
 
-	if oldNodes.Healthy+newNodes.Healthy >= u.MinimumReplicas {
-		// We only ask for u.MinimumReplicas nodes to be healthy
+	if newNodes.Current >= u.DesiredReplicas {
+		// We only ask for the new RC to have labeled the desired number of nodes
+		// (number of nodes labeled is reflected in newNodes.Current)
 		// before declaring an upgrade to be complete.
-		// This is so that if a deployer intentionally deploys a known-bad SHA
+		// No need to check health for two reasons:
+		// 1) So that if a deployer intentionally deploys a known-bad SHA
 		// for which no nodes become healthy (specifying minimum == 0),
-		// we don't leave an RU and old RC lying around.
-		// The RU and RC would have required manual intervention to clean up.
+		// we terminate and don't leave an RU and old RC lying around.
+		// 2) rollAlgorithm is responsible for maintaining the min health guarantee,
+		// not this code. If we reach this point, rollAlgorithm is finished anyway.
+		// The only decision to make is whether to terminate or block.
 		return ruShouldTerminate
 	}
 
-	// Enough nodes are scheduled, but not enough of them are healthy.
+	// Fewer nodes are owned by the new RC than are desired.
 	// We don't need to schedule new nodes, but we can't terminate the deploy yet.
 	return ruShouldBlock
 }
