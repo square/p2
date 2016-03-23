@@ -175,8 +175,8 @@ ROLL_LOOP:
 				break
 			}
 
-			next := rollAlgorithm(u.rollAlgorithmParams(oldNodes, newNodes))
-			if next > 0 {
+			nextRemove, nextAdd := rollAlgorithm(u.rollAlgorithmParams(oldNodes, newNodes))
+			if nextRemove > 0 || nextAdd > 0 {
 				// apply the delay only if we've already added to the new RC, since there's
 				// no value in sitting around doing nothing before anything has happened.
 				if newNodes.Desired > 0 && u.RollDelay > time.Duration(0) {
@@ -190,7 +190,7 @@ ROLL_LOOP:
 
 					// determine the new value of `next`, which may have changed
 					// following the delay.
-					next, err = u.shouldRollAfterDelay(newFields)
+					nextRemove, nextAdd, err = u.shouldRollAfterDelay(newFields)
 
 					if err != nil {
 						u.logger.NoFields().Errorln(err)
@@ -199,19 +199,24 @@ ROLL_LOOP:
 				}
 
 				u.logger.WithFields(logrus.Fields{
-					"old":  oldNodes,
-					"new":  newNodes,
-					"next": next,
-				}).Infof("Adding %v new nodes", next)
-				err = u.rcs.AddDesiredReplicas(u.OldRC, -next)
-				if err != nil {
-					u.logger.WithError(err).Errorln("Could not decrement old replica count")
-					break
+					"old":        oldNodes,
+					"new":        newNodes,
+					"nextRemove": nextRemove,
+					"nextAdd":    nextAdd,
+				}).Infof("Adding %d new nodes and removing %d old nodes", nextAdd, nextRemove)
+				if nextRemove > 0 {
+					err = u.rcs.AddDesiredReplicas(u.OldRC, -nextRemove)
+					if err != nil {
+						u.logger.WithError(err).Errorln("Could not decrement old replica count")
+						break
+					}
 				}
-				err = u.rcs.AddDesiredReplicas(u.NewRC, next)
-				if err != nil {
-					u.logger.WithError(err).Errorln("Could not increment new replica count")
-					break
+				if nextAdd > 0 {
+					err = u.rcs.AddDesiredReplicas(u.NewRC, nextAdd)
+					if err != nil {
+						u.logger.WithError(err).Errorln("Could not increment new replica count")
+						break
+					}
 				}
 			} else {
 				u.logger.WithFields(logrus.Fields{
@@ -401,35 +406,36 @@ func (u *update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNod
 	return ret, err
 }
 
-func (u *update) shouldRollAfterDelay(newFields rcf.RC) (int, error) {
+func (u *update) shouldRollAfterDelay(newFields rcf.RC) (int, int, error) {
 	// Check health again following the roll delay. If things have gotten
 	// worse since we last looked, or there is an error, we break this iteration.
 	checks, err := u.hcheck.Service(newFields.Manifest.ID().String())
 	if err != nil {
-		return 0, util.Errorf("Could not retrieve health following delay: %v", err)
+		return 0, 0, util.Errorf("Could not retrieve health following delay: %v", err)
 	}
 
 	afterDelayNew, err := u.countHealthy(u.NewRC, checks)
 	if err != nil {
-		return 0, util.Errorf("Could not determine new service health: %v", err)
+		return 0, 0, util.Errorf("Could not determine new service health: %v", err)
 	}
 
 	afterDelayOld, err := u.countHealthy(u.OldRC, checks)
 	if err != nil {
-		return 0, util.Errorf("Could not determine old service health: %v", err)
+		return 0, 0, util.Errorf("Could not determine old service health: %v", err)
 	}
 
-	afterDelayNext := rollAlgorithm(u.rollAlgorithmParams(afterDelayOld, afterDelayNew))
+	afterDelayRemove, afterDelayAdd := rollAlgorithm(u.rollAlgorithmParams(afterDelayOld, afterDelayNew))
 
-	if afterDelayNext <= 0 {
-		return 0, util.Errorf("No nodes can be safely updated after %v roll delay, will wait again", u.RollDelay)
+	if afterDelayRemove <= 0 && afterDelayAdd <= 0 {
+		return 0, 0, util.Errorf("No nodes can be safely updated after %v roll delay, will wait again", u.RollDelay)
 	}
 
-	return afterDelayNext, nil
+	return afterDelayRemove, afterDelayAdd, nil
 }
 
-func (u *update) rollAlgorithmParams(oldHealth, newHealth rcNodeCounts) (oldHealthy, newHealthy, desired, minHealthy int) {
-	oldHealthy = oldHealth.Healthy
+func (u *update) rollAlgorithmParams(oldHealth, newHealth rcNodeCounts) (oldHealthy, newHealthy, currentDesired, targetDesired, minHealthy int) {
+	// We conservatively treat Unknown nodes as healthy on the old side.
+	oldHealthy = oldHealth.Healthy + oldHealth.Unknown
 	if oldHealth.Desired < oldHealthy {
 		// Because of the non-atomicity of our KV stores,
 		// we may run into this situation while decrementing old RC's count:
@@ -442,55 +448,91 @@ func (u *update) rollAlgorithmParams(oldHealth, newHealth rcNodeCounts) (oldHeal
 		oldHealthy = oldHealth.Desired
 	}
 	newHealthy = newHealth.Healthy
-	desired = u.DesiredReplicas
+	currentDesired = oldHealth.Desired + newHealth.Desired
+	targetDesired = u.DesiredReplicas
 	minHealthy = u.MinimumReplicas
 	return
 }
 
-// the roll algorithm defines how to mutate RCs over time. it takes four args:
+// the roll algorithm defines how to mutate RCs over time. it takes five args:
 // - old: the number of healthy nodes on the old RC
 // - new: the number of healthy nodes on the new RC
-// - desired: the number of nodes desired on the new RC (ie the target)
+// - currentDesired: the number of nodes currently desired in total between the old and new RCs
+// - targetDesired: the number of nodes desired on the new RC (ie the target) in the final state
 // - minHealthy: the number of nodes that must always be up (ie the minimum)
-// given these four arguments, rollAlgorithm returns the number of nodes to add
+// given these five arguments, rollAlgorithm returns the number of nodes to add
 // to the new RC and to delete from the old
 //
-// returns zero under the following circumstances:
+// Returns two values, both of which are a positive number or zero:
+// The first value indicates how many nodes to remove from the old RC.
+// The second value indicates how many nodes to add to the old RC.
+//
+// Under the following circumstances, both return values will be zero:
 // - new >= desired (the update is done)
 // - old+new <= minHealthy (at or below the minimum, update has to block)
-func rollAlgorithm(old, new, desired, minHealthy int) int {
+func rollAlgorithm(old, new, currentDesired, targetDesired, minHealthy int) (nodesToRemove, nodesToAdd int) {
 	// how much "headroom" do we have between the number of nodes that are
 	// currently healthy, and the number that must be healthy?
 	// if we schedule more than this, we'll go below the minimum
+	// Note that this can go negative (if old + new don't satisfy minHealthy).
 	headroom := old + new - minHealthy
+
+	capacityIncrease := targetDesired - currentDesired
+	if capacityIncrease > 0 {
+		// If we intend to schedule new nodes (nodes not currently managed by either RC),
+		// then we increase headroom by the capacity difference.
+		// Note that headroom could previously have been negative.
+		// This means we will schedule some number between 0 and capacityIncrease.
+		// For example, with old = new = 0, minHealthy = 2, capacityIncrease = 3,
+		// we'll schedule 0 - 2 + 3 = 1 node.
+		// This conservatively respects minimum health,
+		// on the assumption that there may be healthy nodes we don't know about.
+		// This is particularly useful when migrating from other deployment systems.
+		headroom += capacityIncrease
+	} else {
+		// We're not yet sure what the effects of a capacity decrease in a rolling update will be.
+		capacityIncrease = 0
+	}
 
 	// how many nodes do we have left to go? we can't schedule more than this
 	// or we'll go over the target
 	// note that remaining < headroom is possible depending on how many
 	// old nodes are still alive
-	remaining := desired - new
+	remaining := targetDesired - new
 
 	// heuristic time:
 	if remaining <= 0 {
 		// no nodes remaining, noop out
-		return 0
+		return 0, 0
 	}
 	if new >= minHealthy {
 		// minimum is satisfied by new nodes, doesn't matter how many old ones
 		// we kill. this includes the edge case where minHealthy==0
-		return remaining
+		return clampToZero(remaining - capacityIncrease), remaining
 	}
 	if headroom <= 0 {
 		// the case of minHealthy==0 was caught above. in this case, minHealthy>0 and
 		// headroom is non-positive. this means that we are at, or below, the
 		// minimum, and we cannot schedule new nodes because we might take
 		// down an old one (which would go below the minimum)
-		return 0
+		return 0, 0
 	}
 	// remaining>0 and headroom>0. each one imposes an upper bound on how
-	// many we can schedule at once, so return the minimum of the two
+	// many nodes we can add at once, so nodesToAdd is their minimum.
+	// nodesToRemove is the same number minus any capacity increase
+	// (so the net number of nodes added equals the capacity increase)
 	if remaining < headroom {
-		return remaining
+		nodesToAdd = remaining
+	} else {
+		nodesToAdd = headroom
 	}
-	return headroom
+	nodesToRemove = clampToZero(nodesToAdd - capacityIncrease)
+	return
+}
+
+func clampToZero(n int) int {
+	if n < 0 {
+		return 0
+	}
+	return n
 }
