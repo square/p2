@@ -121,7 +121,7 @@ func TestRollAlgorithmParams(t *testing.T) {
 		Desired:   2048,
 	}
 	old, new, currentDesired, targetDesired, minHealthy := u.rollAlgorithmParams(oldHealth, newHealth)
-	Assert(t).AreEqual(old, 20, "incorrect old healthy param (want old healthy + old unknown)")
+	Assert(t).AreEqual(old, 4, "incorrect old healthy param")
 	Assert(t).AreEqual(new, 256, "incorrect new healthy param")
 	Assert(t).AreEqual(currentDesired, 2080, "incorrect current desired param (want sum of desires)")
 	Assert(t).AreEqual(targetDesired, 8192, "incorrect target desired param")
@@ -498,14 +498,13 @@ func TestShouldRollInitial(t *testing.T) {
 	Assert(t).AreEqual(roll, 1, "expected to only roll one node")
 }
 
-func TestShouldRollInitialMigration(t *testing.T) {
+func TestShouldRollInitialUnknown(t *testing.T) {
 	upd, _, manifest := updateWithHealth(t, 3, 0, nil, nil, nil)
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	roll, err := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
-	Assert(t).IsNil(err, "expected no error determining nodes to roll")
-	Assert(t).AreEqual(roll, 1, "expected to roll one node")
+	roll, _ := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	Assert(t).AreEqual(roll, 0, "expected to roll no nodes if health is unknown")
 }
 
 func TestShouldRollInitialMigrationFromZero(t *testing.T) {
@@ -587,7 +586,7 @@ func TestShouldRollMidwayHealthy(t *testing.T) {
 	Assert(t).AreEqual(roll, 1, "expected to roll one node")
 }
 
-func TestShouldRollMidwayHealthyMigration(t *testing.T) {
+func TestShouldRollMidwayUnknkown(t *testing.T) {
 	checks := map[string]health.Result{
 		"node3": {Status: health.Passing},
 	}
@@ -597,9 +596,8 @@ func TestShouldRollMidwayHealthyMigration(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	roll, err := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
-	Assert(t).IsNil(err, "expected no error determining nodes to roll")
-	Assert(t).AreEqual(roll, 1, "expected to roll one node")
+	roll, _ := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	Assert(t).AreEqual(roll, 0, "expected to roll no nodes when old nodes all have unknown health")
 }
 
 func TestShouldRollMidwayDesireLessThanHealthy(t *testing.T) {
