@@ -434,8 +434,7 @@ func (u *update) shouldRollAfterDelay(newFields rcf.RC) (int, int, error) {
 }
 
 func (u *update) rollAlgorithmParams(oldHealth, newHealth rcNodeCounts) (oldHealthy, newHealthy, currentDesired, targetDesired, minHealthy int) {
-	// We conservatively treat Unknown nodes as healthy on the old side.
-	oldHealthy = oldHealth.Healthy + oldHealth.Unknown
+	oldHealthy = oldHealth.Healthy
 	if oldHealth.Desired < oldHealthy {
 		// Because of the non-atomicity of our KV stores,
 		// we may run into this situation while decrementing old RC's count:
