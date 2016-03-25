@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/kp"
@@ -20,6 +21,11 @@ import (
 // simultaneously, but each one must hold a different Consul session. This
 // ensures that the farms do not instantiate the same replication controller
 // multiple times.
+//
+// RC farms take an RC selector that is used to decide whether this farm should
+// pick up a particular RC. This can be used to assist in RC partitioning of
+// work or to create test environments. Note that this is _not_ required for RC
+// farms to cooperatively schedule work.
 type Farm struct {
 	// constructor arguments for rcs created by this farm
 	kpStore   kp.Store
@@ -34,8 +40,9 @@ type Farm struct {
 	childMu  sync.Mutex
 	session  kp.Session
 
-	logger  logging.Logger
-	alerter alerting.Alerter
+	logger     logging.Logger
+	alerter    alerting.Alerter
+	rcSelector klabels.Selector
 }
 
 type childRC struct {
@@ -51,6 +58,7 @@ func NewFarm(
 	labeler labels.Applicator,
 	sessions <-chan string,
 	logger logging.Logger,
+	rcSelector klabels.Selector,
 	alerter alerting.Alerter,
 ) *Farm {
 	if alerter == nil {
@@ -58,14 +66,15 @@ func NewFarm(
 	}
 
 	return &Farm{
-		kpStore:   kpStore,
-		rcStore:   rcs,
-		scheduler: scheduler,
-		labeler:   labeler,
-		sessions:  sessions,
-		logger:    logger,
-		children:  make(map[fields.ID]childRC),
-		alerter:   alerter,
+		kpStore:    kpStore,
+		rcStore:    rcs,
+		scheduler:  scheduler,
+		labeler:    labeler,
+		sessions:   sessions,
+		logger:     logger,
+		children:   make(map[fields.ID]childRC),
+		alerter:    alerter,
+		rcSelector: rcSelector,
 	}
 }
 
@@ -114,6 +123,17 @@ START_LOOP:
 					// this one is already ours, skip
 					rcLogger.NoFields().Debugln("Got replication controller already owned by self")
 					foundChildren[rcField.ID] = struct{}{}
+					continue
+				}
+
+				shouldWorkOnRC, err := rcf.shouldWorkOn(rcField.ID)
+				if err != nil {
+					rcLogger.WithError(err).Errorf("Could not determine if should work on RC %s, skipping", rcField.ID)
+					continue
+				}
+
+				if !shouldWorkOnRC {
+					rcLogger.WithField("rc", rcField.ID).Infof("Ignoring RC %s, not meant for this farm", rcField.ID)
 					continue
 				}
 
@@ -189,6 +209,18 @@ func (rcf *Farm) releaseDeletedChildren(foundChildren map[fields.ID]struct{}) {
 			rcf.releaseChild(id)
 		}
 	}
+}
+
+// test if the farm should work on the given replication controller ID
+func (rcf *Farm) shouldWorkOn(rcID fields.ID) (bool, error) {
+	if rcf.rcSelector.Empty() {
+		return true, nil
+	}
+	labels, err := rcf.labeler.GetLabels(labels.RC, rcID.String())
+	if err != nil {
+		return false, err
+	}
+	return rcf.rcSelector.Matches(labels.Labels), nil
 }
 
 // close one child
