@@ -59,3 +59,7 @@ type Update struct {
 func (u Update) ID() ID {
 	return ID(u.NewRC)
 }
+
+func (id ID) String() string {
+	return string(id)
+}

@@ -521,35 +521,84 @@ func (s consulStore) Lock(id roll_fields.ID, session string) (bool, error) {
 }
 
 func (s consulStore) Watch(quit <-chan struct{}) (<-chan []roll_fields.Update, <-chan error) {
-	outCh := make(chan []roll_fields.Update)
-	errCh := make(chan error)
 	inCh := make(chan api.KVPairs)
 
+	outCh, errCh := publishLatestRolls(inCh, quit)
 	go consulutil.WatchPrefix(rollTree+"/", s.kv, inCh, quit, errCh)
+
+	return outCh, errCh
+}
+
+func publishLatestRolls(inCh <-chan api.KVPairs, quit <-chan struct{}) (<-chan []roll_fields.Update, chan error) {
+	outCh := make(chan []roll_fields.Update)
+	errCh := make(chan error)
 
 	go func() {
 		defer close(outCh)
 		defer close(errCh)
 
-		for listed := range inCh {
+		// Initialize one value off the inCh
+		var listed api.KVPairs
+		var ok bool
+		select {
+		case listed, ok = <-inCh:
+			if !ok {
+				// in channel closed
+				return
+			}
+		case <-quit:
+			return
+		}
+
+		needToWrite := true
+
+		for {
+			if !needToWrite {
+				select {
+				case listed, ok = <-inCh:
+					if !ok {
+						// channel closed
+						return
+					}
+					needToWrite = true
+				case <-quit:
+					return
+				}
+			}
+
 			out := make([]roll_fields.Update, 0, len(listed))
 			for _, kvp := range listed {
 				var next roll_fields.Update
 				if err := json.Unmarshal(kvp.Value, &next); err != nil {
 					select {
 					case errCh <- err:
+						// abandon the value we were writing, it's probably corrupt
+						needToWrite = false
 					case <-quit:
 						// stop processing this kvp list; inCh should be closed
 						// in a moment
-						break
+						return
 					}
 				} else {
 					out = append(out, next)
 				}
 			}
-			select {
-			case outCh <- out:
-			case <-quit:
+
+			if needToWrite {
+				select {
+				case outCh <- out:
+					needToWrite = false
+				case listed, ok = <-inCh:
+					if !ok {
+						// channel closed
+						return
+					}
+					// We got a new value before we write the old one,
+					// drop the old one
+					needToWrite = true
+				case <-quit:
+					return
+				}
 			}
 		}
 	}()

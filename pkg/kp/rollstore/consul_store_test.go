@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/kptest"
@@ -785,6 +786,99 @@ func TestLeaveOldInvalidIfNoOldRC(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Should have failed to create update due to LeaveOld being set when there's no old RC")
 	}
+}
+
+func TestPublishLatestRolls(t *testing.T) {
+	inCh := make(chan api.KVPairs)
+	quitCh := make(chan struct{})
+	defer close(quitCh)
+
+	outCh, errCh := publishLatestRolls(inCh, quitCh)
+	go func() {
+		select {
+		case <-quitCh:
+		case err := <-errCh:
+			t.Fatalf("Unexpected error on errCh: %s", err)
+		}
+	}()
+
+	var val []fields.Update
+	// Put some values on the inCh and read them from outCh transformed
+	// into RCs
+	inCh <- rollsWithIDs(t, "a", 3)
+	select {
+	case val = <-outCh:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("timed out reading from channel")
+	}
+
+	if len(val) != 3 {
+		t.Errorf("Expected %d values on outCh, got %d", 3, len(val))
+	}
+
+	for _, ru := range val {
+		if ru.ID().String() != "a" {
+			t.Errorf("Expected all RUs to have id %s, was %s", "a", ru.ID())
+		}
+	}
+
+	inCh <- rollsWithIDs(t, "b", 2)
+	select {
+	case val = <-outCh:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("timed out reading from channel")
+	}
+
+	if len(val) != 2 {
+		t.Errorf("Expected %d values on outCh, got %d", 2, len(val))
+	}
+
+	for _, ru := range val {
+		if ru.ID().String() != "b" {
+			t.Errorf("Expected all RUs to have id %s, was %s", "b", ru.ID())
+		}
+	}
+
+	// Now, let's put some stuff on inCh but not read it for a bit
+	inCh <- rollsWithIDs(t, "c", 4)
+	inCh <- rollsWithIDs(t, "d", 5)
+	inCh <- rollsWithIDs(t, "e", 6)
+
+	select {
+	case val = <-outCh:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("timed out reading from channel")
+	}
+
+	if len(val) != 6 {
+		t.Errorf("Expected %d values on outCh, got %d", 6, len(val))
+	}
+
+	for _, ru := range val {
+		if ru.ID().String() != "e" {
+			t.Errorf("Expected all RUs to have id %s, was %s", "e", ru.ID())
+		}
+	}
+}
+
+func rollsWithIDs(t *testing.T, id string, num int) api.KVPairs {
+	var pairs api.KVPairs
+	for i := 0; i < num; i++ {
+		ru := fields.Update{
+			NewRC: rc_fields.ID(id),
+		}
+
+		jsonRU, err := json.Marshal(ru)
+		if err != nil {
+			t.Fatalf("Unable to marshal test RU as json: %s", err)
+		}
+
+		pairs = append(pairs, &api.KVPair{
+			Value: jsonRU,
+		})
+	}
+
+	return pairs
 }
 
 func testRollValue(id rc_fields.ID) fields.Update {
