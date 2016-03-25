@@ -136,7 +136,7 @@ func (s *consulStore) Get(id fields.ID) (fields.RC, error) {
 		// ID didn't exist
 		return fields.RC{}, NoReplicationController
 	}
-	return s.kvpToRC(kvp)
+	return kvpToRC(kvp)
 }
 
 func (s *consulStore) List() ([]fields.RC, error) {
@@ -144,31 +144,93 @@ func (s *consulStore) List() ([]fields.RC, error) {
 	if err != nil {
 		return nil, consulutil.NewKVError("list", rcTree+"/", err)
 	}
-	return s.kvpsToRCs(listed)
+	return kvpsToRCs(listed)
 }
 
+// Watches the consul store for changes to the RC tree and attempts to return
+// the full RC list on each update.
+//
+// Because processing the full list of RCs may take a large amount of time,
+// particularly when there are 100s of RCs, WatchNew() takes care to drop
+// writes to the output channel if they're being consumed too slowly.  It will
+// block writing a value to the output channel until 1) it is read or 2) a new
+// value comes in, in which case that value will be written instead
 func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan error) {
-	outCh := make(chan []fields.RC)
-	errCh := make(chan error)
 	inCh := make(chan api.KVPairs)
 
+	outCh, errCh := publishLatestRCs(inCh, quit)
 	go consulutil.WatchPrefix(rcTree+"/", s.kv, inCh, quit, errCh)
+
+	return outCh, errCh
+}
+
+// Pulled out of WatchNew for testing purposes (faking watches on a mock KV is
+// hard). It converts api.KVPairs values received on inCh to []fields.RC, and
+// attempts to pass them on outCh. It will discard updates that are not read
+// quickly enough (see WatchNew)
+func publishLatestRCs(inCh <-chan api.KVPairs, quit <-chan struct{}) (<-chan []fields.RC, chan error) {
+	outCh := make(chan []fields.RC)
+	errCh := make(chan error)
 
 	go func() {
 		defer close(outCh)
 		defer close(errCh)
 
-		for listed := range inCh {
-			out, err := s.kvpsToRCs(listed)
+		// Initialize one value off the inCh
+		var listed api.KVPairs
+		var ok bool
+		select {
+		case listed, ok = <-inCh:
+			if !ok {
+				// in channel closed
+				return
+			}
+		case <-quit:
+			return
+		}
+		needToWrite := true
+
+		for {
+			if !needToWrite {
+				// We don't have a value to write yet, block for one
+				select {
+				case listed, ok = <-inCh:
+					if !ok {
+						// channel closed
+						return
+					}
+					needToWrite = true
+				case <-quit:
+					return
+				}
+			}
+
+			out, err := kvpsToRCs(listed)
 			if err != nil {
 				select {
 				case errCh <- err:
+					// The most recent update was corrupted,
+					// let's not try to write it and block
+					// for another.
+					needToWrite = false
 				case <-quit:
+					return
 				}
 			} else {
 				select {
 				case outCh <- out:
+					needToWrite = false
+				case listed, ok = <-inCh:
+					if !ok {
+						// channel closed
+						return
+					}
+					// We got a new update from inCh but the
+					// consumer hasn't read our last one, that's
+					// OK, throw out the unread data
+					needToWrite = true
 				case <-quit:
+					return
 				}
 			}
 		}
@@ -177,7 +239,7 @@ func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan
 	return outCh, errCh
 }
 
-func (s *consulStore) kvpToRC(kvp *api.KVPair) (fields.RC, error) {
+func kvpToRC(kvp *api.KVPair) (fields.RC, error) {
 	rc := fields.RC{}
 	err := json.Unmarshal(kvp.Value, &rc)
 	if err != nil {
@@ -187,10 +249,10 @@ func (s *consulStore) kvpToRC(kvp *api.KVPair) (fields.RC, error) {
 	return rc, nil
 }
 
-func (s *consulStore) kvpsToRCs(l api.KVPairs) ([]fields.RC, error) {
+func kvpsToRCs(l api.KVPairs) ([]fields.RC, error) {
 	ret := make([]fields.RC, 0, len(l))
 	for _, kvp := range l {
-		rc, err := s.kvpToRC(kvp)
+		rc, err := kvpToRC(kvp)
 		if err != nil {
 			return nil, err
 		}
@@ -272,7 +334,7 @@ func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC,
 		return NoReplicationController
 	}
 
-	rc, err := s.kvpToRC(kvp)
+	rc, err := kvpToRC(kvp)
 	if err != nil {
 		return err
 	}
@@ -347,7 +409,7 @@ func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{
 				// reappear in consul
 				continue
 			}
-			newRC, err := s.kvpToRC(kvp)
+			newRC, err := kvpToRC(kvp)
 			if err != nil {
 				select {
 				case errors <- err:
