@@ -12,7 +12,10 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
 
+	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/go-cleanhttp"
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+
+	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
@@ -29,8 +32,9 @@ import (
 
 // Command arguments
 var (
-	labelEndpoint = kingpin.Flag("labels", "An HTTP endpoint to use for labels, instead of using Consul").String()
-	logLevel      = kingpin.Flag("log", "Logging level to display").String()
+	labelEndpoint       = kingpin.Flag("labels", "An HTTP endpoint to use for labels, instead of using Consul").String()
+	logLevel            = kingpin.Flag("log", "Logging level to display").String()
+	pagerdutyServiceKey = kingpin.Flag("pagerduty-service-key", "Pagerduty Service Key to use for alerting if provided").String()
 )
 
 // RetryCount defines the number of retries to attempt when accessing some storage
@@ -66,6 +70,8 @@ func main() {
 	}
 
 	// Initialize the myriad of different storage components
+	httpClient := cleanhttp.DefaultClient()
+	opts.Client = httpClient
 	client := kp.NewConsulClient(opts)
 	kpStore := kp.NewConsulStore(client)
 	rcStore := rcstore.NewConsul(client, RetryCount)
@@ -101,13 +107,24 @@ func main() {
 	rcSub := pub.Subscribe(nil)
 	rlSub := pub.Subscribe(nil)
 
+	alerter := alerting.NewNop()
+	if *pagerdutyServiceKey != "" {
+		var err error
+		alerter, err = alerting.NewPagerduty(*pagerdutyServiceKey, httpClient)
+		if err != nil {
+			logger.WithError(err).Fatalln(
+				"Unable to initialize pagerduty alerter",
+			)
+		}
+	}
+
 	// Run the farms!
-	go rc.NewFarm(kpStore, rcStore, scheduler, labeler, rcSub.Chan(), logger).Start(nil)
+	go rc.NewFarm(kpStore, rcStore, scheduler, labeler, rcSub.Chan(), logger, alerter).Start(nil)
 	roll.NewFarm(roll.UpdateFactory{
 		KPStore:       kpStore,
 		RCStore:       rcStore,
 		HealthChecker: healthChecker,
 		Labeler:       labeler,
 		Scheduler:     scheduler,
-	}, kpStore, rollStore, rcStore, rlSub.Chan(), logger, labeler, klabels.Everything()).Start(nil)
+	}, kpStore, rollStore, rcStore, rlSub.Chan(), logger, labeler, klabels.Everything(), alerter).Start(nil)
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/alerting/alertingtest"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
@@ -46,7 +47,9 @@ func setup(t *testing.T) (
 	rcStore rcstore.Store,
 	kpStore fakeKpStore,
 	applicator labels.Applicator,
-	rc *replicationController) {
+	rc *replicationController,
+	alerter *alertingtest.AlertRecorder,
+) {
 
 	rcStore = rcstore.NewFake()
 
@@ -62,6 +65,7 @@ func setup(t *testing.T) (
 
 	kpStore = fakeKpStore{manifests: make(map[string]pods.Manifest)}
 	applicator = labels.NewFakeApplicator()
+	alerter = alertingtest.NewRecorder()
 
 	rc = New(
 		rcData,
@@ -70,6 +74,7 @@ func setup(t *testing.T) (
 		NewApplicatorScheduler(applicator),
 		applicator,
 		logging.DefaultLogger,
+		alerter,
 	).(*replicationController)
 
 	return
@@ -104,7 +109,7 @@ func waitForNodes(t *testing.T, rc ReplicationController, desired int) int {
 }
 
 func TestDoNothing(t *testing.T) {
-	_, kp, applicator, rc := setup(t)
+	_, kp, applicator, rc, alerter := setup(t)
 
 	err := rc.meetDesires()
 	Assert(t).IsNil(err, "expected no error meeting")
@@ -112,10 +117,11 @@ func TestDoNothing(t *testing.T) {
 	scheduled := scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
 	Assert(t).AreEqual(len(kp.manifests), 0, "expected no manifests to have been scheduled")
+	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to have occurred")
 }
 
 func TestCantSchedule(t *testing.T) {
-	rcStore, kp, applicator, rc := setup(t)
+	rcStore, kp, applicator, rc, alerter := setup(t)
 
 	quit := make(chan struct{})
 	errors := rc.WatchDesires(quit)
@@ -127,13 +133,17 @@ func TestCantSchedule(t *testing.T) {
 		scheduled := scheduledPods(t, applicator)
 		Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
 		Assert(t).AreEqual(len(kp.manifests), 0, "expected no manifests to have been scheduled")
+
+		if len(alerter.Alerts) < 1 {
+			t.Fatalf("Expected an alert to fire due to not enough nodes being scheduled")
+		}
 	case <-time.After(1 * time.Second):
 		Assert(t).Fail("took too long to receive error")
 	}
 }
 
 func TestSchedule(t *testing.T) {
-	rcStore, kp, applicator, rc := setup(t)
+	rcStore, kp, applicator, rc, alerter := setup(t)
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -156,10 +166,12 @@ func TestSchedule(t *testing.T) {
 		Assert(t).AreEqual(k, "intent/node2/testPod", "expected manifest scheduled on the right node")
 		Assert(t).AreEqual(string(v.ID()), "testPod", "expected manifest with correct ID")
 	}
+
+	Assert(t).AreEqual(len(alerter.Alerts), 0, "Expected no alerts to fire")
 }
 
 func TestSchedulePartial(t *testing.T) {
-	rcStore, kp, applicator, rc := setup(t)
+	rcStore, kp, applicator, rc, alerter := setup(t)
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -188,10 +200,12 @@ func TestSchedulePartial(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		Assert(t).Fail("took too long to receive error")
 	}
+
+	Assert(t).AreEqual(len(alerter.Alerts), 1, "Expected an alert due to there not being enough nodes to schedule on")
 }
 
 func TestScheduleTwice(t *testing.T) {
-	rcStore, kp, applicator, rc := setup(t)
+	rcStore, kp, applicator, rc, alerter := setup(t)
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -225,10 +239,11 @@ func TestScheduleTwice(t *testing.T) {
 		}
 		Assert(t).AreEqual(string(v.ID()), "testPod", "expected manifest with correct ID")
 	}
+	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to fire")
 }
 
 func TestUnschedule(t *testing.T) {
-	rcStore, kp, applicator, rc := setup(t)
+	rcStore, kp, applicator, rc, alerter := setup(t)
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -254,10 +269,11 @@ func TestUnschedule(t *testing.T) {
 	scheduled = scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 0, "expected a pod to have been unlabeled")
 	Assert(t).AreEqual(len(kp.manifests), 0, "expected manifest to have been unscheduled")
+	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to fire")
 }
 
 func TestPreferUnscheduleIneligible(t *testing.T) {
-	rcStore, kp, applicator, rc := setup(t)
+	rcStore, kp, applicator, rc, alerter := setup(t)
 	for i := 0; i < 1000; i++ {
 		nodeName := fmt.Sprintf("node%d", i)
 		err := applicator.SetLabel(labels.NODE, nodeName, "nodeQuality", "good")
@@ -290,10 +306,11 @@ func TestPreferUnscheduleIneligible(t *testing.T) {
 	for _, pod := range current {
 		Assert(t).AreNotEqual(pod.Node, "node503", "node503 should have been the one unscheduled, but it's still present")
 	}
+	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to fire")
 }
 
 func TestConsistencyNoChange(t *testing.T) {
-	_, kvStore, applicator, rc := setup(t)
+	_, kvStore, applicator, rc, alerter := setup(t)
 	rcSHA, _ := rc.Manifest.SHA()
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error assigning label")
@@ -320,10 +337,11 @@ func TestConsistencyNoChange(t *testing.T) {
 	Assert(t).IsNil(err, "could not fetch intent")
 	sha, _ = manifest.SHA()
 	Assert(t).AreEqual(rcSHA, sha, "controller modified the node's intent")
+	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to fire")
 }
 
 func TestConsistencyModify(t *testing.T) {
-	_, kvStore, applicator, rc := setup(t)
+	_, kvStore, applicator, rc, alerter := setup(t)
 	rcSHA, _ := rc.Manifest.SHA()
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error assigning label")
@@ -348,10 +366,11 @@ func TestConsistencyModify(t *testing.T) {
 	Assert(t).IsNil(err, "could not fetch intent")
 	sha, _ := manifest.SHA()
 	Assert(t).AreEqual(rcSHA, sha, "controller did not reset intent")
+	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to fire")
 }
 
 func TestConsistencyDelete(t *testing.T) {
-	_, kvStore, applicator, rc := setup(t)
+	_, kvStore, applicator, rc, alerter := setup(t)
 	rcSHA, _ := rc.Manifest.SHA()
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error assigning label")
@@ -374,4 +393,5 @@ func TestConsistencyDelete(t *testing.T) {
 	Assert(t).IsNil(err, "could not fetch intent")
 	sha, _ := manifest.SHA()
 	Assert(t).AreEqual(rcSHA, sha, "controller did not reset intent")
+	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to fire")
 }

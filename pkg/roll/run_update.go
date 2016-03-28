@@ -7,6 +7,7 @@ import (
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 
+	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
@@ -28,7 +29,8 @@ type update struct {
 	labeler labels.Applicator
 	sched   rc.Scheduler
 
-	logger logging.Logger
+	logger  logging.Logger
+	alerter alerting.Alerter
 
 	session kp.Session
 
@@ -49,7 +51,11 @@ func NewUpdate(
 	sched rc.Scheduler,
 	logger logging.Logger,
 	session kp.Session,
+	alerter alerting.Alerter,
 ) Update {
+	if alerter == nil {
+		alerter = alerting.NewNop()
+	}
 	return &update{
 		Update:  f,
 		kps:     kps,
@@ -59,6 +65,7 @@ func NewUpdate(
 		sched:   sched,
 		logger:  logger,
 		session: session,
+		alerter: alerter,
 	}
 }
 
@@ -363,7 +370,7 @@ func (u *update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNod
 
 	ret.Desired = rcFields.ReplicasDesired
 
-	currentPods, err := rc.New(rcFields, u.kps, u.rcs, u.sched, u.labeler, u.logger).CurrentPods()
+	currentPods, err := rc.New(rcFields, u.kps, u.rcs, u.sched, u.labeler, u.logger, u.alerter).CurrentPods()
 	if err != nil {
 		return ret, err
 	}
