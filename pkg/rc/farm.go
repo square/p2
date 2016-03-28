@@ -5,6 +5,7 @@ import (
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 
+	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/rcstore"
@@ -33,7 +34,8 @@ type Farm struct {
 	childMu  sync.Mutex
 	session  kp.Session
 
-	logger logging.Logger
+	logger  logging.Logger
+	alerter alerting.Alerter
 }
 
 type childRC struct {
@@ -49,7 +51,12 @@ func NewFarm(
 	labeler labels.Applicator,
 	sessions <-chan string,
 	logger logging.Logger,
+	alerter alerting.Alerter,
 ) *Farm {
+	if alerter == nil {
+		alerter = alerting.NewNop()
+	}
+
 	return &Farm{
 		kpStore:   kpStore,
 		rcStore:   rcs,
@@ -58,6 +65,7 @@ func NewFarm(
 		sessions:  sessions,
 		logger:    logger,
 		children:  make(map[fields.ID]childRC),
+		alerter:   alerter,
 	}
 }
 
@@ -133,6 +141,7 @@ START_LOOP:
 					rcf.scheduler,
 					rcf.labeler,
 					rcLogger,
+					rcf.alerter,
 				)
 				childQuit := make(chan struct{})
 				rcf.children[rcField.ID] = childRC{

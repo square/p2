@@ -2,12 +2,14 @@ package rc
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/util/sets"
 
+	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
@@ -82,6 +84,7 @@ type replicationController struct {
 	rcStore       rcstore.Store
 	scheduler     Scheduler
 	podApplicator labels.Applicator
+	alerter       alerting.Alerter
 }
 
 func New(
@@ -91,7 +94,12 @@ func New(
 	scheduler Scheduler,
 	podApplicator labels.Applicator,
 	logger logging.Logger,
+	alerter alerting.Alerter,
 ) ReplicationController {
+	if alerter == nil {
+		alerter = alerting.NewNop()
+	}
+
 	return &replicationController{
 		RC: fields,
 
@@ -100,6 +108,7 @@ func New(
 		rcStore:       rcStore,
 		scheduler:     scheduler,
 		podApplicator: podApplicator,
+		alerter:       alerter,
 	}
 }
 
@@ -211,10 +220,12 @@ func (rc *replicationController) addPods(current PodLocations) error {
 
 	for i := 0; i < toSchedule; i++ {
 		if len(possibleSorted) < i+1 {
-			return util.Errorf(
+			errMsg := fmt.Sprintf(
 				"Not enough nodes to meet desire: %d replicas desired, %d currentNodes, %d eligible. Scheduled on %d nodes instead.",
 				rc.ReplicasDesired, len(currentNodes), len(eligible), i,
 			)
+			rc.alerter.Alert(rc.alertInfo(errMsg))
+			return util.Errorf(errMsg)
 		}
 		scheduleOn := possibleSorted[i]
 
@@ -224,6 +235,29 @@ func (rc *replicationController) addPods(current PodLocations) error {
 		}
 	}
 	return nil
+}
+
+// Generates an alerting.AlertInfo struct. Includes information relevant to
+// debugging an RC. Attempts to include the hostname the RC is running on as
+// well
+func (rc *replicationController) alertInfo(msg string) alerting.AlertInfo {
+	hostname, _ := os.Hostname()
+
+	return alerting.AlertInfo{
+		Description: msg,
+		IncidentKey: rc.ID().String(),
+		Details: struct {
+			RCID         string `json:"rc_id"`
+			Hostname     string `json:"hostname"`
+			PodId        string `json:"pod_id"`
+			NodeSelector string `json:"node_selector"`
+		}{
+			RCID:         rc.ID().String(),
+			Hostname:     hostname,
+			PodId:        rc.Manifest.ID().String(),
+			NodeSelector: rc.NodeSelector.String(),
+		},
+	}
 }
 
 func (rc *replicationController) removePods(current PodLocations) error {
