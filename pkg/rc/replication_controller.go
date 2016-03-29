@@ -158,7 +158,7 @@ func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error
 }
 
 func (rc *replicationController) meetDesires() error {
-	rc.logger.NoFields().Infof("Meeting with desired replicas %d, disabled %v", rc.ReplicasDesired, rc.Disabled)
+	rc.logger.NoFields().Infof("Handling RC update: desired replicas %d, disabled %v", rc.ReplicasDesired, rc.Disabled)
 
 	// If we're disabled, we do nothing, nor is it an error
 	// (it's a normal possibility to be disabled)

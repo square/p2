@@ -229,7 +229,7 @@ ROLL_LOOP:
 				u.logger.WithFields(logrus.Fields{
 					"old": oldNodes,
 					"new": newNodes,
-				}).Debugln("Blocking for more healthy old nodes")
+				}).Debugln("Blocking for more healthy nodes")
 			}
 		}
 	}
