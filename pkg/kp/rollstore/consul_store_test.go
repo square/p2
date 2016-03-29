@@ -24,6 +24,26 @@ const (
 	testRCId2 = rc_fields.ID("def-456")
 )
 
+func TestNewConsul(t *testing.T) {
+	store := NewConsul(&api.Client{}, nil)
+	rollstore := store.(consulStore)
+	if rollstore.kv == nil {
+		t.Fatal("kv should not be nil for constructed rollstore")
+	}
+
+	if rollstore.rcstore == nil {
+		t.Fatal("rcstore should not be nil for constructed rollstore")
+	}
+
+	if rollstore.labeler == nil {
+		t.Fatal("labeler should not be nil for constructed rollstore")
+	}
+
+	if rollstore.store == nil {
+		t.Fatal("store should not be nil for constructed rollstore")
+	}
+}
+
 func TestRollPath(t *testing.T) {
 	rollPath, err := RollPath(fields.ID(testRCId))
 	if err != nil {
