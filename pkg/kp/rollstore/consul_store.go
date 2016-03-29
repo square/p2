@@ -68,6 +68,8 @@ func NewConsul(c *api.Client, logger *logging.Logger) Store {
 		kv:      c.KV(),
 		rcstore: rcstore.NewConsul(c, 3),
 		logger:  *logger,
+		labeler: labels.NewConsulApplicator(c, 3),
+		store:   kp.NewConsulStore(c),
 	}
 }
 
