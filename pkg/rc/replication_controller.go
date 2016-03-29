@@ -224,7 +224,10 @@ func (rc *replicationController) addPods(current PodLocations) error {
 				"Not enough nodes to meet desire: %d replicas desired, %d currentNodes, %d eligible. Scheduled on %d nodes instead.",
 				rc.ReplicasDesired, len(currentNodes), len(eligible), i,
 			)
-			rc.alerter.Alert(rc.alertInfo(errMsg))
+			err := rc.alerter.Alert(rc.alertInfo(errMsg))
+			if err != nil {
+				rc.logger.WithError(err).Errorln("Unable to send alert")
+			}
 			return util.Errorf(errMsg)
 		}
 		scheduleOn := possibleSorted[i]
