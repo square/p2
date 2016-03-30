@@ -112,6 +112,8 @@ START_LOOP:
 		case rcFields := <-rcWatch:
 			rcf.logger.WithField("n", len(rcFields)).Debugln("Received replication controller update")
 
+			rcf.failsafe(rcFields)
+
 			// track which children were found in the returned set
 			foundChildren := make(map[fields.ID]struct{})
 			for _, rcField := range rcFields {
@@ -197,6 +199,31 @@ START_LOOP:
 			// now remove any children that were not found in the result set
 			rcf.releaseDeletedChildren(foundChildren)
 		}
+	}
+}
+
+func (rcf *Farm) failsafe(rcFields []fields.RC) {
+	// FAILSAFES. If no RCs are scheduled, or there are zero replicas of anything scheduled, panic
+	if len(rcFields) == 0 {
+		rcf.alerter.Alert(alerting.AlertInfo{
+			Description: "No RCs have been scheduled",
+			IncidentKey: "no_rcs_found",
+		})
+		panic("No RCs are scheduled at all. Create one RC to enable the farm. Panicking to escape a potentially bad situation.")
+	}
+	globalReplicaCount := 0
+	for _, rc := range rcFields {
+		if rc.ReplicasDesired > 0 {
+			return
+		}
+		globalReplicaCount += rc.ReplicasDesired
+	}
+	if globalReplicaCount == 0 {
+		rcf.alerter.Alert(alerting.AlertInfo{
+			Description: "All RCs have zero replicas requested",
+			IncidentKey: "zero_replicas_found",
+		})
+		panic("The sum of all replicas is 0. Panicking to escape a potentially bad situation")
 	}
 }
 
