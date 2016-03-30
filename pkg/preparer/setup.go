@@ -70,7 +70,7 @@ type PreparerConfig struct {
 	LogLevel               string                 `yaml:"log_level,omitempty"`
 	MaxLaunchableDiskUsage string                 `yaml:"max_launchable_disk_usage"`
 	FinishExec             []string               `yaml:"finish_exec,omitempty"`
-	LogExec                []string               `yaml:"log_exec,omitempty"` // If specifying a path to an executable, we assume it has been specified relative to this preparer's POD_HOME
+	LogExec                []string               `yaml:"log_exec,omitempty"`
 
 	// Params defines a collection of miscellaneous runtime parameters defined throughout the
 	// source files.
