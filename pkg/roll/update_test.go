@@ -24,7 +24,10 @@ import (
 )
 
 func uniformRollAlgorithm(t *testing.T, old, new, want, need int) int {
-	remove, add := rollAlgorithm(old, new, want, want, need)
+	// For these, oldDesired + newDesired should == targetDesired.
+	// We'll just craft numbers that meet this requirement.
+	remove, add := rollAlgorithm(old, new, want-new, new, want, need)
+
 	Assert(t).AreEqual(remove, add, "expected nodes removed and nodes added to be equal")
 	return add
 }
@@ -40,21 +43,23 @@ func TestWouldBlock(t *testing.T) {
 	Assert(t).AreEqual(uniformRollAlgorithm(t, 3, 0, 6, 0), 6, "should schedule remaining if no minimum")
 }
 
-func assertRollAlgorithmResults(t *testing.T, old, new, current, final, need, remove, add int, message string) {
-	gotRemove, gotAdd := rollAlgorithm(old, new, current, final, need)
+func assertRollAlgorithmResults(t *testing.T, old, new, final, need, remove, add int, message string) {
+	// For these, oldDesired == oldHealthy, newDesired == newHealthy.
+	// This may allow oldDesired + newDesired < final.
+	gotRemove, gotAdd := rollAlgorithm(old, new, old, new, final, need)
 	Assert(t).AreEqual(gotRemove, remove, "removed nodes incorrect: "+message)
 	Assert(t).AreEqual(gotAdd, add, "added nodes incorrect: "+message)
 }
 
 func TestRollAlgorithmIncreases(t *testing.T) {
-	assertRollAlgorithmResults(t, 0, 0, 0, 3, 2, 0, 1, "should schedule difference if increasing capacity from zero")
-	assertRollAlgorithmResults(t, 0, 1, 1, 3, 2, 0, 1, "should schedule difference if partway through increasing capacity from zero")
-	assertRollAlgorithmResults(t, 0, 2, 2, 3, 2, 0, 1, "should schedule remaining if increasing capacity from zero and new nodes satisfy minimum")
+	assertRollAlgorithmResults(t, 0, 0, 3, 2, 0, 1, "should schedule difference if increasing capacity from zero")
+	assertRollAlgorithmResults(t, 0, 1, 3, 2, 0, 1, "should schedule difference if partway through increasing capacity from zero")
+	assertRollAlgorithmResults(t, 0, 2, 3, 2, 0, 1, "should schedule remaining if increasing capacity from zero and new nodes satisfy minimum")
 
-	assertRollAlgorithmResults(t, 0, 0, 0, 3, 0, 0, 3, "should schedule all if increasing capacity from zero with no minimum")
+	assertRollAlgorithmResults(t, 0, 0, 3, 0, 0, 3, "should schedule all if increasing capacity from zero with no minimum")
 
-	assertRollAlgorithmResults(t, 3, 0, 3, 4, 2, 1, 2, "should schedule difference if increasing capacity with existing nodes")
-	assertRollAlgorithmResults(t, 3, 0, 3, 4, 3, 0, 1, "should schedule only new node if increasing capacity with existing nodes and no headroom")
+	assertRollAlgorithmResults(t, 3, 0, 4, 2, 1, 2, "should schedule difference if increasing capacity with existing nodes")
+	assertRollAlgorithmResults(t, 3, 0, 4, 3, 0, 1, "should schedule only new node if increasing capacity with existing nodes and no headroom")
 }
 
 func TestShouldContinue(t *testing.T) {
@@ -120,10 +125,11 @@ func TestRollAlgorithmParams(t *testing.T) {
 		Unknown:   1024,
 		Desired:   2048,
 	}
-	old, new, currentDesired, targetDesired, minHealthy := u.rollAlgorithmParams(oldHealth, newHealth)
+	old, new, oldDesired, newDesired, targetDesired, minHealthy := u.rollAlgorithmParams(oldHealth, newHealth)
 	Assert(t).AreEqual(old, 4, "incorrect old healthy param")
 	Assert(t).AreEqual(new, 256, "incorrect new healthy param")
-	Assert(t).AreEqual(currentDesired, 2080, "incorrect current desired param (want sum of desires)")
+	Assert(t).AreEqual(oldDesired, 32, "incorrect old desired param")
+	Assert(t).AreEqual(newDesired, 2048, "incorrect new desired param")
 	Assert(t).AreEqual(targetDesired, 8192, "incorrect target desired param")
 	Assert(t).AreEqual(minHealthy, 4096, "incorrect min healthy param")
 }
@@ -132,7 +138,7 @@ func TestRollAlgorithmParamsFewerDesiredThanHealthy(t *testing.T) {
 	u := &update{}
 	oldHealth := rcNodeCounts{Healthy: 4, Desired: 3}
 	newHealth := rcNodeCounts{}
-	old, _, _, _, _ := u.rollAlgorithmParams(oldHealth, newHealth)
+	old, _, _, _, _, _ := u.rollAlgorithmParams(oldHealth, newHealth)
 	Assert(t).AreEqual(old, 3, "incorrect old healthy param (expected to be old desired, since it's smaller than old healthy)")
 }
 
@@ -273,7 +279,7 @@ func SimulateRollingUpgradeDisable(t *testing.T, full, nonew bool) {
 		Assert(t).IsTrue(len(old)+len(new) >= minimum, fmt.Sprintf("went below %d minimum nodes (nodes %v)\n", minimum, nodes))
 		Assert(t).IsTrue(len(new) <= target, fmt.Sprintf("went above %d target nodes (nodes %v)\n", target, nodes))
 		if len(new) == target {
-			nextRemove, nextAdd := rollAlgorithm(len(old), len(new), target, target, minimum)
+			nextRemove, nextAdd := rollAlgorithm(len(old), len(new), len(old), target, target, minimum)
 			Assert(t).AreEqual(nextRemove, 0, "update should be done, should remove nothing")
 			Assert(t).AreEqual(nextAdd, 0, "update should be done, should add nothing")
 			t.Logf("Simulation complete\n\n")
@@ -281,7 +287,7 @@ func SimulateRollingUpgradeDisable(t *testing.T, full, nonew bool) {
 		}
 
 		// calculate the next update
-		nextRemove, nextAdd := rollAlgorithm(len(old), len(new), target, target, minimum)
+		nextRemove, nextAdd := rollAlgorithm(len(old), len(new), target-len(new), len(new), target, minimum)
 		Assert(t).AreEqual(nextRemove, nextAdd, "got asymmetric update, not expected for this fuzz test")
 		t.Logf("Scheduling %d new out of %v eligible\n", nextAdd, eligible)
 		Assert(t).AreNotEqual(nextAdd, 0, "got noop update, would never terminate")
