@@ -506,7 +506,7 @@ func rollAlgorithm(old, new, oldDesired, newDesired, targetDesired, minHealthy i
 	// or we'll go over the target
 	// note that remaining < headroom is possible depending on how many
 	// old nodes are still alive
-	remaining := targetDesired - new
+	remaining := targetDesired - newDesired
 
 	// heuristic time:
 	if remaining <= 0 {

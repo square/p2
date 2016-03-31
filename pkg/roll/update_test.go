@@ -51,6 +51,16 @@ func assertRollAlgorithmResults(t *testing.T, old, new, final, need, remove, add
 	Assert(t).AreEqual(gotAdd, add, "added nodes incorrect: "+message)
 }
 
+func TestRollAlgorithmDoesNotExceed(t *testing.T) {
+	// newHealthy < newDesired, and newHealthy >= minHealthy.
+	// In this case, we schedule the remaining nodes.
+	// We want to ensure that remaining == targetDesired - newDesired
+	// instead of targetDesired - newHealthy
+	gotRemove, gotAdd := rollAlgorithm(1, 1, 1, 2, 3, 1)
+	Assert(t).AreEqual(gotRemove, 1, "expected only one node to be removed")
+	Assert(t).AreEqual(gotAdd, 1, "expected only one node to be added")
+}
+
 func TestRollAlgorithmIncreases(t *testing.T) {
 	assertRollAlgorithmResults(t, 0, 0, 3, 2, 0, 1, "should schedule difference if increasing capacity from zero")
 	assertRollAlgorithmResults(t, 0, 1, 3, 2, 0, 1, "should schedule difference if partway through increasing capacity from zero")
@@ -654,6 +664,30 @@ func TestShouldRollMidwayDesireLessThanHealthyPartial(t *testing.T) {
 	}, checks)
 	upd.DesiredReplicas = 5
 	upd.MinimumReplicas = 3
+
+	roll, err := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
+	Assert(t).IsNil(err, "expected no error determining nodes to roll")
+	Assert(t).AreEqual(roll, 1, "expected to roll one node")
+}
+
+func TestShouldRollWhenNewSatisfiesButNotAllDesiredHealthy(t *testing.T) {
+	// newHealthy < newDesired, and newHealthy >= minHealthy.
+	// In this case, we schedule the remaining nodes.
+	// We want to ensure that remaining == targetDesired - newDesired
+	// instead of targetDesired - newHealthy
+	checks := map[string]health.Result{
+		"node1": {Status: health.Passing},
+		"node2": {Status: health.Passing},
+		"node3": {Status: health.Critical},
+	}
+	upd, _, manifest := updateWithHealth(t, 1, 2, map[string]bool{
+		"node1": true,
+	}, map[string]bool{
+		"node2": true,
+		"node3": true,
+	}, checks)
+	upd.DesiredReplicas = 3
+	upd.MinimumReplicas = 1
 
 	roll, err := upd.uniformShouldRollAfterDelay(t, rc_fields.RC{ID: upd.NewRC, Manifest: manifest})
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
