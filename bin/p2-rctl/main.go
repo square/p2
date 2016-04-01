@@ -105,7 +105,6 @@ func main() {
 	}
 
 	httpClient := cleanhttp.DefaultClient()
-	opts.Client = httpClient
 	client := kp.NewConsulClient(opts)
 	labeler := labels.NewConsulApplicator(client, 3)
 	sched := rc.NewApplicatorScheduler(labeler)
