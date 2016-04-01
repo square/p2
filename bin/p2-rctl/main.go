@@ -53,6 +53,7 @@ var (
 	createManifest  = cmdCreate.Flag("manifest", "manifest file to use for this replication controller").Short('m').Required().String()
 	createNodeSel   = cmdCreate.Flag("node-selector", "node selector that this replication controller should target").Short('n').Required().String()
 	createPodLabels = cmdCreate.Flag("pod-label", "a pod label, in LABEL=VALUE form, to add to this replication controller. Can be specified multiple times.").Short('p').StringMap()
+	createRCLabels  = cmdCreate.Flag("rc-label", "an RC label, in LABEL=VALUE form, to be applied to this replication controller. Can be specified multiple times.").Short('r').StringMap()
 
 	cmdDelete   = kingpin.Command(CMD_DELETE, "Delete a replication controller")
 	deleteID    = cmdDelete.Arg("id", "replication controller uuid to delete").Required().String()
@@ -135,7 +136,7 @@ func main() {
 
 	switch cmd {
 	case CMD_CREATE:
-		rctl.Create(*createManifest, *createNodeSel, *createPodLabels)
+		rctl.Create(*createManifest, *createNodeSel, *createPodLabels, *createRCLabels)
 	case CMD_DELETE:
 		rctl.Delete(*deleteID, *deleteForce)
 	case CMD_REPLICAS:
@@ -181,7 +182,7 @@ type RCtl struct {
 	logger     logging.Logger
 }
 
-func (r RCtl) Create(manifestPath, nodeSelector string, podLabels map[string]string) {
+func (r RCtl) Create(manifestPath, nodeSelector string, podLabels map[string]string, rcLabels map[string]string) {
 	manifest, err := pods.ManifestFromPath(manifestPath)
 	if err != nil {
 		r.logger.WithErrorAndFields(err, logrus.Fields{
@@ -201,6 +202,11 @@ func (r RCtl) Create(manifestPath, nodeSelector string, podLabels map[string]str
 		r.logger.WithError(err).Fatalln("Could not create replication controller in Consul")
 	}
 	r.logger.WithField("id", newRC.ID).Infoln("Created new replication controller")
+
+	err = r.labeler.SetLabels(labels.RC, newRC.ID.String(), rcLabels)
+	if err != nil {
+		r.logger.WithError(err).Fatalln("Could not label replication controller")
+	}
 }
 
 func (r RCtl) Delete(id string, force bool) {
