@@ -205,15 +205,21 @@ func TestLockRCs(t *testing.T) {
 	Assert(t).IsNotNil(update.oldRCUnlocker, "should have kp.Unlocker for unlocking old rc")
 }
 
-func TestSimulateRollingUpgradeDisable(t *testing.T) {
+func TestSimulateRollingUpgrade(t *testing.T) {
 	rand.Seed(time.Now().UTC().UnixNano())
 	for i := 0; i < 20000; i++ {
-		SimulateRollingUpgradeDisable(t, false, false)
+		SimulateRollingUpgrade(t, false, false, false)
 	}
 }
 
-// this fuzzer tests the rolling upgrade rollAlgorithm in an environment where new
-// pods replace old pods (eg hoist artifacts). it creates an imaginary list of
+func TestSimulateRollingUpgradeStrictRemove(t *testing.T) {
+	rand.Seed(time.Now().UTC().UnixNano())
+	for i := 0; i < 20000; i++ {
+		SimulateRollingUpgrade(t, false, false, true)
+	}
+}
+
+// this fuzzer tests the rolling upgrade rollAlgorithm. It creates a list of
 // nodes, some of which may have old pods on them, and attempts to run a rolling
 // upgrade across this list.
 //
@@ -227,7 +233,18 @@ func TestSimulateRollingUpgradeDisable(t *testing.T) {
 //   starting world. pass nonew=true to disable this behavior, ie the new RC
 //   will always start with zero pods. note that full=true implies nonew=true,
 //   since if every node has an old pod there are clearly no new pods.
-func SimulateRollingUpgradeDisable(t *testing.T, full, nonew bool) {
+// - if strictRemove=true:
+//   - the number of nodes removed each iteration will be exactly nodesToRemove
+//     as indicated by rollAlgorithm
+//   - the desired number of old nodes will be the number of actual old nodes
+//   - this is useful for testing immutable deployments
+// - if strictRemove=false:
+//   - old nodes are never explicitly removed (nodesToRemove isn't respected)
+//   - old nodes may be removed if a new pod is randomly scheduled on them
+//   - therefore, the desired number of old nodes is unreliable
+//   - this is useful for testing mutable deployments
+//     (where new pods may replace old pods)
+func SimulateRollingUpgrade(t *testing.T, full, nonew, strictRemove bool) {
 	// generate a slice of "nodes": each element represents a single node
 	// 0 = node is empty, 1 = node has new pod, -1 = node has old pod
 	nodes := make([]int, rand.Intn(20)+1)
@@ -276,11 +293,16 @@ func SimulateRollingUpgradeDisable(t *testing.T, full, nonew bool) {
 		for index, node := range nodes {
 			if node > 0 {
 				new = append(new, index)
+			} else if node < 0 {
+				old = append(old, index)
+				// All old nodes are eligible if removing is non-strict.
+				// If removing is strict, only empty nodes are initially eligible.
+				// Nodes from which the old pod gets removed also become eligible.
+				if !strictRemove {
+					eligible = append(eligible, index)
+				}
 			} else {
 				eligible = append(eligible, index)
-			}
-			if node < 0 {
-				old = append(old, index)
 			}
 		}
 		t.Logf("State: %v (total %d, old %d, new %d, want %d, need %d)\n", nodes, len(nodes), len(old), len(new), target, minimum)
@@ -297,10 +319,29 @@ func SimulateRollingUpgradeDisable(t *testing.T, full, nonew bool) {
 		}
 
 		// calculate the next update
-		nextRemove, nextAdd := rollAlgorithm(len(old), len(new), target-len(new), len(new), target, minimum)
-		Assert(t).AreEqual(nextRemove, nextAdd, "got asymmetric update, not expected for this fuzz test")
+		oldDesired := target - len(new)
+		if strictRemove {
+			oldDesired = len(old)
+		}
+		nextRemove, nextAdd := rollAlgorithm(len(old), len(new), oldDesired, len(new), target, minimum)
+
+		if !strictRemove {
+			Assert(t).AreEqual(nextRemove, nextAdd, "got asymmetric update, not expected for this fuzz test")
+		}
+
 		t.Logf("Scheduling %d new out of %v eligible\n", nextAdd, eligible)
 		Assert(t).AreNotEqual(nextAdd, 0, "got noop update, would never terminate")
+
+		if strictRemove {
+			// choose nodes from the old list, randomly, and remove the pod from them.
+			t.Logf("Unscheduling %d out of %v old\n", nextRemove, old)
+			for _, index := range rand.Perm(len(old))[:nextRemove] {
+				nodes[old[index]] = 0
+				eligible = append(eligible, old[index])
+			}
+			t.Logf("Eligible nodes now %v\n", eligible)
+		}
+
 		// choose nodes from the eligible list, randomly, and put the new pod
 		// on them
 		for _, index := range rand.Perm(len(eligible))[:nextAdd] {
