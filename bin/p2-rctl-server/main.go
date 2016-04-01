@@ -71,7 +71,6 @@ func main() {
 
 	// Initialize the myriad of different storage components
 	httpClient := cleanhttp.DefaultClient()
-	opts.Client = httpClient
 	client := kp.NewConsulClient(opts)
 	kpStore := kp.NewConsulStore(client)
 	rcStore := rcstore.NewConsul(client, RetryCount)
