@@ -18,7 +18,7 @@ var AggregationRateCap = 10 * time.Second
 // linked list of watches with control channels
 type selectorWatch struct {
 	selector labels.Selector
-	resultCh chan *[]Labeled
+	resultCh chan WatchResult
 	canceled chan struct{}
 	next     *selectorWatch
 }
@@ -68,8 +68,8 @@ func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logg
 
 // Add a new selector to the aggregator. New values on the output channel may not appear
 // right away.
-func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{}) chan *[]Labeled {
-	resCh := make(chan *[]Labeled)
+func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{}) chan WatchResult {
+	resCh := make(chan WatchResult)
 	select {
 	case <-c.aggregatorQuit:
 		c.logger.WithField("selector", selector.String()).Warnln("New selector added after aggregator was closed")
@@ -89,6 +89,11 @@ func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{})
 	} else {
 		c.watchers.append(watch)
 	}
+	// send first value immediately to take advantage of the cache.
+	if c.labeledCache != nil {
+		c.doMatch(watch)
+	}
+
 	go func() {
 		select {
 		case <-quitCh:
@@ -128,12 +133,17 @@ func (c *consulAggregator) Aggregate() {
 	for {
 		loopTime := time.After(AggregationRateCap)
 		select {
+		case err := <-outErrors:
+			c.logger.WithError(err).Errorln("Error during watch")
 		case <-c.aggregatorQuit:
 			return
 		case pairs := <-outPairs:
-			// Convert watch result to []Labeled
-			c.labeledCache = make([]Labeled, len(pairs))
+			c.watcherLock.Lock()
+
+			cache := make([]Labeled, len(pairs))
+			c.labeledCache = cache
 			for i, kvp := range pairs {
+				// TODO: only send results to watchers if selector results changed
 				val, err := convertKVPToLabeled(kvp)
 				if err != nil {
 					c.logger.WithErrorAndFields(err, logrus.Fields{
@@ -142,24 +152,14 @@ func (c *consulAggregator) Aggregate() {
 					}).Errorln("Invalid key encountered, skipping this value")
 					continue
 				}
-				c.labeledCache[i] = val
+				cache[i] = val
 			}
 
 			// Iterate over each watcher and send the []Labeled
 			// that match the watcher's selector to the watcher's out channel.
-			c.watcherLock.Lock()
 			watcher := c.watchers
 			for watcher != nil {
-				matches := []Labeled{}
-				for _, labeled := range c.labeledCache {
-					if watcher.selector.Matches(labeled.Labels) {
-						matches = append(matches, labeled)
-					}
-				}
-				select {
-				case watcher.resultCh <- &matches:
-				case <-watcher.canceled:
-				}
+				c.doMatch(watcher)
 				watcher = watcher.next
 			}
 			c.watcherLock.Unlock()
@@ -168,7 +168,22 @@ func (c *consulAggregator) Aggregate() {
 		case <-c.aggregatorQuit:
 			return
 		case <-loopTime:
+			// we purposely don't case outErrors here, since loopTime lets us
+			// back off of Consul watches
 		}
 
+	}
+}
+
+func (c *consulAggregator) doMatch(watcher *selectorWatch) {
+	matches := []Labeled{}
+	for _, labeled := range c.labeledCache {
+		if watcher.selector.Matches(labeled.Labels) {
+			matches = append(matches, labeled)
+		}
+	}
+	select {
+	case watcher.resultCh <- WatchResult{matches, true}:
+	case <-watcher.canceled:
 	}
 }
