@@ -102,15 +102,15 @@ func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type) 
 	return results, nil
 }
 
-func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan WatchResult {
-	ch := make(chan WatchResult)
+func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan []Labeled {
+	ch := make(chan []Labeled)
 	go func() {
 		for {
 			res, _ := app.GetMatches(selector, labelType)
 			select {
 			case <-quitCh:
 				return
-			case ch <- WatchResult{res, true}:
+			case ch <- res:
 			}
 		}
 	}()

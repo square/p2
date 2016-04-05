@@ -231,7 +231,7 @@ func convertLabeledToKVP(l Labeled) (*api.KVPair, error) {
 // to the cost of querying for this subtree on any sizeable fleet of machines. Instead, preparers should
 // use the httpApplicator from a server that exposes the results of this (or another)
 // implementation's watch.
-func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan WatchResult {
+func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan []Labeled {
 	c.aggregatorMux.Lock()
 	defer c.aggregatorMux.Unlock()
 	aggregator, ok := c.aggregators[labelType]

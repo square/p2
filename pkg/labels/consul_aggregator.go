@@ -18,8 +18,7 @@ var DefaultAggregationRate = 10 * time.Second
 // linked list of watches with control channels
 type selectorWatch struct {
 	selector labels.Selector
-	resultCh chan WatchResult
-	canceled chan struct{}
+	resultCh chan []Labeled
 	next     *selectorWatch
 }
 
@@ -70,8 +69,8 @@ func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logg
 
 // Add a new selector to the aggregator. New values on the output channel may not appear
 // right away.
-func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{}) chan WatchResult {
-	resCh := make(chan WatchResult, 1)
+func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{}) chan []Labeled {
+	resCh := make(chan []Labeled, 1) // this buffer is useful in sendMatches(), below
 	select {
 	case <-c.aggregatorQuit:
 		c.logger.WithField("selector", selector.String()).Warnln("New selector added after aggregator was closed")
@@ -91,7 +90,7 @@ func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{})
 		c.watchers.append(watch)
 	}
 	if c.labeledCache != nil {
-		c.doMatch(watch)
+		c.sendMatches(watch)
 	}
 	go func() {
 		select {
@@ -145,7 +144,7 @@ func (c *consulAggregator) Aggregate() {
 			// that match the watcher's selector to the watcher's out channel.
 			watcher := c.watchers
 			for watcher != nil {
-				c.doMatch(watcher)
+				c.sendMatches(watcher)
 				watcher = watcher.next
 			}
 			c.watcherLock.Unlock()
@@ -163,9 +162,8 @@ func (c *consulAggregator) Aggregate() {
 
 func (c *consulAggregator) fillCache(pairs api.KVPairs) {
 	cache := make([]Labeled, len(pairs))
-	c.labeledCache = cache
 	for i, kvp := range pairs {
-		val, err := convertKVPToLabeled(kvp)
+		labeled, err := convertKVPToLabeled(kvp)
 		if err != nil {
 			c.logger.WithErrorAndFields(err, logrus.Fields{
 				"key":   kvp.Key,
@@ -173,12 +171,13 @@ func (c *consulAggregator) fillCache(pairs api.KVPairs) {
 			}).Errorln("Invalid key encountered, skipping this value")
 			continue
 		}
-		c.labeledCache[i] = val
+		cache[i] = labeled
 	}
+	c.labeledCache = cache
 }
 
 // this must be called within the watcherLock mutex.
-func (c *consulAggregator) doMatch(watcher *selectorWatch) {
+func (c *consulAggregator) sendMatches(watcher *selectorWatch) {
 	matches := []Labeled{}
 	for _, labeled := range c.labeledCache {
 		if watcher.selector.Matches(labeled.Labels) {
@@ -203,7 +202,7 @@ func (c *consulAggregator) doMatch(watcher *selectorWatch) {
 	}
 	// ... then send the newer value.
 	select {
-	case watcher.resultCh <- WatchResult{matches, true}:
+	case watcher.resultCh <- matches:
 	default:
 	}
 }
