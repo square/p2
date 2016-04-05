@@ -13,13 +13,12 @@ import (
 )
 
 // minimum required time between retrievals of label subtrees.
-var AggregationRateCap = 10 * time.Second
+var DefaultAggregationRate = 10 * time.Second
 
 // linked list of watches with control channels
 type selectorWatch struct {
 	selector labels.Selector
 	resultCh chan *[]Labeled
-	canceled chan struct{}
 	next     *selectorWatch
 }
 
@@ -46,30 +45,32 @@ func (s *selectorWatch) delete(w *selectorWatch) {
 }
 
 type consulAggregator struct {
-	logger         logging.Logger
-	labelType      Type
-	watcherLock    sync.Mutex
-	path           string
-	kv             consulutil.ConsulLister
-	watchers       *selectorWatch
-	labeledCache   []Labeled // cached contents of the label subtree
-	aggregatorQuit chan struct{}
+	logger          logging.Logger
+	labelType       Type
+	watcherLock     sync.Mutex
+	path            string
+	kv              consulutil.ConsulLister
+	watchers        *selectorWatch
+	labeledCache    []Labeled // cached contents of the label subtree
+	aggregatorQuit  chan struct{}
+	aggregationRate time.Duration
 }
 
 func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logging.Logger) *consulAggregator {
 	return &consulAggregator{
-		kv:             kv,
-		logger:         logger,
-		labelType:      labelType,
-		path:           typePath(labelType),
-		aggregatorQuit: make(chan struct{}),
+		kv:              kv,
+		logger:          logger,
+		labelType:       labelType,
+		path:            typePath(labelType),
+		aggregatorQuit:  make(chan struct{}),
+		aggregationRate: DefaultAggregationRate,
 	}
 }
 
 // Add a new selector to the aggregator. New values on the output channel may not appear
 // right away.
 func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{}) chan *[]Labeled {
-	resCh := make(chan *[]Labeled)
+	resCh := make(chan *[]Labeled, 1)
 	select {
 	case <-c.aggregatorQuit:
 		c.logger.WithField("selector", selector.String()).Warnln("New selector added after aggregator was closed")
@@ -82,7 +83,6 @@ func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{})
 	watch := &selectorWatch{
 		selector: selector,
 		resultCh: resCh,
-		canceled: make(chan struct{}),
 	}
 	if c.watchers == nil {
 		c.watchers = watch
@@ -102,7 +102,6 @@ func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{})
 func (c *consulAggregator) removeWatch(watch *selectorWatch) {
 	c.watcherLock.Lock()
 	defer c.watcherLock.Unlock()
-	close(watch.canceled)
 	close(watch.resultCh)
 	if c.watchers == watch {
 		c.watchers = c.watchers.next
@@ -126,7 +125,7 @@ func (c *consulAggregator) Aggregate() {
 	outErrors := make(chan error)
 	go consulutil.WatchPrefix(c.path+"/", c.kv, outPairs, done, outErrors)
 	for {
-		loopTime := time.After(AggregationRateCap)
+		loopTime := time.After(c.aggregationRate)
 		select {
 		case <-c.aggregatorQuit:
 			return
@@ -156,9 +155,26 @@ func (c *consulAggregator) Aggregate() {
 						matches = append(matches, labeled)
 					}
 				}
+				// Fast, lossy result broadcasting. We treat clients as unreliable
+				// tenants of the aggregator by performing the following: the resulting
+				// channel is a buffered channel of size 1. When sending an update to
+				// watchers, we first see if we can _read_ a value off the buffered result
+				// channel. This removes any stale values that have yet to be read by
+				// watchers. We then subsequently put the newer value into the channel.
+				//
+				// This approach has the effect of a slower watcher potentially missing updates,
+				// but also means one watcher can't cause a DoS of other watchers as the main
+				// aggregation goroutine waits.
+
+				// first drain the previous (stale) cached value if present...
+				select {
+				case <-watcher.resultCh:
+				default:
+				}
+				// ... then send the newer value.
 				select {
 				case watcher.resultCh <- &matches:
-				case <-watcher.canceled:
+				default:
 				}
 				watcher = watcher.next
 			}

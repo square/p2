@@ -11,7 +11,7 @@ import (
 )
 
 func alterAggregationTime(dur time.Duration) {
-	AggregationRateCap = dur
+	DefaultAggregationRate = dur
 }
 
 func fakeLabeledPods() map[string][]byte {
@@ -24,7 +24,7 @@ func fakeLabeledPods() map[string][]byte {
 
 // Check that two clients can share an aggregator
 func TestTwoClients(t *testing.T) {
-	alterAggregationTime(time.Millisecond)
+	alterAggregationTime(100 * time.Millisecond)
 
 	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger)
@@ -65,7 +65,7 @@ func TestTwoClients(t *testing.T) {
 }
 
 func TestQuitAggregateAfterResults(t *testing.T) {
-	alterAggregationTime(time.Millisecond)
+	alterAggregationTime(100 * time.Millisecond)
 
 	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger)
