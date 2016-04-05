@@ -1,6 +1,7 @@
 package rollstore
 
 import (
+	"errors"
 	"time"
 
 	"github.com/square/p2/pkg/pods"
@@ -9,6 +10,12 @@ import (
 
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 )
+
+var AmbiguousRCSelector error = errors.New("The old RC selector was ambigous and produced > 1 matches")
+
+func IsAmbiguousRCSelector(err error) bool {
+	return err == AmbiguousRCSelector
+}
 
 // Store persists Updates into Consul. Updates are uniquely identified by their
 // new RC's ID.
