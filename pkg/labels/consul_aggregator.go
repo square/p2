@@ -90,6 +90,9 @@ func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{})
 	} else {
 		c.watchers.append(watch)
 	}
+	if c.labeledCache != nil {
+		c.doMatch(watch)
+	}
 	go func() {
 		select {
 		case <-quitCh:
@@ -135,51 +138,14 @@ func (c *consulAggregator) Aggregate() {
 		case pairs := <-outPairs:
 			c.watcherLock.Lock()
 
-			cache := make([]Labeled, len(pairs))
-			c.labeledCache = cache
-			for i, kvp := range pairs {
-				val, err := convertKVPToLabeled(kvp)
-				if err != nil {
-					c.logger.WithErrorAndFields(err, logrus.Fields{
-						"key":   kvp.Key,
-						"value": string(kvp.Value),
-					}).Errorln("Invalid key encountered, skipping this value")
-					continue
-				}
-				c.labeledCache[i] = val
-			}
+			// replace our current cache with the latest contents of the label tree.
+			c.fillCache(pairs)
 
 			// Iterate over each watcher and send the []Labeled
 			// that match the watcher's selector to the watcher's out channel.
 			watcher := c.watchers
 			for watcher != nil {
-				matches := []Labeled{}
-				for _, labeled := range c.labeledCache {
-					if watcher.selector.Matches(labeled.Labels) {
-						matches = append(matches, labeled)
-					}
-				}
-				// Fast, lossy result broadcasting. We treat clients as unreliable
-				// tenants of the aggregator by performing the following: the resulting
-				// channel is a buffered channel of size 1. When sending an update to
-				// watchers, we first see if we can _read_ a value off the buffered result
-				// channel. This removes any stale values that have yet to be read by
-				// watchers. We then subsequently put the newer value into the channel.
-				//
-				// This approach has the effect of a slower watcher potentially missing updates,
-				// but also means one watcher can't cause a DoS of other watchers as the main
-				// aggregation goroutine waits.
-
-				// first drain the previous (stale) cached value if present...
-				select {
-				case <-watcher.resultCh:
-				default:
-				}
-				// ... then send the newer value.
-				select {
-				case watcher.resultCh <- WatchResult{matches, true}:
-				default:
-				}
+				c.doMatch(watcher)
 				watcher = watcher.next
 			}
 			c.watcherLock.Unlock()
@@ -189,7 +155,55 @@ func (c *consulAggregator) Aggregate() {
 			return
 		case <-loopTime:
 			// we purposely don't case outErrors here, since loopTime lets us
-			// back off of Consul watches
+			// back off of Consul watches. If an error repeatedly were occurring,
+			// we could end up in a nasty busy loop.
 		}
+	}
+}
+
+func (c *consulAggregator) fillCache(pairs api.KVPairs) {
+	cache := make([]Labeled, len(pairs))
+	c.labeledCache = cache
+	for i, kvp := range pairs {
+		val, err := convertKVPToLabeled(kvp)
+		if err != nil {
+			c.logger.WithErrorAndFields(err, logrus.Fields{
+				"key":   kvp.Key,
+				"value": string(kvp.Value),
+			}).Errorln("Invalid key encountered, skipping this value")
+			continue
+		}
+		c.labeledCache[i] = val
+	}
+}
+
+// this must be called within the watcherLock mutex.
+func (c *consulAggregator) doMatch(watcher *selectorWatch) {
+	matches := []Labeled{}
+	for _, labeled := range c.labeledCache {
+		if watcher.selector.Matches(labeled.Labels) {
+			matches = append(matches, labeled)
+		}
+	}
+	// Fast, lossy result broadcasting. We treat clients as unreliable
+	// tenants of the aggregator by performing the following: the resulting
+	// channel is a buffered channel of size 1. When sending an update to
+	// watchers, we first see if we can _read_ a value off the buffered result
+	// channel. This removes any stale values that have yet to be read by
+	// watchers. We then subsequently put the newer value into the channel.
+	//
+	// This approach has the effect of a slower watcher potentially missing updates,
+	// but also means one watcher can't cause a DoS of other watchers as the main
+	// aggregation goroutine waits.
+
+	// first drain the previous (stale) cached value if present...
+	select {
+	case <-watcher.resultCh:
+	default:
+	}
+	// ... then send the newer value.
+	select {
+	case watcher.resultCh <- WatchResult{matches, true}:
+	default:
 	}
 }

@@ -156,3 +156,34 @@ func TestQuitIndividualWatch(t *testing.T) {
 	case <-success:
 	}
 }
+
+func TestCachedValueImmediatelySent(t *testing.T) {
+	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger)
+	aggreg.labeledCache = []Labeled{
+		{
+			LabelType: POD,
+			ID:        "heyo",
+			Labels: labels.Set{
+				"color": "brown",
+			},
+		},
+	}
+
+	selector := labels.Everything().Add("color", labels.EqualsOperator, []string{"brown"})
+	quitCh := make(chan struct{})
+	defer close(quitCh)
+	watch := aggreg.Watch(selector, quitCh)
+
+	// even though we have not called Aggregate() on the aggregator, we expect
+	// that the cached value we have added will be present on the result channel.
+
+	select {
+	case res := <-watch:
+		Assert(t).IsTrue(res.Valid, "Should have had a valid result")
+		Assert(t).AreEqual(res.Labeled[0].ID, "heyo", "should have matched heyo based on the query")
+	case <-time.After(time.Second):
+		t.Fatal("Could not read result from new watch channel")
+	}
+
+}
