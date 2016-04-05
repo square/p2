@@ -2,6 +2,7 @@ package rc
 
 import (
 	"sync"
+	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
@@ -110,6 +111,7 @@ START_LOOP:
 		case err := <-rcErr:
 			rcf.logger.WithError(err).Errorln("Could not read consul replication controllers")
 		case rcFields := <-rcWatch:
+			startTime := time.Now()
 			rcf.logger.WithField("n", len(rcFields)).Debugln("Received replication controller update")
 
 			rcf.failsafe(rcFields)
@@ -198,6 +200,8 @@ START_LOOP:
 
 			// now remove any children that were not found in the result set
 			rcf.releaseDeletedChildren(foundChildren)
+			endTime := time.Now()
+			rcf.logger.WithField("rc_processing_time", endTime.Sub(startTime)).Infoln("Finished processing RC update")
 		}
 	}
 }
