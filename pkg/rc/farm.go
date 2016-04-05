@@ -201,7 +201,7 @@ START_LOOP:
 			// now remove any children that were not found in the result set
 			rcf.releaseDeletedChildren(foundChildren)
 			endTime := time.Now()
-			rcf.logger.WithField("rc_processing_time", endTime.Sub(startTime)).Infoln("Finished processing RC update")
+			rcf.logger.WithField("rc_processing_time", endTime.Sub(startTime).String()).Infoln("Finished processing RC update")
 		}
 	}
 }
