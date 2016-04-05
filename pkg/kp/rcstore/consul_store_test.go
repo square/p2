@@ -249,6 +249,61 @@ func TestPublishQuitsOnInChannelCloseAfterData(t *testing.T) {
 	}
 }
 
+func TestLockTypeFromKey(t *testing.T) {
+	store := consulStore{}
+	expectedRCID := fields.ID("abcd-1234")
+	mutationLockPath, err := store.mutationLockPath(expectedRCID)
+	if err != nil {
+		t.Fatalf("Unable to compute lock path for rc")
+	}
+
+	updateCreationLockPath, err := store.updateCreationLockPath(expectedRCID)
+	if err != nil {
+		t.Fatalf("Unable to compute lock path for rc")
+	}
+
+	ownershipLockPath, err := store.ownershipLockPath(expectedRCID)
+	if err != nil {
+		t.Fatalf("Unable to compute lock path for rc")
+	}
+
+	type lockTypeExpectation struct {
+		Key          string
+		ExpectedType LockType
+		ExpectError  bool
+	}
+
+	expectations := []lockTypeExpectation{
+		{mutationLockPath, MutationLockType, false},
+		{updateCreationLockPath, UpdateCreationLockType, false},
+		{ownershipLockPath, OwnershipLockType, false},
+		{"bogus_key", UnknownLockType, true},
+		{"/lock/bogus_key", UnknownLockType, true},
+		{"/lock/replication_controllers/bogus/key/blah", UnknownLockType, true},
+	}
+
+	for _, expectation := range expectations {
+		rcId, lockType, err := store.lockTypeFromKey(expectation.Key)
+		if lockType != expectation.ExpectedType {
+			t.Errorf("Expected lock type for %s to be %s, was %s", expectation.Key, expectation.ExpectedType.String(), lockType.String())
+		}
+
+		if expectation.ExpectError {
+			if err == nil {
+				t.Errorf("Expected an error to be returned for key %s, but there wasn't", expectation.Key)
+			}
+		} else {
+			if err != nil {
+				t.Errorf("Unexpected error for key %s: %s", expectation.Key, err)
+			}
+
+			if rcId != expectedRCID {
+				t.Errorf("Expected returned rcID to be '%s', was '%s'", expectedRCID, rcId)
+			}
+		}
+	}
+}
+
 func rcsWithIDs(t *testing.T, id string, num int) api.KVPairs {
 	var pairs api.KVPairs
 	builder := pods.NewManifestBuilder()

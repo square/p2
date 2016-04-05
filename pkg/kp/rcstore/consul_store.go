@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"strings"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/pborman/uuid"
@@ -19,10 +20,33 @@ import (
 
 const (
 	// This label is applied to an RC, to identify the ID of its pod manifest.
-	PodIDLabel           = "pod_id"
+	PodIDLabel = "pod_id"
+	// This is called "update" for backwards compatibility reasons, it
+	// should probably be named "mutate"
 	mutationSuffix       = "update"
 	updateCreationSuffix = "update_creation"
 )
+
+type LockType int
+
+const (
+	OwnershipLockType LockType = iota
+	MutationLockType
+	UpdateCreationLockType
+	UnknownLockType
+)
+
+func (l LockType) String() string {
+	switch l {
+	case OwnershipLockType:
+		return "ownership"
+	case MutationLockType:
+		return "mutation"
+	case UpdateCreationLockType:
+		return "update_creation"
+	}
+	return "unknown"
+}
 
 type kvPair struct {
 	key   string
@@ -428,6 +452,10 @@ func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{
 	return updated, errors
 }
 
+func (s *consulStore) rcLockRoot() string {
+	return path.Join(kp.LOCK_TREE, rcTree)
+}
+
 func (s *consulStore) rcPath(rcID fields.ID) (string, error) {
 	if rcID == "" {
 		return "", util.Errorf("Lock requested for empty RC id")
@@ -445,6 +473,11 @@ func (s *consulStore) rcLockPath(rcID fields.ID) (string, error) {
 	return path.Join(kp.LOCK_TREE, rcPath), nil
 }
 
+// The path for an ownership lock is simply the base path
+func (s *consulStore) ownershipLockPath(rcID fields.ID) (string, error) {
+	return s.rcLockPath(rcID)
+}
+
 // Acquires a lock on the RC that should be used by RC farm goroutines, whose
 // job it is to carry out the intent of the RC
 func (s *consulStore) LockForOwnership(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
@@ -456,18 +489,34 @@ func (s *consulStore) LockForOwnership(rcID fields.ID, session kp.Session) (kp.U
 	return session.Lock(lockPath)
 }
 
+func (s *consulStore) mutationLockPath(rcID fields.ID) (string, error) {
+	baseLockPath, err := s.rcLockPath(rcID)
+	if err != nil {
+		return "", err
+	}
+
+	return path.Join(baseLockPath, mutationSuffix), nil
+}
+
 // Acquires a lock on the RC with the intent of mutating it. Must be held by
 // goroutines in the rolling update farm as well as any other tool that may
 // mutate an RC
 func (s *consulStore) LockForMutation(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
-	baseLockPath, err := s.rcLockPath(rcID)
+	mutationLockPath, err := s.mutationLockPath(rcID)
 	if err != nil {
 		return nil, err
 	}
 
-	// This is called "update" for backwards compatibility reasons, it
-	// should probably be named "mutate"
-	return session.Lock(path.Join(baseLockPath, mutationSuffix))
+	return session.Lock(mutationLockPath)
+}
+
+func (s *consulStore) updateCreationLockPath(rcID fields.ID) (string, error) {
+	baseLockPath, err := s.rcLockPath(rcID)
+	if err != nil {
+		return "", err
+	}
+
+	return path.Join(baseLockPath, updateCreationSuffix), nil
 }
 
 // Acquires a lock on the RC for ensuring that no two rolling updates are
@@ -475,12 +524,12 @@ func (s *consulStore) LockForMutation(rcID fields.ID, session kp.Session) (kp.Un
 // the intended "new" and "old" replication controllers should be held before
 // the update is created.
 func (s *consulStore) LockForUpdateCreation(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
-	baseLockPath, err := s.rcLockPath(rcID)
+	updateCreationLockPath, err := s.updateCreationLockPath(rcID)
 	if err != nil {
 		return nil, err
 	}
 
-	return session.Lock(path.Join(baseLockPath, updateCreationSuffix))
+	return session.Lock(updateCreationLockPath)
 }
 
 // forEachLabel Attempts to apply the supplied function to labels of the replication controller.
@@ -491,4 +540,37 @@ func (s *consulStore) forEachLabel(rc fields.RC, f func(id, k, v string) error) 
 	// As of this writing the only label we want is the pod ID.
 	// There may be more in the future.
 	return f(id, PodIDLabel, string(rc.Manifest.ID()))
+}
+
+// Given a consul key path, returns the RC ID and the lock type. Returns an err
+// if the key does not resemble a rc lock key
+func (s *consulStore) lockTypeFromKey(key string) (fields.ID, LockType, error) {
+	keyParts := strings.Split(key, "/")
+	// Sanity check key structure e.g. /lock/replication_controllers/abcd-1234
+	if len(keyParts) < 3 || len(keyParts) > 4 {
+		return "", UnknownLockType, util.Errorf("Key '%s' does not resemble an RC lock", key)
+	}
+
+	if keyParts[0] != kp.LOCK_TREE {
+		return "", UnknownLockType, util.Errorf("Key '%s' does not resemble an RC lock", key)
+	}
+
+	if keyParts[1] != rcTree {
+		return "", UnknownLockType, util.Errorf("Key '%s' does not resemble an RC lock", key)
+	}
+
+	rcID := keyParts[2]
+	if len(keyParts) == 3 {
+		// There's no lock suffix, so this is an ownership lock
+		return fields.ID(rcID), OwnershipLockType, nil
+	}
+
+	switch keyParts[3] {
+	case mutationSuffix:
+		return fields.ID(rcID), MutationLockType, nil
+	case updateCreationSuffix:
+		return fields.ID(rcID), UpdateCreationLockType, nil
+	default:
+		return fields.ID(rcID), UnknownLockType, nil
+	}
 }
