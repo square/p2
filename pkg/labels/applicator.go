@@ -81,7 +81,7 @@ type Applicator interface {
 	//
 	// The watch may be terminated by the underlying implementation without signaling on
 	// the quit channel - this will be indicated by the closing of the result channel. For
-	// this reason, the safest way to process the result of this channel is to use
-	// it in a for loop. Alternatively, you may check for nullity of the result []Labeled
-	WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan *[]Labeled
+	// this reason, callers should **always** verify that the channel is closed by checking
+	// the "ok" boolean or using `range`.
+	WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan []Labeled
 }

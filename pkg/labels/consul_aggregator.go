@@ -18,7 +18,7 @@ var DefaultAggregationRate = 10 * time.Second
 // linked list of watches with control channels
 type selectorWatch struct {
 	selector labels.Selector
-	resultCh chan *[]Labeled
+	resultCh chan []Labeled
 	next     *selectorWatch
 }
 
@@ -69,8 +69,8 @@ func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logg
 
 // Add a new selector to the aggregator. New values on the output channel may not appear
 // right away.
-func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{}) chan *[]Labeled {
-	resCh := make(chan *[]Labeled, 1)
+func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{}) chan []Labeled {
+	resCh := make(chan []Labeled, 1) // this buffer is useful in sendMatches(), below
 	select {
 	case <-c.aggregatorQuit:
 		c.logger.WithField("selector", selector.String()).Warnln("New selector added after aggregator was closed")
@@ -88,6 +88,9 @@ func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{})
 		c.watchers = watch
 	} else {
 		c.watchers.append(watch)
+	}
+	if c.labeledCache != nil {
+		c.sendMatches(watch)
 	}
 	go func() {
 		select {
@@ -127,55 +130,21 @@ func (c *consulAggregator) Aggregate() {
 	for {
 		loopTime := time.After(c.aggregationRate)
 		select {
+		case err := <-outErrors:
+			c.logger.WithError(err).Errorln("Error during watch")
 		case <-c.aggregatorQuit:
 			return
 		case pairs := <-outPairs:
-			// Convert watch result to []Labeled
-			c.labeledCache = make([]Labeled, len(pairs))
-			for i, kvp := range pairs {
-				val, err := convertKVPToLabeled(kvp)
-				if err != nil {
-					c.logger.WithErrorAndFields(err, logrus.Fields{
-						"key":   kvp.Key,
-						"value": string(kvp.Value),
-					}).Errorln("Invalid key encountered, skipping this value")
-					continue
-				}
-				c.labeledCache[i] = val
-			}
+			c.watcherLock.Lock()
+
+			// replace our current cache with the latest contents of the label tree.
+			c.fillCache(pairs)
 
 			// Iterate over each watcher and send the []Labeled
 			// that match the watcher's selector to the watcher's out channel.
-			c.watcherLock.Lock()
 			watcher := c.watchers
 			for watcher != nil {
-				matches := []Labeled{}
-				for _, labeled := range c.labeledCache {
-					if watcher.selector.Matches(labeled.Labels) {
-						matches = append(matches, labeled)
-					}
-				}
-				// Fast, lossy result broadcasting. We treat clients as unreliable
-				// tenants of the aggregator by performing the following: the resulting
-				// channel is a buffered channel of size 1. When sending an update to
-				// watchers, we first see if we can _read_ a value off the buffered result
-				// channel. This removes any stale values that have yet to be read by
-				// watchers. We then subsequently put the newer value into the channel.
-				//
-				// This approach has the effect of a slower watcher potentially missing updates,
-				// but also means one watcher can't cause a DoS of other watchers as the main
-				// aggregation goroutine waits.
-
-				// first drain the previous (stale) cached value if present...
-				select {
-				case <-watcher.resultCh:
-				default:
-				}
-				// ... then send the newer value.
-				select {
-				case watcher.resultCh <- &matches:
-				default:
-				}
+				c.sendMatches(watcher)
 				watcher = watcher.next
 			}
 			c.watcherLock.Unlock()
@@ -184,7 +153,56 @@ func (c *consulAggregator) Aggregate() {
 		case <-c.aggregatorQuit:
 			return
 		case <-loopTime:
+			// we purposely don't case outErrors here, since loopTime lets us
+			// back off of Consul watches. If an error repeatedly were occurring,
+			// we could end up in a nasty busy loop.
 		}
+	}
+}
 
+func (c *consulAggregator) fillCache(pairs api.KVPairs) {
+	cache := make([]Labeled, len(pairs))
+	for i, kvp := range pairs {
+		labeled, err := convertKVPToLabeled(kvp)
+		if err != nil {
+			c.logger.WithErrorAndFields(err, logrus.Fields{
+				"key":   kvp.Key,
+				"value": string(kvp.Value),
+			}).Errorln("Invalid key encountered, skipping this value")
+			continue
+		}
+		cache[i] = labeled
+	}
+	c.labeledCache = cache
+}
+
+// this must be called within the watcherLock mutex.
+func (c *consulAggregator) sendMatches(watcher *selectorWatch) {
+	matches := []Labeled{}
+	for _, labeled := range c.labeledCache {
+		if watcher.selector.Matches(labeled.Labels) {
+			matches = append(matches, labeled)
+		}
+	}
+	// Fast, lossy result broadcasting. We treat clients as unreliable
+	// tenants of the aggregator by performing the following: the resulting
+	// channel is a buffered channel of size 1. When sending an update to
+	// watchers, we first see if we can _read_ a value off the buffered result
+	// channel. This removes any stale values that have yet to be read by
+	// watchers. We then subsequently put the newer value into the channel.
+	//
+	// This approach has the effect of a slower watcher potentially missing updates,
+	// but also means one watcher can't cause a DoS of other watchers as the main
+	// aggregation goroutine waits.
+
+	// first drain the previous (stale) cached value if present...
+	select {
+	case <-watcher.resultCh:
+	default:
+	}
+	// ... then send the newer value.
+	select {
+	case watcher.resultCh <- matches:
+	default:
 	}
 }

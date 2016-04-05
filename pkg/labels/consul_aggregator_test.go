@@ -40,16 +40,14 @@ func TestTwoClients(t *testing.T) {
 		select {
 		case <-time.After(time.Second):
 			t.Fatal("Should not have taken a second to get results")
-		case labeledPtr := <-labeledChannel1:
-			Assert(t).IsNotNil(labeledPtr, "ptr should not have been nil")
-			labeled := *labeledPtr
+		case labeled, ok := <-labeledChannel1:
+			Assert(t).IsTrue(ok, "should have been okay")
 			Assert(t).AreNotEqual("green", checked, "Should not have already checked the green selector result")
 			checked = "green" // ensure that both sides get checked
 			Assert(t).AreEqual(1, len(labeled), "Should have received one result from the color watch")
 			Assert(t).AreEqual("emeralda", labeled[0].ID, "should have received the emerald app")
-		case labeledPtr := <-labeledChannel2:
-			Assert(t).IsNotNil(labeledPtr, "ptr should not have been nil")
-			labeled := *labeledPtr
+		case labeled, ok := <-labeledChannel2:
+			Assert(t).IsTrue(ok, "should have been okay")
 			Assert(t).AreNotEqual("canary", checked, "Should not have already checked the canary selector result")
 			checked = "canary" // ensure that both sides get checked
 			Assert(t).AreEqual(2, len(labeled), "Should have received two results from the canary watch")
@@ -107,8 +105,9 @@ func TestQuitAggregateBeforeResults(t *testing.T) {
 	aggreg.Quit()
 
 	select {
-	case labeled := <-res:
-		Assert(t).IsNotNil(labeled, "Should not have received any results")
+	case labeled, ok := <-res:
+		Assert(t).IsFalse(ok, "should have been okay")
+		Assert(t).IsTrue(labeled == nil, "Should not have received any results")
 	case <-time.After(time.Second):
 		t.Fatal("Should still be waiting or processing results after a second")
 	}
@@ -134,9 +133,8 @@ func TestQuitIndividualWatch(t *testing.T) {
 		select {
 		case <-time.After(time.Second):
 			t.Fatalf("Should not have taken a second to get results on iteration %v", i)
-		case labeledPtr := <-labeledChannel2:
-			Assert(t).IsNotNil(labeledPtr, "ptr should not have been nil")
-			labeled := *labeledPtr
+		case labeled, ok := <-labeledChannel2:
+			Assert(t).IsTrue(ok, "should have been okay")
 			Assert(t).AreEqual(1, len(labeled), "Should have one result with a production deployment")
 			Assert(t).AreEqual("maroono", labeled[0].ID, "Should have received maroono as the one production deployment")
 		}
@@ -155,4 +153,35 @@ func TestQuitIndividualWatch(t *testing.T) {
 		t.Fatal("Should not have taken a second to see the closed label channel")
 	case <-success:
 	}
+}
+
+func TestCachedValueImmediatelySent(t *testing.T) {
+	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger)
+	aggreg.labeledCache = []Labeled{
+		{
+			LabelType: POD,
+			ID:        "heyo",
+			Labels: labels.Set{
+				"color": "brown",
+			},
+		},
+	}
+
+	selector := labels.Everything().Add("color", labels.EqualsOperator, []string{"brown"})
+	quitCh := make(chan struct{})
+	defer close(quitCh)
+	watch := aggreg.Watch(selector, quitCh)
+
+	// even though we have not called Aggregate() on the aggregator, we expect
+	// that the cached value we have added will be present on the result channel.
+
+	select {
+	case res, ok := <-watch:
+		Assert(t).IsTrue(ok, "Should have had a valid result")
+		Assert(t).AreEqual(res[0].ID, "heyo", "should have matched heyo based on the query")
+	case <-time.After(time.Second):
+		t.Fatal("Could not read result from new watch channel")
+	}
+
 }
