@@ -30,6 +30,10 @@ type Store interface {
 	// terminate. Callers must drain the returned channels, including the error
 	// channel.
 	WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan error)
+	// Like WatchNew, but returns structures that also indicate which locks
+	// are held at the time the update came in. This can be used to reduce
+	// lock acquisition work required e.g. in the RC farm.
+	WatchNewWithRCLockInfo(quit <-chan struct{}) (<-chan []RCLockResult, <-chan error)
 
 	// Set the desired replica count for the given RC to the given integer.
 	SetDesiredReplicas(fields.ID, int) error

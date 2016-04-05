@@ -58,7 +58,6 @@ type consulKV interface {
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
 	CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
 	DeleteCAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
-	Acquire(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
 }
 
 type consulStore struct {
@@ -188,6 +187,58 @@ func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan
 	return outCh, errCh
 }
 
+// Wraps an RC with lock information
+type RCLockResult struct {
+	fields.RC
+	LockedForOwnership      bool
+	LockedForUpdateCreation bool
+	LockedForMutation       bool
+}
+
+// Like WatchNew() but instead of returning raw fields.RC types it wraps them
+// in a struct that indicates what types of locks are held on the RC. This is
+// useful in reducing failed lock attempts in the RC farms which have a latency
+// cost. WatchNewWithLockInfo() can retrieve the contents of the entire
+// replication controller lock tree once and farms can only attempt to acquire
+// locks that were not held at some recent time
+//
+// Since lock information is retrieved once per update to the RC list, it's
+// possible that lock information will be out of date as the list is processed.
+// However, a subsequent update will get the correct view of the world so the
+// behavior should be correct
+func (s *consulStore) WatchNewWithRCLockInfo(quit <-chan struct{}) (<-chan []RCLockResult, <-chan error) {
+	inCh := make(chan api.KVPairs)
+	lockInfoErrCh := make(chan error)
+	combinedErrCh := make(chan error)
+
+	rcCh, rcErrCh := publishLatestRCs(inCh, quit)
+	go consulutil.WatchPrefix(rcTree+"/", s.kv, inCh, quit, rcErrCh)
+
+	// Process RC updates and augment them with lock information
+	outCh, lockInfoErrCh := s.publishLatestRCsWithLockInfo(rcCh, quit)
+
+	// Fan-in the two error channels into one source
+	go func() {
+		defer close(combinedErrCh)
+		var err error
+		for {
+			select {
+			case err = <-lockInfoErrCh:
+			case err = <-rcErrCh:
+			case <-quit:
+				return
+			}
+
+			select {
+			case combinedErrCh <- err:
+			case <-quit:
+				return
+			}
+		}
+	}()
+	return outCh, combinedErrCh
+}
+
 // Pulled out of WatchNew for testing purposes (faking watches on a mock KV is
 // hard). It converts api.KVPairs values received on inCh to []fields.RC, and
 // attempts to pass them on outCh. It will discard updates that are not read
@@ -260,6 +311,93 @@ func publishLatestRCs(inCh <-chan api.KVPairs, quit <-chan struct{}) (<-chan []f
 		}
 	}()
 
+	return outCh, errCh
+}
+
+func (s *consulStore) publishLatestRCsWithLockInfo(inCh <-chan []fields.RC, quit <-chan struct{}) (chan []RCLockResult, chan error) {
+	// Buffered to deal with slow consumers
+	outCh := make(chan []RCLockResult, 1)
+	errCh := make(chan error)
+	go func() {
+		defer close(errCh)
+		defer close(outCh)
+		for {
+			select {
+			case <-quit:
+				return
+			case rcFields, ok := <-inCh:
+				if !ok {
+					return
+				}
+
+				var res []RCLockResult
+				rcMap := make(map[fields.ID]*RCLockResult)
+				for _, rc := range rcFields {
+					rcMap[rc.ID] = &RCLockResult{
+						RC: rc,
+					}
+				}
+
+				// Grab all RC related locks and populate map
+				// with the information
+				lockPairs, _, err := s.kv.List(s.rcLockRoot(), nil)
+				if err != nil {
+					select {
+					case errCh <- consulutil.NewKVError("list", s.rcLockRoot(), util.Errorf("Unable to retrieve rc lock info, reporting them all as not locked: %s", err)):
+					case <-quit:
+						return
+					}
+				}
+
+				// This is safe even if we had an err above
+				for _, pair := range lockPairs {
+					rcID, lockType, err := s.lockTypeFromKey(pair.Key)
+					if err != nil {
+						select {
+						case errCh <- err:
+						case <-quit:
+							return
+						}
+						continue
+					}
+
+					if _, ok := rcMap[rcID]; !ok {
+						select {
+						case errCh <- util.Errorf("Found lock for rc '%s' but that RC wasn't found", rcID):
+						case <-quit:
+							return
+						}
+						continue
+					}
+
+					switch lockType {
+					case OwnershipLockType:
+						rcMap[rcID].LockedForOwnership = true
+					case MutationLockType:
+						rcMap[rcID].LockedForMutation = true
+					case UpdateCreationLockType:
+						rcMap[rcID].LockedForUpdateCreation = true
+					}
+				}
+
+				for _, rcLockResult := range rcMap {
+					res = append(res, *rcLockResult)
+				}
+
+				// attempt to drain stale value from out channel
+				select {
+				case <-outCh:
+				default:
+				}
+
+				select {
+				case outCh <- res:
+				case <-quit:
+					return
+				}
+			}
+		}
+	}()
 	return outCh, errCh
 }
 
@@ -543,7 +681,7 @@ func (s *consulStore) forEachLabel(rc fields.RC, f func(id, k, v string) error) 
 }
 
 // Given a consul key path, returns the RC ID and the lock type. Returns an err
-// if the key does not resemble a rc lock key
+// if the key does not resemble an RC lock key
 func (s *consulStore) lockTypeFromKey(key string) (fields.ID, LockType, error) {
 	keyParts := strings.Split(key, "/")
 	// Sanity check key structure e.g. /lock/replication_controllers/abcd-1234
