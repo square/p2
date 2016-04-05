@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/alerting"
+	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/rc/rcmetrics"
@@ -34,7 +35,7 @@ func TestNoRCsWillCausePanic(t *testing.T) {
 		}
 		Assert(t).AreEqual("no_rcs_found", alerter.savedInfo.IncidentKey, "should have had a fired alert")
 	}()
-	rcf.failsafe([]fields.RC{})
+	rcf.failsafe([]rcstore.RCLockResult{})
 }
 
 func TestRCsWithCountsWillBeFine(t *testing.T) {
@@ -43,9 +44,11 @@ func TestRCsWithCountsWillBeFine(t *testing.T) {
 		alerter: alerter,
 	}
 
-	rcs := []fields.RC{
-		fields.RC{
-			ReplicasDesired: 5,
+	rcs := []rcstore.RCLockResult{
+		{
+			RC: fields.RC{
+				ReplicasDesired: 5,
+			},
 		},
 	}
 
@@ -64,9 +67,11 @@ func TestRCsWithZeroCountsWillTriggerIncident(t *testing.T) {
 		alerter: alerter,
 	}
 
-	rcs := []fields.RC{
-		fields.RC{
-			ReplicasDesired: 0,
+	rcs := []rcstore.RCLockResult{
+		{
+			RC: fields.RC{
+				ReplicasDesired: 0,
+			},
 		},
 	}
 

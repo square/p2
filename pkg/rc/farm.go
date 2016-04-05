@@ -112,7 +112,7 @@ func (rcf *Farm) Start(quit <-chan struct{}) {
 func (rcf *Farm) mainLoop(quit <-chan struct{}) {
 	subQuit := make(chan struct{})
 	defer close(subQuit)
-	rcWatch, rcErr := rcf.rcStore.WatchNew(subQuit)
+	rcWatch, rcErr := rcf.rcStore.WatchNewWithRCLockInfo(subQuit)
 
 START_LOOP:
 	for {
@@ -141,6 +141,14 @@ START_LOOP:
 					// this one is already ours, skip
 					rcLogger.NoFields().Debugln("Got replication controller already owned by self")
 					foundChildren[rcField.ID] = struct{}{}
+					continue
+				}
+
+				// Don't try to work on an RC that is already owned. While the LockedForOwnership flag may be stale,
+				// the nature of this function is that we (or another farm) will come back to it and the lock will be
+				// grabbed. Shortening the length of time it takes to process a list of RCs is paramount.
+				if rcField.LockedForOwnership {
+					rcLogger.WithField("rc", rcField.ID).Infof("Ignoring RC %s because it is already locked", rcField.ID)
 					continue
 				}
 
@@ -173,7 +181,7 @@ START_LOOP:
 				rcLogger.NoFields().Infoln("Acquired lock on new replication controller, spawning")
 
 				newChild := New(
-					rcField,
+					rcField.RC,
 					rcf.kpStore,
 					rcf.rcStore,
 					rcf.scheduler,
@@ -222,7 +230,7 @@ START_LOOP:
 	}
 }
 
-func (rcf *Farm) failsafe(rcFields []fields.RC) {
+func (rcf *Farm) failsafe(rcFields []rcstore.RCLockResult) {
 	// FAILSAFES. If no RCs are scheduled, or there are zero replicas of anything scheduled, panic
 	if len(rcFields) == 0 {
 		rcf.alerter.Alert(alerting.AlertInfo{
