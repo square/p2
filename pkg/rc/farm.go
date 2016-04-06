@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
@@ -14,6 +15,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/rc/rcmetrics"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -44,6 +46,8 @@ type Farm struct {
 	logger     logging.Logger
 	alerter    alerting.Alerter
 	rcSelector klabels.Selector
+
+	metrics *rcmetrics.Metrics
 }
 
 type childRC struct {
@@ -76,7 +80,17 @@ func NewFarm(
 		children:   make(map[fields.ID]childRC),
 		alerter:    alerter,
 		rcSelector: rcSelector,
+		metrics: &rcmetrics.Metrics{
+			Logger: logger,
+		},
 	}
+}
+
+// Set the metrics registry to use (see
+// https://godoc.org/github.com/rcrowley/go-metrics#Registry). If set,
+// performance metrics will be recorded to the registry.
+func (rcf *Farm) SetMetricsRegistry(registry metrics.Registry) error {
+	return rcf.metrics.SetRegistry(registry)
 }
 
 // Start is a blocking function that monitors Consul for replication controllers.
@@ -201,7 +215,9 @@ START_LOOP:
 			// now remove any children that were not found in the result set
 			rcf.releaseDeletedChildren(foundChildren)
 			endTime := time.Now()
-			rcf.logger.WithField("rc_processing_time", endTime.Sub(startTime).String()).Infoln("Finished processing RC update")
+			processingTime := endTime.Sub(startTime)
+			rcf.logger.WithField("rc_processing_time", processingTime.String()).Infoln("Finished processing RC update")
+			rcf.metrics.RecordRCProcessingTime(processingTime)
 		}
 	}
 }
