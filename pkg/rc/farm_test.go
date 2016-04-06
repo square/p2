@@ -2,11 +2,15 @@ package rc
 
 import (
 	"testing"
+	"time"
 
 	"github.com/square/p2/pkg/alerting"
+	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/rc/rcmetrics"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
 )
 
 type failsafeAlerter struct {
@@ -73,4 +77,33 @@ func TestRCsWithZeroCountsWillTriggerIncident(t *testing.T) {
 		Assert(t).AreEqual("zero_replicas_found", alerter.savedInfo.IncidentKey, "should have had a fired alert")
 	}()
 	rcf.failsafe(rcs)
+}
+
+func TestRecordProcessingTime(t *testing.T) {
+	rcf := &Farm{
+		metrics: &rcmetrics.Metrics{
+			Logger: logging.DefaultLogger,
+		},
+	}
+	Assert(t).IsNil(rcf.SetMetricsRegistry(metrics.DefaultRegistry), "Unexpected error setting metrics registry")
+
+	rcProcessingMetric := metrics.DefaultRegistry.Get(rcmetrics.RCProcessingTimeMetric)
+	Assert(t).IsNotNil(rcProcessingMetric, "A metric should have been registered for rc processing time")
+
+	histogram, ok := rcProcessingMetric.(metrics.Histogram)
+	Assert(t).IsTrue(ok, "The rc processing metric should be a histogram type")
+
+	Assert(t).AreEqual(histogram.Count(), int64(0), "No values should have been recorded for rc processing time yet")
+	rcf.metrics.RecordRCProcessingTime(time.Second)
+	Assert(t).AreEqual(histogram.Count(), int64(1), "One value should have been recorded for rc processing time")
+}
+
+func TestRecordProcessingTimeDoesntPanicIfNoMetricsRegistrySet(t *testing.T) {
+	rcf := &Farm{
+		metrics: &rcmetrics.Metrics{
+			Logger: logging.DefaultLogger,
+		},
+	}
+
+	rcf.metrics.RecordRCProcessingTime(time.Second)
 }
