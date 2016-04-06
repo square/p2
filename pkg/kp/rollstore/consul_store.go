@@ -392,11 +392,7 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 	var oldRCID rc_fields.ID
 	if len(matches) > 1 {
-		return roll_fields.Update{}, util.Errorf(
-			"Can't create update: old RC selector %s was ambiguous, provided %d matches",
-			oldRCSelector.String(),
-			len(matches),
-		)
+		return roll_fields.Update{}, AmbiguousRCSelector
 	} else if len(matches) == 1 {
 		oldRCID = rc_fields.ID(matches[0].ID)
 	} else {
