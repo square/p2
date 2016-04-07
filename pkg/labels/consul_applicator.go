@@ -237,6 +237,7 @@ func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type
 	aggregator, ok := c.aggregators[labelType]
 	if !ok {
 		aggregator = NewConsulAggregator(labelType, c.kv, c.logger)
+		go aggregator.Aggregate()
 		c.aggregators[labelType] = aggregator
 	}
 	return aggregator.Watch(selector, quitCh)

@@ -11,6 +11,7 @@ sudo /sbin/start runsvdir
 sudo mkdir -p /etc/servicebuilder.d /var/service-stage /var/service
 
 sudo cp $GOPATH/bin/p2-exec /usr/local/bin
+PATH=$PATH:$GOPATH/bin
 
 # make ssl certs
 subj="

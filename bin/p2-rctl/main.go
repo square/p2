@@ -48,6 +48,7 @@ const (
 var (
 	labelEndpoint = kingpin.Flag("labels", "An HTTP endpoint to use for labels, instead of using Consul.").String()
 	logLevel      = kingpin.Flag("log", "Logging level to display.").String()
+	logJSON       = kingpin.Flag("log-json", "Log messages will be JSON formatted").Bool()
 
 	cmdCreate       = kingpin.Command(CMD_CREATE, "Create a new replication controller")
 	createManifest  = cmdCreate.Flag("manifest", "manifest file to use for this replication controller").Short('m').Required().String()
@@ -95,7 +96,11 @@ func main() {
 	cmd, opts := flags.ParseWithConsulOptions()
 
 	logger := logging.NewLogger(logrus.Fields{})
-	logger.Logger.Formatter = &logrus.TextFormatter{}
+	if *logJSON {
+		logger.Logger.Formatter = &logrus.JSONFormatter{}
+	} else {
+		logger.Logger.Formatter = &logrus.TextFormatter{}
+	}
 	if *logLevel != "" {
 		lv, err := logrus.ParseLevel(*logLevel)
 		if err != nil {
