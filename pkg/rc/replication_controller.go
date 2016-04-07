@@ -339,14 +339,14 @@ func (rc *replicationController) CurrentPods() (PodLocations, error) {
 	}
 
 	result := make(PodLocations, len(podMatches))
-	for i, node := range podMatches {
+	for i, podMatch := range podMatches {
 		// ID will be something like <nodename>/<podid>.
-		parts := strings.SplitN(node.ID, "/", 2)
-		if len(parts) < 2 {
-			return nil, fmt.Errorf("malformed pod label %s", node.ID)
+		podID, node, err := GetPodIDFromLabelKey(podMatch.ID)
+		if err != nil {
+			return nil, err
 		}
-		result[i].Node = parts[0]
-		result[i].PodID = parts[1]
+		result[i].Node = node
+		result[i].PodID = podID.String()
 	}
 	return result, nil
 }
@@ -356,7 +356,7 @@ func (rc *replicationController) CurrentPods() (PodLocations, error) {
 // If forEachLabel encounters any error applying the function, it returns that error immediately.
 // The function is not further applied to subsequent labels on an error.
 func (rc *replicationController) forEachLabel(node string, f func(id, k, v string) error) error {
-	id := node + "/" + string(rc.Manifest.ID())
+	id := MakePodLabelKey(node, rc.Manifest.ID())
 
 	// user-requested labels.
 	for k, v := range rc.PodLabels {
@@ -391,4 +391,21 @@ func (rc *replicationController) unschedule(node string) error {
 	return rc.forEachLabel(node, func(podID, k, _ string) error {
 		return rc.podApplicator.RemoveLabel(labels.POD, podID, k)
 	})
+}
+
+// these utility functions are used primarily while we exist in a mutable
+// deployment world. We will need to figure out how to replace these with
+// different datasources to allow RCs to continue to function correctly
+// in the future.
+
+func MakePodLabelKey(node string, podID types.PodID) string {
+	return node + "/" + podID.String()
+}
+
+func GetPodIDFromLabelKey(labelKey string) (types.PodID, string, error) {
+	parts := strings.SplitN(labelKey, "/", 2)
+	if len(parts) < 2 {
+		return types.PodID(""), "", fmt.Errorf("malformed pod label %s", labelKey)
+	}
+	return types.PodID(parts[1]), parts[0], nil
 }

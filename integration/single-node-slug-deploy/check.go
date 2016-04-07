@@ -14,13 +14,19 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
+	"github.com/square/p2/pkg/rc"
+	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/util"
+
+	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 )
 
 const preparerStatusPort = 32170
@@ -30,8 +36,11 @@ func main() {
 	// 1. Generate pod for preparer in this code version (`rake artifact:prepare`)
 	// 2. Locate manifests for preparer pod, premade consul pod
 	// 3. Execute bootstrap with premade consul pod and preparer pod
-	// 4. Deploy hello pod manifest by pushing to intent store
-	// 5. Verify that hello is running (listen to syslog? verify Runit PIDs? Both?)
+	// 4. Deploy p2-rctl-server pod with p2-schedule
+	// 5. Schedule a hello pod manifest with a replication controller
+	// 6. Verify that p2-rctl-server is running by checking health.
+	// 7. Verify that hello is running by checking health. Monitor using
+	// written pod label queries.
 
 	// list of services running on integration test host
 	services := []string{"p2-preparer", "hello"}
@@ -78,9 +87,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("Couldn't schedule the user creation hook: %s", err)
 	}
-	err = postHelloManifest(tempdir)
+	err = scheduleRCTLServer(tempdir)
 	if err != nil {
-		log.Fatalf("Could not generate hello pod: %s\n", err)
+		log.Fatalf("Could not schedule RCTL server: %s", err)
+	}
+	rcID, err := createHelloReplicationController(tempdir)
+	if err != nil {
+		log.Fatalf("Could not create hello pod / rc: %s\n", err)
+	}
+	log.Printf("Created RC #%s for hello\n", rcID)
+
+	err = waitForPodLabeledWithRC(klabels.Everything().Add(rc.RCIDLabel, klabels.EqualsOperator, []string{rcID.String()}), rcID)
+	if err != nil {
+		log.Fatalf("Failed waiting for pods labeled with the given RC: %v", err)
 	}
 	err = verifyHelloRunning()
 	if err != nil {
@@ -315,7 +334,28 @@ func executeBootstrap(preparerManifest, consulManifest string) error {
 	return bootstr.Run()
 }
 
-func postHelloManifest(dir string) error {
+func scheduleRCTLServer(dir string) error {
+	p2RCTLServerPath, err := exec.Command("which", "p2-rctl-server").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("Could not find p2-rctl-server on PATH")
+	}
+	chomped := strings.TrimSpace(string(p2RCTLServerPath))
+	if _, err = os.Stat(chomped); os.IsNotExist(err) {
+		return fmt.Errorf("%v does not exist", chomped)
+	}
+	cmd := exec.Command("p2-bin2pod", "--work-dir", dir, chomped)
+	manifestPath, err := executeBin2Pod(cmd)
+	if err != nil {
+		return err
+	}
+	signedPath, err := signManifest(manifestPath, dir)
+	if err != nil {
+		return err
+	}
+	return exec.Command("p2-schedule", signedPath).Run()
+}
+
+func createHelloReplicationController(dir string) (fields.ID, error) {
 	hello := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-hello_def456.tar.gz"))
 	builder := pods.NewManifestBuilder()
 	builder.SetID("hello")
@@ -333,21 +373,81 @@ func postHelloManifest(dir string) error {
 
 	f, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		return err
+		return fields.ID(""), err
 	}
 	defer f.Close()
 	err = manifest.Write(f)
 	if err != nil {
-		return err
+		return fields.ID(""), err
 	}
 	f.Close()
 
 	manifestPath, err = signManifest(manifestPath, dir)
 	if err != nil {
-		return err
+		return fields.ID(""), err
 	}
 
-	return exec.Command("p2-schedule", manifestPath).Run()
+	cmd := exec.Command("p2-rctl", "--log-json", "create", "--manifest", manifestPath, "--node-selector", "test=yes")
+	out := bytes.Buffer{}
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	err = cmd.Run()
+	if err != nil {
+		return fields.ID(""), fmt.Errorf("Couldn't create replication controller for hello: %s %s", out.String(), err)
+	}
+	var rctlOut struct {
+		ID string `json:"id"`
+	}
+
+	err = json.Unmarshal(out.Bytes(), &rctlOut)
+	if err != nil {
+		return fields.ID(""), fmt.Errorf("Couldn't read RC ID out of p2-rctl invocation result: %v", err)
+	}
+
+	return fields.ID(rctlOut.ID), exec.Command("p2-rctl", "set-replicas", rctlOut.ID, "1").Run()
+}
+
+func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
+	client := kp.NewConsulClient(kp.Options{})
+	applicator := labels.NewConsulApplicator(client, 1)
+
+	// we have to label this hostname as being allowed to run tests
+	host, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("Could not get hostname: %s", err)
+	}
+	err = applicator.SetLabel(labels.NODE, host, "test", "yes")
+	if err != nil {
+		return fmt.Errorf("Could not set node selector label on %s: %v", host, err)
+	}
+
+	quitCh := make(chan struct{})
+	defer close(quitCh)
+	watchCh := applicator.WatchMatches(selector, labels.POD, quitCh)
+	waitTime := time.After(30 * time.Second)
+	for {
+		select {
+		case <-waitTime:
+			return fmt.Errorf("Label selector %v wasn't matched before timeout: %s", selector, targetLogs())
+		case res, ok := <-watchCh:
+			if !ok {
+				return fmt.Errorf("Label selector watch unexpectedly terminated")
+			}
+			if len(res) > 1 {
+				return fmt.Errorf("Too many results found, should only have 1: %v", res)
+			}
+			if len(res) == 1 {
+				podID, _, err := rc.GetPodIDFromLabelKey(res[0].ID)
+				if err != nil {
+					return err
+				}
+				if podID.String() != "hello" {
+					return fmt.Errorf("Should have found the hello pod, instead found %s", podID)
+				}
+				return nil
+			}
+		}
+	}
 }
 
 func verifyHelloRunning() error {

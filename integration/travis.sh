@@ -4,6 +4,7 @@ set -ex
 
 sudo groupadd nobody
 sudo useradd hello
+sudo useradd p2-rctl-server
 
 sudo /sbin/stop runsvdir
 sudo sed -i -e 's;/usr/sbin/runsvdir-start;/usr/bin/runsvdir /var/service;g' /etc/init/runsvdir.conf
@@ -11,6 +12,7 @@ sudo /sbin/start runsvdir
 sudo mkdir -p /etc/servicebuilder.d /var/service-stage /var/service
 
 sudo cp $GOPATH/bin/p2-exec /usr/local/bin
+PATH=$PATH:$GOPATH/bin
 
 # make ssl certs
 subj="
