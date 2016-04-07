@@ -3,8 +3,6 @@ package rcmetrics
 import (
 	"time"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
-
 	"github.com/square/p2/pkg/logging"
 )
 
@@ -15,27 +13,20 @@ const (
 	RCProcessingTimeMetric = "rc_processing_time"
 )
 
-type Metrics struct {
-	Registry metrics.Registry
-	Logger   logging.Logger
+type Metrics interface {
+	RecordRCProcessingTime(processingTime time.Duration)
 }
 
-func (m *Metrics) SetRegistry(registry metrics.Registry) error {
-	m.Registry = registry
-	return m.Registry.Register(RCProcessingTimeMetric, metrics.NewHistogram(metrics.NewExpDecaySample(1028, 0.015)))
+func NewLoggingMetrics(logger logging.Logger) Metrics {
+	return &defaultMetrics{
+		Logger: logger,
+	}
 }
 
-func (m *Metrics) RecordRCProcessingTime(processingTime time.Duration) {
-	if m.Registry == nil {
-		m.Logger.Infof("Not logging %s metric because no metric registry is set", RCProcessingTimeMetric)
-		return
-	}
+type defaultMetrics struct {
+	Logger logging.Logger
+}
 
-	histogram, ok := m.Registry.Get(RCProcessingTimeMetric).(metrics.Histogram)
-	if !ok {
-		m.Logger.Errorln("Not logging %s metric because the metric of that name was not a Histogram type.", RCProcessingTimeMetric)
-		return
-	}
-
-	histogram.Update(int64(processingTime))
+func (m *defaultMetrics) RecordRCProcessingTime(processingTime time.Duration) {
+	m.Logger.WithField(RCProcessingTimeMetric, processingTime.String()).Infoln()
 }
