@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
@@ -47,7 +46,7 @@ type Farm struct {
 	alerter    alerting.Alerter
 	rcSelector klabels.Selector
 
-	metrics *rcmetrics.Metrics
+	metrics rcmetrics.Metrics
 }
 
 type childRC struct {
@@ -80,17 +79,13 @@ func NewFarm(
 		children:   make(map[fields.ID]childRC),
 		alerter:    alerter,
 		rcSelector: rcSelector,
-		metrics: &rcmetrics.Metrics{
-			Logger: logger,
-		},
+		metrics:    rcmetrics.NewLoggingMetrics(logger),
 	}
 }
 
-// Set the metrics registry to use (see
-// https://godoc.org/github.com/rcrowley/go-metrics#Registry). If set,
-// performance metrics will be recorded to the registry.
-func (rcf *Farm) SetMetricsRegistry(registry metrics.Registry) error {
-	return rcf.metrics.SetRegistry(registry)
+// Set the rcmetrics.Metrics struct to record metrics on.
+func (rcf *Farm) SetMetrics(rcmetrics rcmetrics.Metrics) {
+	rcf.metrics = rcmetrics
 }
 
 // Start is a blocking function that monitors Consul for replication controllers.
