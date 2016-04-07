@@ -80,6 +80,10 @@ func (s *fakeStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan e
 	return nil, nil
 }
 
+func (s *fakeStore) WatchNewWithRCLockInfo(quit <-chan struct{}) (<-chan []RCLockResult, <-chan error) {
+	panic("not implemented")
+}
+
 func (s *fakeStore) Disable(id fields.ID) error {
 	entry, ok := s.rcs[id]
 	if !ok {

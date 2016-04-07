@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
 
@@ -246,6 +247,261 @@ func TestPublishQuitsOnInChannelCloseAfterData(t *testing.T) {
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatalf("Timed out waiting for errCh to close")
+	}
+}
+
+func TestLockTypeFromKey(t *testing.T) {
+	store := consulStore{}
+	expectedRCID := fields.ID("abcd-1234")
+	mutationLockPath, err := store.mutationLockPath(expectedRCID)
+	if err != nil {
+		t.Fatalf("Unable to compute lock path for rc")
+	}
+
+	updateCreationLockPath, err := store.updateCreationLockPath(expectedRCID)
+	if err != nil {
+		t.Fatalf("Unable to compute lock path for rc")
+	}
+
+	ownershipLockPath, err := store.ownershipLockPath(expectedRCID)
+	if err != nil {
+		t.Fatalf("Unable to compute lock path for rc")
+	}
+
+	type lockTypeExpectation struct {
+		Key          string
+		ExpectedType LockType
+		ExpectError  bool
+	}
+
+	expectations := []lockTypeExpectation{
+		{mutationLockPath, MutationLockType, false},
+		{updateCreationLockPath, UpdateCreationLockType, false},
+		{ownershipLockPath, OwnershipLockType, false},
+		{"bogus_key", UnknownLockType, true},
+		{"/lock/bogus_key", UnknownLockType, true},
+		{"/lock/replication_controllers/bogus/key/blah", UnknownLockType, true},
+	}
+
+	for _, expectation := range expectations {
+		rcId, lockType, err := store.lockTypeFromKey(expectation.Key)
+		if lockType != expectation.ExpectedType {
+			t.Errorf("Expected lock type for %s to be %s, was %s", expectation.Key, expectation.ExpectedType.String(), lockType.String())
+		}
+
+		if expectation.ExpectError {
+			if err == nil {
+				t.Errorf("Expected an error to be returned for key %s, but there wasn't", expectation.Key)
+			}
+		} else {
+			if err != nil {
+				t.Errorf("Unexpected error for key %s: %s", expectation.Key, err)
+			}
+
+			if rcId != expectedRCID {
+				t.Errorf("Expected returned rcID to be '%s', was '%s'", expectedRCID, rcId)
+			}
+		}
+	}
+}
+
+type LockInfoTestCase struct {
+	InputRCs       []fields.RC
+	ExpectedOutput []RCLockResult
+}
+
+func TestPublishLatestRCsWithLockInfoNoLocks(t *testing.T) {
+	rcstore := consulStore{
+		kv: kptest.NewFakeKV(),
+	}
+
+	inCh := make(chan []fields.RC)
+	defer close(inCh)
+	quitCh := make(chan struct{})
+	defer close(quitCh)
+
+	lockResultCh, errCh := rcstore.publishLatestRCsWithLockInfo(inCh, quitCh)
+	go func() {
+		for err := range errCh {
+			t.Fatalf("Unexpected error on errCh: %s", err)
+		}
+	}()
+
+	// Create a test case with 2 RCs with no locks
+	unlockedCase := LockInfoTestCase{
+		InputRCs: []fields.RC{fields.RC{ID: "abc"}, fields.RC{ID: "123"}},
+		ExpectedOutput: []RCLockResult{
+			{
+				RC: fields.RC{ID: "abc"},
+			},
+			{
+				RC: fields.RC{ID: "123"},
+			},
+		},
+	}
+
+	verifyLockInfoTestCase(t, unlockedCase, inCh, lockResultCh)
+
+	// Write the same input once more without reading the channel and make
+	// sure that doesn't cause timeouts
+	select {
+	case inCh <- unlockedCase.InputRCs:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("Timed out writing to input channel")
+	}
+
+	// create a new case
+	unlockedCase2 := LockInfoTestCase{
+		InputRCs: []fields.RC{
+			fields.RC{ID: "abc"},
+			fields.RC{ID: "123"},
+			fields.RC{ID: "456"},
+		},
+		ExpectedOutput: []RCLockResult{
+			{
+				RC: fields.RC{ID: "abc"},
+			},
+			{
+				RC: fields.RC{ID: "123"},
+			},
+			{
+				RC: fields.RC{ID: "456"},
+			},
+		},
+	}
+
+	verifyLockInfoTestCase(t, unlockedCase2, inCh, lockResultCh)
+}
+
+func TestPublishLatestRCsWithLockInfoWithLocks(t *testing.T) {
+	fakeKV := kptest.NewFakeKV()
+	rcstore := consulStore{
+		kv: fakeKV,
+	}
+
+	inCh := make(chan []fields.RC)
+	defer close(inCh)
+	quitCh := make(chan struct{})
+	defer close(quitCh)
+
+	lockResultCh, errCh := rcstore.publishLatestRCsWithLockInfo(inCh, quitCh)
+	go func() {
+		for err := range errCh {
+			t.Fatalf("Unexpected error on errCh: %s", err)
+		}
+	}()
+
+	// Create a test case with 2 RCs with no locks
+	lockedCase := LockInfoTestCase{
+		InputRCs: []fields.RC{fields.RC{ID: "abc"}, fields.RC{ID: "123"}},
+		ExpectedOutput: []RCLockResult{
+			{
+				RC:                fields.RC{ID: "abc"},
+				LockedForMutation: true,
+			},
+			{
+				RC:                 fields.RC{ID: "123"},
+				LockedForOwnership: true,
+			},
+		},
+	}
+
+	ownershipLockPath, err := rcstore.ownershipLockPath("123")
+	if err != nil {
+		t.Fatalf("Unable to compute ownership lock path: %s", err)
+	}
+	_, _, err = fakeKV.Acquire(&api.KVPair{
+		Key: ownershipLockPath,
+	}, nil)
+	if err != nil {
+		t.Fatalf("Unable to lock for ownership: %s", err)
+	}
+
+	mutationLockPath, err := rcstore.mutationLockPath("abc")
+	if err != nil {
+		t.Fatalf("Unable to compute mutation lock path: %s", err)
+	}
+	_, _, err = fakeKV.Acquire(&api.KVPair{
+		Key: mutationLockPath,
+	}, nil)
+	if err != nil {
+		t.Fatalf("Unable to lock for mutation: %s", err)
+	}
+
+	verifyLockInfoTestCase(t, lockedCase, inCh, lockResultCh)
+
+	// Add an update creation lock to the second one
+	lockedCase2 := LockInfoTestCase{
+		InputRCs: []fields.RC{fields.RC{ID: "abc"}, fields.RC{ID: "123"}},
+		ExpectedOutput: []RCLockResult{
+			{
+				RC:                fields.RC{ID: "abc"},
+				LockedForMutation: true,
+			},
+			{
+				RC:                      fields.RC{ID: "123"},
+				LockedForOwnership:      true,
+				LockedForUpdateCreation: true,
+			},
+		},
+	}
+
+	updateCreationLockPath, err := rcstore.updateCreationLockPath("123")
+	if err != nil {
+		t.Fatalf("Unable to compute update creation lock path: %s", err)
+	}
+	_, _, err = fakeKV.Acquire(&api.KVPair{
+		Key: updateCreationLockPath,
+	}, nil)
+	if err != nil {
+		t.Fatalf("Unable to lock for updateCreation: %s", err)
+	}
+
+	verifyLockInfoTestCase(t, lockedCase2, inCh, lockResultCh)
+}
+
+func verifyLockInfoTestCase(t *testing.T, lockInfoTestCase LockInfoTestCase, inCh chan []fields.RC, lockResultCh chan []RCLockResult) {
+	select {
+	case inCh <- lockInfoTestCase.InputRCs:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("Timed out writing to input channel")
+	}
+
+	select {
+	case res := <-lockResultCh:
+		if len(res) != len(lockInfoTestCase.ExpectedOutput) {
+			t.Errorf("Expected %d results but there were %d", len(lockInfoTestCase.ExpectedOutput), len(res))
+		}
+
+		for _, val := range lockInfoTestCase.ExpectedOutput {
+			matched := false
+			for _, result := range res {
+				if val.RC.ID != result.RC.ID {
+					continue
+				}
+				matched = true
+
+				if val.LockedForOwnership != result.LockedForOwnership {
+					t.Errorf("Expected LockedForOwnership to be %t for %s, was %t", val.LockedForOwnership, result.RC.ID, result.LockedForOwnership)
+				}
+				if val.LockedForMutation != result.LockedForMutation {
+					t.Errorf("Expected LockedForMutation to be %t for %s, was %t", val.LockedForMutation, result.RC.ID, result.LockedForMutation)
+				}
+				if val.LockedForUpdateCreation != result.LockedForUpdateCreation {
+					t.Errorf("Expected LockedForUpdateCreation to be %t for %s, was %t", val.LockedForUpdateCreation, result.RC.ID, result.LockedForUpdateCreation)
+				}
+
+				if matched {
+					break
+				}
+			}
+
+			if !matched {
+				t.Errorf("Expected an RCLockResult to match %+v, but none did", val)
+			}
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatalf("Timed out reading from output channel")
 	}
 }
 
