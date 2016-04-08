@@ -546,6 +546,14 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist
 	if rcLabels.Labels["some_key"] != "some_val" {
 		t.Errorf("Expected labels to be set on new RC")
 	}
+
+	rcLabels, err = rollstore.labeler.GetLabels(labels.RC, u.OldRC.String())
+	if err != nil {
+		t.Fatalf("Unable to fetch labels for newly created old RC: %s", err)
+	}
+	if rcLabels.Labels["some_key"] != "some_val" {
+		t.Errorf("Expected labels to be set on old RC")
+	}
 }
 
 func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *testing.T) {
