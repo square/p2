@@ -143,7 +143,6 @@ START_LOOP:
 				// the nature of this function is that we (or another farm) will come back to it and the lock will be
 				// grabbed. Shortening the length of time it takes to process a list of RCs is paramount.
 				if rcField.LockedForOwnership {
-					rcLogger.WithField("rc", rcField.ID).Infof("Ignoring RC %s because it is already locked", rcField.ID)
 					continue
 				}
 
