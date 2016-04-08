@@ -419,6 +419,12 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 			// Any labels we wrote will be deleted by rcstore.Delete()
 		}
+
+		// Copy the new RC labels to the old RC as well
+		err = s.labeler.SetLabels(labels.RC, oldRCID.String(), newRCLabels)
+		if err != nil {
+			return roll_fields.Update{}, err
+		}
 	}
 
 	// Lock the old RC to guarantee that no new updates can use it
