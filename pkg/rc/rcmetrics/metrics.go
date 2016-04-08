@@ -4,6 +4,9 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/util"
+
+	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
 )
 
 const (
@@ -13,20 +16,50 @@ const (
 	RCProcessingTimeMetric = "rc_processing_time"
 )
 
-type Metrics interface {
-	RecordRCProcessingTime(processingTime time.Duration)
+// Subset of metrics.Registry interface
+type MetricsRegistry interface {
+	Get(metricName string) interface{}
+	Register(metricName string, metric interface{}) error
 }
 
-func NewLoggingMetrics(logger logging.Logger) Metrics {
-	return &defaultMetrics{
+// Test that default registry implements this interface
+var _ MetricsRegistry = metrics.DefaultRegistry
+
+func NewMetrics(logger logging.Logger) *Metrics {
+	return &Metrics{
 		Logger: logger,
 	}
 }
 
-type defaultMetrics struct {
-	Logger logging.Logger
+type Metrics struct {
+	Logger   logging.Logger
+	Registry MetricsRegistry
 }
 
-func (m *defaultMetrics) RecordRCProcessingTime(processingTime time.Duration) {
-	m.Logger.WithField(RCProcessingTimeMetric, processingTime.String()).Infoln()
+func (m *Metrics) SetMetricsRegistry(registry MetricsRegistry) error {
+	m.Registry = registry
+	return m.Registry.Register(RCProcessingTimeMetric, metrics.NewHistogram(metrics.NewExpDecaySample(1028, 0.015)))
+}
+
+func (m *Metrics) RecordRCProcessingTime(processingTime time.Duration) {
+	if m.Registry == nil {
+		// No registry was set, just log the metric
+		m.Logger.WithField(RCProcessingTimeMetric, processingTime.String()).Infoln()
+		return
+	}
+
+	metric := m.Registry.Get(RCProcessingTimeMetric)
+	if metric == nil {
+		err := util.Errorf("No %s metric set on metrics registry", RCProcessingTimeMetric)
+		m.Logger.WithError(err).Errorln("Unable to send metric")
+		return
+	}
+
+	histogram, ok := metric.(metrics.Histogram)
+	if !ok {
+		err := util.Errorf("%s metric was not a metrics.Histogram", RCProcessingTimeMetric)
+		m.Logger.WithError(err).Errorln("Unable to send metric")
+	}
+
+	histogram.Update(int64(processingTime))
 }

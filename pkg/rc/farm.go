@@ -46,7 +46,7 @@ type Farm struct {
 	alerter    alerting.Alerter
 	rcSelector klabels.Selector
 
-	metrics rcmetrics.Metrics
+	metrics *rcmetrics.Metrics
 }
 
 type childRC struct {
@@ -79,13 +79,13 @@ func NewFarm(
 		children:   make(map[fields.ID]childRC),
 		alerter:    alerter,
 		rcSelector: rcSelector,
-		metrics:    rcmetrics.NewLoggingMetrics(logger),
+		metrics:    rcmetrics.NewMetrics(logger),
 	}
 }
 
 // Set the rcmetrics.Metrics struct to record metrics on.
-func (rcf *Farm) SetMetrics(rcmetrics rcmetrics.Metrics) {
-	rcf.metrics = rcmetrics
+func (rcf *Farm) SetMetricsRegistry(registry rcmetrics.MetricsRegistry) error {
+	return rcf.metrics.SetMetricsRegistry(registry)
 }
 
 // Start is a blocking function that monitors Consul for replication controllers.

@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/rc/rcmetrics"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
 )
 
 type failsafeAlerter struct {
@@ -83,28 +84,31 @@ func TestRCsWithZeroCountsWillTriggerIncident(t *testing.T) {
 	rcf.failsafe(rcs)
 }
 
-type FakeMetrics struct {
-	rcProcessingTimeSamples []time.Duration
-}
-
-func (f *FakeMetrics) RecordRCProcessingTime(processingTime time.Duration) {
-	f.rcProcessingTimeSamples = append(f.rcProcessingTimeSamples, processingTime)
-}
-
-var _ rcmetrics.Metrics = &FakeMetrics{}
-
 func TestRecordProcessingTime(t *testing.T) {
-	rcf := &Farm{}
-	fakeMetrics := &FakeMetrics{}
-	rcf.SetMetrics(fakeMetrics)
-	Assert(t).AreEqual(len(fakeMetrics.rcProcessingTimeSamples), 0, "No values should have been recorded for rc processing time yet")
+	rcf := &Farm{
+		metrics: &rcmetrics.Metrics{
+			Logger: logging.DefaultLogger,
+		},
+	}
+	Assert(t).IsNil(rcf.SetMetricsRegistry(metrics.DefaultRegistry), "Unexpected error setting metrics registry")
+
+	rcProcessingMetric := metrics.DefaultRegistry.Get(rcmetrics.RCProcessingTimeMetric)
+	Assert(t).IsNotNil(rcProcessingMetric, "A metric should have been registered for rc processing time")
+
+	histogram, ok := rcProcessingMetric.(metrics.Histogram)
+	Assert(t).IsTrue(ok, "The rc processing metric should be a histogram type")
+
+	Assert(t).AreEqual(histogram.Count(), int64(0), "No values should have been recorded for rc processing time yet")
 	rcf.metrics.RecordRCProcessingTime(time.Second)
-	Assert(t).AreEqual(len(fakeMetrics.rcProcessingTimeSamples), 1, "One value should have been recorded for rc processing time")
-	Assert(t).AreEqual(fakeMetrics.rcProcessingTimeSamples[0], time.Second, "Recorded time sample didn't match expected")
+	Assert(t).AreEqual(histogram.Count(), int64(1), "One value should have been recorded for rc processing time")
 }
 
 func TestRecordProcessingTimeDoesntPanicIfNoMetricsRegistrySet(t *testing.T) {
-	rcf := NewFarm(nil, nil, nil, nil, nil, logging.DefaultLogger, nil, nil)
+	rcf := &Farm{
+		metrics: &rcmetrics.Metrics{
+			Logger: logging.DefaultLogger,
+		},
+	}
 
 	rcf.metrics.RecordRCProcessingTime(time.Second)
 }
