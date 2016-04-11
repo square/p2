@@ -2,6 +2,7 @@ package kptest
 
 import (
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -113,8 +114,16 @@ func (*FakePodStore) PutHealth(res kp.WatchResult) (time.Time, time.Duration, er
 	panic("not implemented")
 }
 
-func (*FakePodStore) GetServiceHealth(service string) (map[string]kp.WatchResult, error) {
-	panic("not implemented")
+func (f *FakePodStore) GetServiceHealth(service string) (map[string]kp.WatchResult, error) {
+	// Is this the best way to emulate recursive Consul queries?
+	ret := map[string]kp.WatchResult{}
+	prefix := kp.HealthPath(service, "")
+	for key, v := range f.healthResults {
+		if strings.HasPrefix(key, prefix) {
+			ret[key] = v
+		}
+	}
+	return ret, nil
 }
 
 func (*FakePodStore) WatchPod(podPrefix kp.PodPrefix, nodename string, podId types.PodID, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- kp.ManifestResult) {
