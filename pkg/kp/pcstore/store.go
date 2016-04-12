@@ -1,6 +1,8 @@
 package pcstore
 
 import (
+	"errors"
+
 	"github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/types"
 
@@ -8,6 +10,8 @@ import (
 )
 
 const podClusterTree string = "pod_clusters"
+
+var NoPodCluster error = errors.New("No pod cluster found")
 
 type Store interface {
 	Create(

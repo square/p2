@@ -596,7 +596,7 @@ func (s *consulStore) rcLockRoot() string {
 
 func (s *consulStore) rcPath(rcID fields.ID) (string, error) {
 	if rcID == "" {
-		return "", util.Errorf("Lock requested for empty RC id")
+		return "", util.Errorf("Path requested for empty RC id")
 	}
 
 	return path.Join(rcTree, string(rcID)), nil
