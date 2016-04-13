@@ -1,4 +1,4 @@
-package pcstore
+package pcstoretest
 
 import (
 	"github.com/square/p2/pkg/kp/pcstore"
