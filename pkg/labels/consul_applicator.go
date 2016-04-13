@@ -38,6 +38,7 @@ type consulApplicator struct {
 	retries       int
 	aggregators   map[Type]*consulAggregator
 	aggregatorMux sync.Mutex
+	metReg        MetricsRegistry
 }
 
 func NewConsulApplicator(client *api.Client, retries int) *consulApplicator {
@@ -47,6 +48,10 @@ func NewConsulApplicator(client *api.Client, retries int) *consulApplicator {
 		retries:     retries,
 		aggregators: map[Type]*consulAggregator{},
 	}
+}
+
+func (c *consulApplicator) SetMetricsRegistry(metReg MetricsRegistry) {
+	c.metReg = metReg
 }
 
 func typePath(labelType Type) string {
@@ -236,7 +241,7 @@ func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type
 	defer c.aggregatorMux.Unlock()
 	aggregator, ok := c.aggregators[labelType]
 	if !ok {
-		aggregator = NewConsulAggregator(labelType, c.kv, c.logger)
+		aggregator = NewConsulAggregator(labelType, c.kv, c.logger, c.metReg)
 		go aggregator.Aggregate()
 		c.aggregators[labelType] = aggregator
 	}

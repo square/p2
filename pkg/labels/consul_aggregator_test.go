@@ -7,6 +7,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 )
 
@@ -27,7 +28,7 @@ func TestTwoClients(t *testing.T) {
 	alterAggregationTime(100 * time.Millisecond)
 
 	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
-	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger)
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	go aggreg.Aggregate()
 	defer aggreg.Quit()
 
@@ -66,7 +67,7 @@ func TestQuitAggregateAfterResults(t *testing.T) {
 	alterAggregationTime(100 * time.Millisecond)
 
 	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
-	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger)
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	go aggreg.Aggregate()
 
 	quitCh := make(chan struct{})
@@ -95,7 +96,7 @@ func TestQuitAggregateBeforeResults(t *testing.T) {
 	// must quit prior to entering the loop
 	trigger := make(chan struct{})
 	fakeKV := &fakeLabelStore{fakeLabeledPods(), trigger}
-	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger)
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	go aggreg.Aggregate()
 
 	quitCh := make(chan struct{})
@@ -117,7 +118,7 @@ func TestQuitIndividualWatch(t *testing.T) {
 	alterAggregationTime(time.Millisecond)
 
 	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
-	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger)
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	go aggreg.Aggregate()
 
 	quitCh1 := make(chan struct{})
@@ -125,6 +126,8 @@ func TestQuitIndividualWatch(t *testing.T) {
 
 	quitCh2 := make(chan struct{})
 	labeledChannel2 := aggreg.Watch(labels.Everything().Add("deployment", labels.EqualsOperator, []string{"production"}), quitCh2)
+
+	Assert(t).AreEqual(int64(2), aggreg.metWatchCount.Value(), "should currently have two watchers")
 
 	close(quitCh1) // this should not interrupt the flow of messages to the second channel
 
@@ -153,11 +156,47 @@ func TestQuitIndividualWatch(t *testing.T) {
 		t.Fatal("Should not have taken a second to see the closed label channel")
 	case <-success:
 	}
+
+	Assert(t).AreEqual(int64(1), aggreg.metWatchCount.Value(), "should currently have one watcher")
+}
+
+// This test is identical to the quit test, except that it does not explicitly quit
+// the first result. This is to test that one misbehaving client cannot interrupt
+// the flow of messages to all other clients
+func TestIgnoreIndividualWatch(t *testing.T) {
+	alterAggregationTime(time.Millisecond)
+
+	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
+	go aggreg.Aggregate()
+	defer aggreg.Quit()
+
+	quitCh1 := make(chan struct{})
+	_ = aggreg.Watch(labels.Everything().Add("color", labels.EqualsOperator, []string{"green"}), quitCh1)
+
+	quitCh2 := make(chan struct{})
+	labeledChannel2 := aggreg.Watch(labels.Everything().Add("deployment", labels.EqualsOperator, []string{"production"}), quitCh2)
+
+	Assert(t).AreEqual(int64(2), aggreg.metWatchCount.Value(), "should currently have two watchers")
+
+	// iterate twice to show that we are not waiting on other now-closed channels
+	for i := 0; i < 2; i++ {
+		select {
+		case <-time.After(time.Second):
+			t.Fatalf("Should not have taken a second to get results on iteration %v", i)
+		case labeled, ok := <-labeledChannel2:
+			Assert(t).IsTrue(ok, "should have been okay")
+			Assert(t).AreEqual(1, len(labeled), "Should have one result with a production deployment")
+			Assert(t).AreEqual("maroono", labeled[0].ID, "Should have received maroono as the one production deployment")
+		}
+	}
+
+	Assert(t).AreEqual(aggreg.metWatchSendMiss.Value(), int64(1), "should have missed exactly one watch send")
 }
 
 func TestCachedValueImmediatelySent(t *testing.T) {
 	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
-	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger)
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	aggreg.labeledCache = []Labeled{
 		{
 			LabelType: POD,

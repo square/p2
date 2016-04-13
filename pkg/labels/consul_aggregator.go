@@ -1,6 +1,7 @@
 package labels
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -10,10 +11,16 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+
+	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
 )
 
 // minimum required time between retrievals of label subtrees.
 var DefaultAggregationRate = 10 * time.Second
+
+type MetricsRegistry interface {
+	Register(metricName string, metric interface{}) error
+}
 
 // linked list of watches with control channels
 type selectorWatch struct {
@@ -44,6 +51,16 @@ func (s *selectorWatch) delete(w *selectorWatch) {
 	}
 }
 
+func (s *selectorWatch) len() int {
+	watch := s
+	ret := 0
+	for watch != nil {
+		ret++
+		watch = watch.next
+	}
+	return ret
+}
+
 type consulAggregator struct {
 	logger          logging.Logger
 	labelType       Type
@@ -54,16 +71,38 @@ type consulAggregator struct {
 	labeledCache    []Labeled // cached contents of the label subtree
 	aggregatorQuit  chan struct{}
 	aggregationRate time.Duration
+
+	metReg MetricsRegistry
+	// how many watchers are currently using this aggregator?
+	metWatchCount metrics.Gauge
+	// count how many watcher channels are full when a send is attempted
+	metWatchSendMiss metrics.Gauge
+	// how big is the cache of labels?
+	metCacheSize metrics.Gauge
 }
 
-func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logging.Logger) *consulAggregator {
+func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logging.Logger, metReg MetricsRegistry) *consulAggregator {
+	if metReg == nil {
+		metReg = metrics.NewRegistry()
+	}
+	watchCount := metrics.NewGauge()
+	watchSendMiss := metrics.NewGauge()
+	cacheSize := metrics.NewGauge()
+	metReg.Register(fmt.Sprintf("%v_aggregate_watches", labelType.String()), watchCount)
+	metReg.Register(fmt.Sprintf("%v_aggregate_send_miss", labelType.String()), watchSendMiss)
+	metReg.Register(fmt.Sprintf("%v_aggregate_cache_size", labelType.String()), cacheSize)
+
 	return &consulAggregator{
-		kv:              kv,
-		logger:          logger,
-		labelType:       labelType,
-		path:            typePath(labelType),
-		aggregatorQuit:  make(chan struct{}),
-		aggregationRate: DefaultAggregationRate,
+		kv:               kv,
+		logger:           logger,
+		labelType:        labelType,
+		path:             typePath(labelType),
+		aggregatorQuit:   make(chan struct{}),
+		aggregationRate:  DefaultAggregationRate,
+		metReg:           metReg,
+		metWatchCount:    watchCount,
+		metWatchSendMiss: watchSendMiss,
+		metCacheSize:     cacheSize,
 	}
 }
 
@@ -99,6 +138,7 @@ func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{})
 		}
 		c.removeWatch(watch)
 	}()
+	c.metWatchCount.Update(int64(c.watchers.len()))
 	return watch.resultCh
 }
 
@@ -110,6 +150,11 @@ func (c *consulAggregator) removeWatch(watch *selectorWatch) {
 		c.watchers = c.watchers.next
 	} else {
 		c.watchers.delete(watch)
+	}
+	if c.watchers != nil {
+		c.metWatchCount.Update(int64(c.watchers.len()))
+	} else {
+		c.metWatchCount.Update(0)
 	}
 }
 
@@ -128,6 +173,7 @@ func (c *consulAggregator) Aggregate() {
 	outErrors := make(chan error)
 	go consulutil.WatchPrefix(c.path+"/", c.kv, outPairs, done, outErrors)
 	for {
+		missedSends := 0
 		loopTime := time.After(c.aggregationRate)
 		select {
 		case err := <-outErrors:
@@ -144,10 +190,13 @@ func (c *consulAggregator) Aggregate() {
 			// that match the watcher's selector to the watcher's out channel.
 			watcher := c.watchers
 			for watcher != nil {
-				c.sendMatches(watcher)
+				if !c.sendMatches(watcher) {
+					missedSends++
+				}
 				watcher = watcher.next
 			}
 			c.watcherLock.Unlock()
+			c.metWatchSendMiss.Update(int64(missedSends))
 		}
 		select {
 		case <-c.aggregatorQuit:
@@ -174,10 +223,11 @@ func (c *consulAggregator) fillCache(pairs api.KVPairs) {
 		cache[i] = labeled
 	}
 	c.labeledCache = cache
+	c.metCacheSize.Update(int64(len(cache)))
 }
 
 // this must be called within the watcherLock mutex.
-func (c *consulAggregator) sendMatches(watcher *selectorWatch) {
+func (c *consulAggregator) sendMatches(watcher *selectorWatch) bool {
 	matches := []Labeled{}
 	for _, labeled := range c.labeledCache {
 		if watcher.selector.Matches(labeled.Labels) {
@@ -196,8 +246,10 @@ func (c *consulAggregator) sendMatches(watcher *selectorWatch) {
 	// aggregation goroutine waits.
 
 	// first drain the previous (stale) cached value if present...
+	sendSuccess := true
 	select {
 	case <-watcher.resultCh:
+		sendSuccess = false
 	default:
 	}
 	// ... then send the newer value.
@@ -205,4 +257,5 @@ func (c *consulAggregator) sendMatches(watcher *selectorWatch) {
 	case watcher.resultCh <- matches:
 	default:
 	}
+	return sendSuccess
 }
