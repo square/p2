@@ -25,6 +25,12 @@ type consulStore struct {
 
 var _ Store = &consulStore{}
 
+func NewConsul(client api.Client) Store {
+	return &consulStore{
+		kv: client.KV(),
+	}
+}
+
 func (s *consulStore) Create(
 	podID types.PodID,
 	availabilityZone fields.AvailabilityZone,
