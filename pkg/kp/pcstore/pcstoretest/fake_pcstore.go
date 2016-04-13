@@ -1,4 +1,4 @@
-package pcstore
+package pcstoretest
 
 import (
 	"github.com/square/p2/pkg/kp/pcstore"
@@ -16,6 +16,12 @@ type FakePCStore struct {
 }
 
 var _ pcstore.Store = &FakePCStore{}
+
+func NewFake() *FakePCStore {
+	return &FakePCStore{
+		podClusters: make(map[fields.ID]fields.PodCluster),
+	}
+}
 
 func (p *FakePCStore) Create(
 	podID types.PodID,
