@@ -4,37 +4,43 @@ import (
 	"encoding/json"
 	"path"
 
-	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/pc/fields"
-	"github.com/square/p2/pkg/types"
-	"github.com/square/p2/pkg/util"
-
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/pborman/uuid"
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"github.com/square/p2/pkg/kp/consulutil"
+	"github.com/square/p2/pkg/labels"
+	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/pc/fields"
+	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/util"
 )
 
 type consulKV interface {
 	Get(key string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
 	CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
 	Delete(key string, w *api.WriteOptions) (*api.WriteMeta, error)
+	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
 }
 
 type consulStore struct {
-	applicator labels.Applicator
 	kv         consulKV
+	applicator labels.Applicator
+
+	logger logging.Logger
 }
+
+var ErrNoPodCluster error
 
 var _ Store = &consulStore{}
 
 // NOTE: The "retries" concept is mimicking what is built in rcstore.
 // TODO: explore transactionality of operations and returning errors instead of
 // using retries
-func NewConsul(client api.Client, retries int) Store {
+func NewConsul(client api.Client, retries int, logger *logging.Logger) Store {
 	return &consulStore{
-		kv:         client.KV(),
 		applicator: labels.NewConsulApplicator(&client, retries),
+		kv:         client.KV(),
+		logger:     *logger,
 	}
 }
 
@@ -189,6 +195,123 @@ func (s *consulStore) FindWhereLabeled(podID types.PodID,
 		if err != nil {
 			return nil, err
 		}
+	}
+	return ret, nil
+}
+
+// Watch watches the entire podClusterTree for changes.
+// It will return a blocking channel on which the client can read
+// WatchedPodCluster objects. The goroutine maintaining the watch will block on
+// writing to this channel so it's up to the caller to read it with haste.
+func (s *consulStore) Watch(quit <-chan struct{}) <-chan WatchedPodCluster {
+	inCh := make(chan api.KVPairs)
+	outCh := make(chan WatchedPodCluster)
+	errChan := make(chan error, 1)
+
+	go consulutil.WatchPrefix(podClusterTree, s.kv, inCh, quit, errChan)
+
+	go func() {
+		var kvp api.KVPairs
+		for {
+			select {
+			case <-quit:
+				return
+			case err := <-errChan:
+				s.logger.WithError(err).Errorf("WatchPrefix returned error, recovered.")
+			case kvp = <-inCh:
+				if kvp == nil {
+					// nothing to do
+					continue
+				}
+			}
+
+			pcs, err := kvpsToPC(kvp)
+			if err != nil {
+				select {
+				case <-quit:
+					return
+				case outCh <- WatchedPodCluster{PodCluster: nil, Err: err}:
+					continue
+				}
+			}
+
+			for _, pc := range pcs {
+				select {
+				case outCh <- WatchedPodCluster{PodCluster: &pc, Err: nil}:
+				case <-quit:
+					return
+				}
+			}
+		}
+	}()
+
+	return outCh
+}
+
+// WatchPodCluster implements a watch for the Pod cluster at _id_
+// It will return a blocking channel on which the client can read
+// WatchedPodCluster objects. The goroutine maintaining the watch will block on
+// writing to this channel so it's up to the caller to read it with haste.
+// This function will return ErrNoPodCluster if the podCluster goes away. In
+// this case, the caller should close the quit chan.
+// The caller may shutdown this watch by sending a sentinel on the quitChan.
+func (s *consulStore) WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan WatchedPodCluster {
+	inCh := make(chan *api.KVPair)
+	outCh := make(chan WatchedPodCluster)
+	errChan := make(chan error, 1)
+	quitWatch := make(chan struct{})
+	key := path.Join(podClusterTree, string(id))
+
+	go consulutil.WatchSingle(key, s.kv, inCh, quitWatch, errChan)
+
+	go func() {
+		var kvp *api.KVPair
+		for {
+			select {
+			case <-quit:
+				return
+			case err := <-errChan:
+				s.logger.WithError(err).Errorf("WatchSingle returned error, recovered.")
+			case kvp = <-inCh:
+				if kvp == nil { // PodCluster at _id_ has been deleted
+					select {
+					case <-quit:
+						return
+					case outCh <- WatchedPodCluster{PodCluster: nil, Err: ErrNoPodCluster}:
+					}
+
+					return
+				}
+			}
+
+			pc, err := kvpToPC(kvp)
+			var wpc WatchedPodCluster
+			if err != nil {
+				wpc.Err = err
+			} else {
+				wpc.PodCluster = &pc
+			}
+
+			select {
+			case <-quit:
+				return
+			case outCh <- wpc:
+			}
+		}
+	}()
+
+	return outCh
+}
+
+func kvpsToPC(pairs api.KVPairs) ([]fields.PodCluster, error) {
+	ret := make([]fields.PodCluster, 0, len(pairs))
+	for _, kvp := range pairs {
+		var pc fields.PodCluster
+		var err error
+		if pc, err = kvpToPC(kvp); err != nil {
+			return nil, err
+		}
+		ret = append(ret, pc)
 	}
 	return ret, nil
 }

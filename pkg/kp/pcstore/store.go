@@ -18,9 +18,15 @@ type Session interface {
 	Lock(key string) (consulutil.Unlocker, error)
 }
 
+// WatchedPodCluster is an Either type: it will have 1 one of pc xor err
+type WatchedPodCluster struct {
+	PodCluster *fields.PodCluster
+	Err        error
+}
+
 type Store interface {
 	Create(
-		podId types.PodID,
+		podID types.PodID,
 		availabilityZone fields.AvailabilityZone,
 		clusterName fields.ClusterName,
 		podSelector klabels.Selector,
@@ -37,6 +43,8 @@ type Store interface {
 		clusterName fields.ClusterName,
 	) ([]fields.PodCluster, error)
 	Delete(id fields.ID) error
+	WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan WatchedPodCluster
+	Watch(quit <-chan struct{}) <-chan WatchedPodCluster
 }
 
 func IsNotExist(err error) bool {

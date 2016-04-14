@@ -2,6 +2,7 @@ package pcstore
 
 import (
 	"testing"
+	"time"
 
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/labels"
@@ -223,6 +224,92 @@ func TestDelete(t *testing.T) {
 
 	if len(labels.Labels) != 0 {
 		t.Errorf("Labels were not deleted along with the pod cluster")
+	}
+}
+
+func TestWatch(t *testing.T) {
+	store := consulStoreWithFakeKV()
+	pod := fields.ID("pod_id")
+	podID := types.PodID("pod_id")
+	az := fields.AvailabilityZone("us-west")
+	clusterName := fields.ClusterName("cluster_name")
+
+	selector := klabels.Everything().
+		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{pod.String()}).
+		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
+		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+
+	annotations := fields.Annotations(map[string]interface{}{
+		"foo": "bar",
+	})
+
+	quit := make(chan struct{})
+	watch := store.Watch(quit)
+
+	var watched *WatchedPodCluster
+	session := kptest.NewSession()
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, session)
+	if err != nil {
+		t.Fatalf("Unable to create pod cluster: %s", err)
+	}
+
+	select {
+	case watchedPC := <-watch:
+		watched = &watchedPC
+	case <-time.After(5 * time.Second):
+		quit <- struct{}{}
+		t.Fatal("nothing on the channel")
+	}
+
+	if watched == nil {
+		t.Fatalf("Expected to get a watched PodCluster, but did not")
+	}
+
+	if watched.PodCluster.ID != pc.ID {
+		t.Fatalf("Expected watched PodCluster to match %s Pod Cluster ID. Instead was %s", pc.ID, watched.PodCluster.ID)
+	}
+}
+
+func TestWatchPodCluster(t *testing.T) {
+	store := consulStoreWithFakeKV()
+	pod := fields.ID("pod_id")
+	podID := types.PodID("pod_id")
+	az := fields.AvailabilityZone("us-west")
+	clusterName := fields.ClusterName("cluster_name")
+
+	selector := klabels.Everything().
+		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{pod.String()}).
+		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
+		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+
+	annotations := fields.Annotations(map[string]interface{}{
+		"foo": "bar",
+	})
+
+	session := kptest.NewSession()
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, session)
+	if err != nil {
+		t.Fatalf("Unable to create pod cluster: %s", err)
+	}
+
+	quit := make(chan struct{})
+	watch := store.WatchPodCluster(pc.ID, quit)
+
+	var watched *WatchedPodCluster
+	select {
+	case watchedPC := <-watch:
+		watched = &watchedPC
+	case <-time.After(5 * time.Second):
+		quit <- struct{}{}
+		t.Fatal("nothing on the channel")
+	}
+
+	if watched == nil {
+		t.Fatalf("Expected to get a watched PodCluster, but did not")
+	}
+
+	if watched.PodCluster.ID != pc.ID {
+		t.Fatalf("Expected watched PodCluster to match %s Pod Cluster ID. Instead was %s", pc.ID, watched.PodCluster.ID)
 	}
 }
 
