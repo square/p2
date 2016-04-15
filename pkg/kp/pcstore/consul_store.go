@@ -83,7 +83,6 @@ func (s *consulStore) Create(
 		return fields.PodCluster{}, util.Errorf("Could not set pod cluster at path '%s'", key)
 	}
 
-	// Should we delete the PC if the labels fail?
 	err = s.setLabelsForPC(pc)
 	if err != nil {
 		// TODO: what if this delete fails?
