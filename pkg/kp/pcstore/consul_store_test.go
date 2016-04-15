@@ -3,7 +3,6 @@ package pcstore
 import (
 	"testing"
 
-	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pc/fields"
@@ -27,7 +26,7 @@ func TestCreate(t *testing.T) {
 		"foo": "bar",
 	})
 
-	session := &fakeSession{}
+	session := kptest.NewSession()
 	pc, err := store.Create(podID, az, clusterName, selector, annotations, session)
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
@@ -67,9 +66,6 @@ func TestCreate(t *testing.T) {
 		t.Errorf("Annotations didn't match expected")
 	}
 
-	if session.lockedKey != pcCreateLockPath(podID, az, clusterName) {
-		t.Errorf("Did not lock the expected lock path: %v", session.lockedKey)
-	}
 }
 
 func TestLabelsOnCreate(t *testing.T) {
@@ -87,7 +83,7 @@ func TestLabelsOnCreate(t *testing.T) {
 		"foo": "bar",
 	})
 
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, &fakeSession{})
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -122,7 +118,7 @@ func TestGet(t *testing.T) {
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, &fakeSession{})
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -196,7 +192,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, &fakeSession{})
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -235,23 +231,4 @@ func consulStoreWithFakeKV() *consulStore {
 		kv:         kptest.NewFakeKV(),
 		applicator: labels.NewFakeApplicator(),
 	}
-}
-
-type fakeSession struct {
-	lockedKey string
-}
-
-type fakeUnlocker struct{}
-
-func (f *fakeUnlocker) Unlock() error {
-	return nil
-}
-
-func (f *fakeUnlocker) Key() string {
-	return ""
-}
-
-func (f *fakeSession) Lock(key string) (consulutil.Unlocker, error) {
-	f.lockedKey = key
-	return &fakeUnlocker{}, nil
 }

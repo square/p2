@@ -23,6 +23,10 @@ type fakeSession struct {
 	locksHeld map[string]bool
 }
 
+func NewSession() kp.Session {
+	return newFakeSession(map[string]bool{}, sync.Mutex{}, make(chan error))
+}
+
 func newFakeSession(globalLocks map[string]bool, lockMutex sync.Mutex, renewalErrCh chan error) kp.Session {
 	return &fakeSession{
 		locks:        globalLocks,

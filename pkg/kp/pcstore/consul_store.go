@@ -49,7 +49,7 @@ func (s *consulStore) Create(
 ) (fields.PodCluster, error) {
 	id := fields.ID(uuid.New())
 
-	unlocker, err := s.lockForUpdateCreation(podID, availabilityZone, clusterName, session)
+	unlocker, err := s.lockForCreation(podID, availabilityZone, clusterName, session)
 	if err != nil {
 		return fields.PodCluster{}, err
 	}
@@ -159,7 +159,7 @@ func (s *consulStore) pcPath(pcID fields.ID) (string, error) {
 	return path.Join(podClusterTree, pcID.String()), nil
 }
 
-func (s *consulStore) lockForUpdateCreation(podID types.PodID,
+func (s *consulStore) lockForCreation(podID types.PodID,
 	availabilityZone fields.AvailabilityZone,
 	clusterName fields.ClusterName,
 	session Session) (consulutil.Unlocker, error) {
