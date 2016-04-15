@@ -161,6 +161,56 @@ func TestGet(t *testing.T) {
 	}
 }
 
+func TestDelete(t *testing.T) {
+	store := consulStoreWithFakeKV()
+	podID := types.PodID("pod_id")
+	az := fields.AvailabilityZone("us-west")
+	clusterName := fields.ClusterName("cluster_name")
+
+	selector := klabels.Everything().
+		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
+		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
+		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+
+	annotations := fields.Annotations(map[string]interface{}{
+		"foo": "bar",
+	})
+
+	// Create a pod cluster
+	pc, err := store.Create(podID, az, clusterName, selector, annotations)
+	if err != nil {
+		t.Fatalf("Unable to create pod cluster: %s", err)
+	}
+
+	pc, err = store.Get(pc.ID)
+	if err != nil {
+		t.Fatalf("Unable to get pod cluster: %s", err)
+	}
+
+	err = store.Delete(pc.ID)
+	if err != nil {
+		t.Fatalf("Unexpected error deleting pod cluster: %s", err)
+	}
+
+	_, err = store.Get(pc.ID)
+	if err == nil {
+		t.Fatalf("Should have gotten an error fetching a deleted pod cluster")
+	}
+
+	if !IsNotExist(err) {
+		t.Errorf("The error should have been a pocstore.IsNotExist but was '%s'", err)
+	}
+
+	labels, err := store.applicator.GetLabels(labels.PC, pc.ID.String())
+	if err != nil {
+		t.Fatalf("Got error when trying to confirm label deletion: %s", err)
+	}
+
+	if len(labels.Labels) != 0 {
+		t.Errorf("Labels were not deleted along with the pod cluster")
+	}
+}
+
 func consulStoreWithFakeKV() *consulStore {
 	return &consulStore{
 		kv:         kptest.NewFakeKV(),

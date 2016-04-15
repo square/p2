@@ -18,6 +18,7 @@ import (
 type consulKV interface {
 	Get(key string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
 	CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
+	Delete(key string, w *api.WriteOptions) (*api.WriteMeta, error)
 }
 
 type consulStore struct {
@@ -83,7 +84,14 @@ func (s *consulStore) Create(
 	}
 
 	// Should we delete the PC if the labels fail?
-	return pc, s.setLabelsForPC(pc)
+	err = s.setLabelsForPC(pc)
+	if err != nil {
+		// TODO: what if this delete fails?
+		_ = s.Delete(pc.ID)
+		return fields.PodCluster{}, err
+	}
+
+	return pc, nil
 }
 
 func (s *consulStore) setLabelsForPC(pc fields.PodCluster) error {
@@ -111,6 +119,20 @@ func (s *consulStore) Get(id fields.ID) (fields.PodCluster, error) {
 	}
 
 	return kvpToPC(kvp)
+}
+
+func (s *consulStore) Delete(id fields.ID) error {
+	key, err := s.pcPath(id)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.kv.Delete(key, nil)
+	if err != nil {
+		return consulutil.NewKVError("delete", key, err)
+	}
+
+	return s.applicator.RemoveAllLabels(labels.PC, id.String())
 }
 
 func (s *consulStore) pcPath(pcID fields.ID) (string, error) {
