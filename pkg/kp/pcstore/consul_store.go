@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"path"
 
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pc/fields"
@@ -44,8 +45,23 @@ func (s *consulStore) Create(
 	clusterName fields.ClusterName,
 	podSelector klabels.Selector,
 	annotations fields.Annotations,
+	session Session,
 ) (fields.PodCluster, error) {
 	id := fields.ID(uuid.New())
+
+	unlocker, err := s.lockForUpdateCreation(podID, availabilityZone, clusterName, session)
+	if err != nil {
+		return fields.PodCluster{}, err
+	}
+	defer unlocker.Unlock()
+
+	existing, err := s.FindWhereLabeled(podID, availabilityZone, clusterName)
+	if err != nil {
+		return fields.PodCluster{}, util.Errorf("Couldn't determine if pod cluster exists already: %v", err)
+	}
+	if len(existing) > 0 {
+		return existing[0], util.Errorf("Pod cluster already exists for %v", pcCreateLockPath(podID, availabilityZone, clusterName))
+	}
 
 	pc := fields.PodCluster{
 		ID:               id,
@@ -141,6 +157,42 @@ func (s *consulStore) pcPath(pcID fields.ID) (string, error) {
 	}
 
 	return path.Join(podClusterTree, pcID.String()), nil
+}
+
+func (s *consulStore) lockForUpdateCreation(podID types.PodID,
+	availabilityZone fields.AvailabilityZone,
+	clusterName fields.ClusterName,
+	session Session) (consulutil.Unlocker, error) {
+	return session.Lock(pcCreateLockPath(podID, availabilityZone, clusterName))
+}
+
+func pcCreateLockPath(podID types.PodID,
+	availabilityZone fields.AvailabilityZone,
+	clusterName fields.ClusterName) string {
+	return path.Join(kp.LOCK_TREE, podID.String(), availabilityZone.String(), clusterName.String())
+}
+
+func (s *consulStore) FindWhereLabeled(podID types.PodID,
+	availabilityZone fields.AvailabilityZone,
+	clusterName fields.ClusterName) ([]fields.PodCluster, error) {
+
+	sel := klabels.Everything().
+		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
+		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{availabilityZone.String()}).
+		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+
+	podClusters, err := s.applicator.GetMatches(sel, labels.PC)
+	if err != nil {
+		return nil, err
+	}
+	ret := make([]fields.PodCluster, len(podClusters))
+	for i, pc := range podClusters {
+		ret[i], err = s.Get(fields.ID(pc.ID))
+		if err != nil {
+			return nil, err
+		}
+	}
+	return ret, nil
 }
 
 func kvpToPC(pair *api.KVPair) (fields.PodCluster, error) {

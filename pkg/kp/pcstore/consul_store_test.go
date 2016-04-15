@@ -3,6 +3,7 @@ package pcstore
 import (
 	"testing"
 
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pc/fields"
@@ -26,7 +27,8 @@ func TestCreate(t *testing.T) {
 		"foo": "bar",
 	})
 
-	pc, err := store.Create(podID, az, clusterName, selector, annotations)
+	session := &fakeSession{}
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, session)
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -64,6 +66,10 @@ func TestCreate(t *testing.T) {
 	if pc.Annotations["foo"] != "bar" {
 		t.Errorf("Annotations didn't match expected")
 	}
+
+	if session.lockedKey != pcCreateLockPath(podID, az, clusterName) {
+		t.Errorf("Did not lock the expected lock path: %v", session.lockedKey)
+	}
 }
 
 func TestLabelsOnCreate(t *testing.T) {
@@ -81,7 +87,7 @@ func TestLabelsOnCreate(t *testing.T) {
 		"foo": "bar",
 	})
 
-	pc, err := store.Create(podID, az, clusterName, selector, annotations)
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, &fakeSession{})
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -116,7 +122,7 @@ func TestGet(t *testing.T) {
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations)
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, &fakeSession{})
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -159,6 +165,19 @@ func TestGet(t *testing.T) {
 	if pc.Annotations["foo"] != "bar" {
 		t.Errorf("Annotations didn't match expected")
 	}
+
+	found, err := store.FindWhereLabeled(podID, az, clusterName)
+	if err != nil {
+		t.Errorf("Could not retrieve labeled pods: %v", err)
+	}
+
+	if len(found) != 1 {
+		t.Errorf("Found incorrect number of labeled pods, expected 1: %v", len(found))
+	}
+
+	if found[0].ID != pc.ID {
+		t.Errorf("Didn't find the right pod cluster: %v vs %v", found[0].ID, pc.ID)
+	}
 }
 
 func TestDelete(t *testing.T) {
@@ -177,7 +196,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations)
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, &fakeSession{})
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -216,4 +235,23 @@ func consulStoreWithFakeKV() *consulStore {
 		kv:         kptest.NewFakeKV(),
 		applicator: labels.NewFakeApplicator(),
 	}
+}
+
+type fakeSession struct {
+	lockedKey string
+}
+
+type fakeUnlocker struct{}
+
+func (f *fakeUnlocker) Unlock() error {
+	return nil
+}
+
+func (f *fakeUnlocker) Key() string {
+	return ""
+}
+
+func (f *fakeSession) Lock(key string) (consulutil.Unlocker, error) {
+	f.lockedKey = key
+	return &fakeUnlocker{}, nil
 }

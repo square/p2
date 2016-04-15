@@ -29,6 +29,7 @@ func (p *FakePCStore) Create(
 	clusterName fields.ClusterName,
 	podSelector klabels.Selector,
 	annotations fields.Annotations,
+	_ pcstore.Session,
 ) (fields.PodCluster, error) {
 	id := fields.ID(uuid.New())
 	pc := fields.PodCluster{
@@ -55,4 +56,20 @@ func (p *FakePCStore) Get(id fields.ID) (fields.PodCluster, error) {
 func (p *FakePCStore) Delete(id fields.ID) error {
 	delete(p.podClusters, id)
 	return nil
+}
+
+func (p *FakePCStore) FindWhereLabeled(
+	podID types.PodID,
+	availabilityZone fields.AvailabilityZone,
+	clusterName fields.ClusterName,
+) ([]fields.PodCluster, error) {
+	ret := []fields.PodCluster{}
+	for _, pc := range p.podClusters {
+		if availabilityZone == pc.AvailabilityZone &&
+			clusterName == pc.Name &&
+			podID == pc.PodID {
+			ret = append(ret, pc)
+		}
+	}
+	return ret, nil
 }
