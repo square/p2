@@ -75,7 +75,7 @@ type Farm struct {
 
 type childRU struct {
 	ru       Update
-	unlocker kp.Unlocker
+	unlocker consulutil.Unlocker
 	quit     chan<- struct{}
 }
 
@@ -193,7 +193,7 @@ START_LOOP:
 				}
 
 				unlocker, err := rlf.session.Lock(lockPath)
-				if _, ok := err.(kp.AlreadyLockedError); ok {
+				if _, ok := err.(consulutil.AlreadyLockedError); ok {
 					// someone else must have gotten it first - log and move to
 					// the next one
 					rlLogger.NoFields().Debugln("Lock on update was denied")

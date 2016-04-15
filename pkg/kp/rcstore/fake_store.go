@@ -5,7 +5,9 @@ import (
 	"strconv"
 
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/util"
@@ -197,17 +199,17 @@ func (s *fakeStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{},
 	return updatesOut, errors
 }
 
-func (s *fakeStore) LockForMutation(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
+func (s *fakeStore) LockForMutation(rcID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
 	key := fmt.Sprintf("%s/%s", rcID, "mutation_lock")
 	return session.Lock(key)
 }
 
-func (s *fakeStore) LockForOwnership(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
+func (s *fakeStore) LockForOwnership(rcID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
 	key := fmt.Sprintf("%s/%s", rcID, "ownership_lock")
 	return session.Lock(key)
 }
 
-func (s *fakeStore) LockForUpdateCreation(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
+func (s *fakeStore) LockForUpdateCreation(rcID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
 	key := fmt.Sprintf("%s/%s", rcID, "update_creation_lock")
 	return session.Lock(key)
 }

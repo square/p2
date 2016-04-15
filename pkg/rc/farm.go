@@ -51,7 +51,7 @@ type Farm struct {
 
 type childRC struct {
 	rc       ReplicationController
-	unlocker kp.Unlocker
+	unlocker consulutil.Unlocker
 	quit     chan<- struct{}
 }
 
@@ -158,7 +158,7 @@ START_LOOP:
 				}
 
 				rcUnlocker, err := rcf.rcStore.LockForOwnership(rcField.ID, rcf.session)
-				if _, ok := err.(kp.AlreadyLockedError); ok {
+				if _, ok := err.(consulutil.AlreadyLockedError); ok {
 					// someone else must have gotten it first - log and move to
 					// the next one
 					rcLogger.NoFields().Debugln("Lock on replication controller was denied")

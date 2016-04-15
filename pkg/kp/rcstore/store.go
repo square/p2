@@ -6,6 +6,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
 )
@@ -62,16 +63,16 @@ type Store interface {
 	// Locks an RC for ownership, e.g. by a process carrying out the intent
 	// of a replication controller by ensuring that ReplicasDesired copies
 	// of Manifest are running
-	LockForOwnership(rcID fields.ID, session kp.Session) (kp.Unlocker, error)
+	LockForOwnership(rcID fields.ID, session kp.Session) (consulutil.Unlocker, error)
 
 	// Locks an RC for mutation, e.g. by a running rolling update or any
 	// tool making a change
-	LockForMutation(rcID fields.ID, session kp.Session) (kp.Unlocker, error)
+	LockForMutation(rcID fields.ID, session kp.Session) (consulutil.Unlocker, error)
 
 	// Locks an RC for the purposes of RU creation. We want to guarantee
 	// that no two RUs are admitted that operate on the same RCs, which is
 	// accomplished by locking them first
-	LockForUpdateCreation(rcID fields.ID, session kp.Session) (kp.Unlocker, error)
+	LockForUpdateCreation(rcID fields.ID, session kp.Session) (consulutil.Unlocker, error)
 }
 
 func IsNotExist(err error) bool {

@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -54,7 +55,7 @@ func (u *fakeUnlocker) Key() string {
 	return u.key
 }
 
-func (f *fakeSession) Lock(key string) (kp.Unlocker, error) {
+func (f *fakeSession) Lock(key string) (consulutil.Unlocker, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -63,7 +64,7 @@ func (f *fakeSession) Lock(key string) (kp.Unlocker, error) {
 	}
 
 	if f.locks[key] {
-		return nil, kp.AlreadyLockedError{
+		return nil, consulutil.AlreadyLockedError{
 			Key: key,
 		}
 	}

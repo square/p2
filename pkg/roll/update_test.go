@@ -201,8 +201,8 @@ func TestLockRCs(t *testing.T) {
 	).(*update)
 	err = update.lockRCs(make(<-chan struct{}))
 	Assert(t).IsNil(err, "should not have erred locking RCs")
-	Assert(t).IsNotNil(update.newRCUnlocker, "should have kp.Unlocker for unlocking new rc")
-	Assert(t).IsNotNil(update.oldRCUnlocker, "should have kp.Unlocker for unlocking old rc")
+	Assert(t).IsNotNil(update.newRCUnlocker, "should have consulutil.Unlocker for unlocking new rc")
+	Assert(t).IsNotNil(update.oldRCUnlocker, "should have consulutil.Unlocker for unlocking old rc")
 }
 
 func TestSimulateRollingUpgrade(t *testing.T) {

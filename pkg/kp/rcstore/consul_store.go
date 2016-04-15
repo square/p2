@@ -618,7 +618,7 @@ func (s *consulStore) ownershipLockPath(rcID fields.ID) (string, error) {
 
 // Acquires a lock on the RC that should be used by RC farm goroutines, whose
 // job it is to carry out the intent of the RC
-func (s *consulStore) LockForOwnership(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
+func (s *consulStore) LockForOwnership(rcID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
 	lockPath, err := s.rcLockPath(rcID)
 	if err != nil {
 		return nil, err
@@ -639,7 +639,7 @@ func (s *consulStore) mutationLockPath(rcID fields.ID) (string, error) {
 // Acquires a lock on the RC with the intent of mutating it. Must be held by
 // goroutines in the rolling update farm as well as any other tool that may
 // mutate an RC
-func (s *consulStore) LockForMutation(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
+func (s *consulStore) LockForMutation(rcID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
 	mutationLockPath, err := s.mutationLockPath(rcID)
 	if err != nil {
 		return nil, err
@@ -661,7 +661,7 @@ func (s *consulStore) updateCreationLockPath(rcID fields.ID) (string, error) {
 // created that operate on the same replication controllers.  A lock on both
 // the intended "new" and "old" replication controllers should be held before
 // the update is created.
-func (s *consulStore) LockForUpdateCreation(rcID fields.ID, session kp.Session) (kp.Unlocker, error) {
+func (s *consulStore) LockForUpdateCreation(rcID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
 	updateCreationLockPath, err := s.updateCreationLockPath(rcID)
 	if err != nil {
 		return nil, err

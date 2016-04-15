@@ -9,6 +9,7 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
@@ -86,7 +87,7 @@ func (r replication) lockHosts(overrideLock bool, lockMessage string) error {
 			return err
 		}
 
-		// We don't keep a reference to the kp.Unlocker, because we just destroy
+		// We don't keep a reference to the consulutil.Unlocker, because we just destroy
 		// the session at the end of the replication anyway
 		_, err = r.lock(session, lockPath, overrideLock)
 		if err != nil {
@@ -101,10 +102,10 @@ func (r replication) lockHosts(overrideLock bool, lockMessage string) error {
 
 // Attempts to claim a lock. If the overrideLock is set, any existing lock holder
 // will be destroyed and one more attempt will be made to acquire the lock
-func (r replication) lock(session kp.Session, lockPath string, overrideLock bool) (kp.Unlocker, error) {
+func (r replication) lock(session kp.Session, lockPath string, overrideLock bool) (consulutil.Unlocker, error) {
 	unlocker, err := session.Lock(lockPath)
 
-	if _, ok := err.(kp.AlreadyLockedError); ok {
+	if _, ok := err.(consulutil.AlreadyLockedError); ok {
 		holder, id, err := r.store.LockHolder(lockPath)
 		if err != nil {
 			return nil, util.Errorf("Lock already held for %q, could not determine holder due to error: %s", lockPath, err)
