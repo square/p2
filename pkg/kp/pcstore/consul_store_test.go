@@ -26,7 +26,8 @@ func TestCreate(t *testing.T) {
 		"foo": "bar",
 	})
 
-	pc, err := store.Create(podID, az, clusterName, selector, annotations)
+	session := kptest.NewSession()
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, session)
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -64,6 +65,7 @@ func TestCreate(t *testing.T) {
 	if pc.Annotations["foo"] != "bar" {
 		t.Errorf("Annotations didn't match expected")
 	}
+
 }
 
 func TestLabelsOnCreate(t *testing.T) {
@@ -81,7 +83,7 @@ func TestLabelsOnCreate(t *testing.T) {
 		"foo": "bar",
 	})
 
-	pc, err := store.Create(podID, az, clusterName, selector, annotations)
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -116,7 +118,7 @@ func TestGet(t *testing.T) {
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations)
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -159,6 +161,19 @@ func TestGet(t *testing.T) {
 	if pc.Annotations["foo"] != "bar" {
 		t.Errorf("Annotations didn't match expected")
 	}
+
+	found, err := store.FindWhereLabeled(podID, az, clusterName)
+	if err != nil {
+		t.Errorf("Could not retrieve labeled pods: %v", err)
+	}
+
+	if len(found) != 1 {
+		t.Errorf("Found incorrect number of labeled pods, expected 1: %v", len(found))
+	}
+
+	if found[0].ID != pc.ID {
+		t.Errorf("Didn't find the right pod cluster: %v vs %v", found[0].ID, pc.ID)
+	}
 }
 
 func TestDelete(t *testing.T) {
@@ -177,7 +192,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations)
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}

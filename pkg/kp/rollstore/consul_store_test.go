@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
@@ -73,7 +73,7 @@ func TestRollLockPath(t *testing.T) {
 		t.Fatalf("Unable to compute roll lock path: %s", err)
 	}
 
-	expected := fmt.Sprintf("%s/%s/%s", kp.LOCK_TREE, rollTree, testRCId)
+	expected := fmt.Sprintf("%s/%s/%s", consulutil.LOCK_TREE, rollTree, testRCId)
 	if rollLockPath != expected {
 		t.Errorf("Unexpected value for rollLockPath, wanted '%s' got '%s'",
 			expected,
