@@ -3,6 +3,7 @@ package kp
 import (
 	"path"
 
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -15,7 +16,6 @@ const (
 	INTENT_TREE  PodPrefix = "intent"
 	REALITY_TREE PodPrefix = "reality"
 	HOOK_TREE    PodPrefix = "hooks"
-	LOCK_TREE    string    = "lock"
 )
 
 func nodePath(podPrefix PodPrefix, nodeName string) (string, error) {
@@ -55,5 +55,5 @@ func PodLockPath(podPrefix PodPrefix, nodeName string, podId types.PodID) (strin
 		return "", err
 	}
 
-	return path.Join(LOCK_TREE, subPodPath), nil
+	return path.Join(consulutil.LOCK_TREE, subPodPath), nil
 }

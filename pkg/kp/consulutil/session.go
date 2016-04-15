@@ -9,6 +9,10 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
+const (
+	LOCK_TREE = "lock"
+)
+
 // attempts to acquire the lock on the targeted key. keys used for
 // locking/synchronization should be ephemeral (ie their value does not matter
 // and you don't care if they're deleted)

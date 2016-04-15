@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"path"
 
-	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pc/fields"
@@ -169,7 +168,7 @@ func (s *consulStore) lockForCreation(podID types.PodID,
 func pcCreateLockPath(podID types.PodID,
 	availabilityZone fields.AvailabilityZone,
 	clusterName fields.ClusterName) string {
-	return path.Join(kp.LOCK_TREE, podID.String(), availabilityZone.String(), clusterName.String())
+	return path.Join(consulutil.LOCK_TREE, podID.String(), availabilityZone.String(), clusterName.String())
 }
 
 func (s *consulStore) FindWhereLabeled(podID types.PodID,

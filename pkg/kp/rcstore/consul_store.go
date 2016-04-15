@@ -593,7 +593,7 @@ func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{
 }
 
 func (s *consulStore) rcLockRoot() string {
-	return path.Join(kp.LOCK_TREE, rcTree)
+	return path.Join(consulutil.LOCK_TREE, rcTree)
 }
 
 func (s *consulStore) rcPath(rcID fields.ID) (string, error) {
@@ -610,7 +610,7 @@ func (s *consulStore) rcLockPath(rcID fields.ID) (string, error) {
 		return "", err
 	}
 
-	return path.Join(kp.LOCK_TREE, rcPath), nil
+	return path.Join(consulutil.LOCK_TREE, rcPath), nil
 }
 
 // The path for an ownership lock is simply the base path
@@ -691,7 +691,7 @@ func (s *consulStore) lockTypeFromKey(key string) (fields.ID, LockType, error) {
 		return "", UnknownLockType, util.Errorf("Key '%s' does not resemble an RC lock", key)
 	}
 
-	if keyParts[0] != kp.LOCK_TREE {
+	if keyParts[0] != consulutil.LOCK_TREE {
 		return "", UnknownLockType, util.Errorf("Key '%s' does not resemble an RC lock", key)
 	}
 
