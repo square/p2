@@ -1,161 +1,175 @@
 package consulutil
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 
-	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/util/param"
+	"github.com/square/p2/pkg/util"
 )
 
-// SessionRetrySeconds specifies how long to wait between retries when establishing a
-// session to Consul.
-var SessionRetrySeconds = param.Int("session_retry_seconds", 5)
+// attempts to acquire the lock on the targeted key. keys used for
+// locking/synchronization should be ephemeral (ie their value does not matter
+// and you don't care if they're deleted)
+func (s Session) Lock(key string) (Unlocker, error) {
+	success, _, err := s.client.KV().Acquire(&api.KVPair{
+		Key:     key,
+		Value:   []byte(s.name),
+		Session: s.session,
+	}, nil)
 
-// SessionManager continually creates and maintains Consul sessions. It is intended to be
-// run in its own goroutine. If one session expires, a new one will be created. As
-// sessions come and go, the session ID (or "" for an expired session) will be sent on the
-// output channel.
-//
-// Parameters:
-//   config:  Configuration passed to Consul when creating a new session.
-//   client:  The Consul client to use.
-//   output:  The channel used for exposing Consul session IDs. This method takes
-//            ownership of this channel and will close it once no new IDs will be created.
-//   done:    Close this channel to close the current session (if any) and stop creating
-//            new sessions.
-//   logger:  Errors will be logged to this logger.
-func SessionManager(
-	config api.SessionEntry,
-	client *api.Client,
-	output chan<- string,
-	done chan struct{},
-	logger logging.Logger,
-) {
-	logger.NoFields().Info("session manager: starting up")
+	if err != nil {
+		return nil, NewKVError("acquire lock", key, err)
+	}
+	if success {
+		return unlocker{
+			session: s,
+			key:     key,
+		}, nil
+	}
+	return nil, AlreadyLockedError{Key: key}
+}
+
+// attempts to unlock the targeted key - since lock keys are ephemeral, this
+// will delete it, but only if it is held by the current lock
+func (u unlocker) Unlock() error {
+	kvp, meta, err := u.session.client.KV().Get(u.key, nil)
+	if err != nil {
+		return NewKVError("get", u.key, err)
+	}
+	if kvp == nil {
+		return nil
+	}
+	if kvp.Session != u.session.session {
+		return AlreadyLockedError{Key: u.key}
+	}
+
+	success, _, err := u.session.client.KV().DeleteCAS(&api.KVPair{
+		Key:         u.key,
+		ModifyIndex: meta.LastIndex,
+	}, nil)
+	if err != nil {
+		return NewKVError("deletecas", u.key, err)
+	}
+	if !success {
+		// the key has been mutated since we checked it - probably someone
+		// overrode our lock on it or deleted it themselves
+		return AlreadyLockedError{Key: u.key}
+	}
+	return nil
+}
+
+func (u unlocker) Key() string {
+	return u.key
+}
+
+func (s Session) continuallyRenew() {
+	defer close(s.renewalErrCh)
 	for {
-		// Check for exit signal
 		select {
-		case <-done:
-			logger.NoFields().Info("session manager: shutting down")
-			close(output)
-			return
-		default:
-		}
-		// Establish a new session
-		id, _, err := client.Session().CreateNoChecks(&config, nil)
-		if err != nil {
-			logger.WithError(err).Error("session manager: error creating Consul session")
-			time.Sleep(time.Duration(*SessionRetrySeconds) * time.Second)
-			continue
-		}
-		sessionLogger := logger.SubLogger(logrus.Fields{
-			"session": id,
-		})
-		sessionLogger.NoFields().Info("session manager: new Consul session")
-		select {
-		case output <- id:
-			// Maintain the session
-			err = client.Session().RenewPeriodic(config.TTL, id, nil, done)
+		case <-s.renewalCh:
+			err := s.Renew()
 			if err != nil {
-				sessionLogger.WithError(err).Error("session manager: lost session")
-			} else {
-				sessionLogger.NoFields().Info("session manager: released session")
-			}
-			output <- ""
-		case <-done:
-			// Don't bother reporting the new session if exiting
-			client.Session().Destroy(id, nil)
-			sessionLogger.NoFields().Info("session manager: released session")
-		}
-	}
-}
-
-// WithSession executes the function f when there is an active session. When that session
-// ends, f is signaled to exit. Once f finishes, a new execution will start when a new
-// session begins.
-//
-// This function runs until the input stream of sessions is closed. Closing the "done"
-// argument provides a shortcut to exit this function when also tearing down the session
-// producer. In either case, any running f will be terminated before returning. A panic in
-// f will also propagate upwards, causing the function to exit.
-func WithSession(
-	done <-chan struct{},
-	sessions <-chan string,
-	f func(done <-chan struct{}, session string),
-) {
-	// Start an asynchronous controller that will tell this goroutine when to execute the
-	// user's function
-	sentry := make(chan struct{})
-	defer close(sentry)
-	executions := make(chan execution)
-	go withSessionController(sentry, executions, done, sessions)
-
-	// Run the user's function when the controller says to
-	for e := range executions {
-		f(e.done, e.session)
-		close(e.finished)
-	}
-}
-
-type execution struct {
-	finished chan<- struct{} // Signal from the executor that it has finished
-	done     <-chan struct{} // Signal to the executor that it should abort
-	session  string          // The session acquired
-}
-
-func withSessionController(
-	sentry <-chan struct{}, // Will be closed when the executor exits
-	executions chan<- execution, // Sends work to the executor
-	done <-chan struct{}, // Outside signal to tear down all executions
-	sessions <-chan string, // Sequence of session updates
-) {
-	var curSession string      // The current session identifier
-	var fSession string        // The session f was last executed with
-	var fRunning chan struct{} // If non-nil, f is running. F will close it when it stops
-	var fDone chan struct{}    // If non-nil, f is running. Close to tell f to stop.
-
-	// When exiting, stop all current and future work
-	defer func() {
-		if fDone != nil {
-			close(fDone)
-		}
-	}()
-	defer close(executions)
-
-	for {
-		if fDone != nil && (fRunning == nil || curSession != fSession) {
-			// F needs to be cleaned up or stopped
-			close(fDone)
-			fDone = nil
-		}
-		if fRunning == nil && curSession != fSession && curSession != "" {
-			// Start f if it isn't running and if the session has changed
-			fSession = curSession
-			fRunning = make(chan struct{})
-			fDone = make(chan struct{})
-			select {
-			case executions <- execution{fRunning, fDone, fSession}:
-			case <-sentry:
+				s.renewalErrCh <- err
+				s.client.Session().Destroy(s.session, nil)
 				return
 			}
-		}
-
-		select {
-		case s, ok := <-sessions: // Session changed
-			if !ok {
-				// Implicit request to exit, because there will be no more sessions
-				return
-			}
-			curSession = s
-		case <-fRunning: // F has exited
-			fRunning = nil
-		case <-sentry: // The executor exited
-			return
-		case <-done: // Explicit request to exit
+		case <-s.quitCh:
 			return
 		}
 	}
+}
+
+type Unlocker interface {
+	Unlock() error
+	Key() string
+}
+
+type unlocker struct {
+	session Session
+
+	key string
+}
+
+// Wraps a consul client and consul session, and provides coordination for
+// renewals and errors
+type Session struct {
+	client  *api.Client
+	session string
+	name    string
+
+	// Coordination channels
+	//
+	// signals that continual renewal of session should stop
+	quitCh chan struct{}
+
+	// communicates any error occurring during renewal
+	renewalErrCh chan error
+
+	// signals when a renewal on the consul session should be performed
+	renewalCh <-chan time.Time
+}
+
+func NewManagedSession(client *api.Client, session string, name string, quitCh chan struct{}, renewalErrCh chan error, renewalCh <-chan time.Time) *Session {
+	sess := &Session{
+		client:       client,
+		session:      session,
+		name:         name,
+		quitCh:       quitCh,
+		renewalErrCh: renewalErrCh,
+		renewalCh:    renewalCh,
+	}
+	// Could explore using c.client.Session().RenewPeriodic() instead, but
+	// specifying a renewalCh is nice for testing
+	go sess.continuallyRenew()
+	return sess
+}
+
+// Creates a Session struc{{t using an existing consul session, and does
+// not set up auto-renewal. Use this constructor when the underlying session
+// already exists and should not be managed here.
+func NewUnmanagedSession(client *api.Client, session, name string) Session {
+	return Session{
+		client:  client,
+		session: session,
+		name:    name,
+	}
+}
+
+type AlreadyLockedError struct {
+	Key string
+}
+
+func (err AlreadyLockedError) Error() string {
+	return fmt.Sprintf("Key %q is already locked", err.Key)
+}
+
+// refresh the TTL on this lock
+func (s Session) Renew() error {
+	entry, _, err := s.client.Session().Renew(s.session, nil)
+	if err != nil {
+		return util.Errorf("Could not renew lock")
+	}
+
+	if entry == nil {
+		return util.Errorf("Could not renew because session was destroyed")
+	}
+	return nil
+}
+
+// destroy a lock, releasing and deleting all the keys it holds
+func (s Session) Destroy() error {
+	if s.quitCh != nil {
+		close(s.quitCh)
+	}
+
+	// There is a race here if (lockTTL - renewalInterval) time passes and
+	// the lock is destroyed automatically before we do it explicitly. In
+	// practice that shouldn't be an issue
+	_, err := s.client.Session().Destroy(s.session, nil)
+	if err != nil {
+		return util.Errorf("Could not destroy lock")
+	}
+	return nil
 }

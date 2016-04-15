@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -35,8 +36,8 @@ type update struct {
 
 	session kp.Session
 
-	oldRCUnlocker kp.Unlocker
-	newRCUnlocker kp.Unlocker
+	oldRCUnlocker consulutil.Unlocker
+	newRCUnlocker consulutil.Unlocker
 }
 
 // Create a new Update. The kp.Store, rcstore.Store, labels.Applicator and
@@ -287,7 +288,7 @@ func (u *update) shouldStop(oldNodes, newNodes rcNodeCounts) ruStep {
 
 func (u *update) lockRCs(done <-chan struct{}) error {
 	newUnlocker, err := u.rcs.LockForMutation(u.NewRC, u.session)
-	if _, ok := err.(kp.AlreadyLockedError); ok {
+	if _, ok := err.(consulutil.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock new %s", u.NewRC)
 	} else if err != nil {
 		return err
@@ -304,7 +305,7 @@ func (u *update) lockRCs(done <-chan struct{}) error {
 			fmt.Sprintf("unlocking %s", newUnlocker.Key()),
 		)
 	}
-	if _, ok := err.(kp.AlreadyLockedError); ok {
+	if _, ok := err.(consulutil.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock old %s", u.OldRC)
 	} else if err != nil {
 		return err
@@ -319,12 +320,12 @@ func (u *update) lockRCs(done <-chan struct{}) error {
 // individual releases are successful or until the session is reset.
 func (u *update) unlockRCs(done <-chan struct{}) {
 	wg := sync.WaitGroup{}
-	for _, unlocker := range []kp.Unlocker{u.newRCUnlocker, u.oldRCUnlocker} {
+	for _, unlocker := range []consulutil.Unlocker{u.newRCUnlocker, u.oldRCUnlocker} {
 		// unlockRCs is called whenever Run() exits, so we have to
 		// handle the case where we didn't lock anything yet
 		if unlocker != nil {
 			wg.Add(1)
-			go func(unlocker kp.Unlocker) {
+			go func(unlocker consulutil.Unlocker) {
 				defer wg.Done()
 				RetryOrQuit(
 					func() error {
