@@ -51,3 +51,8 @@ func (p *FakePCStore) Get(id fields.ID) (fields.PodCluster, error) {
 
 	return fields.PodCluster{}, pcstore.NoPodCluster
 }
+
+func (p *FakePCStore) Delete(id fields.ID) error {
+	delete(p.podClusters, id)
+	return nil
+}

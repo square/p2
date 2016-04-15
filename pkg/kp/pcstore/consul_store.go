@@ -5,6 +5,7 @@ import (
 	"path"
 
 	"github.com/square/p2/pkg/kp/consulutil"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -17,17 +18,23 @@ import (
 type consulKV interface {
 	Get(key string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
 	CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
+	Delete(key string, w *api.WriteOptions) (*api.WriteMeta, error)
 }
 
 type consulStore struct {
-	kv consulKV
+	applicator labels.Applicator
+	kv         consulKV
 }
 
 var _ Store = &consulStore{}
 
-func NewConsul(client api.Client) Store {
+// NOTE: The "retries" concept is mimicking what is built in rcstore.
+// TODO: explore transactionality of operations and returning errors instead of
+// using retries
+func NewConsul(client api.Client, retries int) Store {
 	return &consulStore{
-		kv: client.KV(),
+		kv:         client.KV(),
+		applicator: labels.NewConsulApplicator(&client, retries),
 	}
 }
 
@@ -75,7 +82,25 @@ func (s *consulStore) Create(
 	if !success {
 		return fields.PodCluster{}, util.Errorf("Could not set pod cluster at path '%s'", key)
 	}
+
+	// Should we delete the PC if the labels fail?
+	err = s.setLabelsForPC(pc)
+	if err != nil {
+		// TODO: what if this delete fails?
+		_ = s.Delete(pc.ID)
+		return fields.PodCluster{}, err
+	}
+
 	return pc, nil
+}
+
+func (s *consulStore) setLabelsForPC(pc fields.PodCluster) error {
+	pcLabels := klabels.Set{}
+	pcLabels[fields.PodIDLabel] = pc.PodID.String()
+	pcLabels[fields.AvailabilityZoneLabel] = pc.AvailabilityZone.String()
+	pcLabels[fields.ClusterNameLabel] = pc.Name.String()
+
+	return s.applicator.SetLabels(labels.PC, pc.ID.String(), pcLabels)
 }
 
 func (s *consulStore) Get(id fields.ID) (fields.PodCluster, error) {
@@ -94,6 +119,20 @@ func (s *consulStore) Get(id fields.ID) (fields.PodCluster, error) {
 	}
 
 	return kvpToPC(kvp)
+}
+
+func (s *consulStore) Delete(id fields.ID) error {
+	key, err := s.pcPath(id)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.kv.Delete(key, nil)
+	if err != nil {
+		return consulutil.NewKVError("delete", key, err)
+	}
+
+	return s.applicator.RemoveAllLabels(labels.PC, id.String())
 }
 
 func (s *consulStore) pcPath(pcID fields.ID) (string, error) {

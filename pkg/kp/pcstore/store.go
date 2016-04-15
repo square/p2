@@ -22,4 +22,9 @@ type Store interface {
 		annotations fields.Annotations,
 	) (fields.PodCluster, error)
 	Get(id fields.ID) (fields.PodCluster, error)
+	Delete(id fields.ID) error
+}
+
+func IsNotExist(err error) bool {
+	return err == NoPodCluster
 }

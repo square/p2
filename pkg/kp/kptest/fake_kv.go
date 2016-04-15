@@ -79,3 +79,10 @@ func (f *FakeKV) DeleteCAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api
 	delete(f.kvPairs, pair.Key)
 	return true, nil, nil
 }
+
+func (f *FakeKV) Delete(key string, opts *api.WriteOptions) (*api.WriteMeta, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.kvPairs, key)
+	return nil, nil
+}
