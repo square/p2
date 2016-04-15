@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/logging"
@@ -39,6 +40,7 @@ type consulApplicator struct {
 	aggregators   map[Type]*consulAggregator
 	aggregatorMux sync.Mutex
 	metReg        MetricsRegistry
+	retryMetric   metrics.Gauge
 }
 
 func NewConsulApplicator(client *api.Client, retries int) *consulApplicator {
@@ -47,11 +49,14 @@ func NewConsulApplicator(client *api.Client, retries int) *consulApplicator {
 		kv:          client.KV(),
 		retries:     retries,
 		aggregators: map[Type]*consulAggregator{},
+		retryMetric: metrics.NewGauge(),
 	}
 }
 
 func (c *consulApplicator) SetMetricsRegistry(metReg MetricsRegistry) {
 	c.metReg = metReg
+	c.retryMetric = metrics.NewGauge()
+	c.metReg.Register("label_mutation_retries", c.retryMetric)
 }
 
 func typePath(labelType Type) string {
@@ -154,10 +159,15 @@ func (c *consulApplicator) retryMutate(labelType Type, id string, labels map[str
 		if _, ok := err.(CASError); ok {
 			err = c.mutateLabels(labelType, id, labels)
 		} else {
+			c.updateRetryCount(i)
 			break
 		}
 	}
 	return err
+}
+
+func (c *consulApplicator) updateRetryCount(retryMetric int) {
+	c.retryMetric.Update(int64(retryMetric))
 }
 
 func (c *consulApplicator) SetLabel(labelType Type, id, label, value string) error {
