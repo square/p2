@@ -85,6 +85,8 @@ func NewConsul(client *api.Client, retries int) *consulStore {
 
 func (s *consulStore) Create(manifest pods.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
 	rc, err := s.innerCreate(manifest, nodeSelector, podLabels)
+
+	// TODO: measure whether retries are is important in practice
 	for i := 0; i < s.retries; i++ {
 		if _, ok := err.(CASError); ok {
 			rc, err = s.innerCreate(manifest, nodeSelector, podLabels)
