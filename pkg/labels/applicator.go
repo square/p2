@@ -23,6 +23,7 @@ func (l Type) String() string {
 const (
 	POD  = Type("pod")
 	NODE = Type("node")
+	PC   = Type("pod_clusters")
 	RC   = Type("replication_controller")
 	RU   = Type("rolls")
 )
@@ -35,6 +36,8 @@ func AsType(v string) (Type, error) {
 		return POD, nil
 	case NODE.String():
 		return NODE, nil
+	case PC.String():
+		return PC, nil
 	case RC.String():
 		return RC, nil
 	case RU.String():
