@@ -7,6 +7,7 @@ import (
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/logging"
@@ -208,12 +209,14 @@ func (f *failOnceLabelStore) Get(key string, q *api.QueryOptions) (*api.KVPair, 
 
 func TestCASRetries(t *testing.T) {
 	c := &consulApplicator{
-		kv:      &failOnceLabelStore{inner: &fakeLabelStore{data: map[string][]byte{}}},
-		logger:  logging.DefaultLogger,
-		retries: 3,
+		kv:          &failOnceLabelStore{inner: &fakeLabelStore{data: map[string][]byte{}}},
+		logger:      logging.DefaultLogger,
+		retries:     3,
+		retryMetric: metrics.NewGauge(),
 	}
 
 	Assert(t).IsNil(c.SetLabel(POD, "object", "label", "value"), "should have retried despite failing once")
+	Assert(t).AreEqual(c.retryMetric.Value(), int64(1), "should have recorded a retry in metrics gauge")
 }
 
 func TestCASNoRetries(t *testing.T) {
