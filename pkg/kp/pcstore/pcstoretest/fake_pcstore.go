@@ -13,6 +13,7 @@ import (
 // testing
 type FakePCStore struct {
 	podClusters map[fields.ID]fields.PodCluster
+	watchers    map[fields.ID]chan pcstore.WatchedPodCluster
 }
 
 var _ pcstore.Store = &FakePCStore{}
@@ -42,6 +43,7 @@ func (p *FakePCStore) Create(
 	}
 
 	p.podClusters[id] = pc
+	p.watchers[id] <- pcstore.WatchedPodCluster{PodCluster: &pc, Err: nil}
 	return pc, nil
 }
 
@@ -72,4 +74,31 @@ func (p *FakePCStore) FindWhereLabeled(
 		}
 	}
 	return ret, nil
+}
+
+func (p *FakePCStore) Watch(quit <-chan struct{}) <-chan pcstore.WatchedPodCluster {
+	ret := make(chan pcstore.WatchedPodCluster)
+
+	go func() {
+		for {
+			select {
+			case <-quit:
+				return
+			default:
+			}
+			for _, ch := range p.watchers {
+				select {
+				case pc := <-ch:
+					ret <- pc
+				default:
+				}
+			}
+		}
+	}()
+
+	return ret
+}
+
+func (p *FakePCStore) WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan pcstore.WatchedPodCluster {
+	return p.watchers[id]
 }

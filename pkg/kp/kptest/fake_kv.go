@@ -22,7 +22,7 @@ func NewFakeKV() *FakeKV {
 }
 
 func (f *FakeKV) Get(key string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
-	return f.kvPairs[key], nil, nil
+	return f.kvPairs[key], &api.QueryMeta{}, nil
 }
 
 func (f *FakeKV) List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
@@ -33,7 +33,7 @@ func (f *FakeKV) List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.
 		}
 	}
 
-	return res, nil, nil
+	return res, &api.QueryMeta{}, nil
 }
 
 // The fake implementation of this is just the same as writing a key, we expect
