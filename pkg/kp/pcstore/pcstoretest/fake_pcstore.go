@@ -76,8 +76,8 @@ func (p *FakePCStore) FindWhereLabeled(
 	return ret, nil
 }
 
-func (p *FakePCStore) Watch(quit <-chan struct{}) <-chan pcstore.WatchedPodCluster {
-	ret := make(chan pcstore.WatchedPodCluster)
+func (p *FakePCStore) Watch(quit <-chan struct{}) <-chan pcstore.WatchedPodClusters {
+	ret := make(chan pcstore.WatchedPodClusters)
 
 	go func() {
 		for {
@@ -86,12 +86,20 @@ func (p *FakePCStore) Watch(quit <-chan struct{}) <-chan pcstore.WatchedPodClust
 				return
 			default:
 			}
+
+			clusters := pcstore.WatchedPodClusters{}
 			for _, ch := range p.watchers {
 				select {
-				case pc := <-ch:
-					ret <- pc
+				case watched := <-ch:
+					clusters.Clusters = append(clusters.Clusters, watched.PodCluster)
 				default:
 				}
+			}
+
+			select {
+			case ret <- clusters:
+			case <-quit:
+				return
 			}
 		}
 	}()

@@ -24,6 +24,11 @@ type WatchedPodCluster struct {
 	Err        error
 }
 
+type WatchedPodClusters struct {
+	Clusters []*fields.PodCluster
+	Err      error
+}
+
 type Store interface {
 	Create(
 		podID types.PodID,
@@ -44,7 +49,7 @@ type Store interface {
 	) ([]fields.PodCluster, error)
 	Delete(id fields.ID) error
 	WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan WatchedPodCluster
-	Watch(quit <-chan struct{}) <-chan WatchedPodCluster
+	Watch(quit <-chan struct{}) <-chan WatchedPodClusters
 }
 
 func IsNotExist(err error) bool {
