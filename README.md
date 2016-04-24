@@ -30,9 +30,10 @@ applications. We copied them! We didn't want to wait to have our entire Docker
 ecosystem established (new build system, new kernel, etc) to start using these
 great higher-order orchestration primitives.
 
-We currently have production-quality support for pod manifests, analagous to
-the Kubernetes pod spec, and are actively working on a replication controller
-spec.
+We currently have production-quality support for pod manifests, replication controllers
+and rolling updates, analagous to Kubernetes pods, replication controllers and deployments,
+respectively. We are also actively working on pod clusters, our variation on Kubernetes
+services.
 
 ## More stuff!
 
