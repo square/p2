@@ -244,9 +244,10 @@ func TestWatch(t *testing.T) {
 	})
 
 	quit := make(chan struct{})
+	defer close(quit)
 	watch := store.Watch(quit)
 
-	var watched *WatchedPodCluster
+	var watched WatchedPodClusters
 	session := kptest.NewSession()
 	pc, err := store.Create(podID, az, clusterName, selector, annotations, session)
 	if err != nil {
@@ -255,18 +256,17 @@ func TestWatch(t *testing.T) {
 
 	select {
 	case watchedPC := <-watch:
-		watched = &watchedPC
+		watched = watchedPC
 	case <-time.After(5 * time.Second):
-		quit <- struct{}{}
 		t.Fatal("nothing on the channel")
 	}
 
-	if watched == nil {
-		t.Fatalf("Expected to get a watched PodCluster, but did not")
+	if len(watched.Clusters) != 1 {
+		t.Fatalf("Expected to get a watched PodCluster, but did not: got %v", len(watched.Clusters))
 	}
 
-	if watched.PodCluster.ID != pc.ID {
-		t.Fatalf("Expected watched PodCluster to match %s Pod Cluster ID. Instead was %s", pc.ID, watched.PodCluster.ID)
+	if watched.Clusters[0].ID != pc.ID {
+		t.Fatalf("Expected watched PodCluster to match %s Pod Cluster ID. Instead was %s", pc.ID, watched.Clusters[0].ID)
 	}
 }
 

@@ -203,9 +203,9 @@ func (s *consulStore) FindWhereLabeled(podID types.PodID,
 // It will return a blocking channel on which the client can read
 // WatchedPodCluster objects. The goroutine maintaining the watch will block on
 // writing to this channel so it's up to the caller to read it with haste.
-func (s *consulStore) Watch(quit <-chan struct{}) <-chan WatchedPodCluster {
+func (s *consulStore) Watch(quit <-chan struct{}) <-chan WatchedPodClusters {
 	inCh := make(chan api.KVPairs)
-	outCh := make(chan WatchedPodCluster)
+	outCh := make(chan WatchedPodClusters)
 	errChan := make(chan error, 1)
 
 	go consulutil.WatchPrefix(podClusterTree, s.kv, inCh, quit, errChan)
@@ -225,22 +225,27 @@ func (s *consulStore) Watch(quit <-chan struct{}) <-chan WatchedPodCluster {
 				}
 			}
 
+			clusters := WatchedPodClusters{}
+
 			pcs, err := kvpsToPC(kvp)
 			if err != nil {
+				clusters.Err = err
 				select {
 				case <-quit:
 					return
-				case outCh <- WatchedPodCluster{PodCluster: nil, Err: err}:
+				case outCh <- clusters:
 					continue
 				}
 			}
 
 			for _, pc := range pcs {
-				select {
-				case outCh <- WatchedPodCluster{PodCluster: &pc, Err: nil}:
-				case <-quit:
-					return
-				}
+				clusters.Clusters = append(clusters.Clusters, &pc)
+			}
+
+			select {
+			case outCh <- clusters:
+			case <-quit:
+				return
 			}
 		}
 	}()
