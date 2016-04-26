@@ -39,7 +39,6 @@ const DEFAULT_PATH = "/data/pods"
 const DefaultP2Exec = "/usr/local/bin/p2-exec"
 
 var DefaultFinishExec = []string{"/bin/true"} // type must match preparerconfig
-var DefaultLogExec = []string{"svlogd", "-tt", "./main"}
 
 func init() {
 	Log = logging.NewLogger(logrus.Fields{})
@@ -70,7 +69,7 @@ func NewPod(id types.PodID, path string) *Pod {
 		ServiceBuilder: runit.DefaultBuilder,
 		P2Exec:         DefaultP2Exec,
 		DefaultTimeout: 60 * time.Second,
-		LogExec:        DefaultLogExec,
+		LogExec:        runit.DefaultLogExec,
 		FinishExec:     DefaultFinishExec,
 	}
 }
