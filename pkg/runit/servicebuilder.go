@@ -121,7 +121,6 @@ func (s ServiceTemplate) finishScript() ([]byte, error) {
 		finish_exec = []string{"/bin/true", "# finish not implemented"}
 	}
 	finishScript := fmt.Sprintf(`#!/bin/bash
-exit_code=$1
 %s
 `, strings.Join(finish_exec, " "))
 
