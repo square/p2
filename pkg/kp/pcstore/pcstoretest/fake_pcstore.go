@@ -43,7 +43,9 @@ func (p *FakePCStore) Create(
 	}
 
 	p.podClusters[id] = pc
-	p.watchers[id] <- pcstore.WatchedPodCluster{PodCluster: &pc, Err: nil}
+	if watcher, ok := p.watchers[id]; ok {
+		watcher <- pcstore.WatchedPodCluster{PodCluster: &pc, Err: nil}
+	}
 	return pc, nil
 }
 
