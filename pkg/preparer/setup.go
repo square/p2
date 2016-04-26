@@ -19,6 +19,7 @@ import (
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
@@ -359,7 +360,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	if len(preparerConfig.LogExec) > 0 {
 		logExec = preparerConfig.LogExec
 	} else {
-		logExec = pods.DefaultLogExec
+		logExec = runit.DefaultLogExec
 	}
 
 	var finishExec []string

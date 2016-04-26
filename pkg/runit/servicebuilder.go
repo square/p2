@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
@@ -47,6 +48,11 @@ const (
 // To maintain compatibility with Ruby1.8's YAML serializer, a document separator with a
 // trailing space must be used.
 const yamlSeparator = "--- "
+
+var DefaultLogExec = p2exec.P2ExecArgs{
+	User:    "nobody",
+	Command: []string{"svlogd", "-tt", "./main"},
+}.CommandLine()
 
 type ServiceTemplate struct {
 	Run      []string `yaml:"run"`
@@ -95,7 +101,7 @@ func (s ServiceTemplate) logScript() ([]byte, error) {
 	if len(log) == 0 {
 		// use a default log script that makes a logdir, chowns it and execs
 		// svlogd into it
-		log = []string{"chpst", "-unobody", "svlogd", "-tt", "./main"}
+		log = DefaultLogExec
 	}
 
 	args, err := yaml.Marshal(log)
