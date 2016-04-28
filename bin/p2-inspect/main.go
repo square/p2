@@ -27,7 +27,15 @@ func main() {
 	client := kp.NewConsulClient(opts)
 	store := kp.NewConsulStore(client)
 
-	intents, _, err := store.AllPods(kp.INTENT_TREE)
+	var intents []kp.ManifestResult
+	var realities []kp.ManifestResult
+	var err error
+
+	if *filterNodeName != "" {
+		intents, _, err = store.ListPods(kp.INTENT_TREE, *filterNodeName)
+	} else {
+		intents, _, err = store.AllPods(kp.INTENT_TREE)
+	}
 	if err != nil {
 		message := "Could not list intent kvpairs: %s"
 		if kvErr, ok := err.(consulutil.KVError); ok {
@@ -36,7 +44,13 @@ func main() {
 			log.Fatalf(message, err)
 		}
 	}
-	realities, _, err := store.AllPods(kp.REALITY_TREE)
+
+	if *filterNodeName != "" {
+		realities, _, err = store.ListPods(kp.REALITY_TREE, *filterNodeName)
+	} else {
+		realities, _, err = store.AllPods(kp.REALITY_TREE)
+	}
+
 	if err != nil {
 		message := "Could not list reality kvpairs: %s"
 		if kvErr, ok := err.(consulutil.KVError); ok {
