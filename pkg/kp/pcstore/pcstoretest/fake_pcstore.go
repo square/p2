@@ -109,6 +109,10 @@ func (p *FakePCStore) Watch(quit <-chan struct{}) <-chan pcstore.WatchedPodClust
 	return ret
 }
 
+func (p *FakePCStore) WatchAndSync(concrete pcstore.ConcreteSyncer, quit <-chan struct{}) error {
+	panic("not implemented")
+}
+
 func (p *FakePCStore) WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan pcstore.WatchedPodCluster {
 	return p.watchers[id]
 }
