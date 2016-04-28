@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/square/p2/pkg/kp/consulutil"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/types"
 
@@ -50,6 +51,15 @@ type Store interface {
 	Delete(id fields.ID) error
 	WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan WatchedPodCluster
 	Watch(quit <-chan struct{}) <-chan WatchedPodClusters
+
+	// A convenience method that handles watching pod clusters
+	// as well as the labeled pods in each pod cluster.
+	WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) error
+}
+
+type ConcreteSyncer interface {
+	SyncCluster(pc *fields.PodCluster, pods []labels.Labeled) error
+	DeleteCluster(pc *fields.PodCluster) error
 }
 
 func IsNotExist(err error) bool {
