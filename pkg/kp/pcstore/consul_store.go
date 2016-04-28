@@ -361,6 +361,9 @@ func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) 
 	return nil
 }
 
+// zipResults takes two sets of watched pod clusters and joins them such that they
+// are paired together in a map of pc ID -> change objects. Each change will be sent
+// to the respective sync channels of each pod cluster later on.
 func (s *consulStore) zipResults(current, previous WatchedPodClusters) map[fields.ID]podClusterChange {
 	allPrevious := make(map[fields.ID]*fields.PodCluster)
 	for _, prev := range previous.Clusters {
@@ -389,9 +392,6 @@ func (s *consulStore) zipResults(current, previous WatchedPodClusters) map[field
 // If a change fails to take, this function will retry that change forever until
 // it works as expected or a newer change appears on the channel. This routine also
 // executes and monitors the label watch for the pod's label selector.
-// TODO: since most of this code is generic to pod cluster syncers, this will likely
-// be extracted to github.com/square/p2. The P2 VIP agent, for f5 syncing, will still
-// implement ConcreteSyncer, whose methods are implemented below.
 func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podClusterChange) {
 	var change podClusterChange
 	podWatch := make(chan []labels.Labeled)
