@@ -2,6 +2,7 @@ package pcstoretest
 
 import (
 	"github.com/square/p2/pkg/kp/pcstore"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/types"
 
@@ -107,6 +108,21 @@ func (p *FakePCStore) Watch(quit <-chan struct{}) <-chan pcstore.WatchedPodClust
 	}()
 
 	return ret
+}
+
+func (p *FakePCStore) WatchAndSync(concrete pcstore.ConcreteSyncer, quit <-chan struct{}) error {
+	pods := p.Watch(quit)
+
+	for {
+		select {
+		case <-quit:
+			return nil
+		case watched := <-pods:
+			for _, cluster := range watched.Clusters {
+				_ = concrete.SyncCluster(cluster, []labels.Labeled{})
+			}
+		}
+	}
 }
 
 func (p *FakePCStore) WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan pcstore.WatchedPodCluster {

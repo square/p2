@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"path"
 
+	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/pborman/uuid"
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
@@ -306,6 +307,145 @@ func (s *consulStore) WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan
 	}()
 
 	return outCh
+}
+
+type podClusterChange struct {
+	previous *fields.PodCluster
+	current  *fields.PodCluster
+}
+
+func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) error {
+	watchedRes := s.Watch(quit)
+
+	clusterUpdaters := map[fields.ID]chan podClusterChange{}
+	defer func() {
+		for _, handler := range clusterUpdaters {
+			close(handler)
+		}
+	}()
+
+	// TODO: change to a reality query when status endpoint is set up.
+	var prevResults WatchedPodClusters
+	for {
+		select {
+		case curResults := <-watchedRes:
+			if curResults.Err != nil {
+				s.logger.WithError(curResults.Err).Errorln("Could not sync pod clusters")
+				continue
+			}
+			// zip up the previous and current results, act based on the difference.
+			zipped := s.zipResults(curResults, prevResults)
+			for id, change := range zipped {
+				updater, ok := clusterUpdaters[id]
+				if !ok {
+					clusterUpdaters[id] = make(chan podClusterChange)
+					go s.handlePCUpdates(syncer, clusterUpdaters[id])
+					updater = clusterUpdaters[id]
+				}
+				select {
+				case updater <- change:
+					if change.previous != nil && change.current == nil {
+						close(clusterUpdaters[id])
+						delete(clusterUpdaters, id)
+					}
+				case <-quit:
+					return nil
+				}
+			}
+			prevResults = curResults
+		case <-quit:
+			return nil
+		}
+	}
+
+	return nil
+}
+
+// zipResults takes two sets of watched pod clusters and joins them such that they
+// are paired together in a map of pc ID -> change objects. Each change will be sent
+// to the respective sync channels of each pod cluster later on.
+func (s *consulStore) zipResults(current, previous WatchedPodClusters) map[fields.ID]podClusterChange {
+	allPrevious := make(map[fields.ID]*fields.PodCluster)
+	for _, prev := range previous.Clusters {
+		allPrevious[prev.ID] = prev
+	}
+	ret := map[fields.ID]podClusterChange{}
+	for _, cur := range current.Clusters {
+		prev, ok := allPrevious[cur.ID]
+		ret[cur.ID] = podClusterChange{
+			previous: prev,
+			current:  cur,
+		}
+		if ok {
+			delete(allPrevious, cur.ID)
+		}
+	}
+	for _, prev := range allPrevious {
+		ret[prev.ID] = podClusterChange{
+			previous: prev,
+		}
+	}
+	return ret
+}
+
+// try forever to match the expectations as defined in the provided change channel.
+// If a change fails to take, this function will retry that change forever until
+// it works as expected or a newer change appears on the channel. This routine also
+// executes and monitors the label watch for the pod's label selector.
+func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podClusterChange) {
+	var change podClusterChange
+	podWatch := make(chan []labels.Labeled)
+	podWatchQuit := make(chan struct{})
+	defer func() {
+		close(podWatchQuit)
+	}()
+
+	for {
+		var ok bool
+
+		select {
+		case labeledPods := <-podWatch:
+			s.logger.Debugf("Calling SyncCluster with %v / %v", change.current, labeledPods)
+			concrete.SyncCluster(change.current, labeledPods)
+		case change, ok = <-changes:
+			if !ok {
+				return // we're closed for business
+			}
+
+			if change.current == nil && change.previous != nil {
+				// if no current cluster exists, but there is a previous cluster,
+				// it means we need to destroy this concrete cluster
+				s.logger.WithField("pc_id", change.previous.ID).Infof("Calling DeleteCluster with %v", change.previous)
+				err := concrete.DeleteCluster(change.previous)
+				if err != nil {
+					s.logger.Errorf("Deletion of cluster failed! %v", err)
+				} else {
+					return
+				}
+			} else if change.current != nil && change.previous != nil {
+				// if there's a current and a previous pod cluster, update concrete cluster metadata and
+				// refresh the pod selector watch if it changed
+				if change.current.PodSelector.String() != change.previous.PodSelector.String() {
+					close(podWatchQuit)
+					podWatchQuit = make(chan struct{})
+					s.logger.WithFields(logrus.Fields{
+						"pc_id":        change.current.ID,
+						"old_selector": change.previous.PodSelector.String(),
+						"new_selector": change.current.PodSelector.String(),
+					}).Debugf("Altering pod selector for %v", change.current.ID)
+					podWatch = s.applicator.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
+				}
+			} else {
+				// if there's no previous pod cluster but there is a current, create the concrete cluster
+				// and start a pod selector watch.
+				s.logger.WithFields(logrus.Fields{
+					"pc_id":    change.current.ID,
+					"selector": change.current.PodSelector.String(),
+				}).Debugf("Starting pod selector watch for %v", change.current.ID)
+				podWatch = s.applicator.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
+			}
+		}
+	}
 }
 
 func kvpsToPC(pairs api.KVPairs) ([]fields.PodCluster, error) {
