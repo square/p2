@@ -76,7 +76,7 @@ func (s Session) continuallyRenew() {
 			err := s.Renew()
 			if err != nil {
 				s.renewalErrCh <- err
-				s.client.Session().Destroy(s.session, nil)
+				_, _ = s.client.Session().Destroy(s.session, nil)
 				return
 			}
 		case <-s.quitCh:

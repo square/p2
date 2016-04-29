@@ -59,7 +59,7 @@ func (f BasicFetcher) Open(srcUri string) (io.ReadCloser, error) {
 			return nil, err
 		}
 		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, util.Errorf(
 				"%q: HTTP server returned status: %s",
 				u.String(),

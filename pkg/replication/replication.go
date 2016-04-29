@@ -83,7 +83,7 @@ func (r replication) lockHosts(overrideLock bool, lockMessage string) error {
 	for _, host := range r.nodes {
 		lockPath, err := kp.PodLockPath(kp.INTENT_TREE, host, r.manifest.ID())
 		if err != nil {
-			session.Destroy()
+			_ = session.Destroy()
 			return err
 		}
 
@@ -91,7 +91,7 @@ func (r replication) lockHosts(overrideLock bool, lockMessage string) error {
 		// the session at the end of the replication anyway
 		_, err = r.lock(session, lockPath, overrideLock)
 		if err != nil {
-			session.Destroy()
+			_ = session.Destroy()
 			return err
 		}
 	}
@@ -238,7 +238,7 @@ func (r replication) handleRenewalErrors(session kp.Session, renewalErrCh chan e
 	defer func() {
 		close(r.quitCh)
 		close(r.errCh)
-		session.Destroy()
+		_ = session.Destroy()
 	}()
 
 	select {

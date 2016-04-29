@@ -34,7 +34,9 @@ func LoadConfigFile(filepath string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	yaml.Unmarshal(contents, &config.unpacked)
+	if err = yaml.Unmarshal(contents, &config.unpacked); err != nil {
+		return nil, err
+	}
 	return config, nil
 }
 

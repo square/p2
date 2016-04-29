@@ -109,7 +109,7 @@ func (f Fixture) Stop() {
 	for _, s := range f.Servers {
 		s.Shutdown()
 	}
-	f.Agent.Shutdown()
+	_ = f.Agent.Shutdown()
 	time.Sleep(50 * time.Millisecond)
 }
 

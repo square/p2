@@ -406,7 +406,10 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 		select {
 		case labeledPods := <-podWatch:
 			s.logger.Debugf("Calling SyncCluster with %v / %v", change.current, labeledPods)
-			concrete.SyncCluster(change.current, labeledPods)
+			err := concrete.SyncCluster(change.current, labeledPods)
+			if err != nil {
+				s.logger.WithError(err).Errorf("Failed to SyncCluster on %v / %v", change.current, labeledPods)
+			}
 		case change, ok = <-changes:
 			if !ok {
 				return // we're closed for business

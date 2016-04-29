@@ -374,7 +374,9 @@ func (manifest *manifest) SHA() (string, error) {
 		return "", err
 	}
 	hasher := sha256.New()
-	hasher.Write(buf)
+	if _, err := hasher.Write(buf); err != nil {
+		return "", err
+	}
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 

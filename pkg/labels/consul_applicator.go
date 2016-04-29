@@ -56,7 +56,7 @@ func NewConsulApplicator(client *api.Client, retries int) *consulApplicator {
 func (c *consulApplicator) SetMetricsRegistry(metReg MetricsRegistry) {
 	c.metReg = metReg
 	c.retryMetric = metrics.NewGauge()
-	c.metReg.Register("label_mutation_retries", c.retryMetric)
+	_ = c.metReg.Register("label_mutation_retries", c.retryMetric)
 }
 
 func typePath(labelType Type) string {

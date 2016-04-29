@@ -223,7 +223,9 @@ func (p *PodWatch) checkHealth() {
 		return
 	}
 
-	p.updater.PutHealth(resToKPRes(health))
+	if err = p.updater.PutHealth(resToKPRes(health)); err != nil {
+		p.logger.WithError(err).Warningln("failed to write health")
+	}
 }
 
 // Given the result of a status check this method
