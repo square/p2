@@ -88,9 +88,9 @@ func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logg
 	watchCount := metrics.NewGauge()
 	watchSendMiss := metrics.NewGauge()
 	cacheSize := metrics.NewGauge()
-	metReg.Register(fmt.Sprintf("%v_aggregate_watches", labelType.String()), watchCount)
-	metReg.Register(fmt.Sprintf("%v_aggregate_send_miss", labelType.String()), watchSendMiss)
-	metReg.Register(fmt.Sprintf("%v_aggregate_cache_size", labelType.String()), cacheSize)
+	_ = metReg.Register(fmt.Sprintf("%v_aggregate_watches", labelType.String()), watchCount)
+	_ = metReg.Register(fmt.Sprintf("%v_aggregate_send_miss", labelType.String()), watchSendMiss)
+	_ = metReg.Register(fmt.Sprintf("%v_aggregate_cache_size", labelType.String()), cacheSize)
 
 	return &consulAggregator{
 		kv:               kv,

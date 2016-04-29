@@ -64,7 +64,7 @@ type testServiceBuilder struct {
 
 // Cleanup removes the file system changes made by the testServiceBuilder.
 func (s testServiceBuilder) Cleanup() {
-	os.RemoveAll(s.root)
+	_ = os.RemoveAll(s.root)
 }
 
 // mustMkdirAll creates the given directory or dies trying
@@ -85,7 +85,7 @@ func FakeServiceBuilder() (s *testServiceBuilder) {
 	defer func() {
 		// If the method exits abnormally, try to clean up the file system.
 		if s == nil {
-			os.RemoveAll(root)
+			_ = os.RemoveAll(root)
 		}
 	}()
 	config := filepath.Join(root, "config")

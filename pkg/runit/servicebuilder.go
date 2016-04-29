@@ -248,7 +248,7 @@ func (s *ServiceBuilder) stage(templates map[string]ServiceTemplate, restartPoli
 			if err != nil {
 				return err
 			}
-			file.Close()
+			_ = file.Close()
 		} else {
 			// There could be a down file lying around from a
 			// previous installation with a different restart

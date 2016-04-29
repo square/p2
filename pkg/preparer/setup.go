@@ -245,7 +245,9 @@ func addHooks(preparerConfig *PreparerConfig, logger logging.Logger) {
 			"type": dest.Type,
 			"path": dest.Path,
 		}).Infoln("Adding log destination")
-		logger.AddHook(dest.Type, dest.Path)
+		if err := logger.AddHook(dest.Type, dest.Path); err != nil {
+			logger.WithError(err).Errorf("Unable to add log hook. Proceeding.")
+		}
 	}
 }
 

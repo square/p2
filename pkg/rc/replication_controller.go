@@ -320,7 +320,9 @@ func (rc *replicationController) ensureConsistency(current PodLocations) error {
 		}
 
 		rc.logger.WithField("node", pod.Node).WithField("intentManifestSHA", intentSHA).Info("Found inconsistency in scheduled manifest")
-		rc.schedule(pod.Node)
+		if err := rc.schedule(pod.Node); err != nil {
+			return err
+		}
 	}
 
 	return nil

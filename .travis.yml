@@ -10,6 +10,7 @@ before_install:
 install:
   - gem install rake
   - go get github.com/tools/godep
+  - go get github.com/kisielk/errcheck
   - rake install
   - wget https://releases.hashicorp.com/consul/0.5.2/consul_0.5.2_linux_amd64.zip
   - unzip consul_0.5.2_linux_amd64.zip
@@ -18,3 +19,4 @@ install:
 script:
   - rake test_all
   - integration/travis.sh
+  - rake errcheck

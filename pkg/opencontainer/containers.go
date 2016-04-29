@@ -181,7 +181,7 @@ func (l *Launchable) Install() (returnedError error) {
 	defer data.Close()
 	defer func() {
 		if returnedError != nil {
-			os.RemoveAll(l.InstallDir())
+			_ = os.RemoveAll(l.InstallDir())
 		}
 	}()
 	err = gzip.ExtractTarGz("", data, l.InstallDir())

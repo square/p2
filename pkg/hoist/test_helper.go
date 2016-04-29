@@ -38,7 +38,7 @@ func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuild
 
 	executables, _ := launchable.Executables(sb)
 	for _, exe := range executables {
-		os.MkdirAll(exe.Service.Path, 0644)
+		_ = os.MkdirAll(exe.Service.Path, 0644)
 	}
 
 	return launchable, sb
@@ -46,9 +46,9 @@ func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuild
 
 func CleanupFakeLaunchable(h *Launchable, s *runit.ServiceBuilder) {
 	if os.TempDir() != h.PodEnvDir {
-		os.RemoveAll(h.PodEnvDir)
+		_ = os.RemoveAll(h.PodEnvDir)
 	}
 	if os.TempDir() != s.RunitRoot {
-		os.RemoveAll(s.RunitRoot)
+		_ = os.RemoveAll(s.RunitRoot)
 	}
 }

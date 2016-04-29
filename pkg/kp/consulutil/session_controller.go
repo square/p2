@@ -67,7 +67,7 @@ func SessionManager(
 			output <- ""
 		case <-done:
 			// Don't bother reporting the new session if exiting
-			client.Session().Destroy(id, nil)
+			_, _ = client.Session().Destroy(id, nil)
 			sessionLogger.NoFields().Info("session manager: released session")
 		}
 	}

@@ -44,6 +44,10 @@ task :install do
   e "go install -a -ldflags \"-X github.com/square/p2/pkg/version.VERSION=$(git describe --tags)\" ./..."
 end
 
+task :errcheck do
+  e "exit $(errcheck -ignoretests github.com/square/p2/pkg/... | grep -v defer | wc -l || 1)"
+end
+
 desc 'Package the installed P2 binaries into a Hoist artifact that runs as the preparer. The output tar is symlinked to builds/p2.tar.gz'
 task :package => :install do
   root = File.dirname(__FILE__)
