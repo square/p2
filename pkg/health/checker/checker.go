@@ -105,9 +105,16 @@ func (c consulHealthChecker) WatchHealth(
 		case results = <-res:
 			healthResults, err := kvpsToResult(results)
 			if err != nil {
-				return
+				select {
+				case errCh <- err:
+				default:
+				}
+			} else {
+				select {
+				case resultCh <- healthResults:
+				default:
+				}
 			}
-			resultCh <- healthResults
 		}
 	}
 }
