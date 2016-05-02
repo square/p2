@@ -113,6 +113,12 @@ func (h alwaysHappyHealthChecker) WatchService(
 	}
 }
 
+func (h alwaysHappyHealthChecker) WatchHealth(_ chan<- []*health.Result,
+	errCh chan<- error,
+	quitCh <-chan struct{}) {
+	panic("not implemented")
+}
+
 // creates an implementation of checker.ConsulHealthChecker that always reports
 // satisfied health checks for testing purposes
 func happyHealthChecker() checker.ConsulHealthChecker {
@@ -170,6 +176,13 @@ func (h channelBasedHealthChecker) WatchService(
 		case resultCh <- map[string]health.Result{}:
 		}
 	}
+}
+
+func (h channelBasedHealthChecker) WatchHealth(
+	resultCh chan<- []*health.Result,
+	errCh chan<- error,
+	quitCh <-chan struct{}) {
+	panic("not implemented")
 }
 
 // returns an implementation of checker.ConsulHealthChecker that will provide

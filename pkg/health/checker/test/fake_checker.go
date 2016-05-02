@@ -31,6 +31,10 @@ func (s singleServiceChecker) WatchService(serviceID string, resultCh chan<- map
 
 }
 
+func (s singleServiceChecker) WatchHealth(_ chan<- []*health.Result, errCh chan<- error, quitCh <-chan struct{}) {
+	panic("WatchHealth not implemented")
+}
+
 func (s singleServiceChecker) Service(serviceID string) (map[string]health.Result, error) {
 	if serviceID != s.service {
 		return nil, fmt.Errorf("Wrong service %s given, I only have health for %s", serviceID, s.service)
