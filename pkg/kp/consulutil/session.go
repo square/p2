@@ -130,7 +130,7 @@ func NewManagedSession(client *api.Client, session string, name string, quitCh c
 	return sess
 }
 
-// Creates a Session struc{{t using an existing consul session, and does
+// Creates a Session struct using an existing consul session, and does
 // not set up auto-renewal. Use this constructor when the underlying session
 // already exists and should not be managed here.
 func NewUnmanagedSession(client *api.Client, session, name string) Session {
