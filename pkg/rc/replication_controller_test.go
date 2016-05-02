@@ -395,3 +395,21 @@ func TestConsistencyDelete(t *testing.T) {
 	Assert(t).AreEqual(rcSHA, sha, "controller did not reset intent")
 	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to fire")
 }
+
+func TestReservedLabels(t *testing.T) {
+	_, _, applicator, rc, _ := setup(t)
+
+	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
+	Assert(t).IsNil(err, "expected no error assigning label")
+
+	// Install manifest on a single node
+	rc.ReplicasDesired = 1
+	err = rc.meetDesires()
+	Assert(t).IsNil(err, "unexpected error scheduling nodes")
+
+	labeled, err := applicator.GetLabels(labels.POD, MakePodLabelKey("node1", "testPod"))
+	Assert(t).IsNil(err, "unexpected error getting pod labels")
+
+	Assert(t).AreEqual(labeled.Labels[rcstore.PodIDLabel], "testPod", "Pod label not set as expected")
+	Assert(t).AreEqual(labeled.Labels[RCIDLabel], rc.ID().String(), "RC label not set as expected")
+}
