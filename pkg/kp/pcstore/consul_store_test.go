@@ -245,10 +245,6 @@ func TestWatch(t *testing.T) {
 		"foo": "bar",
 	})
 
-	quit := make(chan struct{})
-	defer close(quit)
-	watch := store.Watch(quit)
-
 	var watched WatchedPodClusters
 	session := kptest.NewSession()
 	pc, err := store.Create(podID, az, clusterName, selector, annotations, session)
@@ -260,6 +256,10 @@ func TestWatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unable to create second pod cluster: %s", err)
 	}
+
+	quit := make(chan struct{})
+	defer close(quit)
+	watch := store.Watch(quit)
 
 	select {
 	case watchedPC := <-watch:
