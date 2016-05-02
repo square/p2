@@ -240,7 +240,10 @@ func (s *consulStore) Watch(quit <-chan struct{}) <-chan WatchedPodClusters {
 			}
 
 			for _, pc := range pcs {
-				clusters.Clusters = append(clusters.Clusters, &pc)
+				// We can't just use &pc because that would be a pointer to
+				// the iteration variable
+				pcPtr := pc
+				clusters.Clusters = append(clusters.Clusters, &pcPtr)
 			}
 
 			select {

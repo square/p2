@@ -232,13 +232,12 @@ func TestDelete(t *testing.T) {
 
 func TestWatch(t *testing.T) {
 	store := consulStoreWithFakeKV()
-	pod := fields.ID("pod_id")
 	podID := types.PodID("pod_id")
 	az := fields.AvailabilityZone("us-west")
 	clusterName := fields.ClusterName("cluster_name")
 
 	selector := klabels.Everything().
-		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{pod.String()}).
+		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
 		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
 		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
@@ -254,7 +253,12 @@ func TestWatch(t *testing.T) {
 	session := kptest.NewSession()
 	pc, err := store.Create(podID, az, clusterName, selector, annotations, session)
 	if err != nil {
-		t.Fatalf("Unable to create pod cluster: %s", err)
+		t.Fatalf("Unable to create first pod cluster: %s", err)
+	}
+
+	pc2, err := store.Create(podID, "us-east", clusterName, selector, annotations, session)
+	if err != nil {
+		t.Fatalf("Unable to create second pod cluster: %s", err)
 	}
 
 	select {
@@ -264,12 +268,16 @@ func TestWatch(t *testing.T) {
 		t.Fatal("nothing on the channel")
 	}
 
-	if len(watched.Clusters) != 1 {
-		t.Fatalf("Expected to get a watched PodCluster, but did not: got %v", len(watched.Clusters))
+	if len(watched.Clusters) != 2 {
+		t.Fatalf("Expected to get two watched PodClusters, but did not: got %v", len(watched.Clusters))
 	}
 
 	if watched.Clusters[0].ID != pc.ID {
-		t.Fatalf("Expected watched PodCluster to match %s Pod Cluster ID. Instead was %s", pc.ID, watched.Clusters[0].ID)
+		t.Fatalf("Expected first watched PodCluster to match %s Pod Cluster ID. Instead was %s", pc.ID, watched.Clusters[0].ID)
+	}
+
+	if watched.Clusters[1].ID != pc2.ID {
+		t.Fatalf("Expected second watched PodCluster to match %s Pod Cluster ID. Instead was %s", pc2.ID, watched.Clusters[1].ID)
 	}
 }
 
