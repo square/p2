@@ -366,7 +366,12 @@ func (rc *replicationController) forEachLabel(node string, f func(id, k, v strin
 			return err
 		}
 	}
-	// our reserved labels.
+
+	// our reserved labels (pod id and replication controller id)
+	err := f(id, rcstore.PodIDLabel, rc.Manifest.ID().String())
+	if err != nil {
+		return err
+	}
 	return f(id, RCIDLabel, rc.ID().String())
 }
 
