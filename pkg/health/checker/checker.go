@@ -2,6 +2,7 @@ package checker
 
 import (
 	"encoding/json"
+	"square/up/util"
 	"time"
 
 	"github.com/square/p2/pkg/health"
@@ -192,7 +193,7 @@ func kvpsToResult(kvs api.KVPairs) ([]*health.Result, error) {
 		tmp := &health.Result{}
 		err = json.Unmarshal(kv.Value, &tmp)
 		if err != nil {
-			return nil, err
+			return nil, util.Errorf("Could not unmarshal health at %s: %v", kv.Key, err)
 		}
 		result[i] = tmp
 	}
