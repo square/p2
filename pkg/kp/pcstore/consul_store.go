@@ -177,6 +177,10 @@ func pcCreateLockPath(podID types.PodID,
 	return path.Join(consulutil.LOCK_TREE, podID.String(), availabilityZone.String(), clusterName.String())
 }
 
+func pcSyncLockPath(id fields.ID, syncerType ConcreteSyncerType) string {
+	return path.Join(consulutil.LOCK_TREE, podClusterTree, id.String(), syncerType.String())
+}
+
 func (s *consulStore) FindWhereLabeled(podID types.PodID,
 	availabilityZone fields.AvailabilityZone,
 	clusterName fields.ClusterName) ([]fields.PodCluster, error) {
@@ -452,6 +456,10 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 			}
 		}
 	}
+}
+
+func (s *consulStore) LockForSync(id fields.ID, syncerType ConcreteSyncerType, session Session) (consulutil.Unlocker, error) {
+	return session.Lock(pcSyncLockPath(id, syncerType))
 }
 
 func kvpsToPC(pairs api.KVPairs) ([]fields.PodCluster, error) {

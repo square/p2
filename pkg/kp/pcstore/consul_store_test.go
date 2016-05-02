@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -272,12 +273,18 @@ func TestWatch(t *testing.T) {
 		t.Fatalf("Expected to get two watched PodClusters, but did not: got %v", len(watched.Clusters))
 	}
 
-	if watched.Clusters[0].ID != pc.ID {
-		t.Fatalf("Expected first watched PodCluster to match %s Pod Cluster ID. Instead was %s", pc.ID, watched.Clusters[0].ID)
-	}
-
-	if watched.Clusters[1].ID != pc2.ID {
-		t.Fatalf("Expected second watched PodCluster to match %s Pod Cluster ID. Instead was %s", pc2.ID, watched.Clusters[1].ID)
+	expectedIDs := []fields.ID{pc.ID, pc2.ID}
+	for _, id := range expectedIDs {
+		found := false
+		for _, pc := range watched.Clusters {
+			if id == pc.ID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected to find id '%s' among watch results, but was not present", id)
+		}
 	}
 }
 
@@ -575,6 +582,37 @@ func TestConcreteSyncer(t *testing.T) {
 	}
 
 	close(changes)
+}
+
+func TestLockForSync(t *testing.T) {
+	id := fields.ID("abc123")
+	store := consulStoreWithFakeKV()
+	syncerType := ConcreteSyncerType("some_syncer")
+	session := kptest.NewSession()
+
+	unlocker, err := store.LockForSync(id, syncerType, session)
+	if err != nil {
+		t.Fatalf("Unexpected error locking pod cluster for sync: %s", err)
+	}
+
+	_, err = store.LockForSync(id, syncerType, session)
+	if err == nil {
+		t.Fatal("Expected an error locking the same cluster for the same syncer type, but there wasn't one")
+	} else {
+		if !consulutil.IsAlreadyLocked(err) {
+			t.Errorf("Expected error to be an already locked error, was %s", err)
+		}
+	}
+
+	err = unlocker.Unlock()
+	if err != nil {
+		t.Errorf("Error unlocking the sync lock: %s", err)
+	}
+
+	_, err = store.LockForSync(id, syncerType, session)
+	if err != nil {
+		t.Fatalf("Unexpected error re-locking pod cluster for sync: %s", err)
+	}
 }
 
 func consulStoreWithFakeKV() *consulStore {

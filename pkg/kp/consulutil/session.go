@@ -149,6 +149,11 @@ func (err AlreadyLockedError) Error() string {
 	return fmt.Sprintf("Key %q is already locked", err.Key)
 }
 
+func IsAlreadyLocked(err error) bool {
+	_, ok := err.(AlreadyLockedError)
+	return ok
+}
+
 // refresh the TTL on this lock
 func (s Session) Renew() error {
 	entry, _, err := s.client.Session().Renew(s.session, nil)
