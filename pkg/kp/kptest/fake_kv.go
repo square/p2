@@ -25,6 +25,13 @@ func (f *FakeKV) Get(key string, opts *api.QueryOptions) (*api.KVPair, *api.Quer
 	return f.kvPairs[key], &api.QueryMeta{}, nil
 }
 
+func (f *FakeKV) Put(kvpair *api.KVPair, opts *api.WriteOptions) (*api.WriteMeta, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.kvPairs[kvpair.Key] = kvpair
+	return &api.WriteMeta{}, nil
+}
+
 func (f *FakeKV) List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
 	var res api.KVPairs
 	for key, val := range f.kvPairs {
