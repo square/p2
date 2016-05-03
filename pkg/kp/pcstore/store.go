@@ -55,7 +55,17 @@ type Store interface {
 	// A convenience method that handles watching pod clusters
 	// as well as the labeled pods in each pod cluster.
 	WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) error
+	LockForSync(id fields.ID, syncerType ConcreteSyncerType, session Session) (consulutil.Unlocker, error)
 }
+
+// There may be multiple implementations of ConcreteSyncer that are interested
+// in pod cluster updates, and wish to acquire a pod cluster lock to guarantee
+// exclusive right to sync an update. ConcreteSyncerType is used to namespace a
+// lock by implementation type so that two different concrete syncer
+// implementations may sync the same pod cluster at the same time
+type ConcreteSyncerType string
+
+func (t ConcreteSyncerType) String() string { return string(t) }
 
 type ConcreteSyncer interface {
 	SyncCluster(pc *fields.PodCluster, pods []labels.Labeled) error

@@ -1,6 +1,9 @@
 package pcstoretest
 
 import (
+	"fmt"
+
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/pcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pc/fields"
@@ -127,4 +130,9 @@ func (p *FakePCStore) WatchAndSync(concrete pcstore.ConcreteSyncer, quit <-chan 
 
 func (p *FakePCStore) WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan pcstore.WatchedPodCluster {
 	return p.watchers[id]
+}
+
+func (p *FakePCStore) LockForSync(id fields.ID, syncerType pcstore.ConcreteSyncerType, session pcstore.Session) (consulutil.Unlocker, error) {
+	key := fmt.Sprintf("%s/%s", id, syncerType)
+	return session.Lock(key)
 }
