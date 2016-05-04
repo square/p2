@@ -30,8 +30,6 @@ type consulStore struct {
 	logger logging.Logger
 }
 
-var ErrNoPodCluster error
-
 var _ Store = &consulStore{}
 
 // NOTE: The "retries" concept is mimicking what is built in rcstore.
@@ -78,7 +76,7 @@ func (s *consulStore) Create(
 		Annotations:      annotations,
 	}
 
-	key, err := s.pcPath(id)
+	key, err := pcPath(id)
 	if err != nil {
 		return fields.PodCluster{}, err
 	}
@@ -125,7 +123,7 @@ func (s *consulStore) setLabelsForPC(pc fields.PodCluster) error {
 }
 
 func (s *consulStore) Get(id fields.ID) (fields.PodCluster, error) {
-	key, err := s.pcPath(id)
+	key, err := pcPath(id)
 	if err != nil {
 		return fields.PodCluster{}, err
 	}
@@ -143,7 +141,7 @@ func (s *consulStore) Get(id fields.ID) (fields.PodCluster, error) {
 }
 
 func (s *consulStore) Delete(id fields.ID) error {
-	key, err := s.pcPath(id)
+	key, err := pcPath(id)
 	if err != nil {
 		return err
 	}
@@ -156,7 +154,7 @@ func (s *consulStore) Delete(id fields.ID) error {
 	return s.applicator.RemoveAllLabels(labels.PC, id.String())
 }
 
-func (s *consulStore) pcPath(pcID fields.ID) (string, error) {
+func pcPath(pcID fields.ID) (string, error) {
 	if pcID == "" {
 		return "", util.Errorf("Path requested for empty pod cluster ID")
 	}
@@ -290,7 +288,7 @@ func (s *consulStore) WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan
 					select {
 					case <-quit:
 						return
-					case outCh <- WatchedPodCluster{PodCluster: nil, Err: ErrNoPodCluster}:
+					case outCh <- WatchedPodCluster{PodCluster: nil, Err: NoPodCluster}:
 					}
 
 					return
@@ -332,26 +330,9 @@ func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) 
 	}()
 
 	// populate the initial clusters, if any provided
-	initial, err := syncer.GetInitialClusters()
+	prevResults, err := s.getInitialClusters(syncer)
 	if err != nil {
-		s.logger.Errorf("Error retrieving initial clusters: %v", err)
 		return err
-	}
-
-	var prevResults WatchedPodClusters
-	for _, id := range initial {
-		existing, err := s.Get(id)
-		if err == ErrNoPodCluster {
-			s.logger.WithField("pc_id", id).Warnf("Could not find initial cluster %v, will call DeleteCluster momentarily", id)
-			existing = fields.PodCluster{
-				ID: id,
-			}
-		} else if err != nil {
-			s.logger.WithField("pc_id", id).Errorln("Error retrieving pod cluster from consul")
-			return err
-		} else {
-			prevResults.Clusters = append(prevResults.Clusters, &existing)
-		}
 	}
 
 	for {
@@ -387,6 +368,31 @@ func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) 
 	}
 
 	return nil
+}
+
+func (s *consulStore) getInitialClusters(syncer ConcreteSyncer) (WatchedPodClusters, error) {
+	var prevResults WatchedPodClusters
+
+	initial, err := syncer.GetInitialClusters()
+	if err != nil {
+		s.logger.Errorf("Error retrieving initial clusters: %v", err)
+		return prevResults, err
+	}
+
+	for _, id := range initial {
+		existing, err := s.Get(id)
+		if err == NoPodCluster {
+			s.logger.WithField("pc_id", id).Warnf("Could not find initial cluster %v, will call DeleteCluster momentarily", id)
+			existing = fields.PodCluster{
+				ID: id,
+			}
+		} else if err != nil {
+			s.logger.WithField("pc_id", id).Errorln("Error retrieving pod cluster from consul")
+			return prevResults, err
+		}
+		prevResults.Clusters = append(prevResults.Clusters, &existing)
+	}
+	return prevResults, nil
 }
 
 // zipResults takes two sets of watched pod clusters and joins them such that they

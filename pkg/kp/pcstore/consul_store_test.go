@@ -590,6 +590,31 @@ func TestConcreteSyncer(t *testing.T) {
 	close(changes)
 }
 
+func TestInitialClusters(t *testing.T) {
+	store := consulStoreWithFakeKV()
+
+	syncer := &fakeSyncer{
+		[]fields.ID{"abc-123"},
+		make(chan fakeSync),
+		make(chan fakeSync),
+		false,
+	}
+
+	clusters, err := store.getInitialClusters(syncer)
+
+	if err != nil {
+		t.Fatalf("Did not expect error to occur getting clusters: %v", err)
+	}
+
+	if len(clusters.Clusters) != 1 {
+		t.Fatalf("Got unexpected number of clusters (%v)", len(clusters.Clusters))
+	}
+
+	if clusters.Clusters[0].ID != fields.ID("abc-123") {
+		t.Fatalf("Got unexpected initial cluster %v", clusters.Clusters[0].ID)
+	}
+}
+
 func TestLockForSync(t *testing.T) {
 	id := fields.ID("abc123")
 	store := consulStoreWithFakeKV()
