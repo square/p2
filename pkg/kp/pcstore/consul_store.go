@@ -331,8 +331,26 @@ func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) 
 		}
 	}()
 
-	// TODO: change to a reality query when status endpoint is set up.
+	// populate the initial clusters, if any provided
+	initial, err := syncer.GetInitialClusters()
+	if err != nil {
+		s.logger.Errorf("Error retrieving initial clusters: %v", err)
+		return err
+	}
+
 	var prevResults WatchedPodClusters
+	for _, id := range initial {
+		existing, err := s.Get(id)
+		if err != nil {
+			s.logger.WithField("pc_id", id).Warnf("Could not find initial cluster %v, will call DeleteCluster momentarily", id)
+			existing = fields.PodCluster{
+				ID: id,
+			}
+		}
+
+		prevResults.Clusters = append(prevResults.Clusters, &existing)
+	}
+
 	for {
 		select {
 		case curResults := <-watchedRes:
@@ -419,6 +437,7 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 			}
 		case change, ok = <-changes:
 			if !ok {
+				s.logger.Debugln("Closing pc update channel")
 				return // we're closed for business
 			}
 

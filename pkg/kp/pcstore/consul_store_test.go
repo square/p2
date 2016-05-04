@@ -419,6 +419,7 @@ type fakeSync struct {
 }
 
 type fakeSyncer struct {
+	initial []fields.ID
 	synced  chan fakeSync
 	deleted chan fakeSync
 	ignore  bool
@@ -441,6 +442,10 @@ func (f *fakeSyncer) DeleteCluster(cluster *fields.PodCluster) error {
 		syncedCluster: cluster,
 	}
 	return nil
+}
+
+func (f *fakeSyncer) GetInitialClusters() ([]fields.ID, error) {
+	return f.initial, nil
 }
 
 func (f *fakeSyncer) drainSyncedAndIgnore() {
@@ -473,6 +478,7 @@ func TestConcreteSyncer(t *testing.T) {
 	store.applicator.SetLabel(labels.POD, "abcd-abc-abc-abcd", "color", "blue")
 
 	syncer := &fakeSyncer{
+		[]fields.ID{},
 		make(chan fakeSync),
 		make(chan fakeSync),
 		false,
@@ -612,6 +618,33 @@ func TestLockForSync(t *testing.T) {
 	_, err = store.LockForSync(id, syncerType, session)
 	if err != nil {
 		t.Fatalf("Unexpected error re-locking pod cluster for sync: %s", err)
+	}
+}
+
+func TestClosedChangeChannelResultsInTermination(t *testing.T) {
+	store := consulStoreWithFakeKV()
+
+	syncer := &fakeSyncer{
+		[]fields.ID{"abc123"},
+		make(chan fakeSync),
+		make(chan fakeSync),
+		false,
+	}
+
+	changes := make(chan podClusterChange)
+	close(changes)
+
+	closed := make(chan struct{})
+
+	go func() {
+		store.handlePCUpdates(syncer, changes)
+		close(closed)
+	}()
+
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Test timed out waiting to observe a terminated PC update routine")
 	}
 }
 
