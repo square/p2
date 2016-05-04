@@ -341,14 +341,17 @@ func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) 
 	var prevResults WatchedPodClusters
 	for _, id := range initial {
 		existing, err := s.Get(id)
-		if err != nil {
+		if err == ErrNoPodCluster {
 			s.logger.WithField("pc_id", id).Warnf("Could not find initial cluster %v, will call DeleteCluster momentarily", id)
 			existing = fields.PodCluster{
 				ID: id,
 			}
+		} else if err != nil {
+			s.logger.WithField("pc_id", id).Errorln("Error retrieving pod cluster from consul")
+			return err
+		} else {
+			prevResults.Clusters = append(prevResults.Clusters, &existing)
 		}
-
-		prevResults.Clusters = append(prevResults.Clusters, &existing)
 	}
 
 	for {
@@ -445,7 +448,7 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 				// if no current cluster exists, but there is a previous cluster,
 				// it means we need to destroy this concrete cluster
 				s.logger.WithField("pc_id", change.previous.ID).Infof("Calling DeleteCluster with %v", change.previous)
-				err := concrete.DeleteCluster(change.previous)
+				err := concrete.DeleteCluster(change.previous.ID)
 				if err != nil {
 					s.logger.Errorf("Deletion of cluster failed! %v", err)
 				} else {

@@ -89,9 +89,12 @@ type ConcreteSyncer interface {
 	// if the cluster was present in a first watch, then absent in a subsequent watch,
 	// then it is assumed it was deleted from the pcstore. Second, if the call
 	// to GetInitialClusters() returns a pod cluster ID that is not present in the very
-	// first watch result, DeleteCluster will be invoked with that pod cluster. In the
-	// latter case, only the pod cluster's ID will be set on the passed `pc` object.
-	DeleteCluster(pc *fields.PodCluster) error
+	// first watch result, DeleteCluster will be invoked with that pod cluster.
+	//
+	// If the passed ID is used to retrieve the pod cluster via store.Get(), it will
+	// return ErrNoPodCluster. Clients should track any relevant metadata to the pod
+	// cluster ID in the status store or in vendor-specific code.
+	DeleteCluster(pc fields.ID) error
 
 	// GetInitialClusters is called at the beginning of the WatchAndSync
 	// routine. See DeleteCluster() for an explanation of how its results are

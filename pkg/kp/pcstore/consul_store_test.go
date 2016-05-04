@@ -437,9 +437,9 @@ func (f *fakeSyncer) SyncCluster(cluster *fields.PodCluster, pods []labels.Label
 	return nil
 }
 
-func (f *fakeSyncer) DeleteCluster(cluster *fields.PodCluster) error {
+func (f *fakeSyncer) DeleteCluster(id fields.ID) error {
 	f.deleted <- fakeSync{
-		syncedCluster: cluster,
+		syncedCluster: &fields.PodCluster{ID: id},
 	}
 	return nil
 }
