@@ -3,7 +3,12 @@
 // wish to use pods.ID, an import cycle is created.
 package types
 
+type NodeName string
 type PodID string
+
+func (n NodeName) String() string {
+	return string(n)
+}
 
 func (p PodID) String() string {
 	return string(p)
