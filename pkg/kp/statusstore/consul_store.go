@@ -30,16 +30,16 @@ func NewConsul(client *api.Client) Store {
 	}
 }
 
-type noStatusError struct {
-	key string
+type NoStatusError struct {
+	Key string
 }
 
-func (n noStatusError) Error() string {
-	return fmt.Sprintf("No status record found at %s", n.key)
+func (n NoStatusError) Error() string {
+	return fmt.Sprintf("No status record found at %s", n.Key)
 }
 
 func IsNoStatus(err error) bool {
-	_, ok := err.(noStatusError)
+	_, ok := err.(NoStatusError)
 	return ok
 }
 
@@ -65,7 +65,7 @@ func (s *consulStore) GetStatus(t ResourceType, id ResourceID, namespace Namespa
 	}
 
 	if pair == nil {
-		return nil, noStatusError{key}
+		return nil, NoStatusError{key}
 	}
 
 	return pair.Value, nil
