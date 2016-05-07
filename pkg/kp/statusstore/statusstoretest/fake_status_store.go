@@ -80,11 +80,35 @@ func (s *FakeStatusStore) GetAllStatusForResource(
 	t statusstore.ResourceType,
 	id statusstore.ResourceID,
 ) (map[statusstore.Namespace]statusstore.Status, error) {
-	panic("not implemented")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ret := make(map[statusstore.Namespace]statusstore.Status)
+	for identifier, status := range s.Statuses {
+		if identifier.resourceType == t && identifier.resourceID == id {
+			ret[identifier.namespace] = status
+		}
+	}
+
+	return ret, nil
 }
 
 func (s *FakeStatusStore) GetAllStatusForResourceType(
 	t statusstore.ResourceType,
 ) (map[statusstore.ResourceID]map[statusstore.Namespace]statusstore.Status, error) {
-	panic("not implemented")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ret := make(map[statusstore.ResourceID]map[statusstore.Namespace]statusstore.Status)
+
+	for identifier, status := range s.Statuses {
+		if identifier.resourceType == t {
+			if ret[identifier.resourceID] == nil {
+				ret[identifier.resourceID] = make(map[statusstore.Namespace]statusstore.Status)
+			}
+
+			ret[identifier.resourceID][identifier.namespace] = status
+		}
+	}
+
+	return ret, nil
 }
