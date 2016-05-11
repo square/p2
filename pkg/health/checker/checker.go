@@ -26,7 +26,7 @@ type ConsulHealthChecker interface {
 		errCh chan<- error,
 		quitCh <-chan struct{})
 	WatchHealth(
-		resultCh chan<- []*health.Result,
+		resultCh chan []*health.Result,
 		errCh chan<- error,
 		quitCh <-chan struct{})
 	Service(serviceID string) (map[string]health.Result, error)
@@ -84,8 +84,9 @@ func (c consulHealthChecker) WatchNodeService(
 }
 
 // Watch the health tree and write the whole subtree on the chan passed by caller
+// the result channel argument _must be buffered_
 func (c consulHealthChecker) WatchHealth(
-	resultCh chan<- []*health.Result,
+	resultCh chan []*health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{},
 ) {
@@ -112,6 +113,7 @@ func (c consulHealthChecker) WatchHealth(
 				}
 			} else {
 				select {
+				case <-resultCh: // we drain this channel prior to attempting a write so that the freshest value is always available
 				case resultCh <- healthResults:
 				default:
 				}

@@ -90,7 +90,6 @@ func TestWatchHealth(t *testing.T) {
 				if res.ID != "ID" {
 					t.Fatalf("Expected ID to match")
 				}
-
 				if res.Node != "node1.example.com" {
 					t.Fatalf("Expected Node to match")
 				}
@@ -102,6 +101,78 @@ func TestWatchHealth(t *testing.T) {
 				}
 				if res.Output != "output" {
 					t.Fatalf("Expected Output to match")
+				}
+				return
+			case err := <-errChan:
+				t.Fatalf("unexpected error: %v", err)
+			case <-time.After(5 * time.Second):
+				t.Error("Timed out waiting for message")
+			}
+		}
+	}()
+
+	// blocks _and_ writes to our chan
+	healthChecker.WatchHealth(retChan, errChan, quitChan)
+}
+
+// The behavior of WatchHealth is such that if two values (t0, t1) are emitted
+// via the underlying watch, only t1 will be seen to an interrupted reader
+func TestWatchHealthFreshness(t *testing.T) {
+	fakeKV := kptest.NewFakeKV()
+	healthChecker := &consulHealthChecker{
+		kv: fakeKV,
+	}
+	_ = healthChecker
+
+	retChan := make(chan []*health.Result)
+	errChan := make(chan error)
+	quitChan := make(chan struct{})
+
+	oldStatus := health.HealthState("passing")
+	newStatus := health.HealthState("critical")
+
+	dummyHealthResultOld := &health.Result{
+		ID:      "ID",
+		Node:    "node1.example.com",
+		Service: "Service",
+		Status:  oldStatus,
+		Output:  "output",
+	}
+	dummyBufOld, err := json.Marshal(dummyHealthResultOld)
+	if err != nil {
+		t.Fatalf("json marshal err: %v", err)
+	}
+	_, _, err = fakeKV.CAS(&api.KVPair{Key: "health/service/node1.example.com", Value: dummyBufOld}, nil)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+
+	dummyHealthResultNew := &health.Result{
+		ID:      "ID",
+		Node:    "node1.example.com",
+		Service: "Service",
+		Status:  newStatus,
+		Output:  "output",
+	}
+	dummyBufNew, err := json.Marshal(dummyHealthResultNew)
+	if err != nil {
+		t.Fatalf("json marshal err: %v", err)
+	}
+	_, _, err = fakeKV.CAS(&api.KVPair{Key: "health/service/node1.example.com", Value: dummyBufNew}, nil)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+
+	go func() {
+		defer func() {
+			quitChan <- struct{}{}
+		}()
+		for {
+			select {
+			case result := <-retChan:
+				res := result[0]
+				if res.Status != newStatus {
+					t.Fatalf("Expected Status to match")
 				}
 				return
 			case err := <-errChan:
