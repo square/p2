@@ -231,6 +231,54 @@ func TestDelete(t *testing.T) {
 	}
 }
 
+func TestList(t *testing.T) {
+	store := consulStoreWithFakeKV()
+	podID := types.PodID("pod_id")
+	az := fields.AvailabilityZone("us-west")
+	clusterName := fields.ClusterName("cluster_name")
+
+	selector := klabels.Everything()
+
+	annotations := fields.Annotations(map[string]interface{}{
+		"foo": "bar",
+	})
+
+	// Create a pod cluster
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
+	if err != nil {
+		t.Fatalf("Unable to create pod cluster: %s", err)
+	}
+
+	// Create another one
+	pc2, err := store.Create(podID+"2", az, clusterName, selector, annotations, kptest.NewSession())
+	if err != nil {
+		t.Fatalf("Unable to create pod cluster: %s", err)
+	}
+
+	// Now test List() and make sure we get both back
+	pcs, err := store.List()
+	if err != nil {
+		t.Fatalf("Unable to list pod clusters: %s", err)
+	}
+
+	if len(pcs) != 2 {
+		t.Fatalf("Expected 2 results but there were %d", len(pcs))
+	}
+
+	for _, foundPC := range pcs {
+		found := false
+		for _, expectedPC := range []fields.ID{pc.ID, pc2.ID} {
+			if foundPC.ID == expectedPC {
+				found = true
+			}
+		}
+
+		if !found {
+			t.Errorf("Didn't find one of the pod clusters in the list")
+		}
+	}
+}
+
 func TestWatch(t *testing.T) {
 	store := consulStoreWithFakeKV()
 	podID := types.PodID("pod_id")
