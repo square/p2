@@ -154,6 +154,15 @@ func (s *consulStore) Delete(id fields.ID) error {
 	return s.applicator.RemoveAllLabels(labels.PC, id.String())
 }
 
+func (s *consulStore) List() ([]fields.PodCluster, error) {
+	pairs, _, err := s.kv.List(podClusterTree+"/", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return kvpsToPC(pairs)
+}
+
 func pcPath(pcID fields.ID) (string, error) {
 	if pcID == "" {
 		return "", util.Errorf("Path requested for empty pod cluster ID")

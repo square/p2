@@ -40,6 +40,7 @@ type Store interface {
 		session Session,
 	) (fields.PodCluster, error)
 	Get(id fields.ID) (fields.PodCluster, error)
+	List() ([]fields.PodCluster, error)
 	// Although pod clusters should always be unique for this 3-ple, this method
 	// will return a slice in cases where duplicates are discovered. It is up to
 	// clients to decide how to respond to such situations.

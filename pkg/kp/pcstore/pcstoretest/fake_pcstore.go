@@ -66,6 +66,14 @@ func (p *FakePCStore) Delete(id fields.ID) error {
 	return nil
 }
 
+func (p *FakePCStore) List() ([]fields.PodCluster, error) {
+	var ret []fields.PodCluster
+	for _, pc := range p.podClusters {
+		ret = append(ret, pc)
+	}
+	return ret, nil
+}
+
 func (p *FakePCStore) FindWhereLabeled(
 	podID types.PodID,
 	availabilityZone fields.AvailabilityZone,
