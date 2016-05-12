@@ -53,7 +53,6 @@ func (hs *healthStore) StartWatch(quitCh <-chan struct{}) {
 			return
 		case err := <-errCh:
 			hs.logger.WithError(err).Errorln("Consul Watch error")
-		default:
 		}
 	}
 }

@@ -30,7 +30,6 @@ func (hc *FakeHealthChecker) WatchHealth(resultCh chan []*health.Result, errCh c
 			resultCh <- result
 		case <-quitCh:
 			return
-		default:
 		}
 	}
 }
