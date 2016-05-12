@@ -22,7 +22,6 @@ func WatchPrefix(
 	done <-chan struct{},
 	outErrors chan<- error,
 ) {
-	// TODO return this for closing on the client side
 	defer close(outPairs)
 	var currentIndex uint64
 	timer := time.NewTimer(time.Duration(0))
