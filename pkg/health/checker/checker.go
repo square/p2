@@ -83,6 +83,7 @@ func (c consulHealthChecker) WatchNodeService(
 	}
 }
 
+// publishLatestHealth is not thread safe - do not start more than one of these per resultCH
 func publishLatestHealth(inCh <-chan api.KVPairs, quitCh <-chan struct{}, resultCh chan []*health.Result) chan error {
 	errCh := make(chan error)
 
@@ -108,7 +109,7 @@ func publishLatestHealth(inCh <-chan api.KVPairs, quitCh <-chan struct{}, result
 			if err != nil {
 				select {
 				case errCh <- err:
-					// The most recent update is in error.
+					// The most recent update is an error.
 					// We go back to the start in this case
 					continue
 				case <-quitCh:
