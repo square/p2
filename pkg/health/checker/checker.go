@@ -129,9 +129,8 @@ func publishLatestHealth(inCh <-chan api.KVPairs, quitCh <-chan struct{}, result
 			select {
 			case <-quitCh:
 				return
-			default:
+			case resultCh <- results:
 			}
-			resultCh <- results
 		}
 	}()
 

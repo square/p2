@@ -51,7 +51,7 @@ func TestService(t *testing.T) {
 	Assert(t).AreEqual(results["node1"], expected, "Unexpected results calling Service()")
 }
 
-func TestPublishHealth(t *testing.T) {
+func TestPublishLatestHealth(t *testing.T) {
 	// This channel imitates the channel that consulutil.WatchPrefix would return
 	healthListChan := make(chan api.KVPairs)
 	quitCh := make(chan struct{})
@@ -92,8 +92,17 @@ func TestPublishHealth(t *testing.T) {
 	newKV := &api.KVPair{Key: "health/service/node1.example.com", Value: hrNewJSON}
 
 	// Basic test that publishLatestHealth drains the channels correctly
-	healthListChan <- api.KVPairs{oldKV}
-	healthListChan <- api.KVPairs{newKV}
+	select {
+	case healthListChan <- api.KVPairs{oldKV}:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Failed to write to chan. Deadlock?")
+	}
+
+	select {
+	case healthListChan <- api.KVPairs{newKV}:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Failed to write to chan. Deadlock?")
+	}
 
 	select {
 	case result := <-outCh:
