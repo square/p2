@@ -23,7 +23,7 @@ func (hc *FakeHealthChecker) Service(serviceID string) (map[string]health.Result
 	panic("not implemented")
 }
 
-func (hc *FakeHealthChecker) WatchHealth(resultCh chan<- []*health.Result, errCh chan<- error, quitCh <-chan struct{}) {
+func (hc *FakeHealthChecker) WatchHealth(resultCh chan []*health.Result, errCh chan<- error, quitCh <-chan struct{}) {
 	for {
 		select {
 		case result := <-hc.healthResults:

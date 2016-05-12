@@ -12,7 +12,7 @@ import (
 	"github.com/square/p2/pkg/types"
 )
 
-// Health can answer questions about the health of a particular pod on a node
+// HealthStore can answer questions about the health of a particular pod on a node
 // It performs this by watching the health tree of consul and caching the result
 type HealthStore interface {
 	StartWatch(quitCh <-chan struct{})
@@ -22,7 +22,7 @@ type HealthStore interface {
 type healthStore struct {
 	cachedHealth  map[cacheKey]*health.Result
 	healthChecker checker.ConsulHealthChecker
-	lock          *sync.RWMutex
+	lock          sync.RWMutex
 	logger        logging.Logger
 }
 
@@ -31,7 +31,7 @@ var _ HealthStore = &healthStore{}
 func NewHealthStore(healthChecker checker.ConsulHealthChecker) HealthStore {
 	return &healthStore{
 		healthChecker: healthChecker,
-		lock:          &sync.RWMutex{},
+		lock:          sync.RWMutex{},
 		logger:        logging.DefaultLogger,
 	}
 }
