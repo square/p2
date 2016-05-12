@@ -265,7 +265,7 @@ func TestBuildRunitServices(t *testing.T) {
 		Id:             "testPod",
 		path:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
-		LogExec:        runit.DefaultLogExec,
+		LogExec:        runit.DefaultLogExec(),
 		FinishExec:     DefaultFinishExec,
 	}
 	hl, sb := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
@@ -287,12 +287,12 @@ func TestBuildRunitServices(t *testing.T) {
 	expectedMap := map[string]runit.ServiceTemplate{
 		executables[0].Service.Name: runit.ServiceTemplate{
 			Run:    executables[0].Exec,
-			Log:    runit.DefaultLogExec,
+			Log:    runit.DefaultLogExec(),
 			Finish: pod.FinishExecForLaunchable(testLaunchable),
 		},
 		executables[1].Service.Name: runit.ServiceTemplate{
 			Run:    executables[1].Exec,
-			Log:    runit.DefaultLogExec,
+			Log:    runit.DefaultLogExec(),
 			Finish: pod.FinishExecForLaunchable(testLaunchable),
 		},
 	}

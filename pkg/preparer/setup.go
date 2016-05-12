@@ -362,7 +362,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	if len(preparerConfig.LogExec) > 0 {
 		logExec = preparerConfig.LogExec
 	} else {
-		logExec = runit.DefaultLogExec
+		logExec = runit.DefaultLogExec()
 	}
 
 	var finishExec []string
