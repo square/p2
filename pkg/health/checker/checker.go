@@ -125,7 +125,6 @@ func publishLatestHealth(inCh <-chan api.KVPairs, quitCh <-chan struct{}, result
 				}
 			default:
 			}
-
 			// Now we check the quit chan and try to write to our resultCh
 			select {
 			case <-quitCh:

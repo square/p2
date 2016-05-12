@@ -1,7 +1,6 @@
 package store
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
@@ -63,7 +62,7 @@ func (hs *healthStore) cache(results []*health.Result) {
 	// duplicate key is undefined behavior
 	for _, result := range results {
 		result := result
-		tmpCache[computeCacheKey(result.ID, types.NodeName(result.Node))] = result
+		tmpCache[newCacheKey(result.ID, types.NodeName(result.Node))] = result
 	}
 
 	hs.lock.Lock()
@@ -73,7 +72,7 @@ func (hs *healthStore) cache(results []*health.Result) {
 }
 
 func (hs *healthStore) Fetch(podID types.PodID, node string) *health.Result {
-	cacheKey := computeCacheKey(podID, types.NodeName(node))
+	cacheKey := newCacheKey(podID, types.NodeName(node))
 
 	hs.lock.RLock()
 	defer hs.lock.RUnlock()
@@ -86,8 +85,11 @@ func (hs *healthStore) Fetch(podID types.PodID, node string) *health.Result {
 	return res
 }
 
-type cacheKey string
+type cacheKey struct {
+	pod  types.PodID
+	node types.NodeName
+}
 
-func computeCacheKey(podID types.PodID, node types.NodeName) cacheKey {
-	return cacheKey(fmt.Sprintf("%s/%s", podID, node))
+func newCacheKey(podID types.PodID, node types.NodeName) cacheKey {
+	return cacheKey{pod: podID, node: node}
 }

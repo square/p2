@@ -61,6 +61,18 @@ func TestStartWatchBasic(t *testing.T) {
 		t.Errorf("expected cache to start empty, found %v", result)
 	}
 
+	// Write to this channel three times to ensure that the 1st write is processed before
+	// we validate the behaviour. Testing concurrent code is difficult
+	healthResults <- []*health.Result{
+		&health.Result{ID: podID1, Node: node},
+		&health.Result{ID: podID2, Node: node},
+	}
+
+	healthResults <- []*health.Result{
+		&health.Result{ID: podID1, Node: node},
+		&health.Result{ID: podID2, Node: node},
+	}
+
 	healthResults <- []*health.Result{
 		&health.Result{ID: podID1, Node: node},
 		&health.Result{ID: podID2, Node: node},
