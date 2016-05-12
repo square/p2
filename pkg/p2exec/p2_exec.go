@@ -1,5 +1,7 @@
 package p2exec
 
+const DefaultP2Exec = "/usr/local/bin/p2-exec"
+
 // Struct that can be used to build an invocation of p2-exec with any
 // applicable flags
 type P2ExecArgs struct {

@@ -49,10 +49,13 @@ const (
 // trailing space must be used.
 const yamlSeparator = "--- "
 
-var DefaultLogExec = p2exec.P2ExecArgs{
-	User:    "nobody",
-	Command: []string{"svlogd", "-tt", "./main"},
-}.CommandLine()
+func DefaultLogExec() []string {
+	args := p2exec.P2ExecArgs{
+		User:    "nobody",
+		Command: []string{"svlogd", "-tt", "./main"},
+	}.CommandLine()
+	return append([]string{p2exec.DefaultP2Exec}, args...)
+}
 
 type ServiceTemplate struct {
 	Run      []string `yaml:"run"`
@@ -98,10 +101,11 @@ func (s ServiceTemplate) logScript() ([]byte, error) {
 	}
 
 	log := s.Log
+
 	if len(log) == 0 {
 		// use a default log script that makes a logdir, chowns it and execs
 		// svlogd into it
-		log = DefaultLogExec
+		log = DefaultLogExec()
 	}
 
 	args, err := yaml.Marshal(log)
