@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
+
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
@@ -87,7 +89,7 @@ func main() {
 
 func InstallConsul(consulPod *pods.Pod, consulManifest pods.Manifest) error {
 	// Inject servicebuilder?
-	err := consulPod.Install(consulManifest)
+	err := consulPod.Install(consulManifest, auth.NoopVerifier())
 	if err != nil {
 		return util.Errorf("Can't install Consul, aborting: %s", err)
 	}
@@ -187,7 +189,7 @@ func ScheduleForThisHost(manifest pods.Manifest, alsoReality bool) error {
 
 func InstallBaseAgent(agentManifest pods.Manifest) error {
 	agentPod := pods.NewPod(agentManifest.ID(), pods.PodPath(*podRoot, agentManifest.ID()))
-	err := agentPod.Install(agentManifest)
+	err := agentPod.Install(agentManifest, auth.NoopVerifier())
 	if err != nil {
 		return err
 	}

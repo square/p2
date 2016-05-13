@@ -21,6 +21,7 @@ import (
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/util/size"
@@ -50,6 +51,7 @@ type Preparer struct {
 	maxLaunchableDiskUsage size.ByteCount
 	finishExec             []string
 	logExec                []string
+	artifactVerifier       auth.ArtifactVerifier
 }
 
 type PreparerConfig struct {
@@ -65,6 +67,7 @@ type PreparerConfig struct {
 	StatusPort             int                    `yaml:"status_port"`
 	StatusSocket           string                 `yaml:"status_socket"`
 	Auth                   map[string]interface{} `yaml:"auth,omitempty"`
+	ArtifactAuth           map[string]interface{} `yaml:"artifact_auth,omitempty"`
 	ExtraLogDestinations   []LogDestination       `yaml:"extra_log_destinations,omitempty"`
 	LogLevel               string                 `yaml:"log_level,omitempty"`
 	MaxLaunchableDiskUsage string                 `yaml:"max_launchable_disk_usage"`
@@ -75,6 +78,8 @@ type PreparerConfig struct {
 	// source files.
 	Params param.Values `yaml:"params"`
 }
+
+// --- Deployer ACL strategies ---
 
 // Configuration fields for the "keyring" auth type
 type KeyringAuth struct {
@@ -88,6 +93,14 @@ type UserAuth struct {
 	Type             string
 	KeyringPath      string `yaml:"keyring"`
 	DeployPolicyPath string `yaml:"deploy_policy"`
+}
+
+// --- Artifact verification strategies ---
+
+type ManifestVerification struct {
+	Type           string
+	KeyringPath    string   `yaml:"keyring,omitempty"`
+	AllowedSigners []string `yaml:"allowed_signers"`
 }
 
 // LoadConfig reads the preparer's configuration from a file.
@@ -279,7 +292,75 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		logger.Logger.Level = lv
 	}
 
-	var err error
+	authPolicy, err := getDeployerAuth(preparerConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	artifactVerifier, err := getArtifactVerifier(preparerConfig, &logger)
+	if err != nil {
+		return nil, err
+	}
+
+	store, err := preparerConfig.GetStore()
+	if err != nil {
+		return nil, err
+	}
+
+	maxLaunchableDiskUsage := launch.DefaultAllowableDiskUsage
+	if preparerConfig.MaxLaunchableDiskUsage != "" {
+		maxLaunchableDiskUsage, err = size.Parse(preparerConfig.MaxLaunchableDiskUsage)
+		if err != nil {
+			return nil, util.Errorf("Unparseable value for max_launchable_disk_usage %v, %v", preparerConfig.MaxLaunchableDiskUsage, err)
+		}
+	}
+
+	listener := HookListener{
+		Intent:           store,
+		HookPrefix:       kp.HOOK_TREE,
+		Node:             preparerConfig.NodeName,
+		DestinationDir:   path.Join(pods.DEFAULT_PATH, "hooks"),
+		ExecDir:          preparerConfig.HooksDirectory,
+		Logger:           logger,
+		authPolicy:       authPolicy,
+		artifactVerifier: artifactVerifier,
+	}
+
+	err = os.MkdirAll(preparerConfig.PodRoot, 0755)
+	if err != nil {
+		return nil, util.Errorf("Could not create preparer pod directory: %s", err)
+	}
+
+	var logExec []string
+	if len(preparerConfig.LogExec) > 0 {
+		logExec = preparerConfig.LogExec
+	} else {
+		logExec = runit.DefaultLogExec()
+	}
+
+	var finishExec []string
+	if len(preparerConfig.FinishExec) > 0 {
+		finishExec = preparerConfig.FinishExec
+	} else {
+		finishExec = pods.DefaultFinishExec
+	}
+
+	return &Preparer{
+		node:                   preparerConfig.NodeName,
+		store:                  store,
+		hooks:                  hooks.Hooks(preparerConfig.HooksDirectory, &logger),
+		hookListener:           listener,
+		Logger:                 logger,
+		podRoot:                preparerConfig.PodRoot,
+		authPolicy:             authPolicy,
+		maxLaunchableDiskUsage: maxLaunchableDiskUsage,
+		finishExec:             finishExec,
+		logExec:                logExec,
+		artifactVerifier:       artifactVerifier,
+	}, nil
+}
+
+func getDeployerAuth(preparerConfig *PreparerConfig) (auth.Policy, error) {
 	var authPolicy auth.Policy
 	switch t, _ := preparerConfig.Auth["type"].(string); t {
 	case "":
@@ -329,59 +410,22 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		}
 		return nil, util.Errorf("unrecognized auth type")
 	}
+	return authPolicy, nil
+}
 
-	store, err := preparerConfig.GetStore()
-	if err != nil {
-		return nil, err
-	}
-
-	maxLaunchableDiskUsage := launch.DefaultAllowableDiskUsage
-	if preparerConfig.MaxLaunchableDiskUsage != "" {
-		maxLaunchableDiskUsage, err = size.Parse(preparerConfig.MaxLaunchableDiskUsage)
+func getArtifactVerifier(preparerConfig *PreparerConfig, logger *logging.Logger) (auth.ArtifactVerifier, error) {
+	var err error
+	switch t, _ := preparerConfig.Auth["type"].(string); t {
+	case "", auth.VerifyNone:
+		return auth.NoopVerifier(), nil
+	case auth.VerifyManifest:
+		var verif ManifestVerification
+		err = castYaml(preparerConfig.ArtifactAuth, &verif)
 		if err != nil {
-			return nil, util.Errorf("Unparseable value for max_launchable_disk_usage %v, %v", preparerConfig.MaxLaunchableDiskUsage, err)
+			return nil, util.Errorf("error configuring artifact verification: %v", err)
 		}
+		return auth.NewBuildArtifactVerifier(verif.KeyringPath, uri.DefaultFetcher, logger)
+	default:
+		return nil, util.Errorf("Unrecognized artifact verification type: %v", t)
 	}
-
-	listener := HookListener{
-		Intent:         store,
-		HookPrefix:     kp.HOOK_TREE,
-		Node:           preparerConfig.NodeName,
-		DestinationDir: path.Join(pods.DEFAULT_PATH, "hooks"),
-		ExecDir:        preparerConfig.HooksDirectory,
-		Logger:         logger,
-		authPolicy:     authPolicy,
-	}
-
-	err = os.MkdirAll(preparerConfig.PodRoot, 0755)
-	if err != nil {
-		return nil, util.Errorf("Could not create preparer pod directory: %s", err)
-	}
-
-	var logExec []string
-	if len(preparerConfig.LogExec) > 0 {
-		logExec = preparerConfig.LogExec
-	} else {
-		logExec = runit.DefaultLogExec()
-	}
-
-	var finishExec []string
-	if len(preparerConfig.FinishExec) > 0 {
-		finishExec = preparerConfig.FinishExec
-	} else {
-		finishExec = pods.DefaultFinishExec
-	}
-
-	return &Preparer{
-		node:                   preparerConfig.NodeName,
-		store:                  store,
-		hooks:                  hooks.Hooks(preparerConfig.HooksDirectory, &logger),
-		hookListener:           listener,
-		Logger:                 logger,
-		podRoot:                preparerConfig.PodRoot,
-		authPolicy:             authPolicy,
-		maxLaunchableDiskUsage: maxLaunchableDiskUsage,
-		finishExec:             finishExec,
-		logExec:                logExec,
-	}, nil
 }

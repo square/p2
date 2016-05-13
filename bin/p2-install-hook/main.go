@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
+
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
@@ -31,7 +33,9 @@ func main() {
 	// if the event is the empty string (global hook), then that path segment
 	// will be cleaned out
 	pod := pods.NewPod(manifest.ID(), pods.PodPath(filepath.Join(*podRoot, "hooks", *hookType), manifest.ID()))
-	err = pod.Install(manifest)
+
+	// for now use noop verifier in this CLI
+	err = pod.Install(manifest, auth.NoopVerifier())
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)
 	}

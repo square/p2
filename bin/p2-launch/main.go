@@ -42,7 +42,7 @@ func main() {
 	}
 
 	pod := pods.NewPod(manifest.ID(), pods.PodPath(*podRoot, manifest.ID()))
-	err = pod.Install(manifest)
+	err = pod.Install(manifest, auth.NoopVerifier())
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)
 	}

@@ -22,7 +22,7 @@ const svlogdExec = "svlogd -tt ./main"
 type Pod interface {
 	hooks.Pod
 	Launch(pods.Manifest) (bool, error)
-	Install(pods.Manifest) error
+	Install(pods.Manifest, auth.ArtifactVerifier) error
 	Uninstall() error
 	Verify(pods.Manifest, auth.Policy) error
 	Halt(pods.Manifest) (bool, error)
@@ -275,7 +275,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 
 	logger.NoFields().Infoln("Installing pod and launchables")
 
-	err := pod.Install(pair.Intent)
+	err := pod.Install(pair.Intent, p.artifactVerifier)
 	if err != nil {
 		// install failed, abort and retry
 		logger.WithError(err).Errorln("Install failed")

@@ -373,7 +373,7 @@ func (pod *Pod) Uninstall() error {
 // Install will ensure that executables for all required services are present on the host
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
-func (pod *Pod) Install(manifest Manifest) error {
+func (pod *Pod) Install(manifest Manifest, artifactVerifier auth.ArtifactVerifier) error {
 	podHome := pod.path
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
@@ -391,7 +391,7 @@ func (pod *Pod) Install(manifest Manifest) error {
 	}
 
 	for _, launchable := range launchables {
-		err := launchable.Install()
+		err := launchable.Install(artifactVerifier)
 		if err != nil {
 			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
 			return err

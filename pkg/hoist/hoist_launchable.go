@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/artifact"
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/gzip"
 	"github.com/square/p2/pkg/launch"
@@ -273,7 +274,7 @@ func (hl *Launchable) Installed() bool {
 	return err == nil
 }
 
-func (hl *Launchable) Install() error {
+func (hl *Launchable) Install(verifier auth.ArtifactVerifier) error {
 	if hl.Installed() {
 		// install is idempotent, no-op if already installed
 		return nil
@@ -286,6 +287,7 @@ func (hl *Launchable) Install() error {
 	}
 	defer os.Remove(artifactFile.Name())
 	defer artifactFile.Close()
+
 	remoteData, err := hl.Fetcher.Open(hl.Location)
 	if err != nil {
 		return err
@@ -295,6 +297,18 @@ func (hl *Launchable) Install() error {
 	if err != nil {
 		return err
 	}
+	// rewind once so we can ask the verifier
+	_, err = artifactFile.Seek(0, os.SEEK_SET)
+	if err != nil {
+		return err
+	}
+
+	err = verifier.VerifyHoistArtifact(artifactFile, hl.Location)
+	if err != nil {
+		return err
+	}
+
+	// rewind a second time to allow the archive to be unpacked
 	_, err = artifactFile.Seek(0, os.SEEK_SET)
 	if err != nil {
 		return err
