@@ -140,33 +140,38 @@ func publishLatestHealth(inCh <-chan api.KVPairs, quitCh <-chan struct{}, result
 
 // Watch the health tree and write the whole subtree on the chan passed by caller
 // the result channel argument _must be buffered_
+// Any errors are passed, best effort, over errCh
 func (c consulHealthChecker) WatchHealth(
 	resultCh chan []*health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{},
 ) {
-	defer close(resultCh)
-
 	// closed by watchPrefix when we close quitWatch
 	inCh := make(chan api.KVPairs)
-	go consulutil.WatchPrefix("health/", c.kv, inCh, quitCh, errCh)
-	errCh = publishLatestHealth(inCh, quitCh, resultCh)
+	watchErrCh := make(chan error)
+	go consulutil.WatchPrefix("health/", c.kv, inCh, quitCh, watchErrCh)
+	publishErrCh := publishLatestHealth(inCh, quitCh, resultCh)
 
-	var open bool
-	for {
+	go func() {
 		select {
 		case <-quitCh:
 			return
-		case _, open = <-inCh:
-			if !open {
+		case err := <-watchErrCh:
+			select {
+			case errCh <- err:
+			case <-quitCh:
 				return
+			default:
 			}
-		case _, open = <-resultCh:
-			if !open {
+		case err := <-publishErrCh:
+			select {
+			case errCh <- err:
+			case <-quitCh:
 				return
+			default:
 			}
 		}
-	}
+	}()
 }
 
 func (c consulHealthChecker) WatchService(
