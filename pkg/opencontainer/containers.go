@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/gzip"
 	"github.com/square/p2/pkg/launch"
@@ -169,7 +170,7 @@ func (l *Launchable) Installed() bool {
 }
 
 // Install ...
-func (l *Launchable) Install() (returnedError error) {
+func (l *Launchable) Install(_ auth.ArtifactVerifier) (returnedError error) {
 	if l.Installed() {
 		return nil
 	}

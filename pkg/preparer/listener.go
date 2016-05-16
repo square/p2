@@ -34,11 +34,12 @@ type HookListener struct {
 	// hostname, however there are future plans to change this behavior, so
 	// the hostname is passed to WatchPods and ListPods even though it is
 	// ignored
-	Node           string // The host to watch for hooks for
-	DestinationDir string // The destination directory for downloaded pods that will act as hooks
-	ExecDir        string // The directory that will actually be executed by the HookDir
-	Logger         logging.Logger
-	authPolicy     auth.Policy
+	Node             string // The host to watch for hooks for
+	DestinationDir   string // The destination directory for downloaded pods that will act as hooks
+	ExecDir          string // The directory that will actually be executed by the HookDir
+	Logger           logging.Logger
+	authPolicy       auth.Policy
+	artifactVerifier auth.ArtifactVerifier
 }
 
 // Sync keeps manifests located at the hook pods in the intent store.
@@ -141,7 +142,7 @@ func (l *HookListener) installHook(result kp.ManifestResult) error {
 	}
 
 	// The manifest is new, go ahead and install
-	err = hookPod.Install(result.Manifest)
+	err = hookPod.Install(result.Manifest, l.artifactVerifier)
 	if err != nil {
 		sub.WithError(err).Errorln("Could not install hook")
 		return err

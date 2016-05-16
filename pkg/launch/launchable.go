@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util/size"
@@ -54,7 +55,7 @@ type Launchable interface {
 	Fetcher() uri.Fetcher
 
 	// Install acquires the launchable and makes it ready to be launched.
-	Install() error
+	Install(verifier auth.ArtifactVerifier) error
 	// PostActive runs a Hoist-specific "post-activate" script in the launchable.
 	PostActivate() (string, error)
 	// Launch begins execution.

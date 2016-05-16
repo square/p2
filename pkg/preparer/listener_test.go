@@ -93,12 +93,13 @@ func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
 	})
 
 	listener := HookListener{
-		Intent:         fakeIntent,
-		HookPrefix:     hookPrefix,
-		ExecDir:        execDir,
-		DestinationDir: destDir,
-		Logger:         logging.DefaultLogger,
-		authPolicy:     auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil},
+		Intent:           fakeIntent,
+		HookPrefix:       hookPrefix,
+		ExecDir:          execDir,
+		DestinationDir:   destDir,
+		Logger:           logging.DefaultLogger,
+		authPolicy:       auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil},
+		artifactVerifier: auth.NopVerifier(),
 	}
 
 	return listener, fakeIntent.quit

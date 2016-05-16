@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/artifact"
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/gzip"
 	"github.com/square/p2/pkg/launch"
@@ -273,7 +274,7 @@ func (hl *Launchable) Installed() bool {
 	return err == nil
 }
 
-func (hl *Launchable) Install() error {
+func (hl *Launchable) Install(verifier auth.ArtifactVerifier) error {
 	if hl.Installed() {
 		// install is idempotent, no-op if already installed
 		return nil
@@ -286,6 +287,7 @@ func (hl *Launchable) Install() error {
 	}
 	defer os.Remove(artifactFile.Name())
 	defer artifactFile.Close()
+
 	remoteData, err := hl.Fetcher.Open(hl.Location)
 	if err != nil {
 		return err
@@ -293,11 +295,23 @@ func (hl *Launchable) Install() error {
 	defer remoteData.Close()
 	_, err = io.Copy(artifactFile, remoteData)
 	if err != nil {
-		return err
+		return util.Errorf("Could not copy artifact locally: %v", err)
 	}
+	// rewind once so we can ask the verifier
 	_, err = artifactFile.Seek(0, os.SEEK_SET)
 	if err != nil {
+		return util.Errorf("Could not reset artifact file position for verification: %v", err)
+	}
+
+	err = verifier.VerifyHoistArtifact(artifactFile, hl.Location)
+	if err != nil {
 		return err
+	}
+
+	// rewind a second time to allow the archive to be unpacked
+	_, err = artifactFile.Seek(0, os.SEEK_SET)
+	if err != nil {
+		return util.Errorf("Could not reset artifact file position after verification: %v", err)
 	}
 
 	err = gzip.ExtractTarGz(hl.RunAs, artifactFile, hl.InstallDir())
