@@ -96,7 +96,15 @@ type UserAuth struct {
 }
 
 // --- Artifact verification strategies ---
-
+//
+// The type matches one of the auth.Verify* constants
+//
+// "type: none"     - no artifact verification is done
+// "type: build"    - checks that builds have a corresponding signature
+// "type: manifest" - checks that builds have corresponding digest manifest and
+//  						      manifest signature files.
+// "type: either"   - checks that one of "build" or "manifest" strategies pass.
+//
 type ManifestVerification struct {
 	Type           string
 	KeyringPath    string   `yaml:"keyring,omitempty"`
@@ -414,17 +422,29 @@ func getDeployerAuth(preparerConfig *PreparerConfig) (auth.Policy, error) {
 }
 
 func getArtifactVerifier(preparerConfig *PreparerConfig, logger *logging.Logger) (auth.ArtifactVerifier, error) {
+	var verif ManifestVerification
 	var err error
 	switch t, _ := preparerConfig.Auth["type"].(string); t {
 	case "", auth.VerifyNone:
 		return auth.NoopVerifier(), nil
 	case auth.VerifyManifest:
-		var verif ManifestVerification
 		err = castYaml(preparerConfig.ArtifactAuth, &verif)
 		if err != nil {
 			return nil, util.Errorf("error configuring artifact verification: %v", err)
 		}
-		return auth.NewBuildArtifactVerifier(verif.KeyringPath, uri.DefaultFetcher, logger)
+		return auth.NewBuildManifestVerifier(verif.KeyringPath, uri.DefaultFetcher, logger)
+	case auth.VerifyBuild:
+		err = castYaml(preparerConfig.ArtifactAuth, &verif)
+		if err != nil {
+			return nil, util.Errorf("error configuring artifact verification: %v", err)
+		}
+		return auth.NewBuildVerifier(verif.KeyringPath, uri.DefaultFetcher, logger)
+	case auth.VerifyEither:
+		err = castYaml(preparerConfig.ArtifactAuth, &verif)
+		if err != nil {
+			return nil, util.Errorf("error configuring artifact verification: %v", err)
+		}
+		return auth.NewCompositeVerifier(verif.KeyringPath, uri.DefaultFetcher, logger)
 	default:
 		return nil, util.Errorf("Unrecognized artifact verification type: %v", t)
 	}

@@ -21,6 +21,8 @@ import (
 
 const VerifyNone = "none"
 const VerifyManifest = "manifest"
+const VerifyBuild = "build"
+const VerifyEither = "either"
 
 // The artifact verifier is responsible for checking that the artifact
 // was created by a trusted entity.
@@ -36,6 +38,41 @@ func (n *noopVerifier) VerifyHoistArtifact(_ *os.File, _ string) error {
 
 func NoopVerifier() ArtifactVerifier {
 	return &noopVerifier{}
+}
+
+type CompositeVerifier struct {
+	manVerifier   *BuildManifestVerifier
+	buildVerifier *BuildVerifier
+}
+
+// The composite verifier executes verification for both the BuildManifestVerifier and the BuildVerifier.
+// Only one of the two need to pas for verification to pass.
+func NewCompositeVerifier(keyringPath string, fetcher uri.Fetcher, logger *logging.Logger) (*CompositeVerifier, error) {
+	manV, err := NewBuildManifestVerifier(keyringPath, fetcher, logger)
+	if err != nil {
+		return nil, err
+	}
+	buildV, err := NewBuildVerifier(keyringPath, fetcher, logger)
+	if err != nil {
+		return nil, err
+	}
+	return &CompositeVerifier{
+		manVerifier:   manV,
+		buildVerifier: buildV,
+	}, nil
+}
+
+// Attempt manifest verification. If it fails, fallback to the build verifier.
+func (b *CompositeVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation string) error {
+	err := b.manVerifier.VerifyHoistArtifact(localCopy, artifactLocation)
+	if err != nil {
+		_, err = localCopy.Seek(0, os.SEEK_SET)
+		if err != nil {
+			return err
+		}
+		err = b.buildVerifier.VerifyHoistArtifact(localCopy, artifactLocation)
+	}
+	return err
 }
 
 // BuildManifestVerifier ensures that the given launchable's location
@@ -63,7 +100,7 @@ type BuildManifestVerifier struct {
 	logger  *logging.Logger
 }
 
-func NewBuildArtifactVerifier(keyringPath string, fetcher uri.Fetcher, logger *logging.Logger) (*BuildManifestVerifier, error) {
+func NewBuildManifestVerifier(keyringPath string, fetcher uri.Fetcher, logger *logging.Logger) (*BuildManifestVerifier, error) {
 	keyring, err := LoadKeyring(keyringPath)
 	if err != nil {
 		return nil, util.Errorf("Could not load artifact verification keyring from %v: %v", keyringPath, err)
@@ -114,7 +151,7 @@ func (b *BuildManifestVerifier) VerifyHoistArtifact(localCopy *os.File, artifact
 			return err
 		}
 
-		if err = b.verifySigned(manifestBytes, signatureBytes); err != nil {
+		if err = verifySigned(b.keyring, manifestBytes, signatureBytes); err != nil {
 			return err
 		}
 
@@ -122,7 +159,7 @@ func (b *BuildManifestVerifier) VerifyHoistArtifact(localCopy *os.File, artifact
 	}
 }
 
-func (b *BuildManifestVerifier) verifySigned(manifestBytes, signatureBytes []byte) error {
+func verifySigned(keyring openpgp.KeyRing, signedBytes, signatureBytes []byte) error {
 	// permit an armored detached signature
 	block, err := armor.Decode(bytes.NewBuffer(signatureBytes))
 	if err == nil {
@@ -132,9 +169,9 @@ func (b *BuildManifestVerifier) verifySigned(manifestBytes, signatureBytes []byt
 		}
 	}
 	// check that the manifest was adequately signed by our signer
-	_, err = checkDetachedSignature(b.keyring, manifestBytes, signatureBytes)
+	_, err = checkDetachedSignature(keyring, signedBytes, signatureBytes)
 	if err != nil {
-		return fmt.Errorf("Could not verify artifact manifest against the signature: %v", err)
+		return fmt.Errorf("Could not verify data against the signature: %v", err)
 	}
 	return nil
 }
@@ -159,4 +196,67 @@ func (b *BuildManifestVerifier) checkMatchingDigest(localCopy *os.File, manifest
 		return fmt.Errorf("Artifact hex digest did not match the given manifest: expected %v, was actually %v", realDigest, manifest.ArtifactDigest)
 	}
 	return nil
+}
+
+// BuildVerifier is a simple variant of the ArtifactVerifier interface that ensures that the tarball
+// has a matching detached signature matching that of the tarball. It is a simpler version of the
+// BuildManifestVerifier.
+//
+// If the artifact is located here:
+// https://foo.bar.baz/artifacts/myapp_abc123.tar.gz
+//
+// Then its signature is located here:
+// https://foo.bar.baz/artifacts/myapp_abc123.tar.gz.sig
+type BuildVerifier struct {
+	keyring openpgp.KeyRing
+	fetcher uri.Fetcher
+	logger  *logging.Logger
+}
+
+func NewBuildVerifier(keyringPath string, fetcher uri.Fetcher, logger *logging.Logger) (*BuildVerifier, error) {
+	keyring, err := LoadKeyring(keyringPath)
+	if err != nil {
+		return nil, util.Errorf("Could not load artifact verification keyring from %v: %v", keyringPath, err)
+	}
+	return &BuildVerifier{
+		keyring: keyring,
+		fetcher: fetcher,
+		logger:  logger,
+	}, nil
+}
+
+func (b *BuildVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation string) error {
+	u, err := url.Parse(artifactLocation)
+	if err != nil {
+		return err
+	}
+	switch u.Scheme {
+	default:
+		return fmt.Errorf("%v does not have a recognized scheme, cannot verify signature", artifactLocation)
+	case "http", "https", "file":
+		dir, err := ioutil.TempDir("", "artifact_verification")
+		if err != nil {
+			return fmt.Errorf("Could not create temporary directory for manifest file: %v", err)
+		}
+		defer os.RemoveAll(dir)
+
+		sigURI := fmt.Sprintf("%v.sig", artifactLocation)
+		sigPath := filepath.Join(dir, "sig")
+		err = b.fetcher.CopyLocal(sigURI, sigPath)
+		if err != nil {
+			return fmt.Errorf("Could not fetch artifact signature from %v: %v", sigURI, err)
+		}
+
+		sigData, err := ioutil.ReadFile(sigPath)
+		if err != nil {
+			return fmt.Errorf("Could not read downloaded signature at %v: %v", sigPath, err)
+		}
+
+		signedBytes, err := ioutil.ReadAll(localCopy)
+		if err != nil {
+			return fmt.Errorf("Could not read the artifact into memory: %v", err)
+		}
+
+		return verifySigned(b.keyring, signedBytes, sigData)
+	}
 }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -22,13 +24,7 @@ var (
 
 func main() {
 	kingpin.Version(version.VERSION)
-	k := kingpin.Parse()
-	log.Println(k)
-
-	verifier, err := auth.NewBuildArtifactVerifier(*gpgKeyringPath, uri.DefaultFetcher, &logging.DefaultLogger)
-	if err != nil {
-		log.Fatalln(err)
-	}
+	kingpin.Parse()
 
 	dir, err := ioutil.TempDir("", "verify")
 	defer os.RemoveAll(dir)
@@ -59,10 +55,41 @@ func main() {
 		locationForSignature = *originalLocation
 	}
 
-	if err = verifier.VerifyHoistArtifact(localCopy, locationForSignature); err != nil {
-		log.Fatalln(err)
+	res := struct {
+		SignedManifest bool   `json:"signed_manifest"`
+		SignedBuild    bool   `json:"signed_build"`
+		ManifestErr    string `json:"manifest_error,omitempty"`
+		BuildErr       string `json:"build_error,omitempty"`
+	}{}
+
+	manifestVerifier, buildErr := auth.NewBuildManifestVerifier(*gpgKeyringPath, uri.DefaultFetcher, &logging.DefaultLogger)
+	buildVerifier, manErr := auth.NewBuildVerifier(*gpgKeyringPath, uri.DefaultFetcher, &logging.DefaultLogger)
+
+	if buildErr == nil {
+		err := buildVerifier.VerifyHoistArtifact(localCopy, locationForSignature)
+		if err == nil {
+			res.SignedBuild = true
+		} else {
+			res.BuildErr = err.Error()
+		}
+	} else {
+		res.BuildErr = buildErr.Error()
 	}
 
-	log.Println("OK")
+	_, _ = localCopy.Seek(0, os.SEEK_SET)
+
+	if manErr == nil {
+		err := manifestVerifier.VerifyHoistArtifact(localCopy, locationForSignature)
+		if err == nil {
+			res.SignedManifest = true
+		} else {
+			res.ManifestErr = err.Error()
+		}
+	} else {
+		res.ManifestErr = manErr.Error()
+	}
+
+	marshaled, _ := json.Marshal(res)
+	fmt.Println(string(marshaled))
 	os.Exit(0)
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
@@ -38,7 +39,7 @@ func TestInstall(t *testing.T) {
 		RootDir:   launchableHome,
 	}
 
-	err = launchable.Install()
+	err = launchable.Install(auth.NoopVerifier())
 	Assert(t).IsNil(err, "there should not have been an error when installing")
 
 	Assert(t).AreEqual(

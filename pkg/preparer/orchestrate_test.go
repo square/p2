@@ -47,7 +47,7 @@ func (t *TestPod) Launch(manifest pods.Manifest) (bool, error) {
 	return t.launchSuccess, nil
 }
 
-func (t *TestPod) Install(manifest pods.Manifest) error {
+func (t *TestPod) Install(manifest pods.Manifest, _ auth.ArtifactVerifier) error {
 	t.installed = true
 	return t.installErr
 }
