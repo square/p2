@@ -122,6 +122,16 @@ func signManifest(manifestPath string, workdir string) (string, error) {
 			"--clearsign", manifestPath).Run()
 }
 
+func signBuild(artifactPath string) error {
+	sigLoc := fmt.Sprintf("%s.sig", artifactPath)
+	return exec.Command("gpg", "--no-default-keyring",
+		"--keyring", util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
+		"--secret-keyring", util.From(runtime.Caller(0)).ExpandPath("secring.gpg"),
+		"-u", "p2universe",
+		"--out", sigLoc,
+		"--detach-sign", artifactPath).Run()
+}
+
 func generatePreparerPod(workdir string) (string, error) {
 	// build the artifact from HEAD
 	err := exec.Command("go", "build", "github.com/square/p2/bin/p2-preparer").Run()
@@ -136,12 +146,16 @@ func generatePreparerPod(workdir string) (string, error) {
 	// the test number forces the pod manifest to change every test run.
 	testNumber := fmt.Sprintf("test=%d", rand.Intn(2000000000))
 	cmd := exec.Command("p2-bin2pod", "--work-dir", workdir, "--id", "p2-preparer", "--config", fmt.Sprintf("node_name=%s", hostname), "--config", testNumber, wd+"/p2-preparer")
-	manifestPath, err := executeBin2Pod(cmd)
+	prepBin2Pod, err := executeBin2Pod(cmd)
 	if err != nil {
 		return "", err
 	}
 
-	manifest, err := pods.ManifestFromPath(manifestPath)
+	if err = signBuild(prepBin2Pod.TarPath); err != nil {
+		return "", err
+	}
+
+	manifest, err := pods.ManifestFromPath(prepBin2Pod.ManifestPath)
 	if err != nil {
 		return "", err
 	}
@@ -151,6 +165,10 @@ func generatePreparerPod(workdir string) (string, error) {
 		"preparer": map[interface{}]interface{}{
 			"auth": map[string]string{
 				"type":    "keyring",
+				"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
+			},
+			"artifact_auth": map[interface{}]interface{}{
+				"type":    "build",
 				"keyring": util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
 			},
 			"ca_file":     filepath.Join(certpath, "cert.pem"),
@@ -174,12 +192,12 @@ func generatePreparerPod(workdir string) (string, error) {
 		return "", err
 	}
 
-	err = ioutil.WriteFile(manifestPath, manifestBytes, 0644)
+	err = ioutil.WriteFile(prepBin2Pod.ManifestPath, manifestBytes, 0644)
 	if err != nil {
 		return "", err
 	}
 
-	return manifestPath, err
+	return prepBin2Pod.ManifestPath, err
 }
 
 func checkStatus(statusPort int, pod string) error {
@@ -238,10 +256,15 @@ mkdir -p $HOOKED_POD_HOME
 	}
 
 	cmd := exec.Command("p2-bin2pod", "--work-dir", tmpdir, createUserPath)
-	manifestPath, err := executeBin2Pod(cmd)
+	createUserBin2Pod, err := executeBin2Pod(cmd)
 	if err != nil {
 		return err
 	}
+
+	if err = signBuild(createUserBin2Pod.TarPath); err != nil {
+		return err
+	}
+	manifestPath := createUserBin2Pod.ManifestPath
 
 	userHookManifest, err := pods.ManifestFromPath(manifestPath)
 	if err != nil {
@@ -266,20 +289,26 @@ mkdir -p $HOOKED_POD_HOME
 	return exec.Command("p2-schedule", "--hook", manifestPath).Run()
 }
 
-func executeBin2Pod(cmd *exec.Cmd) (string, error) {
+type Bin2PodResult struct {
+	TarPath       string `json:"tar_path"`
+	ManifestPath  string `json:"manifest_path"`
+	FinalLocation string `json:"final_location"`
+}
+
+func executeBin2Pod(cmd *exec.Cmd) (Bin2PodResult, error) {
 	out := bytes.Buffer{}
 	cmd.Stdout = &out
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
 	if err != nil {
-		return "", util.Errorf("p2-bin2pod failed: %s", err)
+		return Bin2PodResult{}, util.Errorf("p2-bin2pod failed: %s", err)
 	}
-	var bin2podres map[string]string
+	var bin2podres Bin2PodResult
 	err = json.Unmarshal(out.Bytes(), &bin2podres)
 	if err != nil {
-		return "", err
+		return Bin2PodResult{}, err
 	}
-	return bin2podres["manifest_path"], nil
+	return bin2podres, nil
 }
 
 func getConsulManifest(dir string) (string, error) {
@@ -298,6 +327,8 @@ func getConsulManifest(dir string) (string, error) {
 	}
 	builder.SetLaunchables(stanzas)
 	manifest := builder.GetManifest()
+
+	_ = signBuild(consulTar)
 
 	consulPath := path.Join(dir, "consul.yaml")
 	f, err := os.OpenFile(consulPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
@@ -344,11 +375,15 @@ func scheduleRCTLServer(dir string) error {
 		return fmt.Errorf("%v does not exist", chomped)
 	}
 	cmd := exec.Command("p2-bin2pod", "--work-dir", dir, chomped)
-	manifestPath, err := executeBin2Pod(cmd)
+	rctlBin2Pod, err := executeBin2Pod(cmd)
 	if err != nil {
 		return err
 	}
-	signedPath, err := signManifest(manifestPath, dir)
+	if err = signBuild(rctlBin2Pod.TarPath); err != nil {
+		return err
+	}
+
+	signedPath, err := signManifest(rctlBin2Pod.ManifestPath, dir)
 	if err != nil {
 		return err
 	}

@@ -30,14 +30,14 @@ type ArtifactVerifier interface {
 	VerifyHoistArtifact(localCopy *os.File, artifactLocation string) error
 }
 
-type noopVerifier struct{}
+type nopVerifier struct{}
 
-func (n *noopVerifier) VerifyHoistArtifact(_ *os.File, _ string) error {
+func (n *nopVerifier) VerifyHoistArtifact(_ *os.File, _ string) error {
 	return nil
 }
 
-func NoopVerifier() ArtifactVerifier {
-	return &noopVerifier{}
+func NopVerifier() ArtifactVerifier {
+	return &nopVerifier{}
 }
 
 type CompositeVerifier struct {
@@ -68,14 +68,14 @@ func (b *CompositeVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLoca
 	if err != nil {
 		_, err = localCopy.Seek(0, os.SEEK_SET)
 		if err != nil {
-			return err
+			return util.Errorf("Could not rewind localCopy %v back to start of file: %v", localCopy.Name(), err)
 		}
 		err = b.buildVerifier.VerifyHoistArtifact(localCopy, artifactLocation)
 	}
 	return err
 }
 
-// BuildManifestVerifier ensures that the given launchable's location
+// BuildManifestVerifier ensures that the given LaunchableStanza's location
 // field is matched with a corresponding manifest certifying the validity
 // of the build. The manifest is a YAML file containing a single key "artifact_sha".
 // That key represents the hex digest of the artifact tar itself. The manifest is
@@ -90,7 +90,9 @@ func (b *CompositeVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLoca
 // Then its build manifest is located here:
 // https://foo.bar.baz/artifacts/myapp_abc123.tar.gz.manifest
 //
-// artifact_sha: abc23456
+// The contents of the manifest should be a YAML file with one key -
+//
+// 	artifact_sha: abc23456
 //
 // And its signature file is located here:
 // https://foo.bar.baz/artifacts/myapp_abc123.tar.gz.manifest.sig
@@ -117,29 +119,29 @@ func NewBuildManifestVerifier(keyringPath string, fetcher uri.Fetcher, logger *l
 func (b *BuildManifestVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation string) error {
 	u, err := url.Parse(artifactLocation)
 	if err != nil {
-		return err
+		return util.Errorf("Could not parse artifact location %v: %v", artifactLocation, err)
 	}
 	switch u.Scheme {
 	default:
-		return fmt.Errorf("%v does not have a recognized scheme, cannot verify manifest or signature", artifactLocation)
+		return util.Errorf("%v does not have a recognized scheme '%v', cannot verify manifest or signature", artifactLocation, u.Scheme)
 	case "http", "https", "file":
 		dir, err := ioutil.TempDir("", "artifact_verification")
 		if err != nil {
-			return fmt.Errorf("Could not create temporary directory for manifest file: %v", err)
+			return util.Errorf("Could not create temporary directory for manifest file: %v", err)
 		}
 		defer os.RemoveAll(dir)
 
 		manifestSrc := fmt.Sprintf("%v.manifest", artifactLocation)
 		manifestDst := filepath.Join(dir, "manifest")
-		err = b.fetcher.CopyLocal(manifestSrc, manifestDst)
-		if err != nil {
-			return fmt.Errorf("Could not download artifact manifest for %v: %v", artifactLocation, err)
+
+		if err = b.fetcher.CopyLocal(manifestSrc, manifestDst); err != nil {
+			return util.Errorf("Could not download artifact manifest for %v: %v", artifactLocation, err)
 		}
 
 		signatureSrc := fmt.Sprintf("%v.sig", manifestSrc)
 		signatureDst := filepath.Join(dir, "signature")
 		if err = b.fetcher.CopyLocal(signatureSrc, signatureDst); err != nil {
-			return fmt.Errorf("Could not download manifest signature for %v: %v", artifactLocation, err)
+			return util.Errorf("Could not download manifest signature for %v: %v", artifactLocation, err)
 		}
 
 		manifestBytes, err := ioutil.ReadFile(manifestDst)
@@ -165,13 +167,13 @@ func verifySigned(keyring openpgp.KeyRing, signedBytes, signatureBytes []byte) e
 	if err == nil {
 		signatureBytes, err = ioutil.ReadAll(block.Body)
 		if err != nil {
-			return err
+			return util.Errorf("Discovered an armored signature but could not read the body: %v", err)
 		}
 	}
 	// check that the manifest was adequately signed by our signer
 	_, err = checkDetachedSignature(keyring, signedBytes, signatureBytes)
 	if err != nil {
-		return fmt.Errorf("Could not verify data against the signature: %v", err)
+		return util.Errorf("Could not verify data against the signature: %v", err)
 	}
 	return nil
 }
@@ -179,7 +181,7 @@ func verifySigned(keyring openpgp.KeyRing, signedBytes, signatureBytes []byte) e
 func (b *BuildManifestVerifier) checkMatchingDigest(localCopy *os.File, manifestBytes []byte) error {
 	realTarBytes, err := ioutil.ReadAll(localCopy)
 	if err != nil {
-		return fmt.Errorf("Could not read given local copy of the artifact: %v", err)
+		return util.Errorf("Could not read given local copy of the artifact: %v", err)
 	}
 	digestBytes := sha256.Sum256(realTarBytes)
 	realDigest := hex.EncodeToString(digestBytes[:])
@@ -189,11 +191,11 @@ func (b *BuildManifestVerifier) checkMatchingDigest(localCopy *os.File, manifest
 	}{}
 	err = yaml.Unmarshal(manifestBytes, &manifest)
 	if err != nil {
-		return fmt.Errorf("Could not unmarshal manifest bytes: %v", err)
+		return util.Errorf("Could not unmarshal manifest bytes: %v", err)
 	}
 
 	if realDigest != manifest.ArtifactDigest {
-		return fmt.Errorf("Artifact hex digest did not match the given manifest: expected %v, was actually %v", realDigest, manifest.ArtifactDigest)
+		return util.Errorf("Artifact hex digest did not match the given manifest: expected %v, was actually %v", realDigest, manifest.ArtifactDigest)
 	}
 	return nil
 }
@@ -232,11 +234,11 @@ func (b *BuildVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation
 	}
 	switch u.Scheme {
 	default:
-		return fmt.Errorf("%v does not have a recognized scheme, cannot verify signature", artifactLocation)
+		return util.Errorf("%v does not have a recognized scheme, cannot verify signature", artifactLocation)
 	case "http", "https", "file":
 		dir, err := ioutil.TempDir("", "artifact_verification")
 		if err != nil {
-			return fmt.Errorf("Could not create temporary directory for manifest file: %v", err)
+			return util.Errorf("Could not create temporary directory for manifest file: %v", err)
 		}
 		defer os.RemoveAll(dir)
 
@@ -244,17 +246,17 @@ func (b *BuildVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation
 		sigPath := filepath.Join(dir, "sig")
 		err = b.fetcher.CopyLocal(sigURI, sigPath)
 		if err != nil {
-			return fmt.Errorf("Could not fetch artifact signature from %v: %v", sigURI, err)
+			return util.Errorf("Could not fetch artifact signature from %v: %v", sigURI, err)
 		}
 
 		sigData, err := ioutil.ReadFile(sigPath)
 		if err != nil {
-			return fmt.Errorf("Could not read downloaded signature at %v: %v", sigPath, err)
+			return util.Errorf("Could not read downloaded signature at %v: %v", sigPath, err)
 		}
 
 		signedBytes, err := ioutil.ReadAll(localCopy)
 		if err != nil {
-			return fmt.Errorf("Could not read the artifact into memory: %v", err)
+			return util.Errorf("Could not read the artifact into memory: %v", err)
 		}
 
 		return verifySigned(b.keyring, signedBytes, sigData)

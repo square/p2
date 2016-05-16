@@ -89,7 +89,7 @@ func main() {
 
 func InstallConsul(consulPod *pods.Pod, consulManifest pods.Manifest) error {
 	// Inject servicebuilder?
-	err := consulPod.Install(consulManifest, auth.NoopVerifier())
+	err := consulPod.Install(consulManifest, auth.NopVerifier())
 	if err != nil {
 		return util.Errorf("Can't install Consul, aborting: %s", err)
 	}
@@ -189,7 +189,7 @@ func ScheduleForThisHost(manifest pods.Manifest, alsoReality bool) error {
 
 func InstallBaseAgent(agentManifest pods.Manifest) error {
 	agentPod := pods.NewPod(agentManifest.ID(), pods.PodPath(*podRoot, agentManifest.ID()))
-	err := agentPod.Install(agentManifest, auth.NoopVerifier())
+	err := agentPod.Install(agentManifest, auth.NopVerifier())
 	if err != nil {
 		return err
 	}

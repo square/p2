@@ -424,9 +424,9 @@ func getDeployerAuth(preparerConfig *PreparerConfig) (auth.Policy, error) {
 func getArtifactVerifier(preparerConfig *PreparerConfig, logger *logging.Logger) (auth.ArtifactVerifier, error) {
 	var verif ManifestVerification
 	var err error
-	switch t, _ := preparerConfig.Auth["type"].(string); t {
+	switch t, _ := preparerConfig.ArtifactAuth["type"].(string); t {
 	case "", auth.VerifyNone:
-		return auth.NoopVerifier(), nil
+		return auth.NopVerifier(), nil
 	case auth.VerifyManifest:
 		err = castYaml(preparerConfig.ArtifactAuth, &verif)
 		if err != nil {

@@ -35,7 +35,7 @@ func main() {
 	pod := pods.NewPod(manifest.ID(), pods.PodPath(filepath.Join(*podRoot, "hooks", *hookType), manifest.ID()))
 
 	// for now use noop verifier in this CLI
-	err = pod.Install(manifest, auth.NoopVerifier())
+	err = pod.Install(manifest, auth.NopVerifier())
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)
 	}

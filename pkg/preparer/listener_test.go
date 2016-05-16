@@ -99,7 +99,7 @@ func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
 		DestinationDir:   destDir,
 		Logger:           logging.DefaultLogger,
 		authPolicy:       auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil},
-		artifactVerifier: auth.NoopVerifier(),
+		artifactVerifier: auth.NopVerifier(),
 	}
 
 	return listener, fakeIntent.quit

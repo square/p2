@@ -95,7 +95,7 @@ func main() {
 		stanza.Location = *location
 		res.FinalLocation = *location
 	} else {
-		stanza.Location = tarLocation
+		stanza.Location = fmt.Sprintf("file://%v", tarLocation)
 		res.FinalLocation = tarLocation
 	}
 

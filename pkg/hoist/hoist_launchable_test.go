@@ -39,7 +39,7 @@ func TestInstall(t *testing.T) {
 		RootDir:   launchableHome,
 	}
 
-	err = launchable.Install(auth.NoopVerifier())
+	err = launchable.Install(auth.NopVerifier())
 	Assert(t).IsNil(err, "there should not have been an error when installing")
 
 	Assert(t).AreEqual(

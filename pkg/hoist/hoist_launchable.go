@@ -295,12 +295,12 @@ func (hl *Launchable) Install(verifier auth.ArtifactVerifier) error {
 	defer remoteData.Close()
 	_, err = io.Copy(artifactFile, remoteData)
 	if err != nil {
-		return err
+		return util.Errorf("Could not copy artifact locally: %v", err)
 	}
 	// rewind once so we can ask the verifier
 	_, err = artifactFile.Seek(0, os.SEEK_SET)
 	if err != nil {
-		return err
+		return util.Errorf("Could not reset artifact file position for verification: %v", err)
 	}
 
 	err = verifier.VerifyHoistArtifact(artifactFile, hl.Location)
@@ -311,7 +311,7 @@ func (hl *Launchable) Install(verifier auth.ArtifactVerifier) error {
 	// rewind a second time to allow the archive to be unpacked
 	_, err = artifactFile.Seek(0, os.SEEK_SET)
 	if err != nil {
-		return err
+		return util.Errorf("Could not reset artifact file position after verification: %v", err)
 	}
 
 	err = gzip.ExtractTarGz(hl.RunAs, artifactFile, hl.InstallDir())
