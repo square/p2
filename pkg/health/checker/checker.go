@@ -26,7 +26,7 @@ type ConsulHealthChecker interface {
 		errCh chan<- error,
 		quitCh <-chan struct{})
 	WatchHealth(
-		resultCh chan<- []*health.Result,
+		resultCh chan []*health.Result,
 		errCh chan<- error,
 		quitCh <-chan struct{})
 	Service(serviceID string) (map[string]health.Result, error)
@@ -83,39 +83,91 @@ func (c consulHealthChecker) WatchNodeService(
 	}
 }
 
-// Watch the health tree and write the whole subtree on the chan passed by caller
-func (c consulHealthChecker) WatchHealth(
-	resultCh chan<- []*health.Result,
-	errCh chan<- error,
-	quitCh <-chan struct{},
-) {
-	defer close(resultCh)
+// publishLatestHealth is not thread safe - do not start more than one of these per resultCH
+func publishLatestHealth(inCh <-chan api.KVPairs, quitCh <-chan struct{}, resultCh chan []*health.Result) chan error {
+	errCh := make(chan error)
 
-	res := make(chan api.KVPairs)
-	defer close(res)
+	go func() {
+		var listed api.KVPairs
+		var ok bool
+		var err error
 
-	quitWatch := make(<-chan struct{})
+		for {
+			// We don't have a value, fetch a fresh one or skip
+			select {
+			case listed, ok = <-inCh:
+				if !ok {
+					// channel closed
+					return
+				}
+			case <-quitCh:
+				return
+			}
 
-	go consulutil.WatchPrefix("health/", c.kv, res, quitWatch, errCh)
-
-	var results api.KVPairs
-	for {
-		select {
-		case <-quitCh:
-			return
-		case results = <-res:
-			healthResults, err := kvpsToResult(results)
+			results := make([]*health.Result, 0, len(listed)) // allocate a new return slice for each watch
+			results, err = kvpsToResult(listed)
 			if err != nil {
 				select {
 				case errCh <- err:
-				default:
-				}
-			} else {
-				select {
-				case resultCh <- healthResults:
-				default:
+					// The most recent update is an error.
+					// We go back to the start in this case
+					continue
+				case <-quitCh:
+					return
 				}
 			}
+
+			// here, we prepare to write the value.
+			// First we drain the resultChan of any stale health results
+			select {
+			case _, ok = <-resultCh:
+				if !ok {
+					return
+				}
+			default:
+			}
+			// Now we check the quit chan and try to write to our resultCh
+			select {
+			case <-quitCh:
+				return
+			case resultCh <- results:
+			}
+		}
+	}()
+
+	return errCh
+}
+
+// Watch the health tree and write the whole subtree on the chan passed by caller
+// the result channel argument _must be buffered_
+// Any errors are passed, best effort, over errCh
+func (c consulHealthChecker) WatchHealth(
+	resultCh chan []*health.Result,
+	errCh chan<- error,
+	quitCh <-chan struct{},
+) {
+	// closed by watchPrefix when we close quitWatch
+	inCh := make(chan api.KVPairs)
+	watchErrCh := make(chan error)
+	go consulutil.WatchPrefix("health/", c.kv, inCh, quitCh, watchErrCh)
+	publishErrCh := publishLatestHealth(inCh, quitCh, resultCh)
+
+	select {
+	case <-quitCh:
+		return
+	case err := <-watchErrCh:
+		select {
+		case errCh <- err:
+		case <-quitCh:
+			return
+		default:
+		}
+	case err := <-publishErrCh:
+		select {
+		case errCh <- err:
+		case <-quitCh:
+			return
+		default:
 		}
 	}
 }
@@ -165,7 +217,6 @@ func (c consulHealthChecker) Service(serviceID string) (map[string]health.Result
 	if err != nil {
 		return nil, err
 	}
-
 	ret := make(map[string]health.Result)
 	for _, kvEntry := range kvEntries {
 		ret[kvEntry.Node] = consulWatchToResult(kvEntry)

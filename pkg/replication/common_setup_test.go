@@ -113,7 +113,7 @@ func (h alwaysHappyHealthChecker) WatchService(
 	}
 }
 
-func (h alwaysHappyHealthChecker) WatchHealth(_ chan<- []*health.Result,
+func (h alwaysHappyHealthChecker) WatchHealth(_ chan []*health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{}) {
 	panic("not implemented")
@@ -179,7 +179,7 @@ func (h channelBasedHealthChecker) WatchService(
 }
 
 func (h channelBasedHealthChecker) WatchHealth(
-	resultCh chan<- []*health.Result,
+	resultCh chan []*health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{}) {
 	panic("not implemented")

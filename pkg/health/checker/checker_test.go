@@ -7,7 +7,6 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/kptest"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
@@ -52,66 +51,76 @@ func TestService(t *testing.T) {
 	Assert(t).AreEqual(results["node1"], expected, "Unexpected results calling Service()")
 }
 
-func TestWatchHealth(t *testing.T) {
-	fakeKV := kptest.NewFakeKV()
-	healthChecker := &consulHealthChecker{
-		kv: fakeKV,
-	}
+func TestPublishLatestHealth(t *testing.T) {
+	// This channel imitates the channel that consulutil.WatchPrefix would return
+	healthListChan := make(chan api.KVPairs)
+	quitCh := make(chan struct{})
+	outCh := make(chan []*health.Result, 1)
+	defer close(outCh)
+	defer close(quitCh)
 
-	retChan := make(chan []*health.Result)
-	errChan := make(chan error)
-	quitChan := make(chan struct{})
-
-	dummyHealthResult := &health.Result{
-		ID:      "ID",
-		Node:    "node1.example.com",
-		Service: "Service",
-		Status:  "passing",
-		Output:  "output",
-	}
-	dummyBuf, err := json.Marshal(dummyHealthResult)
-	if err != nil {
-		t.Fatalf("json marshal err: %v", err)
-	}
-
-	_, _, err = fakeKV.CAS(&api.KVPair{Key: "health/service/node1.example.com", Value: dummyBuf}, nil)
-	if err != nil {
-		t.Fatalf("error: %v", err)
-	}
+	errCh := publishLatestHealth(healthListChan, quitCh, outCh)
 
 	go func() {
-		defer func() {
-			quitChan <- struct{}{}
-		}()
-		for {
-			select {
-			case result := <-retChan:
-				res := result[0]
-				if res.ID != "ID" {
-					t.Fatalf("Expected ID to match")
-				}
-
-				if res.Node != "node1.example.com" {
-					t.Fatalf("Expected Node to match")
-				}
-				if res.Service != "Service" {
-					t.Fatalf("Expected Service to match")
-				}
-				if res.Status != "passing" {
-					t.Fatalf("Expected Status to match")
-				}
-				if res.Output != "output" {
-					t.Fatalf("Expected Output to match")
-				}
-				return
-			case err := <-errChan:
-				t.Fatalf("unexpected error: %v", err)
-			case <-time.After(5 * time.Second):
-				t.Error("Timed out waiting for message")
-			}
+		err, open := <-errCh
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !open {
+			return
 		}
 	}()
 
-	// blocks _and_ writes to our chan
-	healthChecker.WatchHealth(retChan, errChan, quitChan)
+	oldStatus := health.HealthState("passing")
+	newStatus := health.HealthState("critical")
+	hrOld := &health.Result{
+		Status: oldStatus,
+	}
+	hrOldJSON, err := json.Marshal(hrOld)
+	if err != nil {
+		t.Fatalf("json marshal err: %v", err)
+	}
+	oldKV := &api.KVPair{Key: "health/service/node1.example.com", Value: hrOldJSON}
+
+	hrNew := &health.Result{
+		Status: newStatus,
+	}
+	hrNewJSON, err := json.Marshal(hrNew)
+	if err != nil {
+		t.Fatalf("json marshal err: %v", err)
+	}
+	newKV := &api.KVPair{Key: "health/service/node1.example.com", Value: hrNewJSON}
+
+	// Basic test that publishLatestHealth drains the channels correctly
+	// We write three times to ensure that at least one of the newKV values has flushed through the channel
+	select {
+	case healthListChan <- api.KVPairs{oldKV}:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Failed to write to chan. Deadlock?")
+	}
+
+	select {
+	case healthListChan <- api.KVPairs{newKV}:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Failed to write to chan. Deadlock?")
+	}
+
+	select {
+	case healthListChan <- api.KVPairs{newKV}:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Failed to write to chan. Deadlock?")
+	}
+
+	select {
+	case result := <-outCh:
+		if len(result) < 1 {
+			t.Fatalf("Got wrong number of results. Expected 1, got %d", len(result))
+		}
+		if result[0].Status != newStatus {
+			t.Fatalf("expected status to match %s, was %s", newStatus, result[0].Status)
+		}
+		return
+	case <-time.After(1 * time.Second):
+		t.Fatal("oh no, timeout")
+	}
 }
