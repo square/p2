@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/rc"
+	"github.com/square/p2/pkg/types"
 )
 
 func TestInitializeReplication(t *testing.T) {
@@ -29,20 +30,18 @@ func TestInitializeReplication(t *testing.T) {
 	defer replication.Cancel()
 
 	// Confirm that the appropriate kv keys have been locked
-	for _, node := range testNodes {
-		lockPath, err := kp.PodLockPath(kp.INTENT_TREE, node, testPodId)
-		if err != nil {
-			t.Fatalf("Unable to compute pod lock path: %s", err)
-		}
+	lockPath, err := testLockPath(testPodId)
+	if err != nil {
+		t.Fatalf("Unable to compute pod lock path: %s", err)
+	}
 
-		lockHolder, _, err := store.LockHolder(lockPath)
-		if err != nil {
-			t.Fatalf("Unexpected error checking for lock holder: %s", err)
-		}
+	lockHolder, _, err := store.LockHolder(lockPath)
+	if err != nil {
+		t.Fatalf("Unexpected error checking for lock holder: %s", err)
+	}
 
-		if lockHolder != testLockMessage {
-			t.Errorf("Expected lock holder for key '%s' to be '%s', was '%s'", lockPath, testLockMessage, lockHolder)
-		}
+	if lockHolder != testLockMessage {
+		t.Errorf("Expected lock holder for key '%s' to be '%s', was '%s'", lockPath, testLockMessage, lockHolder)
 	}
 }
 
@@ -85,7 +84,7 @@ func TestInitializeReplicationFailsIfLockExists(t *testing.T) {
 		t.Fatalf("Unable to set up competing session: %s", err)
 	}
 	defer session.Destroy()
-	lockPath, err := kp.PodLockPath(kp.INTENT_TREE, testNodes[0], testPodId)
+	lockPath, err := testLockPath(testPodId)
 	if err != nil {
 		t.Fatalf("Unable to compute pod lock path: %s", err)
 	}
@@ -121,7 +120,7 @@ func TestInitializeReplicationReleasesLocks(t *testing.T) {
 		t.Fatalf("Unable to set up competing session: %s", err)
 	}
 	defer session.Destroy()
-	lockPath1, err := kp.PodLockPath(kp.INTENT_TREE, testNodes[1], testPodId)
+	lockPath1, err := testLockPath(testPodId)
 	if err != nil {
 		t.Fatalf("Unable to compute pod lock path: %s", err)
 	}
@@ -140,7 +139,7 @@ func TestInitializeReplicationReleasesLocks(t *testing.T) {
 	// After a failed attempt at replication (+ Consul lock delay), test node 0 should
 	// still be lockable
 	time.Sleep(10 * time.Millisecond)
-	lockPath0, err := kp.PodLockPath(kp.INTENT_TREE, testNodes[0], testPodId)
+	lockPath0, err := testLockPath(testPodId)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,6 +147,10 @@ func TestInitializeReplicationReleasesLocks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unable to acquire lock. replicator probably didn't release its lock on error: %v", err)
 	}
+}
+
+func testLockPath(testPodId types.PodID) (string, error) {
+	return kp.ReplicationLockPath(testPodId), nil
 }
 
 func TestInitializeReplicationCanOverrideLocks(t *testing.T) {
@@ -167,7 +170,7 @@ func TestInitializeReplicationCanOverrideLocks(t *testing.T) {
 		t.Fatalf("Unable to set up competing session: %s", err)
 	}
 	defer session.Destroy()
-	lockPath, err := kp.PodLockPath(kp.INTENT_TREE, testNodes[0], testPodId)
+	lockPath, err := testLockPath(testPodId)
 	if err != nil {
 		t.Fatalf("Unable to compute pod lock path: %s", err)
 	}

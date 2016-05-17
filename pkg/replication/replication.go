@@ -71,7 +71,8 @@ type replication struct {
 	quitCh chan struct{}
 }
 
-// Attempts to claim a lock on every host being deployed to.
+// Attempts to claim a lock on replicating this pod. Other pkg/replication
+// operations for this pod ID will not be able to take place.
 // if overrideLock is true, will destroy any session holding any of the keys we
 // wish to lock
 func (r replication) lockHosts(overrideLock bool, lockMessage string) error {
@@ -80,21 +81,16 @@ func (r replication) lockHosts(overrideLock bool, lockMessage string) error {
 		return err
 	}
 
-	for _, host := range r.nodes {
-		lockPath, err := kp.PodLockPath(kp.INTENT_TREE, host, r.manifest.ID())
-		if err != nil {
-			_ = session.Destroy()
-			return err
-		}
+	lockPath := kp.ReplicationLockPath(r.manifest.ID())
 
-		// We don't keep a reference to the consulutil.Unlocker, because we just destroy
-		// the session at the end of the replication anyway
-		_, err = r.lock(session, lockPath, overrideLock)
-		if err != nil {
-			_ = session.Destroy()
-			return err
-		}
+	// We don't keep a reference to the consulutil.Unlocker, because we just destroy
+	// the session at the end of the replication anyway
+	_, err = r.lock(session, lockPath, overrideLock)
+	if err != nil {
+		_ = session.Destroy()
+		return err
 	}
+
 	go r.handleRenewalErrors(session, renewalErrCh)
 
 	return nil

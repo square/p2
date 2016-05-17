@@ -266,17 +266,13 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 		t.Fatalf("Unable to create initial replication session: %s", err)
 	}
 
-	for _, host := range testNodes {
-		lockPath, err := kp.PodLockPath(kp.INTENT_TREE, host, manifest.ID())
-		if err != nil {
-			t.Fatalf("Unable to compute lock path for pod: %s", err)
-		}
+	lockPath := kp.ReplicationLockPath(manifest.ID())
 
-		_, err = replication.lock(session, lockPath, false)
-		if err != nil {
-			t.Fatalf("Unable to perform initial replication lock: %s", err)
-		}
+	_, err = replication.lock(session, lockPath, false)
+	if err != nil {
+		t.Fatalf("Unable to perform initial replication lock: %s", err)
 	}
+
 	go replication.handleRenewalErrors(session, renewalErrCh)
 
 	doneCh := make(chan struct{})
@@ -350,10 +346,7 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 	}
 
 	// Destroy lock holder so the next renewal will fail
-	lockPath, err := kp.PodLockPath(kp.INTENT_TREE, testNodes[0], manifest.ID())
-	if err != nil {
-		t.Fatalf("Unable to compute pod lock path")
-	}
+	lockPath = kp.ReplicationLockPath(manifest.ID())
 
 	_, id, err := store.LockHolder(lockPath)
 	if err != nil {
