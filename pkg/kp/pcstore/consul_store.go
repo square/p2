@@ -438,6 +438,7 @@ func (s *consulStore) zipResults(current, previous WatchedPodClusters) map[field
 func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podClusterChange) {
 	var change podClusterChange
 	podWatch := make(chan []labels.Labeled)
+	watching := false
 	podWatchQuit := make(chan struct{})
 	defer func() {
 		close(podWatchQuit)
@@ -459,7 +460,15 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 				return // we're closed for business
 			}
 
-			if change.current == nil && change.previous != nil {
+			if !watching && change.current != nil {
+				// Start watching for changes of pod membership because we haven't yet
+				s.logger.WithFields(logrus.Fields{
+					"pc_id":    change.current.ID,
+					"selector": change.current.PodSelector.String(),
+				}).Debugf("Starting pod selector watch for %v", change.current.ID)
+				podWatch = s.applicator.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
+				watching = true
+			} else if change.current == nil && change.previous != nil {
 				// if no current cluster exists, but there is a previous cluster,
 				// it means we need to destroy this concrete cluster
 				s.logger.WithField("pc_id", change.previous.ID).Infof("Calling DeleteCluster with %v", change.previous)
@@ -482,14 +491,6 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 					}).Debugf("Altering pod selector for %v", change.current.ID)
 					podWatch = s.applicator.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
 				}
-			} else {
-				// if there's no previous pod cluster but there is a current, create the concrete cluster
-				// and start a pod selector watch.
-				s.logger.WithFields(logrus.Fields{
-					"pc_id":    change.current.ID,
-					"selector": change.current.PodSelector.String(),
-				}).Debugf("Starting pod selector watch for %v", change.current.ID)
-				podWatch = s.applicator.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
 			}
 		}
 	}
