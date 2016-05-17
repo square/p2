@@ -57,3 +57,9 @@ func PodLockPath(podPrefix PodPrefix, nodeName string, podId types.PodID) (strin
 
 	return path.Join(consulutil.LOCK_TREE, subPodPath), nil
 }
+
+// Returns the consul path to use when locking out any other pkg/replication-based deploys
+// for a given pod ID
+func ReplicationLockPath(podId types.PodID) string {
+	return path.Join(consulutil.LOCK_TREE, "replication", podId.String())
+}
