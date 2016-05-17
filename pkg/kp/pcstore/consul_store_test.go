@@ -638,6 +638,132 @@ func TestConcreteSyncer(t *testing.T) {
 	close(changes)
 }
 
+func TestConcreteSyncerWithPrevious(t *testing.T) {
+	store := consulStoreWithFakeKV()
+	store.logger.Logger.Level = logrus.DebugLevel
+
+	store.applicator.SetLabel(labels.POD, "1234-123-123-1234", "color", "red")
+	store.applicator.SetLabel(labels.POD, "abcd-abc-abc-abcd", "color", "blue")
+
+	syncer := &fakeSyncer{
+		[]fields.ID{},
+		make(chan fakeSync),
+		make(chan fakeSync),
+		false,
+	}
+
+	// Previous == current, simulates a concrete syncer starting up
+	change := podClusterChange{
+		previous: &fields.PodCluster{
+			ID:               fields.ID("abc123"),
+			PodID:            types.PodID("vvv"),
+			AvailabilityZone: fields.AvailabilityZone("west"),
+			Name:             "production",
+			PodSelector:      klabels.Everything().Add("color", klabels.EqualsOperator, []string{"red"}),
+		},
+		current: &fields.PodCluster{
+			ID:               fields.ID("abc123"),
+			PodID:            types.PodID("vvv"),
+			AvailabilityZone: fields.AvailabilityZone("west"),
+			Name:             "production",
+			PodSelector:      klabels.Everything().Add("color", klabels.EqualsOperator, []string{"red"}),
+		},
+	}
+
+	changes := make(chan podClusterChange)
+	go store.handlePCUpdates(syncer, changes)
+
+	select {
+	case changes <- change:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Test timed out trying to write change to handlePCChange")
+	}
+
+	select {
+	case <-time.After(5 * time.Second):
+		t.Fatal("Test timed out trying to read from the syncer")
+	case sync := <-syncer.synced:
+		if sync.syncedCluster == nil {
+			t.Fatal("unexpectedly didn't get a cluster on the sync channel")
+		}
+		if sync.syncedCluster.ID != change.current.ID {
+			t.Fatalf("got unexpected synced cluster %v", sync.syncedCluster.ID)
+		}
+		if len(sync.syncedPods) != 1 {
+			t.Fatalf("got unexpected number of synced pods with cluster: %v", len(sync.syncedPods))
+		}
+		if sync.syncedPods[0].ID != "1234-123-123-1234" {
+			t.Fatalf("got unexpected pod ID from labeled pods sync: %v", sync.syncedPods[0].ID)
+		}
+	}
+
+	// now we send a new update that changes the pod cluster's target pod from the red one to the blue one.
+	// (from 1234-123-123-1234 to abcd-abc-abc-abcd )
+	change = podClusterChange{
+		previous: change.current,
+		current: &fields.PodCluster{
+			ID:               fields.ID("abc123"),
+			PodID:            types.PodID("vvv"),
+			AvailabilityZone: fields.AvailabilityZone("west"),
+			Name:             "production",
+			PodSelector:      klabels.Everything().Add("color", klabels.EqualsOperator, []string{"blue"}),
+		},
+	}
+
+	syncer.drainSyncedAndIgnore()
+
+	select {
+	case changes <- change:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Test timed out trying to write change to handlePCChange")
+	}
+
+	syncer.resume()
+
+	select {
+	case <-time.After(5 * time.Second):
+		t.Fatal("Test timed out trying to read from the syncer")
+	case sync := <-syncer.synced:
+		if sync.syncedCluster == nil {
+			t.Fatal("unexpectedly didn't get a cluster on the sync channel")
+		}
+		if sync.syncedCluster.ID != change.current.ID {
+			t.Fatalf("got unexpected synced cluster %v", sync.syncedCluster.ID)
+		}
+		if len(sync.syncedPods) != 1 {
+			t.Fatalf("got unexpected number of synced pods with cluster: %v", len(sync.syncedPods))
+		}
+		if sync.syncedPods[0].ID != "abcd-abc-abc-abcd" {
+			t.Fatalf("got unexpected pod ID from labeled pods sync: %v", sync.syncedPods[0].ID)
+		}
+	}
+
+	syncer.drainSyncedAndIgnore()
+
+	// appear to have deleted the cluster
+	change.previous = change.current
+	change.current = nil
+
+	select {
+	case changes <- change:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Test timed out trying to write deletion change to handlePCChange")
+	}
+
+	select {
+	case <-time.After(5 * time.Second):
+		t.Fatal("Test timed out trying to read from the syncer")
+	case sync := <-syncer.deleted:
+		if sync.syncedCluster == nil {
+			t.Fatal("unexpectedly didn't get a cluster on the sync channel")
+		}
+		if sync.syncedCluster.ID != change.previous.ID {
+			t.Fatalf("got unexpected synced cluster %v", sync.syncedCluster.ID)
+		}
+	}
+
+	close(changes)
+}
 func TestInitialClusters(t *testing.T) {
 	store := consulStoreWithFakeKV()
 
