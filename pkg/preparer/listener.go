@@ -10,19 +10,20 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 )
 
 type IntentStore interface {
 	WatchPods(
 		podPrefix kp.PodPrefix,
-		hostname string,
+		hostname types.NodeName,
 		quit <-chan struct{},
 		errCh chan<- error,
 		manifests chan<- []kp.ManifestResult,
 	)
 	ListPods(
 		podPrefix kp.PodPrefix,
-		hostname string,
+		hostname types.NodeName,
 	) ([]kp.ManifestResult, time.Duration, error)
 }
 
@@ -34,9 +35,9 @@ type HookListener struct {
 	// hostname, however there are future plans to change this behavior, so
 	// the hostname is passed to WatchPods and ListPods even though it is
 	// ignored
-	Node             string // The host to watch for hooks for
-	DestinationDir   string // The destination directory for downloaded pods that will act as hooks
-	ExecDir          string // The directory that will actually be executed by the HookDir
+	Node             types.NodeName // The host to watch for hooks for
+	DestinationDir   string         // The destination directory for downloaded pods that will act as hooks
+	ExecDir          string         // The directory that will actually be executed by the HookDir
 	Logger           logging.Logger
 	authPolicy       auth.Policy
 	artifactVerifier auth.ArtifactVerifier

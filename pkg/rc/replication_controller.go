@@ -3,11 +3,9 @@ package rc
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
-	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/kp"
@@ -42,12 +40,15 @@ type ReplicationController interface {
 	CurrentPods() (PodLocations, error)
 }
 
-type PodLocation struct{ Node, PodID string }
+type PodLocation struct {
+	Node  types.NodeName
+	PodID types.PodID
+}
 type PodLocations []PodLocation
 
 // Nodes returns a list of just the locations' nodes.
-func (l PodLocations) Nodes() []string {
-	nodes := make([]string, len(l))
+func (l PodLocations) Nodes() []types.NodeName {
+	nodes := make([]types.NodeName, len(l))
 	for i, pod := range l {
 		nodes[i] = pod.Node
 	}
@@ -59,18 +60,18 @@ func (l PodLocations) Nodes() []string {
 type kpStore interface {
 	SetPod(
 		podPrefix kp.PodPrefix,
-		nodeName string,
+		nodeName types.NodeName,
 		manifest pods.Manifest,
 	) (time.Duration, error)
 
 	Pod(
 		podPrefix kp.PodPrefix,
-		nodeName string,
+		nodeName types.NodeName,
 		podId types.PodID,
 	) (pods.Manifest, time.Duration, error)
 
 	DeletePod(podPrefix kp.PodPrefix,
-		nodeName string,
+		nodeName types.NodeName,
 		manifestID types.PodID,
 	) (time.Duration, error)
 }
@@ -209,11 +210,11 @@ func (rc *replicationController) addPods(current PodLocations) error {
 
 	// TODO: With Docker or runc we would not be constrained to running only once per node.
 	// So it may be the case that we need to make the Scheduler interface smarter and use it here.
-	possible := sets.NewString(eligible...).Difference(sets.NewString(currentNodes...))
+	possible := types.NewNodeSet(eligible...).Difference(types.NewNodeSet(currentNodes...))
 
 	// Users want deterministic ordering of nodes being populated to a new
 	// RC. Move nodes in sorted order by hostname to achieve this
-	possibleSorted := possible.List()
+	possibleSorted := possible.ListNodes()
 	toSchedule := rc.ReplicasDesired - len(currentNodes)
 
 	rc.logger.NoFields().Infof("Need to schedule %d nodes out of %s", toSchedule, possible)
@@ -272,8 +273,8 @@ func (rc *replicationController) removePods(current PodLocations) error {
 
 	// If we need to downsize the number of nodes, prefer any in current that are not eligible anymore.
 	// TODO: evaluate changes to 'eligible' more frequently
-	preferred := sets.NewString(currentNodes...).Difference(sets.NewString(eligible...))
-	rest := sets.NewString(currentNodes...).Difference(preferred)
+	preferred := types.NewNodeSet(currentNodes...).Difference(types.NewNodeSet(eligible...))
+	rest := types.NewNodeSet(currentNodes...).Difference(preferred)
 	toUnschedule := len(current) - rc.ReplicasDesired
 	rc.logger.NoFields().Infof("Need to unschedule %d nodes out of %s", toUnschedule, current)
 
@@ -328,7 +329,7 @@ func (rc *replicationController) ensureConsistency(current PodLocations) error {
 	return nil
 }
 
-func (rc *replicationController) eligibleNodes() ([]string, error) {
+func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {
 	return rc.scheduler.EligibleNodes(rc.Manifest, rc.NodeSelector)
 }
 
@@ -343,12 +344,12 @@ func (rc *replicationController) CurrentPods() (PodLocations, error) {
 	result := make(PodLocations, len(podMatches))
 	for i, podMatch := range podMatches {
 		// ID will be something like <nodename>/<podid>.
-		podID, node, err := GetPodIDFromLabelKey(podMatch.ID)
+		node, podID, err := labels.NodeAndPodIDFromPodLabel(podMatch)
 		if err != nil {
 			return nil, err
 		}
 		result[i].Node = node
-		result[i].PodID = podID.String()
+		result[i].PodID = podID
 	}
 	return result, nil
 }
@@ -357,7 +358,7 @@ func (rc *replicationController) CurrentPods() (PodLocations, error) {
 // and the reserved labels.
 // If forEachLabel encounters any error applying the function, it returns that error immediately.
 // The function is not further applied to subsequent labels on an error.
-func (rc *replicationController) forEachLabel(node string, f func(id, k, v string) error) error {
+func (rc *replicationController) forEachLabel(node types.NodeName, f func(id, k, v string) error) error {
 	id := MakePodLabelKey(node, rc.Manifest.ID())
 
 	// user-requested labels.
@@ -375,7 +376,7 @@ func (rc *replicationController) forEachLabel(node string, f func(id, k, v strin
 	return f(id, RCIDLabel, rc.ID().String())
 }
 
-func (rc *replicationController) schedule(node string) error {
+func (rc *replicationController) schedule(node types.NodeName) error {
 	rc.logger.NoFields().Infof("Scheduling on %s", node)
 	err := rc.forEachLabel(node, func(podID, k, v string) error {
 		return rc.podApplicator.SetLabel(labels.POD, podID, k, v)
@@ -388,7 +389,7 @@ func (rc *replicationController) schedule(node string) error {
 	return err
 }
 
-func (rc *replicationController) unschedule(node string) error {
+func (rc *replicationController) unschedule(node types.NodeName) error {
 	rc.logger.NoFields().Infof("Unscheduling from %s", node)
 	_, err := rc.kpStore.DeletePod(kp.INTENT_TREE, node, rc.Manifest.ID())
 	if err != nil {
@@ -405,14 +406,6 @@ func (rc *replicationController) unschedule(node string) error {
 // different datasources to allow RCs to continue to function correctly
 // in the future.
 
-func MakePodLabelKey(node string, podID types.PodID) string {
-	return node + "/" + podID.String()
-}
-
-func GetPodIDFromLabelKey(labelKey string) (types.PodID, string, error) {
-	parts := strings.SplitN(labelKey, "/", 2)
-	if len(parts) < 2 {
-		return types.PodID(""), "", fmt.Errorf("malformed pod label %s", labelKey)
-	}
-	return types.PodID(parts[1]), parts[0], nil
+func MakePodLabelKey(node types.NodeName, podID types.PodID) string {
+	return node.String() + "/" + podID.String()
 }

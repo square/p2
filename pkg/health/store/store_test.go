@@ -12,15 +12,15 @@ type FakeHealthChecker struct {
 	healthResults chan []*health.Result
 }
 
-func (hc *FakeHealthChecker) WatchNodeService(nodename string, serviceID string, resultCh chan<- health.Result, errCh chan<- error, quitCh <-chan struct{}) {
+func (hc *FakeHealthChecker) WatchNodeService(nodename types.NodeName, serviceID string, resultCh chan<- health.Result, errCh chan<- error, quitCh <-chan struct{}) {
 	panic("not implemented")
 }
 
-func (hc *FakeHealthChecker) WatchService(serviceID string, resultCh chan<- map[string]health.Result, errCh chan<- error, quitCh <-chan struct{}) {
+func (hc *FakeHealthChecker) WatchService(serviceID string, resultCh chan<- map[types.NodeName]health.Result, errCh chan<- error, quitCh <-chan struct{}) {
 	panic("not implemented")
 }
 
-func (hc *FakeHealthChecker) Service(serviceID string) (map[string]health.Result, error) {
+func (hc *FakeHealthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
 	panic("not implemented")
 }
 
@@ -52,7 +52,7 @@ func TestStartWatchBasic(t *testing.T) {
 		hs.StartWatch(quitCh)
 	}()
 
-	node := "abc01.sjc1"
+	node := types.NodeName("abc01.sjc1")
 	podID1 := types.PodID("podID1")
 	podID2 := types.PodID("podID2")
 

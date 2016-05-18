@@ -7,6 +7,7 @@ import (
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/flags"
+	"github.com/square/p2/pkg/types"
 
 	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
 	"github.com/square/p2/pkg/version"
@@ -43,7 +44,7 @@ func main() {
 	quit := make(chan struct{})
 	errChan := make(chan error)
 	podCh := make(chan []kp.ManifestResult)
-	go store.WatchPods(podPrefix, *nodeName, quit, errChan, podCh)
+	go store.WatchPods(podPrefix, types.NodeName(*nodeName), quit, errChan, podCh)
 	for {
 		select {
 		case results := <-podCh:

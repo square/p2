@@ -7,6 +7,7 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/types"
 )
 
 const (
@@ -15,8 +16,8 @@ const (
 )
 
 type NodePodStatus struct {
-	NodeName           string             `json:"node,omitempty"`
-	PodId              string             `json:"pod,omitempty"`
+	NodeName           types.NodeName     `json:"node,omitempty"`
+	PodId              types.PodID        `json:"pod,omitempty"`
 	IntentManifestSHA  string             `json:"intent_manifest_sha"`
 	RealityManifestSHA string             `json:"reality_manifest_sha"`
 	IntentLocations    []string           `json:"intent_locations"`
@@ -24,10 +25,10 @@ type NodePodStatus struct {
 	Health             health.HealthState `json:"health,omitempty"`
 }
 
-func AddKVPToMap(result kp.ManifestResult, source int, filterNode, filterPod string, statuses map[string]map[string]NodePodStatus) error {
+func AddKVPToMap(result kp.ManifestResult, source int, filterNode types.NodeName, filterPod types.PodID, statuses map[types.PodID]map[types.NodeName]NodePodStatus) error {
 	keySegs := strings.Split(result.Path, "/")
-	nodeName := keySegs[1]
-	podId := keySegs[2]
+	nodeName := types.NodeName(keySegs[1])
+	podId := types.PodID(keySegs[2])
 
 	if filterNode != "" && nodeName != filterNode {
 		return nil
@@ -37,7 +38,7 @@ func AddKVPToMap(result kp.ManifestResult, source int, filterNode, filterPod str
 	}
 
 	if statuses[podId] == nil {
-		statuses[podId] = make(map[string]NodePodStatus)
+		statuses[podId] = make(map[types.NodeName]NodePodStatus)
 	}
 	old := statuses[podId][nodeName]
 

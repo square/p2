@@ -160,7 +160,7 @@ type FakeStore struct {
 	currentManifestError error
 }
 
-func (f *FakeStore) ListPods(kp.PodPrefix, string) ([]kp.ManifestResult, time.Duration, error) {
+func (f *FakeStore) ListPods(kp.PodPrefix, types.NodeName) ([]kp.ManifestResult, time.Duration, error) {
 	if f.currentManifest == nil {
 		return nil, 0, nil
 	}
@@ -172,19 +172,19 @@ func (f *FakeStore) ListPods(kp.PodPrefix, string) ([]kp.ManifestResult, time.Du
 	}, 0, nil
 }
 
-func (f *FakeStore) SetPod(kp.PodPrefix, string, pods.Manifest) (time.Duration, error) {
+func (f *FakeStore) SetPod(kp.PodPrefix, types.NodeName, pods.Manifest) (time.Duration, error) {
 	return 0, nil
 }
 
-func (f *FakeStore) Pod(kp.PodPrefix, string, types.PodID) (pods.Manifest, time.Duration, error) {
+func (f *FakeStore) Pod(kp.PodPrefix, types.NodeName, types.PodID) (pods.Manifest, time.Duration, error) {
 	return nil, 0, fmt.Errorf("not implemented")
 }
 
-func (f *FakeStore) DeletePod(kp.PodPrefix, string, types.PodID) (time.Duration, error) {
+func (f *FakeStore) DeletePod(kp.PodPrefix, types.NodeName, types.PodID) (time.Duration, error) {
 	return 0, nil
 }
 
-func (f *FakeStore) WatchPods(kp.PodPrefix, string, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult) {
+func (f *FakeStore) WatchPods(kp.PodPrefix, types.NodeName, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult) {
 }
 
 func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks, string) {

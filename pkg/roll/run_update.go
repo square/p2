@@ -141,7 +141,7 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 		return
 	}
 
-	hChecks := make(chan map[string]health.Result)
+	hChecks := make(chan map[types.NodeName]health.Result)
 	hErrs := make(chan error)
 	hQuit := make(chan struct{})
 	defer close(hQuit)
@@ -169,7 +169,7 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 }
 
 // returns true if roll succeeded, false if asked to quit.
-func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[string]health.Result, hErrs <-chan error, quit <-chan struct{}) bool {
+func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]health.Result, hErrs <-chan error, quit <-chan struct{}) bool {
 	for {
 		select {
 		case <-quit:
@@ -367,7 +367,7 @@ type rcNodeCounts struct {
 	Unknown   int // the number of real nodes that are of unknown health
 }
 
-func (u *update) countHealthy(id rcf.ID, checks map[string]health.Result) (rcNodeCounts, error) {
+func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result) (rcNodeCounts, error) {
 	ret := rcNodeCounts{}
 	rcFields, err := u.rcs.Get(id)
 	if rcstore.IsNotExist(err) {

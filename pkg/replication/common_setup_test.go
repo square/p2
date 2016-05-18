@@ -11,11 +11,12 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 )
 
-var testNodes = []string{"node1", "node2"}
+var testNodes = []types.NodeName{"node1", "node2"}
 
 const (
 	testLockMessage      = "lock is held by replicator_test.go"
@@ -68,7 +69,7 @@ type alwaysHappyHealthChecker struct {
 }
 
 func (h alwaysHappyHealthChecker) WatchNodeService(
-	nodename string,
+	nodeName types.NodeName,
 	serviceID string,
 	resultCh chan<- health.Result,
 	errCh chan<- error,
@@ -87,8 +88,8 @@ func (h alwaysHappyHealthChecker) WatchNodeService(
 	}
 }
 
-func (h alwaysHappyHealthChecker) Service(serviceID string) (map[string]health.Result, error) {
-	results := make(map[string]health.Result)
+func (h alwaysHappyHealthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
+	results := make(map[types.NodeName]health.Result)
 	for _, node := range testNodes {
 		results[node] = health.Result{
 			ID:     testPodId,
@@ -100,7 +101,7 @@ func (h alwaysHappyHealthChecker) Service(serviceID string) (map[string]health.R
 
 func (h alwaysHappyHealthChecker) WatchService(
 	serviceID string,
-	resultCh chan<- map[string]health.Result,
+	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{},
 ) {
@@ -108,7 +109,7 @@ func (h alwaysHappyHealthChecker) WatchService(
 		select {
 		case <-quitCh:
 			return
-		case resultCh <- map[string]health.Result{}:
+		case resultCh <- map[types.NodeName]health.Result{}:
 		}
 	}
 }
@@ -127,33 +128,33 @@ func happyHealthChecker() checker.ConsulHealthChecker {
 
 type channelBasedHealthChecker struct {
 	// maps node name to a channel on which fake results can be provided
-	resultsChans map[string]chan health.Result
+	resultsChans map[types.NodeName]chan health.Result
 
 	t *testing.T
 }
 
 // Pass along whatever results come through c.resultsChan
 func (c channelBasedHealthChecker) WatchNodeService(
-	nodename string,
+	nodeName types.NodeName,
 	serviceID string,
 	resultCh chan<- health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{},
 ) {
-	inputCh, ok := c.resultsChans[nodename]
+	inputCh, ok := c.resultsChans[nodeName]
 	if ok {
 		for result := range inputCh {
 			resultCh <- result
 		}
 	} else {
-		c.t.Fatalf("No results channel configured for %s", nodename)
+		c.t.Fatalf("No results channel configured for %s", nodeName)
 	}
 }
 
 // This is used by the initial health query in the replication library for
 // sorting purposes, just return all healthy
-func (c channelBasedHealthChecker) Service(serviceID string) (map[string]health.Result, error) {
-	results := make(map[string]health.Result)
+func (c channelBasedHealthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
+	results := make(map[types.NodeName]health.Result)
 	for _, node := range testNodes {
 		results[node] = health.Result{
 			ID:     testPodId,
@@ -165,7 +166,7 @@ func (c channelBasedHealthChecker) Service(serviceID string) (map[string]health.
 
 func (h channelBasedHealthChecker) WatchService(
 	serviceID string,
-	resultCh chan<- map[string]health.Result,
+	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{},
 ) {
@@ -173,7 +174,7 @@ func (h channelBasedHealthChecker) WatchService(
 		select {
 		case <-quitCh:
 			return
-		case resultCh <- map[string]health.Result{}:
+		case resultCh <- map[types.NodeName]health.Result{}:
 		}
 	}
 }
@@ -187,8 +188,8 @@ func (h channelBasedHealthChecker) WatchHealth(
 
 // returns an implementation of checker.ConsulHealthChecker that will provide
 // results based on what is passed on the returned  chanel
-func channelHealthChecker(nodes []string, t *testing.T) (checker.ConsulHealthChecker, map[string]chan health.Result) {
-	resultsChans := make(map[string]chan health.Result)
+func channelHealthChecker(nodes []types.NodeName, t *testing.T) (checker.ConsulHealthChecker, map[types.NodeName]chan health.Result) {
+	resultsChans := make(map[types.NodeName]chan health.Result)
 	for _, node := range nodes {
 		resultsChans[node] = make(chan health.Result)
 	}

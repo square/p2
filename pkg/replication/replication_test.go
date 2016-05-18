@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/labels"
+	"github.com/square/p2/pkg/types"
 )
 
 func TestEnact(t *testing.T) {
@@ -94,7 +95,7 @@ func TestWaitsForHealthy(t *testing.T) {
 	// Mark first node as unhealthy and the remainder as healthy
 	for i, node := range testNodes {
 		if i == 0 {
-			go func(node string) {
+			go func(node types.NodeName) {
 				for x := 0; x < 5; x++ {
 					resultsCh[node] <- health.Result{
 						ID:     testPodId,
@@ -113,7 +114,7 @@ func TestWaitsForHealthy(t *testing.T) {
 		} else {
 			// Mark the rest of the nodes as healthy constantly and
 			// quit once replication is over
-			go func(node string) {
+			go func(node types.NodeName) {
 				for {
 					select {
 					case resultsCh[node] <- health.Result{
@@ -188,7 +189,7 @@ func TestReplicationStopsIfCanceled(t *testing.T) {
 	// succeed successfully
 	healthFedChannel := make(chan struct{})
 	for _, node := range testNodes {
-		go func(node string) {
+		go func(node types.NodeName) {
 			for i := 0; i < 5; i++ {
 				select {
 				case resultsCh[node] <- health.Result{
@@ -297,7 +298,7 @@ func TestStopsIfLockDestroyed(t *testing.T) {
 	// Report unhealthy for all nodes so replication cannot finish without
 	// interruption
 	for _, node := range testNodes {
-		go func(node string) {
+		go func(node types.NodeName) {
 			for {
 				select {
 				case resultsCh[node] <- health.Result{

@@ -14,10 +14,12 @@ import (
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp"
 	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp/clearsign"
+
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -34,7 +36,7 @@ func fakeStoreWithManifests(manifests ...kp.ManifestResult) *fakeIntentStore {
 	}
 }
 
-func (f *fakeIntentStore) WatchPods(podPrefix kp.PodPrefix, nodeName string, quitCh <-chan struct{}, errCh chan<- error, podCh chan<- []kp.ManifestResult) {
+func (f *fakeIntentStore) WatchPods(podPrefix kp.PodPrefix, nodeName types.NodeName, quitCh <-chan struct{}, errCh chan<- error, podCh chan<- []kp.ManifestResult) {
 	go func() {
 		podCh <- f.manifests
 		if f.errToSend != nil {
@@ -46,7 +48,7 @@ func (f *fakeIntentStore) WatchPods(podPrefix kp.PodPrefix, nodeName string, qui
 	<-quitCh
 }
 
-func (f *fakeIntentStore) ListPods(podPrefix kp.PodPrefix, nodeName string) ([]kp.ManifestResult, time.Duration, error) {
+func (f *fakeIntentStore) ListPods(podPrefix kp.PodPrefix, nodeName types.NodeName) ([]kp.ManifestResult, time.Duration, error) {
 	return f.manifests, 0, nil
 }
 

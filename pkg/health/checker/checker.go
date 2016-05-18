@@ -7,6 +7,7 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
@@ -14,7 +15,7 @@ import (
 
 type ConsulHealthChecker interface {
 	WatchNodeService(
-		nodename string,
+		nodename types.NodeName,
 		serviceID string,
 		resultCh chan<- health.Result,
 		errCh chan<- error,
@@ -22,19 +23,19 @@ type ConsulHealthChecker interface {
 	)
 	WatchService(
 		serviceID string,
-		resultCh chan<- map[string]health.Result,
+		resultCh chan<- map[types.NodeName]health.Result,
 		errCh chan<- error,
 		quitCh <-chan struct{})
 	WatchHealth(
 		resultCh chan []*health.Result,
 		errCh chan<- error,
 		quitCh <-chan struct{})
-	Service(serviceID string) (map[string]health.Result, error)
+	Service(serviceID string) (map[types.NodeName]health.Result, error)
 }
 
 // Subset of kp.Store
 type healthStore interface {
-	GetHealth(service, node string) (kp.WatchResult, error)
+	GetHealth(service string, node types.NodeName) (kp.WatchResult, error)
 	GetServiceHealth(service string) (map[string]kp.WatchResult, error)
 }
 
@@ -48,7 +49,7 @@ type consulHealthChecker struct {
 	consulStore healthStore
 }
 type consulHealth interface {
-	Node(string, *api.QueryOptions) ([]*api.HealthCheck, *api.QueryMeta, error)
+	Node(types.NodeName, *api.QueryOptions) ([]*api.HealthCheck, *api.QueryMeta, error)
 }
 
 func NewConsulHealthChecker(client *api.Client) ConsulHealthChecker {
@@ -60,7 +61,7 @@ func NewConsulHealthChecker(client *api.Client) ConsulHealthChecker {
 }
 
 func (c consulHealthChecker) WatchNodeService(
-	nodename string,
+	nodename types.NodeName,
 	serviceID string,
 	resultCh chan<- health.Result,
 	errCh chan<- error,
@@ -174,7 +175,7 @@ func (c consulHealthChecker) WatchHealth(
 
 func (c consulHealthChecker) WatchService(
 	serviceID string,
-	resultCh chan<- map[string]health.Result,
+	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{},
 ) {
@@ -193,7 +194,7 @@ func (c consulHealthChecker) WatchService(
 				errCh <- consulutil.NewKVError("list", kp.HealthPath(serviceID, ""), err)
 			} else {
 				curIndex = queryMeta.LastIndex
-				out := make(map[string]health.Result)
+				out := make(map[types.NodeName]health.Result)
 				for _, result := range results {
 					var next kp.WatchResult
 					err = json.Unmarshal(result.Value, &next)
@@ -210,14 +211,14 @@ func (c consulHealthChecker) WatchService(
 }
 
 // Service returns a map where values are individual results (keys are nodes)
-func (c consulHealthChecker) Service(serviceID string) (map[string]health.Result, error) {
+func (c consulHealthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
 	// return map[nodenames (string)] to kp.WatchResult
 	// get health of all instances of a service with 1 query
 	kvEntries, err := c.consulStore.GetServiceHealth(serviceID)
 	if err != nil {
 		return nil, err
 	}
-	ret := make(map[string]health.Result)
+	ret := make(map[types.NodeName]health.Result)
 	for _, kvEntry := range kvEntries {
 		ret[kvEntry.Node] = consulWatchToResult(kvEntry)
 	}

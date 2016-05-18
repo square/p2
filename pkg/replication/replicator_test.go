@@ -195,7 +195,7 @@ func TestInitializeReplicationWithManaged(t *testing.T) {
 	// Make one node appear to be managed by a replication controller
 	err := labels.NewConsulApplicator(f.Client, 1).SetLabel(
 		labels.POD,
-		path.Join(testNodes[0], testPodId),
+		path.Join(testNodes[0].String(), testPodId),
 		rc.RCIDLabel,
 		"controller GUID ignored",
 	)

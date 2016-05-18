@@ -7,6 +7,7 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/types"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
@@ -16,8 +17,8 @@ type fakeConsulStore struct {
 	results map[string]kp.WatchResult
 }
 
-func (f fakeConsulStore) GetHealth(service, node string) (kp.WatchResult, error) {
-	return f.results[node], nil
+func (f fakeConsulStore) GetHealth(service string, node types.NodeName) (kp.WatchResult, error) {
+	return f.results[node.String()], nil
 }
 func (f fakeConsulStore) GetServiceHealth(service string) (map[string]kp.WatchResult, error) {
 	return f.results, nil

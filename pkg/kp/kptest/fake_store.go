@@ -44,11 +44,11 @@ func NewFakePodStore(podResults map[FakePodStoreKey]pods.Manifest, healthResults
 
 type FakePodStoreKey struct {
 	podPrefix kp.PodPrefix
-	hostname  string
+	hostname  types.NodeName
 	podId     types.PodID
 }
 
-func FakePodStoreKeyFor(podPrefix kp.PodPrefix, hostname string, podId types.PodID) FakePodStoreKey {
+func FakePodStoreKeyFor(podPrefix kp.PodPrefix, hostname types.NodeName, podId types.PodID) FakePodStoreKey {
 	return FakePodStoreKey{
 		podPrefix: podPrefix,
 		hostname:  hostname,
@@ -56,12 +56,12 @@ func FakePodStoreKeyFor(podPrefix kp.PodPrefix, hostname string, podId types.Pod
 	}
 }
 
-func (f *FakePodStore) SetPod(podPrefix kp.PodPrefix, hostname string, manifest pods.Manifest) (time.Duration, error) {
+func (f *FakePodStore) SetPod(podPrefix kp.PodPrefix, hostname types.NodeName, manifest pods.Manifest) (time.Duration, error) {
 	f.podResults[FakePodStoreKeyFor(podPrefix, hostname, manifest.ID())] = manifest
 	return 0, nil
 }
 
-func (f *FakePodStore) Pod(podPrefix kp.PodPrefix, hostname string, podId types.PodID) (pods.Manifest, time.Duration, error) {
+func (f *FakePodStore) Pod(podPrefix kp.PodPrefix, hostname types.NodeName, podId types.PodID) (pods.Manifest, time.Duration, error) {
 	if pod, ok := f.podResults[FakePodStoreKeyFor(podPrefix, hostname, podId)]; !ok {
 		return nil, 0, pods.NoCurrentManifest
 	} else {
@@ -69,12 +69,12 @@ func (f *FakePodStore) Pod(podPrefix kp.PodPrefix, hostname string, podId types.
 	}
 }
 
-func (f *FakePodStore) ListPods(podPrefix kp.PodPrefix, hostname string) ([]kp.ManifestResult, time.Duration, error) {
+func (f *FakePodStore) ListPods(podPrefix kp.PodPrefix, hostname types.NodeName) ([]kp.ManifestResult, time.Duration, error) {
 	res := make([]kp.ManifestResult, 0)
 	for key, manifest := range f.podResults {
 		if key.podPrefix == podPrefix && key.hostname == hostname {
 			// TODO(mpuncel) make ManifestResult not contain the path, it's silly to have to do things like this
-			path := path.Join(string(podPrefix), hostname, string(manifest.ID()))
+			path := path.Join(string(podPrefix), hostname.String(), string(manifest.ID()))
 			res = append(res, kp.ManifestResult{
 				Manifest: manifest,
 				Path:     path,
@@ -87,7 +87,7 @@ func (f *FakePodStore) ListPods(podPrefix kp.PodPrefix, hostname string) ([]kp.M
 func (f *FakePodStore) AllPods(podPrefix kp.PodPrefix) ([]kp.ManifestResult, time.Duration, error) {
 	res := make([]kp.ManifestResult, 0)
 	for key, manifest := range f.podResults {
-		path := path.Join(string(podPrefix), key.hostname, string(manifest.ID()))
+		path := path.Join(string(podPrefix), key.hostname.String(), string(manifest.ID()))
 		res = append(res, kp.ManifestResult{
 			Manifest: manifest,
 			Path:     path,
@@ -96,12 +96,12 @@ func (f *FakePodStore) AllPods(podPrefix kp.PodPrefix) ([]kp.ManifestResult, tim
 	return res, 0, nil
 }
 
-func (f *FakePodStore) DeletePod(podPrefix kp.PodPrefix, hostname string, podId types.PodID) (time.Duration, error) {
+func (f *FakePodStore) DeletePod(podPrefix kp.PodPrefix, hostname types.NodeName, podId types.PodID) (time.Duration, error) {
 	delete(f.podResults, FakePodStoreKeyFor(podPrefix, hostname, podId))
 	return 0, nil
 }
 
-func (f *FakePodStore) GetHealth(service, node string) (kp.WatchResult, error) {
+func (f *FakePodStore) GetHealth(service string, node types.NodeName) (kp.WatchResult, error) {
 	return f.healthResults[kp.HealthPath(service, node)], nil
 }
 
@@ -126,11 +126,11 @@ func (f *FakePodStore) GetServiceHealth(service string) (map[string]kp.WatchResu
 	return ret, nil
 }
 
-func (*FakePodStore) WatchPod(podPrefix kp.PodPrefix, nodename string, podId types.PodID, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- kp.ManifestResult) {
+func (*FakePodStore) WatchPod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- kp.ManifestResult) {
 	panic("not implemented")
 }
 
-func (*FakePodStore) WatchPods(podPrefix kp.PodPrefix, nodename string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []kp.ManifestResult) {
+func (*FakePodStore) WatchPods(podPrefix kp.PodPrefix, nodename types.NodeName, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []kp.ManifestResult) {
 	panic("not implemented")
 }
 
@@ -150,6 +150,6 @@ func (*FakePodStore) NewUnmanagedSession(session string, name string) kp.Session
 	panic("not implemented")
 }
 
-func (*FakePodStore) NewHealthManager(node string, logger logging.Logger) kp.HealthManager {
+func (*FakePodStore) NewHealthManager(node types.NodeName, logger logging.Logger) kp.HealthManager {
 	panic("not implemented")
 }

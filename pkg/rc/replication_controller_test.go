@@ -22,21 +22,21 @@ type fakeKpStore struct {
 	manifests map[string]pods.Manifest
 }
 
-func (s *fakeKpStore) SetPod(podPrefix kp.PodPrefix, nodeName string, manifest pods.Manifest) (time.Duration, error) {
-	key := path.Join(string(podPrefix), nodeName, string(manifest.ID()))
+func (s *fakeKpStore) SetPod(podPrefix kp.PodPrefix, nodeName types.NodeName, manifest pods.Manifest) (time.Duration, error) {
+	key := path.Join(string(podPrefix), nodeName.String(), string(manifest.ID()))
 	s.manifests[key] = manifest
 	return 0, nil
 }
 
-func (s *fakeKpStore) DeletePod(podPrefix kp.PodPrefix, nodeName string, podID types.PodID) (time.Duration, error) {
-	key := path.Join(string(podPrefix), nodeName, string(podID))
+func (s *fakeKpStore) DeletePod(podPrefix kp.PodPrefix, nodeName types.NodeName, podID types.PodID) (time.Duration, error) {
+	key := path.Join(string(podPrefix), nodeName.String(), podID.String())
 	delete(s.manifests, key)
 	return 0, nil
 }
 
-func (s *fakeKpStore) Pod(podPrefix kp.PodPrefix, nodeName string, podID types.PodID) (
+func (s *fakeKpStore) Pod(podPrefix kp.PodPrefix, nodeName types.NodeName, podID types.PodID) (
 	pods.Manifest, time.Duration, error) {
-	key := path.Join(string(podPrefix), nodeName, string(podID))
+	key := path.Join(string(podPrefix), nodeName.String(), podID.String())
 	if manifest, ok := s.manifests[key]; ok {
 		return manifest, 0, nil
 	}
