@@ -77,10 +77,12 @@ type ConcreteSyncer interface {
 	// When a ConcreteSyncer is passed to WatchAndSync, SyncCluster is called
 	// every time the set of labeled pods change, the pod cluster's metadata
 	// changes, or when the long-lived watch on the pod cluster store returns.
-	// This function is expected to be idempotent. Returned errors do not change
-	// the rules for invocation of this function.
+	// This function is expected to be idempotent.
 	//
 	// SyncCluster will be called for every pod cluster present in the store.
+	// If this function returns an error, SyncCluster will be called again later
+	// with the same cluster and pods, assuming that no changes occur in the intervening
+	// period.
 	//
 	// ConcreteSyncers will be called concurrently and must operate safely.
 	SyncCluster(pc *fields.PodCluster, pods []labels.Labeled) error
