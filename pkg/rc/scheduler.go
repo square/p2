@@ -5,13 +5,14 @@ import (
 
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 )
 
 // A Scheduler decides what nodes are appropriate for a pod to run on.
 // It potentially takes into account considerations such as existing load on the nodes,
 // label selectors, and more.
 type Scheduler interface {
-	EligibleNodes(pods.Manifest, klabels.Selector) ([]string, error)
+	EligibleNodes(pods.Manifest, klabels.Selector) ([]types.NodeName, error)
 }
 
 type applicatorScheduler struct {
@@ -24,15 +25,15 @@ func NewApplicatorScheduler(applicator labels.Applicator) *applicatorScheduler {
 	return &applicatorScheduler{applicator: applicator}
 }
 
-func (sel *applicatorScheduler) EligibleNodes(_ pods.Manifest, selector klabels.Selector) ([]string, error) {
+func (sel *applicatorScheduler) EligibleNodes(_ pods.Manifest, selector klabels.Selector) ([]types.NodeName, error) {
 	nodes, err := sel.applicator.GetMatches(selector, labels.NODE)
 	if err != nil {
-		return []string{}, err
+		return nil, err
 	}
 
-	result := make([]string, len(nodes))
+	result := make([]types.NodeName, len(nodes))
 	for i, node := range nodes {
-		result[i] = node.ID
+		result[i] = types.NodeName(node.ID)
 	}
 	return result, nil
 }

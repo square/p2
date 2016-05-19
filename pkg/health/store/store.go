@@ -15,7 +15,7 @@ import (
 // It performs this by watching the health tree of consul and caching the result
 type HealthStore interface {
 	StartWatch(quitCh <-chan struct{})
-	Fetch(types.PodID, string) *health.Result
+	Fetch(types.PodID, types.NodeName) *health.Result
 }
 
 type healthStore struct {
@@ -69,8 +69,8 @@ func (hs *healthStore) cache(results []*health.Result) {
 	hs.cachedHealth = tmpCache
 }
 
-func (hs *healthStore) Fetch(podID types.PodID, node string) *health.Result {
-	cacheKey := newCacheKey(podID, types.NodeName(node))
+func (hs *healthStore) Fetch(podID types.PodID, node types.NodeName) *health.Result {
+	cacheKey := newCacheKey(podID, node)
 
 	hs.lock.RLock()
 	defer hs.lock.RUnlock()

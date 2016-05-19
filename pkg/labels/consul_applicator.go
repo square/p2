@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -256,6 +257,19 @@ func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type
 		c.aggregators[labelType] = aggregator
 	}
 	return aggregator.Watch(selector, quitCh)
+}
+
+func NodeAndPodIDFromPodLabel(labeled Labeled) (types.NodeName, types.PodID, error) {
+	if labeled.LabelType != POD {
+		return "", "", util.Errorf("Label was not a pod label, was %s", labeled.LabelType)
+	}
+
+	parts := strings.SplitN(labeled.ID, "/", 2)
+	if len(parts) < 2 {
+		return "", "", util.Errorf("malformed pod label %s", labeled.ID)
+	}
+
+	return types.NodeName(parts[0]), types.PodID(parts[1]), nil
 }
 
 // confirm at compile time that consulApplicator is an implementation of the Applicator interface

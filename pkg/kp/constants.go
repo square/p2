@@ -18,7 +18,7 @@ const (
 	HOOK_TREE    PodPrefix = "hooks"
 )
 
-func nodePath(podPrefix PodPrefix, nodeName string) (string, error) {
+func nodePath(podPrefix PodPrefix, nodeName types.NodeName) (string, error) {
 	// hook tree is an exception to the rule because they are not scheduled
 	// by host, and it is valid to want to watch for them agnostic to pod
 	// id. There are plans to deploy hooks by host at which time this
@@ -31,10 +31,10 @@ func nodePath(podPrefix PodPrefix, nodeName string) (string, error) {
 		}
 	}
 
-	return path.Join(string(podPrefix), nodeName), nil
+	return path.Join(string(podPrefix), nodeName.String()), nil
 }
 
-func podPath(podPrefix PodPrefix, nodeName string, podId types.PodID) (string, error) {
+func podPath(podPrefix PodPrefix, nodeName types.NodeName, podId types.PodID) (string, error) {
 	nodePath, err := nodePath(podPrefix, nodeName)
 	if err != nil {
 		return "", err
@@ -49,7 +49,7 @@ func podPath(podPrefix PodPrefix, nodeName string, podId types.PodID) (string, e
 
 // Returns the consul path to use when intending to lock a pod, e.g.
 // lock/intent/some_host/some_pod
-func PodLockPath(podPrefix PodPrefix, nodeName string, podId types.PodID) (string, error) {
+func PodLockPath(podPrefix PodPrefix, nodeName types.NodeName, podId types.PodID) (string, error) {
 	subPodPath, err := podPath(podPrefix, nodeName, podId)
 	if err != nil {
 		return "", err

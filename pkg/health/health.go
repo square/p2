@@ -7,7 +7,7 @@ import (
 // Result stores the health state of a service.
 type Result struct {
 	ID      types.PodID
-	Node    string
+	Node    types.NodeName
 	Service string
 	Status  HealthState
 	Output  string

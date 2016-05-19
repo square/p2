@@ -19,6 +19,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/replication"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -75,11 +76,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not retrieve user: %s", err)
 	}
+
+	nodes := make([]types.NodeName, len(*hosts))
+	for i, host := range *hosts {
+		nodes[i] = types.NodeName(host)
+	}
+
 	lockMessage := fmt.Sprintf("%q from %q at %q", thisUser.Username, thisHost, time.Now())
 	repl, err := replication.NewReplicator(
 		manifest,
 		logger,
-		*hosts,
+		nodes,
 		len(*hosts)-*minNodes,
 		store,
 		labeler,

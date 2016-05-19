@@ -8,6 +8,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -45,7 +46,7 @@ func main() {
 		if *hookGlobal {
 			podPrefix = kp.HOOK_TREE
 		}
-		duration, err := store.SetPod(podPrefix, *nodeName, manifest)
+		duration, err := store.SetPod(podPrefix, types.NodeName(*nodeName), manifest)
 		if err != nil {
 			log.Fatalf("Could not write manifest %s to intent store: %s\n", manifest.ID(), err)
 		}

@@ -49,14 +49,14 @@ type consulHealthManager struct {
 	sessionPub *stream.StringValuePublisher // Publishes the current session
 	done       chan struct{}                // Close this to stop reporting health
 	client     *api.Client                  // Connection to the Consul agent
-	node       string
+	node       types.NodeName
 	logger     logging.Logger // Logger for health events
 }
 
 // NewHealthManager implements the Store interface. It creates a new HealthManager that
 // uses the Consul Key-Value store to hold app health statues.
 func (c consulStore) newSessionHealthManager(
-	node string,
+	node types.NodeName,
 	logger logging.Logger,
 ) HealthManager {
 	// Create a stream of sessions
@@ -98,7 +98,7 @@ func (m *consulHealthManager) Close() {
 // consulHealthUpdater holds the state needed for the update process to track the current
 // service health and which health it has published.
 type consulHealthUpdater struct {
-	node    string           // The node this updater is bound to
+	node    types.NodeName   // The node this updater is bound to
 	pod     types.PodID      // The pod ID this updater is bound to
 	service string           // The service this updater is bound to
 	checker chan WatchResult // Stream of health updates from a checker

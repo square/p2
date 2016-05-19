@@ -26,22 +26,22 @@ type ManifestResult struct {
 }
 
 type Store interface {
-	SetPod(podPrefix PodPrefix, nodename string, manifest pods.Manifest) (time.Duration, error)
-	Pod(podPrefix PodPrefix, nodename string, podId types.PodID) (pods.Manifest, time.Duration, error)
-	DeletePod(podPrefix PodPrefix, nodename string, podId types.PodID) (time.Duration, error)
+	SetPod(podPrefix PodPrefix, nodename types.NodeName, manifest pods.Manifest) (time.Duration, error)
+	Pod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (pods.Manifest, time.Duration, error)
+	DeletePod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
 	PutHealth(res WatchResult) (time.Time, time.Duration, error)
-	GetHealth(service, node string) (WatchResult, error)
+	GetHealth(service string, node types.NodeName) (WatchResult, error)
 	GetServiceHealth(service string) (map[string]WatchResult, error)
-	WatchPod(podPrefix PodPrefix, nodename string, podId types.PodID, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
-	WatchPods(podPrefix PodPrefix, nodename string, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult)
+	WatchPod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
+	WatchPods(podPrefix PodPrefix, nodename types.NodeName, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult)
 	Ping() error
-	ListPods(podPrefix PodPrefix, nodename string) ([]ManifestResult, time.Duration, error)
+	ListPods(podPrefix PodPrefix, nodename types.NodeName) ([]ManifestResult, time.Duration, error)
 	AllPods(podPrefix PodPrefix) ([]ManifestResult, time.Duration, error)
 	LockHolder(key string) (string, string, error)
 	DestroyLockHolder(id string) error
 	NewSession(name string, renewalCh <-chan time.Time) (Session, chan error, error)
 	NewUnmanagedSession(session, name string) Session
-	NewHealthManager(node string, logger logging.Logger) HealthManager
+	NewHealthManager(node types.NodeName, logger logging.Logger) HealthManager
 }
 
 // HealthManager manages a collection of health checks that share configuration and
@@ -68,7 +68,7 @@ type HealthUpdater interface {
 
 type WatchResult struct {
 	Id      types.PodID
-	Node    string
+	Node    types.NodeName
 	Service string
 	Status  string
 	Output  string
@@ -131,7 +131,7 @@ func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error
 	return now, retDur, nil
 }
 
-func (c consulStore) GetHealth(service, node string) (WatchResult, error) {
+func (c consulStore) GetHealth(service string, node types.NodeName) (WatchResult, error) {
 	healthRes := &WatchResult{}
 	key := HealthPath(service, node)
 	res, _, err := c.client.KV().Get(key, nil)
@@ -173,7 +173,7 @@ func (c consulStore) GetServiceHealth(service string) (map[string]WatchResult, e
 }
 
 // SetPod writes a pod manifest into the consul key-value store.
-func (c consulStore) SetPod(podPrefix PodPrefix, nodename string, manifest pods.Manifest) (time.Duration, error) {
+func (c consulStore) SetPod(podPrefix PodPrefix, nodename types.NodeName, manifest pods.Manifest) (time.Duration, error) {
 	buf := bytes.Buffer{}
 	err := manifest.Write(&buf)
 	if err != nil {
@@ -202,7 +202,7 @@ func (c consulStore) SetPod(podPrefix PodPrefix, nodename string, manifest pods.
 
 // DeletePod deletes a pod manifest from the key-value store. No error will be
 // returned if the key didn't exist.
-func (c consulStore) DeletePod(podPrefix PodPrefix, nodename string, podId types.PodID) (time.Duration, error) {
+func (c consulStore) DeletePod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error) {
 	key, err := podPath(podPrefix, nodename, podId)
 	if err != nil {
 		return 0, err
@@ -218,7 +218,7 @@ func (c consulStore) DeletePod(podPrefix PodPrefix, nodename string, podId types
 // Pod reads a pod manifest from the key-value store. If the given key does not
 // exist, a nil *PodManifest will be returned, along with a pods.NoCurrentManifest
 // error.
-func (c consulStore) Pod(podPrefix PodPrefix, nodename string, podId types.PodID) (pods.Manifest, time.Duration, error) {
+func (c consulStore) Pod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (pods.Manifest, time.Duration, error) {
 	key, err := podPath(podPrefix, nodename, podId)
 	if err != nil {
 		return nil, 0, err
@@ -240,7 +240,7 @@ func (c consulStore) Pod(podPrefix PodPrefix, nodename string, podId types.PodID
 // is returned.
 //
 // All the values under the given path must be pod manifests.
-func (c consulStore) ListPods(podPrefix PodPrefix, nodename string) ([]ManifestResult, time.Duration, error) {
+func (c consulStore) ListPods(podPrefix PodPrefix, nodename types.NodeName) ([]ManifestResult, time.Duration, error) {
 	keyPrefix, err := nodePath(podPrefix, nodename)
 	if err != nil {
 		return nil, 0, err
@@ -277,7 +277,7 @@ func (c consulStore) listPods(keyPrefix string) ([]ManifestResult, time.Duration
 // may contain nil manifests, if the target key does not exist.
 func (c consulStore) WatchPod(
 	podPrefix PodPrefix,
-	nodename string,
+	nodename types.NodeName,
 	podId types.PodID,
 	quitChan <-chan struct{},
 	errChan chan<- error,
@@ -330,7 +330,7 @@ func (c consulStore) WatchPod(
 // caller's responsibility to filter out unchanged manifests.
 func (c consulStore) WatchPods(
 	podPrefix PodPrefix,
-	nodename string,
+	nodename types.NodeName,
 	quitChan <-chan struct{},
 	errChan chan<- error,
 	podChan chan<- []ManifestResult,
@@ -393,13 +393,13 @@ func (c consulStore) Ping() error {
 	return nil
 }
 
-func HealthPath(service, node string) string {
+func HealthPath(service string, node types.NodeName) string {
 	if node == "" {
 		return fmt.Sprintf("%s/%s", "health", service)
 	}
 	return fmt.Sprintf("%s/%s/%s", "health", service, node)
 }
 
-func (c consulStore) NewHealthManager(node string, logger logging.Logger) HealthManager {
+func (c consulStore) NewHealthManager(node types.NodeName, logger logging.Logger) HealthManager {
 	return c.newSessionHealthManager(node, logger)
 }

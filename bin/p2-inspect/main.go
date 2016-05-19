@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/flags"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -30,9 +31,11 @@ func main() {
 	var intents []kp.ManifestResult
 	var realities []kp.ManifestResult
 	var err error
+	filterNodeName := types.NodeName(*filterNodeName)
+	filterPodID := types.PodID(*filterPodId)
 
-	if *filterNodeName != "" {
-		intents, _, err = store.ListPods(kp.INTENT_TREE, *filterNodeName)
+	if filterNodeName != "" {
+		intents, _, err = store.ListPods(kp.INTENT_TREE, filterNodeName)
 	} else {
 		intents, _, err = store.AllPods(kp.INTENT_TREE)
 	}
@@ -45,8 +48,8 @@ func main() {
 		}
 	}
 
-	if *filterNodeName != "" {
-		realities, _, err = store.ListPods(kp.REALITY_TREE, *filterNodeName)
+	if filterNodeName != "" {
+		realities, _, err = store.ListPods(kp.REALITY_TREE, filterNodeName)
 	} else {
 		realities, _, err = store.AllPods(kp.REALITY_TREE)
 	}
@@ -60,29 +63,29 @@ func main() {
 		}
 	}
 
-	statusMap := make(map[string]map[string]inspect.NodePodStatus)
+	statusMap := make(map[types.PodID]map[types.NodeName]inspect.NodePodStatus)
 
 	for _, kvp := range intents {
-		if inspect.AddKVPToMap(kvp, inspect.INTENT_SOURCE, *filterNodeName, *filterPodId, statusMap) != nil {
+		if inspect.AddKVPToMap(kvp, inspect.INTENT_SOURCE, filterNodeName, filterPodID, statusMap) != nil {
 			log.Fatal(err)
 		}
 	}
 
 	for _, kvp := range realities {
-		if inspect.AddKVPToMap(kvp, inspect.REALITY_SOURCE, *filterNodeName, *filterPodId, statusMap) != nil {
+		if inspect.AddKVPToMap(kvp, inspect.REALITY_SOURCE, filterNodeName, filterPodID, statusMap) != nil {
 			log.Fatal(err)
 		}
 	}
 
 	hchecker := checker.NewConsulHealthChecker(client)
 	for podId := range statusMap {
-		resultMap, err := hchecker.Service(podId)
+		resultMap, err := hchecker.Service(podId.String())
 		if err != nil {
 			log.Fatalf("Could not retrieve health checks for pod %s: %s", podId, err)
 		}
 
 		for node, result := range resultMap {
-			if *filterNodeName != "" && node != *filterNodeName {
+			if filterNodeName != "" && node != filterNodeName {
 				continue
 			}
 

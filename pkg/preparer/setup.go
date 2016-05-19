@@ -41,7 +41,7 @@ type LogDestination struct {
 }
 
 type Preparer struct {
-	node                   string
+	node                   types.NodeName
 	store                  Store
 	hooks                  Hooks
 	hookListener           HookListener
@@ -55,7 +55,7 @@ type Preparer struct {
 }
 
 type PreparerConfig struct {
-	NodeName               string                 `yaml:"node_name"`
+	NodeName               types.NodeName         `yaml:"node_name"`
 	ConsulAddress          string                 `yaml:"consul_address"`
 	ConsulHttps            bool                   `yaml:"consul_https,omitempty"`
 	ConsulTokenPath        string                 `yaml:"consul_token_path,omitempty"`
@@ -130,7 +130,12 @@ func UnmarshalConfig(config []byte) (*PreparerConfig, error) {
 	}
 
 	if preparerConfig.NodeName == "" {
-		preparerConfig.NodeName, _ = os.Hostname()
+		hostname, err := os.Hostname()
+		if err != nil {
+			return nil, util.Errorf("Couldn't determine hostname: %s", err)
+		}
+
+		preparerConfig.NodeName = types.NodeName(hostname)
 	}
 	if preparerConfig.ConsulAddress == "" {
 		preparerConfig.ConsulAddress = DefaultConsulAddress

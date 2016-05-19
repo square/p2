@@ -50,7 +50,7 @@ type PodWatch struct {
 // a status check on a particular service
 type StatusChecker struct {
 	ID     types.PodID
-	Node   string
+	Node   types.NodeName
 	URI    string
 	Client *http.Client
 }
@@ -123,7 +123,7 @@ func updatePods(
 	insecureClient *http.Client,
 	current []PodWatch,
 	reality []kp.ManifestResult,
-	node string,
+	node types.NodeName,
 	logger *logging.Logger,
 ) []PodWatch {
 	newCurrent := []PodWatch{}
@@ -160,7 +160,7 @@ func updatePods(
 		}
 
 		var client *http.Client
-		var statusHost string
+		var statusHost types.NodeName
 		if man.Manifest.GetStatusLocalhostOnly() {
 			statusHost = "localhost"
 			client = insecureClient

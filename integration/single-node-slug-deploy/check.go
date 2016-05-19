@@ -24,6 +24,7 @@ import (
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
@@ -472,7 +473,7 @@ func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
 				return fmt.Errorf("Too many results found, should only have 1: %v", res)
 			}
 			if len(res) == 1 {
-				podID, _, err := rc.GetPodIDFromLabelKey(res[0].ID)
+				_, podID, err := labels.NodeAndPodIDFromPodLabel(res[0])
 				if err != nil {
 					return err
 				}
@@ -540,8 +541,10 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 	if err != nil {
 		return err
 	}
+
+	node := types.NodeName(name)
 	for _, sv := range services {
-		res, err := store.GetHealth(sv, name)
+		res, err := store.GetHealth(sv, node)
 		if err != nil {
 			return err
 		} else if (res == kp.WatchResult{}) {
@@ -555,11 +558,11 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 
 	for _, sv := range services {
 		res, err := store.GetServiceHealth(sv)
-		getres, _ := store.GetHealth(sv, name)
+		getres, _ := store.GetHealth(sv, node)
 		if err != nil {
 			return err
 		}
-		val := res[kp.HealthPath(sv, name)]
+		val := res[kp.HealthPath(sv, node)]
 		if getres.Id != val.Id || getres.Service != val.Service || getres.Status != val.Status {
 			return fmt.Errorf("GetServiceHealth failed %+v: \n\n%s", res, targetLogs())
 		}

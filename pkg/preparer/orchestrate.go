@@ -34,13 +34,13 @@ type Hooks interface {
 }
 
 type Store interface {
-	ListPods(podPrefix kp.PodPrefix, nodeName string) ([]kp.ManifestResult, time.Duration, error)
-	SetPod(podPrefix kp.PodPrefix, noeName string, podManifest pods.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodeName string, podId types.PodID) (pods.Manifest, time.Duration, error)
-	DeletePod(podPrefix kp.PodPrefix, nodeName string, podId types.PodID) (time.Duration, error)
+	ListPods(podPrefix kp.PodPrefix, nodeName types.NodeName) ([]kp.ManifestResult, time.Duration, error)
+	SetPod(podPrefix kp.PodPrefix, nodeName types.NodeName, podManifest pods.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodeName types.NodeName, podId types.PodID) (pods.Manifest, time.Duration, error)
+	DeletePod(podPrefix kp.PodPrefix, nodeName types.NodeName, podId types.PodID) (time.Duration, error)
 	WatchPods(
 		podPrefix kp.PodPrefix,
-		nodeName string,
+		nodeName types.NodeName,
 		quitChan <-chan struct{},
 		errorChan chan<- error,
 		podChan chan<- []kp.ManifestResult,

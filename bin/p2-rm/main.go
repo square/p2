@@ -35,19 +35,19 @@ type P2RM struct {
 	Labeler labels.Applicator
 
 	LabelID  string
-	NodeName string
+	NodeName types.NodeName
 	PodName  string
 }
 
 // NewP2RM is a constructor for the P2RM type. It will generate the necessary
 // storage types based on its api.Client argument
-func NewP2RM(client *api.Client, podName, nodeName string) *P2RM {
+func NewP2RM(client *api.Client, podName string, nodeName types.NodeName) *P2RM {
 	rm := &P2RM{}
 	rm.Client = client
 	rm.Store = kp.NewConsulStore(client)
 	rm.RCStore = rcstore.NewConsul(client, 5)
 	rm.Labeler = labels.NewConsulApplicator(client, 3)
-	rm.LabelID = path.Join(nodeName, podName)
+	rm.LabelID = path.Join(nodeName.String(), podName)
 	rm.PodName = podName
 	rm.NodeName = nodeName
 
@@ -67,7 +67,7 @@ func main() {
 		*nodeName = hostname
 	}
 
-	rm := NewP2RM(kp.NewConsulClient(opts), *podName, *nodeName)
+	rm := NewP2RM(kp.NewConsulClient(opts), *podName, types.NodeName(*nodeName))
 
 	podIsManagedByRC, rcID, err := rm.checkForManagingReplicationController()
 	if err != nil {

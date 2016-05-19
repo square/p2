@@ -8,6 +8,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -22,7 +23,7 @@ type Replicator interface {
 type replicator struct {
 	manifest  pods.Manifest // the manifest to replicate
 	logger    logging.Logger
-	nodes     []string
+	nodes     []types.NodeName
 	active    int // maximum number of nodes to update concurrently
 	store     kp.Store
 	labeler   labels.Applicator
@@ -35,7 +36,7 @@ type replicator struct {
 func NewReplicator(
 	manifest pods.Manifest,
 	logger logging.Logger,
-	nodes []string,
+	nodes []types.NodeName,
 	active int,
 	store kp.Store,
 	labeler labels.Applicator,

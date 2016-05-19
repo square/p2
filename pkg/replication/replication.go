@@ -14,6 +14,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
@@ -50,7 +51,7 @@ type Replication interface {
 // A replication contains the information required to do a single replication (deploy).
 type replication struct {
 	active    int
-	nodes     []string
+	nodes     []types.NodeName
 	store     kp.Store
 	labeler   labels.Applicator
 	manifest  pods.Manifest
@@ -135,13 +136,13 @@ func (r replication) lock(session kp.Session, lockPath string, overrideLock bool
 func (r replication) checkForManaged() error {
 	var badNodes []string
 	for _, node := range r.nodes {
-		podID := path.Join(node, string(r.manifest.ID()))
+		podID := path.Join(node.String(), string(r.manifest.ID()))
 		labels, err := r.labeler.GetLabels(labels.POD, podID)
 		if err != nil {
 			return err
 		}
 		if labels.Labels.Has(rc.RCIDLabel) {
-			badNodes = append(badNodes, node)
+			badNodes = append(badNodes, node.String())
 		}
 	}
 	if len(badNodes) > 0 {
@@ -182,8 +183,8 @@ func (r replication) Enact() {
 	}
 	sort.Sort(order)
 
-	nodeQueue := make(chan string)
-	done := make(chan string)
+	nodeQueue := make(chan types.NodeName)
+	done := make(chan types.NodeName)
 	innerQuit := make(chan struct{})
 
 	// all child goroutines will be terminated on return
@@ -251,7 +252,7 @@ func (r replication) handleRenewalErrors(session kp.Session, renewalErrCh chan e
 }
 
 // note: logging should be delegated somehow
-func (r replication) updateOne(node string, done chan<- string, quitCh <-chan struct{}) {
+func (r replication) updateOne(node types.NodeName, done chan<- types.NodeName, quitCh <-chan struct{}) {
 	targetSHA, _ := r.manifest.SHA()
 	nodeLogger := r.logger.SubLogger(logrus.Fields{"node": node})
 	nodeLogger.WithField("sha", targetSHA).Infoln("Updating node")
