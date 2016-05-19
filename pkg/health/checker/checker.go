@@ -152,22 +152,24 @@ func (c consulHealthChecker) WatchHealth(
 	go consulutil.WatchPrefix("health/", c.kv, inCh, quitCh, watchErrCh)
 	publishErrCh := publishLatestHealth(inCh, quitCh, resultCh)
 
-	select {
-	case <-quitCh:
-		return
-	case err := <-watchErrCh:
+	for {
 		select {
-		case errCh <- err:
 		case <-quitCh:
 			return
-		default:
-		}
-	case err := <-publishErrCh:
-		select {
-		case errCh <- err:
-		case <-quitCh:
-			return
-		default:
+		case err := <-watchErrCh:
+			select {
+			case errCh <- err:
+			case <-quitCh:
+				return
+			default:
+			}
+		case err := <-publishErrCh:
+			select {
+			case errCh <- err:
+			case <-quitCh:
+				return
+			default:
+			}
 		}
 	}
 }

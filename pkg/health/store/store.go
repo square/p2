@@ -43,14 +43,16 @@ func (hs *healthStore) StartWatch(quitCh <-chan struct{}) {
 
 	go func() { hs.healthChecker.WatchHealth(healthUpdates, errCh, quitCh) }()
 
-	select {
-	case updates := <-healthUpdates:
-		hs.cache(updates)
-	case <-quitCh:
-		hs.logger.Errorln("Quitting...")
-		return
-	case err := <-errCh:
-		hs.logger.WithError(err).Errorln("Consul Watch error")
+	for {
+		select {
+		case updates := <-healthUpdates:
+			hs.cache(updates)
+		case <-quitCh:
+			hs.logger.Errorln("Quitting...")
+			return
+		case err := <-errCh:
+			hs.logger.WithError(err).Errorln("Consul Watch error")
+		}
 	}
 }
 
