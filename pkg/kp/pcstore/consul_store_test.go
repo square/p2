@@ -138,7 +138,7 @@ func TestGet(t *testing.T) {
 	}
 
 	if pc.PodID == "" {
-		t.Errorf("pod cluster should have an id")
+		t.Errorf("pod cluster should have a pod id")
 	}
 
 	if pc.PodID != podID {

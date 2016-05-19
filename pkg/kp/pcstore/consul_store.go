@@ -8,6 +8,8 @@ import (
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/pborman/uuid"
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/util/sets"
+
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -446,15 +448,23 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 
 	for {
 		var ok bool
+		var pcChangePending bool = false
+		var prevLabeledPods []labels.Labeled
 
 		select {
 		case labeledPods := <-podWatch:
-			s.logger.Debugf("Calling SyncCluster with %v / %v", change.current, labeledPods)
-			err := concrete.SyncCluster(change.current, labeledPods)
-			if err != nil {
-				s.logger.WithError(err).Errorf("Failed to SyncCluster on %v / %v", change.current, labeledPods)
+			if pcChangePending || !labeledEqual(labeledPods, prevLabeledPods) {
+				s.logger.Debugf("Calling SyncCluster with %v / %v", change.current, labeledPods)
+				err := concrete.SyncCluster(change.current, labeledPods)
+				if err != nil {
+					s.logger.WithError(err).Errorf("Failed to SyncCluster on %v / %v", change.current, labeledPods)
+				} else {
+					pcChangePending = false
+					prevLabeledPods = labeledPods
+				}
 			}
 		case change, ok = <-changes:
+			pcChangePending = true
 			if !ok {
 				s.logger.Debugln("Closing pc update channel")
 				return // we're closed for business
@@ -494,6 +504,17 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 			}
 		}
 	}
+}
+
+func labeledEqual(left, right []labels.Labeled) bool {
+	leftSet, rightSet := sets.NewString(), sets.NewString()
+	for _, l := range left {
+		leftSet.Insert(l.ID)
+	}
+	for _, r := range right {
+		rightSet.Insert(r.ID)
+	}
+	return leftSet.Equal(rightSet)
 }
 
 func (s *consulStore) LockForSync(id fields.ID, syncerType ConcreteSyncerType, session Session) (consulutil.Unlocker, error) {
