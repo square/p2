@@ -2,6 +2,7 @@ package fields
 
 import (
 	"encoding/json"
+	"reflect"
 
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/types"
@@ -56,6 +57,29 @@ type PodCluster struct {
 	// Free-form annotations for implementation-specific information on top
 	// of pod clusters
 	Annotations Annotations
+}
+
+func (pc *PodCluster) Equals(other *PodCluster) bool {
+	if pc == nil && other == nil {
+		return true
+	} else if other == nil || pc == nil {
+		return false
+	}
+	if pc.Name != other.Name ||
+		pc.PodID != other.PodID ||
+		pc.ID != other.ID ||
+		pc.AvailabilityZone != other.AvailabilityZone {
+		return false
+	}
+	if pc.PodSelector != nil && other.PodSelector == nil ||
+		pc.PodSelector == nil && other.PodSelector != nil {
+		return false
+	}
+	if pc.PodSelector != nil && other.PodSelector != nil &&
+		pc.PodSelector.String() != other.PodSelector.String() {
+		return false
+	}
+	return reflect.DeepEqual(pc.Annotations, other.Annotations)
 }
 
 // Unfortunately due to weirdness of marshaling label selectors, we have to

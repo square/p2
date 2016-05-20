@@ -330,6 +330,10 @@ type podClusterChange struct {
 	current  *fields.PodCluster
 }
 
+func (p podClusterChange) different() bool {
+	return !p.previous.Equals(p.current)
+}
+
 func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) error {
 	watchedRes := s.Watch(quit)
 
@@ -362,14 +366,23 @@ func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) 
 					go s.handlePCUpdates(syncer, clusterUpdaters[id])
 					updater = clusterUpdaters[id]
 				}
-				select {
-				case updater <- change:
-					if change.previous != nil && change.current == nil {
-						close(clusterUpdaters[id])
-						delete(clusterUpdaters, id)
+				// only notify about a change if the new cluster does not match the old one
+				if change.different() {
+					select {
+					case updater <- change:
+						if change.previous != nil && change.current == nil {
+							close(clusterUpdaters[id])
+							delete(clusterUpdaters, id)
+						}
+					case <-quit:
+						return nil
 					}
-				case <-quit:
-					return nil
+				} else {
+					select {
+					case <-quit:
+						return nil
+					default:
+					}
 				}
 			}
 			prevResults = curResults
@@ -485,9 +498,8 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 				err := concrete.DeleteCluster(change.previous.ID)
 				if err != nil {
 					s.logger.Errorf("Deletion of cluster failed! %v", err)
-				} else {
-					return
 				}
+				return
 			} else if change.current != nil && change.previous != nil {
 				// if there's a current and a previous pod cluster, update concrete cluster metadata and
 				// refresh the pod selector watch if it changed
