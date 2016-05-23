@@ -6,23 +6,47 @@ import (
 	"io"
 	"time"
 
+	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
 	"github.com/square/p2/pkg/logging"
 )
+
+type LogBridge struct {
+	Reader        io.Reader
+	DurableWriter io.Writer
+	LossyWriter   io.Writer
+
+	logger  logging.Logger
+	metrics metrics.Registry
+}
+
+type MetricsRegistry interface {
+	Register(metricName string, metric interface{}) error
+}
+
+func NewLogBridge(r io.Reader, durableWriter io.Writer, lossyWriter io.Writer, logger logging.Logger, metricsRegistry metrics.Registry) *LogBridge {
+	return &LogBridge{
+		Reader:        r,
+		DurableWriter: durableWriter,
+		LossyWriter:   lossyWriter,
+		logger:        logger,
+		metrics:       metricsRegistry,
+	}
+}
 
 // Copy implements a buffered copy operation between dest and src.
 // It returns the number of dropped messages as a result of insufficient
 // capacity
-func LossyCopy(dest io.Writer, src io.Reader, capacity int, logger logging.Logger) {
+func (lb *LogBridge) LossyCopy(r io.Reader, capacity int) {
 	lines := make(chan []byte, capacity)
 
-	go lossyCopy(src, lines, logger)
+	go lb.lossyCopy(r, lines)
 
 	var n int
 	var err error
 	for line := range lines {
-		n, err = writeWithRetry(dest, line, logger)
+		n, err = writeWithRetry(lb.LossyWriter, line, lb.logger)
 		if err != nil {
-			logger.WithError(err).WithField("dropped line", line).WithField("retried", isRetriable(err)).WithField("bytes written", n).Errorln("Encountered a non-recoverable error. Proceeding.")
+			lb.logger.WithError(err).WithField("dropped line", line).WithField("retried", isRetriable(err)).WithField("bytes written", n).Errorln("Encountered a non-recoverable error. Proceeding.")
 		}
 	}
 }
@@ -45,11 +69,11 @@ func scanFullLines(data []byte, atEOF bool) (advance int, token []byte, err erro
 
 // This function will scan lines from src and send them on the lines channel,
 // except when the channel is full in which case it will skip the line
-func lossyCopy(src io.Reader, lines chan []byte, logger logging.Logger) {
+func (lb *LogBridge) lossyCopy(r io.Reader, lines chan []byte) {
 	defer close(lines)
 
 	droppedLines := 0
-	scanner := bufio.NewScanner(src)
+	scanner := bufio.NewScanner(r)
 	scanner.Split(scanFullLines)
 	var buf []byte
 	for scanner.Scan() {
@@ -72,7 +96,7 @@ func lossyCopy(src io.Reader, lines chan []byte, logger logging.Logger) {
 			droppedLines++
 
 			warningMessage := "Dropped was dropped due to full capacity. If this occurs frequently, consider increasing the capacity of this logbridge."
-			logger.WithField("dropped line", line).Errorln(warningMessage)
+			lb.logger.WithField("dropped line", line).Errorln(warningMessage)
 			if droppedLines%10 == 0 {
 				select {
 				case lines <- []byte(warningMessage):
@@ -83,17 +107,17 @@ func lossyCopy(src io.Reader, lines chan []byte, logger logging.Logger) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		logger.WithError(err).Errorln("Encountered error while reading from src. Proceeding.")
+		lb.logger.WithError(err).Errorln("Encountered error while reading from src. Proceeding.")
 	}
 }
 
 // Tee will copy to durableWriter without dropping messages. Lines written to
 // lossyWriter will be copied best effort with respect to latency on the
 // writer. Writes to lossyWriter are buffered through a go channel.
-func Tee(r io.Reader, durableWriter io.Writer, lossyWriter io.Writer, logger logging.Logger) {
-	tr := io.TeeReader(r, durableWriter)
+func (lb *LogBridge) Tee() {
+	tr := io.TeeReader(lb.Reader, lb.DurableWriter)
 
-	LossyCopy(lossyWriter, tr, 1<<10, logger)
+	lb.LossyCopy(tr, 1<<10)
 }
 
 // This is an error wrapper type that may be used to denote an error is retriable
