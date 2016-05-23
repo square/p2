@@ -459,11 +459,11 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 		close(podWatchQuit)
 	}()
 
-	for {
-		var ok bool
-		var pcChangePending bool = false
-		var prevLabeledPods []labels.Labeled
+	var ok bool
+	var pcChangePending bool = false
+	var prevLabeledPods []labels.Labeled
 
+	for {
 		select {
 		case labeledPods := <-podWatch:
 			if pcChangePending || !labeledEqual(labeledPods, prevLabeledPods) {

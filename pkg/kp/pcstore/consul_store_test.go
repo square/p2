@@ -496,25 +496,6 @@ func (f *fakeSyncer) GetInitialClusters() ([]fields.ID, error) {
 	return f.initial, nil
 }
 
-func (f *fakeSyncer) drainSyncedAndIgnore() {
-	f.ignore = true
-	timeout := time.After(5 * time.Second)
-	for {
-		select {
-		case <-timeout:
-			panic("Couldn't drain syncer channels")
-		case synced := <-f.synced:
-			fmt.Printf("fake: Draining result for %v\n", synced)
-		default:
-			return
-		}
-	}
-}
-
-func (f *fakeSyncer) resume() {
-	f.ignore = false
-}
-
 // this test simulates creating, updating, and deleting a pod cluster.
 // the update step will change the pod selector and should result in a
 // different pod ID being returned.
@@ -583,15 +564,11 @@ func TestConcreteSyncer(t *testing.T) {
 		},
 	}
 
-	syncer.drainSyncedAndIgnore()
-
 	select {
 	case changes <- change:
 	case <-time.After(5 * time.Second):
 		t.Fatal("Test timed out trying to write change to handlePCChange")
 	}
-
-	syncer.resume()
 
 	select {
 	case <-time.After(5 * time.Second):
@@ -610,8 +587,6 @@ func TestConcreteSyncer(t *testing.T) {
 			t.Fatalf("got unexpected pod ID from labeled pods sync: %v", sync.syncedPods[0].ID)
 		}
 	}
-
-	syncer.drainSyncedAndIgnore()
 
 	// appear to have deleted the cluster
 	change.previous = change.current
@@ -710,15 +685,11 @@ func TestConcreteSyncerWithPrevious(t *testing.T) {
 		},
 	}
 
-	syncer.drainSyncedAndIgnore()
-
 	select {
 	case changes <- change:
 	case <-time.After(5 * time.Second):
 		t.Fatal("Test timed out trying to write change to handlePCChange")
 	}
-
-	syncer.resume()
 
 	select {
 	case <-time.After(5 * time.Second):
@@ -737,8 +708,6 @@ func TestConcreteSyncerWithPrevious(t *testing.T) {
 			t.Fatalf("got unexpected pod ID from labeled pods sync: %v", sync.syncedPods[0].ID)
 		}
 	}
-
-	syncer.drainSyncedAndIgnore()
 
 	// appear to have deleted the cluster
 	change.previous = change.current
