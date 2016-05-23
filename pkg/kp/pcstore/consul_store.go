@@ -66,7 +66,7 @@ func (s *consulStore) Create(
 		return fields.PodCluster{}, util.Errorf("Couldn't determine if pod cluster exists already: %v", err)
 	}
 	if len(existing) > 0 {
-		return existing[0], util.Errorf("Pod cluster already exists for %v", pcCreateLockPath(podID, availabilityZone, clusterName))
+		return existing[0], PodClusterAlreadyExists
 	}
 
 	pc := fields.PodCluster{
