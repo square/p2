@@ -63,7 +63,6 @@ func main() {
 					fmt.Println(fmt.Sprintf("No manifests exist for %s under %s (they may have been deleted)", *nodeName, podPrefix))
 				} else {
 					for _, result := range results {
-						fmt.Println("")
 						result.Manifest.Write(os.Stdout)
 					}
 				}
