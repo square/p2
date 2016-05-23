@@ -13,7 +13,10 @@ import (
 
 const podClusterTree string = "pod_clusters"
 
-var NoPodCluster error = errors.New("No pod cluster found")
+var (
+	NoPodCluster            error = errors.New("No pod cluster found")
+	PodClusterAlreadyExists error = errors.New("Pod cluster already exists")
+)
 
 type Session interface {
 	Lock(key string) (consulutil.Unlocker, error)
@@ -108,4 +111,8 @@ type ConcreteSyncer interface {
 
 func IsNotExist(err error) bool {
 	return err == NoPodCluster
+}
+
+func IsAlreadyExists(err error) bool {
+	return err == PodClusterAlreadyExists
 }
