@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/context"
+	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/net/context"
 )
 
 // Limit defines the maximum frequency of some events.

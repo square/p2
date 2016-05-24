@@ -380,8 +380,16 @@
 			"Rev": "1f22c0103821b9390939b6776727195525381532"
 		},
 		{
+			"ImportPath": "golang.org/x/net/context",
+			"Rev": "0c607074acd38c5f23d1344dfe74c977464d1257"
+		},
+		{
 			"ImportPath": "golang.org/x/sys/unix",
 			"Rev": "833a04a10549a95dc34458c195cbad61bbb6cb4d"
+		},
+		{
+			"ImportPath": "golang.org/x/time/rate",
+			"Rev": "a4bde12657593d5e90d0533a3e4fd95e635124cb"
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v2",
