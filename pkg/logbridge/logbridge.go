@@ -15,25 +15,44 @@ type LogBridge struct {
 	DurableWriter io.Writer
 	LossyWriter   io.Writer
 
-	logger  logging.Logger
-	metrics metrics.Registry
+	logger        logging.Logger
+	metrics       MetricsRegistry
+	logLinesCount metrics.Counter
+	logBytes      metrics.Counter
 }
 
 type MetricsRegistry interface {
 	Register(metricName string, metric interface{}) error
 }
 
-func NewLogBridge(r io.Reader, durableWriter io.Writer, lossyWriter io.Writer, logger logging.Logger, metricsRegistry metrics.Registry) *LogBridge {
+func NewLogBridge(r io.Reader,
+	durableWriter io.Writer,
+	lossyWriter io.Writer,
+	logger logging.Logger,
+	metricsRegistry MetricsRegistry,
+	loglineMetricKeyName string,
+	logByteMetricKeyName string) *LogBridge {
+	if metricsRegistry == nil {
+		metricsRegistry = metrics.NewRegistry()
+	}
+	lineCount := metrics.NewCounter()
+	logBytes := metrics.NewCounter()
+
+	_ = metricsRegistry.Register(loglineMetricKeyName, lineCount)
+	_ = metricsRegistry.Register(logByteMetricKeyName, logBytes)
+
 	return &LogBridge{
 		Reader:        r,
 		DurableWriter: durableWriter,
 		LossyWriter:   lossyWriter,
 		logger:        logger,
 		metrics:       metricsRegistry,
+		logLinesCount: lineCount,
+		logBytes:      logBytes,
 	}
 }
 
-// Copy implements a buffered copy operation between dest and src.
+// LossyCopy implements a buffered copy operation between dest and src.
 // It returns the number of dropped messages as a result of insufficient
 // capacity
 func (lb *LogBridge) LossyCopy(r io.Reader, capacity int) {
@@ -47,24 +66,11 @@ func (lb *LogBridge) LossyCopy(r io.Reader, capacity int) {
 		n, err = writeWithRetry(lb.LossyWriter, line, lb.logger)
 		if err != nil {
 			lb.logger.WithError(err).WithField("dropped line", line).WithField("retried", isRetriable(err)).WithField("bytes written", n).Errorln("Encountered a non-recoverable error. Proceeding.")
+			continue
 		}
+		lb.logLinesCount.Inc(1)
+		lb.logBytes.Inc(int64(n))
 	}
-}
-
-// scanFullLines is a SplitFunc for a bufio.Scanner that splits at each newline and,
-// unlike the the default splitter, returns the entire line with a trailing newline. This
-// method is derived from bufio.ScanLines.
-func scanFullLines(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
-	}
-	if i := bytes.IndexByte(data, '\n'); i >= 0 {
-		return i + 1, data[0 : i+1], nil
-	}
-	if atEOF {
-		return len(data), data, nil
-	}
-	return 0, nil, nil
 }
 
 // This function will scan lines from src and send them on the lines channel,
@@ -109,6 +115,22 @@ func (lb *LogBridge) lossyCopy(r io.Reader, lines chan []byte) {
 	if err := scanner.Err(); err != nil {
 		lb.logger.WithError(err).Errorln("Encountered error while reading from src. Proceeding.")
 	}
+}
+
+// scanFullLines is a SplitFunc for a bufio.Scanner that splits at each newline and,
+// unlike the the default splitter, returns the entire line with a trailing newline. This
+// method is derived from bufio.ScanLines.
+func scanFullLines(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if i := bytes.IndexByte(data, '\n'); i >= 0 {
+		return i + 1, data[0 : i+1], nil
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
 }
 
 // Tee will copy to durableWriter without dropping messages. Lines written to

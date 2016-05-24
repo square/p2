@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
 	"github.com/square/p2/pkg/logging"
 )
 
@@ -44,16 +45,22 @@ func TestLogBridge(t *testing.T) {
 
 		reader := bytes.NewReader(input)
 		writer := &TrackingWriter{}
-
+		metrics, logLineCounter, logByteCounter := fakeMetricRegistry()
 		lb := &LogBridge{
 			DurableWriter: ioutil.Discard,
 			LossyWriter:   writer,
 			logger:        logging.DefaultLogger,
+			metrics:       metrics,
+			logLinesCount: logLineCounter,
+			logBytes:      logByteCounter,
 		}
 
 		lb.LossyCopy(reader, testCase.bridgeCapacity)
 		if writer.numWrites < testCase.expected {
 			t.Errorf("Writer did not receive enough writes, got %d expected: %d", writer.numWrites, testCase.inputSize)
+		}
+		if lb.logLinesCount.Count() != int64(writer.numWrites) {
+			t.Errorf("log line metric did not get right amount, got %d expected: %d", lb.logLinesCount.Count(), writer.numWrites)
 		}
 	}
 }
@@ -85,9 +92,13 @@ func TestLogBridgeLogDrop(t *testing.T) {
 	reader := bytes.NewReader(input)
 
 	writer := &LatentWriter{}
+	metrics, logLineCounter, logByteCounter := fakeMetricRegistry()
 	lb := &LogBridge{
-		LossyWriter: writer,
-		logger:      logging.DefaultLogger,
+		LossyWriter:   writer,
+		logger:        logging.DefaultLogger,
+		metrics:       metrics,
+		logLinesCount: logLineCounter,
+		logBytes:      logByteCounter,
 	}
 	lb.LossyCopy(reader, bridgeCapacity)
 
@@ -154,9 +165,13 @@ func TestErrorCases(t *testing.T) {
 	}
 
 	reader := bytes.NewReader(input)
+	metrics, logLineCounter, logByteCounter := fakeMetricRegistry()
 	lb := &LogBridge{
-		LossyWriter: errorWriter,
-		logger:      logging.DefaultLogger,
+		LossyWriter:   errorWriter,
+		logger:        logging.DefaultLogger,
+		metrics:       metrics,
+		logLinesCount: logLineCounter,
+		logBytes:      logByteCounter,
 	}
 	lb.LossyCopy(reader, bridgeCapacity)
 
@@ -197,4 +212,15 @@ func TestIsRetriable(t *testing.T) {
 			t.Errorf("test case %d: expected %b got %b", i, testCase.expectation, actual)
 		}
 	}
+}
+
+func fakeMetricRegistry() (MetricsRegistry, metrics.Counter, metrics.Counter) {
+	registry := metrics.NewRegistry()
+	logLineCounter := metrics.NewCounter()
+	logByteCounter := metrics.NewCounter()
+
+	registry.Register("log_lines", logLineCounter)
+	registry.Register("log_bytes", logByteCounter)
+
+	return registry, logLineCounter, logByteCounter
 }
