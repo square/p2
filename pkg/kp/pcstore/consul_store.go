@@ -476,13 +476,21 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 	var ok bool
 	var pcChangePending bool = false
 	var prevLabeledPods []labels.Labeled
+	var startTime time.Time
 
 	for {
 		select {
 		case labeledPods := <-podWatch:
+			if !pcChangePending {
+				// This means that there was no change to the pod
+				// cluster itself, just the nodes. Track the time we
+				// noticed that so we can measure the time it takes
+				// to sync the pod cluster
+				startTime = time.Now()
+			}
+
 			if pcChangePending || !labeledEqual(labeledPods, prevLabeledPods) {
 				s.logger.Debugf("Calling SyncCluster with %v / %v", change.current, labeledPods)
-				startTime := time.Now()
 				err := concrete.SyncCluster(change.current, labeledPods)
 				if err != nil {
 					s.logger.WithError(err).Errorf("Failed to SyncCluster on %v / %v", change.current, labeledPods)
@@ -494,6 +502,10 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 			}
 		case change, ok = <-changes:
 			pcChangePending = true
+
+			// we want to measure how long it takes from noticing a
+			// pod cluster change to the sync completing
+			startTime = time.Now()
 			if !ok {
 				s.logger.Debugln("Closing pc update channel")
 				return // we're closed for business
