@@ -144,3 +144,6 @@ func (p *FakePCStore) LockForSync(id fields.ID, syncerType pcstore.ConcreteSynce
 	key := fmt.Sprintf("%s/%s", id, syncerType)
 	return session.Lock(key)
 }
+
+func (p *FakePCStore) SetMetricsRegistry(_ pcstore.MetricsRegistry) {
+}

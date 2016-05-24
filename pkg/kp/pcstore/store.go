@@ -33,6 +33,12 @@ type WatchedPodClusters struct {
 	Err      error
 }
 
+// Subset of metrics.Registry interface
+type MetricsRegistry interface {
+	Get(metricName string) interface{}
+	Register(metricName string, metric interface{}) error
+}
+
 type Store interface {
 	Create(
 		podID types.PodID,
@@ -61,6 +67,8 @@ type Store interface {
 	// details on how to use this function
 	WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) error
 	LockForSync(id fields.ID, syncerType ConcreteSyncerType, session Session) (consulutil.Unlocker, error)
+
+	SetMetricsRegistry(reg MetricsRegistry)
 }
 
 // There may be multiple implementations of ConcreteSyncer that are interested

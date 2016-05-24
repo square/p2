@@ -28,12 +28,6 @@ type consulKV interface {
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
 }
 
-// Subset of metrics.Registry interface
-type MetricsRegistry interface {
-	Get(metricName string) interface{}
-	Register(metricName string, metric interface{}) error
-}
-
 type consulStore struct {
 	kv         consulKV
 	applicator labels.Applicator
