@@ -117,7 +117,10 @@ func (s *consulStore) Create(
 	err = s.setLabelsForPC(pc)
 	if err != nil {
 		// TODO: what if this delete fails?
-		_ = s.Delete(pc.ID)
+		deleteErr := s.Delete(pc.ID)
+		if deleteErr != nil {
+			err = util.Errorf("%s\n%s", err, deleteErr)
+		}
 		return fields.PodCluster{}, err
 	}
 
@@ -172,6 +175,75 @@ func (s *consulStore) List() ([]fields.PodCluster, error) {
 	}
 
 	return kvpsToPC(pairs)
+}
+
+// performs a safe (ie check-and-set) mutation of the pc with the given id,
+// using the given function
+// if the mutator returns an error, it will be propagated out
+// if the returned PC has id="", then it will be deleted
+func (s *consulStore) MutatePC(
+	id fields.ID,
+	mutator func(fields.PodCluster) (fields.PodCluster, error),
+	session Session,
+) (fields.PodCluster, error) {
+	pcp, err := pcPath(id)
+	if err != nil {
+		return fields.PodCluster{}, err
+	}
+
+	kvp, meta, err := s.kv.Get(pcp, nil)
+	if err != nil {
+		return fields.PodCluster{}, consulutil.NewKVError("get", pcp, err)
+	}
+
+	if kvp == nil {
+		return fields.PodCluster{}, NoPodCluster
+	}
+
+	pc, err := kvpToPC(kvp)
+	if err != nil {
+		return fields.PodCluster{}, err
+	}
+
+	pc, err = mutator(pc)
+	if err != nil {
+		return fields.PodCluster{}, err
+	}
+
+	jsonPC, err := json.Marshal(pc)
+	if err != nil {
+		// Probably the annotations don't marshal to JSON
+		return fields.PodCluster{}, util.Errorf("Unable to marshal pod cluster as JSON: %s", err)
+	}
+
+	// the chance of the UUID already existing is vanishingly small, but
+	// technically not impossible, so we should use the CAS index to guard
+	// against duplicate UUIDs
+	var success bool
+	success, _, err = s.kv.CAS(&api.KVPair{
+		Key:         pcp,
+		Value:       jsonPC,
+		ModifyIndex: meta.LastIndex,
+	}, nil)
+	if err != nil {
+		return fields.PodCluster{}, consulutil.NewKVError("cas", pcp, err)
+	}
+
+	if !success {
+		return fields.PodCluster{}, util.Errorf("Could not set pod cluster at path '%s'", pcp)
+	}
+
+	err = s.setLabelsForPC(pc)
+	if err != nil {
+		// TODO: what if this delete fails?
+		deleteErr := s.Delete(pc.ID)
+		if deleteErr != nil {
+			err = util.Errorf("%s\n%s", err, deleteErr)
+		}
+		return fields.PodCluster{}, err
+	}
+
+	return pc, nil
 }
 
 func pcPath(pcID fields.ID) (string, error) {
