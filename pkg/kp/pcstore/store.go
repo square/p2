@@ -107,6 +107,10 @@ type ConcreteSyncer interface {
 	// used. If the function results in an error, the WatchAndSync function will
 	// terminate immediately, forwarding the error.
 	GetInitialClusters() ([]fields.ID, error)
+
+	// Used to derive the syncer type from a syncer instance for things
+	// like namespacing of metrics
+	Type() ConcreteSyncerType
 }
 
 func IsNotExist(err error) bool {

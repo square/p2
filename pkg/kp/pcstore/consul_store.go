@@ -2,11 +2,14 @@ package pcstore
 
 import (
 	"encoding/json"
+	"fmt"
 	"path"
+	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/square/p2/Godeps/_workspace/src/github.com/pborman/uuid"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/util/sets"
 
@@ -25,11 +28,19 @@ type consulKV interface {
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
 }
 
+// Subset of metrics.Registry interface
+type MetricsRegistry interface {
+	Get(metricName string) interface{}
+	Register(metricName string, metric interface{}) error
+}
+
 type consulStore struct {
 	kv         consulKV
 	applicator labels.Applicator
 
 	logger logging.Logger
+
+	metricsRegistry MetricsRegistry
 }
 
 var _ Store = &consulStore{}
@@ -43,6 +54,10 @@ func NewConsul(client *api.Client, retries int, logger *logging.Logger) Store {
 		kv:         client.KV(),
 		logger:     *logger,
 	}
+}
+
+func (s *consulStore) SetMetricsRegistry(reg MetricsRegistry) {
+	s.metricsRegistry = reg
 }
 
 func (s *consulStore) Create(
@@ -350,6 +365,11 @@ func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) 
 		return err
 	}
 
+	timer := metrics.NewTimer()
+	if s.metricsRegistry != nil {
+		_ = s.metricsRegistry.Register(fmt.Sprintf("%s_pc_processing_time", syncer.Type()), timer)
+	}
+
 	for {
 		select {
 		case curResults := <-watchedRes:
@@ -363,7 +383,7 @@ func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) 
 				updater, ok := clusterUpdaters[id]
 				if !ok {
 					clusterUpdaters[id] = make(chan podClusterChange)
-					go s.handlePCUpdates(syncer, clusterUpdaters[id])
+					go s.handlePCUpdates(syncer, clusterUpdaters[id], timer)
 					updater = clusterUpdaters[id]
 				}
 				// only notify about a change if the new cluster does not match the old one
@@ -450,7 +470,7 @@ func (s *consulStore) zipResults(current, previous WatchedPodClusters) map[field
 // If a change fails to take, this function will retry that change forever until
 // it works as expected or a newer change appears on the channel. This routine also
 // executes and monitors the label watch for the pod's label selector.
-func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podClusterChange) {
+func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podClusterChange, timer metrics.Timer) {
 	var change podClusterChange
 	podWatch := make(chan []labels.Labeled)
 	watching := false
@@ -468,6 +488,7 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 		case labeledPods := <-podWatch:
 			if pcChangePending || !labeledEqual(labeledPods, prevLabeledPods) {
 				s.logger.Debugf("Calling SyncCluster with %v / %v", change.current, labeledPods)
+				startTime := time.Now()
 				err := concrete.SyncCluster(change.current, labeledPods)
 				if err != nil {
 					s.logger.WithError(err).Errorf("Failed to SyncCluster on %v / %v", change.current, labeledPods)
@@ -475,6 +496,7 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 					pcChangePending = false
 					prevLabeledPods = labeledPods
 				}
+				timer.Update(time.Now().Sub(startTime))
 			}
 		case change, ok = <-changes:
 			pcChangePending = true

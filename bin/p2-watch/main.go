@@ -98,6 +98,10 @@ func (p *printSyncer) GetInitialClusters() ([]fields.ID, error) {
 	return []fields.ID{}, nil
 }
 
+func (p *printSyncer) Type() pcstore.ConcreteSyncerType {
+	return "print_syncer"
+}
+
 func watchPodClusters(client *api.Client) {
 	logger := &logging.DefaultLogger
 	logger.Infoln("Beginning pod cluster watch")
