@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/square/p2",
 	"GoVersion": "go1.5.1",
-	"GodepVersion": "v58",
+	"GodepVersion": "v69",
 	"Packages": [
 		"./..."
 	],
