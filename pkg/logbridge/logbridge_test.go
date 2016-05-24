@@ -3,9 +3,11 @@ package logbridge
 import (
 	"bytes"
 	"errors"
+	"io/ioutil"
 	"testing"
 	"time"
 
+	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
 	"github.com/square/p2/pkg/logging"
 )
 
@@ -43,10 +45,22 @@ func TestLogBridge(t *testing.T) {
 
 		reader := bytes.NewReader(input)
 		writer := &TrackingWriter{}
+		metrics, logLineCounter, logByteCounter := fakeMetricRegistry()
+		lb := &LogBridge{
+			DurableWriter: ioutil.Discard,
+			LossyWriter:   writer,
+			logger:        logging.DefaultLogger,
+			metrics:       metrics,
+			logLinesCount: logLineCounter,
+			logBytes:      logByteCounter,
+		}
 
-		LossyCopy(writer, reader, testCase.bridgeCapacity, logging.DefaultLogger)
+		lb.LossyCopy(reader, testCase.bridgeCapacity)
 		if writer.numWrites < testCase.expected {
 			t.Errorf("Writer did not receive enough writes, got %d expected: %d", writer.numWrites, testCase.inputSize)
+		}
+		if lb.logLinesCount.Count() != int64(writer.numWrites) {
+			t.Errorf("log line metric did not get right amount, got %d expected: %d", lb.logLinesCount.Count(), writer.numWrites)
 		}
 	}
 }
@@ -76,9 +90,17 @@ func TestLogBridgeLogDrop(t *testing.T) {
 		byte('e'), newLine,
 		byte('f'), newLine}
 	reader := bytes.NewReader(input)
-	writer := &LatentWriter{}
 
-	LossyCopy(writer, reader, bridgeCapacity, logging.DefaultLogger)
+	writer := &LatentWriter{}
+	metrics, logLineCounter, logByteCounter := fakeMetricRegistry()
+	lb := &LogBridge{
+		LossyWriter:   writer,
+		logger:        logging.DefaultLogger,
+		metrics:       metrics,
+		logLinesCount: logLineCounter,
+		logBytes:      logByteCounter,
+	}
+	lb.LossyCopy(reader, bridgeCapacity)
 
 	if writer.writes < bridgeCapacity {
 		t.Errorf("Expected at least %d messages to succeed under writer latency, got %d.", bridgeCapacity, writer.writes)
@@ -143,14 +165,23 @@ func TestErrorCases(t *testing.T) {
 	}
 
 	reader := bytes.NewReader(input)
-	LossyCopy(errorWriter, reader, bridgeCapacity, logging.DefaultLogger)
+	metrics, logLineCounter, logByteCounter := fakeMetricRegistry()
+	lb := &LogBridge{
+		LossyWriter:   errorWriter,
+		logger:        logging.DefaultLogger,
+		metrics:       metrics,
+		logLinesCount: logLineCounter,
+		logBytes:      logByteCounter,
+	}
+	lb.LossyCopy(reader, bridgeCapacity)
 
 	if len(errorWriter.bytes) >= len(input) {
 		t.Errorf("Expected non-retriable error to cause line to be skipped.")
 	}
 
 	reader = bytes.NewReader(input)
-	LossyCopy(retriableErrorWriter, reader, bridgeCapacity, logging.DefaultLogger)
+	lb.LossyWriter = retriableErrorWriter
+	lb.LossyCopy(reader, bridgeCapacity)
 
 	if len(retriableErrorWriter.bytes) != len(input) {
 		t.Errorf(
@@ -181,4 +212,15 @@ func TestIsRetriable(t *testing.T) {
 			t.Errorf("test case %d: expected %b got %b", i, testCase.expectation, actual)
 		}
 	}
+}
+
+func fakeMetricRegistry() (MetricsRegistry, metrics.Counter, metrics.Counter) {
+	registry := metrics.NewRegistry()
+	logLineCounter := metrics.NewCounter()
+	logByteCounter := metrics.NewCounter()
+
+	registry.Register("log_lines", logLineCounter)
+	registry.Register("log_bytes", logByteCounter)
+
+	return registry, logLineCounter, logByteCounter
 }
