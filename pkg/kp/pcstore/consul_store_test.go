@@ -13,6 +13,7 @@ import (
 	"github.com/square/p2/pkg/types"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
 	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
 )
 
@@ -496,6 +497,10 @@ func (f *fakeSyncer) GetInitialClusters() ([]fields.ID, error) {
 	return f.initial, nil
 }
 
+func (f *fakeSyncer) Type() ConcreteSyncerType {
+	return "fake_syncer"
+}
+
 // this test simulates creating, updating, and deleting a pod cluster.
 // the update step will change the pod selector and should result in a
 // different pod ID being returned.
@@ -525,7 +530,7 @@ func TestConcreteSyncer(t *testing.T) {
 	}
 
 	changes := make(chan podClusterChange)
-	go store.handlePCUpdates(syncer, changes)
+	go store.handlePCUpdates(syncer, changes, metrics.NewTimer())
 
 	select {
 	case changes <- change:
@@ -646,7 +651,7 @@ func TestConcreteSyncerWithPrevious(t *testing.T) {
 	}
 
 	changes := make(chan podClusterChange)
-	go store.handlePCUpdates(syncer, changes)
+	go store.handlePCUpdates(syncer, changes, metrics.NewTimer())
 
 	select {
 	case changes <- change:
@@ -805,7 +810,7 @@ func TestClosedChangeChannelResultsInTermination(t *testing.T) {
 	closed := make(chan struct{})
 
 	go func() {
-		store.handlePCUpdates(syncer, changes)
+		store.handlePCUpdates(syncer, changes, metrics.NewTimer())
 		close(closed)
 	}()
 
