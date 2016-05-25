@@ -19,6 +19,90 @@ import (
 
 func TestCreate(t *testing.T) {
 	store := consulStoreWithFakeKV()
+	createPodCluster(store, t)
+}
+
+func TestMutate(t *testing.T) {
+	store := consulStoreWithFakeKV()
+	oldPc := createPodCluster(store, t)
+
+	// After creating the pod cluster, we now update it using a mutator function
+	newPodID := types.PodID("pod_id-diff")
+	newAz := fields.AvailabilityZone("us-west-diff")
+	newClusterName := fields.ClusterName("cluster_name_diff")
+
+	newSelector := klabels.Everything().
+		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{newPodID.String()}).
+		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{newAz.String()}).
+		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{newClusterName.String()})
+
+	newAnnotations := fields.Annotations(map[string]interface{}{
+		"bar": "foo",
+	})
+
+	intendedPc := fields.PodCluster{
+		ID:               oldPc.ID,
+		PodID:            newPodID,
+		AvailabilityZone: newAz,
+		Name:             newClusterName,
+		PodSelector:      newSelector,
+		Annotations:      newAnnotations,
+	}
+
+	mutator := func(pc fields.PodCluster) (fields.PodCluster, error) {
+		pc = intendedPc
+		return pc, nil
+	}
+
+	newSession := kptest.NewSession()
+	newPC, err := store.MutatePC(intendedPc.ID, mutator, newSession)
+
+	if err != nil {
+		t.Fatalf("Unable to update pod cluster: %s", err)
+	}
+
+	if newPC.ID == "" {
+		t.Errorf("pod cluster should have an id")
+	}
+
+	if newPC.PodID == "" {
+		t.Errorf("pod cluster should have a pod id")
+	}
+
+	if newPC.ID != oldPc.ID {
+		t.Errorf("id should not have been updated. Wanted '%s' got '%s'", oldPc.ID, newPC.ID)
+	}
+
+	if newPC.PodID != newPodID {
+		t.Errorf("pod id wasn't properly updated. Wanted '%s' got '%s'", newPodID, newPC.PodID)
+	}
+
+	if newPC.AvailabilityZone != newAz {
+		t.Errorf("availability zone wasn't properly updated. Wanted '%s' got '%s'", newAz, newPC.AvailabilityZone)
+	}
+
+	if newPC.Name != newClusterName {
+		t.Errorf("cluster name wasn't properly updated. Wanted '%s' got '%s'", newClusterName, newPC.Name)
+	}
+
+	newTestLabels := klabels.Set{
+		fields.PodIDLabel:            newPodID.String(),
+		fields.AvailabilityZoneLabel: newAz.String(),
+		fields.ClusterNameLabel:      newClusterName.String(),
+	}
+
+	if matches := newPC.PodSelector.Matches(newTestLabels); !matches {
+		t.Errorf("the pod cluster has a bad pod selector")
+	}
+
+	if newPC.Annotations["bar"] != "foo" {
+		t.Errorf("Annotations didn't match expected")
+	} else if _, ok := newPC.Annotations["foo"]; ok {
+		t.Errorf("Annotations didn't match expected")
+	}
+}
+
+func createPodCluster(store *consulStore, t *testing.T) fields.PodCluster {
 	podID := types.PodID("pod_id")
 	az := fields.AvailabilityZone("us-west")
 	clusterName := fields.ClusterName("cluster_name")
@@ -43,7 +127,7 @@ func TestCreate(t *testing.T) {
 	}
 
 	if pc.PodID == "" {
-		t.Errorf("pod cluster should have an id")
+		t.Errorf("pod cluster should have a pod id")
 	}
 
 	if pc.PodID != podID {
@@ -71,7 +155,7 @@ func TestCreate(t *testing.T) {
 	if pc.Annotations["foo"] != "bar" {
 		t.Errorf("Annotations didn't match expected")
 	}
-
+	return pc
 }
 
 func TestLabelsOnCreate(t *testing.T) {
