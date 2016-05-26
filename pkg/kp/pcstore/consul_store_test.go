@@ -59,11 +59,14 @@ func TestMutate(t *testing.T) {
 	}
 
 	newSession := kptest.NewSession()
-	store.MutatePC(intendedPC.ID, mutator, newSession)
-	newPC, err := store.Get(intendedPC.ID)
-
+	_, err := store.MutatePC(intendedPC.ID, mutator, newSession)
 	if err != nil {
 		t.Fatalf("Unable to update pod cluster: %s", err)
+	}
+
+	newPC, err := store.Get(intendedPC.ID)
+	if err != nil {
+		t.Fatalf("Unable to find pod cluster: %s", err)
 	}
 
 	if newPC.ID == "" {
