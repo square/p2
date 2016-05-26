@@ -74,6 +74,23 @@ func (p *FakePCStore) List() ([]fields.PodCluster, error) {
 	return ret, nil
 }
 
+func (p *FakePCStore) MutatePC(
+	id fields.ID,
+	mutator func(fields.PodCluster) (fields.PodCluster, error),
+	_ pcstore.Session,
+) (fields.PodCluster, error) {
+	pc, err := p.Get(id)
+	if err != nil {
+		return fields.PodCluster{}, err
+	}
+
+	pc, err = mutator(pc)
+	if err != nil {
+		return fields.PodCluster{}, err
+	}
+	return pc, nil
+}
+
 func (p *FakePCStore) FindWhereLabeled(
 	podID types.PodID,
 	availabilityZone fields.AvailabilityZone,

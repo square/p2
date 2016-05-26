@@ -59,6 +59,11 @@ type Store interface {
 		clusterName fields.ClusterName,
 	) ([]fields.PodCluster, error)
 	Delete(id fields.ID) error
+	MutatePC(
+		id fields.ID,
+		mutator func(fields.PodCluster) (fields.PodCluster, error),
+		session Session,
+	) (fields.PodCluster, error)
 	WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan WatchedPodCluster
 	Watch(quit <-chan struct{}) <-chan WatchedPodClusters
 
