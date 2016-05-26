@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/logging"
@@ -23,6 +24,8 @@ const (
 	HOOKED_POD_MANIFEST_ENV_VAR = "HOOKED_POD_MANIFEST"
 	HOOKED_CONFIG_PATH_ENV_VAR  = "HOOKED_CONFIG_PATH"
 	HOOKED_ENV_PATH_ENV_VAR     = "HOOKED_ENV_PATH"
+
+	DefaultTimeout = 60 * time.Second
 )
 
 type Pod interface {
@@ -74,6 +77,7 @@ func Hooks(dirpath string, logger *logging.Logger) *HookDir {
 	return &HookDir{dirpath, logger}
 }
 
+// runDirectory executes all executable files in a given directory path.
 func runDirectory(dirpath string, environment []string, logger logging.Logger) error {
 	entries, err := ioutil.ReadDir(dirpath)
 	if os.IsNotExist(err) {
@@ -94,27 +98,88 @@ func runDirectory(dirpath string, environment []string, logger logging.Logger) e
 		if f.IsDir() {
 			continue
 		}
-		logger.WithField("path", fullpath).Infof("Executing hook %s", f.Name())
-		cmd := exec.Command(fullpath)
-		hookOut := &bytes.Buffer{}
-		cmd.Stdout = hookOut
-		cmd.Stderr = hookOut
-		cmd.Env = environment
-		err := cmd.Run()
-		if err != nil {
+
+		h := Hook{fullpath, f.Name(), DefaultTimeout, environment, logger}
+
+		err := h.RunWithTimeout()
+		if htErr, ok := err.(HookTimeoutError); ok {
+			logger.WithErrorAndFields(htErr, logrus.Fields{
+				"path":      h.Path,
+				"hook_name": h.Name,
+				"timeout":   h.Timeout,
+			}).Warnln(htErr.Error())
+			// we intentionally swallow timeout HookTimeoutErrors
+		} else if err != nil {
 			logger.WithErrorAndFields(err, logrus.Fields{
-				"path":   fullpath,
-				"output": hookOut.String(),
-			}).Warnf("Could not execute hook %s", f.Name())
-		} else {
-			logger.WithFields(logrus.Fields{
-				"path":   fullpath,
-				"output": hookOut.String(),
-			}).Debugln("Executed hook")
+				"path":      h.Path,
+				"hook_name": h.Name,
+			}).Warningf("Unknown error in hook %s: %s", h.Name, err)
 		}
 	}
 
 	return nil
+}
+
+type Hook struct {
+	Path    string // path to hook's executable
+	Name    string // human-readable name of Hook
+	Timeout time.Duration
+	env     []string // unix environment in which the hook should be executed
+	logger  logging.Logger
+}
+
+// HookTimeoutError is returned when a Hook's execution times out
+type HookTimeoutError struct {
+	Hook Hook
+}
+
+func (e HookTimeoutError) Error() string {
+	sec := e.Hook.Timeout / time.Millisecond
+	return fmt.Sprintf("Hook %s timed out after %dms", e.Hook.Name, sec)
+}
+
+// RunWithTimeout runs the hook but returns a HookTimeoutError when it exceeds its timeout
+//
+// Necessary because Run() hangs if the command double-forks without properly
+// re-opening its fd's and exec.Start() will dutifully wait on any unclosed fd
+//
+// NB: in the event of a timeout this will leak descriptors
+func (h *Hook) RunWithTimeout() error {
+	finished := make(chan struct{})
+	go func() {
+		h.Run()
+		close(finished)
+	}()
+
+	select {
+	case <-finished:
+	case <-time.After(h.Timeout):
+		return HookTimeoutError{*h}
+	}
+
+	return nil
+}
+
+// Run executes the hook in the context of its environment and logs the output
+func (h *Hook) Run() {
+	h.logger.WithField("path", h.Path).Infof("Executing hook %s", h.Name)
+	cmd := exec.Command(h.Path)
+	hookOut := &bytes.Buffer{}
+	cmd.Stdout = hookOut
+	cmd.Stderr = hookOut
+	cmd.Env = h.env
+	err := cmd.Run()
+	if err != nil {
+		h.logger.WithErrorAndFields(err, logrus.Fields{
+			"path":   h.Path,
+			"output": hookOut.String(),
+		}).Warnf("Could not execute hook %s", h.Name)
+	} else {
+		h.logger.WithFields(logrus.Fields{
+			"path":   h.Path,
+			"output": hookOut.String(),
+		}).Debugln("Executed hook")
+	}
 }
 
 func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest pods.Manifest, logger logging.Logger) error {

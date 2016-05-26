@@ -4,7 +4,9 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
+	"time"
 
 	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/logging"
@@ -76,4 +78,45 @@ func testManifest() pods.Manifest {
 	builder := pods.NewManifestBuilder()
 	builder.SetID(podId)
 	return builder.GetManifest()
+}
+
+func TestHookRunWithTimeout(t *testing.T) {
+	timeout := 1 * time.Millisecond
+	sleep := "1" // 1 second sleep to be executed by the script
+
+	// build an executable file to feed to Hook
+	contents := []byte("#!/bin/bash\nsleep " + sleep)
+
+	tmpFile, err := tempFileWithContents("test-hook-run-with-timeout.", contents)
+	if err != nil {
+		t.Error(err.Error())
+	}
+	defer os.Remove(tmpFile)
+
+	hook := Hook{tmpFile, "timeout-test-hook", timeout, []string{}, logging.TestLogger()}
+
+	toErr := hook.RunWithTimeout()
+	if _, ok := toErr.(HookTimeoutError); !ok {
+		// we either had no error or a different error
+		t.Errorf("timeout did not throw a HookTimeoutError: timeout: %#v / sleep: %#v / err: %#v", timeout, sleep, toErr)
+	}
+}
+
+// tempFileWithContents creates a tempfile (0744), fills it with contents and returns the path to it
+//
+// You are expected to delete the file afterwards
+func tempFileWithContents(name string, contents []byte) (string, error) {
+	tmpfile, err := ioutil.TempFile(".", name)
+	if err != nil {
+		return "", err
+	}
+
+	os.Chmod(tmpfile.Name(), 0744)
+
+	tmpfile.Write([]byte(contents))
+	tmpfile.Close()
+
+	path, _ := filepath.Abs(tmpfile.Name())
+
+	return path, nil
 }
