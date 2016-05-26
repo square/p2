@@ -40,7 +40,7 @@ func TestMutate(t *testing.T) {
 		"bar": "foo",
 	})
 
-	intendedPc := fields.PodCluster{
+	intendedPC := fields.PodCluster{
 		ID:               oldPc.ID,
 		PodID:            newPodID,
 		AvailabilityZone: newAz,
@@ -50,12 +50,17 @@ func TestMutate(t *testing.T) {
 	}
 
 	mutator := func(pc fields.PodCluster) (fields.PodCluster, error) {
-		pc = intendedPc
+		pc.PodID = intendedPC.PodID
+		pc.AvailabilityZone = intendedPC.AvailabilityZone
+		pc.Name = intendedPC.Name
+		pc.PodSelector = intendedPC.PodSelector
+		pc.Annotations = intendedPC.Annotations
 		return pc, nil
 	}
 
 	newSession := kptest.NewSession()
-	newPC, err := store.MutatePC(intendedPc.ID, mutator, newSession)
+	store.MutatePC(intendedPC.ID, mutator, newSession)
+	newPC, err := store.Get(intendedPC.ID)
 
 	if err != nil {
 		t.Fatalf("Unable to update pod cluster: %s", err)
