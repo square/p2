@@ -88,6 +88,12 @@ func (p *FakePCStore) MutatePC(
 	if err != nil {
 		return fields.PodCluster{}, err
 	}
+
+	p.podClusters[id] = pc
+	if watcher, ok := p.watchers[id]; ok {
+		watcher <- pcstore.WatchedPodCluster{PodCluster: &pc, Err: nil}
+	}
+
 	return pc, nil
 }
 
