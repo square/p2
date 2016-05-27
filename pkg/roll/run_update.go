@@ -58,6 +58,11 @@ func NewUpdate(
 	if alerter == nil {
 		alerter = alerting.NewNop()
 	}
+
+	logger = logger.SubLogger(logrus.Fields{
+		"desired_replicas": f.DesiredReplicas,
+		"minimum_replicas": f.MinimumReplicas,
+	})
 	return &update{
 		Update:  f,
 		kps:     kps,
