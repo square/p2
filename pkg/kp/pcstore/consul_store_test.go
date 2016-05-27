@@ -913,10 +913,127 @@ func TestClosedChangeChannelResultsInTermination(t *testing.T) {
 	}
 }
 
+type RecordingSyncer struct {
+	InitialClusters []fields.ID
+
+	SyncClusterCalls   []fields.ID
+	DeleteClusterCalls []fields.ID
+
+	// Used to signal when SyncCluster is called so tests can have non-racey
+	// timeouts
+	SyncSignal chan<- struct{}
+}
+
+func (r *RecordingSyncer) GetInitialClusters() ([]fields.ID, error) {
+	return r.InitialClusters, nil
+}
+
+func (r *RecordingSyncer) SyncCluster(pc *fields.PodCluster, labeledPods []labels.Labeled) error {
+	r.SyncClusterCalls = append(r.SyncClusterCalls, pc.ID)
+	if r.SyncSignal != nil {
+		r.SyncSignal <- struct{}{}
+	}
+	return nil
+}
+
+func (r *RecordingSyncer) DeleteCluster(id fields.ID) error {
+	r.DeleteClusterCalls = append(r.DeleteClusterCalls, id)
+	return nil
+}
+
+func (r *RecordingSyncer) Type() ConcreteSyncerType {
+	return "recording"
+}
+
+func TestWatchAndSync(t *testing.T) {
+	store := consulStoreWithFakeKV()
+	quit := make(chan struct{})
+	defer close(quit)
+	syncSignal := make(chan struct{})
+	defer close(syncSignal)
+
+	example := examplePodCluster()
+	pc1, err := store.Create(
+		example.PodID,
+		example.AvailabilityZone,
+		"name1",
+		example.PodSelector,
+		example.Annotations,
+		kptest.NewSession(),
+	)
+	if err != nil {
+		t.Fatalf("Couldn't create test pod cluster: %s", err)
+	}
+
+	pc2, err := store.Create(
+		example.PodID,
+		example.AvailabilityZone,
+		"name2",
+		example.PodSelector,
+		example.Annotations,
+		kptest.NewSession(),
+	)
+	if err != nil {
+		t.Fatalf("Couldn't create test pod cluster: %s", err)
+	}
+
+	// Include one of the 2 clusters as initial
+	syncer := &RecordingSyncer{
+		InitialClusters: []fields.ID{pc1.ID},
+		SyncSignal:      syncSignal,
+	}
+
+	go func() {
+		err := store.WatchAndSync(syncer, quit)
+		if err != nil {
+			t.Fatalf("Couldn't start WatchAndSync(): %s", err)
+		}
+	}()
+
+	expectedSyncCount := 2
+	actualSyncCount := 0
+	for actualSyncCount < expectedSyncCount {
+		select {
+		case <-time.After(1 * time.Second):
+			t.Fatalf("Timed out waiting for sync to happen, there were %d syncs: %s", actualSyncCount, syncer.SyncClusterCalls)
+		case <-syncSignal:
+			actualSyncCount++
+		}
+	}
+
+	for _, expectedID := range []fields.ID{pc1.ID, pc2.ID} {
+		found := false
+		for _, id := range syncer.SyncClusterCalls {
+			if id == expectedID {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			t.Fatalf("Expected sync to be called for %s but it wasn't. Called for %s", expectedID, syncer.SyncClusterCalls)
+		}
+	}
+}
+
 func consulStoreWithFakeKV() *consulStore {
 	return &consulStore{
 		kv:         kptest.NewFakeKV(),
 		applicator: labels.NewFakeApplicator(),
 		logger:     logging.DefaultLogger,
+	}
+}
+
+func examplePodCluster() fields.PodCluster {
+	podId := "slug"
+	availabilityZone := "us-west"
+	clusterName := "production"
+
+	return fields.PodCluster{
+		PodID:            types.PodID(podId),
+		AvailabilityZone: fields.AvailabilityZone(availabilityZone),
+		Name:             fields.ClusterName(clusterName),
+		PodSelector:      klabels.Everything(),
+		Annotations:      fields.Annotations{},
 	}
 }
