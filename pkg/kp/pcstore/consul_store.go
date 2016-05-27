@@ -490,17 +490,13 @@ func (s *consulStore) getInitialClusters(syncer ConcreteSyncer) (WatchedPodClust
 	}
 
 	for _, id := range initial {
-		existing, err := s.Get(id)
-		if err == NoPodCluster {
-			s.logger.WithField("pc_id", id).Warnf("Could not find initial cluster %v, will call DeleteCluster momentarily", id)
-			existing = fields.PodCluster{
-				ID: id,
-			}
-		} else if err != nil {
-			s.logger.WithField("pc_id", id).Errorln("Error retrieving pod cluster from consul")
-			return prevResults, err
-		}
-		prevResults.Clusters = append(prevResults.Clusters, &existing)
+		// We only populate the existing cluster with the ID. It's a little strange
+		// but this means that there will definitely be a "change" for the cluster
+		// when the watch is started, resulting in the label watch being started
+		// as well
+		prevResults.Clusters = append(prevResults.Clusters, &fields.PodCluster{
+			ID: id,
+		})
 	}
 	return prevResults, nil
 }
