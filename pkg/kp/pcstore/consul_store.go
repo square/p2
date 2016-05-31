@@ -567,7 +567,10 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 					pcChangePending = false
 					prevLabeledPods = labeledPods
 				}
-				histogram.Update(int64(time.Now().Sub(startTime)))
+
+				timeElapsed := time.Now().Sub(startTime)
+				histogram.Update(timeElapsed.Nanoseconds())
+				s.logger.Debugf("Sync cluster took %s", timeElapsed.String())
 			}
 		case change, ok = <-changes:
 			pcChangePending = true
