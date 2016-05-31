@@ -622,7 +622,7 @@ func TestConcreteSyncer(t *testing.T) {
 	}
 
 	changes := make(chan podClusterChange)
-	go store.handlePCUpdates(syncer, changes, metrics.NewGauge())
+	go store.handlePCUpdates(syncer, changes, metrics.NewHistogram(metrics.NewExpDecaySample(1028, 0.015)))
 
 	select {
 	case changes <- change:
@@ -743,7 +743,7 @@ func TestConcreteSyncerWithPrevious(t *testing.T) {
 	}
 
 	changes := make(chan podClusterChange)
-	go store.handlePCUpdates(syncer, changes, metrics.NewGauge())
+	go store.handlePCUpdates(syncer, changes, metrics.NewHistogram(metrics.NewExpDecaySample(1028, 0.015)))
 
 	select {
 	case changes <- change:
@@ -902,7 +902,7 @@ func TestClosedChangeChannelResultsInTermination(t *testing.T) {
 	closed := make(chan struct{})
 
 	go func() {
-		store.handlePCUpdates(syncer, changes, metrics.NewGauge())
+		store.handlePCUpdates(syncer, changes, metrics.NewHistogram(metrics.NewExpDecaySample(1028, 0.015)))
 		close(closed)
 	}()
 
