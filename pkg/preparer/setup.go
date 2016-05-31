@@ -51,6 +51,7 @@ type Preparer struct {
 	maxLaunchableDiskUsage size.ByteCount
 	finishExec             []string
 	logExec                []string
+	logBridgeBlacklist     []string
 	artifactVerifier       auth.ArtifactVerifier
 }
 
@@ -73,6 +74,7 @@ type PreparerConfig struct {
 	MaxLaunchableDiskUsage string                 `yaml:"max_launchable_disk_usage"`
 	FinishExec             []string               `yaml:"finish_exec,omitempty"`
 	LogExec                []string               `yaml:"log_exec,omitempty"`
+	LogBridgeBlacklist     []string               `yaml:"log_bridge_blacklist,omitempty"`
 
 	// Params defines a collection of miscellaneous runtime parameters defined throughout the
 	// source files.
@@ -369,6 +371,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		maxLaunchableDiskUsage: maxLaunchableDiskUsage,
 		finishExec:             finishExec,
 		logExec:                logExec,
+		logBridgeBlacklist:     preparerConfig.LogBridgeBlacklist,
 		artifactVerifier:       artifactVerifier,
 	}, nil
 }

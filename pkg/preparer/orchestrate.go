@@ -17,7 +17,8 @@ import (
 // Used because the preparer special-cases itself in a few places.
 const POD_ID = types.PodID("p2-preparer")
 
-const svlogdExec = "svlogd -tt ./main"
+// slice literals are not const
+var svlogdExec = []string{"svlogd", "-tt", "./main"}
 
 type Pod interface {
 	hooks.Pod
@@ -189,7 +190,18 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				if pod.Id == POD_ID {
 					pod.DefaultTimeout = time.Duration(0)
 				}
-				pod.SetLogBridgeExec(p.logExec)
+
+				effectiveLogBridgeExec := p.logExec
+				// pods that are in the blacklist for this preparer shall not use the
+				// preparer's log exec. Instead, they will use the default svlogd logexec.
+				for _, podID := range p.logBridgeBlacklist {
+					if pod.Id.String() == podID {
+						effectiveLogBridgeExec = svlogdExec
+						break
+					}
+				}
+				pod.SetLogBridgeExec(effectiveLogBridgeExec)
+
 				pod.SetFinishExec(p.finishExec)
 
 				// podChan is being fed values gathered from a kp.Watch() in
