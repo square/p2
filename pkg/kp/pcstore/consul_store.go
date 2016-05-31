@@ -431,9 +431,9 @@ func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) 
 		return err
 	}
 
-	timer := metrics.NewTimer()
+	gauge := metrics.NewGauge()
 	if s.metricsRegistry != nil {
-		_ = s.metricsRegistry.Register(fmt.Sprintf("%s_pc_processing_time", syncer.Type()), timer)
+		_ = s.metricsRegistry.Register(fmt.Sprintf("%s_pc_processing_time", syncer.Type()), gauge)
 	}
 
 	for {
@@ -449,7 +449,7 @@ func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) 
 				updater, ok := clusterUpdaters[id]
 				if !ok {
 					clusterUpdaters[id] = make(chan podClusterChange)
-					go s.handlePCUpdates(syncer, clusterUpdaters[id], timer)
+					go s.handlePCUpdates(syncer, clusterUpdaters[id], gauge)
 					updater = clusterUpdaters[id]
 				}
 				// only notify about a change if the new cluster does not match the old one
@@ -532,7 +532,7 @@ func (s *consulStore) zipResults(current, previous WatchedPodClusters) map[field
 // If a change fails to take, this function will retry that change forever until
 // it works as expected or a newer change appears on the channel. This routine also
 // executes and monitors the label watch for the pod's label selector.
-func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podClusterChange, timer metrics.Timer) {
+func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podClusterChange, gauge metrics.Gauge) {
 	var change podClusterChange
 	podWatch := make(chan []labels.Labeled)
 	watching := false
@@ -566,7 +566,7 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 					pcChangePending = false
 					prevLabeledPods = labeledPods
 				}
-				timer.Update(time.Now().Sub(startTime))
+				gauge.Update(int64(time.Now().Sub(startTime)))
 			}
 		case change, ok = <-changes:
 			pcChangePending = true
