@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
+	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/time/rate"
 	"github.com/square/p2/pkg/logging"
 )
 
@@ -15,10 +16,17 @@ type LogBridge struct {
 	DurableWriter io.Writer
 	LossyWriter   io.Writer
 
-	logger        logging.Logger
-	metrics       MetricsRegistry
-	logLinesCount metrics.Counter
-	logBytes      metrics.Counter
+	// We rate limit writes to LossyWriter because we can tolerate loss.
+	// writes to DurableWriter are not rate limited.
+	logLineRateLimit *rate.Limiter
+	logByteRateLimit *rate.Limiter
+
+	logger           logging.Logger
+	metrics          MetricsRegistry
+	logLinesCount    metrics.Counter
+	logBytes         metrics.Counter
+	droppedLineCount metrics.Counter
+	throttledMs      metrics.Counter
 }
 
 type MetricsRegistry interface {
@@ -29,26 +37,38 @@ func NewLogBridge(r io.Reader,
 	durableWriter io.Writer,
 	lossyWriter io.Writer,
 	logger logging.Logger,
+	writePerSec int,
+	bytesPerSec int,
 	metricsRegistry MetricsRegistry,
 	loglineMetricKeyName string,
-	logByteMetricKeyName string) *LogBridge {
+	logByteMetricKeyName string,
+	droppedLineMetricKeyName string,
+	throttledMsKeyName string) *LogBridge {
 	if metricsRegistry == nil {
 		metricsRegistry = metrics.NewRegistry()
 	}
 	lineCount := metrics.NewCounter()
 	logBytes := metrics.NewCounter()
+	throttledMs := metrics.NewCounter()
+	droppedLineCount := metrics.NewCounter()
 
 	_ = metricsRegistry.Register(loglineMetricKeyName, lineCount)
 	_ = metricsRegistry.Register(logByteMetricKeyName, logBytes)
+	_ = metricsRegistry.Register(droppedLineMetricKeyName, droppedLineCount)
+	_ = metricsRegistry.Register(throttledMsKeyName, throttledMs)
 
 	return &LogBridge{
-		Reader:        r,
-		DurableWriter: durableWriter,
-		LossyWriter:   lossyWriter,
-		logger:        logger,
-		metrics:       metricsRegistry,
-		logLinesCount: lineCount,
-		logBytes:      logBytes,
+		Reader:           r,
+		DurableWriter:    durableWriter,
+		LossyWriter:      lossyWriter,
+		logLineRateLimit: rate.NewLimiter(rate.Limit(writePerSec), 5*writePerSec),
+		logByteRateLimit: rate.NewLimiter(rate.Limit(bytesPerSec), 5*bytesPerSec),
+		logger:           logger,
+		metrics:          metricsRegistry,
+		logLinesCount:    lineCount,
+		logBytes:         logBytes,
+		throttledMs:      throttledMs,
+		droppedLineCount: droppedLineCount,
 	}
 }
 
@@ -60,9 +80,31 @@ func (lb *LogBridge) LossyCopy(r io.Reader, capacity int) {
 
 	go lb.lossyCopy(r, lines)
 
-	var n int
-	var err error
+	var (
+		n                int
+		err              error
+		lineReservation  *rate.Reservation
+		bytesReservation *rate.Reservation
+		lineDelay        time.Duration
+		byteDelay        time.Duration
+	)
 	for line := range lines {
+		lineReservation = lb.logLineRateLimit.Reserve()
+		bytesReservation = lb.logByteRateLimit.ReserveN(time.Now(), len(line))
+
+		lineDelay = lineReservation.Delay()
+		byteDelay = bytesReservation.Delay()
+		if lineDelay == byteDelay {
+			lb.throttledMs.Inc(lineDelay.Nanoseconds() / int64(time.Millisecond))
+			time.Sleep(lineDelay)
+		} else if lineDelay > byteDelay {
+			lb.throttledMs.Inc(lineDelay.Nanoseconds() / int64(time.Millisecond))
+			time.Sleep(lineDelay)
+		} else {
+			lb.throttledMs.Inc(byteDelay.Nanoseconds() / int64(time.Millisecond))
+			time.Sleep(byteDelay)
+		}
+
 		n, err = writeWithRetry(lb.LossyWriter, line, lb.logger)
 		if err != nil {
 			lb.logger.WithError(err).WithField("dropped line", line).WithField("retried", isRetriable(err)).WithField("bytes written", n).Errorln("Encountered a non-recoverable error. Proceeding.")
@@ -100,8 +142,9 @@ func (lb *LogBridge) lossyCopy(r io.Reader, lines chan []byte) {
 		case lines <- line:
 		default:
 			droppedLines++
+			lb.droppedLineCount.Inc(1)
 
-			warningMessage := "Dropped was dropped due to full capacity. If this occurs frequently, consider increasing the capacity of this logbridge."
+			warningMessage := "Line was dropped due to full capacity. If this occurs frequently, consider increasing the capacity of this logbridge."
 			lb.logger.WithField("dropped line", line).Errorln(warningMessage)
 			if droppedLines%10 == 0 {
 				select {

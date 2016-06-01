@@ -54,7 +54,7 @@ func main() {
 	go func(r io.Reader, durableWriter, lossyWriter io.Writer, logger logging.Logger) {
 		defer wg.Done()
 
-		lb := logbridge.NewLogBridge(r, durableWriter, lossyWriter, logger, nil, "log_lines", "logged_bytes")
+		lb := logbridge.NewLogBridge(r, durableWriter, lossyWriter, logger, 1024, 4096, nil, "log_lines", "log_bytes", "dropped_lines", "throttled_ms")
 
 		lb.Tee()
 		logging.DefaultLogger.NoFields().Infoln("logbridge Tee returned. Shutting down subordinate log command.")

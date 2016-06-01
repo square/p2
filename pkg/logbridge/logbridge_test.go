@@ -3,11 +3,13 @@ package logbridge
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"testing"
 	"time"
 
 	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
+	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/time/rate"
 	"github.com/square/p2/pkg/logging"
 )
 
@@ -45,15 +47,19 @@ func TestLogBridge(t *testing.T) {
 
 		reader := bytes.NewReader(input)
 		writer := &TrackingWriter{}
-		metrics, logLineCounter, logByteCounter := fakeMetricRegistry()
-		lb := &LogBridge{
-			DurableWriter: ioutil.Discard,
-			LossyWriter:   writer,
-			logger:        logging.DefaultLogger,
-			metrics:       metrics,
-			logLinesCount: logLineCounter,
-			logBytes:      logByteCounter,
-		}
+
+		metReg := metrics.NewRegistry()
+		lb := NewLogBridge(reader,
+			ioutil.Discard,
+			writer,
+			logging.DefaultLogger,
+			testCase.inputSize,
+			1024,
+			metReg,
+			"log_lines",
+			"log_bytes",
+			"dropped_lines",
+			"time_spent_throttled_ms")
 
 		lb.LossyCopy(reader, testCase.bridgeCapacity)
 		if writer.numWrites < testCase.expected {
@@ -92,14 +98,18 @@ func TestLogBridgeLogDrop(t *testing.T) {
 	reader := bytes.NewReader(input)
 
 	writer := &LatentWriter{}
-	metrics, logLineCounter, logByteCounter := fakeMetricRegistry()
-	lb := &LogBridge{
-		LossyWriter:   writer,
-		logger:        logging.DefaultLogger,
-		metrics:       metrics,
-		logLinesCount: logLineCounter,
-		logBytes:      logByteCounter,
-	}
+	metReg := metrics.NewRegistry()
+	lb := NewLogBridge(reader,
+		ioutil.Discard,
+		writer,
+		logging.DefaultLogger,
+		bridgeCapacity*10,
+		1024,
+		metReg,
+		"log_lines",
+		"log_bytes",
+		"dropped_lines",
+		"time_spent_throttled_ms")
 	lb.LossyCopy(reader, bridgeCapacity)
 
 	if writer.writes < bridgeCapacity {
@@ -165,14 +175,18 @@ func TestErrorCases(t *testing.T) {
 	}
 
 	reader := bytes.NewReader(input)
-	metrics, logLineCounter, logByteCounter := fakeMetricRegistry()
-	lb := &LogBridge{
-		LossyWriter:   errorWriter,
-		logger:        logging.DefaultLogger,
-		metrics:       metrics,
-		logLinesCount: logLineCounter,
-		logBytes:      logByteCounter,
-	}
+	metReg := metrics.NewRegistry()
+	lb := NewLogBridge(reader,
+		ioutil.Discard,
+		errorWriter,
+		logging.DefaultLogger,
+		bridgeCapacity,
+		bridgeCapacity*10,
+		metReg,
+		"log_lines",
+		"log_bytes",
+		"dropped_lines",
+		"time_spent_throttled_ms")
 	lb.LossyCopy(reader, bridgeCapacity)
 
 	if len(errorWriter.bytes) >= len(input) {
@@ -211,6 +225,49 @@ func TestIsRetriable(t *testing.T) {
 		if actual != testCase.expectation {
 			t.Errorf("test case %d: expected %b got %b", i, testCase.expectation, actual)
 		}
+	}
+}
+
+func TestRateLimiting(t *testing.T) {
+	inputSize := 100
+	input := make([]byte, 0, inputSize*2)
+	for i := 0; i < inputSize; i++ {
+		inputLine := []byte{byte((i % 26) + 65), newLine}
+		input = append(input, inputLine...)
+	}
+	fmt.Printf("input: %d", len(input))
+
+	bridgeCapacity := 6
+	reader := bytes.NewReader(input)
+
+	lineLimit := 3
+	metReg := metrics.NewRegistry()
+	lb := NewLogBridge(reader,
+		ioutil.Discard,
+		ioutil.Discard,
+		logging.DefaultLogger,
+		lineLimit,
+		1024,
+		metReg,
+		"log_lines",
+		"log_bytes",
+		"dropped_lines",
+		"time_spent_throttled_ms")
+	// We're testing these, so we finely control their parameters
+	lb.logLineRateLimit = rate.NewLimiter(rate.Limit(inputSize), inputSize)
+	lb.logByteRateLimit = rate.NewLimiter(rate.Limit(1024), 1024)
+	lb.LossyCopy(reader, bridgeCapacity)
+
+	loggedLines := lb.logLinesCount.Count()
+	droppedLines := lb.droppedLineCount.Count()
+	if loggedLines == 0 {
+		t.Errorf("Expected some logs to get through.")
+	}
+	if loggedLines == int64(inputSize) {
+		t.Errorf("Expected some lines to get dropped")
+	}
+	if droppedLines == 0 {
+		t.Errorf("Expected dropped lines to be non-zero")
 	}
 }
 
