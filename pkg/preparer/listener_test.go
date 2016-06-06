@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
-	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp"
-	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp/clearsign"
+	. "github.com/anthonybishopric/gotcha"
+	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/clearsign"
 
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/kp"

@@ -14,8 +14,8 @@ import (
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
 
-	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	. "github.com/anthonybishopric/gotcha"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 type fakeKpStore struct {

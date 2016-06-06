@@ -4,7 +4,7 @@ import (
 	"os"
 	"sync/atomic"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 )
 
 // ProcessCounter is a Logrus hook that appends a sequence number to all entries. This

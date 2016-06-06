@@ -4,7 +4,7 @@
 package types
 
 import (
-	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/util/sets"
 )
 
 type NodeName string

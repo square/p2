@@ -4,12 +4,12 @@ import (
 	"log"
 	"os"
 
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (

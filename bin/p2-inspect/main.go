@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
+	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/inspect"

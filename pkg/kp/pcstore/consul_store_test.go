@@ -12,9 +12,9 @@ import (
 	"github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/types"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"github.com/Sirupsen/logrus"
+	"github.com/rcrowley/go-metrics"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 func TestCreate(t *testing.T) {

@@ -10,8 +10,8 @@ import (
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/rc/rcmetrics"
 
-	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
+	. "github.com/anthonybishopric/gotcha"
+	"github.com/rcrowley/go-metrics"
 )
 
 type failsafeAlerter struct {

@@ -6,7 +6,7 @@ import (
 
 	"github.com/square/p2/pkg/util"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
+	"github.com/hashicorp/consul/api"
 )
 
 // Models the consul API client

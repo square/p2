@@ -9,7 +9,7 @@ import (
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
+	"github.com/hashicorp/consul/api"
 )
 
 func TestPublishLatestRCs(t *testing.T) {

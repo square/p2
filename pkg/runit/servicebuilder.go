@@ -29,7 +29,7 @@ import (
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/util"
 
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 )
 
 // These are in the runit package to avoid import cycles.

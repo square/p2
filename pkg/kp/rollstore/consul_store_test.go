@@ -16,8 +16,8 @@ import (
 	"github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/util"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"github.com/hashicorp/consul/api"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 const (

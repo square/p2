@@ -5,9 +5,9 @@ package flags
 import (
 	"net/http"
 
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/util/net"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 func ParseWithConsulOptions() (string, kp.Options) {

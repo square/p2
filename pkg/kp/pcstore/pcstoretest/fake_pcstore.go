@@ -9,8 +9,8 @@ import (
 	"github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/types"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/pborman/uuid"
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"github.com/pborman/uuid"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 // Implementation of the pcstore.Store interface that can be used for unit

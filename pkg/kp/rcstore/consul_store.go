@@ -6,9 +6,9 @@ import (
 	"path"
 	"strings"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/pborman/uuid"
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"github.com/hashicorp/consul/api"
+	"github.com/pborman/uuid"
+	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"

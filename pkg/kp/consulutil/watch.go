@@ -3,7 +3,7 @@ package consulutil
 import (
 	"time"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
+	"github.com/hashicorp/consul/api"
 )
 
 // WatchPrefix watches a Consul prefix for changes to any keys that have the prefix. When

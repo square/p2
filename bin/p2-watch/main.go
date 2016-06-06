@@ -15,10 +15,10 @@ import (
 	"github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/types"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
+	"github.com/Sirupsen/logrus"
+	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/version"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (

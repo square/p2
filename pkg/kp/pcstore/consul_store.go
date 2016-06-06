@@ -6,12 +6,12 @@ import (
 	"path"
 	"time"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/pborman/uuid"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
-	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/util/sets"
+	"github.com/Sirupsen/logrus"
+	"github.com/hashicorp/consul/api"
+	"github.com/pborman/uuid"
+	"github.com/rcrowley/go-metrics"
+	klabels "k8s.io/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"

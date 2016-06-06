@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 
-	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
+	. "github.com/anthonybishopric/gotcha"
 )
 
 func TestSizeParsing(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 )
 
 type Config struct {
