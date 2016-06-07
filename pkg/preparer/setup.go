@@ -11,8 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
+	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
@@ -25,6 +24,7 @@ import (
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/util/size"
+	"gopkg.in/yaml.v2"
 )
 
 // DefaultConsulAddress is the default location for Consul when none is configured.

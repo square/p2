@@ -8,7 +8,7 @@ import (
 	"github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/types"
 
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 const podClusterTree string = "pod_clusters"

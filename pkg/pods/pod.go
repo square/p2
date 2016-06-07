@@ -24,7 +24,7 @@ import (
 	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/util/size"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 )
 
 var (

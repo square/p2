@@ -6,9 +6,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
-	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/time/rate"
+	"github.com/rcrowley/go-metrics"
 	"github.com/square/p2/pkg/logging"
+	"golang.org/x/time/rate"
 )
 
 type LogBridge struct {

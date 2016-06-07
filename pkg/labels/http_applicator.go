@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util"

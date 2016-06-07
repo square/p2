@@ -7,11 +7,11 @@ import (
 	"os/exec"
 	"sync"
 
-	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/sys/unix"
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
 	"github.com/square/p2/pkg/logbridge"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/version"
+	"golang.org/x/sys/unix"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (

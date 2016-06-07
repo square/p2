@@ -3,8 +3,8 @@ package consulutil
 import (
 	"time"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
+	"github.com/Sirupsen/logrus"
+	"github.com/hashicorp/consul/api"
 
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util/param"

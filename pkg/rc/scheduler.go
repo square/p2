@@ -1,7 +1,7 @@
 package rc
 
 import (
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pods"

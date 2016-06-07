@@ -14,9 +14,9 @@ import (
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 
-	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp"
-	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp/armor"
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
+	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/armor"
+	"gopkg.in/yaml.v2"
 )
 
 const VerifyNone = "none"

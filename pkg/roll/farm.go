@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health/checker"
@@ -19,7 +19,7 @@ import (
 	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/util"
 
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 type Factory interface {

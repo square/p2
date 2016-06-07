@@ -27,7 +27,7 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 const preparerStatusPort = 32170

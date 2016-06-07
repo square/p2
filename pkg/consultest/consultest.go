@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/command/agent"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/consul"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/testutil"
+	"github.com/hashicorp/consul/api"
+	"github.com/hashicorp/consul/command/agent"
+	"github.com/hashicorp/consul/consul"
+	"github.com/hashicorp/consul/testutil"
 )
 
 // Fixture sets up a test Consul server and provides the client configuration for

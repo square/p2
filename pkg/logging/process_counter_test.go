@@ -4,8 +4,8 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
-	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
+	"github.com/Sirupsen/logrus"
+	. "github.com/anthonybishopric/gotcha"
 )
 
 // RecordingLogger keeps a record of all the entries it's asked to write.

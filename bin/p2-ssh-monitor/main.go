@@ -9,8 +9,8 @@ import (
 	"github.com/square/p2/pkg/config"
 	"github.com/square/p2/pkg/logging"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
-	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/ssh"
+	"github.com/Sirupsen/logrus"
+	"golang.org/x/crypto/ssh"
 )
 
 func main() {

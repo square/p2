@@ -3,7 +3,7 @@ package artifact
 import (
 	"io/ioutil"
 
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 )
 
 type AppManifest struct {

@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
+	"github.com/Sirupsen/logrus"
+	"github.com/hashicorp/consul/api"
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp/consulutil"

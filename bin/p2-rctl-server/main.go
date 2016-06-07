@@ -8,12 +8,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
+	"github.com/Sirupsen/logrus"
+	"github.com/hashicorp/consul/api"
+	"gopkg.in/alecthomas/kingpin.v2"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/go-cleanhttp"
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"github.com/hashicorp/go-cleanhttp"
+	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health/checker"

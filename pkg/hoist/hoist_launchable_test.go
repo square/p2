@@ -8,14 +8,14 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
+	"gopkg.in/yaml.v2"
 
-	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
+	. "github.com/anthonybishopric/gotcha"
 )
 
 func TestInstall(t *testing.T) {

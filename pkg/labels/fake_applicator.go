@@ -3,7 +3,7 @@ package labels
 import (
 	"sync"
 
-	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/labels"
 )
 
 // This is a map of type -> id -> Set

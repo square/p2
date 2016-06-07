@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
-	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	. "github.com/anthonybishopric/gotcha"
+	"github.com/hashicorp/consul/api"
+	"github.com/rcrowley/go-metrics"
+	"k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/logging"
 )

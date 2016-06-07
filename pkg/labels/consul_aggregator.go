@@ -8,11 +8,11 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
-	"github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"github.com/Sirupsen/logrus"
+	"github.com/hashicorp/consul/api"
+	"k8s.io/kubernetes/pkg/labels"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
+	"github.com/rcrowley/go-metrics"
 )
 
 // minimum required time between retrievals of label subtrees.

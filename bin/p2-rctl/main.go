@@ -10,11 +10,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/Sirupsen/logrus"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/consul/api"
-	"github.com/square/p2/Godeps/_workspace/src/github.com/hashicorp/go-cleanhttp"
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/alecthomas/kingpin.v2"
-	klabels "github.com/square/p2/Godeps/_workspace/src/k8s.io/kubernetes/pkg/labels"
+	"github.com/Sirupsen/logrus"
+	"github.com/hashicorp/consul/api"
+	"github.com/hashicorp/go-cleanhttp"
+	"gopkg.in/alecthomas/kingpin.v2"
+	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health/checker"

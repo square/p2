@@ -9,10 +9,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
-	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp"
-	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp/clearsign"
-	"github.com/square/p2/Godeps/_workspace/src/golang.org/x/crypto/openpgp/packet"
+	. "github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
@@ -21,6 +18,9 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
+	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/clearsign"
+	"golang.org/x/crypto/openpgp/packet"
 )
 
 type TestPod struct {

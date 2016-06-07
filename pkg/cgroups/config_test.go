@@ -5,8 +5,8 @@ import (
 
 	"github.com/square/p2/pkg/util/size"
 
-	. "github.com/square/p2/Godeps/_workspace/src/github.com/anthonybishopric/gotcha"
-	"github.com/square/p2/Godeps/_workspace/src/gopkg.in/yaml.v2"
+	. "github.com/anthonybishopric/gotcha"
+	"gopkg.in/yaml.v2"
 )
 
 func TestMarshalIntegerByteCount(t *testing.T) {

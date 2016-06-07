@@ -6,7 +6,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util"
 
-	"github.com/square/p2/Godeps/_workspace/src/github.com/rcrowley/go-metrics"
+	"github.com/rcrowley/go-metrics"
 )
 
 const (
