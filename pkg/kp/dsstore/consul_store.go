@@ -20,9 +20,10 @@ import (
 )
 
 type consulKV interface {
+	CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
+	Delete(key string, w *api.WriteOptions) (*api.WriteMeta, error)
 	Get(key string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
-	CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
 }
 
 type consulStore struct {
@@ -119,6 +120,19 @@ func (s *consulStore) innerCreate(
 	return ds, nil
 }
 
+func (s *consulStore) Delete(id fields.ID) error {
+	dsPath, err := s.dsPath(id)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.kv.Delete(dsPath, nil)
+	if err != nil {
+		return consulutil.NewKVError("delete", dsPath, err)
+	}
+	return nil
+}
+
 func (s *consulStore) Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error) {
 	var metadata *api.QueryMeta
 	dsPath, err := s.dsPath(id)
@@ -152,6 +166,52 @@ func (s *consulStore) List() ([]fields.DaemonSet, error) {
 		return nil, consulutil.NewKVError("list", dsTree+"/", err)
 	}
 	return kvpsToDSs(listed)
+}
+
+func (s *consulStore) MutateDS(
+	id fields.ID,
+	mutator func(fields.DaemonSet) (fields.DaemonSet, error),
+) (fields.DaemonSet, error) {
+	ds, metadata, err := s.Get(id)
+	if err != nil {
+		return fields.DaemonSet{}, err
+	}
+
+	ds, err = mutator(ds)
+	if err != nil {
+		return fields.DaemonSet{}, err
+	}
+	if ds.ID != id {
+		// If the user wants a new uuid, they should delete it and create it
+		return fields.DaemonSet{},
+			util.Errorf("Explicitly changing daemon set ID is not permitted: Wanted '%s' got '%s'", id, ds.ID)
+	}
+	if err := checkManifestPodID(ds.PodID, ds.Manifest); err != nil {
+		return fields.DaemonSet{}, err
+	}
+
+	rawDS, err := json.Marshal(ds)
+	if err != nil {
+		return fields.DaemonSet{}, util.Errorf("Could not marshal DS as json: %s", err)
+	}
+
+	dsPath, err := s.dsPath(id)
+	if err != nil {
+		return fields.DaemonSet{}, err
+	}
+
+	success, _, err := s.kv.CAS(&api.KVPair{
+		Key:         dsPath,
+		Value:       rawDS,
+		ModifyIndex: metadata.LastIndex,
+	}, nil)
+	if err != nil {
+		return fields.DaemonSet{}, consulutil.NewKVError("cas", dsPath, err)
+	}
+	if !success {
+		return fields.DaemonSet{}, CASError(dsPath)
+	}
+	return ds, nil
 }
 
 func checkManifestPodID(dsPodID types.PodID, manifest pods.Manifest) error {

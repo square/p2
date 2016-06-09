@@ -3,6 +3,8 @@ package dsstore
 import (
 	"testing"
 
+	"github.com/square/p2/pkg/util"
+
 	. "github.com/anthonybishopric/gotcha"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/kp/kptest"
@@ -34,12 +36,12 @@ func TestCreate(t *testing.T) {
 	manifest := manifestBuilder.GetManifest()
 
 	if _, err := store.Create(manifest, minHealth, clusterName, selector, podID); err == nil {
-		t.Errorf("Expected create to fail on bad pod id")
+		t.Error("Expected create to fail on bad pod id")
 	}
 
 	podID = types.PodID("pod_id")
 	if _, err := store.Create(manifest, minHealth, clusterName, selector, podID); err == nil {
-		t.Errorf("Expected create to fail on bad manifest pod id")
+		t.Error("Expected create to fail on bad manifest pod id")
 	}
 
 	manifestBuilder = pods.NewManifestBuilder()
@@ -47,11 +49,11 @@ func TestCreate(t *testing.T) {
 
 	manifest = manifestBuilder.GetManifest()
 	if _, err := store.Create(manifest, minHealth, clusterName, selector, podID); err == nil {
-		t.Errorf("Expected create to fail on pod id and manifest pod id mismatch")
+		t.Error("Expected create to fail on pod id and manifest pod id mismatch")
 	}
 }
 
-func createDaemonSet(store *consulStore, t *testing.T) {
+func createDaemonSet(store *consulStore, t *testing.T) ds_fields.DaemonSet {
 	podID := types.PodID("some_pod_id")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
@@ -71,7 +73,7 @@ func createDaemonSet(store *consulStore, t *testing.T) {
 	}
 
 	if ds.ID == "" {
-		t.Errorf("daemon set should have an id")
+		t.Error("daemon set should have an id")
 	}
 
 	Assert(t).AreNotEqual(ds.ID, "", "Daemon set should have an id")
@@ -80,23 +82,47 @@ func createDaemonSet(store *consulStore, t *testing.T) {
 	Assert(t).AreEqual(ds.PodID, podID, "Daemon set pod id was not set correctly")
 	Assert(t).AreEqual(ds.MinHealth, minHealth, "Daemon set minimum health was not set correctly")
 	Assert(t).AreEqual(ds.Name, clusterName, "Daemon set cluster name was not set correctly")
+	Assert(t).IsFalse(ds.Disabled, "Daemon set disabled field was not set correctly")
 
 	testLabels := klabels.Set{
 		pc_fields.AvailabilityZoneLabel: azLabel.String(),
 	}
 	if matches := ds.NodeSelector.Matches(testLabels); !matches {
-		t.Errorf("The daemon set has a bad node selector")
+		t.Error("The daemon set has a bad node selector")
 	}
 
 	originalSHA, err := manifest.SHA()
 	if err != nil {
-		t.Errorf("Unable to retrieve SHA from manifest")
+		t.Fatal("Unable to retrieve SHA from manifest")
 	}
 	getSHA, err := ds.Manifest.SHA()
 	if err != nil {
-		t.Errorf("Unable to retrieve SHA from manifest retrieved from daemon set")
+		t.Fatal("Unable to retrieve SHA from manifest retrieved from daemon set")
 	}
 	Assert(t).AreEqual(originalSHA, getSHA, "Daemon set manifest not set correctly")
+
+	return ds
+}
+
+func TestDelete(t *testing.T) {
+	store := consulStoreWithFakeKV()
+	ds := createDaemonSet(store, t)
+
+	if err := store.Delete("bad_id"); err != nil {
+		t.Error("Expected no errors while deleting a daemon set that does not exist")
+	}
+
+	if err := store.Delete(ds.ID); err != nil {
+		t.Errorf("Unable to delete existing daemon set: %s", err)
+	}
+
+	if _, _, err := store.Get(ds.ID); err == nil {
+		t.Error("Expected to encounter an error while getting a deleted daemon set")
+	}
+
+	if err := store.Delete(ds.ID); err != nil {
+		t.Error("Expected no errors on while deleting a deleted daemon set")
+	}
 }
 
 func TestGet(t *testing.T) {
@@ -129,7 +155,7 @@ func TestGet(t *testing.T) {
 	//
 	getDS, _, err := store.Get(ds.ID)
 	if err != nil {
-		t.Errorf("Error retrieving created daemon set: %s", err)
+		t.Fatalf("Error retrieving created daemon set: %s", err)
 	}
 
 	Assert(t).AreNotEqual(getDS.ID, "", "Daemon set should have an id")
@@ -139,23 +165,30 @@ func TestGet(t *testing.T) {
 	Assert(t).AreEqual(ds.PodID, getDS.PodID, "Daemon set should have equal ids")
 	Assert(t).AreEqual(ds.MinHealth, getDS.MinHealth, "Daemon set should have equal minimum healths")
 	Assert(t).AreEqual(ds.Name, getDS.Name, "Daemon set should have equal names")
+	Assert(t).AreEqual(ds.Disabled, getDS.Disabled, "Daemon set should have same disabled fields")
 
 	testLabels := klabels.Set{
 		pc_fields.AvailabilityZoneLabel: azLabel.String(),
 	}
 	if matches := getDS.NodeSelector.Matches(testLabels); !matches {
-		t.Errorf("The daemon set has a bad node selector")
+		t.Error("The daemon set has a bad node selector")
 	}
 
 	originalSHA, err := manifest.SHA()
 	if err != nil {
-		t.Errorf("Unable to retrieve SHA from manifest")
+		t.Fatal("Unable to retrieve SHA from manifest")
 	}
 	getSHA, err := getDS.Manifest.SHA()
 	if err != nil {
-		t.Errorf("Unable to retrieve SHA from manifest retrieved from daemon set")
+		t.Fatal("Unable to retrieve SHA from manifest retrieved from daemon set")
 	}
 	Assert(t).AreEqual(originalSHA, getSHA, "Daemon set shas were not equal")
+
+	// Invalid get opertaion
+	_, _, err = store.Get("bad_id")
+	if err == nil {
+		t.Error("Expected get operation to fail when getting a daemon set which does not exist")
+	}
 }
 
 func TestList(t *testing.T) {
@@ -207,9 +240,140 @@ func TestList(t *testing.T) {
 			Assert(t).AreEqual(daemonSet.PodID, secondPodID, "Listed daemon set pod ids were not equal")
 
 		} else {
-			t.Fatalf("Unexpected daemon set listed: %v", daemonSet)
+			t.Errorf("Unexpected daemon set listed: %v", daemonSet)
 		}
 	}
+}
+
+func TestMutate(t *testing.T) {
+	store := consulStoreWithFakeKV()
+
+	podID := types.PodID("some_pod_id")
+	minHealth := 0
+	clusterName := ds_fields.ClusterName("some_name")
+
+	azLabel := pc_fields.AvailabilityZone("some_zone")
+	selector := klabels.Everything().
+		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
+
+	manifestBuilder := pods.NewManifestBuilder()
+	manifestBuilder.SetID(podID)
+	manifest := manifestBuilder.GetManifest()
+
+	ds, err := store.Create(manifest, minHealth, clusterName, selector, podID)
+	if err != nil {
+		t.Fatalf("Unable to create daemon set: %s", err)
+	}
+	//
+	// Invalid mutates
+	//
+	errorMutator := func(dsToMutate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		return dsToMutate, util.Errorf("This is an error")
+	}
+	_, err = store.MutateDS(ds.ID, errorMutator)
+	if err == nil {
+		t.Error("Expected error when mutator produces an error")
+	}
+
+	badIDMutator := func(dsToMutate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		dsToMutate.ID = ""
+		return dsToMutate, nil
+	}
+	_, err = store.MutateDS(ds.ID, badIDMutator)
+	if err == nil {
+		t.Error("Expected error when mutating daemon set ID")
+	}
+
+	badPodIDMutator := func(dsToMutate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		dsToMutate.PodID = ""
+		return dsToMutate, nil
+	}
+	_, err = store.MutateDS(ds.ID, badPodIDMutator)
+	if err == nil {
+		t.Error("Expected error when mutating daemon set PodID to mismatch manifest")
+	}
+	//
+	// A valid mutate followed by validation
+	//
+	someOtherDisabled := !ds.Disabled
+	someOtherMinHealth := 42
+	someOtherName := ds_fields.ClusterName("some_other_name")
+	someOtherPodID := types.PodID("some_other_pod_id")
+
+	manifestBuilder = pods.NewManifestBuilder()
+	manifestBuilder.SetID(someOtherPodID)
+	someOtherManifest := manifestBuilder.GetManifest()
+
+	someOtherAZLabel := pc_fields.AvailabilityZone("some_other_zone")
+	someOtherSelector := klabels.Everything().
+		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{someOtherAZLabel.String()})
+
+	goodMutator := func(dsToMutate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		dsToMutate.Disabled = someOtherDisabled
+		dsToMutate.Manifest = someOtherManifest
+		dsToMutate.MinHealth = someOtherMinHealth
+		dsToMutate.Name = someOtherName
+		dsToMutate.NodeSelector = someOtherSelector
+		dsToMutate.PodID = someOtherPodID
+		return dsToMutate, nil
+	}
+	someOtherDS, err := store.MutateDS(ds.ID, goodMutator)
+	if err != nil {
+		t.Fatalf("Unable to mutate daemon set: %s", err)
+	}
+
+	Assert(t).AreEqual(someOtherDS.ID, ds.ID, "Daemon sets should be equal ids")
+	Assert(t).AreEqual(someOtherDS.PodID, someOtherPodID, "Daemon sets should have equal ids")
+	Assert(t).AreEqual(someOtherDS.MinHealth, someOtherMinHealth, "Daemon sets should have equal minimum healths")
+	Assert(t).AreEqual(someOtherDS.Name, someOtherName, "Daemon sets should have equal names")
+	Assert(t).AreEqual(someOtherDS.Disabled, someOtherDisabled, "Daemon sets should have same disabled fields")
+
+	someOtherLabels := klabels.Set{
+		pc_fields.AvailabilityZoneLabel: someOtherAZLabel.String(),
+	}
+	if matches := someOtherDS.NodeSelector.Matches(someOtherLabels); !matches {
+		t.Error("The daemon set has a bad node selector")
+	}
+
+	someOtherSHA, err := someOtherManifest.SHA()
+	if err != nil {
+		t.Fatal("Unable to retrieve SHA from manifest")
+	}
+	dsSHA, err := someOtherDS.Manifest.SHA()
+	if err != nil {
+		t.Fatal("Unable to retrieve SHA from manifest retrieved from daemon set")
+	}
+	Assert(t).AreEqual(someOtherSHA, dsSHA, "Daemon set shas were not equal")
+
+	//
+	// Validate daemon set from a get function
+	//
+	getDS, _, err := store.Get(ds.ID)
+	if err != nil {
+		t.Fatalf("Unable to get daemon set: %s", err)
+	}
+	Assert(t).AreEqual(getDS.ID, ds.ID, "Daemon sets should be equal ids")
+	Assert(t).AreEqual(getDS.PodID, someOtherPodID, "Daemon sets should have equal ids")
+	Assert(t).AreEqual(getDS.MinHealth, someOtherMinHealth, "Daemon sets should have equal minimum healths")
+	Assert(t).AreEqual(getDS.Name, someOtherName, "Daemon sets should have equal names")
+	Assert(t).AreEqual(getDS.Disabled, someOtherDisabled, "Daemon sets should have same disabled fields")
+
+	someOtherLabels = klabels.Set{
+		pc_fields.AvailabilityZoneLabel: someOtherAZLabel.String(),
+	}
+	if matches := getDS.NodeSelector.Matches(someOtherLabels); !matches {
+		t.Error("The daemon set has a bad node selector")
+	}
+
+	someOtherSHA, err = someOtherManifest.SHA()
+	if err != nil {
+		t.Fatal("Unable to retrieve SHA from manifest")
+	}
+	dsSHA, err = getDS.Manifest.SHA()
+	if err != nil {
+		t.Fatal("Unable to retrieve SHA from manifest retrieved from daemon set")
+	}
+	Assert(t).AreEqual(someOtherSHA, dsSHA, "Daemon set shas were not equal")
 }
 
 func consulStoreWithFakeKV() *consulStore {

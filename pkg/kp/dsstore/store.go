@@ -29,8 +29,20 @@ type Store interface {
 		podID types.PodID,
 	) (fields.DaemonSet, error)
 
+	// Gets a daemon set by ID, if it does not exist, it will produce an error
 	Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error)
 	List() ([]fields.DaemonSet, error)
+
+	// Deletes a daemon set by ID, deleting something that does not exist
+	// should not produce an error
+	Delete(fields.ID) error
+
+	// Mutates a daemon set by ID, ID cannot be mutated,
+	// PodID of the daemon set and its manifest must also match
+	MutateDS(
+		id fields.ID,
+		mutator func(fields.DaemonSet) (fields.DaemonSet, error),
+	) (fields.DaemonSet, error)
 }
 
 func IsNotExist(err error) bool {
