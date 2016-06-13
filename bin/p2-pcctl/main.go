@@ -24,6 +24,7 @@ const (
 	CmdCreate = "create"
 	CmdGet    = "get"
 	CmdDelete = "delete"
+	CmdUpdate = "update"
 )
 
 var (
@@ -39,10 +40,16 @@ var (
 	getAZ    = cmdGet.Flag("az", "The availability zone of the pod cluster").Required().String()
 	getName  = cmdGet.Flag("name", "The cluster name (ie. staging, production)").Required().String()
 
-	cmdDelete   = kingpin.Command(CmdDelete, "Show a pod cluster. ")
+	cmdDelete   = kingpin.Command(CmdDelete, "Delete a pod cluster. ")
 	deletePodID = cmdDelete.Flag("pod", "The pod ID on the pod cluster").Required().String()
 	deleteAZ    = cmdDelete.Flag("az", "The availability zone of the pod cluster").Required().String()
 	deleteName  = cmdDelete.Flag("name", "The cluster name (ie. staging, production)").Required().String()
+
+	cmdUpdate         = kingpin.Command(CmdUpdate, "Update a pod cluster. ")
+	updatePodID       = cmdUpdate.Flag("pod", "The pod ID on the pod cluster").Required().String()
+	updateAZ          = cmdUpdate.Flag("az", "The availability zone of the pod cluster").Required().String()
+	updateName        = cmdUpdate.Flag("name", "The cluster name (ie. staging, production)").Required().String()
+	updateAnnotations = cmdUpdate.Flag("annotations", "JSON string representing the complete update ").Required().String()
 )
 
 func main() {
@@ -100,6 +107,30 @@ func main() {
 			}
 			os.Exit(1)
 		}
+	case CmdUpdate:
+		az := fields.AvailabilityZone(*updateAZ)
+		cn := fields.ClusterName(*updateName)
+		podID := types.PodID(*updatePodID)
+		selector := selectorFrom(az, cn, podID)
+		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, kv.NewUnmanagedSession("pcctl", currentUserName()))
+		var annotations fields.Annotations
+		err := json.Unmarshal([]byte(*updateAnnotations), &annotations)
+		if err != nil {
+			_, _ = os.Stderr.Write([]byte(fmt.Sprintf("Annotations are invalid JSON. Err follows:\n%v", err)))
+			os.Exit(1)
+		}
+
+		pc, err := pccontrol.Update(annotations)
+		if err != nil {
+			log.Fatalf("Error during PodCluster update: %v\n%v", err, pc)
+			os.Exit(1)
+		}
+		bytes, err := json.Marshal(pc)
+		if err != nil {
+			log.Fatalf("Update succeeded, but error during displaying PC: %v\n%+v", err, pc)
+			os.Exit(1)
+		}
+		fmt.Printf("%s", bytes)
 	default:
 		log.Fatalf("Unrecognized command %v", cmd)
 	}
