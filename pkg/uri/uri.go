@@ -7,10 +7,28 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util"
+
+	"golang.org/x/net/context"
+	"golang.org/x/oauth2/google"
+	storage "google.golang.org/api/storage/v1"
 )
 
-// A UriFetcher presents simple methods for fetching URIs from
+func init() {
+	client, err := google.DefaultClient(context.Background(), storage.DevstorageReadOnlyScope)
+	if err != nil {
+		logging.DefaultLogger.WithError(err).Debug("Unable to setup Google client, skipping")
+		return
+	}
+	service, err := storage.New(client)
+	if err != nil {
+		panic(util.Errorf("Unable to setup Google Storage client: %s", err))
+	}
+	DefaultFetcher.GoogleStorage = service
+}
+
+// A Fetcher presents simple methods for fetching URIs from
 // different schemes.
 type Fetcher interface {
 	// Opens a data stream to the source URI. If no URI scheme is
@@ -23,17 +41,18 @@ type Fetcher interface {
 }
 
 // A default fetcher, if the user doesn't want to set any options.
-var DefaultFetcher Fetcher = BasicFetcher{http.DefaultClient}
+var DefaultFetcher = BasicFetcher{Client: http.DefaultClient}
 
 // URICopy Wraps opening and copying content from URIs. Will attempt
 // directly perform file copies if the uri is begins with file://, otherwise
 // delegates to a curl implementation.
 var URICopy = DefaultFetcher.CopyLocal
 
-// BasicFetcher can access "file" and "http" schemes using the OS and
-// a provided HTTP client, respectively.
+// BasicFetcher can access the "file" scheme using the OS, "gs" scheme using the
+// Google SDK, and the "http" scheme using the provided HTTP client.
 type BasicFetcher struct {
-	Client *http.Client
+	Client        *http.Client
+	GoogleStorage *storage.Service
 }
 
 func (f BasicFetcher) Open(u *url.URL) (io.ReadCloser, error) {
@@ -50,6 +69,13 @@ func (f BasicFetcher) Open(u *url.URL) (io.ReadCloser, error) {
 		}
 
 		return os.Open(u.Path)
+	case "gs":
+		// Chop off the leading slash
+		resp, err := f.GoogleStorage.Objects.Get(u.Host, u.Path[1:]).Download()
+		if err != nil {
+			return nil, util.Errorf("%q: Unable to download: %s", u.String(), err)
+		}
+		return resp.Body, nil
 	case "http", "https":
 		resp, err := f.Client.Get(u.String())
 		if err != nil {

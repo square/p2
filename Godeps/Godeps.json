@@ -155,6 +155,10 @@
 			"Rev": "299d728486342c894e7fafd68e3a4b89623bef1d"
 		},
 		{
+			"ImportPath": "github.com/golang/protobuf/proto",
+			"Rev": "8616e8ee5e20a1704615e6c8d7afcdac06087a67"
+		},
+		{
 			"ImportPath": "github.com/hashicorp/consul/acl",
 			"Comment": "v0.6.1",
 			"Rev": "68969ce5f4499cbe3a4f946917be2e580f1b1936"
@@ -407,12 +411,88 @@
 			"Rev": "0c607074acd38c5f23d1344dfe74c977464d1257"
 		},
 		{
+			"ImportPath": "golang.org/x/net/context/ctxhttp",
+			"Rev": "0c607074acd38c5f23d1344dfe74c977464d1257"
+		},
+		{
+			"ImportPath": "golang.org/x/oauth2",
+			"Rev": "65a8d08c6292395d47053be10b3c5e91960def76"
+		},
+		{
+			"ImportPath": "golang.org/x/oauth2/google",
+			"Rev": "65a8d08c6292395d47053be10b3c5e91960def76"
+		},
+		{
+			"ImportPath": "golang.org/x/oauth2/internal",
+			"Rev": "65a8d08c6292395d47053be10b3c5e91960def76"
+		},
+		{
+			"ImportPath": "golang.org/x/oauth2/jws",
+			"Rev": "65a8d08c6292395d47053be10b3c5e91960def76"
+		},
+		{
+			"ImportPath": "golang.org/x/oauth2/jwt",
+			"Rev": "65a8d08c6292395d47053be10b3c5e91960def76"
+		},
+		{
 			"ImportPath": "golang.org/x/sys/unix",
 			"Rev": "a646d33e2ee3172a661fc09bca23bb4889a41bc8"
 		},
 		{
 			"ImportPath": "golang.org/x/time/rate",
 			"Rev": "a4bde12657593d5e90d0533a3e4fd95e635124cb"
+		},
+		{
+			"ImportPath": "google.golang.org/api/gensupport",
+			"Rev": "63ade871fd3aec1225809d496e81ec91ab76ea29"
+		},
+		{
+			"ImportPath": "google.golang.org/api/googleapi",
+			"Rev": "63ade871fd3aec1225809d496e81ec91ab76ea29"
+		},
+		{
+			"ImportPath": "google.golang.org/api/googleapi/internal/uritemplates",
+			"Rev": "63ade871fd3aec1225809d496e81ec91ab76ea29"
+		},
+		{
+			"ImportPath": "google.golang.org/api/storage/v1",
+			"Rev": "63ade871fd3aec1225809d496e81ec91ab76ea29"
+		},
+		{
+			"ImportPath": "google.golang.org/appengine",
+			"Rev": "7f59a8c76b8594d06044bfe0bcbe475cb2020482"
+		},
+		{
+			"ImportPath": "google.golang.org/appengine/internal",
+			"Rev": "7f59a8c76b8594d06044bfe0bcbe475cb2020482"
+		},
+		{
+			"ImportPath": "google.golang.org/appengine/internal/app_identity",
+			"Rev": "7f59a8c76b8594d06044bfe0bcbe475cb2020482"
+		},
+		{
+			"ImportPath": "google.golang.org/appengine/internal/base",
+			"Rev": "7f59a8c76b8594d06044bfe0bcbe475cb2020482"
+		},
+		{
+			"ImportPath": "google.golang.org/appengine/internal/datastore",
+			"Rev": "7f59a8c76b8594d06044bfe0bcbe475cb2020482"
+		},
+		{
+			"ImportPath": "google.golang.org/appengine/internal/modules",
+			"Rev": "7f59a8c76b8594d06044bfe0bcbe475cb2020482"
+		},
+		{
+			"ImportPath": "google.golang.org/appengine/internal/remote_api",
+			"Rev": "7f59a8c76b8594d06044bfe0bcbe475cb2020482"
+		},
+		{
+			"ImportPath": "google.golang.org/cloud/compute/metadata",
+			"Rev": "4a23f97e60c9a14de1269e78812e59ca94033d85"
+		},
+		{
+			"ImportPath": "google.golang.org/cloud/internal",
+			"Rev": "4a23f97e60c9a14de1269e78812e59ca94033d85"
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v2",
