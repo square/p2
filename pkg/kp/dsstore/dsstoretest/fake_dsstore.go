@@ -44,6 +44,14 @@ func (s *FakeDSStore) Create(
 	return ds, nil
 }
 
+func (s *FakeDSStore) Delete(id fields.ID) error {
+	if _, ok := s.daemonSets[id]; ok {
+		delete(s.daemonSets, id)
+		return nil
+	}
+	return dsstore.NoDaemonSet
+}
+
 func (s *FakeDSStore) Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error) {
 	//TODO: Check if there is a use for this in the fake dsstore
 	queryMeta := &api.QueryMeta{
@@ -64,4 +72,19 @@ func (s *FakeDSStore) List() ([]fields.DaemonSet, error) {
 		ret = append(ret, ds)
 	}
 	return ret, nil
+}
+
+func (s *FakeDSStore) MutateDS(
+	id fields.ID,
+	mutator func(fields.DaemonSet) (fields.DaemonSet, error),
+) (fields.DaemonSet, error) {
+	if _, ok := s.daemonSets[id]; ok {
+		newDS, err := mutator(s.daemonSets[id])
+		if err != nil {
+			return fields.DaemonSet{}, err
+		}
+		s.daemonSets[id] = newDS
+		return newDS, nil
+	}
+	return fields.DaemonSet{}, dsstore.NoDaemonSet
 }
