@@ -67,16 +67,38 @@ func (pccontrol *PodCluster) Create(annotations fields.Annotations) (fields.PodC
 }
 
 func (pccontrol *PodCluster) Get() (fields.PodCluster, error) {
+	pc, err := pccontrol.getExactlyOne()
+	if err != nil {
+		return fields.PodCluster{}, err
+	}
+	return pccontrol.pcStore.Get(pc.ID)
+}
+
+func (pccontrol *PodCluster) Update(annotations fields.Annotations) (fields.PodCluster, error) {
+	pc, err := pccontrol.getExactlyOne()
+	if err != nil {
+		return fields.PodCluster{}, err
+	}
+
+	annotationsUpdater := func(pc fields.PodCluster) (fields.PodCluster, error) {
+		pc.Annotations = annotations
+		return pc, nil
+	}
+
+	return pccontrol.pcStore.MutatePC(pc.ID, annotationsUpdater, pccontrol.session)
+}
+
+func (pccontrol *PodCluster) getExactlyOne() (fields.PodCluster, error) {
 	labeledPCs, err := pccontrol.All()
 	if err != nil {
 		return fields.PodCluster{}, err
 	}
 	if len(labeledPCs) > 1 {
-		return fields.PodCluster{}, util.Errorf("More than one PC matches this podCluster %+v", pccontrol)
+		return fields.PodCluster{}, util.Errorf("More than one PC matches this PodCluster %+v, please be more specific", pccontrol)
 	}
 	if len(labeledPCs) == 0 {
-		return fields.PodCluster{}, util.Errorf("No pod cluster found for this podcluster: %+v", pccontrol)
+		return fields.PodCluster{}, util.Errorf("Found no matching PodClusters, please check the labels: %+v", pccontrol)
 	}
 
-	return pccontrol.pcStore.Get(labeledPCs[0].ID)
+	return labeledPCs[0], nil
 }
