@@ -214,6 +214,84 @@ func (s *consulStore) MutateDS(
 	return ds, nil
 }
 
+// Watch watches dsTree for changes and returns a blocking channel
+// where the client can read a WatchedDaemonSets object which contain
+// changed daemon sets
+func (s *consulStore) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
+	inCh := make(chan *consulutil.WatchedChanges)
+	outCh := make(chan WatchedDaemonSets)
+	errCh := make(chan error, 1)
+
+	// Watch for changes in the dsTree and deletedDSTree
+	go consulutil.WatchDiff(dsTree, s.kv, inCh, quitCh, errCh)
+
+	go func() {
+		var kvps *consulutil.WatchedChanges
+		for {
+			// Populate kvps by reading inCh and checking for errors
+			select {
+			case <-quitCh:
+				return
+			case err := <-errCh:
+				s.logger.WithError(err).Errorf("WatchDiff returned error, recovered.")
+			case kvps = <-inCh:
+				if kvps == nil {
+					continue
+				}
+			}
+
+			// Make a list of changed daemon sets and sends it on outCh
+			outgoingDSs := WatchedDaemonSets{}
+
+			createdDSs, err := kvpsToDSs(kvps.Created)
+			if err != nil {
+				outgoingDSs.Err = util.Errorf("Watch create error: %s; ", err)
+			}
+			updatedDSs, err := kvpsToDSs(kvps.Updated)
+			if err != nil {
+				outgoingDSs.Err = util.Errorf("%sWatch update error: %s; ", outgoingDSs.Err, err)
+			}
+			deletedDSs, err := kvpsToDSs(kvps.Deleted)
+			if err != nil {
+				outgoingDSs.Err = util.Errorf("%sWatch delete error: %s; ", outgoingDSs.Err, err)
+			}
+
+			if outgoingDSs.Err != nil {
+				// Block until the receiver quits or reads the outCh's previous output
+				select {
+				case <-quitCh:
+					return
+				case outCh <- outgoingDSs:
+					continue
+				}
+			}
+
+			for _, ds := range createdDSs {
+				// &ds is a pointer to an for statement's iteration variable
+				// and should not be used outside of this block
+				dsCopy := ds
+				outgoingDSs.Created = append(outgoingDSs.Created, &dsCopy)
+			}
+			for _, ds := range updatedDSs {
+				dsCopy := ds
+				outgoingDSs.Updated = append(outgoingDSs.Updated, &dsCopy)
+			}
+			for _, ds := range deletedDSs {
+				dsCopy := ds
+				outgoingDSs.Deleted = append(outgoingDSs.Deleted, &dsCopy)
+			}
+
+			// Block until the receiver quits or reads the outCh's previous output
+			select {
+			case <-quitCh:
+				return
+			case outCh <- outgoingDSs:
+			}
+		}
+	}()
+	return outCh
+}
+
 func checkManifestPodID(dsPodID types.PodID, manifest pods.Manifest) error {
 	if dsPodID == "" {
 		return util.Errorf("Daemon set must have a pod id")

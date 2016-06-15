@@ -10,9 +10,22 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
+const (
+	created = "created"
+	updated = "updated"
+	deleted = "deleted"
+)
+
+type FakeWatchedDaemonSet struct {
+	DaemonSet *fields.DaemonSet
+	Operation string
+	Err       error
+}
+
 // Used for unit testing
 type FakeDSStore struct {
 	daemonSets map[fields.ID]fields.DaemonSet
+	watchers   map[fields.ID]chan FakeWatchedDaemonSet
 }
 
 var _ dsstore.Store = &FakeDSStore{}
@@ -41,13 +54,31 @@ func (s *FakeDSStore) Create(
 		PodID:        podID,
 	}
 	s.daemonSets[id] = ds
+
+	if watcher, ok := s.watchers[id]; ok {
+		watched := FakeWatchedDaemonSet{
+			DaemonSet: &ds,
+			Operation: created,
+			Err:       nil,
+		}
+		watcher <- watched
+	}
+
 	return ds, nil
 }
 
 func (s *FakeDSStore) Delete(id fields.ID) error {
-	if _, ok := s.daemonSets[id]; ok {
-		delete(s.daemonSets, id)
-		return nil
+	if ds, ok := s.daemonSets[id]; ok {
+		if watcher, ok := s.watchers[id]; ok {
+			delete(s.daemonSets, id)
+			watched := FakeWatchedDaemonSet{
+				DaemonSet: &ds,
+				Operation: deleted,
+				Err:       nil,
+			}
+			watcher <- watched
+			return nil
+		}
 	}
 	return dsstore.NoDaemonSet
 }
@@ -78,13 +109,67 @@ func (s *FakeDSStore) MutateDS(
 	id fields.ID,
 	mutator func(fields.DaemonSet) (fields.DaemonSet, error),
 ) (fields.DaemonSet, error) {
-	if _, ok := s.daemonSets[id]; ok {
-		newDS, err := mutator(s.daemonSets[id])
-		if err != nil {
-			return fields.DaemonSet{}, err
-		}
-		s.daemonSets[id] = newDS
-		return newDS, nil
+	ds, _, err := s.Get(id)
+	if err != nil {
+		return fields.DaemonSet{}, err
 	}
-	return fields.DaemonSet{}, dsstore.NoDaemonSet
+
+	ds, err = mutator(ds)
+	if err != nil {
+		return fields.DaemonSet{}, err
+	}
+
+	s.daemonSets[id] = ds
+
+	// TODO: If no one reads in these updates sent to this channel, it will block
+	if watcher, ok := s.watchers[id]; ok {
+		watched := FakeWatchedDaemonSet{
+			DaemonSet: &ds,
+			Operation: updated,
+			Err:       nil,
+		}
+		watcher <- watched
+	}
+
+	return ds, nil
+}
+
+func (s *FakeDSStore) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets {
+	outCh := make(chan dsstore.WatchedDaemonSets)
+
+	go func() {
+		for {
+			select {
+			case <-quitCh:
+				return
+			default:
+			}
+
+			outgoingChanges := dsstore.WatchedDaemonSets{}
+			// Reads in new changes that are sent to FakeDSStore.watchers
+			for _, ch := range s.watchers {
+				select {
+				case watched := <-ch:
+					switch watched.Operation {
+					case created:
+						outgoingChanges.Created = append(outgoingChanges.Created, watched.DaemonSet)
+					case updated:
+						outgoingChanges.Updated = append(outgoingChanges.Updated, watched.DaemonSet)
+					case deleted:
+						outgoingChanges.Deleted = append(outgoingChanges.Deleted, watched.DaemonSet)
+					default:
+					}
+				default:
+				}
+			}
+			// Blocks until the receiver quits or reads outCh's previous output
+			select {
+			case outCh <- outgoingChanges:
+			case <-quitCh:
+				return
+			}
+		}
+	}()
+
+	return outCh
 }

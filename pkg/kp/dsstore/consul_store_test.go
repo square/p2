@@ -2,6 +2,7 @@ package dsstore
 
 import (
 	"testing"
+	"time"
 
 	"github.com/square/p2/pkg/util"
 
@@ -162,7 +163,7 @@ func TestGet(t *testing.T) {
 	Assert(t).AreNotEqual(getDS.PodID, "", "Daemon set should have a pod id")
 
 	Assert(t).AreEqual(ds.ID, getDS.ID, "Daemon set should be equal ids")
-	Assert(t).AreEqual(ds.PodID, getDS.PodID, "Daemon set should have equal ids")
+	Assert(t).AreEqual(ds.PodID, getDS.PodID, "Daemon set should have equal pod ids")
 	Assert(t).AreEqual(ds.MinHealth, getDS.MinHealth, "Daemon set should have equal minimum healths")
 	Assert(t).AreEqual(ds.Name, getDS.Name, "Daemon set should have equal names")
 	Assert(t).AreEqual(ds.Disabled, getDS.Disabled, "Daemon set should have same disabled fields")
@@ -323,7 +324,7 @@ func TestMutate(t *testing.T) {
 	}
 
 	Assert(t).AreEqual(someOtherDS.ID, ds.ID, "Daemon sets should be equal ids")
-	Assert(t).AreEqual(someOtherDS.PodID, someOtherPodID, "Daemon sets should have equal ids")
+	Assert(t).AreEqual(someOtherDS.PodID, someOtherPodID, "Daemon sets should have equal pod ids")
 	Assert(t).AreEqual(someOtherDS.MinHealth, someOtherMinHealth, "Daemon sets should have equal minimum healths")
 	Assert(t).AreEqual(someOtherDS.Name, someOtherName, "Daemon sets should have equal names")
 	Assert(t).AreEqual(someOtherDS.Disabled, someOtherDisabled, "Daemon sets should have same disabled fields")
@@ -353,7 +354,7 @@ func TestMutate(t *testing.T) {
 		t.Fatalf("Unable to get daemon set: %s", err)
 	}
 	Assert(t).AreEqual(getDS.ID, ds.ID, "Daemon sets should be equal ids")
-	Assert(t).AreEqual(getDS.PodID, someOtherPodID, "Daemon sets should have equal ids")
+	Assert(t).AreEqual(getDS.PodID, someOtherPodID, "Daemon sets should have equal pod ids")
 	Assert(t).AreEqual(getDS.MinHealth, someOtherMinHealth, "Daemon sets should have equal minimum healths")
 	Assert(t).AreEqual(getDS.Name, someOtherName, "Daemon sets should have equal names")
 	Assert(t).AreEqual(getDS.Disabled, someOtherDisabled, "Daemon sets should have same disabled fields")
@@ -374,6 +375,120 @@ func TestMutate(t *testing.T) {
 		t.Fatal("Unable to retrieve SHA from manifest retrieved from daemon set")
 	}
 	Assert(t).AreEqual(someOtherSHA, dsSHA, "Daemon set shas were not equal")
+}
+
+func TestWatch(t *testing.T) {
+	store := consulStoreWithFakeKV()
+	//
+	// Create a new daemon set
+	//
+	podID := types.PodID("some_pod_id")
+	minHealth := 0
+	clusterName := ds_fields.ClusterName("some_name")
+
+	azLabel := pc_fields.AvailabilityZone("some_zone")
+	selector := klabels.Everything().
+		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
+
+	manifestBuilder := pods.NewManifestBuilder()
+	manifestBuilder.SetID(podID)
+	manifest := manifestBuilder.GetManifest()
+
+	ds, err := store.Create(manifest, minHealth, clusterName, selector, podID)
+	if err != nil {
+		t.Fatalf("Unable to create daemon set: %s", err)
+	}
+	//
+	// Create another new daemon set
+	//
+	someOtherPodID := types.PodID("some_other_pod_id")
+
+	manifestBuilder = pods.NewManifestBuilder()
+	manifestBuilder.SetID(someOtherPodID)
+	someOtherManifest := manifestBuilder.GetManifest()
+
+	someOtherDS, err := store.Create(someOtherManifest, minHealth, clusterName, selector, someOtherPodID)
+	if err != nil {
+		t.Fatalf("Unable to create daemon set: %s", err)
+	}
+	//
+	// Watch for changes
+	//
+	quitCh := make(chan struct{})
+	inCh := store.Watch(quitCh)
+	defer close(quitCh)
+
+	var watched WatchedDaemonSets
+	select {
+	case watched = <-inCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Expected something on channel but found nothing")
+	}
+	if watched.Err != nil {
+		t.Errorf("Unexpected error on watched daemon sets: %s", watched.Err)
+	}
+
+	Assert(t).AreEqual(len(watched.Created), 2, "Unexpected number of creates watched")
+	Assert(t).AreEqual(len(watched.Updated), 0, "Unexpected number of updates watched")
+	Assert(t).AreEqual(len(watched.Deleted), 0, "Unexpected number of deletes watched")
+
+	for _, watchedDS := range watched.Created {
+		if watchedDS.ID == ds.ID {
+			Assert(t).AreEqual(watchedDS.PodID, ds.PodID, "Daemon sets should have equal pod ids")
+		} else if watchedDS.ID == someOtherDS.ID {
+			Assert(t).AreEqual(watchedDS.PodID, someOtherDS.PodID, "Daemon sets should have equal pod ids")
+		} else {
+			t.Errorf("Expected to find id '%s' among watch results, but was not present", watchedDS.ID)
+		}
+	}
+
+	//
+	// Make sure Watch does not output any daemon sets something gets deleted
+	//
+	store.Delete(someOtherDS.ID)
+	select {
+	case watched = <-inCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Expected something on channel but found nothing")
+	}
+	if watched.Err != nil {
+		t.Errorf("Unexpected error on watched daemon sets: %s", watched.Err)
+	}
+
+	Assert(t).AreEqual(len(watched.Created), 0, "Unexpected number of creates watched")
+	Assert(t).AreEqual(len(watched.Updated), 0, "Unexpected number of updates watched")
+	Assert(t).AreEqual(len(watched.Deleted), 1, "Unexpected number of deletes watched")
+
+	Assert(t).AreEqual(someOtherDS.ID, watched.Deleted[0].ID, "Daemon sets should have equal ids")
+
+	//
+	// Make sure Watch outputs only 1 daemon set when something gets updated
+	//
+	mutator := func(dsToMutate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		dsToMutate.Disabled = !dsToMutate.Disabled
+		return dsToMutate, nil
+	}
+
+	ds, err = store.MutateDS(ds.ID, mutator)
+	if err != nil {
+		t.Fatalf("Unable to mutate daemon set: %s", err)
+	}
+
+	select {
+	case watched = <-inCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Expected something on channel but found nothing")
+	}
+	if watched.Err != nil {
+		t.Errorf("Unexpected error on watched daemon sets: %s", watched.Err)
+	}
+
+	Assert(t).AreEqual(len(watched.Created), 0, "Unexpected number of creates watched")
+	Assert(t).AreEqual(len(watched.Updated), 1, "Unexpected number of updates watched")
+	Assert(t).AreEqual(len(watched.Deleted), 0, "Unexpected number of deletes watched")
+
+	Assert(t).AreEqual(ds.ID, watched.Updated[0].ID, "Daemon sets should have equal ids")
+	Assert(t).AreEqual(ds.PodID, watched.Updated[0].PodID, "Daemon sets should have equal pod ids")
 }
 
 func consulStoreWithFakeKV() *consulStore {

@@ -15,6 +15,13 @@ const dsTree string = "daemon_sets"
 
 var NoDaemonSet error = errors.New("No daemon set found")
 
+type WatchedDaemonSets struct {
+	Created []*fields.DaemonSet
+	Updated []*fields.DaemonSet
+	Deleted []*fields.DaemonSet
+	Err     error
+}
+
 // Store represents an interface for persisting daemon set to Consul,
 // as well as restoring daemon set from Consul.
 type Store interface {
@@ -43,6 +50,8 @@ type Store interface {
 		id fields.ID,
 		mutator func(fields.DaemonSet) (fields.DaemonSet, error),
 	) (fields.DaemonSet, error)
+
+	Watch(quit <-chan struct{}) <-chan WatchedDaemonSets
 }
 
 func IsNotExist(err error) bool {
