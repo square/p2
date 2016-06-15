@@ -1,6 +1,8 @@
 package dsstoretest
 
 import (
+	"sync"
+
 	"github.com/hashicorp/consul/api"
 	"github.com/pborman/uuid"
 	"github.com/square/p2/pkg/ds/fields"
@@ -24,15 +26,18 @@ type FakeWatchedDaemonSet struct {
 
 // Used for unit testing
 type FakeDSStore struct {
-	daemonSets map[fields.ID]fields.DaemonSet
-	watchers   map[fields.ID]chan FakeWatchedDaemonSet
+	daemonSets   map[fields.ID]fields.DaemonSet
+	watchers     map[fields.ID]chan FakeWatchedDaemonSet
+	watchersLock sync.Locker
 }
 
 var _ dsstore.Store = &FakeDSStore{}
 
 func NewFake() *FakeDSStore {
 	return &FakeDSStore{
-		daemonSets: make(map[fields.ID]fields.DaemonSet),
+		daemonSets:   make(map[fields.ID]fields.DaemonSet),
+		watchers:     make(map[fields.ID]chan FakeWatchedDaemonSet),
+		watchersLock: &sync.Mutex{},
 	}
 }
 
@@ -55,6 +60,8 @@ func (s *FakeDSStore) Create(
 	}
 	s.daemonSets[id] = ds
 
+	s.watchersLock.Lock()
+	defer s.watchersLock.Unlock()
 	if watcher, ok := s.watchers[id]; ok {
 		watched := FakeWatchedDaemonSet{
 			DaemonSet: &ds,
@@ -69,6 +76,8 @@ func (s *FakeDSStore) Create(
 
 func (s *FakeDSStore) Delete(id fields.ID) error {
 	if ds, ok := s.daemonSets[id]; ok {
+		s.watchersLock.Lock()
+		defer s.watchersLock.Unlock()
 		if watcher, ok := s.watchers[id]; ok {
 			delete(s.daemonSets, id)
 			watched := FakeWatchedDaemonSet{
@@ -121,6 +130,8 @@ func (s *FakeDSStore) MutateDS(
 
 	s.daemonSets[id] = ds
 
+	s.watchersLock.Lock()
+	defer s.watchersLock.Unlock()
 	if watcher, ok := s.watchers[id]; ok {
 		watched := FakeWatchedDaemonSet{
 			DaemonSet: &ds,
@@ -151,6 +162,7 @@ func (s *FakeDSStore) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemon
 			default:
 			}
 
+			s.watchersLock.Lock()
 			outgoingChanges := dsstore.WatchedDaemonSets{}
 			var watchersToDelete []fields.ID
 			// Reads in new changes that are sent to FakeDSStore.watchers
@@ -174,6 +186,7 @@ func (s *FakeDSStore) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemon
 			for _, id := range watchersToDelete {
 				delete(s.watchers, id)
 			}
+			s.watchersLock.Unlock()
 
 			// Blocks until the receiver quits or reads outCh's previous output
 			select {
