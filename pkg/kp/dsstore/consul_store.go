@@ -218,12 +218,11 @@ func (s *consulStore) MutateDS(
 // where the client can read a WatchedDaemonSets object which contain
 // changed daemon sets
 func (s *consulStore) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
-	inCh := make(chan *consulutil.WatchedChanges)
 	outCh := make(chan WatchedDaemonSets)
 	errCh := make(chan error, 1)
 
 	// Watch for changes in the dsTree and deletedDSTree
-	go consulutil.WatchDiff(dsTree, s.kv, inCh, quitCh, errCh)
+	inCh := consulutil.WatchDiff(dsTree, s.kv, quitCh, errCh)
 
 	go func() {
 		var kvps *consulutil.WatchedChanges
@@ -236,6 +235,7 @@ func (s *consulStore) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
 				s.logger.WithError(err).Errorf("WatchDiff returned error, recovered.")
 			case kvps = <-inCh:
 				if kvps == nil {
+					s.logger.Errorf("Very odd, kvps should never be null, recovered.")
 					continue
 				}
 			}
@@ -289,6 +289,7 @@ func (s *consulStore) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
 			}
 		}
 	}()
+
 	return outCh
 }
 

@@ -152,6 +152,7 @@ func (s *FakeDSStore) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemon
 			}
 
 			outgoingChanges := dsstore.WatchedDaemonSets{}
+			var watchersToDelete []fields.ID
 			// Reads in new changes that are sent to FakeDSStore.watchers
 			for _, ch := range s.watchers {
 				select {
@@ -163,11 +164,17 @@ func (s *FakeDSStore) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemon
 						outgoingChanges.Updated = append(outgoingChanges.Updated, watched.DaemonSet)
 					case deleted:
 						outgoingChanges.Deleted = append(outgoingChanges.Deleted, watched.DaemonSet)
+						watchersToDelete = append(watchersToDelete, watched.DaemonSet.ID)
 					default:
 					}
 				default:
 				}
 			}
+			// Remove deleted watchers
+			for _, id := range watchersToDelete {
+				delete(s.watchers, id)
+			}
+
 			// Blocks until the receiver quits or reads outCh's previous output
 			select {
 			case outCh <- outgoingChanges:

@@ -217,87 +217,94 @@ type WatchedChanges struct {
 }
 
 // WatchDiff watches a Consul prefix for changes and categorizes them
-// into create, update, and delete
+// into create, update, and delete, please note that if a kvPair was
+// create and modified before this starts watching, this watch will
+// treat it as a create
 func WatchDiff(
 	prefix string,
 	clientKV ConsulLister,
-	outChanges chan<- *WatchedChanges,
-	done <-chan struct{},
+	quitCh <-chan struct{},
 	outErrors chan<- error,
-) {
-	defer close(outChanges)
+) <-chan *WatchedChanges {
+	outCh := make(chan *WatchedChanges)
 
-	// Keep track of what we have seen so that we know when something was changed
-	keys := make(map[string]*api.KVPair)
+	go func() {
+		// Keep track of what we have seen so that we know when something was changed
+		keys := make(map[string]*api.KVPair)
 
-	var currentIndex uint64
-	timer := time.NewTimer(time.Duration(0))
+		var currentIndex uint64
+		timer := time.NewTimer(time.Duration(0))
 
-	for {
-		select {
-		case <-done:
-			return
-		case <-timer.C:
-		}
-		timer.Reset(250 * time.Millisecond) // upper bound on request rate
-
-		pairs, queryMeta, err := SafeList(clientKV, done, prefix, &api.QueryOptions{
-			WaitIndex: currentIndex,
-		})
-
-		// A copy used to keep track of what was deleted
-		mapCopy := make(map[string]*api.KVPair)
-		for key, val := range keys {
-			mapCopy[key] = val
-		}
-
-		outgoingChanges := &WatchedChanges{}
-		for _, val := range pairs {
-			if _, ok := keys[val.Key]; !ok {
-				// If it is not in the map, then it was a create
-				outgoingChanges.Created = append(outgoingChanges.Created, val)
-				keys[val.Key] = val
-
-			} else if !bytes.Equal(keys[val.Key].Value, val.Value) {
-				// If is in the map and the values are the not same, then it was an update
-				// TODO: Should use something else other than comparing values
-				outgoingChanges.Updated = append(outgoingChanges.Updated, val)
-				if _, ok := mapCopy[val.Key]; ok {
-					delete(mapCopy, val.Key)
-				}
-				keys[val.Key] = val
-
-			} else {
-				// Otherwise it is in the map and the values are equal, so it was not an update
-				if _, ok := mapCopy[val.Key]; ok {
-					delete(mapCopy, val.Key)
-				}
+		for {
+			select {
+			case <-quitCh:
+				return
+			case <-timer.C:
 			}
-		}
+			timer.Reset(250 * time.Millisecond) // upper bound on request rate
 
-		// If it was not observed, then it was a delete
-		for key, val := range mapCopy {
-			outgoingChanges.Deleted = append(outgoingChanges.Deleted, val)
-			if _, ok := keys[key]; ok {
-				delete(keys, key)
+			pairs, queryMeta, err := SafeList(clientKV, quitCh, prefix, &api.QueryOptions{
+				WaitIndex: currentIndex,
+			})
+			if err == CanceledError {
+				select {
+				case <-quitCh:
+				case outErrors <- err:
+				}
+				return
+			} else if err != nil {
+				select {
+				case <-quitCh:
+				case outErrors <- err:
+				}
+				timer.Reset(2 * time.Second) // backoff
+				continue
 			}
-		}
 
-		switch err {
-		case CanceledError:
-			return
-		case nil:
 			currentIndex = queryMeta.LastIndex
-			select {
-			case <-done:
-			case outChanges <- outgoingChanges:
+			// A copy used to keep track of what was deleted
+			mapCopy := make(map[string]*api.KVPair)
+			for key, val := range keys {
+				mapCopy[key] = val
 			}
-		default:
-			select {
-			case <-done:
-			case outErrors <- err:
+
+			outgoingChanges := &WatchedChanges{}
+			for _, val := range pairs {
+				if _, ok := keys[val.Key]; !ok {
+					// If it is not in the map, then it was a create
+					outgoingChanges.Created = append(outgoingChanges.Created, val)
+					keys[val.Key] = val
+
+				} else if !bytes.Equal(keys[val.Key].Value, val.Value) {
+					// If is in the map and the values are the not same, then it was an update
+					// TODO: Should use something else other than comparing values
+					outgoingChanges.Updated = append(outgoingChanges.Updated, val)
+					if _, ok := mapCopy[val.Key]; ok {
+						delete(mapCopy, val.Key)
+					}
+					keys[val.Key] = val
+
+				} else {
+					// Otherwise it is in the map and the values are equal, so it was not an update
+					if _, ok := mapCopy[val.Key]; ok {
+						delete(mapCopy, val.Key)
+					}
+				}
 			}
-			timer.Reset(2 * time.Second) // backoff
+			// If it was not observed, then it was a delete
+			for key, val := range mapCopy {
+				outgoingChanges.Deleted = append(outgoingChanges.Deleted, val)
+				if _, ok := keys[key]; ok {
+					delete(keys, key)
+				}
+			}
+
+			select {
+			case <-quitCh:
+			case outCh <- outgoingChanges:
+			}
 		}
-	}
+	}()
+
+	return outCh
 }

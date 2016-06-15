@@ -445,7 +445,10 @@ func TestWatch(t *testing.T) {
 	//
 	// Make sure Watch does not output any daemon sets something gets deleted
 	//
-	store.Delete(someOtherDS.ID)
+	err = store.Delete(someOtherDS.ID)
+	if err != nil {
+		t.Error("Unable to delete daemon set")
+	}
 	select {
 	case watched = <-inCh:
 	case <-time.After(5 * time.Second):
