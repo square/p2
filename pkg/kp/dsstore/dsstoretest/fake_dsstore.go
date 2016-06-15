@@ -132,6 +132,7 @@ func (s *FakeDSStore) MutateDS(
 		// the data in the channel will still keep the functionality of the fake watch
 		select {
 		case <-watcher:
+			watcher <- watched
 		case watcher <- watched:
 		}
 	}

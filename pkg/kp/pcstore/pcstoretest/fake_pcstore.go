@@ -95,6 +95,7 @@ func (p *FakePCStore) MutatePC(
 		// while keeping the functionality of the fake watch
 		select {
 		case <-watcher:
+			watcher <- pcstore.WatchedPodCluster{PodCluster: &pc, Err: nil}
 		case watcher <- pcstore.WatchedPodCluster{PodCluster: &pc, Err: nil}:
 		}
 	}
