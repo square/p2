@@ -121,14 +121,19 @@ func (s *FakeDSStore) MutateDS(
 
 	s.daemonSets[id] = ds
 
-	// TODO: If no one reads in these updates sent to this channel, it will block
 	if watcher, ok := s.watchers[id]; ok {
 		watched := FakeWatchedDaemonSet{
 			DaemonSet: &ds,
 			Operation: updated,
 			Err:       nil,
 		}
-		watcher <- watched
+		// In case you mutate more than once and no one reads from the channel
+		// this will prevent a deadlock, if no one reads from the update, replacing
+		// the data in the channel will still keep the functionality of the fake watch
+		select {
+		case <-watcher:
+		case watcher <- watched:
+		}
 	}
 
 	return ds, nil
