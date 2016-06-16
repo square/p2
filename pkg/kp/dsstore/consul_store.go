@@ -60,7 +60,7 @@ func (s *consulStore) Create(
 	podID types.PodID,
 ) (fields.DaemonSet, error) {
 	if err := checkManifestPodID(podID, manifest); err != nil {
-		return fields.DaemonSet{}, err
+		return fields.DaemonSet{}, util.Errorf("Error verifying manifest pod id: %v", err)
 	}
 
 	ds, err := s.innerCreate(manifest, minHealth, name, nodeSelector, podID)
@@ -73,7 +73,7 @@ func (s *consulStore) Create(
 		}
 	}
 	if err != nil {
-		return fields.DaemonSet{}, err
+		return fields.DaemonSet{}, util.Errorf("Error creating daemon set: %v", err)
 	}
 	return ds, nil
 }
@@ -89,7 +89,7 @@ func (s *consulStore) innerCreate(
 	id := fields.ID(uuid.New())
 	dsPath, err := s.dsPath(id)
 	if err != nil {
-		return fields.DaemonSet{}, err
+		return fields.DaemonSet{}, util.Errorf("Error getting daemon set path: %v", err)
 	}
 	ds := fields.DaemonSet{
 		ID:           id,
@@ -123,7 +123,7 @@ func (s *consulStore) innerCreate(
 func (s *consulStore) Delete(id fields.ID) error {
 	dsPath, err := s.dsPath(id)
 	if err != nil {
-		return err
+		return util.Errorf("Error getting daemon set path: %v", err)
 	}
 
 	_, err = s.kv.Delete(dsPath, nil)
@@ -137,7 +137,7 @@ func (s *consulStore) Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error
 	var metadata *api.QueryMeta
 	dsPath, err := s.dsPath(id)
 	if err != nil {
-		return fields.DaemonSet{}, metadata, err
+		return fields.DaemonSet{}, metadata, util.Errorf("Error getting daemon set path: %v", err)
 	}
 
 	kvp, metadata, err := s.kv.Get(dsPath, nil)
@@ -155,7 +155,7 @@ func (s *consulStore) Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error
 
 	ds, err := kvpToDS(kvp)
 	if err != nil {
-		return fields.DaemonSet{}, metadata, err
+		return fields.DaemonSet{}, metadata, util.Errorf("Error translating kvp to daemon set: %v", err)
 	}
 	return ds, metadata, nil
 }
@@ -174,12 +174,12 @@ func (s *consulStore) MutateDS(
 ) (fields.DaemonSet, error) {
 	ds, metadata, err := s.Get(id)
 	if err != nil {
-		return fields.DaemonSet{}, err
+		return fields.DaemonSet{}, util.Errorf("Error getting daemon set: %v", err)
 	}
 
 	ds, err = mutator(ds)
 	if err != nil {
-		return fields.DaemonSet{}, err
+		return fields.DaemonSet{}, util.Errorf("Error mutating daemon set: %v", err)
 	}
 	if ds.ID != id {
 		// If the user wants a new uuid, they should delete it and create it
@@ -187,7 +187,7 @@ func (s *consulStore) MutateDS(
 			util.Errorf("Explicitly changing daemon set ID is not permitted: Wanted '%s' got '%s'", id, ds.ID)
 	}
 	if err := checkManifestPodID(ds.PodID, ds.Manifest); err != nil {
-		return fields.DaemonSet{}, err
+		return fields.DaemonSet{}, util.Errorf("Error verifying manifest pod id: %v", err)
 	}
 
 	rawDS, err := json.Marshal(ds)
@@ -197,7 +197,7 @@ func (s *consulStore) MutateDS(
 
 	dsPath, err := s.dsPath(id)
 	if err != nil {
-		return fields.DaemonSet{}, err
+		return fields.DaemonSet{}, util.Errorf("Error getting daemon set path: %v", err)
 	}
 
 	success, _, err := s.kv.CAS(&api.KVPair{
@@ -329,7 +329,7 @@ func kvpsToDSs(l api.KVPairs) ([]fields.DaemonSet, error) {
 	for _, kvp := range l {
 		ds, err := kvpToDS(kvp)
 		if err != nil {
-			return nil, err
+			return nil, util.Errorf("Error translating kvp to daemon set: %v", err)
 		}
 		ret = append(ret, ds)
 	}
