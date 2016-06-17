@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"sync"
 	"testing"
+	"time"
 
+	. "github.com/anthonybishopric/gotcha"
 	"github.com/hashicorp/consul/api"
 
 	"github.com/square/p2/pkg/consultest"
@@ -447,4 +449,138 @@ func TestWatchNewKeysExistingData(t *testing.T) {
 	if !rs[0].IsCreate("test") || !rs[1].IsUpdate(kv1a) {
 		t.Error("error picking up existing data")
 	}
+}
+
+func TestWatchDiff(t *testing.T) {
+	t.Parallel()
+	f := consultest.NewFixture(t)
+	defer f.Stop()
+
+	done := make(chan struct{})
+	defer func() {
+		if done != nil {
+			close(done)
+		}
+	}()
+	kv1a := &api.KVPair{Key: "prefix/hello", Value: []byte("world")}
+	kv1b := &api.KVPair{Key: "prefix/hello", Value: []byte("computer")}
+	kv2a := &api.KVPair{Key: "prefix/test", Value: []byte("foo")}
+	kv2b := &api.KVPair{Key: "prefix/test", Value: []byte("bar")}
+	kv3a := &api.KVPair{Key: "something", Value: []byte("different")}
+
+	// Process existing data
+	var changes *WatchedChanges
+
+	if _, err := f.Client.KV().Put(kv1a, nil); err != nil {
+		t.Error("Unexpected error during put operation")
+	}
+	if _, err := f.Client.KV().Put(kv2a, nil); err != nil {
+		t.Error("Unexpected error during put operation")
+	}
+
+	watchedCh := WatchDiff("prefix/", f.Client.KV(), done, testLogger(t))
+	select {
+	case changes = <-watchedCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Expected something on channel but found nothing")
+	}
+
+	pairs := kvToMap(changes.Created)
+	if !kvMatch(pairs, kv1a) {
+		t.Error("did not find new value")
+	}
+	if !kvMatch(pairs, kv2a) {
+		t.Error("did not find new value")
+	}
+	Assert(t).AreEqual(len(changes.Created), 2, "Unexpected number of creates watched")
+	Assert(t).AreEqual(len(changes.Updated), 0, "Unexpected number of updates watched")
+	Assert(t).AreEqual(len(changes.Deleted), 0, "Unexpected number of deletes watched")
+
+	// Get an updates when the data changes (create, modify, delete)
+	if _, err := f.Client.KV().Put(kv1b, nil); err != nil {
+		t.Error("Unexpected error during put operation")
+	}
+
+	select {
+	case changes = <-watchedCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Expected something on channel but found nothing")
+	}
+
+	pairs = kvToMap(changes.Updated)
+	if !kvMatch(pairs, kv1b) {
+		t.Error("value not updated")
+	}
+	Assert(t).AreEqual(len(changes.Created), 0, "Unexpected number of creates watched")
+	Assert(t).AreEqual(len(changes.Updated), 1, "Unexpected number of updates watched")
+	Assert(t).AreEqual(len(changes.Deleted), 0, "Unexpected number of deletes watched")
+
+	if _, err := f.Client.KV().Delete(kv1a.Key, nil); err != nil {
+		t.Error("Unexpected error during delete operation")
+	}
+
+	select {
+	case changes = <-watchedCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Expected something on channel but found nothing")
+	}
+
+	pairs = kvToMap(changes.Deleted)
+	if _, ok := pairs[kv1a.Key]; !ok {
+		t.Error("did not register deletion")
+	}
+	Assert(t).AreEqual(len(changes.Created), 0, "Unexpected number of creates watched")
+	Assert(t).AreEqual(len(changes.Updated), 0, "Unexpected number of updates watched")
+	Assert(t).AreEqual(len(changes.Deleted), 1, "Unexpected number of deletes watched")
+
+	// Make sure the watcher can output both a created and updated kvPair
+	if _, err := f.Client.KV().Put(kv1a, nil); err != nil {
+		t.Error("Unexpected error during put operation")
+	}
+	if _, err := f.Client.KV().Put(kv2b, nil); err != nil {
+		t.Error("Unexpected error during put operation")
+	}
+
+	select {
+	case changes = <-watchedCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Expected something on channel but found nothing")
+	}
+
+	pairs = kvToMap(changes.Created)
+	if !kvMatch(pairs, kv1a) {
+		t.Error("did not find new value")
+	}
+	pairs = kvToMap(changes.Updated)
+	if !kvMatch(pairs, kv2b) {
+		t.Error("value not updated")
+	}
+	Assert(t).AreEqual(len(changes.Created), 1, "Unexpected number of creates watched")
+	Assert(t).AreEqual(len(changes.Updated), 1, "Unexpected number of updates watched")
+	Assert(t).AreEqual(len(changes.Deleted), 0, "Unexpected number of deletes watched")
+
+	// The watcher should ignore kv3a, which is outside its prefix
+	if _, err := f.Client.KV().Put(kv3a, nil); err != nil {
+		t.Error("Unexpected error during put operation")
+	}
+	if _, err := f.Client.KV().Delete(kv2a.Key, nil); err != nil {
+		t.Error("Unexpected error during delete operation")
+	}
+
+	select {
+	case changes = <-watchedCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Expected something on channel but found nothing")
+	}
+
+	pairs = kvToMap(changes.Created)
+	if _, ok := pairs[kv3a.Key]; ok {
+		t.Error("found a key with the wrong prefix")
+	}
+	Assert(t).AreEqual(len(changes.Created), 0, "Unexpected number of creates watched")
+	Assert(t).AreEqual(len(changes.Updated), 0, "Unexpected number of updates watched")
+	Assert(t).AreEqual(len(changes.Deleted), 1, "Unexpected number of deletes watched")
+
+	close(done)
+	done = nil
 }

@@ -60,7 +60,7 @@ func (s *consulStore) Create(
 	podID types.PodID,
 ) (fields.DaemonSet, error) {
 	if err := checkManifestPodID(podID, manifest); err != nil {
-		return fields.DaemonSet{}, err
+		return fields.DaemonSet{}, util.Errorf("Error verifying manifest pod id: %v", err)
 	}
 
 	ds, err := s.innerCreate(manifest, minHealth, name, nodeSelector, podID)
@@ -73,7 +73,7 @@ func (s *consulStore) Create(
 		}
 	}
 	if err != nil {
-		return fields.DaemonSet{}, err
+		return fields.DaemonSet{}, util.Errorf("Error creating daemon set: %v", err)
 	}
 	return ds, nil
 }
@@ -89,7 +89,7 @@ func (s *consulStore) innerCreate(
 	id := fields.ID(uuid.New())
 	dsPath, err := s.dsPath(id)
 	if err != nil {
-		return fields.DaemonSet{}, err
+		return fields.DaemonSet{}, util.Errorf("Error getting daemon set path: %v", err)
 	}
 	ds := fields.DaemonSet{
 		ID:           id,
@@ -123,7 +123,7 @@ func (s *consulStore) innerCreate(
 func (s *consulStore) Delete(id fields.ID) error {
 	dsPath, err := s.dsPath(id)
 	if err != nil {
-		return err
+		return util.Errorf("Error getting daemon set path: %v", err)
 	}
 
 	_, err = s.kv.Delete(dsPath, nil)
@@ -137,7 +137,7 @@ func (s *consulStore) Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error
 	var metadata *api.QueryMeta
 	dsPath, err := s.dsPath(id)
 	if err != nil {
-		return fields.DaemonSet{}, metadata, err
+		return fields.DaemonSet{}, metadata, util.Errorf("Error getting daemon set path: %v", err)
 	}
 
 	kvp, metadata, err := s.kv.Get(dsPath, nil)
@@ -155,7 +155,7 @@ func (s *consulStore) Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error
 
 	ds, err := kvpToDS(kvp)
 	if err != nil {
-		return fields.DaemonSet{}, metadata, err
+		return fields.DaemonSet{}, metadata, util.Errorf("Error translating kvp to daemon set: %v", err)
 	}
 	return ds, metadata, nil
 }
@@ -174,12 +174,12 @@ func (s *consulStore) MutateDS(
 ) (fields.DaemonSet, error) {
 	ds, metadata, err := s.Get(id)
 	if err != nil {
-		return fields.DaemonSet{}, err
+		return fields.DaemonSet{}, util.Errorf("Error getting daemon set: %v", err)
 	}
 
 	ds, err = mutator(ds)
 	if err != nil {
-		return fields.DaemonSet{}, err
+		return fields.DaemonSet{}, util.Errorf("Error mutating daemon set: %v", err)
 	}
 	if ds.ID != id {
 		// If the user wants a new uuid, they should delete it and create it
@@ -187,7 +187,7 @@ func (s *consulStore) MutateDS(
 			util.Errorf("Explicitly changing daemon set ID is not permitted: Wanted '%s' got '%s'", id, ds.ID)
 	}
 	if err := checkManifestPodID(ds.PodID, ds.Manifest); err != nil {
-		return fields.DaemonSet{}, err
+		return fields.DaemonSet{}, util.Errorf("Error verifying manifest pod id: %v", err)
 	}
 
 	rawDS, err := json.Marshal(ds)
@@ -197,7 +197,7 @@ func (s *consulStore) MutateDS(
 
 	dsPath, err := s.dsPath(id)
 	if err != nil {
-		return fields.DaemonSet{}, err
+		return fields.DaemonSet{}, util.Errorf("Error getting daemon set path: %v", err)
 	}
 
 	success, _, err := s.kv.CAS(&api.KVPair{
@@ -212,6 +212,85 @@ func (s *consulStore) MutateDS(
 		return fields.DaemonSet{}, CASError(dsPath)
 	}
 	return ds, nil
+}
+
+// Watch watches dsTree for changes and returns a blocking channel
+// where the client can read a WatchedDaemonSets object which contain
+// changed daemon sets
+func (s *consulStore) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
+	outCh := make(chan WatchedDaemonSets)
+	errCh := make(chan error, 1)
+
+	// Watch for changes in the dsTree and deletedDSTree
+	inCh := consulutil.WatchDiff(dsTree, s.kv, quitCh, errCh)
+
+	go func() {
+		var kvps *consulutil.WatchedChanges
+		for {
+			// Populate kvps by reading inCh and checking for errors
+			select {
+			case <-quitCh:
+				return
+			case err := <-errCh:
+				s.logger.WithError(err).Errorf("WatchDiff returned error, recovered.")
+			case kvps = <-inCh:
+				if kvps == nil {
+					s.logger.Errorf("Very odd, kvps should never be null, recovered.")
+					continue
+				}
+			}
+
+			// Make a list of changed daemon sets and sends it on outCh
+			outgoingDSs := WatchedDaemonSets{}
+
+			createdDSs, err := kvpsToDSs(kvps.Created)
+			if err != nil {
+				outgoingDSs.Err = util.Errorf("Watch create error: %s; ", err)
+			}
+			updatedDSs, err := kvpsToDSs(kvps.Updated)
+			if err != nil {
+				outgoingDSs.Err = util.Errorf("%sWatch update error: %s; ", outgoingDSs.Err, err)
+			}
+			deletedDSs, err := kvpsToDSs(kvps.Deleted)
+			if err != nil {
+				outgoingDSs.Err = util.Errorf("%sWatch delete error: %s; ", outgoingDSs.Err, err)
+			}
+
+			if outgoingDSs.Err != nil {
+				// Block until the receiver quits or reads the outCh's previous output
+				select {
+				case <-quitCh:
+					return
+				case outCh <- outgoingDSs:
+					continue
+				}
+			}
+
+			for _, ds := range createdDSs {
+				// &ds is a pointer to an for statement's iteration variable
+				// and should not be used outside of this block
+				dsCopy := ds
+				outgoingDSs.Created = append(outgoingDSs.Created, &dsCopy)
+			}
+			for _, ds := range updatedDSs {
+				dsCopy := ds
+				outgoingDSs.Updated = append(outgoingDSs.Updated, &dsCopy)
+			}
+			for _, ds := range deletedDSs {
+				dsCopy := ds
+				outgoingDSs.Deleted = append(outgoingDSs.Deleted, &dsCopy)
+			}
+
+			// Block until the receiver quits or reads the outCh's previous output
+			select {
+			case <-quitCh:
+				return
+			case outCh <- outgoingDSs:
+			}
+		}
+	}()
+
+	return outCh
 }
 
 func checkManifestPodID(dsPodID types.PodID, manifest pods.Manifest) error {
@@ -250,7 +329,7 @@ func kvpsToDSs(l api.KVPairs) ([]fields.DaemonSet, error) {
 	for _, kvp := range l {
 		ds, err := kvpToDS(kvp)
 		if err != nil {
-			return nil, err
+			return nil, util.Errorf("Error translating kvp to daemon set: %v", err)
 		}
 		ret = append(ret, ds)
 	}

@@ -1,6 +1,8 @@
 package dsstoretest
 
 import (
+	"sync"
+
 	"github.com/hashicorp/consul/api"
 	"github.com/pborman/uuid"
 	"github.com/square/p2/pkg/ds/fields"
@@ -10,16 +12,32 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
+const (
+	created = "created"
+	updated = "updated"
+	deleted = "deleted"
+)
+
+type FakeWatchedDaemonSet struct {
+	DaemonSet *fields.DaemonSet
+	Operation string
+	Err       error
+}
+
 // Used for unit testing
 type FakeDSStore struct {
-	daemonSets map[fields.ID]fields.DaemonSet
+	daemonSets   map[fields.ID]fields.DaemonSet
+	watchers     map[fields.ID]chan FakeWatchedDaemonSet
+	watchersLock sync.Locker
 }
 
 var _ dsstore.Store = &FakeDSStore{}
 
 func NewFake() *FakeDSStore {
 	return &FakeDSStore{
-		daemonSets: make(map[fields.ID]fields.DaemonSet),
+		daemonSets:   make(map[fields.ID]fields.DaemonSet),
+		watchers:     make(map[fields.ID]chan FakeWatchedDaemonSet),
+		watchersLock: &sync.Mutex{},
 	}
 }
 
@@ -41,13 +59,35 @@ func (s *FakeDSStore) Create(
 		PodID:        podID,
 	}
 	s.daemonSets[id] = ds
+
+	s.watchersLock.Lock()
+	defer s.watchersLock.Unlock()
+	if watcher, ok := s.watchers[id]; ok {
+		watched := FakeWatchedDaemonSet{
+			DaemonSet: &ds,
+			Operation: created,
+			Err:       nil,
+		}
+		watcher <- watched
+	}
+
 	return ds, nil
 }
 
 func (s *FakeDSStore) Delete(id fields.ID) error {
-	if _, ok := s.daemonSets[id]; ok {
-		delete(s.daemonSets, id)
-		return nil
+	if ds, ok := s.daemonSets[id]; ok {
+		s.watchersLock.Lock()
+		defer s.watchersLock.Unlock()
+		if watcher, ok := s.watchers[id]; ok {
+			delete(s.daemonSets, id)
+			watched := FakeWatchedDaemonSet{
+				DaemonSet: &ds,
+				Operation: deleted,
+				Err:       nil,
+			}
+			watcher <- watched
+			return nil
+		}
 	}
 	return dsstore.NoDaemonSet
 }
@@ -78,13 +118,84 @@ func (s *FakeDSStore) MutateDS(
 	id fields.ID,
 	mutator func(fields.DaemonSet) (fields.DaemonSet, error),
 ) (fields.DaemonSet, error) {
-	if _, ok := s.daemonSets[id]; ok {
-		newDS, err := mutator(s.daemonSets[id])
-		if err != nil {
-			return fields.DaemonSet{}, err
-		}
-		s.daemonSets[id] = newDS
-		return newDS, nil
+	ds, _, err := s.Get(id)
+	if err != nil {
+		return fields.DaemonSet{}, err
 	}
-	return fields.DaemonSet{}, dsstore.NoDaemonSet
+
+	ds, err = mutator(ds)
+	if err != nil {
+		return fields.DaemonSet{}, err
+	}
+
+	s.daemonSets[id] = ds
+
+	s.watchersLock.Lock()
+	defer s.watchersLock.Unlock()
+	if watcher, ok := s.watchers[id]; ok {
+		watched := FakeWatchedDaemonSet{
+			DaemonSet: &ds,
+			Operation: updated,
+			Err:       nil,
+		}
+		// In case you mutate more than once and no one reads from the channel
+		// this will prevent a deadlock, if no one reads from the update, replacing
+		// the data in the channel will still keep the functionality of the fake watch
+		select {
+		case <-watcher:
+			watcher <- watched
+		case watcher <- watched:
+		}
+	}
+
+	return ds, nil
+}
+
+func (s *FakeDSStore) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets {
+	outCh := make(chan dsstore.WatchedDaemonSets)
+
+	go func() {
+		for {
+			select {
+			case <-quitCh:
+				return
+			default:
+			}
+
+			s.watchersLock.Lock()
+			outgoingChanges := dsstore.WatchedDaemonSets{}
+			var watchersToDelete []fields.ID
+			// Reads in new changes that are sent to FakeDSStore.watchers
+			for _, ch := range s.watchers {
+				select {
+				case watched := <-ch:
+					switch watched.Operation {
+					case created:
+						outgoingChanges.Created = append(outgoingChanges.Created, watched.DaemonSet)
+					case updated:
+						outgoingChanges.Updated = append(outgoingChanges.Updated, watched.DaemonSet)
+					case deleted:
+						outgoingChanges.Deleted = append(outgoingChanges.Deleted, watched.DaemonSet)
+						watchersToDelete = append(watchersToDelete, watched.DaemonSet.ID)
+					default:
+					}
+				default:
+				}
+			}
+			// Remove deleted watchers
+			for _, id := range watchersToDelete {
+				delete(s.watchers, id)
+			}
+			s.watchersLock.Unlock()
+
+			// Blocks until the receiver quits or reads outCh's previous output
+			select {
+			case outCh <- outgoingChanges:
+			case <-quitCh:
+				return
+			}
+		}
+	}()
+
+	return outCh
 }

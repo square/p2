@@ -91,7 +91,13 @@ func (p *FakePCStore) MutatePC(
 
 	p.podClusters[id] = pc
 	if watcher, ok := p.watchers[id]; ok {
-		watcher <- pcstore.WatchedPodCluster{PodCluster: &pc, Err: nil}
+		// In case the user mutates more than once, this prevents a deadlock
+		// while keeping the functionality of the fake watch
+		select {
+		case <-watcher:
+			watcher <- pcstore.WatchedPodCluster{PodCluster: &pc, Err: nil}
+		case watcher <- pcstore.WatchedPodCluster{PodCluster: &pc, Err: nil}:
+		}
 	}
 
 	return pc, nil
