@@ -184,7 +184,6 @@ func (s *consulStore) List() ([]fields.PodCluster, error) {
 func (s *consulStore) MutatePC(
 	id fields.ID,
 	mutator func(fields.PodCluster) (fields.PodCluster, error),
-	session Session,
 ) (fields.PodCluster, error) {
 	pcp, err := pcPath(id)
 	if err != nil {

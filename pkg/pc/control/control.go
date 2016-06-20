@@ -85,7 +85,7 @@ func (pccontrol *PodCluster) Update(annotations fields.Annotations) (fields.PodC
 		return pc, nil
 	}
 
-	return pccontrol.pcStore.MutatePC(pc.ID, annotationsUpdater, pccontrol.session)
+	return pccontrol.pcStore.MutatePC(pc.ID, annotationsUpdater)
 }
 
 func (pccontrol *PodCluster) getExactlyOne() (fields.PodCluster, error) {

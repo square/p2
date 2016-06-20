@@ -77,7 +77,6 @@ func (p *FakePCStore) List() ([]fields.PodCluster, error) {
 func (p *FakePCStore) MutatePC(
 	id fields.ID,
 	mutator func(fields.PodCluster) (fields.PodCluster, error),
-	_ pcstore.Session,
 ) (fields.PodCluster, error) {
 	pc, err := p.Get(id)
 	if err != nil {
