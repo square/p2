@@ -58,6 +58,10 @@ func main() {
 	kv := kp.NewConsulStore(client)
 	logger := logging.NewLogger(logrus.Fields{})
 	pcstore := pcstore.NewConsul(client, 3, &logger)
+	session, _, err := kv.NewSession(fmt.Sprintf("pcctl-%s", currentUserName()), nil)
+	if err != nil {
+		log.Fatalf("Could not create session: %s", err)
+	}
 
 	switch cmd {
 	case CmdCreate:
@@ -65,7 +69,7 @@ func main() {
 		cn := fields.ClusterName(*createName)
 		podID := types.PodID(*createPodID)
 		selector := selectorFrom(az, cn, podID)
-		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, kv.NewUnmanagedSession("pcctl", currentUserName()))
+		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, session)
 
 		annotations := *createAnnotations
 		var parsedAnnotations map[string]interface{}
@@ -83,7 +87,7 @@ func main() {
 		podID := types.PodID(*getPodID)
 		selector := selectorFrom(az, cn, podID)
 
-		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, kv.NewUnmanagedSession("pcctl", currentUserName()))
+		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, session)
 		pc, err := pccontrol.Get()
 		if err != nil {
 			log.Fatalf("Caught error while fetching pod cluster: %v", err)
@@ -99,7 +103,7 @@ func main() {
 		cn := fields.ClusterName(*deleteName)
 		podID := types.PodID(*deletePodID)
 		selector := selectorFrom(az, cn, podID)
-		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, kv.NewUnmanagedSession("pcctl", currentUserName()))
+		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, session)
 		errors := pccontrol.Delete()
 		if len(errors) >= 1 {
 			for _, err := range errors {
@@ -112,7 +116,7 @@ func main() {
 		cn := fields.ClusterName(*updateName)
 		podID := types.PodID(*updatePodID)
 		selector := selectorFrom(az, cn, podID)
-		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, kv.NewUnmanagedSession("pcctl", currentUserName()))
+		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, session)
 		var annotations fields.Annotations
 		err := json.Unmarshal([]byte(*updateAnnotations), &annotations)
 		if err != nil {
