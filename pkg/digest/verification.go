@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -113,16 +114,17 @@ func VerifyDir(root string, digest map[string]string) error {
 // not declare a signature path, use "".
 func ParseUris(
 	fetcher uri.Fetcher,
-	digestUri string,
-	signatureUri string,
+	digestUri *url.URL,
+	signatureUri *url.URL,
 ) (Digest, error) {
 	digest, err := fetcher.Open(digestUri)
 	if err != nil {
 		return Digest{}, err
 	}
 	defer digest.Close()
+
 	var signature io.ReadCloser
-	if signatureUri != "" {
+	if signatureUri != nil {
 		signature, err = fetcher.Open(signatureUri)
 		if err != nil {
 			return Digest{}, err

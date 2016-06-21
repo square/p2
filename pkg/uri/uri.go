@@ -15,11 +15,11 @@ import (
 type Fetcher interface {
 	// Opens a data stream to the source URI. If no URI scheme is
 	// specified, treats the URI as a path to a local file.
-	Open(uri string) (io.ReadCloser, error)
+	Open(uri *url.URL) (io.ReadCloser, error)
 
 	// Copy all data from the source URI to a local file at the
 	// destination path.
-	CopyLocal(srcUri, dstPath string) error
+	CopyLocal(srcUri *url.URL, dstPath string) error
 }
 
 // A default fetcher, if the user doesn't want to set any options.
@@ -36,22 +36,19 @@ type BasicFetcher struct {
 	Client *http.Client
 }
 
-func (f BasicFetcher) Open(srcUri string) (io.ReadCloser, error) {
-	u, err := url.Parse(srcUri)
-	if err != nil {
-		return nil, err
-	}
+func (f BasicFetcher) Open(u *url.URL) (io.ReadCloser, error) {
 	switch u.Scheme {
 	case "":
 		// Assume a schemeless URI is a path to a local file
-		return os.Open(srcUri)
+		return os.Open(u.String())
 	case "file":
 		if u.Path == "" {
-			return nil, util.Errorf("%s: invalid path in URI", srcUri)
+			return nil, util.Errorf("%s: invalid path in URI", u.String())
 		}
 		if !filepath.IsAbs(u.Path) {
 			return nil, util.Errorf("%q: file URIs must use an absolute path", u.Path)
 		}
+
 		return os.Open(u.Path)
 	case "http", "https":
 		resp, err := f.Client.Get(u.String())
@@ -72,7 +69,7 @@ func (f BasicFetcher) Open(srcUri string) (io.ReadCloser, error) {
 	}
 }
 
-func (f BasicFetcher) CopyLocal(srcUri, dstPath string) (err error) {
+func (f BasicFetcher) CopyLocal(srcUri *url.URL, dstPath string) (err error) {
 	src, err := f.Open(srcUri)
 	if err != nil {
 		return
@@ -96,7 +93,7 @@ func (f BasicFetcher) CopyLocal(srcUri, dstPath string) (err error) {
 // recording their arguments. Useful for unit testing.
 type LoggedFetcher struct {
 	fetcher Fetcher
-	SrcUri  string
+	SrcUri  *url.URL
 	DstPath string
 }
 
@@ -104,16 +101,16 @@ func NewLoggedFetcher(fetcher Fetcher) *LoggedFetcher {
 	if fetcher == nil {
 		fetcher = DefaultFetcher
 	}
-	return &LoggedFetcher{fetcher, "", ""}
+	return &LoggedFetcher{fetcher, &url.URL{}, ""}
 }
 
-func (f *LoggedFetcher) Open(srcUri string) (io.ReadCloser, error) {
+func (f *LoggedFetcher) Open(srcUri *url.URL) (io.ReadCloser, error) {
 	f.SrcUri = srcUri
 	f.DstPath = ""
 	return f.fetcher.Open(srcUri)
 }
 
-func (f *LoggedFetcher) CopyLocal(srcUri, dstPath string) error {
+func (f *LoggedFetcher) CopyLocal(srcUri *url.URL, dstPath string) error {
 	f.SrcUri = srcUri
 	f.DstPath = dstPath
 	return f.fetcher.CopyLocal(srcUri, dstPath)

@@ -2,6 +2,7 @@ package hoist
 
 import (
 	"io/ioutil"
+	"net/url"
 	"os"
 	"os/user"
 	"path"
@@ -25,8 +26,12 @@ func TestInstall(t *testing.T) {
 	currentUser, err := user.Current()
 	Assert(t).IsNil(err, "test setup: couldn't get current user")
 
-	testLocation := testContext.ExpandPath("hoisted-hello_def456.tar.gz")
+	testLocation := &url.URL{
+		Path: testContext.ExpandPath("hoisted-hello_def456.tar.gz"),
+	}
+
 	launchableHome, err := ioutil.TempDir("", "launchable_home")
+	Assert(t).IsNil(err, "test setup: couldn't create temp dir")
 	defer os.RemoveAll(launchableHome)
 
 	launchable := &Launchable{
@@ -43,8 +48,8 @@ func TestInstall(t *testing.T) {
 	Assert(t).IsNil(err, "there should not have been an error when installing")
 
 	Assert(t).AreEqual(
-		fetcher.SrcUri,
-		testLocation,
+		*fetcher.SrcUri,
+		*testLocation,
 		"The correct url wasn't set for the curl library",
 	)
 
@@ -60,7 +65,12 @@ func TestInstall(t *testing.T) {
 
 func TestInstallDir(t *testing.T) {
 	tempDir := os.TempDir()
-	testLocation := "http://someserver/test_launchable_abc123.tar.gz"
+	testLocation := &url.URL{
+		Scheme: "http",
+		Path:   "/test_launchable_abc123.tar.gz",
+		Host:   "someserver",
+	}
+
 	launchable := &Launchable{
 		Location:  testLocation,
 		Id:        "testLaunchable",

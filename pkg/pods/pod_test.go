@@ -53,7 +53,7 @@ func TestGetLaunchable(t *testing.T) {
 		launchable := l.(hoist.LaunchAdapter).Launchable
 		Assert(t).AreEqual("app", launchable.Id, "Launchable Id did not have expected value")
 		Assert(t).AreEqual("hello__app", launchable.ServiceId, "Launchable ServiceId did not have expected value")
-		Assert(t).AreEqual("hoisted-hello_def456.tar.gz", launchable.Location, "Launchable location did not have expected value")
+		Assert(t).AreEqual("hoisted-hello_def456.tar.gz", launchable.Location.String(), "Launchable location did not have expected value")
 		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
 		Assert(t).IsTrue(launchable.ExecNoLimit, "GetLaunchable() should always set ExecNoLimit to true for hoist launchables")
 		Assert(t).AreEqual(launchable.RestartPolicy, runit.RestartPolicyAlways, "Default RestartPolicy for a launchable should be 'always'")

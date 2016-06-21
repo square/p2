@@ -2,6 +2,7 @@ package hoist
 
 import (
 	"io/ioutil"
+	"net/url"
 	"os"
 	"os/user"
 	"runtime"
@@ -16,7 +17,7 @@ func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuild
 	launchableInstallDir := util.From(runtime.Caller(0)).ExpandPath(dirName)
 
 	launchable := &Launchable{
-		Location:  "testLaunchable.tar.gz",
+		Location:  &url.URL{Path: "testLaunchable.tar.gz"},
 		Id:        "testLaunchable",
 		ServiceId: "testPod__testLaunchable",
 		RunAs:     "testPod",

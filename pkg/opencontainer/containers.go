@@ -9,6 +9,7 @@ package opencontainer
 import (
 	"encoding/json"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -38,7 +39,7 @@ var RuncPath = param.String("runc_path", "/usr/local/bin/runc")
 
 // Launchable represents an installation of a container.
 type Launchable struct {
-	Location        string              // A URL where we can download the artifact from.
+	Location        *url.URL            // A URL where we can download the artifact from.
 	ID_             string              // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
 	ServiceID_      string              // A (host-wise) unique identifier for this launchable, used when creating runit services
 	RunAs           string              // The user to assume when launching the executable
@@ -87,7 +88,7 @@ func (l *Launchable) EnvVars() map[string]string {
 // The version of the artifact is currently derived from the location, using
 // the naming scheme <the-app>_<unique-version-string>.tar.gz
 func (hl *Launchable) Version() string {
-	fileName := filepath.Base(hl.Location)
+	fileName := filepath.Base(hl.Location.Path)
 	return fileName[:len(fileName)-len(".tar.gz")]
 }
 

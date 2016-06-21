@@ -24,7 +24,7 @@ import (
 )
 
 var (
-	manifestUri       = kingpin.Arg("manifest", "a path or url to a pod manifest that will be replicated.").Required().String()
+	manifestUri       = kingpin.Arg("manifest", "a path or url to a pod manifest that will be replicated.").Required().URL()
 	hosts             = kingpin.Arg("hosts", "Hosts to replicate to").Required().Strings()
 	minNodes          = kingpin.Flag("min-nodes", "The minimum number of healthy nodes that must remain up while replicating.").Default("1").Short('m').Int()
 	threshold         = kingpin.Flag("threshold", "The minimum health level to treat as healthy. One of (in order) passing, warning, unknown, critical.").String()

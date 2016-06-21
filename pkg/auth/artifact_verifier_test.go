@@ -1,8 +1,8 @@
 package auth
 
 import (
-	"fmt"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -45,7 +45,13 @@ func testVerifiedWithFiles(t *testing.T, files []testFile, verifier ArtifactVeri
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = verifier.VerifyHoistArtifact(localCopy, fmt.Sprintf("file://%v", filePath))
+
+	url := &url.URL{
+		Scheme: "file",
+		Path:   filePath,
+	}
+
+	err = verifier.VerifyHoistArtifact(localCopy, url)
 	if err != nil {
 		t.Fatalf("Expected files %v to pass verification, got: %v", files, err)
 	}
@@ -59,7 +65,13 @@ func testNotVerifiedWithFiles(t *testing.T, files []testFile, verifier ArtifactV
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = verifier.VerifyHoistArtifact(localCopy, fmt.Sprintf("file://%v", filePath))
+
+	url := &url.URL{
+		Scheme: "file",
+		Path:   filePath,
+	}
+
+	err = verifier.VerifyHoistArtifact(localCopy, url)
 	if err == nil {
 		t.Fatal("Expected files %v to fail verification, but didn't")
 	}
