@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/kp/kptest"
+	"github.com/square/p2/pkg/kp/pcstore"
 	"github.com/square/p2/pkg/kp/pcstore/pcstoretest"
 	"github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/types"
@@ -135,5 +136,47 @@ func TestUpdate(t *testing.T) {
 
 	if pc.Annotations["load_balancer_info"] != nil {
 		t.Errorf("Expected to erase old annotation field. Instead we have: %s", pc.Annotations["load_balancer_info"])
+	}
+}
+
+func TestPodClusterFromID(t *testing.T) {
+	testAZ := fields.AvailabilityZone("west-coast")
+	testCN := fields.ClusterName("test")
+	testPodID := types.PodID("pod")
+	selector := labels.Everything().
+		Add(fields.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
+		Add(fields.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
+		Add(fields.ClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
+	session := kptest.NewSession()
+	fakePCStore := pcstoretest.NewFake()
+
+	pcControllerFromLabels := NewPodCluster(testAZ, testCN, testPodID, fakePCStore, selector, session)
+	pc, err := pcControllerFromLabels.Create(fields.Annotations{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pcControllerFromLabels = nil
+
+	pcControllerFromID := NewPodClusterFromID(pc.ID, session, fakePCStore)
+	retrievedPC, err := pcControllerFromID.Get()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pc.ID != retrievedPC.ID {
+		t.Errorf("Did not get correct PC back from datastore, expected %s, got %s.\n%v", pc.ID, retrievedPC.ID, retrievedPC)
+	}
+
+	errs := pcControllerFromID.Delete()
+	if len(errs) > 0 {
+		t.Fatalf("%v", errs)
+	}
+
+	notFoundPC, err := pcControllerFromID.Get()
+	if err != pcstore.NoPodCluster {
+		t.Errorf("Expected to get pcstore.NoPodCluster, but got %v", err)
+	}
+
+	if notFoundPC.ID != "" {
+		t.Errorf("Expected to not find PC but found %v", notFoundPC)
 	}
 }

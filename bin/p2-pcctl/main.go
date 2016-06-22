@@ -35,20 +35,23 @@ var (
 	createAnnotations = cmdCreate.Flag("annotations", "Complete set of annotations - must parse as JSON!").String()
 
 	cmdGet   = kingpin.Command(cmdGetText, "Show a pod cluster. ")
-	getPodID = cmdGet.Flag("pod", "The pod ID on the pod cluster").Required().String()
-	getAZ    = cmdGet.Flag("az", "The availability zone of the pod cluster").Required().String()
-	getName  = cmdGet.Flag("name", "The cluster name (ie. staging, production)").Required().String()
+	getPodID = cmdGet.Flag("pod", "The pod ID on the pod cluster").String()
+	getAZ    = cmdGet.Flag("az", "The availability zone of the pod cluster").String()
+	getName  = cmdGet.Flag("name", "The cluster name (ie. staging, production)").String()
+	getID    = cmdGet.Flag("id", "The cluster UUID. This option is mutually exclusive with pod,az,name").String()
 
 	cmdDelete   = kingpin.Command(cmdDeleteText, "Delete a pod cluster. ")
-	deletePodID = cmdDelete.Flag("pod", "The pod ID on the pod cluster").Required().String()
-	deleteAZ    = cmdDelete.Flag("az", "The availability zone of the pod cluster").Required().String()
-	deleteName  = cmdDelete.Flag("name", "The cluster name (ie. staging, production)").Required().String()
+	deletePodID = cmdDelete.Flag("pod", "The pod ID on the pod cluster").String()
+	deleteAZ    = cmdDelete.Flag("az", "The availability zone of the pod cluster").String()
+	deleteName  = cmdDelete.Flag("name", "The cluster name (ie. staging, production)").String()
+	deleteID    = cmdDelete.Flag("id", "The cluster UUID. This option is mutually exclusive with pod,az,name").String()
 
 	cmdUpdate         = kingpin.Command(cmdUpdateText, "Update a pod cluster. ")
-	updatePodID       = cmdUpdate.Flag("pod", "The pod ID on the pod cluster").Required().String()
-	updateAZ          = cmdUpdate.Flag("az", "The availability zone of the pod cluster").Required().String()
-	updateName        = cmdUpdate.Flag("name", "The cluster name (ie. staging, production)").Required().String()
-	updateAnnotations = cmdUpdate.Flag("annotations", "JSON string representing the complete update ").Required().String()
+	updatePodID       = cmdUpdate.Flag("pod", "The pod ID on the pod cluster").String()
+	updateAZ          = cmdUpdate.Flag("az", "The availability zone of the pod cluster").String()
+	updateName        = cmdUpdate.Flag("name", "The cluster name (ie. staging, production)").String()
+	updateAnnotations = cmdUpdate.Flag("annotations", "JSON string representing the complete update ").String()
+	updateID          = cmdUpdate.Flag("id", "The cluster UUID. This option is mutually exclusive with pod,az,name").String()
 )
 
 func main() {
@@ -84,9 +87,18 @@ func main() {
 		az := fields.AvailabilityZone(*getAZ)
 		cn := fields.ClusterName(*getName)
 		podID := types.PodID(*getPodID)
-		selector := selectorFrom(az, cn, podID)
+		pcID := fields.ID(*getID)
 
-		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, session)
+		var pccontrol *control.PodCluster
+		if pcID != "" {
+			pccontrol = control.NewPodClusterFromID(pcID, session, pcstore)
+		} else if az != "" && cn != "" && podID != "" {
+			selector := selectorFrom(az, cn, podID)
+			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, session)
+		} else {
+			log.Fatalf("Expected one of: pcID or (pod,az,name)")
+		}
+
 		pc, err := pccontrol.Get()
 		if err != nil {
 			log.Fatalf("Caught error while fetching pod cluster: %v", err)
@@ -101,8 +113,18 @@ func main() {
 		az := fields.AvailabilityZone(*deleteAZ)
 		cn := fields.ClusterName(*deleteName)
 		podID := types.PodID(*deletePodID)
-		selector := selectorFrom(az, cn, podID)
-		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, session)
+		pcID := fields.ID(*deleteID)
+
+		var pccontrol *control.PodCluster
+		if pcID != "" {
+			pccontrol = control.NewPodClusterFromID(pcID, session, pcstore)
+		} else if az != "" && cn != "" && podID != "" {
+			selector := selectorFrom(az, cn, podID)
+			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, session)
+		} else {
+			log.Fatalf("Expected one of: pcID or (pod,az,name)")
+		}
+
 		errors := pccontrol.Delete()
 		if len(errors) >= 1 {
 			for _, err := range errors {
@@ -114,8 +136,18 @@ func main() {
 		az := fields.AvailabilityZone(*updateAZ)
 		cn := fields.ClusterName(*updateName)
 		podID := types.PodID(*updatePodID)
-		selector := selectorFrom(az, cn, podID)
-		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, session)
+		pcID := fields.ID(*updateID)
+
+		var pccontrol *control.PodCluster
+		if pcID != "" {
+			pccontrol = control.NewPodClusterFromID(pcID, session, pcstore)
+		} else if az != "" && cn != "" && podID != "" {
+			selector := selectorFrom(az, cn, podID)
+			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, session)
+		} else {
+			log.Fatalf("Expected one of: pcID or (pod,az,name)")
+		}
+
 		var annotations fields.Annotations
 		err := json.Unmarshal([]byte(*updateAnnotations), &annotations)
 		if err != nil {

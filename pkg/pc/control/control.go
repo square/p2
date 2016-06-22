@@ -14,12 +14,14 @@ import (
 
 type PodCluster struct {
 	pcStore pcstore.Store
+	session kp.Session
+
+	ID fields.ID
 
 	az       fields.AvailabilityZone
 	cn       fields.ClusterName
 	podID    types.PodID
 	selector labels.Selector
-	session  kp.Session
 }
 
 func NewPodCluster(
@@ -42,7 +44,26 @@ func NewPodCluster(
 	return pc
 }
 
+func NewPodClusterFromID(
+	id fields.ID,
+	session kp.Session,
+	pcStore pcstore.Store,
+) *PodCluster {
+	pc := &PodCluster{}
+	pc.session = session
+	pc.pcStore = pcStore
+	pc.ID = id
+	return pc
+}
+
 func (pccontrol *PodCluster) All() ([]fields.PodCluster, error) {
+	if pccontrol.ID != "" {
+		pc, err := pccontrol.pcStore.Get(pccontrol.ID)
+		if err != nil {
+			return nil, err
+		}
+		return []fields.PodCluster{pc}, nil
+	}
 	return pccontrol.pcStore.FindWhereLabeled(pccontrol.podID, pccontrol.az, pccontrol.cn)
 }
 
