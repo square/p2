@@ -351,7 +351,8 @@
 		},
 		{
 			"ImportPath": "github.com/pborman/uuid",
-			"Rev": "ae80070655697e171ccb9b7a5b8671393599a471"
+			"Comment": "v1.0",
+			"Rev": "a97ce2ca70fa5a848076093f05e639a89ca34d06"
 		},
 		{
 			"ImportPath": "github.com/rcrowley/go-metrics",
