@@ -159,6 +159,7 @@ func (f *flagGroup) visibleFlags() int {
 type FlagClause struct {
 	parserMixin
 	actionMixin
+	completionsMixin
 	name          string
 	shorthand     byte
 	help          string
@@ -214,23 +215,6 @@ func (f *FlagClause) needsValue() bool {
 	return f.required && !(haveDefault || haveEnvar)
 }
 
-func (f *FlagClause) formatPlaceHolder() string {
-	if f.placeholder != "" {
-		return f.placeholder
-	}
-	if len(f.defaultValues) > 0 {
-		ellipsis := ""
-		if len(f.defaultValues) > 1 {
-			ellipsis = "..."
-		}
-		if _, ok := f.value.(*stringValue); ok {
-			return fmt.Sprintf("%q"+ellipsis, f.defaultValues[0])
-		}
-		return f.defaultValues[0] + ellipsis
-	}
-	return strings.ToUpper(f.name)
-}
-
 func (f *FlagClause) init() error {
 	if f.required && len(f.defaultValues) > 0 {
 		return fmt.Errorf("required flag '--%s' with default value that will never be used", f.name)
@@ -253,6 +237,34 @@ func (f *FlagClause) Action(action Action) *FlagClause {
 func (f *FlagClause) PreAction(action Action) *FlagClause {
 	f.addPreAction(action)
 	return f
+}
+
+// HintAction registers a HintAction (function) for the flag to provide completions
+func (a *FlagClause) HintAction(action HintAction) *FlagClause {
+	a.addHintAction(action)
+	return a
+}
+
+// HintOptions registers any number of options for the flag to provide completions
+func (a *FlagClause) HintOptions(options ...string) *FlagClause {
+	a.addHintAction(func() []string {
+		return options
+	})
+	return a
+}
+
+func (a *FlagClause) EnumVar(target *string, options ...string) {
+	a.parserMixin.EnumVar(target, options...)
+	a.addHintActionBuiltin(func() []string {
+		return options
+	})
+}
+
+func (a *FlagClause) Enum(options ...string) (target *string) {
+	a.addHintActionBuiltin(func() []string {
+		return options
+	})
+	return a.parserMixin.Enum(options...)
 }
 
 // Default values for this flag. They *must* be parseable by the value of the flag.
