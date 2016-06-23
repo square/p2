@@ -21,8 +21,10 @@ func TestPublishLatestRCs(t *testing.T) {
 	go func() {
 		select {
 		case <-quitCh:
-		case err := <-errCh:
-			t.Fatalf("Unexpected error on errCh: %s", err)
+		case err, ok := <-errCh:
+			if ok {
+				t.Fatalf("Unexpected error on errCh: %s", err)
+			}
 		}
 	}()
 
