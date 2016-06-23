@@ -46,13 +46,13 @@ var (
 	config        = bin2pod.Flag("config", "a list of key=value assignments. Each key will be set in the config section.").Strings()
 )
 
-type Result struct {
+type result struct {
 	TarPath       string `json:"tar_path"`
 	ManifestPath  string `json:"manifest_path"`
 	FinalLocation string `json:"final_location"`
 }
 
-func podId() types.PodID {
+func podID() types.PodID {
 	if *id != "" {
 		return types.PodID(*id)
 	}
@@ -72,14 +72,14 @@ func activeDir() string {
 
 func main() {
 	bin2pod.Version(version.VERSION)
-	bin2pod.Parse(os.Args[1:])
+	kingpin.MustParse(bin2pod.Parse(os.Args[1:]))
 
-	res := Result{}
+	res := result{}
 	manifestBuilder := pods.NewManifestBuilder()
-	manifestBuilder.SetID(podId())
+	manifestBuilder.SetID(podID())
 
 	stanza := pods.LaunchableStanza{}
-	stanza.LaunchableId = string(podId())
+	stanza.LaunchableId = podID().String()
 	stanza.LaunchableType = "hoist"
 
 	workingDir := activeDir()
@@ -100,7 +100,7 @@ func main() {
 	}
 
 	manifestBuilder.SetLaunchables(map[string]pods.LaunchableStanza{
-		string(podId()): stanza,
+		podID().String(): stanza,
 	})
 
 	if err != nil {
@@ -124,7 +124,7 @@ func main() {
 }
 
 func makeTar(workingDir string) (string, error) {
-	tarContents := path.Join(workingDir, fmt.Sprintf("%s.workd", podId()))
+	tarContents := path.Join(workingDir, fmt.Sprintf("%s.workd", podID()))
 	err := os.MkdirAll(tarContents, 0744)
 	defer os.RemoveAll(tarContents)
 	if err != nil {
@@ -170,11 +170,15 @@ func addManifestConfig(manifestBuilder pods.ManifestBuilder) error {
 }
 
 func writeManifest(workingDir string, manifest pods.Manifest) (string, error) {
-	file, err := os.OpenFile(path.Join(workingDir, fmt.Sprintf("%s.yaml", podId())), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	defer file.Close()
+	file, err := os.OpenFile(
+		path.Join(workingDir, fmt.Sprintf("%s.yaml", podID())),
+		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
+		0644,
+	)
 	if err != nil {
 		return "", err
 	}
+	defer file.Close()
 
 	err = manifest.Write(file)
 	if err != nil {

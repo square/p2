@@ -27,10 +27,10 @@ Flags:
 `
 
 func init() {
-	flag.Usage = Usage
+	flag.Usage = usage
 }
 
-func Usage() {
+func usage() {
 	fmt.Fprintf(os.Stderr, usageMsg, filepath.Base(os.Args[0]))
 	flag.PrintDefaults()
 }
@@ -78,7 +78,7 @@ func main() {
 	flag.Parse()
 	progName := filepath.Base(os.Args[0])
 	if *help {
-		Usage()
+		usage()
 		os.Exit(0)
 	}
 	args := flag.Args()

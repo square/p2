@@ -146,7 +146,11 @@ func (rm *P2RM) decrementDesiredCount(id fields.ID) error {
 		os.Exit(1)
 	}
 
-	rm.RCStore.AddDesiredReplicas(id, -1)
+	err = rm.RCStore.AddDesiredReplicas(id, -1)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to decrement RC count: %v", err)
+		os.Exit(1)
+	}
 
 	err = rm.RCStore.Enable(id)
 	if err != nil {

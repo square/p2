@@ -54,8 +54,6 @@ func main() {
 
 	http.HandleFunc("/_status", func(w http.ResponseWriter, r *http.Request) {
 		c, err := ssh.Dial("tcp", sshAddr, clientConf)
-		defer c.Close()
-
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusServiceUnavailable)
 			logging.DefaultLogger.WithErrorAndFields(err, logrus.Fields{
@@ -63,10 +61,12 @@ func main() {
 				"key":     sshKeyPath,
 				"address": sshAddr,
 			}).Errorln("Could not connect to SSHd")
-		} else {
-			w.Write([]byte("ok"))
-			logging.DefaultLogger.NoFields().Debugln("Connected to SSHd successfully")
+			return
 		}
+		defer c.Close()
+
+		logging.DefaultLogger.NoFields().Debugln("Connected to SSHd successfully")
+		_, _ = w.Write([]byte("ok"))
 	})
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", monitorPort), nil); err != nil {
 		logging.DefaultLogger.WithError(err).Fatalln("Monitor HTTP server crashed")
