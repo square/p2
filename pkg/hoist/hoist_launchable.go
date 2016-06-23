@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"time"
 
@@ -25,7 +25,7 @@ import (
 
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type Launchable struct {
-	Location         string              // A URL where we can download the artifact from.
+	Location         *url.URL            // A URL where we can download the artifact from.
 	Id               string              // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
 	ServiceId        string              // A (host-wise) unique identifier for this launchable, used when creating runit services
 	RunAs            string              // The user to assume when launching the executable
@@ -281,7 +281,9 @@ func (hl *Launchable) Install(verifier auth.ArtifactVerifier) error {
 	}
 
 	// Write to a temporary file for easy cleanup if the network transfer fails
-	artifactFile, err := ioutil.TempFile("", path.Base(hl.Location))
+	// TODO: the end of the artifact URL may not always be suitable as a directory
+	// name
+	artifactFile, err := ioutil.TempFile("", filepath.Base(hl.Location.Path))
 	if err != nil {
 		return err
 	}
@@ -322,10 +324,12 @@ func (hl *Launchable) Install(verifier auth.ArtifactVerifier) error {
 	return err
 }
 
-// The version of the artifact is currently derived from the location, using
-// the naming scheme <the-app>_<unique-version-string>.tar.gz
+// The version of the artifact is determined from the artifact location. If the
+// version tag is set in the location's query, that is returned. Otherwise, the
+// version is derived from the location, using the naming scheme
+// <the-app>_<unique-version-string>.tar.gz
 func (hl *Launchable) Version() string {
-	fileName := filepath.Base(hl.Location)
+	fileName := filepath.Base(hl.Location.Path)
 	return fileName[:len(fileName)-len(".tar.gz")]
 }
 

@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	manifestURI  = kingpin.Arg("manifest", "a path or url to a pod manifest that will be installed and launched immediately.").Required().ExistingFile()
+	manifestURI  = kingpin.Arg("manifest", "a path to a pod manifest that will be installed and launched immediately.").Required().URL()
 	podRoot      = kingpin.Flag("pod-root", "the root of the pods directory").Default(pods.DEFAULT_PATH).Short('p').String()
 	authType     = kingpin.Flag("auth-type", "the auth policy to use e.g. (none, keyring, user)").Short('a').Default("none").String()
 	keyring      = kingpin.Flag("keyring", "the pgp keyring to use for auth policies if --auth-type other than none is given").Short('k').ExistingFile()

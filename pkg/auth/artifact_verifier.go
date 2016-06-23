@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"io/ioutil"
 	"net/url"
 	"os"
@@ -27,12 +26,12 @@ const VerifyEither = "either"
 // The artifact verifier is responsible for checking that the artifact
 // was created by a trusted entity.
 type ArtifactVerifier interface {
-	VerifyHoistArtifact(localCopy *os.File, artifactLocation string) error
+	VerifyHoistArtifact(localCopy *os.File, artifactLocation *url.URL) error
 }
 
 type nopVerifier struct{}
 
-func (n *nopVerifier) VerifyHoistArtifact(_ *os.File, _ string) error {
+func (n *nopVerifier) VerifyHoistArtifact(_ *os.File, _ *url.URL) error {
 	return nil
 }
 
@@ -63,7 +62,7 @@ func NewCompositeVerifier(keyringPath string, fetcher uri.Fetcher, logger *loggi
 }
 
 // Attempt manifest verification. If it fails, fallback to the build verifier.
-func (b *CompositeVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation string) error {
+func (b *CompositeVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation *url.URL) error {
 	err := b.manVerifier.VerifyHoistArtifact(localCopy, artifactLocation)
 	if err != nil {
 		_, err = localCopy.Seek(0, os.SEEK_SET)
@@ -116,14 +115,10 @@ func NewBuildManifestVerifier(keyringPath string, fetcher uri.Fetcher, logger *l
 
 // Returns an error if the stanza's artifact is not signed appropriately. Note that this
 // implementation does not use the pod manifest digest location options.
-func (b *BuildManifestVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation string) error {
-	u, err := url.Parse(artifactLocation)
-	if err != nil {
-		return util.Errorf("Could not parse artifact location %v: %v", artifactLocation, err)
-	}
-	switch u.Scheme {
+func (b *BuildManifestVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation *url.URL) error {
+	switch artifactLocation.Scheme {
 	default:
-		return util.Errorf("%v does not have a recognized scheme '%v', cannot verify manifest or signature", artifactLocation, u.Scheme)
+		return util.Errorf("%v does not have a recognized scheme '%v', cannot verify manifest or signature", artifactLocation.String(), artifactLocation.Scheme)
 	case "http", "https", "file":
 		dir, err := ioutil.TempDir("", "artifact_verification")
 		if err != nil {
@@ -131,14 +126,19 @@ func (b *BuildManifestVerifier) VerifyHoistArtifact(localCopy *os.File, artifact
 		}
 		defer os.RemoveAll(dir)
 
-		manifestSrc := fmt.Sprintf("%v.manifest", artifactLocation)
+		manifestSrc := &url.URL{}
+		*manifestSrc = *artifactLocation
+		manifestSrc.Path = manifestSrc.Path + ".manifest"
+
 		manifestDst := filepath.Join(dir, "manifest")
 
 		if err = b.fetcher.CopyLocal(manifestSrc, manifestDst); err != nil {
 			return util.Errorf("Could not download artifact manifest for %v: %v", artifactLocation, err)
 		}
 
-		signatureSrc := fmt.Sprintf("%v.sig", manifestSrc)
+		signatureSrc := manifestSrc
+		signatureSrc.Path = signatureSrc.Path + ".sig"
+
 		signatureDst := filepath.Join(dir, "signature")
 		if err = b.fetcher.CopyLocal(signatureSrc, signatureDst); err != nil {
 			return util.Errorf("Could not download manifest signature for %v: %v", artifactLocation, err)
@@ -227,14 +227,10 @@ func NewBuildVerifier(keyringPath string, fetcher uri.Fetcher, logger *logging.L
 	}, nil
 }
 
-func (b *BuildVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation string) error {
-	u, err := url.Parse(artifactLocation)
-	if err != nil {
-		return err
-	}
-	switch u.Scheme {
+func (b *BuildVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation *url.URL) error {
+	switch artifactLocation.Scheme {
 	default:
-		return util.Errorf("%v does not have a recognized scheme, cannot verify signature", artifactLocation)
+		return util.Errorf("%v does not have a recognized scheme, cannot verify signature", artifactLocation.String())
 	case "http", "https", "file":
 		dir, err := ioutil.TempDir("", "artifact_verification")
 		if err != nil {
@@ -242,11 +238,14 @@ func (b *BuildVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation
 		}
 		defer os.RemoveAll(dir)
 
-		sigURI := fmt.Sprintf("%v.sig", artifactLocation)
+		sigURI := &url.URL{}
+		*sigURI = *artifactLocation
+		sigURI.Path = sigURI.Path + ".sig"
+
 		sigPath := filepath.Join(dir, "sig")
 		err = b.fetcher.CopyLocal(sigURI, sigPath)
 		if err != nil {
-			return util.Errorf("Could not fetch artifact signature from %v: %v", sigURI, err)
+			return util.Errorf("Could not fetch artifact signature from %v: %v", sigURI.String(), err)
 		}
 
 		sigData, err := ioutil.ReadFile(sigPath)

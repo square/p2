@@ -1,7 +1,6 @@
 package uri
 
 import (
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -19,12 +18,19 @@ func TestURIWillCopyFilesCorrectly(t *testing.T) {
 	tempdir, err := ioutil.TempDir("", "cp-dest")
 	Assert(t).IsNil(err, "Couldn't create temp dir")
 	defer os.RemoveAll(tempdir)
+
 	thisFile := util.From(runtime.Caller(0)).Filename
+	url := &url.URL{
+		Path: thisFile,
+	}
+
 	copied := filepath.Join(tempdir, "copied")
-	err = URICopy(fmt.Sprintf("file:///%s", thisFile), copied)
+	err = URICopy(url, copied)
 	Assert(t).IsNil(err, "The file should have been copied")
+
 	copiedContents, err := ioutil.ReadFile(copied)
 	Assert(t).IsNil(err, "The copied file could not be read")
+
 	thisContents, err := ioutil.ReadFile(thisFile)
 	Assert(t).IsNil(err, "The original file could not be read")
 	Assert(t).AreEqual(string(thisContents), string(copiedContents), "The contents of the files do not match")
@@ -34,11 +40,19 @@ func TestURIWithNoProtocolTreatedLikeLocalPath(t *testing.T) {
 	tempdir, err := ioutil.TempDir("", "cp-dest")
 	Assert(t).IsNil(err, "Couldn't create temp dir")
 	defer os.RemoveAll(tempdir)
+
 	thisFile := util.From(runtime.Caller(0)).Filename
+	url := &url.URL{
+		Path: thisFile,
+	}
+
 	copied := filepath.Join(tempdir, "copied")
-	err = URICopy(thisFile, copied)
+	err = URICopy(url, copied)
 	Assert(t).IsNil(err, "The file should have been copied")
+
 	copiedContents, err := ioutil.ReadFile(copied)
+	Assert(t).IsNil(err, "Couldn't read file")
+
 	thisContents, err := ioutil.ReadFile(thisFile)
 	Assert(t).IsNil(err, "The original file could not be read")
 	Assert(t).AreEqual(string(thisContents), string(copiedContents), "The contents of the files do not match")
@@ -59,7 +73,7 @@ func TestCorrectlyPullsFilesOverHTTP(t *testing.T) {
 	Assert(t).IsNil(err, "should have parsed server URL")
 
 	serverURL.Path = filepath.Base(caller.Filename)
-	err = URICopy(serverURL.String(), copied)
+	err = URICopy(serverURL, copied)
 	Assert(t).IsNil(err, "the file should have been downloaded")
 
 	copiedContents, err := ioutil.ReadFile(copied)

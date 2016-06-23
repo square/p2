@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	manifestURI = kingpin.Arg("manifest", "a path or url to a pod manifest that will be installed and launched immediately.").String()
+	manifestURI = kingpin.Arg("manifest", "a path or url to a pod manifest that will be installed and launched immediately.").URL()
 	podRoot     = kingpin.Flag("pod-root", "the root of the pods directory").Default(pods.DEFAULT_PATH).String()
 	hookRoot    = kingpin.Flag("hook-root", "the root of the hook scripts directory").Default(hooks.DEFAULT_PATH).String()
 	hookType    = kingpin.Flag("hook-type", "the type of the hook (if unspecified, defaults to global)").String()

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -275,7 +276,12 @@ func (pod *Pod) WriteCurrentManifest(manifest Manifest) (string, error) {
 	lastManifest := filepath.Join(tmpDir, "last_manifest.yaml")
 
 	if _, err := os.Stat(pod.currentPodManifestPath()); err == nil {
-		err = uri.URICopy(pod.currentPodManifestPath(), lastManifest)
+		podManifestURL, err := url.Parse(pod.currentPodManifestPath())
+		if err != nil {
+			return "", util.Errorf("Couldn't parse manifest path '%s' as URL: %s", pod.currentPodManifestPath(), err)
+		}
+
+		err = uri.URICopy(podManifestURL, lastManifest)
 		if err != nil && !os.IsNotExist(err) {
 			return "", err
 		}
@@ -421,11 +427,21 @@ func (pod *Pod) Verify(manifest Manifest, authPolicy auth.Policy) error {
 			return err
 		}
 
+		digestLocationURL, err := url.Parse(stanza.DigestLocation)
+		if err != nil {
+			return util.Errorf("Couldn't parse digest location '%s' as a url: %s", stanza.DigestLocation, err)
+		}
+
+		digestSignatureLocationURL, err := url.Parse(stanza.DigestSignatureLocation)
+		if err != nil {
+			return util.Errorf("Couldn't parse digest signature location '%s' as a url: %s", stanza.DigestSignatureLocation, err)
+		}
+
 		// Retrieve the digest data
 		launchableDigest, err := digest.ParseUris(
 			launchable.Fetcher(),
-			stanza.DigestLocation,
-			stanza.DigestSignatureLocation,
+			digestLocationURL,
+			digestSignatureLocationURL,
 		)
 		if err != nil {
 			return err
@@ -640,9 +656,13 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 		}
 	}
 
+	locationURL, err := url.Parse(launchableStanza.Location)
+	if err != nil {
+		return nil, util.Errorf("Couldn't parse launchable location '%s' as a URL: %s", launchableStanza.Location, err)
+	}
 	if launchableStanza.LaunchableType == "hoist" {
 		ret := &hoist.Launchable{
-			Location:         launchableStanza.Location,
+			Location:         locationURL,
 			Id:               launchableStanza.LaunchableId,
 			ServiceId:        serviceId,
 			RunAs:            runAsUser,
@@ -661,7 +681,7 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 		return ret.If(), nil
 	} else if *ExperimentalOpencontainer && launchableStanza.LaunchableType == "opencontainer" {
 		ret := &opencontainer.Launchable{
-			Location:        launchableStanza.Location,
+			Location:        locationURL,
 			ID_:             launchableStanza.LaunchableId,
 			ServiceID_:      serviceId,
 			RunAs:           runAsUser,

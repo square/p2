@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	location         = kingpin.Arg("location", "The URI of the artifact.").Required().String()
-	originalLocation = kingpin.Flag("original-location", "The URI where the artifact which has already been downloaded came from. The primary location must be an existing file").String()
+	location         = kingpin.Arg("location", "The path to the artifact.").Required().String()
+	originalLocation = kingpin.Flag("original-location", "The URI where the artifact which has already been downloaded came from. The primary location must be an existing file").URL()
 	gpgKeyringPath   = kingpin.Flag("keyring", "The PGP keyring to use to verify the artifact").Required().ExistingFile()
 )
 
@@ -34,11 +34,11 @@ func main() {
 
 	localCopyPath := filepath.Join(dir, "temp.tar.gz")
 
-	var localCopy *os.File
-	var locationForSignature string
+	locationForSignature := *originalLocation
 
-	if *originalLocation == "" {
-		err = uri.DefaultFetcher.CopyLocal(*location, localCopyPath)
+	var localCopy *os.File
+	if *originalLocation != nil {
+		err = uri.DefaultFetcher.CopyLocal(*originalLocation, localCopyPath)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -46,13 +46,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("Could not open local copy of the file %v: %v", localCopyPath, err)
 		}
-		locationForSignature = *location
 	} else {
 		localCopy, err = os.Open(*location)
 		if err != nil {
 			log.Fatalf("Could not open local copy of the file %v: %v", *location, err)
 		}
-		locationForSignature = *originalLocation
 	}
 
 	res := struct {

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"path"
 
@@ -247,7 +248,7 @@ func ManifestFromPath(path string) (Manifest, error) {
 
 // ManifestFromURI constructs a Manifest from data located at a URI. This function is a
 // helper for ManifestFromBytes().
-func ManifestFromURI(manifestUri string) (Manifest, error) {
+func ManifestFromURI(manifestUri *url.URL) (Manifest, error) {
 	f, err := uri.DefaultFetcher.Open(manifestUri)
 	if err != nil {
 		return nil, err
