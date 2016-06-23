@@ -13,28 +13,28 @@ import (
 )
 
 var (
-	PodDir    = kingpin.Arg("pod", "A path to a pod that exists on disk already.").Required().String()
-	Lifecycle = kingpin.Arg("hook-type", "Execute one of the given hook types").Required().String()
-	HookDir   = kingpin.Flag("hook-dir", "The root of the hooks").Default(hooks.DEFAULT_PATH).String()
-	Manifest  = kingpin.Flag("manifest", "The manifest to use (this is useful when we are in the before_install phase)").ExistingFile()
+	podDir       = kingpin.Arg("pod", "A path to a pod that exists on disk already.").Required().String()
+	hookType     = kingpin.Arg("hook-type", "Execute one of the given hook types").Required().String()
+	hookDir      = kingpin.Flag("hook-dir", "The root of the hooks").Default(hooks.DEFAULT_PATH).String()
+	manifestPath = kingpin.Flag("manifest", "The manifest to use (this is useful when we are in the before_install phase)").ExistingFile()
 )
 
 func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 
-	dir := hooks.Hooks(*HookDir, &logging.DefaultLogger)
+	dir := hooks.Hooks(*hookDir, &logging.DefaultLogger)
 
-	hookType, err := hooks.AsHookType(*Lifecycle)
+	hookType, err := hooks.AsHookType(*hookType)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	pod := pods.NewPod(types.PodID(path.Base(*PodDir)), *PodDir)
+	pod := pods.NewPod(types.PodID(path.Base(*podDir)), *podDir)
 
 	var manifest pods.Manifest
-	if *Manifest != "" {
-		manifest, err = pods.ManifestFromPath(*Manifest)
+	if *manifestPath != "" {
+		manifest, err = pods.ManifestFromPath(*manifestPath)
 		if err != nil {
 			log.Fatalln(err)
 		}

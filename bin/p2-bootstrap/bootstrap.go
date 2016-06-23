@@ -16,13 +16,12 @@ import (
 )
 
 var (
-	consulManifestPath      = kingpin.Flag("consul-pod", "A path to the manifest that will be used to boot Consul.").ExistingFile()
-	existingConsul          = kingpin.Flag("existing-consul-pod", "A path to an existing Consul pod that will be supplied to the base agent's configuration.").ExistingDir()
-	agentManifestPath       = kingpin.Flag("agent-pod", "A path to the manifest that will used to boot the base agent.").ExistingFile()
-	additionalManifestsPath = kingpin.Flag("additional-pods", "(Optional) a directory of additional pods that will be launched and added to the intent store immediately").ExistingDir()
-	timeout                 = kingpin.Flag("consul-timeout", "How long to wait for consul to begin serving. 0 will skip the consul check altogether.").Default("10s").String()
-	consulToken             = kingpin.Flag("consul-token", "The ACL token to pass to consul when registering the bootstrapped pods").String()
-	podRoot                 = kingpin.Flag("pod-root", "The root of where pods will be installed").Default(pods.DEFAULT_PATH).String()
+	consulManifestPath = kingpin.Flag("consul-pod", "A path to the manifest that will be used to boot Consul.").ExistingFile()
+	existingConsul     = kingpin.Flag("existing-consul-pod", "A path to an existing Consul pod that will be supplied to the base agent's configuration.").ExistingDir()
+	agentManifestPath  = kingpin.Flag("agent-pod", "A path to the manifest that will used to boot the base agent.").ExistingFile()
+	timeout            = kingpin.Flag("consul-timeout", "How long to wait for consul to begin serving. 0 will skip the consul check altogether.").Default("10s").String()
+	consulToken        = kingpin.Flag("consul-token", "The ACL token to pass to consul when registering the bootstrapped pods").String()
+	podRoot            = kingpin.Flag("pod-root", "The root of where pods will be installed").Default(pods.DEFAULT_PATH).String()
 )
 
 func main() {
@@ -43,7 +42,7 @@ func main() {
 			log.Fatalf("Could not get consul manifest: %s", err)
 		}
 		consulPod = pods.NewPod(consulManifest.ID(), pods.PodPath(*podRoot, consulManifest.ID()))
-		err = InstallConsul(consulPod, consulManifest)
+		err = installConsul(consulPod, consulManifest)
 		if err != nil {
 			log.Fatalf("Could not install consul: %s", err)
 		}
@@ -60,34 +59,34 @@ func main() {
 		}
 	}
 
-	if err = VerifyConsulUp(*timeout); err != nil {
+	if err = verifyConsulUp(*timeout); err != nil {
 		log.Fatalln(err)
 	}
 	time.Sleep(500 * time.Millisecond)
 	// schedule consul in the reality store as well, to ensure the preparers do
 	// not all restart their consul agents simultaneously after bootstrapping
-	err = ScheduleForThisHost(consulManifest, true)
+	err = scheduleForThisHost(consulManifest, true)
 	if err != nil {
 		log.Fatalf("Could not register consul in the intent store: %s", err)
 	}
 
 	log.Println("Registering base agent in consul")
-	err = ScheduleForThisHost(agentManifest, false)
+	err = scheduleForThisHost(agentManifest, false)
 	if err != nil {
 		log.Fatalf("Could not register base agent with consul: %s", err)
 	}
 	log.Println("Installing and launching base agent")
-	err = InstallBaseAgent(agentManifest)
+	err = installBaseAgent(agentManifest)
 	if err != nil {
 		log.Fatalf("Could not install base agent: %s", err)
 	}
-	if err := VerifyReality(30*time.Second, consulManifest.ID(), agentManifest.ID()); err != nil {
+	if err := verifyReality(30*time.Second, consulManifest.ID(), agentManifest.ID()); err != nil {
 		log.Fatalln(err)
 	}
 	log.Println("Bootstrapping complete")
 }
 
-func InstallConsul(consulPod *pods.Pod, consulManifest pods.Manifest) error {
+func installConsul(consulPod *pods.Pod, consulManifest pods.Manifest) error {
 	// Inject servicebuilder?
 	err := consulPod.Install(consulManifest, auth.NopVerifier())
 	if err != nil {
@@ -100,7 +99,7 @@ func InstallConsul(consulPod *pods.Pod, consulManifest pods.Manifest) error {
 	return nil
 }
 
-func VerifyConsulUp(timeout string) error {
+func verifyConsulUp(timeout string) error {
 	timeoutDur, err := time.ParseDuration(timeout)
 	if err != nil {
 		return err
@@ -131,7 +130,7 @@ func VerifyConsulUp(timeout string) error {
 	}
 }
 
-func VerifyReality(waitTime time.Duration, consulID types.PodID, agentID types.PodID) error {
+func verifyReality(waitTime time.Duration, consulID types.PodID, agentID types.PodID) error {
 	quit := make(chan struct{})
 	defer close(quit)
 	store := kp.NewConsulStore(kp.NewConsulClient(kp.Options{
@@ -170,7 +169,7 @@ func VerifyReality(waitTime time.Duration, consulID types.PodID, agentID types.P
 	}
 }
 
-func ScheduleForThisHost(manifest pods.Manifest, alsoReality bool) error {
+func scheduleForThisHost(manifest pods.Manifest, alsoReality bool) error {
 	store := kp.NewConsulStore(kp.NewConsulClient(kp.Options{
 		Token: *consulToken,
 	}))
@@ -190,7 +189,7 @@ func ScheduleForThisHost(manifest pods.Manifest, alsoReality bool) error {
 	return nil
 }
 
-func InstallBaseAgent(agentManifest pods.Manifest) error {
+func installBaseAgent(agentManifest pods.Manifest) error {
 	agentPod := pods.NewPod(agentManifest.ID(), pods.PodPath(*podRoot, agentManifest.ID()))
 	err := agentPod.Install(agentManifest, auth.NopVerifier())
 	if err != nil {

@@ -34,15 +34,15 @@ import (
 )
 
 const (
-	CMD_CREATE   = "create"
-	CMD_DELETE   = "delete"
-	CMD_REPLICAS = "set-replicas"
-	CMD_LIST     = "list"
-	CMD_GET      = "get"
-	CMD_ENABLE   = "enable"
-	CMD_DISABLE  = "disable"
-	CMD_ROLL     = "rolling-update"
-	CMD_SCHEDUP  = "schedule-update"
+	cmdCreateText   = "create"
+	cmdDeleteText   = "delete"
+	cmdReplicasText = "set-replicas"
+	cmdListText     = "list"
+	cmdGetText      = "get"
+	cmdEnableText   = "enable"
+	cmdDisableText  = "disable"
+	cmdRollText     = "rolling-update"
+	cmdSchedupText  = "schedule-update"
 )
 
 var (
@@ -50,41 +50,41 @@ var (
 	logLevel      = kingpin.Flag("log", "Logging level to display.").String()
 	logJSON       = kingpin.Flag("log-json", "Log messages will be JSON formatted").Bool()
 
-	cmdCreate       = kingpin.Command(CMD_CREATE, "Create a new replication controller")
+	cmdCreate       = kingpin.Command(cmdCreateText, "Create a new replication controller")
 	createManifest  = cmdCreate.Flag("manifest", "manifest file to use for this replication controller").Short('m').Required().String()
 	createNodeSel   = cmdCreate.Flag("node-selector", "node selector that this replication controller should target").Short('n').Required().String()
 	createPodLabels = cmdCreate.Flag("pod-label", "a pod label, in LABEL=VALUE form, to add to this replication controller. Can be specified multiple times.").Short('p').StringMap()
 	createRCLabels  = cmdCreate.Flag("rc-label", "an RC label, in LABEL=VALUE form, to be applied to this replication controller. Can be specified multiple times.").Short('r').StringMap()
 
-	cmdDelete   = kingpin.Command(CMD_DELETE, "Delete a replication controller")
+	cmdDelete   = kingpin.Command(cmdDeleteText, "Delete a replication controller")
 	deleteID    = cmdDelete.Arg("id", "replication controller uuid to delete").Required().String()
 	deleteForce = cmdDelete.Flag("force", "delete even if desired replicas > 0").Short('f').Bool()
 
-	cmdReplicas = kingpin.Command(CMD_REPLICAS, "Set desired replica count of a replication controller")
+	cmdReplicas = kingpin.Command(cmdReplicasText, "Set desired replica count of a replication controller")
 	replicasID  = cmdReplicas.Arg("id", "replication controller uuid to modify").Required().String()
 	replicasNum = cmdReplicas.Arg("replicas", "number of replicas desired").Required().Int()
 
-	cmdList  = kingpin.Command(CMD_LIST, "List replication controllers")
+	cmdList  = kingpin.Command(cmdListText, "List replication controllers")
 	listJSON = cmdList.Flag("json", "output the entire JSON object of each replication controller").Short('j').Bool()
 
-	cmdGet      = kingpin.Command(CMD_GET, "Get replication controller")
+	cmdGet      = kingpin.Command(cmdGetText, "Get replication controller")
 	getID       = cmdGet.Arg("id", "replication controller uuid to get").Required().String()
 	getManifest = cmdGet.Flag("manifest", "print just the manifest of the replication controller").Short('m').Bool()
 
-	cmdEnable = kingpin.Command(CMD_ENABLE, "Enable replication controller")
+	cmdEnable = kingpin.Command(cmdEnableText, "Enable replication controller")
 	enableID  = cmdEnable.Arg("id", "replication controller uuid to enable").Required().String()
 
-	cmdDisable = kingpin.Command(CMD_DISABLE, "Disable replication controller")
+	cmdDisable = kingpin.Command(cmdDisableText, "Disable replication controller")
 	disableID  = cmdDisable.Arg("id", "replication controller uuid to disable").Required().String()
 
-	cmdRoll                 = kingpin.Command(CMD_ROLL, "Rolling update from one replication controller to another")
+	cmdRoll                 = kingpin.Command(cmdRollText, "Rolling update from one replication controller to another")
 	rollOldID               = cmdRoll.Flag("old", "old replication controller uuid").Required().Short('o').String()
 	rollNewID               = cmdRoll.Flag("new", "new replication controller uuid").Required().Short('n').String()
 	rollWant                = cmdRoll.Flag("desired", "number of replicas desired").Required().Short('d').Int()
 	rollNeed                = cmdRoll.Flag("minimum", "minimum number of healthy replicas during update").Required().Short('m').Int()
 	rollPagerdutyServiceKey = cmdRoll.Flag("pagerduty-service-key", "Pagerduty Service Key to use for alerting if provided").String()
 
-	cmdSchedup   = kingpin.Command(CMD_SCHEDUP, "Schedule new rolling update (will be run by farm)")
+	cmdSchedup   = kingpin.Command(cmdSchedupText, "Schedule new rolling update (will be run by farm)")
 	schedupOldID = cmdSchedup.Flag("old", "old replication controller uuid").Required().Short('o').String()
 	schedupNewID = cmdSchedup.Flag("new", "new replication controller uuid").Required().Short('n').String()
 	schedupWant  = cmdSchedup.Flag("desired", "number of replicas desired").Required().Short('d').Int()
@@ -126,7 +126,7 @@ func main() {
 		}
 		sched = rc.NewApplicatorScheduler(httpLabeler)
 	}
-	rctl := RCtl{
+	rctl := rctlParams{
 		httpClient: httpClient,
 		baseClient: client,
 		rcs:        rcstore.NewConsul(client, 3),
@@ -139,23 +139,23 @@ func main() {
 	}
 
 	switch cmd {
-	case CMD_CREATE:
+	case cmdCreateText:
 		rctl.Create(*createManifest, *createNodeSel, *createPodLabels, *createRCLabels)
-	case CMD_DELETE:
+	case cmdDeleteText:
 		rctl.Delete(*deleteID, *deleteForce)
-	case CMD_REPLICAS:
+	case cmdReplicasText:
 		rctl.SetReplicas(*replicasID, *replicasNum)
-	case CMD_LIST:
+	case cmdListText:
 		rctl.List(*listJSON)
-	case CMD_GET:
+	case cmdGetText:
 		rctl.Get(*getID, *getManifest)
-	case CMD_ENABLE:
+	case cmdEnableText:
 		rctl.Enable(*enableID)
-	case CMD_DISABLE:
+	case cmdDisableText:
 		rctl.Disable(*disableID)
-	case CMD_ROLL:
+	case cmdRollText:
 		rctl.RollingUpdate(*rollOldID, *rollNewID, *rollWant, *rollNeed, *rollPagerdutyServiceKey)
-	case CMD_SCHEDUP:
+	case cmdSchedupText:
 		rctl.ScheduleUpdate(*schedupOldID, *schedupNewID, *schedupWant, *schedupNeed)
 	}
 }
@@ -174,7 +174,7 @@ func SessionName() string {
 // rctl is a struct for the data structures shared between commands
 // each member function represents a single command that takes over from main
 // and terminates the program on failure
-type RCtl struct {
+type rctlParams struct {
 	httpClient *http.Client
 	baseClient *api.Client
 	rcs        rcstore.Store
@@ -186,7 +186,7 @@ type RCtl struct {
 	logger     logging.Logger
 }
 
-func (r RCtl) Create(manifestPath, nodeSelector string, podLabels map[string]string, rcLabels map[string]string) {
+func (r rctlParams) Create(manifestPath, nodeSelector string, podLabels map[string]string, rcLabels map[string]string) {
 	manifest, err := pods.ManifestFromPath(manifestPath)
 	if err != nil {
 		r.logger.WithErrorAndFields(err, logrus.Fields{
@@ -213,7 +213,7 @@ func (r RCtl) Create(manifestPath, nodeSelector string, podLabels map[string]str
 	}
 }
 
-func (r RCtl) Delete(id string, force bool) {
+func (r rctlParams) Delete(id string, force bool) {
 	err := r.rcs.Delete(rc_fields.ID(id), force)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not delete replication controller in Consul")
@@ -221,7 +221,7 @@ func (r RCtl) Delete(id string, force bool) {
 	r.logger.WithField("id", id).Infoln("Deleted replication controller")
 }
 
-func (r RCtl) SetReplicas(id string, replicas int) {
+func (r rctlParams) SetReplicas(id string, replicas int) {
 	if replicas < 0 {
 		r.logger.NoFields().Fatalln("Cannot set negative replica count")
 	}
@@ -236,7 +236,7 @@ func (r RCtl) SetReplicas(id string, replicas int) {
 	}).Infoln("Set desired replica count of replication controller")
 }
 
-func (r RCtl) List(asJSON bool) {
+func (r rctlParams) List(asJSON bool) {
 	list, err := r.rcs.List()
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not list replication controllers in Consul")
@@ -255,7 +255,7 @@ func (r RCtl) List(asJSON bool) {
 	}
 }
 
-func (r RCtl) Get(id string, manifest bool) {
+func (r rctlParams) Get(id string, manifest bool) {
 	getRC, err := r.rcs.Get(rc_fields.ID(id))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not get replication controller in Consul")
@@ -276,7 +276,7 @@ func (r RCtl) Get(id string, manifest bool) {
 	}
 }
 
-func (r RCtl) Enable(id string) {
+func (r rctlParams) Enable(id string) {
 	err := r.rcs.Enable(rc_fields.ID(id))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not enable replication controller in Consul")
@@ -284,7 +284,7 @@ func (r RCtl) Enable(id string) {
 	r.logger.WithField("id", id).Infoln("Enabled replication controller")
 }
 
-func (r RCtl) Disable(id string) {
+func (r rctlParams) Disable(id string) {
 	err := r.rcs.Disable(rc_fields.ID(id))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not disable replication controller in Consul")
@@ -292,7 +292,7 @@ func (r RCtl) Disable(id string) {
 	r.logger.WithField("id", id).Infoln("Disabled replication controller")
 }
 
-func (r RCtl) RollingUpdate(oldID, newID string, want, need int, pagerdutyServiceKey string) {
+func (r rctlParams) RollingUpdate(oldID, newID string, want, need int, pagerdutyServiceKey string) {
 	if want < need {
 		r.logger.WithFields(logrus.Fields{
 			"want": want,
@@ -361,7 +361,7 @@ LOOP:
 	}
 }
 
-func (r RCtl) ScheduleUpdate(oldID, newID string, want, need int) {
+func (r rctlParams) ScheduleUpdate(oldID, newID string, want, need int) {
 	_, err := r.rls.CreateRollingUpdateFromExistingRCs(roll_fields.Update{
 		OldRC:           rc_fields.ID(oldID),
 		NewRC:           rc_fields.ID(newID),

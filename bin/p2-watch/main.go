@@ -63,7 +63,9 @@ func main() {
 					fmt.Println(fmt.Sprintf("No manifests exist for %s under %s (they may have been deleted)", *nodeName, podPrefix))
 				} else {
 					for _, result := range results {
-						result.Manifest.Write(os.Stdout)
+						if err := result.Manifest.Write(os.Stdout); err != nil {
+							log.Fatalf("write error: %v", err)
+						}
 					}
 				}
 			case err := <-errChan:
@@ -116,5 +118,7 @@ func watchPodClusters(client *api.Client) {
 		close(quitCh)
 	}()
 
-	pcStore.WatchAndSync(&printSyncer{logger}, quitCh)
+	if err := pcStore.WatchAndSync(&printSyncer{logger}, quitCh); err != nil {
+		log.Fatalf("error watching pod cluster: %v", err)
+	}
 }

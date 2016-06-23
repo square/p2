@@ -21,31 +21,30 @@ import (
 )
 
 const (
-	CmdCreate = "create"
-	CmdGet    = "get"
-	CmdDelete = "delete"
-	CmdUpdate = "update"
+	cmdCreateText = "create"
+	cmdGetText    = "get"
+	cmdDeleteText = "delete"
+	cmdUpdateText = "update"
 )
 
 var (
-	cmdCreate         = kingpin.Command(CmdCreate, "Create a pod cluster. ")
+	cmdCreate         = kingpin.Command(cmdCreateText, "Create a pod cluster. ")
 	createPodID       = cmdCreate.Flag("pod", "The pod ID on the pod cluster").Required().String()
 	createAZ          = cmdCreate.Flag("az", "The availability zone of the pod cluster").Required().String()
 	createName        = cmdCreate.Flag("name", "The cluster name (ie. staging, production)").Required().String()
-	createSelector    = cmdCreate.Flag("selector", "A pod selector to use for this pod cluster. This will be generated from other arguments if not provided").String()
 	createAnnotations = cmdCreate.Flag("annotations", "Complete set of annotations - must parse as JSON!").String()
 
-	cmdGet   = kingpin.Command(CmdGet, "Show a pod cluster. ")
+	cmdGet   = kingpin.Command(cmdGetText, "Show a pod cluster. ")
 	getPodID = cmdGet.Flag("pod", "The pod ID on the pod cluster").Required().String()
 	getAZ    = cmdGet.Flag("az", "The availability zone of the pod cluster").Required().String()
 	getName  = cmdGet.Flag("name", "The cluster name (ie. staging, production)").Required().String()
 
-	cmdDelete   = kingpin.Command(CmdDelete, "Delete a pod cluster. ")
+	cmdDelete   = kingpin.Command(cmdDeleteText, "Delete a pod cluster. ")
 	deletePodID = cmdDelete.Flag("pod", "The pod ID on the pod cluster").Required().String()
 	deleteAZ    = cmdDelete.Flag("az", "The availability zone of the pod cluster").Required().String()
 	deleteName  = cmdDelete.Flag("name", "The cluster name (ie. staging, production)").Required().String()
 
-	cmdUpdate         = kingpin.Command(CmdUpdate, "Update a pod cluster. ")
+	cmdUpdate         = kingpin.Command(cmdUpdateText, "Update a pod cluster. ")
 	updatePodID       = cmdUpdate.Flag("pod", "The pod ID on the pod cluster").Required().String()
 	updateAZ          = cmdUpdate.Flag("az", "The availability zone of the pod cluster").Required().String()
 	updateName        = cmdUpdate.Flag("name", "The cluster name (ie. staging, production)").Required().String()
@@ -64,7 +63,7 @@ func main() {
 	}
 
 	switch cmd {
-	case CmdCreate:
+	case cmdCreateText:
 		az := fields.AvailabilityZone(*createAZ)
 		cn := fields.ClusterName(*createName)
 		podID := types.PodID(*createPodID)
@@ -81,7 +80,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("err: %v", err)
 		}
-	case CmdGet:
+	case cmdGetText:
 		az := fields.AvailabilityZone(*getAZ)
 		cn := fields.ClusterName(*getName)
 		podID := types.PodID(*getPodID)
@@ -98,7 +97,7 @@ func main() {
 			logger.WithError(err).Fatalln("Unable to marshal PC as JSON")
 		}
 		fmt.Printf("%s", bytes)
-	case CmdDelete:
+	case cmdDeleteText:
 		az := fields.AvailabilityZone(*deleteAZ)
 		cn := fields.ClusterName(*deleteName)
 		podID := types.PodID(*deletePodID)
@@ -111,7 +110,7 @@ func main() {
 			}
 			os.Exit(1)
 		}
-	case CmdUpdate:
+	case cmdUpdateText:
 		az := fields.AvailabilityZone(*updateAZ)
 		cn := fields.ClusterName(*updateName)
 		podID := types.PodID(*updatePodID)

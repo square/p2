@@ -29,7 +29,7 @@ $ p2-restart --pod-dir /custom/pod/home
 
 func main() {
 	restart.Version(version.VERSION)
-	restart.Parse(os.Args[1:])
+	kingpin.MustParse(restart.Parse(os.Args[1:]))
 
 	pods.Log.Logger.Formatter = &logrus.TextFormatter{
 		DisableTimestamp: false,
