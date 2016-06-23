@@ -84,8 +84,8 @@ func main() {
 	if podIsManagedByRC && !*deallocation {
 		fmt.Fprintf(
 			os.Stderr,
-			"error: %s is managed by replication controller: %v\n"+
-				"It's possible you meant you deallocate this pod on this node. If so, please confirm your intention with --deallocate\n", rcID)
+			"error: %s is managed by replication controller: %s\n"+
+				"It's possible you meant you deallocate this pod on this node. If so, please confirm your intention with --deallocate\n", *nodeName, rcID)
 		os.Exit(2)
 	}
 
