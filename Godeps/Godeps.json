@@ -12,8 +12,8 @@
 		},
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
-			"Comment": "v0.9.0",
-			"Rev": "be52937128b38f1d99787bb476c789e2af1147f1"
+			"Comment": "v0.10.0",
+			"Rev": "4b6ea7319e214d98c938f12692336f7ca9348d6b"
 		},
 		{
 			"ImportPath": "github.com/alecthomas/template",
@@ -351,7 +351,8 @@
 		},
 		{
 			"ImportPath": "github.com/pborman/uuid",
-			"Rev": "ae80070655697e171ccb9b7a5b8671393599a471"
+			"Comment": "v1.0",
+			"Rev": "a97ce2ca70fa5a848076093f05e639a89ca34d06"
 		},
 		{
 			"ImportPath": "github.com/rcrowley/go-metrics",
@@ -359,43 +360,43 @@
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/curve25519",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/armor",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/clearsign",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/elgamal",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/errors",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/packet",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/s2k",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ssh",
-			"Rev": "1f22c0103821b9390939b6776727195525381532"
+			"Rev": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
@@ -411,12 +412,12 @@
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v2",
-			"Comment": "v2.1.10",
-			"Rev": "24b74030480f0aa98802b51ff4622a7eb09dfddd"
+			"Comment": "v2.1.11",
+			"Rev": "8cccfa8eb2e3183254457fb1749b2667fbc364c7"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
-			"Rev": "f7716cbe52baa25d2e9b0d0da546fcf909fc16b4"
+			"Rev": "a83829b6f1293c91addabc89d0571c246397bbf4"
 		},
 		{
 			"ImportPath": "k8s.io/kubernetes/pkg/labels",
@@ -437,6 +438,14 @@
 			"ImportPath": "k8s.io/kubernetes/pkg/util/validation",
 			"Comment": "v1.2.0-alpha.4",
 			"Rev": "4a9b0fc7153c733832d70c9f6d0796db177643a6"
+		},
+		{
+			"ImportPath": "golang.org/x/crypto/ed25519",
+			"Rev": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c"
+		},
+		{
+			"ImportPath": "golang.org/x/crypto/ed25519/internal/edwards25519",
+			"Rev": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c"
 		}
 	]
 }
