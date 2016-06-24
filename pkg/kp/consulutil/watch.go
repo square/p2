@@ -229,6 +229,8 @@ func WatchDiff(
 	outCh := make(chan *WatchedChanges)
 
 	go func() {
+		defer close(outCh)
+
 		// Keep track of what we have seen so that we know when something was changed
 		keys := make(map[string]*api.KVPair)
 

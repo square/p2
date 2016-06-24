@@ -26,6 +26,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/roll"
+	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/util/stream"
 	"github.com/square/p2/pkg/version"
 )
@@ -77,7 +78,7 @@ func main() {
 	rollStore := rollstore.NewConsul(client, nil)
 	healthChecker := checker.NewConsulHealthChecker(client)
 	labeler := labels.NewConsulApplicator(client, RetryCount)
-	var scheduler rc.Scheduler
+	var sched scheduler.Scheduler
 	if *labelEndpoint != "" {
 		endpoint, err := url.Parse(*labelEndpoint)
 		if err != nil {
@@ -89,9 +90,9 @@ func main() {
 		if err != nil {
 			logger.WithError(err).Fatalln("Could not create label applicator from endpoint")
 		}
-		scheduler = rc.NewApplicatorScheduler(httpLabeler)
+		sched = scheduler.NewApplicatorScheduler(httpLabeler)
 	} else {
-		scheduler = rc.NewApplicatorScheduler(labeler)
+		sched = scheduler.NewApplicatorScheduler(labeler)
 	}
 
 	// Start acquiring sessions
@@ -118,12 +119,12 @@ func main() {
 	}
 
 	// Run the farms!
-	go rc.NewFarm(kpStore, rcStore, scheduler, labeler, rcSub.Chan(), logger, klabels.Everything(), alerter).Start(nil)
+	go rc.NewFarm(kpStore, rcStore, sched, labeler, rcSub.Chan(), logger, klabels.Everything(), alerter).Start(nil)
 	roll.NewFarm(roll.UpdateFactory{
 		KPStore:       kpStore,
 		RCStore:       rcStore,
 		HealthChecker: healthChecker,
 		Labeler:       labeler,
-		Scheduler:     scheduler,
+		Scheduler:     sched,
 	}, kpStore, rollStore, rcStore, rlSub.Chan(), logger, labeler, klabels.Everything(), alerter).Start(nil)
 }

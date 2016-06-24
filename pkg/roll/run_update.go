@@ -18,6 +18,7 @@ import (
 	"github.com/square/p2/pkg/rc"
 	rcf "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -29,7 +30,7 @@ type update struct {
 	rcs     rcstore.Store
 	hcheck  checker.ConsulHealthChecker
 	labeler labels.Applicator
-	sched   rc.Scheduler
+	sched   scheduler.Scheduler
 
 	logger  logging.Logger
 	alerter alerting.Alerter
@@ -41,7 +42,7 @@ type update struct {
 }
 
 // Create a new Update. The kp.Store, rcstore.Store, labels.Applicator and
-// rc.Scheduler arguments should be the same as those of the RCs themselves. The
+// scheduler.Scheduler arguments should be the same as those of the RCs themselves. The
 // session must be valid for the lifetime of the Update; maintaining this is the
 // responsibility of the caller.
 func NewUpdate(
@@ -50,7 +51,7 @@ func NewUpdate(
 	rcs rcstore.Store,
 	hcheck checker.ConsulHealthChecker,
 	labeler labels.Applicator,
-	sched rc.Scheduler,
+	sched scheduler.Scheduler,
 	logger logging.Logger,
 	session kp.Session,
 	alerter alerting.Alerter,

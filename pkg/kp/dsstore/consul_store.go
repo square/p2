@@ -225,23 +225,33 @@ func (s *consulStore) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
 	inCh := consulutil.WatchDiff(dsTree, s.kv, quitCh, errCh)
 
 	go func() {
-		var kvps *consulutil.WatchedChanges
+		defer close(outCh)
+		defer close(errCh)
+
 		for {
+			var kvps *consulutil.WatchedChanges
+
+			// Make a list of changed daemon sets and sends it on outCh
+			outgoingDSs := WatchedDaemonSets{}
+
 			// Populate kvps by reading inCh and checking for errors
 			select {
 			case <-quitCh:
 				return
 			case err := <-errCh:
-				s.logger.WithError(err).Errorf("WatchDiff returned error, recovered.")
+				outgoingDSs.Err = util.Errorf("WatchDiff returned error: %v, recovered", err)
+				select {
+				case <-quitCh:
+					return
+				case outCh <- outgoingDSs:
+					continue
+				}
 			case kvps = <-inCh:
 				if kvps == nil {
 					s.logger.Errorf("Very odd, kvps should never be null, recovered.")
 					continue
 				}
 			}
-
-			// Make a list of changed daemon sets and sends it on outCh
-			outgoingDSs := WatchedDaemonSets{}
 
 			createdDSs, err := kvpsToDSs(kvps.Created)
 			if err != nil {

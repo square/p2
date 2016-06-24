@@ -26,10 +26,10 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/rc"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -112,7 +112,7 @@ func main() {
 	httpClient := cleanhttp.DefaultClient()
 	client := kp.NewConsulClient(opts)
 	labeler := labels.NewConsulApplicator(client, 3)
-	sched := rc.NewApplicatorScheduler(labeler)
+	sched := scheduler.NewApplicatorScheduler(labeler)
 	if *labelEndpoint != "" {
 		endpoint, err := url.Parse(*labelEndpoint)
 		if err != nil {
@@ -124,7 +124,7 @@ func main() {
 		if err != nil {
 			logging.DefaultLogger.WithError(err).Fatalln("Could not create label applicator from endpoint")
 		}
-		sched = rc.NewApplicatorScheduler(httpLabeler)
+		sched = scheduler.NewApplicatorScheduler(httpLabeler)
 	}
 	rctl := rctlParams{
 		httpClient: httpClient,
@@ -179,7 +179,7 @@ type rctlParams struct {
 	baseClient *api.Client
 	rcs        rcstore.Store
 	rls        rollstore.Store
-	sched      rc.Scheduler
+	sched      scheduler.Scheduler
 	labeler    labels.Applicator
 	kps        kp.Store
 	hcheck     checker.ConsulHealthChecker

@@ -14,9 +14,9 @@ import (
 	"github.com/square/p2/pkg/kp/rollstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/rc/fields"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/util"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -31,7 +31,7 @@ type UpdateFactory struct {
 	RCStore       rcstore.Store
 	HealthChecker checker.ConsulHealthChecker
 	Labeler       labels.Applicator
-	Scheduler     rc.Scheduler
+	Scheduler     scheduler.Scheduler
 }
 
 func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session kp.Session, alerter alerting.Alerter) Update {
