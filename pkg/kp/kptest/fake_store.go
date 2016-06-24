@@ -87,6 +87,9 @@ func (f *FakePodStore) ListPods(podPrefix kp.PodPrefix, hostname types.NodeName)
 func (f *FakePodStore) AllPods(podPrefix kp.PodPrefix) ([]kp.ManifestResult, time.Duration, error) {
 	res := make([]kp.ManifestResult, 0)
 	for key, manifest := range f.podResults {
+		if key.podPrefix != podPrefix {
+			continue
+		}
 		path := path.Join(string(podPrefix), key.hostname.String(), string(manifest.ID()))
 		res = append(res, kp.ManifestResult{
 			Manifest: manifest,
