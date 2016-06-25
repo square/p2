@@ -156,6 +156,8 @@ var DefaultBuilder = &ServiceBuilder{
 	Bin:         "/usr/bin/servicebuilder",
 }
 
+// DefaultChpst is the path to the default chpst binary. Specified as a var so you
+// can override at build time.
 var DefaultChpst = "/usr/bin/chpst"
 
 // write a servicebuilder yaml file
