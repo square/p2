@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -71,7 +72,7 @@ func setup(t *testing.T) (
 		rcData,
 		&kpStore,
 		rcStore,
-		NewApplicatorScheduler(applicator),
+		scheduler.NewApplicatorScheduler(applicator),
 		applicator,
 		logging.DefaultLogger,
 		alerter,

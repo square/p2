@@ -14,6 +14,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -83,7 +84,7 @@ type replicationController struct {
 
 	kpStore       kpStore
 	rcStore       rcstore.Store
-	scheduler     Scheduler
+	scheduler     scheduler.Scheduler
 	podApplicator labels.Applicator
 	alerter       alerting.Alerter
 }
@@ -92,7 +93,7 @@ func New(
 	fields fields.RC,
 	kpStore kpStore,
 	rcStore rcstore.Store,
-	scheduler Scheduler,
+	scheduler scheduler.Scheduler,
 	podApplicator labels.Applicator,
 	logger logging.Logger,
 	alerter alerting.Alerter,

@@ -15,6 +15,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/rc/rcmetrics"
+	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -32,7 +33,7 @@ type Farm struct {
 	// constructor arguments for rcs created by this farm
 	kpStore   kp.Store
 	rcStore   rcstore.Store
-	scheduler Scheduler
+	scheduler scheduler.Scheduler
 	labeler   labels.Applicator
 
 	// session stream for the rcs locked by this farm
@@ -58,7 +59,7 @@ type childRC struct {
 func NewFarm(
 	kpStore kp.Store,
 	rcs rcstore.Store,
-	scheduler Scheduler,
+	scheduler scheduler.Scheduler,
 	labeler labels.Applicator,
 	sessions <-chan string,
 	logger logging.Logger,

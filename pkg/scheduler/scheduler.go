@@ -1,4 +1,4 @@
-package rc
+package scheduler
 
 import (
 	klabels "k8s.io/kubernetes/pkg/labels"
