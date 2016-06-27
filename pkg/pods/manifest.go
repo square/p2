@@ -23,15 +23,28 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type LaunchableVersion struct {
+	ID   string            `yaml:"id"`
+	Tags map[string]string `yaml:"tags"`
+}
+
 type LaunchableStanza struct {
 	LaunchableType          string            `yaml:"launchable_type"`
 	LaunchableId            string            `yaml:"launchable_id"`
-	Location                string            `yaml:"location"`
 	DigestLocation          string            `yaml:"digest_location,omitempty"`
 	DigestSignatureLocation string            `yaml:"digest_signature_location,omitempty"`
 	RestartTimeout          string            `yaml:"restart_timeout,omitempty"`
 	CgroupConfig            cgroups.Config    `yaml:"cgroup,omitempty"`
 	Env                     map[string]string `yaml:"env,omitempty"`
+
+	// The URL from which the launchable can be downloaded. May not be used
+	// in conjunction with Version
+	Location string `yaml:"location"`
+
+	// An alternative to using Location to inform artifact downloading. Version information
+	// can be used to query a configured artifact registry which will provide the artifact
+	// URL. Version may not be used in conjunction with Location
+	Version LaunchableVersion `yaml:"version,omitempty"`
 }
 
 type StatusStanza struct {
@@ -425,6 +438,8 @@ func ValidManifest(m Manifest) error {
 			return fmt.Errorf("'%s': launchable must contain a 'launchable_type'", key)
 		case stanza.LaunchableId == "":
 			return fmt.Errorf("'%s': launchable must contain a 'launchable_id'", key)
+		case stanza.Version.ID != "":
+			return fmt.Errorf("'%s': 'version' launchable key not yet supported", key)
 		case stanza.Location == "":
 			return fmt.Errorf("'%s': launchable must contain a 'location'", key)
 		}
