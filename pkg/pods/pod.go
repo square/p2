@@ -6,10 +6,12 @@ import (
 	"io/ioutil"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/digest"
 	"github.com/square/p2/pkg/hoist"
@@ -379,7 +381,7 @@ func (pod *Pod) Uninstall() error {
 // Install will ensure that executables for all required services are present on the host
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
-func (pod *Pod) Install(manifest Manifest, artifactVerifier auth.ArtifactVerifier) error {
+func (pod *Pod) Install(manifest Manifest, verifier auth.ArtifactVerifier) error {
 	podHome := pod.path
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
@@ -397,7 +399,24 @@ func (pod *Pod) Install(manifest Manifest, artifactVerifier auth.ArtifactVerifie
 	}
 
 	for _, launchable := range launchables {
-		err := launchable.Install(artifactVerifier)
+		// This is awkward, we have a []launch.Launchable but now we need to find the launchable stanza each came from
+		// so we can find the location to download it from.
+		// TODO: support launchableStanza.Version in lieu of launchableStanza.Location
+		var launchableStanza LaunchableStanza
+		for launchableID, stanza := range manifest.GetLaunchableStanzas() {
+			if launchableID == launchable.ID() {
+				launchableStanza = stanza
+				break
+			}
+		}
+		locationURL, err := url.Parse(launchableStanza.Location)
+		if err != nil {
+			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
+			return util.Errorf("Couldn't parse launchable location '%s' as a URL: %s", launchableStanza.Location, err)
+		}
+
+		downloader := artifact.NewLocationDownloader(locationURL, uri.DefaultFetcher, verifier)
+		err = launchable.Install(downloader)
 		if err != nil {
 			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
 			return err
@@ -439,7 +458,7 @@ func (pod *Pod) Verify(manifest Manifest, authPolicy auth.Policy) error {
 
 		// Retrieve the digest data
 		launchableDigest, err := digest.ParseUris(
-			launchable.Fetcher(),
+			uri.DefaultFetcher,
 			digestLocationURL,
 			digestSignatureLocationURL,
 		)
@@ -660,14 +679,24 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 	if err != nil {
 		return nil, util.Errorf("Couldn't parse launchable location '%s' as a URL: %s", launchableStanza.Location, err)
 	}
+
+	// The path of a launchable URL is expected to end with
+	// /<launchable_id>_<version>.tar.gz. The launchable needs the
+	// <version> currently, which we parse from the URL. Future work is
+	// planned to implement more explicit versions specified in the
+	// LaunchableStanza in the pod manifest
+	version, err := versionFromLocation(locationURL)
+	if err != nil {
+		return nil, err
+	}
+
 	if launchableStanza.LaunchableType == "hoist" {
 		ret := &hoist.Launchable{
-			Location:         locationURL,
+			Version:          version,
 			Id:               launchableStanza.LaunchableId,
 			ServiceId:        serviceId,
 			RunAs:            runAsUser,
 			PodEnvDir:        pod.EnvDir(),
-			Fetcher:          uri.DefaultFetcher,
 			RootDir:          launchableRootDir,
 			P2Exec:           pod.P2Exec,
 			ExecNoLimit:      true,
@@ -699,6 +728,22 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 		pod.logLaunchableError(launchableStanza.LaunchableId, err, "Unknown launchable type")
 		return nil, err
 	}
+}
+
+// Uses the assumption that all locations have a Path component ending in
+// /<launchable_id>_<version>.tar.gz, which is intended to be phased out in
+// favor of explicit launchable versions specified in pod manifests
+// Version may not contain an underscore
+func versionFromLocation(location *url.URL) (string, error) {
+	filename := path.Base(location.Path)
+	parts := strings.Split(filename, "_")
+	if len(parts) < 2 {
+		return "", util.Errorf("Malformed filename in URL: %s", filename)
+	}
+
+	versionAndExtension := parts[len(parts)-1]
+
+	return versionAndExtension[:len(versionAndExtension)-len(".tar.gz")], nil
 }
 
 func (p *Pod) logError(err error, message string) {
