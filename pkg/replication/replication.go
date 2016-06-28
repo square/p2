@@ -1,6 +1,7 @@
 package replication
 
 import (
+	"math/rand"
 	"path"
 	"sort"
 	"strings"
@@ -190,11 +191,12 @@ func (r replication) Enact() {
 	// all child goroutines will be terminated on return
 	defer close(innerQuit)
 
+	aggregateHealth := AggregateHealth(r.manifest.ID(), r.health)
 	// this loop multiplexes the node queue across some goroutines
 	for i := 0; i < r.active; i++ {
 		go func() {
 			for node := range nodeQueue {
-				r.updateOne(node, done, innerQuit)
+				r.updateOne(node, done, innerQuit, aggregateHealth)
 			}
 		}()
 	}
@@ -252,7 +254,7 @@ func (r replication) handleRenewalErrors(session kp.Session, renewalErrCh chan e
 }
 
 // note: logging should be delegated somehow
-func (r replication) updateOne(node types.NodeName, done chan<- types.NodeName, quitCh <-chan struct{}) {
+func (r replication) updateOne(node types.NodeName, done chan<- types.NodeName, quitCh <-chan struct{}, aggregateHealth podHealth) {
 	targetSHA, _ := r.manifest.SHA()
 	nodeLogger := r.logger.SubLogger(logrus.Fields{"node": node})
 	nodeLogger.WithField("sha", targetSHA).Infoln("Updating node")
@@ -273,66 +275,48 @@ func (r replication) updateOne(node types.NodeName, done chan<- types.NodeName, 
 		)
 	}
 
-	realityResults := make(chan kp.ManifestResult)
-	realityErr := make(chan error)
-	realityQuit := make(chan struct{})
-	defer close(realityQuit)
-	go r.store.WatchPod(
-		kp.REALITY_TREE,
-		node,
-		r.manifest.ID(),
-		realityQuit,
-		realityErr,
-		realityResults,
-	)
-REALITY_LOOP:
+	r.ensureInReality(node, quitCh, nodeLogger, targetSHA)
+	r.ensureHealthy(node, done, quitCh, nodeLogger, aggregateHealth)
+}
+
+func (r *replication) ensureInReality(node types.NodeName, quitCh <-chan struct{}, nodeLogger logging.Logger, targetSHA string) {
 	for {
 		select {
 		case <-quitCh:
 			return
-		case err := <-realityErr:
-			nodeLogger.WithError(err).Errorln("Could not read reality store")
-			select {
-			case r.errCh <- err:
-			case <-quitCh:
-			}
-		case mResult := <-realityResults:
-			// if the pod key doesn't exist yet, that's okay just wait longer
-			if mResult.Manifest != nil {
-				receivedSHA, _ := mResult.Manifest.SHA()
+		case <-time.After(time.Duration(20+rand.Intn(10)) * time.Second): // random value for staggering
+			man, _, err := r.store.Pod(kp.REALITY_TREE, node, r.manifest.ID())
+			if err == pods.NoCurrentManifest {
+				// if the pod key doesn't exist yet, that's okay just wait longer
+			} else if err != nil {
+				nodeLogger.WithErrorAndFields(err, logrus.Fields{
+					"node": node,
+				}).Errorln("Could not read reality for pod manifest")
+			} else {
+				receivedSHA, _ := man.SHA()
 				if receivedSHA == targetSHA {
-					break REALITY_LOOP
+					nodeLogger.NoFields().Infoln("Node is current")
+					return
 				} else {
 					nodeLogger.WithFields(logrus.Fields{"current": receivedSHA, "target": targetSHA}).Infoln("Waiting for current")
 				}
 			}
 		}
 	}
-	nodeLogger.NoFields().Infoln("Node is current")
+}
 
-	healthResults := make(chan health.Result)
-	healthErr := make(chan error)
-	healthQuit := make(chan struct{})
-	defer close(healthQuit)
-	go r.health.WatchNodeService(
-		node,
-		string(r.manifest.ID()),
-		healthResults,
-		healthErr,
-		healthQuit,
-	)
-HEALTH_LOOP:
+func (r *replication) ensureHealthy(node types.NodeName, done chan<- types.NodeName, quitCh <-chan struct{}, nodeLogger logging.Logger, aggregateHealth podHealth) {
 	for {
 		select {
 		case <-quitCh:
 			return
-		case err := <-healthErr:
-			nodeLogger.WithError(err).Errorln("Could not read health check")
-			select {
-			case r.errCh <- err:
-			case <-quitCh:
+		case <-time.After(1 * time.Second):
+			res, err := aggregateHealth.GetHealth(node)
+			if err != nil {
+				nodeLogger.WithErrorAndFields(err, logrus.Fields{
+					"node": node,
+				}).Errorln("Could not get health, retrying")
 			}
-		case res := <-healthResults:
 			id := res.ID
 			status := res.Status
 			// treat an empty threshold as "passing"
@@ -344,14 +328,15 @@ HEALTH_LOOP:
 			if health.Compare(status, threshold) < 0 {
 				nodeLogger.WithFields(logrus.Fields{"check": id, "health": status}).Infoln("Node is not healthy")
 			} else {
-				break HEALTH_LOOP
+				r.logger.WithField("node", node).Infoln("Node is current and healthy")
+
+				// say that we're done or respond to a quit
+				select {
+				case done <- node:
+					return
+				case <-quitCh:
+				}
 			}
 		}
-	}
-	r.logger.WithField("node", node).Infoln("Node is current and healthy")
-
-	select {
-	case done <- node:
-	case <-quitCh:
 	}
 }
