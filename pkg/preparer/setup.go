@@ -52,7 +52,7 @@ type Preparer struct {
 	finishExec             []string
 	logExec                []string
 	logBridgeBlacklist     []string
-	artifactVerifier       auth.ArtifactVerifier
+	locationVerifier       auth.LocationVerifier
 }
 
 type PreparerConfig struct {
@@ -98,6 +98,11 @@ type UserAuth struct {
 }
 
 // --- Artifact verification strategies ---
+//
+// Type applies to verifying artifacts specified using the "location"
+// field in a launchable stanza. Other types of artifact specification
+// are being implemented which will use whichever verification strategy
+// is provided by the artifact registry.
 //
 // The type matches one of the auth.Verify* constants
 //
@@ -368,7 +373,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		finishExec:             finishExec,
 		logExec:                logExec,
 		logBridgeBlacklist:     preparerConfig.LogBridgeBlacklist,
-		artifactVerifier:       artifactVerifier,
+		locationVerifier:       artifactVerifier,
 	}, nil
 }
 
@@ -425,30 +430,18 @@ func getDeployerAuth(preparerConfig *PreparerConfig) (auth.Policy, error) {
 	return authPolicy, nil
 }
 
-func getArtifactVerifier(preparerConfig *PreparerConfig, logger *logging.Logger) (auth.ArtifactVerifier, error) {
+func getArtifactVerifier(preparerConfig *PreparerConfig, logger *logging.Logger) (auth.LocationVerifier, error) {
 	var verif ManifestVerification
 	var err error
-	switch t, _ := preparerConfig.ArtifactAuth["type"].(string); t {
+	switch t, _ := preparerConfig.ArtifactAuth["type"].(auth.VerificationType); t {
 	case "", auth.VerifyNone:
 		return auth.NopVerifier(), nil
-	case auth.VerifyManifest:
+	case auth.VerifyManifest, auth.VerifyBuild, auth.VerifyEither:
 		err = castYaml(preparerConfig.ArtifactAuth, &verif)
 		if err != nil {
 			return nil, util.Errorf("error configuring artifact verification: %v", err)
 		}
-		return auth.NewBuildManifestVerifier(verif.KeyringPath, uri.DefaultFetcher, logger)
-	case auth.VerifyBuild:
-		err = castYaml(preparerConfig.ArtifactAuth, &verif)
-		if err != nil {
-			return nil, util.Errorf("error configuring artifact verification: %v", err)
-		}
-		return auth.NewBuildVerifier(verif.KeyringPath, uri.DefaultFetcher, logger)
-	case auth.VerifyEither:
-		err = castYaml(preparerConfig.ArtifactAuth, &verif)
-		if err != nil {
-			return nil, util.Errorf("error configuring artifact verification: %v", err)
-		}
-		return auth.NewCompositeVerifier(verif.KeyringPath, uri.DefaultFetcher, logger)
+		return auth.NewCompositeVerifier(verif.KeyringPath, uri.DefaultFetcher, logger, t)
 	default:
 		return nil, util.Errorf("Unrecognized artifact verification type: %v", t)
 	}

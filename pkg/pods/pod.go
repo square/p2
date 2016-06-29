@@ -381,7 +381,8 @@ func (pod *Pod) Uninstall() error {
 // Install will ensure that executables for all required services are present on the host
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
-func (pod *Pod) Install(manifest Manifest, verifier auth.ArtifactVerifier) error {
+// TODO: support more than just Location verification here
+func (pod *Pod) Install(manifest Manifest, verifier auth.LocationVerifier) error {
 	podHome := pod.path
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {

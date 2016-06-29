@@ -25,10 +25,10 @@ type Downloader interface {
 type directDownloader struct {
 	location *url.URL
 	fetcher  uri.Fetcher
-	verifier auth.ArtifactVerifier
+	verifier auth.LocationVerifier
 }
 
-func NewDirectDownloader(location *url.URL, fetcher uri.Fetcher, verifier auth.ArtifactVerifier) Downloader {
+func NewDirectDownloader(location *url.URL, fetcher uri.Fetcher, verifier auth.LocationVerifier) Downloader {
 	return &directDownloader{
 		location: location,
 		fetcher:  fetcher,
@@ -79,4 +79,13 @@ func (l *directDownloader) DownloadTo(dst string, owner string) error {
 		return util.Errorf("error while extracting artifact: %s", err)
 	}
 	return err
+}
+
+// implements the Downloader interface, but instead of downloading the artifact
+// directly from a URL, it first discovers the download URL. Therefore, a discovery
+// URL is configured instead.
+type discoverDownloader struct {
+	discoverURL *url.URL
+	fetcher     uri.Fetcher
+	verifier    auth.LocationVerifier
 }
