@@ -44,7 +44,7 @@ func TestInstall(t *testing.T) {
 		RootDir:   launchableHome,
 	}
 
-	downloader := artifact.NewLocationDownloader(testLocation, fetcher, auth.NopVerifier())
+	downloader := artifact.NewDirectDownloader(testLocation, fetcher, auth.NopVerifier())
 	err = launchable.Install(downloader)
 	Assert(t).IsNil(err, "there should not have been an error when installing")
 

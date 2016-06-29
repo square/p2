@@ -415,7 +415,7 @@ func (pod *Pod) Install(manifest Manifest, verifier auth.ArtifactVerifier) error
 			return util.Errorf("Couldn't parse launchable location '%s' as a URL: %s", launchableStanza.Location, err)
 		}
 
-		downloader := artifact.NewLocationDownloader(locationURL, uri.DefaultFetcher, verifier)
+		downloader := artifact.NewDirectDownloader(locationURL, uri.DefaultFetcher, verifier)
 		err = launchable.Install(downloader)
 		if err != nil {
 			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")

@@ -22,21 +22,21 @@ type Downloader interface {
 
 // Implements the Downloader interface. Simply fetches a .tar.gz file from a
 // configured URL and extracts it to the location passed to DownloadTo
-type locationDownloader struct {
+type directDownloader struct {
 	location *url.URL
 	fetcher  uri.Fetcher
 	verifier auth.ArtifactVerifier
 }
 
-func NewLocationDownloader(location *url.URL, fetcher uri.Fetcher, verifier auth.ArtifactVerifier) Downloader {
-	return &locationDownloader{
+func NewDirectDownloader(location *url.URL, fetcher uri.Fetcher, verifier auth.ArtifactVerifier) Downloader {
+	return &directDownloader{
 		location: location,
 		fetcher:  fetcher,
 		verifier: verifier,
 	}
 }
 
-func (l *locationDownloader) DownloadTo(dst string, owner string) error {
+func (l *directDownloader) DownloadTo(dst string, owner string) error {
 	// Write to a temporary file for easy cleanup if the network transfer fails
 	// TODO: the end of the artifact URL may not always be suitable as a directory
 	// name
