@@ -3,6 +3,8 @@ package dsstoretest
 import (
 	"sync"
 
+	"github.com/square/p2/pkg/util"
+
 	"github.com/hashicorp/consul/api"
 	"github.com/pborman/uuid"
 	"github.com/square/p2/pkg/ds/fields"
@@ -62,14 +64,18 @@ func (s *FakeDSStore) Create(
 
 	s.watchersLock.Lock()
 	defer s.watchersLock.Unlock()
-	if watcher, ok := s.watchers[id]; ok {
-		watched := FakeWatchedDaemonSet{
-			DaemonSet: &ds,
-			Operation: created,
-			Err:       nil,
-		}
-		watcher <- watched
+
+	if _, ok := s.watchers[id]; ok {
+		return ds, util.Errorf("Daemon set uuid collision on id: %v", id)
 	}
+
+	watched := FakeWatchedDaemonSet{
+		DaemonSet: &ds,
+		Operation: created,
+		Err:       nil,
+	}
+	s.watchers[id] = make(chan FakeWatchedDaemonSet, 1)
+	s.watchers[id] <- watched
 
 	return ds, nil
 }
