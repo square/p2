@@ -149,7 +149,6 @@ func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 		return false, err
 	}
 
-	var successes []bool
 	for _, launchable := range launchables {
 		err := launchable.MakeCurrent()
 		if err != nil {
@@ -162,22 +161,17 @@ func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 			// if a launchable's post-activate fails, we probably can't
 			// launch it, but this does not break the entire pod
 			pod.logLaunchableError(launchable.ServiceID(), err, out)
-			successes = append(successes, false)
 		} else {
 			if out != "" {
 				pod.logger.WithField("output", out).Infoln("Successfully post-activated")
 			}
-			successes = append(successes, true)
 		}
 	}
 
 	err = pod.buildRunitServices(launchables, manifest)
 
 	success := true
-	for i, launchable := range launchables {
-		if !successes[i] {
-			continue
-		}
+	for _, launchable := range launchables {
 		err = launchable.Launch(pod.ServiceBuilder, pod.SV) // TODO: make these configurable
 		switch err.(type) {
 		case nil:
