@@ -408,7 +408,7 @@ func TestReservedLabels(t *testing.T) {
 	err = rc.meetDesires()
 	Assert(t).IsNil(err, "unexpected error scheduling nodes")
 
-	labeled, err := applicator.GetLabels(labels.POD, MakePodLabelKey("node1", "testPod"))
+	labeled, err := applicator.GetLabels(labels.POD, labels.MakePodLabelKey("node1", "testPod"))
 	Assert(t).IsNil(err, "unexpected error getting pod labels")
 
 	Assert(t).AreEqual(labeled.Labels[rcstore.PodIDLabel], "testPod", "Pod label not set as expected")

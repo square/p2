@@ -259,6 +259,14 @@ func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type
 	return aggregator.Watch(selector, quitCh)
 }
 
+// these utility functions are used primarily while we exist in a mutable
+// deployment world. We will need to figure out how to replace these with
+// different datasources to allow RCs and DSs to continue to function correctly
+// in the future.
+func MakePodLabelKey(node types.NodeName, podID types.PodID) string {
+	return node.String() + "/" + podID.String()
+}
+
 func NodeAndPodIDFromPodLabel(labeled Labeled) (types.NodeName, types.PodID, error) {
 	if labeled.LabelType != POD {
 		return "", "", util.Errorf("Label was not a pod label, was %s", labeled.LabelType)

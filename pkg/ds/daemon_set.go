@@ -282,9 +282,9 @@ func (ds *daemonSet) schedule(node types.NodeName) error {
 
 	// Will apply the following label on the key <labels.POD>/<node>/<ds.Manifest.ID()>:
 	// 	{ DSIDLabel : ds.ID() }
-	// eg node/127.0.0.1[daemon_set_id] := test_ds_id
+	// eg node/127.0.0.1/test_pod[daemon_set_id] := test_ds_id
 	// This is for indicating that this pod path belongs to this daemon set
-	id := MakePodLabelKey(node, ds.Manifest.ID())
+	id := labels.MakePodLabelKey(node, ds.Manifest.ID())
 	err := ds.applicator.SetLabel(labels.POD, id, DSIDLabel, ds.ID().String())
 	if err != nil {
 		return util.Errorf("Error setting label: %v", err)
@@ -312,7 +312,7 @@ func (ds *daemonSet) unschedule(node types.NodeName) error {
 
 	// Will remove the following label on the key <labels.POD>/<node>/<ds.Manifest.ID()>: DSIDLabel
 	// This is for indicating that this pod path no longer belongs to this daemon set
-	id := MakePodLabelKey(node, ds.Manifest.ID())
+	id := labels.MakePodLabelKey(node, ds.Manifest.ID())
 	err = ds.applicator.RemoveLabel(labels.POD, id, DSIDLabel)
 	if err != nil {
 		return util.Errorf("Error removing label: %v", err)
@@ -344,8 +344,4 @@ func (ds *daemonSet) CurrentPods() (PodLocations, error) {
 	}
 
 	return result, nil
-}
-
-func MakePodLabelKey(node types.NodeName, podID types.PodID) string {
-	return node.String() + "/" + podID.String()
 }

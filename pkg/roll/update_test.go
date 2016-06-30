@@ -788,7 +788,7 @@ func transferNode(node types.NodeName, manifest pods.Manifest, upd update) error
 	if _, err := upd.kps.SetPod(kp.REALITY_TREE, node, manifest); err != nil {
 		return err
 	}
-	return upd.labeler.SetLabel(labels.POD, rc.MakePodLabelKey(node, manifest.ID()), rc.RCIDLabel, string(upd.NewRC))
+	return upd.labeler.SetLabel(labels.POD, labels.MakePodLabelKey(node, manifest.ID()), rc.RCIDLabel, string(upd.NewRC))
 }
 
 func assertRCUpdates(t *testing.T, rc *rc_fields.RC, upd <-chan struct{}, expect int, desc string) {
