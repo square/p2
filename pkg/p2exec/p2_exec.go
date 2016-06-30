@@ -1,6 +1,8 @@
 package p2exec
 
-const DefaultP2Exec = "/usr/local/bin/p2-exec"
+// DefaultP2Exec is the path to the default p2-exec binary. Specified as a var so you
+// can override at build time.
+var DefaultP2Exec = "/usr/local/bin/p2-exec"
 
 // Struct that can be used to build an invocation of p2-exec with any
 // applicable flags

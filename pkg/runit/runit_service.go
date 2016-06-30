@@ -32,7 +32,15 @@ const (
 	STATUS_RUN  = "run"
 )
 
-var DefaultSV = &sv{"/usr/bin/sv"}
+// DefaultSVPath is the path to the default sv binary. Specified as a var so you
+// can override at build time.
+var DefaultSVPath = "/usr/bin/sv"
+
+var DefaultSV *sv
+func init() {
+	// Setup in init so if DefaultSVPath is changed at build time we use the changed value
+	DefaultSV = &sv{Bin: DefaultSVPath}
+}
 
 var statOutput = regexp.MustCompile(`(run|down): ([/\w\_\-\.]+): \(pid ([\d]+)\) (\d+s); (run|down): log: \(pid ([\d]+)\) (\d+s)`)
 
