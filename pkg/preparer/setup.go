@@ -192,10 +192,6 @@ func getTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 		}
 	}
 
-	if len(certs) == 0 && cas == nil {
-		return nil, nil
-	}
-
 	tlsConfig := &tls.Config{
 		Certificates: certs,
 		ClientCAs:    cas,
