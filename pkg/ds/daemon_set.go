@@ -33,22 +33,7 @@ type DaemonSet interface {
 	) <-chan error
 
 	// CurrentPods() returns all nodes that are scheduled by this daemon set
-	CurrentPods() (PodLocations, error)
-}
-
-type PodLocation struct {
-	Node  types.NodeName
-	PodID types.PodID
-}
-type PodLocations []PodLocation
-
-// Nodes returns a list of just the locations' nodes.
-func (l PodLocations) Nodes() []types.NodeName {
-	nodes := make([]types.NodeName, len(l))
-	for i, pod := range l {
-		nodes[i] = pod.Node
-	}
-	return nodes
+	CurrentPods() (types.PodLocations, error)
 }
 
 // These methods are the same as the methods of the same name in kp.Store.
@@ -321,7 +306,7 @@ func (ds *daemonSet) unschedule(node types.NodeName) error {
 	return nil
 }
 
-func (ds *daemonSet) CurrentPods() (PodLocations, error) {
+func (ds *daemonSet) CurrentPods() (types.PodLocations, error) {
 	// Changing DaemonSet.ID is not permitted, so as long as there is no uuid
 	// collision, this will always get the current pod path that this daemon set
 	// had scheduled on
@@ -332,7 +317,7 @@ func (ds *daemonSet) CurrentPods() (PodLocations, error) {
 		return nil, util.Errorf("Unable to get matches on pod tree: %v", err)
 	}
 
-	result := make(PodLocations, len(podMatches))
+	result := make(types.PodLocations, len(podMatches))
 	for i, podMatch := range podMatches {
 		// ID will be something like <node>/<PodID>
 		node, podID, err := labels.NodeAndPodIDFromPodLabel(podMatch)
