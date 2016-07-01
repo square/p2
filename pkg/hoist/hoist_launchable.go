@@ -3,34 +3,28 @@ package hoist
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
 
 	"github.com/square/p2/pkg/artifact"
-	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/cgroups"
-	"github.com/square/p2/pkg/gzip"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
-	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 )
 
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type Launchable struct {
-	Location         *url.URL            // A URL where we can download the artifact from.
 	Id               string              // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
+	Version          string              // A version identifier
 	ServiceId        string              // A (host-wise) unique identifier for this launchable, used when creating runit services
 	RunAs            string              // The user to assume when launching the executable
 	PodEnvDir        string              // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
-	Fetcher          uri.Fetcher         // Callback that downloads the file from the remote location.
 	RootDir          string              // The root directory of the launchable, containing N:N>=1 installs.
 	P2Exec           string              // Struct that can be used to build a p2-exec invocation with appropriate flags
 	ExecNoLimit      bool                // If set, execute with the -n (--no-limit) argument to p2-exec
@@ -52,10 +46,6 @@ func (a LaunchAdapter) ID() string {
 
 func (a LaunchAdapter) ServiceID() string {
 	return a.Launchable.ServiceId
-}
-
-func (a LaunchAdapter) Fetcher() uri.Fetcher {
-	return a.Launchable.Fetcher
 }
 
 var _ launch.Launchable = &LaunchAdapter{}
@@ -274,63 +264,21 @@ func (hl *Launchable) Installed() bool {
 	return err == nil
 }
 
-func (hl *Launchable) Install(verifier auth.ArtifactVerifier) error {
+func (hl *Launchable) Install(downloader artifact.Downloader) error {
 	if hl.Installed() {
 		// install is idempotent, no-op if already installed
 		return nil
 	}
 
-	// Write to a temporary file for easy cleanup if the network transfer fails
-	// TODO: the end of the artifact URL may not always be suitable as a directory
-	// name
-	artifactFile, err := ioutil.TempFile("", filepath.Base(hl.Location.Path))
-	if err != nil {
-		return err
-	}
-	defer os.Remove(artifactFile.Name())
-	defer artifactFile.Close()
-
-	remoteData, err := hl.Fetcher.Open(hl.Location)
-	if err != nil {
-		return err
-	}
-	defer remoteData.Close()
-	_, err = io.Copy(artifactFile, remoteData)
-	if err != nil {
-		return util.Errorf("Could not copy artifact locally: %v", err)
-	}
-	// rewind once so we can ask the verifier
-	_, err = artifactFile.Seek(0, os.SEEK_SET)
-	if err != nil {
-		return util.Errorf("Could not reset artifact file position for verification: %v", err)
-	}
-
-	err = verifier.VerifyHoistArtifact(artifactFile, hl.Location)
-	if err != nil {
-		return err
-	}
-
-	// rewind a second time to allow the archive to be unpacked
-	_, err = artifactFile.Seek(0, os.SEEK_SET)
-	if err != nil {
-		return util.Errorf("Could not reset artifact file position after verification: %v", err)
-	}
-
-	err = gzip.ExtractTarGz(hl.RunAs, artifactFile, hl.InstallDir())
-	if err != nil {
-		_ = os.RemoveAll(hl.InstallDir())
-		return util.Errorf("error while extracting %s: %s", hl.Version(), err)
-	}
-	return err
+	return downloader.DownloadTo(hl.InstallDir(), hl.RunAs)
 }
 
 // The version of the artifact is determined from the artifact location. If the
 // version tag is set in the location's query, that is returned. Otherwise, the
 // version is derived from the location, using the naming scheme
 // <the-app>_<unique-version-string>.tar.gz
-func (hl *Launchable) Version() string {
-	fileName := filepath.Base(hl.Location.Path)
-	return fileName[:len(fileName)-len(".tar.gz")]
+func (hl *Launchable) Name() string {
+	return fmt.Sprintf("%s_%s", hl.Id, hl.Version)
 }
 
 func (*Launchable) Type() string {
@@ -401,7 +349,7 @@ func (hl *Launchable) AllInstallsDir() string {
 }
 
 func (hl *Launchable) InstallDir() string {
-	launchableName := hl.Version()
+	launchableName := hl.Name()
 	return filepath.Join(hl.AllInstallsDir(), launchableName)
 }
 

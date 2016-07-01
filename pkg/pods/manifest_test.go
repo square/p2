@@ -39,10 +39,10 @@ launchables:
   my-app:
     launchable_type: hoist
     launchable_id: web
-    location: https://localhost:4444/foo/bar/baz.tar.gz
     cgroup:
       cpus: 4
       memory: 1073741824
+    location: https://localhost:4444/foo/bar/baz.tar.gz
 config:
   ENVIRONMENT: staging
 status:
@@ -56,10 +56,10 @@ launchables:
   my-app:
     launchable_type: hoist
     launchable_id: web
-    location: https://localhost:4444/foo/bar/baz.tar.gz
     cgroup:
       cpus: 4
       memory: 1073741824
+    location: https://localhost:4444/foo/bar/baz.tar.gz
 config:
   ENVIRONMENT: staging
 status_port: 8000
@@ -142,7 +142,7 @@ func TestPodManifestCanReportItsSHA(t *testing.T) {
 	val, err := manifest.SHA()
 	Assert(t).IsNil(err, "should not have erred when getting SHA")
 	Assert(t).AreEqual(
-		"fda3c8130dd7e2850b80bbbc0e56dcd3add02d4d67bed5cd3f8679db04854c58",
+		"92d47f397fbf6679bb7af7e68692df95de811b2993199c2626570984e5c5de3e",
 		val,
 		"SHA mismatched expectations - if this was expected, change the assertion value",
 	)

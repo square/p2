@@ -2,13 +2,11 @@ package hoist
 
 import (
 	"io/ioutil"
-	"net/url"
 	"os"
 	"os/user"
 	"runtime"
 
 	"github.com/square/p2/pkg/runit"
-	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -17,14 +15,13 @@ func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuild
 	launchableInstallDir := util.From(runtime.Caller(0)).ExpandPath(dirName)
 
 	launchable := &Launchable{
-		Location:  &url.URL{Path: "testLaunchable.tar.gz"},
 		Id:        "testLaunchable",
 		ServiceId: "testPod__testLaunchable",
 		RunAs:     "testPod",
 		PodEnvDir: tempDir,
-		Fetcher:   uri.DefaultFetcher,
 		RootDir:   launchableInstallDir,
 		P2Exec:    util.From(runtime.Caller(0)).ExpandPath("fake_p2-exec"),
+		Version:   "abc123",
 	}
 
 	curUser, err := user.Current()

@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
@@ -35,16 +36,16 @@ func TestInstall(t *testing.T) {
 	defer os.RemoveAll(launchableHome)
 
 	launchable := &Launchable{
-		Location:  testLocation,
 		Id:        "hello",
+		Version:   "def456",
 		ServiceId: "hoisted-hello__hello",
 		RunAs:     currentUser.Username,
 		PodEnvDir: launchableHome,
-		Fetcher:   fetcher,
 		RootDir:   launchableHome,
 	}
 
-	err = launchable.Install(auth.NopVerifier())
+	downloader := artifact.NewLocationDownloader(testLocation, fetcher, auth.NopVerifier())
+	err = launchable.Install(downloader)
 	Assert(t).IsNil(err, "there should not have been an error when installing")
 
 	Assert(t).AreEqual(
@@ -53,7 +54,7 @@ func TestInstall(t *testing.T) {
 		"The correct url wasn't set for the curl library",
 	)
 
-	hoistedHelloUnpacked := path.Join(launchableHome, "installs", "hoisted-hello_def456")
+	hoistedHelloUnpacked := path.Join(launchableHome, "installs", "hello_def456")
 	if info, err := os.Stat(hoistedHelloUnpacked); err != nil || !info.IsDir() {
 		t.Fatalf("Expected %s to be the unpacked artifact location", hoistedHelloUnpacked)
 	}
@@ -65,25 +66,19 @@ func TestInstall(t *testing.T) {
 
 func TestInstallDir(t *testing.T) {
 	tempDir := os.TempDir()
-	testLocation := &url.URL{
-		Scheme: "http",
-		Path:   "/test_launchable_abc123.tar.gz",
-		Host:   "someserver",
-	}
 
 	launchable := &Launchable{
-		Location:  testLocation,
 		Id:        "testLaunchable",
+		Version:   "abc123",
 		ServiceId: "testPod__testLaunchable",
 		RunAs:     "testuser",
 		PodEnvDir: tempDir,
-		Fetcher:   uri.DefaultFetcher,
 		RootDir:   tempDir,
 	}
 
 	installDir := launchable.InstallDir()
 
-	expectedDir := path.Join(tempDir, "installs", "test_launchable_abc123")
+	expectedDir := path.Join(tempDir, "installs", "testLaunchable_abc123")
 	Assert(t).AreEqual(installDir, expectedDir, "Install dir did not have expected value")
 }
 
