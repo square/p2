@@ -360,7 +360,7 @@ func (rc *replicationController) CurrentPods() (PodLocations, error) {
 // If forEachLabel encounters any error applying the function, it returns that error immediately.
 // The function is not further applied to subsequent labels on an error.
 func (rc *replicationController) forEachLabel(node types.NodeName, f func(id, k, v string) error) error {
-	id := MakePodLabelKey(node, rc.Manifest.ID())
+	id := labels.MakePodLabelKey(node, rc.Manifest.ID())
 
 	// user-requested labels.
 	for k, v := range rc.PodLabels {
@@ -400,13 +400,4 @@ func (rc *replicationController) unschedule(node types.NodeName) error {
 	return rc.forEachLabel(node, func(podID, k, _ string) error {
 		return rc.podApplicator.RemoveLabel(labels.POD, podID, k)
 	})
-}
-
-// these utility functions are used primarily while we exist in a mutable
-// deployment world. We will need to figure out how to replace these with
-// different datasources to allow RCs to continue to function correctly
-// in the future.
-
-func MakePodLabelKey(node types.NodeName, podID types.PodID) string {
-	return node.String() + "/" + podID.String()
 }
