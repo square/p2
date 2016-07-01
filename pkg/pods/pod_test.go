@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
@@ -40,7 +41,7 @@ func getUpdatedManifest(t *testing.T) Manifest {
 	return pod
 }
 
-func getLaunchableStanzasFromTestManifest(t *testing.T) map[string]LaunchableStanza {
+func getLaunchableStanzasFromTestManifest(t *testing.T) map[string]types.LaunchableStanza {
 	return getTestPodManifest(t).GetLaunchableStanzas()
 }
 
@@ -312,6 +313,7 @@ func TestUninstall(t *testing.T) {
 		Id:             "testPod",
 		path:           testPodDir,
 		ServiceBuilder: serviceBuilder,
+		Registry:       artifact.NewRegistry(),
 	}
 	manifest := getTestPodManifest(t)
 	manifestContent, err := manifest.Marshal()

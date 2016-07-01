@@ -37,6 +37,26 @@ func buildTestFileTree(t *testing.T, files []testFile) string {
 	return tempDir
 }
 
+// This is copied from pkg/artifact/location_data.go to avoid an import cycle
+func VerificationDataForLocation(location *url.URL) VerificationData {
+	manifestLocation := &url.URL{}
+	*manifestLocation = *location
+	manifestLocation.Path = location.Path + ".manifest"
+
+	manifestSignatureLocation := &url.URL{}
+	*manifestSignatureLocation = *manifestLocation
+	manifestSignatureLocation.Path = manifestLocation.Path + ".sig"
+
+	buildSignatureLocation := &url.URL{}
+	*buildSignatureLocation = *location
+	buildSignatureLocation.Path = location.Path + ".sig"
+	return VerificationData{
+		ManifestLocation:          manifestLocation,
+		ManifestSignatureLocation: manifestSignatureLocation,
+		BuildSignatureLocation:    buildSignatureLocation,
+	}
+}
+
 func testVerifiedWithFiles(t *testing.T, files []testFile, verifier ArtifactVerifier) {
 	testDir := buildTestFileTree(t, files)
 	defer os.RemoveAll(testDir)
@@ -50,8 +70,9 @@ func testVerifiedWithFiles(t *testing.T, files []testFile, verifier ArtifactVeri
 		Scheme: "file",
 		Path:   filePath,
 	}
+	verificationData := VerificationDataForLocation(url)
 
-	err = verifier.VerifyHoistArtifact(localCopy, url)
+	err = verifier.VerifyHoistArtifact(localCopy, verificationData)
 	if err != nil {
 		t.Fatalf("Expected files %v to pass verification, got: %v", files, err)
 	}
@@ -71,7 +92,9 @@ func testNotVerifiedWithFiles(t *testing.T, files []testFile, verifier ArtifactV
 		Path:   filePath,
 	}
 
-	err = verifier.VerifyHoistArtifact(localCopy, url)
+	verificationData := VerificationDataForLocation(url)
+
+	err = verifier.VerifyHoistArtifact(localCopy, verificationData)
 	if err == nil {
 		t.Fatal("Expected files %v to fail verification, but didn't")
 	}

@@ -14,7 +14,6 @@ import (
 	"os"
 	"path"
 
-	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
@@ -22,30 +21,6 @@ import (
 	"golang.org/x/crypto/openpgp/clearsign"
 	"gopkg.in/yaml.v2"
 )
-
-type LaunchableVersion struct {
-	ID   string            `yaml:"id"`
-	Tags map[string]string `yaml:"tags"`
-}
-
-type LaunchableStanza struct {
-	LaunchableType          string            `yaml:"launchable_type"`
-	LaunchableId            string            `yaml:"launchable_id"`
-	DigestLocation          string            `yaml:"digest_location,omitempty"`
-	DigestSignatureLocation string            `yaml:"digest_signature_location,omitempty"`
-	RestartTimeout          string            `yaml:"restart_timeout,omitempty"`
-	CgroupConfig            cgroups.Config    `yaml:"cgroup,omitempty"`
-	Env                     map[string]string `yaml:"env,omitempty"`
-
-	// The URL from which the launchable can be downloaded. May not be used
-	// in conjunction with Version
-	Location string `yaml:"location"`
-
-	// An alternative to using Location to inform artifact downloading. Version information
-	// can be used to query a configured artifact registry which will provide the artifact
-	// URL. Version may not be used in conjunction with Location
-	Version LaunchableVersion `yaml:"version,omitempty"`
-}
 
 type StatusStanza struct {
 	HTTP          bool   `yaml:"http,omitempty"`
@@ -62,7 +37,7 @@ type ManifestBuilder interface {
 	SetStatusHTTP(statusHTTP bool)
 	SetStatusPath(statusPath string)
 	SetStatusPort(port int)
-	SetLaunchables(launchableStanzas map[string]LaunchableStanza)
+	SetLaunchables(launchableStanzas map[string]types.LaunchableStanza)
 }
 
 var _ ManifestBuilder = manifestBuilder{}
@@ -89,7 +64,7 @@ type Manifest interface {
 	WriteConfig(out io.Writer) error
 	PlatformConfigFileName() (string, error)
 	WritePlatformConfig(out io.Writer) error
-	GetLaunchableStanzas() map[string]LaunchableStanza
+	GetLaunchableStanzas() map[string]types.LaunchableStanza
 	GetConfig() map[interface{}]interface{}
 	SHA() (string, error)
 	GetStatusHTTP() bool
@@ -107,14 +82,14 @@ type Manifest interface {
 var _ Manifest = &manifest{}
 
 type manifest struct {
-	Id                types.PodID                 `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
-	RunAs             string                      `yaml:"run_as,omitempty"`
-	LaunchableStanzas map[string]LaunchableStanza `yaml:"launchables"`
-	Config            map[interface{}]interface{} `yaml:"config"`
-	StatusPort        int                         `yaml:"status_port,omitempty"`
-	StatusHTTP        bool                        `yaml:"status_http,omitempty"`
-	Status            StatusStanza                `yaml:"status,omitempty"`
-	RestartPolicy     runit.RestartPolicy         `yaml:"restart_policy,omitempty"`
+	Id                types.PodID                       `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
+	RunAs             string                            `yaml:"run_as,omitempty"`
+	LaunchableStanzas map[string]types.LaunchableStanza `yaml:"launchables"`
+	Config            map[interface{}]interface{}       `yaml:"config"`
+	StatusPort        int                               `yaml:"status_port,omitempty"`
+	StatusHTTP        bool                              `yaml:"status_http,omitempty"`
+	Status            StatusStanza                      `yaml:"status,omitempty"`
+	RestartPolicy     runit.RestartPolicy               `yaml:"restart_policy,omitempty"`
 
 	// Used to track the original bytes so that we don't reorder them when
 	// doing a yaml.Unmarshal and a yaml.Marshal in succession
@@ -144,11 +119,11 @@ func (m manifestBuilder) SetID(id types.PodID) {
 	m.manifest.Id = id
 }
 
-func (manifest *manifest) GetLaunchableStanzas() map[string]LaunchableStanza {
+func (manifest *manifest) GetLaunchableStanzas() map[string]types.LaunchableStanza {
 	return manifest.LaunchableStanzas
 }
 
-func (manifest *manifest) SetLaunchables(launchableStanzas map[string]LaunchableStanza) {
+func (manifest *manifest) SetLaunchables(launchableStanzas map[string]types.LaunchableStanza) {
 	manifest.LaunchableStanzas = launchableStanzas
 }
 

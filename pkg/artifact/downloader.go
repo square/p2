@@ -17,37 +17,35 @@ import (
 type Downloader interface {
 	// Downloads the artifact represented by the Downloader to the
 	// specified path and transfers file ownership to the specified user
-	DownloadTo(destination string, owner string) error
+	Download(location *url.URL, verificationData auth.VerificationData, destination string, owner string) error
 }
 
 // Implements the Downloader interface. Simply fetches a .tar.gz file from a
 // configured URL and extracts it to the location passed to DownloadTo
 type locationDownloader struct {
-	location *url.URL
 	fetcher  uri.Fetcher
 	verifier auth.ArtifactVerifier
 }
 
-func NewLocationDownloader(location *url.URL, fetcher uri.Fetcher, verifier auth.ArtifactVerifier) Downloader {
+func NewLocationDownloader(fetcher uri.Fetcher, verifier auth.ArtifactVerifier) Downloader {
 	return &locationDownloader{
-		location: location,
 		fetcher:  fetcher,
 		verifier: verifier,
 	}
 }
 
-func (l *locationDownloader) DownloadTo(dst string, owner string) error {
+func (l *locationDownloader) Download(location *url.URL, verificationData auth.VerificationData, dst string, owner string) error {
 	// Write to a temporary file for easy cleanup if the network transfer fails
 	// TODO: the end of the artifact URL may not always be suitable as a directory
 	// name
-	artifactFile, err := ioutil.TempFile("", filepath.Base(l.location.Path))
+	artifactFile, err := ioutil.TempFile("", filepath.Base(location.Path))
 	if err != nil {
 		return err
 	}
 	defer os.Remove(artifactFile.Name())
 	defer artifactFile.Close()
 
-	remoteData, err := l.fetcher.Open(l.location)
+	remoteData, err := l.fetcher.Open(location)
 	if err != nil {
 		return err
 	}
@@ -62,7 +60,7 @@ func (l *locationDownloader) DownloadTo(dst string, owner string) error {
 		return util.Errorf("Could not reset artifact file position for verification: %v", err)
 	}
 
-	err = l.verifier.VerifyHoistArtifact(artifactFile, l.location)
+	err = l.verifier.VerifyHoistArtifact(artifactFile, verificationData)
 	if err != nil {
 		return err
 	}
