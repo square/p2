@@ -40,7 +40,7 @@ type HookListener struct {
 	ExecDir          string         // The directory that will actually be executed by the HookDir
 	Logger           logging.Logger
 	authPolicy       auth.Policy
-	artifactVerifier auth.ArtifactVerifier
+	artifactVerifier auth.LocationVerifier
 }
 
 // Sync keeps manifests located at the hook pods in the intent store.

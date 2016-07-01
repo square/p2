@@ -60,8 +60,8 @@ func main() {
 		BuildErr       string `json:"build_error,omitempty"`
 	}{}
 
-	manifestVerifier, buildErr := auth.NewBuildManifestVerifier(*gpgKeyringPath, uri.DefaultFetcher, &logging.DefaultLogger)
-	buildVerifier, manErr := auth.NewBuildVerifier(*gpgKeyringPath, uri.DefaultFetcher, &logging.DefaultLogger)
+	buildVerifier, buildErr := auth.NewCompositeVerifier(*gpgKeyringPath, uri.DefaultFetcher, &logging.DefaultLogger, auth.VerifyManifest)
+	manifestVerifier, manErr := auth.NewCompositeVerifier(*gpgKeyringPath, uri.DefaultFetcher, &logging.DefaultLogger, auth.VerifyBuild)
 
 	if buildErr == nil {
 		err := buildVerifier.VerifyHoistArtifact(localCopy, locationForSignature)

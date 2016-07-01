@@ -37,7 +37,7 @@ func buildTestFileTree(t *testing.T, files []testFile) string {
 	return tempDir
 }
 
-func testVerifiedWithFiles(t *testing.T, files []testFile, verifier ArtifactVerifier) {
+func testVerifiedWithFiles(t *testing.T, files []testFile, verifier LocationVerifier) {
 	testDir := buildTestFileTree(t, files)
 	defer os.RemoveAll(testDir)
 	filePath := filepath.Join(testDir, string(testArtifact))
@@ -57,7 +57,7 @@ func testVerifiedWithFiles(t *testing.T, files []testFile, verifier ArtifactVeri
 	}
 }
 
-func testNotVerifiedWithFiles(t *testing.T, files []testFile, verifier ArtifactVerifier) {
+func testNotVerifiedWithFiles(t *testing.T, files []testFile, verifier LocationVerifier) {
 	testDir := buildTestFileTree(t, files)
 	defer os.RemoveAll(testDir)
 	filePath := filepath.Join(testDir, string(testArtifact))
@@ -83,7 +83,7 @@ func testKeyringPath() string {
 }
 
 func TestManifestVerifierAuthorizesValidBuild(t *testing.T) {
-	verifier, err := NewBuildManifestVerifier(testKeyringPath(), uri.DefaultFetcher, &logging.DefaultLogger)
+	verifier, err := NewCompositeVerifier(testKeyringPath(), uri.DefaultFetcher, &logging.DefaultLogger, VerifyManifest)
 	if err != nil {
 		t.Fatalf("Error getting public key: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestManifestVerifierAuthorizesValidBuild(t *testing.T) {
 }
 
 func TestBuildVerifierAuthorizesValidBuild(t *testing.T) {
-	verifier, err := NewBuildVerifier(testKeyringPath(), uri.DefaultFetcher, &logging.DefaultLogger)
+	verifier, err := NewCompositeVerifier(testKeyringPath(), uri.DefaultFetcher, &logging.DefaultLogger, VerifyBuild)
 	if err != nil {
 		t.Fatalf("Error getting public key: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestBuildVerifierAuthorizesValidBuild(t *testing.T) {
 }
 
 func TestManifestVerifierFailsValidBuildWithoutSig(t *testing.T) {
-	verifier, err := NewBuildManifestVerifier(testKeyringPath(), uri.DefaultFetcher, &logging.DefaultLogger)
+	verifier, err := NewCompositeVerifier(testKeyringPath(), uri.DefaultFetcher, &logging.DefaultLogger, VerifyManifest)
 	if err != nil {
 		t.Fatalf("Error getting public key: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestManifestVerifierFailsValidBuildWithoutSig(t *testing.T) {
 }
 
 func TestBuildVerifierFailsValidBuildWithoutSig(t *testing.T) {
-	verifier, err := NewBuildVerifier(testKeyringPath(), uri.DefaultFetcher, &logging.DefaultLogger)
+	verifier, err := NewCompositeVerifier(testKeyringPath(), uri.DefaultFetcher, &logging.DefaultLogger, VerifyBuild)
 	if err != nil {
 		t.Fatalf("Error getting public key: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestBuildVerifierFailsValidBuildWithoutSig(t *testing.T) {
 }
 
 func TestCompositeVerifierAuthorizesBuildWithBuildSig(t *testing.T) {
-	verifier, err := NewCompositeVerifier(testKeyringPath(), uri.DefaultFetcher, &logging.DefaultLogger)
+	verifier, err := NewCompositeVerifier(testKeyringPath(), uri.DefaultFetcher, &logging.DefaultLogger, VerifyEither)
 	if err != nil {
 		t.Fatalf("Error getting public key: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestCompositeVerifierAuthorizesBuildWithBuildSig(t *testing.T) {
 }
 
 func TestCompositeVerifierAuthorizesBuildWithManifestSig(t *testing.T) {
-	verifier, err := NewCompositeVerifier(testKeyringPath(), uri.DefaultFetcher, &logging.DefaultLogger)
+	verifier, err := NewCompositeVerifier(testKeyringPath(), uri.DefaultFetcher, &logging.DefaultLogger, VerifyEither)
 	if err != nil {
 		t.Fatalf("Error getting public key: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestCompositeVerifierAuthorizesBuildWithManifestSig(t *testing.T) {
 }
 
 func TestCompositeVerifierFailsBuildWithoutSigs(t *testing.T) {
-	verifier, err := NewCompositeVerifier(testKeyringPath(), uri.DefaultFetcher, &logging.DefaultLogger)
+	verifier, err := NewCompositeVerifier(testKeyringPath(), uri.DefaultFetcher, &logging.DefaultLogger, VerifyEither)
 	if err != nil {
 		t.Fatalf("Error getting public key: %v", err)
 	}
