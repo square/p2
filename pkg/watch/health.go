@@ -133,6 +133,7 @@ func updatePods(
 		for _, man := range reality {
 			if man.Manifest.ID() == pod.manifest.ID() &&
 				man.Manifest.GetStatusHTTP() == pod.manifest.GetStatusHTTP() &&
+				man.Manifest.GetStatusLocalhostOnly() == pod.manifest.GetStatusLocalhostOnly() &&
 				man.Manifest.GetStatusPath() == pod.manifest.GetStatusPath() &&
 				man.Manifest.GetStatusPort() == pod.manifest.GetStatusPort() {
 				inReality = true
