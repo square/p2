@@ -24,12 +24,13 @@ import (
 )
 
 var (
-	manifestURI       = kingpin.Arg("manifest", "a path or url to a pod manifest that will be replicated.").Required().URL()
-	hosts             = kingpin.Arg("hosts", "Hosts to replicate to").Required().Strings()
-	minNodes          = kingpin.Flag("min-nodes", "The minimum number of healthy nodes that must remain up while replicating.").Default("1").Short('m').Int()
-	threshold         = kingpin.Flag("threshold", "The minimum health level to treat as healthy. One of (in order) passing, warning, unknown, critical.").String()
-	overrideLock      = kingpin.Flag("override-lock", "Override any lock holders").Bool()
-	ignoreControllers = kingpin.Flag("ignore-controllers", "Deploy even if there are controllers managing some of the hosts").Bool()
+	manifestURI             = kingpin.Arg("manifest", "a path or url to a pod manifest that will be replicated.").Required().URL()
+	hosts                   = kingpin.Arg("hosts", "Hosts to replicate to").Required().Strings()
+	minNodes                = kingpin.Flag("min-nodes", "The minimum number of healthy nodes that must remain up while replicating.").Default("1").Short('m').Int()
+	threshold               = kingpin.Flag("threshold", "The minimum health level to treat as healthy. One of (in order) passing, warning, unknown, critical.").String()
+	overrideLock            = kingpin.Flag("override-lock", "Override any lock holders").Bool()
+	ignoreControllers       = kingpin.Flag("ignore-controllers", "Deploy even if there are controllers managing some of the hosts").Bool()
+	concurrentRealityChecks = kingpin.Flag("concurrent-reality-checks", "The number of concurrent requests to check for reality state (this is one area where p2-replicate does not use long-lived watches)").Default(fmt.Sprintf("%v", replication.DefaultConcurrentReality)).Int()
 )
 
 func main() {
@@ -101,6 +102,7 @@ func main() {
 	replication, errCh, err := repl.InitializeReplication(
 		*overrideLock,
 		*ignoreControllers,
+		*concurrentRealityChecks,
 	)
 	if err != nil {
 		log.Fatalf("Unable to initialize replication: %s", err)

@@ -12,10 +12,13 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
+const DefaultConcurrentReality = 3
+
 type Replicator interface {
 	InitializeReplication(
 		overrideLock bool,
 		ignoreControllers bool,
+		concurrentRealityNodes int,
 	) (Replication, chan error, error)
 }
 
@@ -66,10 +69,14 @@ func NewReplicator(
 func (r replicator) InitializeReplication(
 	overrideLock bool,
 	ignoreControllers bool,
+	concurrentRealityRequests int,
 ) (Replication, chan error, error) {
 	err := r.checkPreparers()
 	if err != nil {
 		return nil, nil, err
+	}
+	if concurrentRealityRequests <= 0 {
+		concurrentRealityRequests = DefaultConcurrentReality
 	}
 
 	errCh := make(chan error)
@@ -86,6 +93,7 @@ func (r replicator) InitializeReplication(
 		replicationCancelledCh: make(chan struct{}),
 		replicationDoneCh:      make(chan struct{}),
 		quitCh:                 make(chan struct{}),
+		concurrentRealityRequests: make(chan struct{}, concurrentRealityRequests),
 	}
 
 	err = replication.lockHosts(overrideLock, r.lockMessage)
