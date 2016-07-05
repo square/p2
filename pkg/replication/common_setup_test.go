@@ -66,6 +66,7 @@ func setupPreparers(fixture consultest.Fixture) {
 // TODO: these health checkers could be move to the health/checker/test package.
 
 type alwaysHappyHealthChecker struct {
+	allNodes []types.NodeName
 }
 
 func (h alwaysHappyHealthChecker) WatchNodeService(
@@ -105,11 +106,18 @@ func (h alwaysHappyHealthChecker) WatchService(
 	errCh chan<- error,
 	quitCh <-chan struct{},
 ) {
+	allHappy := make(map[types.NodeName]health.Result)
+	for _, node := range h.allNodes {
+		allHappy[node] = health.Result{
+			ID:     testPodId,
+			Status: health.Passing,
+		}
+	}
 	for {
 		select {
 		case <-quitCh:
 			return
-		case resultCh <- map[types.NodeName]health.Result{}:
+		case resultCh <- allHappy:
 		}
 	}
 }
@@ -123,12 +131,12 @@ func (h alwaysHappyHealthChecker) WatchHealth(_ chan []*health.Result,
 // creates an implementation of checker.ConsulHealthChecker that always reports
 // satisfied health checks for testing purposes
 func happyHealthChecker() checker.ConsulHealthChecker {
-	return alwaysHappyHealthChecker{}
+	return alwaysHappyHealthChecker{testNodes}
 }
 
 type channelBasedHealthChecker struct {
 	// maps node name to a channel on which fake results can be provided
-	resultsChans map[types.NodeName]chan health.Result
+	resultsChans chan map[types.NodeName]health.Result
 
 	t *testing.T
 }
@@ -141,14 +149,7 @@ func (c channelBasedHealthChecker) WatchNodeService(
 	errCh chan<- error,
 	quitCh <-chan struct{},
 ) {
-	inputCh, ok := c.resultsChans[nodeName]
-	if ok {
-		for result := range inputCh {
-			resultCh <- result
-		}
-	} else {
-		c.t.Fatalf("No results channel configured for %s", nodeName)
-	}
+	panic("not implemented")
 }
 
 // This is used by the initial health query in the replication library for
@@ -170,11 +171,18 @@ func (h channelBasedHealthChecker) WatchService(
 	errCh chan<- error,
 	quitCh <-chan struct{},
 ) {
+	var results map[types.NodeName]health.Result
+	select {
+	case results = <-h.resultsChans:
+	case <-quitCh:
+		return
+	}
 	for {
 		select {
 		case <-quitCh:
 			return
-		case resultCh <- map[types.NodeName]health.Result{}:
+		case results = <-h.resultsChans:
+		case resultCh <- results:
 		}
 	}
 }
@@ -188,11 +196,8 @@ func (h channelBasedHealthChecker) WatchHealth(
 
 // returns an implementation of checker.ConsulHealthChecker that will provide
 // results based on what is passed on the returned  chanel
-func channelHealthChecker(nodes []types.NodeName, t *testing.T) (checker.ConsulHealthChecker, map[types.NodeName]chan health.Result) {
-	resultsChans := make(map[types.NodeName]chan health.Result)
-	for _, node := range nodes {
-		resultsChans[node] = make(chan health.Result)
-	}
+func channelHealthChecker(nodes []types.NodeName, t *testing.T) (checker.ConsulHealthChecker, chan map[types.NodeName]health.Result) {
+	resultsChans := make(chan map[types.NodeName]health.Result)
 	return channelBasedHealthChecker{
 		resultsChans: resultsChans,
 		t:            t,

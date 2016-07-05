@@ -1,7 +1,6 @@
 package replication
 
 import (
-	"math/rand"
 	"path"
 	"sort"
 	"strings"
@@ -71,6 +70,9 @@ type replication struct {
 	// Used to cancel replication due to a lock renewal failure or a
 	// cancellation by the caller
 	quitCh chan struct{}
+	// Semaphore that sets a maximum value on the number of concurrent
+	// reality requests that can be fired simultaneously.
+	concurrentRealityRequests chan struct{}
 }
 
 // Attempts to claim a lock on replicating this pod. Other pkg/replication
@@ -279,13 +281,22 @@ func (r replication) updateOne(node types.NodeName, done chan<- types.NodeName, 
 	r.ensureHealthy(node, done, quitCh, nodeLogger, aggregateHealth)
 }
 
+func (r *replication) queryReality(node types.NodeName) (pods.Manifest, error) {
+	r.concurrentRealityRequests <- struct{}{}
+	defer func() {
+		<-r.concurrentRealityRequests
+	}()
+	man, _, err := r.store.Pod(kp.REALITY_TREE, node, r.manifest.ID())
+	return man, err
+}
+
 func (r *replication) ensureInReality(node types.NodeName, quitCh <-chan struct{}, nodeLogger logging.Logger, targetSHA string) {
 	for {
 		select {
 		case <-quitCh:
 			return
-		case <-time.After(time.Duration(20+rand.Intn(10)) * time.Second): // random value for staggering
-			man, _, err := r.store.Pod(kp.REALITY_TREE, node, r.manifest.ID())
+		case <-time.After(5 * time.Second):
+			man, err := r.queryReality(node)
 			if err == pods.NoCurrentManifest {
 				// if the pod key doesn't exist yet, that's okay just wait longer
 			} else if err != nil {
