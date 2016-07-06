@@ -78,7 +78,7 @@ func main() {
 	manifestBuilder := pods.NewManifestBuilder()
 	manifestBuilder.SetID(podID())
 
-	stanza := pods.LaunchableStanza{}
+	stanza := types.LaunchableStanza{}
 	stanza.LaunchableId = podID().String()
 	stanza.LaunchableType = "hoist"
 
@@ -99,7 +99,7 @@ func main() {
 		res.FinalLocation = tarLocation
 	}
 
-	manifestBuilder.SetLaunchables(map[string]pods.LaunchableStanza{
+	manifestBuilder.SetLaunchables(map[string]types.LaunchableStanza{
 		podID().String(): stanza,
 	})
 

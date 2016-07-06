@@ -319,7 +319,7 @@ func getConsulManifest(dir string) (string, error) {
 	)
 	builder := pods.NewManifestBuilder()
 	builder.SetID("consul")
-	stanzas := map[string]pods.LaunchableStanza{
+	stanzas := map[string]types.LaunchableStanza{
 		"consul": {
 			LaunchableId:   "consul",
 			LaunchableType: "hoist",
@@ -396,7 +396,7 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 	builder := pods.NewManifestBuilder()
 	builder.SetID("hello")
 	builder.SetStatusPort(43770)
-	stanzas := map[string]pods.LaunchableStanza{
+	stanzas := map[string]types.LaunchableStanza{
 		"hello": {
 			LaunchableId:   "hello",
 			LaunchableType: "hoist",

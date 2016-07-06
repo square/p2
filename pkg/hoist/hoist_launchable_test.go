@@ -36,15 +36,17 @@ func TestInstall(t *testing.T) {
 	defer os.RemoveAll(launchableHome)
 
 	launchable := &Launchable{
-		Id:        "hello",
-		Version:   "def456",
-		ServiceId: "hoisted-hello__hello",
-		RunAs:     currentUser.Username,
-		PodEnvDir: launchableHome,
-		RootDir:   launchableHome,
+		Id:               "hello",
+		Version:          "def456",
+		ServiceId:        "hoisted-hello__hello",
+		RunAs:            currentUser.Username,
+		PodEnvDir:        launchableHome,
+		RootDir:          launchableHome,
+		Location:         testLocation,
+		VerificationData: artifact.VerificationDataForLocation(testLocation),
 	}
 
-	downloader := artifact.NewLocationDownloader(testLocation, fetcher, auth.NopVerifier())
+	downloader := artifact.NewLocationDownloader(fetcher, auth.NopVerifier())
 	err = launchable.Install(downloader)
 	Assert(t).IsNil(err, "there should not have been an error when installing")
 

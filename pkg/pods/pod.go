@@ -60,6 +60,8 @@ type Pod struct {
 	DefaultTimeout time.Duration // this is the default timeout for stopping and restarting services in this pod
 	LogExec        runit.Exec
 	FinishExec     runit.Exec
+	Fetcher        uri.Fetcher
+	Registry       artifact.Registry
 }
 
 func NewPod(id types.PodID, path string) *Pod {
@@ -73,6 +75,8 @@ func NewPod(id types.PodID, path string) *Pod {
 		DefaultTimeout: 60 * time.Second,
 		LogExec:        runit.DefaultLogExec(),
 		FinishExec:     DefaultFinishExec,
+		Fetcher:        uri.DefaultFetcher,
+		Registry:       artifact.NewRegistry(),
 	}
 }
 
@@ -392,24 +396,8 @@ func (pod *Pod) Install(manifest Manifest, verifier auth.ArtifactVerifier) error
 		return err
 	}
 
+	downloader := artifact.NewLocationDownloader(pod.Fetcher, verifier)
 	for _, launchable := range launchables {
-		// This is awkward, we have a []launch.Launchable but now we need to find the launchable stanza each came from
-		// so we can find the location to download it from.
-		// TODO: support launchableStanza.Version in lieu of launchableStanza.Location
-		var launchableStanza LaunchableStanza
-		for launchableID, stanza := range manifest.GetLaunchableStanzas() {
-			if launchableID == launchable.ID() {
-				launchableStanza = stanza
-				break
-			}
-		}
-		locationURL, err := url.Parse(launchableStanza.Location)
-		if err != nil {
-			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
-			return util.Errorf("Couldn't parse launchable location '%s' as a URL: %s", launchableStanza.Location, err)
-		}
-
-		downloader := artifact.NewLocationDownloader(locationURL, uri.DefaultFetcher, verifier)
 		err = launchable.Install(downloader)
 		if err != nil {
 			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
@@ -649,7 +637,7 @@ func (pod *Pod) SetLogBridgeExec(logExec []string) {
 	pod.LogExec = append([]string{pod.P2Exec}, p2ExecArgs.CommandLine()...)
 }
 
-func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
+func (pod *Pod) getLaunchable(launchableStanza types.LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
 	launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
 	serviceId := strings.Join(
 		[]string{
@@ -669,16 +657,16 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 		}
 	}
 
-	locationURL, err := url.Parse(launchableStanza.Location)
+	locationURL, verificationData, err := pod.Registry.LocationDataForLaunchable(launchableStanza)
 	if err != nil {
-		return nil, util.Errorf("Couldn't parse launchable location '%s' as a URL: %s", launchableStanza.Location, err)
+		return nil, err
 	}
 
 	// The path of a launchable URL is expected to end with
 	// /<launchable_id>_<version>.tar.gz. The launchable needs the
 	// <version> currently, which we parse from the URL. Future work is
 	// planned to implement more explicit versions specified in the
-	// LaunchableStanza in the pod manifest
+	// types.LaunchableStanza in the pod manifest
 	version, err := versionFromLocation(locationURL)
 	if err != nil {
 		return nil, err
@@ -699,6 +687,8 @@ func (pod *Pod) getLaunchable(launchableStanza LaunchableStanza, runAsUser strin
 			CgroupConfig:     launchableStanza.CgroupConfig,
 			CgroupConfigName: launchableStanza.LaunchableId,
 			SuppliedEnvVars:  launchableStanza.Env,
+			Location:         locationURL,
+			VerificationData: verificationData,
 		}
 		ret.CgroupConfig.Name = ret.ServiceId
 		return ret.If(), nil

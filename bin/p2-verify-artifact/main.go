@@ -10,6 +10,7 @@ import (
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/uri"
@@ -60,11 +61,12 @@ func main() {
 		BuildErr       string `json:"build_error,omitempty"`
 	}{}
 
+	verificationData := artifact.VerificationDataForLocation(locationForSignature)
 	manifestVerifier, buildErr := auth.NewBuildManifestVerifier(*gpgKeyringPath, uri.DefaultFetcher, &logging.DefaultLogger)
 	buildVerifier, manErr := auth.NewBuildVerifier(*gpgKeyringPath, uri.DefaultFetcher, &logging.DefaultLogger)
 
 	if buildErr == nil {
-		err := buildVerifier.VerifyHoistArtifact(localCopy, locationForSignature)
+		err := buildVerifier.VerifyHoistArtifact(localCopy, verificationData)
 		if err == nil {
 			res.SignedBuild = true
 		} else {
@@ -77,7 +79,7 @@ func main() {
 	_, _ = localCopy.Seek(0, os.SEEK_SET)
 
 	if manErr == nil {
-		err := manifestVerifier.VerifyHoistArtifact(localCopy, locationForSignature)
+		err := manifestVerifier.VerifyHoistArtifact(localCopy, verificationData)
 		if err == nil {
 			res.SignedManifest = true
 		} else {

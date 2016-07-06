@@ -23,15 +23,26 @@ const VerifyManifest = "manifest"
 const VerifyBuild = "build"
 const VerifyEither = "either"
 
+// Contains URLs to extra files needed to verify the artifact. Not all verification
+// strategies make use of each field.
+type VerificationData struct {
+	// Used by BuildManifestVerifier
+	ManifestLocation          *url.URL
+	ManifestSignatureLocation *url.URL
+
+	// Used by BuildVerifier
+	BuildSignatureLocation *url.URL
+}
+
 // The artifact verifier is responsible for checking that the artifact
 // was created by a trusted entity.
 type ArtifactVerifier interface {
-	VerifyHoistArtifact(localCopy *os.File, artifactLocation *url.URL) error
+	VerifyHoistArtifact(localCopy *os.File, verificationData VerificationData) error
 }
 
 type nopVerifier struct{}
 
-func (n *nopVerifier) VerifyHoistArtifact(_ *os.File, _ *url.URL) error {
+func (n *nopVerifier) VerifyHoistArtifact(_ *os.File, _ VerificationData) error {
 	return nil
 }
 
@@ -62,14 +73,14 @@ func NewCompositeVerifier(keyringPath string, fetcher uri.Fetcher, logger *loggi
 }
 
 // Attempt manifest verification. If it fails, fallback to the build verifier.
-func (b *CompositeVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation *url.URL) error {
-	err := b.manVerifier.VerifyHoistArtifact(localCopy, artifactLocation)
+func (b *CompositeVerifier) VerifyHoistArtifact(localCopy *os.File, verificationData VerificationData) error {
+	err := b.manVerifier.VerifyHoistArtifact(localCopy, verificationData)
 	if err != nil {
 		_, err = localCopy.Seek(0, os.SEEK_SET)
 		if err != nil {
 			return util.Errorf("Could not rewind localCopy %v back to start of file: %v", localCopy.Name(), err)
 		}
-		err = b.buildVerifier.VerifyHoistArtifact(localCopy, artifactLocation)
+		err = b.buildVerifier.VerifyHoistArtifact(localCopy, verificationData)
 	}
 	return err
 }
@@ -115,50 +126,48 @@ func NewBuildManifestVerifier(keyringPath string, fetcher uri.Fetcher, logger *l
 
 // Returns an error if the stanza's artifact is not signed appropriately. Note that this
 // implementation does not use the pod manifest digest location options.
-func (b *BuildManifestVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation *url.URL) error {
-	switch artifactLocation.Scheme {
-	default:
-		return util.Errorf("%v does not have a recognized scheme '%v', cannot verify manifest or signature", artifactLocation.String(), artifactLocation.Scheme)
-	case "http", "https", "file":
-		dir, err := ioutil.TempDir("", "artifact_verification")
-		if err != nil {
-			return util.Errorf("Could not create temporary directory for manifest file: %v", err)
-		}
-		defer os.RemoveAll(dir)
-
-		manifestSrc := &url.URL{}
-		*manifestSrc = *artifactLocation
-		manifestSrc.Path = manifestSrc.Path + ".manifest"
-
-		manifestDst := filepath.Join(dir, "manifest")
-
-		if err = b.fetcher.CopyLocal(manifestSrc, manifestDst); err != nil {
-			return util.Errorf("Could not download artifact manifest for %v: %v", artifactLocation, err)
-		}
-
-		signatureSrc := manifestSrc
-		signatureSrc.Path = signatureSrc.Path + ".sig"
-
-		signatureDst := filepath.Join(dir, "signature")
-		if err = b.fetcher.CopyLocal(signatureSrc, signatureDst); err != nil {
-			return util.Errorf("Could not download manifest signature for %v: %v", artifactLocation, err)
-		}
-
-		manifestBytes, err := ioutil.ReadFile(manifestDst)
-		if err != nil {
-			return err
-		}
-		signatureBytes, err := ioutil.ReadFile(signatureDst)
-		if err != nil {
-			return err
-		}
-
-		if err = verifySigned(b.keyring, manifestBytes, signatureBytes); err != nil {
-			return err
-		}
-
-		return b.checkMatchingDigest(localCopy, manifestBytes)
+func (b *BuildManifestVerifier) VerifyHoistArtifact(localCopy *os.File, verificationData VerificationData) error {
+	manifestLocation := verificationData.ManifestLocation
+	if manifestLocation == nil {
+		return util.Errorf("Manifest verification failed: manifest location not provided")
 	}
+
+	manifestSignatureLocation := verificationData.ManifestSignatureLocation
+	if manifestSignatureLocation == nil {
+		return util.Errorf("Manifest verification failed: manifest signature location not provided")
+	}
+
+	dir, err := ioutil.TempDir("", "artifact_verification")
+	if err != nil {
+		return util.Errorf("Could not create temporary directory for manifest file: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	manifestDst := filepath.Join(dir, "manifest")
+
+	if err = b.fetcher.CopyLocal(manifestLocation, manifestDst); err != nil {
+		return util.Errorf("Could not download artifact manifest from %v: %v", manifestLocation.String(), err)
+	}
+
+	signatureDst := filepath.Join(dir, "signature")
+	if err = b.fetcher.CopyLocal(manifestSignatureLocation, signatureDst); err != nil {
+		return util.Errorf("Could not download manifest signature from %v: %v", manifestSignatureLocation.String(), err)
+	}
+
+	manifestBytes, err := ioutil.ReadFile(manifestDst)
+	if err != nil {
+		return err
+	}
+	signatureBytes, err := ioutil.ReadFile(signatureDst)
+	if err != nil {
+		return err
+	}
+
+	if err = verifySigned(b.keyring, manifestBytes, signatureBytes); err != nil {
+		return err
+	}
+
+	return b.checkMatchingDigest(localCopy, manifestBytes)
 }
 
 func verifySigned(keyring openpgp.KeyRing, signedBytes, signatureBytes []byte) error {
@@ -227,37 +236,35 @@ func NewBuildVerifier(keyringPath string, fetcher uri.Fetcher, logger *logging.L
 	}, nil
 }
 
-func (b *BuildVerifier) VerifyHoistArtifact(localCopy *os.File, artifactLocation *url.URL) error {
-	switch artifactLocation.Scheme {
-	default:
-		return util.Errorf("%v does not have a recognized scheme, cannot verify signature", artifactLocation.String())
-	case "http", "https", "file":
-		dir, err := ioutil.TempDir("", "artifact_verification")
-		if err != nil {
-			return util.Errorf("Could not create temporary directory for manifest file: %v", err)
-		}
-		defer os.RemoveAll(dir)
-
-		sigURI := &url.URL{}
-		*sigURI = *artifactLocation
-		sigURI.Path = sigURI.Path + ".sig"
-
-		sigPath := filepath.Join(dir, "sig")
-		err = b.fetcher.CopyLocal(sigURI, sigPath)
-		if err != nil {
-			return util.Errorf("Could not fetch artifact signature from %v: %v", sigURI.String(), err)
-		}
-
-		sigData, err := ioutil.ReadFile(sigPath)
-		if err != nil {
-			return util.Errorf("Could not read downloaded signature at %v: %v", sigPath, err)
-		}
-
-		signedBytes, err := ioutil.ReadAll(localCopy)
-		if err != nil {
-			return util.Errorf("Could not read the artifact into memory: %v", err)
-		}
-
-		return verifySigned(b.keyring, signedBytes, sigData)
+// Verifies the artifact against a signature. If signatureLocation is nil, it is inferred by adding a ".sig"
+// suffix to the artifactLocation
+func (b *BuildVerifier) VerifyHoistArtifact(localCopy *os.File, verificationData VerificationData) error {
+	signatureLocation := verificationData.BuildSignatureLocation
+	if signatureLocation == nil {
+		return util.Errorf("Manifest verification failed: manifest location not provided")
 	}
+
+	dir, err := ioutil.TempDir("", "artifact_verification")
+	if err != nil {
+		return util.Errorf("Could not create temporary directory for manifest file: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	sigPath := filepath.Join(dir, "sig")
+	err = b.fetcher.CopyLocal(signatureLocation, sigPath)
+	if err != nil {
+		return util.Errorf("Could not fetch artifact signature from %v: %v", signatureLocation.String(), err)
+	}
+
+	sigData, err := ioutil.ReadFile(sigPath)
+	if err != nil {
+		return util.Errorf("Could not read downloaded signature at %v: %v", sigPath, err)
+	}
+
+	signedBytes, err := ioutil.ReadAll(localCopy)
+	if err != nil {
+		return util.Errorf("Could not read the artifact into memory: %v", err)
+	}
+
+	return verifySigned(b.keyring, signedBytes, sigData)
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/cgroups"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util/size"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -96,7 +97,7 @@ QyB184dCJQnFbcQslyXDSR4Lal12NPvxbtK/4YYXZZVwf4hKCfVqvmG2zgwINDc=
 func TestPodManifestCanBeWritten(t *testing.T) {
 	builder := NewManifestBuilder()
 	builder.SetID("thepod")
-	launchables := map[string]LaunchableStanza{
+	launchables := map[string]types.LaunchableStanza{
 		"my-app": {
 			LaunchableType: "hoist",
 			LaunchableId:   "web",
