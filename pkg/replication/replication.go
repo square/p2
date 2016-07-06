@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/types"
@@ -54,7 +55,7 @@ type replication struct {
 	nodes     []types.NodeName
 	store     kp.Store
 	labeler   labels.Applicator
-	manifest  pods.Manifest
+	manifest  manifest.Manifest
 	health    checker.ConsulHealthChecker
 	threshold health.HealthState // minimum state to treat as "healthy"
 	logger    logging.Logger
@@ -281,7 +282,7 @@ func (r replication) updateOne(node types.NodeName, done chan<- types.NodeName, 
 	r.ensureHealthy(node, done, quitCh, nodeLogger, aggregateHealth)
 }
 
-func (r *replication) queryReality(node types.NodeName) (pods.Manifest, error) {
+func (r *replication) queryReality(node types.NodeName) (manifest.Manifest, error) {
 	r.concurrentRealityRequests <- struct{}{}
 	defer func() {
 		<-r.concurrentRealityRequests

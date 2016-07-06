@@ -17,6 +17,7 @@ import (
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/opencontainer"
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
@@ -101,15 +102,15 @@ func (pod *Pod) Path() string {
 	return pod.path
 }
 
-func (pod *Pod) CurrentManifest() (Manifest, error) {
+func (pod *Pod) CurrentManifest() (manifest.Manifest, error) {
 	currentManPath := pod.currentPodManifestPath()
 	if _, err := os.Stat(currentManPath); os.IsNotExist(err) {
 		return nil, NoCurrentManifest
 	}
-	return ManifestFromPath(currentManPath)
+	return manifest.FromPath(currentManPath)
 }
 
-func (pod *Pod) Halt(manifest Manifest) (bool, error) {
+func (pod *Pod) Halt(manifest manifest.Manifest) (bool, error) {
 	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return false, err
@@ -142,7 +143,7 @@ func (pod *Pod) Halt(manifest Manifest) (bool, error) {
 // during the launch process will be logged, but will not stop attempts to launch other launchables
 // in the same pod. If any services fail to start, the first return bool will be false. If an error
 // occurs when writing the current manifest to the pod directory, an error will be returned.
-func (pod *Pod) Launch(manifest Manifest) (bool, error) {
+func (pod *Pod) Launch(manifest manifest.Manifest) (bool, error) {
 	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return false, err
@@ -201,7 +202,7 @@ func (pod *Pod) Launch(manifest Manifest) (bool, error) {
 	return success, nil
 }
 
-func (pod *Pod) Prune(max size.ByteCount, manifest Manifest) {
+func (pod *Pod) Prune(max size.ByteCount, manifest manifest.Manifest) {
 	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return
@@ -215,7 +216,7 @@ func (pod *Pod) Prune(max size.ByteCount, manifest Manifest) {
 	}
 }
 
-func (pod *Pod) Services(manifest Manifest) ([]runit.Service, error) {
+func (pod *Pod) Services(manifest manifest.Manifest) ([]runit.Service, error) {
 	allServices := []runit.Service{}
 	launchables, err := pod.Launchables(manifest)
 	if err != nil {
@@ -237,7 +238,7 @@ func (pod *Pod) Services(manifest Manifest) ([]runit.Service, error) {
 
 // Write servicebuilder *.yaml file and run servicebuilder, which will register runit services for this
 // pod.
-func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest Manifest) error {
+func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest manifest.Manifest) error {
 	// if the service is new, building the runit services also starts them
 	sbTemplate := make(map[string]runit.ServiceTemplate)
 	for _, launchable := range launchables {
@@ -267,7 +268,7 @@ func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest 
 	return pod.ServiceBuilder.Prune()
 }
 
-func (pod *Pod) WriteCurrentManifest(manifest Manifest) (string, error) {
+func (pod *Pod) WriteCurrentManifest(manifest manifest.Manifest) (string, error) {
 	// write the old manifest to a temporary location in case a launch fails.
 	tmpDir, err := ioutil.TempDir("", "manifests")
 	if err != nil {
@@ -379,7 +380,7 @@ func (pod *Pod) Uninstall() error {
 // Install will ensure that executables for all required services are present on the host
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
-func (pod *Pod) Install(manifest Manifest, verifier auth.ArtifactVerifier) error {
+func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifier) error {
 	podHome := pod.path
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
@@ -418,7 +419,7 @@ func (pod *Pod) Install(manifest Manifest, verifier auth.ArtifactVerifier) error
 	return nil
 }
 
-func (pod *Pod) Verify(manifest Manifest, authPolicy auth.Policy) error {
+func (pod *Pod) Verify(manifest manifest.Manifest, authPolicy auth.Policy) error {
 	for _, stanza := range manifest.GetLaunchableStanzas() {
 		if stanza.DigestLocation == "" {
 			continue
@@ -482,7 +483,7 @@ func (pod *Pod) Verify(manifest Manifest, authPolicy auth.Policy) error {
 //
 // We may wish to provide a "config" directory per launchable at some point as
 // well, so that launchables can have different config namespaces
-func (pod *Pod) setupConfig(manifest Manifest, launchables []launch.Launchable) error {
+func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Launchable) error {
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
 		return util.Errorf("Could not determine pod UID/GID: %s", err)
@@ -598,7 +599,7 @@ func writeEnvFile(envDir, name, value string, uid, gid int) error {
 	return nil
 }
 
-func (pod *Pod) Launchables(manifest Manifest) ([]launch.Launchable, error) {
+func (pod *Pod) Launchables(manifest manifest.Manifest) ([]launch.Launchable, error) {
 	launchableStanzas := manifest.GetLaunchableStanzas()
 	launchables := make([]launch.Launchable, 0, len(launchableStanzas))
 
@@ -637,7 +638,7 @@ func (pod *Pod) SetLogBridgeExec(logExec []string) {
 	pod.LogExec = append([]string{pod.P2Exec}, p2ExecArgs.CommandLine()...)
 }
 
-func (pod *Pod) getLaunchable(launchableStanza types.LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
+func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
 	launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
 	serviceId := strings.Join(
 		[]string{
@@ -666,7 +667,7 @@ func (pod *Pod) getLaunchable(launchableStanza types.LaunchableStanza, runAsUser
 	// /<launchable_id>_<version>.tar.gz. The launchable needs the
 	// <version> currently, which we parse from the URL. Future work is
 	// planned to implement more explicit versions specified in the
-	// types.LaunchableStanza in the pod manifest
+	// manifest.LaunchableStanza in the pod manifest
 	version, err := versionFromLocation(locationURL)
 	if err != nil {
 		return nil, err

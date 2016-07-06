@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/version"
@@ -75,10 +75,10 @@ func main() {
 	kingpin.MustParse(bin2pod.Parse(os.Args[1:]))
 
 	res := result{}
-	manifestBuilder := pods.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID(podID())
 
-	stanza := types.LaunchableStanza{}
+	stanza := manifest.LaunchableStanza{}
 	stanza.LaunchableId = podID().String()
 	stanza.LaunchableType = "hoist"
 
@@ -99,7 +99,7 @@ func main() {
 		res.FinalLocation = tarLocation
 	}
 
-	manifestBuilder.SetLaunchables(map[string]types.LaunchableStanza{
+	manifestBuilder.SetLaunchables(map[string]manifest.LaunchableStanza{
 		podID().String(): stanza,
 	})
 
@@ -157,7 +157,7 @@ func makeTar(workingDir string) (string, error) {
 	return tarPath, nil
 }
 
-func addManifestConfig(manifestBuilder pods.ManifestBuilder) error {
+func addManifestConfig(manifestBuilder manifest.Builder) error {
 	podConfig := make(map[interface{}]interface{})
 	for _, pair := range *config {
 		res := strings.Split(pair, "=")
@@ -169,7 +169,7 @@ func addManifestConfig(manifestBuilder pods.ManifestBuilder) error {
 	return manifestBuilder.SetConfig(podConfig)
 }
 
-func writeManifest(workingDir string, manifest pods.Manifest) (string, error) {
+func writeManifest(workingDir string, manifest manifest.Manifest) (string, error) {
 	file, err := os.OpenFile(
 		path.Join(workingDir, fmt.Sprintf("%s.yaml", podID())),
 		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,

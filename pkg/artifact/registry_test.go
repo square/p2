@@ -3,13 +3,13 @@ package artifact
 import (
 	"testing"
 
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/manifest"
 )
 
 const testLocation = "https://fileserver.com/artifact.tar.gz"
 
-func locationLaunchable() types.LaunchableStanza {
-	return types.LaunchableStanza{
+func locationLaunchable() manifest.LaunchableStanza {
+	return manifest.LaunchableStanza{
 		Location: "https://fileserver.com/artifact.tar.gz",
 	}
 }
@@ -58,7 +58,7 @@ func TestLocationDataForLaunchableWithLocation(t *testing.T) {
 }
 
 func TestNeitherVersionNorLocationInvalid(t *testing.T) {
-	launchable := types.LaunchableStanza{}
+	launchable := manifest.LaunchableStanza{}
 	registry := NewRegistry()
 	_, _, err := registry.LocationDataForLaunchable(launchable)
 	if err == nil {
@@ -67,8 +67,8 @@ func TestNeitherVersionNorLocationInvalid(t *testing.T) {
 }
 
 func TestBothVersionAndLocationInvalid(t *testing.T) {
-	launchable := types.LaunchableStanza{
-		Version: types.LaunchableVersion{
+	launchable := manifest.LaunchableStanza{
+		Version: manifest.LaunchableVersion{
 			ID: "some_version",
 		},
 		Location: testLocation,
@@ -81,8 +81,8 @@ func TestBothVersionAndLocationInvalid(t *testing.T) {
 }
 
 func TestVersionSchemeNotImplemented(t *testing.T) {
-	launchable := types.LaunchableStanza{
-		Version: types.LaunchableVersion{
+	launchable := manifest.LaunchableStanza{
+		Version: manifest.LaunchableVersion{
 			ID: "some_version",
 		},
 	}

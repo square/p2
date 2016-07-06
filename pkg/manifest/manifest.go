@@ -2,7 +2,7 @@
 // p2 with a convenient way to colocate several related launchable artifacts, as well
 // as basic shared runtime configuration. Pod manifests are written as YAML files
 // that describe what to launch.
-package pods
+package manifest
 
 import (
 	"crypto/sha256"
@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
@@ -22,6 +23,30 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type LaunchableVersion struct {
+	ID   string            `yaml:"id"`
+	Tags map[string]string `yaml:"tags"`
+}
+
+type LaunchableStanza struct {
+	LaunchableType          string            `yaml:"launchable_type"`
+	LaunchableId            string            `yaml:"launchable_id"`
+	DigestLocation          string            `yaml:"digest_location,omitempty"`
+	DigestSignatureLocation string            `yaml:"digest_signature_location,omitempty"`
+	RestartTimeout          string            `yaml:"restart_timeout,omitempty"`
+	CgroupConfig            cgroups.Config    `yaml:"cgroup,omitempty"`
+	Env                     map[string]string `yaml:"env,omitempty"`
+
+	// The URL from which the launchable can be downloaded. May not be used
+	// in conjunction with Version
+	Location string `yaml:"location"`
+
+	// An alternative to using Location to inform artifact downloading. Version information
+	// can be used to query a configured artifact registry which will provide the artifact
+	// URL. Version may not be used in conjunction with Location
+	Version LaunchableVersion `yaml:"version,omitempty"`
+}
+
 type StatusStanza struct {
 	HTTP          bool   `yaml:"http,omitempty"`
 	Path          string `yaml:"path,omitempty"`
@@ -29,7 +54,7 @@ type StatusStanza struct {
 	LocalhostOnly bool   `yaml:"localhost_only,omitempty"`
 }
 
-type ManifestBuilder interface {
+type Builder interface {
 	GetManifest() Manifest
 	SetID(types.PodID)
 	SetConfig(config map[interface{}]interface{}) error
@@ -37,25 +62,26 @@ type ManifestBuilder interface {
 	SetStatusHTTP(statusHTTP bool)
 	SetStatusPath(statusPath string)
 	SetStatusPort(port int)
-	SetLaunchables(launchableStanzas map[string]types.LaunchableStanza)
+	SetLaunchables(launchableStanzas map[string]LaunchableStanza)
+	SetRestartPolicy(runit.RestartPolicy)
 }
 
-var _ ManifestBuilder = manifestBuilder{}
+var _ Builder = builder{}
 
-func NewManifestBuilder() ManifestBuilder {
-	return manifestBuilder{&manifest{}}
+func NewBuilder() Builder {
+	return builder{&manifest{}}
 }
 
-func (m manifestBuilder) GetManifest() Manifest {
+func (m builder) GetManifest() Manifest {
 	return m.manifest
 }
 
-type manifestBuilder struct {
+type builder struct {
 	*manifest
 }
 
 // Read-only immutable interface for manifests. To programmatically build a
-// manifest, use ManifestBuilder
+// manifest, use Builder
 type Manifest interface {
 	ID() types.PodID
 	RunAsUser() string
@@ -64,7 +90,7 @@ type Manifest interface {
 	WriteConfig(out io.Writer) error
 	PlatformConfigFileName() (string, error)
 	WritePlatformConfig(out io.Writer) error
-	GetLaunchableStanzas() map[string]types.LaunchableStanza
+	GetLaunchableStanzas() map[string]LaunchableStanza
 	GetConfig() map[interface{}]interface{}
 	SHA() (string, error)
 	GetStatusHTTP() bool
@@ -75,21 +101,21 @@ type Manifest interface {
 	SignatureData() (plaintext, signature []byte)
 	GetRestartPolicy() runit.RestartPolicy
 
-	GetBuilder() ManifestBuilder
+	GetBuilder() Builder
 }
 
 // assert manifest implements Manifest and UnsignedManifest
 var _ Manifest = &manifest{}
 
 type manifest struct {
-	Id                types.PodID                       `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
-	RunAs             string                            `yaml:"run_as,omitempty"`
-	LaunchableStanzas map[string]types.LaunchableStanza `yaml:"launchables"`
-	Config            map[interface{}]interface{}       `yaml:"config"`
-	StatusPort        int                               `yaml:"status_port,omitempty"`
-	StatusHTTP        bool                              `yaml:"status_http,omitempty"`
-	Status            StatusStanza                      `yaml:"status,omitempty"`
-	RestartPolicy     runit.RestartPolicy               `yaml:"restart_policy,omitempty"`
+	Id                types.PodID                 `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
+	RunAs             string                      `yaml:"run_as,omitempty"`
+	LaunchableStanzas map[string]LaunchableStanza `yaml:"launchables"`
+	Config            map[interface{}]interface{} `yaml:"config"`
+	StatusPort        int                         `yaml:"status_port,omitempty"`
+	StatusHTTP        bool                        `yaml:"status_http,omitempty"`
+	Status            StatusStanza                `yaml:"status,omitempty"`
+	RestartPolicy     runit.RestartPolicy         `yaml:"restart_policy,omitempty"`
 
 	// Used to track the original bytes so that we don't reorder them when
 	// doing a yaml.Unmarshal and a yaml.Marshal in succession
@@ -100,8 +126,8 @@ type manifest struct {
 	signature []byte
 }
 
-func (m *manifest) GetBuilder() ManifestBuilder {
-	builder := manifestBuilder{
+func (m *manifest) GetBuilder() Builder {
+	builder := builder{
 		&manifest{},
 	}
 	*builder.manifest = *m
@@ -115,16 +141,20 @@ func (manifest *manifest) ID() types.PodID {
 	return manifest.Id
 }
 
-func (m manifestBuilder) SetID(id types.PodID) {
+func (m builder) SetID(id types.PodID) {
 	m.manifest.Id = id
 }
 
-func (manifest *manifest) GetLaunchableStanzas() map[string]types.LaunchableStanza {
+func (manifest *manifest) GetLaunchableStanzas() map[string]LaunchableStanza {
 	return manifest.LaunchableStanzas
 }
 
-func (manifest *manifest) SetLaunchables(launchableStanzas map[string]types.LaunchableStanza) {
+func (manifest *manifest) SetLaunchables(launchableStanzas map[string]LaunchableStanza) {
 	manifest.LaunchableStanzas = launchableStanzas
+}
+
+func (manifest *manifest) SetRestartPolicy(restartPolicy runit.RestartPolicy) {
+	manifest.RestartPolicy = restartPolicy
 }
 
 func (manifest *manifest) GetConfig() map[interface{}]interface{} {
@@ -152,7 +182,7 @@ func (manifest *manifest) GetConfig() map[interface{}]interface{} {
 	return configCopy
 }
 
-func (m manifestBuilder) SetConfig(config map[interface{}]interface{}) error {
+func (m builder) SetConfig(config map[interface{}]interface{}) error {
 	// Confirm that the data passed in can be successfully serialized as YAML
 	bytes, err := yaml.Marshal(config)
 	if err != nil {
@@ -219,47 +249,47 @@ func (manifest *manifest) RunAsUser() string {
 	return string(manifest.ID())
 }
 
-func (mb manifestBuilder) SetRunAsUser(user string) {
+func (mb builder) SetRunAsUser(user string) {
 	mb.manifest.RunAs = user
 }
 
-// ManifestFromPath constructs a Manifest from a local file. This function is a helper for
-// ManifestFromBytes().
-func ManifestFromPath(path string) (Manifest, error) {
+// FromPath constructs a Manifest from a local file. This function is a helper for
+// FromBytes().
+func FromPath(path string) (Manifest, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	return ManifestFromReader(f)
+	return FromReader(f)
 }
 
-// ManifestFromURI constructs a Manifest from data located at a URI. This function is a
-// helper for ManifestFromBytes().
-func ManifestFromURI(manifestUri *url.URL) (Manifest, error) {
+// FromURI constructs a Manifest from data located at a URI. This function is a
+// helper for FromBytes().
+func FromURI(manifestUri *url.URL) (Manifest, error) {
 	f, err := uri.DefaultFetcher.Open(manifestUri)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	return ManifestFromReader(f)
+	return FromReader(f)
 }
 
-// ManifestFromReader constructs a Manifest from an open Reader. All bytes will be read
+// FromReader constructs a Manifest from an open Reader. All bytes will be read
 // from the Reader. The caller is responsible for closing the Reader, if necessary. This
-// function is a helper for ManifestFromBytes().
-func ManifestFromReader(reader io.Reader) (Manifest, error) {
+// function is a helper for FromBytes().
+func FromReader(reader io.Reader) (Manifest, error) {
 	bytes, err := ioutil.ReadAll(reader)
 	if err != nil {
 		return nil, err
 	}
-	return ManifestFromBytes(bytes)
+	return FromBytes(bytes)
 }
 
-// ManifestFromBytes constructs a Manifest by parsing its serialized representation. The
+// FromBytes constructs a Manifest by parsing its serialized representation. The
 // manifest can be a raw YAML document or a PGP clearsigned YAML document. If signed, the
 // signature components will be stored inside the Manifest instance.
-func ManifestFromBytes(bytes []byte) (Manifest, error) {
+func FromBytes(bytes []byte) (Manifest, error) {
 	manifest := &manifest{}
 
 	// Preserve the raw manifest so that manifest.Bytes() returns bytes in

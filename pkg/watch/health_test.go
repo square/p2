@@ -13,7 +13,7 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -143,7 +143,7 @@ func newWatch(id types.PodID) *PodWatch {
 }
 
 func newManifestResult(id types.PodID) kp.ManifestResult {
-	builder := pods.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID(id)
 	builder.SetStatusPort(1) // StatusPort must != 0 for updatePods to use it
 	return kp.ManifestResult{

@@ -5,12 +5,12 @@ import (
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/rc/fields"
 )
 
 func TestJSONMarshal(t *testing.T) {
-	mb := pods.NewManifestBuilder()
+	mb := manifest.NewBuilder()
 	mb.SetID("hello")
 	m := mb.GetManifest()
 

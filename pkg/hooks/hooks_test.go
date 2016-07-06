@@ -10,6 +10,7 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 )
 
@@ -74,8 +75,8 @@ func TestDirectoriesDoNotBreakEverything(t *testing.T) {
 	Assert(t).IsNil(err, "Got an error when running a directory inside the hooks directory")
 }
 
-func testManifest() pods.Manifest {
-	builder := pods.NewManifestBuilder()
+func testManifest() manifest.Manifest {
+	builder := manifest.NewBuilder()
 	builder.SetID(podId)
 	return builder.GetManifest()
 }

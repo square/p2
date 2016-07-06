@@ -5,6 +5,7 @@ import (
 
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/types"
@@ -31,7 +32,7 @@ func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 
-	manifest, err := pods.ManifestFromURI(*manifestURI)
+	manifest, err := manifest.FromURI(*manifestURI)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
@@ -56,7 +57,7 @@ func main() {
 	}
 }
 
-func authorize(manifest pods.Manifest) error {
+func authorize(manifest manifest.Manifest) error {
 	var policy auth.Policy
 	var err error
 	switch *authType {

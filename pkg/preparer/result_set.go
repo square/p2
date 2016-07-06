@@ -4,7 +4,7 @@ import (
 	"sort"
 
 	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -12,8 +12,8 @@ type ManifestPair struct {
 	// save the ID in a separate field, so that the user of this object doesn't
 	// have to check both manifests
 	ID      types.PodID
-	Intent  pods.Manifest
-	Reality pods.Manifest
+	Intent  manifest.Manifest
+	Reality manifest.Manifest
 }
 
 // Given two lists of ManifestResults, group them into pairs based on their

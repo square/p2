@@ -14,8 +14,8 @@ import (
 	"github.com/square/p2/pkg/kp/dsstore"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	pc_fields "github.com/square/p2/pkg/pc/fields"
-	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"k8s.io/kubernetes/pkg/labels"
@@ -79,7 +79,7 @@ func main() {
 		podID := types.PodID(*createPodID)
 		selector := selectorFrom(az)
 
-		manifest, err := pods.ManifestFromPath(*createManifest)
+		manifest, err := manifest.FromPath(*createManifest)
 		if err != nil {
 			log.Fatalf("%s", err)
 		}
@@ -195,7 +195,7 @@ func main() {
 				}
 			}
 			if *updateManifest != "" {
-				manifest, err := pods.ManifestFromPath(*updateManifest)
+				manifest, err := manifest.FromPath(*updateManifest)
 				if err != nil {
 					return ds, util.Errorf("%s", err)
 				}

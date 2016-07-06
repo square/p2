@@ -11,8 +11,8 @@ import (
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	pc_fields "github.com/square/p2/pkg/pc/fields"
-	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -31,25 +31,25 @@ func TestCreate(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := pods.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID("")
 
-	manifest := manifestBuilder.GetManifest()
+	podManifest := manifestBuilder.GetManifest()
 
-	if _, err := store.Create(manifest, minHealth, clusterName, selector, podID); err == nil {
+	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID); err == nil {
 		t.Error("Expected create to fail on bad pod id")
 	}
 
 	podID = types.PodID("pod_id")
-	if _, err := store.Create(manifest, minHealth, clusterName, selector, podID); err == nil {
+	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID); err == nil {
 		t.Error("Expected create to fail on bad manifest pod id")
 	}
 
-	manifestBuilder = pods.NewManifestBuilder()
+	manifestBuilder = manifest.NewBuilder()
 	manifestBuilder.SetID("different_pod_id")
 
-	manifest = manifestBuilder.GetManifest()
-	if _, err := store.Create(manifest, minHealth, clusterName, selector, podID); err == nil {
+	podManifest = manifestBuilder.GetManifest()
+	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID); err == nil {
 		t.Error("Expected create to fail on pod id and manifest pod id mismatch")
 	}
 }
@@ -63,7 +63,7 @@ func createDaemonSet(store *consulStore, t *testing.T) ds_fields.DaemonSet {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := pods.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID(podID)
 
 	manifest := manifestBuilder.GetManifest()
@@ -139,7 +139,7 @@ func TestGet(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := pods.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID(podID)
 
 	manifest := manifestBuilder.GetManifest()
@@ -204,7 +204,7 @@ func TestList(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := pods.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID(firstPodID)
 
 	firstManifest := manifestBuilder.GetManifest()
@@ -217,7 +217,7 @@ func TestList(t *testing.T) {
 	// Create second DaemonSet
 	secondPodID := types.PodID("different_pod_id")
 
-	manifestBuilder = pods.NewManifestBuilder()
+	manifestBuilder = manifest.NewBuilder()
 	manifestBuilder.SetID(secondPodID)
 
 	secondManifest := manifestBuilder.GetManifest()
@@ -257,11 +257,11 @@ func TestMutate(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := pods.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID(podID)
-	manifest := manifestBuilder.GetManifest()
+	podManifest := manifestBuilder.GetManifest()
 
-	ds, err := store.Create(manifest, minHealth, clusterName, selector, podID)
+	ds, err := store.Create(podManifest, minHealth, clusterName, selector, podID)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -301,7 +301,7 @@ func TestMutate(t *testing.T) {
 	someOtherName := ds_fields.ClusterName("some_other_name")
 	someOtherPodID := types.PodID("some_other_pod_id")
 
-	manifestBuilder = pods.NewManifestBuilder()
+	manifestBuilder = manifest.NewBuilder()
 	manifestBuilder.SetID(someOtherPodID)
 	someOtherManifest := manifestBuilder.GetManifest()
 
@@ -390,11 +390,11 @@ func TestWatch(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := pods.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID(podID)
-	manifest := manifestBuilder.GetManifest()
+	podManifest := manifestBuilder.GetManifest()
 
-	ds, err := store.Create(manifest, minHealth, clusterName, selector, podID)
+	ds, err := store.Create(podManifest, minHealth, clusterName, selector, podID)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -403,7 +403,7 @@ func TestWatch(t *testing.T) {
 	//
 	someOtherPodID := types.PodID("some_other_pod_id")
 
-	manifestBuilder = pods.NewManifestBuilder()
+	manifestBuilder = manifest.NewBuilder()
 	manifestBuilder.SetID(someOtherPodID)
 	someOtherManifest := manifestBuilder.GetManifest()
 

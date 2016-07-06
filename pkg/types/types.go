@@ -4,8 +4,6 @@
 package types
 
 import (
-	"github.com/square/p2/pkg/cgroups"
-
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
@@ -68,28 +66,4 @@ func (n NodeSet) Equal(other NodeSet) bool {
 func (n NodeSet) PopAny() (NodeName, bool) {
 	node, ok := n.String.PopAny()
 	return NodeName(node), ok
-}
-
-type LaunchableVersion struct {
-	ID   string            `yaml:"id"`
-	Tags map[string]string `yaml:"tags"`
-}
-
-type LaunchableStanza struct {
-	LaunchableType          string            `yaml:"launchable_type"`
-	LaunchableId            string            `yaml:"launchable_id"`
-	DigestLocation          string            `yaml:"digest_location,omitempty"`
-	DigestSignatureLocation string            `yaml:"digest_signature_location,omitempty"`
-	RestartTimeout          string            `yaml:"restart_timeout,omitempty"`
-	CgroupConfig            cgroups.Config    `yaml:"cgroup,omitempty"`
-	Env                     map[string]string `yaml:"env,omitempty"`
-
-	// The URL from which the launchable can be downloaded. May not be used
-	// in conjunction with Version
-	Location string `yaml:"location"`
-
-	// An alternative to using Location to inform artifact downloading. Version information
-	// can be used to query a configured artifact registry which will provide the artifact
-	// URL. Version may not be used in conjunction with Location
-	Version LaunchableVersion `yaml:"version,omitempty"`
 }

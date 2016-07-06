@@ -7,7 +7,7 @@ import (
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/rc/fields"
 )
 
@@ -21,7 +21,7 @@ type Store interface {
 	// Create creates a replication controller with the specified manifest and selectors.
 	// The node selector is used to determine what nodes the replication controller may schedule on.
 	// The pod label set is applied to every pod the replication controller schedules.
-	Create(manifest pods.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (fields.RC, error)
+	Create(manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (fields.RC, error)
 
 	Get(id fields.ID) (fields.RC, error)
 	List() ([]fields.RC, error)

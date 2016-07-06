@@ -12,6 +12,7 @@ import (
 
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -21,13 +22,13 @@ import (
 const TTL = 60 * time.Second
 
 type ManifestResult struct {
-	Manifest pods.Manifest
+	Manifest manifest.Manifest
 	Path     string
 }
 
 type Store interface {
-	SetPod(podPrefix PodPrefix, nodename types.NodeName, manifest pods.Manifest) (time.Duration, error)
-	Pod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (pods.Manifest, time.Duration, error)
+	SetPod(podPrefix PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
+	Pod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
 	DeletePod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
 	PutHealth(res WatchResult) (time.Time, time.Duration, error)
 	GetHealth(service string, node types.NodeName) (WatchResult, error)
@@ -173,7 +174,7 @@ func (c consulStore) GetServiceHealth(service string) (map[string]WatchResult, e
 }
 
 // SetPod writes a pod manifest into the consul key-value store.
-func (c consulStore) SetPod(podPrefix PodPrefix, nodename types.NodeName, manifest pods.Manifest) (time.Duration, error) {
+func (c consulStore) SetPod(podPrefix PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error) {
 	buf := bytes.Buffer{}
 	err := manifest.Write(&buf)
 	if err != nil {
@@ -218,7 +219,7 @@ func (c consulStore) DeletePod(podPrefix PodPrefix, nodename types.NodeName, pod
 // Pod reads a pod manifest from the key-value store. If the given key does not
 // exist, a nil *PodManifest will be returned, along with a pods.NoCurrentManifest
 // error.
-func (c consulStore) Pod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (pods.Manifest, time.Duration, error) {
+func (c consulStore) Pod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error) {
 	key, err := podPath(podPrefix, nodename, podId)
 	if err != nil {
 		return nil, 0, err
@@ -231,7 +232,7 @@ func (c consulStore) Pod(podPrefix PodPrefix, nodename types.NodeName, podId typ
 	if kvPair == nil {
 		return nil, writeMeta.RequestTime, pods.NoCurrentManifest
 	}
-	manifest, err := pods.ManifestFromBytes(kvPair.Value)
+	manifest, err := manifest.FromBytes(kvPair.Value)
 	return manifest, writeMeta.RequestTime, err
 }
 
@@ -263,7 +264,7 @@ func (c consulStore) listPods(keyPrefix string) ([]ManifestResult, time.Duration
 	var ret []ManifestResult
 
 	for _, kvp := range kvPairs {
-		manifest, err := pods.ManifestFromBytes(kvp.Value)
+		manifest, err := manifest.FromBytes(kvp.Value)
 		if err != nil {
 			return nil, queryMeta.RequestTime, err
 		}
@@ -300,7 +301,7 @@ func (c consulStore) WatchPod(
 	for pair := range kvpChan {
 		out := ManifestResult{Path: key}
 		if pair != nil {
-			manifest, err := pods.ManifestFromBytes(pair.Value)
+			manifest, err := manifest.FromBytes(pair.Value)
 			if err != nil {
 				select {
 				case <-quitChan:
@@ -351,7 +352,7 @@ func (c consulStore) WatchPods(
 	for kvPairs := range kvPairsChan {
 		manifests := make([]ManifestResult, 0, len(kvPairs))
 		for _, pair := range kvPairs {
-			manifest, err := pods.ManifestFromBytes(pair.Value)
+			manifest, err := manifest.FromBytes(pair.Value)
 			if err != nil {
 				select {
 				case <-quitChan:

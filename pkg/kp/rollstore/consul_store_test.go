@@ -11,7 +11,7 @@ import (
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/util"
@@ -1081,8 +1081,8 @@ func testRollValue(id rc_fields.ID) fields.Update {
 	}
 }
 
-func testManifest() pods.Manifest {
-	builder := pods.NewManifestBuilder()
+func testManifest() manifest.Manifest {
+	builder := manifest.NewBuilder()
 	builder.SetID("slug")
 	return builder.GetManifest()
 }

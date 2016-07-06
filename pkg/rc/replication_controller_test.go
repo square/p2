@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/types"
@@ -20,10 +21,10 @@ import (
 )
 
 type fakeKpStore struct {
-	manifests map[string]pods.Manifest
+	manifests map[string]manifest.Manifest
 }
 
-func (s *fakeKpStore) SetPod(podPrefix kp.PodPrefix, nodeName types.NodeName, manifest pods.Manifest) (time.Duration, error) {
+func (s *fakeKpStore) SetPod(podPrefix kp.PodPrefix, nodeName types.NodeName, manifest manifest.Manifest) (time.Duration, error) {
 	key := path.Join(string(podPrefix), nodeName.String(), string(manifest.ID()))
 	s.manifests[key] = manifest
 	return 0, nil
@@ -36,7 +37,7 @@ func (s *fakeKpStore) DeletePod(podPrefix kp.PodPrefix, nodeName types.NodeName,
 }
 
 func (s *fakeKpStore) Pod(podPrefix kp.PodPrefix, nodeName types.NodeName, podID types.PodID) (
-	pods.Manifest, time.Duration, error) {
+	manifest.Manifest, time.Duration, error) {
 	key := path.Join(string(podPrefix), nodeName.String(), podID.String())
 	if manifest, ok := s.manifests[key]; ok {
 		return manifest, 0, nil
@@ -54,17 +55,17 @@ func setup(t *testing.T) (
 
 	rcStore = rcstore.NewFake()
 
-	manifestBuilder := pods.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID("testPod")
-	manifest := manifestBuilder.GetManifest()
+	podManifest := manifestBuilder.GetManifest()
 
 	nodeSelector := klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"})
 	podLabels := map[string]string{"podTest": "successful"}
 
-	rcData, err := rcStore.Create(manifest, nodeSelector, podLabels)
+	rcData, err := rcStore.Create(podManifest, nodeSelector, podLabels)
 	Assert(t).IsNil(err, "expected no error creating request")
 
-	kpStore = fakeKpStore{manifests: make(map[string]pods.Manifest)}
+	kpStore = fakeKpStore{manifests: make(map[string]manifest.Manifest)}
 	applicator = labels.NewFakeApplicator()
 	alerter = alertingtest.NewRecorder()
 

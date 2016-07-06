@@ -20,7 +20,7 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/rc/fields"
@@ -156,7 +156,7 @@ func generatePreparerPod(workdir string) (string, error) {
 		return "", err
 	}
 
-	manifest, err := pods.ManifestFromPath(prepBin2Pod.ManifestPath)
+	manifest, err := manifest.FromPath(prepBin2Pod.ManifestPath)
 	if err != nil {
 		return "", err
 	}
@@ -267,7 +267,7 @@ mkdir -p $HOOKED_POD_HOME
 	}
 	manifestPath := createUserBin2Pod.ManifestPath
 
-	userHookManifest, err := pods.ManifestFromPath(manifestPath)
+	userHookManifest, err := manifest.FromPath(manifestPath)
 	if err != nil {
 		return err
 	}
@@ -317,9 +317,9 @@ func getConsulManifest(dir string) (string, error) {
 		"file://%s",
 		util.From(runtime.Caller(0)).ExpandPath("../hoisted-consul_052.tar.gz"),
 	)
-	builder := pods.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID("consul")
-	stanzas := map[string]types.LaunchableStanza{
+	stanzas := map[string]manifest.LaunchableStanza{
 		"consul": {
 			LaunchableId:   "consul",
 			LaunchableType: "hoist",
@@ -393,10 +393,10 @@ func scheduleRCTLServer(dir string) error {
 
 func createHelloReplicationController(dir string) (fields.ID, error) {
 	hello := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-hello_def456.tar.gz"))
-	builder := pods.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID("hello")
 	builder.SetStatusPort(43770)
-	stanzas := map[string]types.LaunchableStanza{
+	stanzas := map[string]manifest.LaunchableStanza{
 		"hello": {
 			LaunchableId:   "hello",
 			LaunchableType: "hoist",

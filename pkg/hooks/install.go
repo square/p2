@@ -7,6 +7,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
@@ -15,7 +16,7 @@ import (
 // Populates the given directory with executor scripts for each launch script of
 // the given pod, which must be installed. Any orphaned executor scripts (from a
 // past install, but no longer present in this pod) will be cleaned out.
-func InstallHookScripts(dir string, hookPod *pods.Pod, manifest pods.Manifest, logger logging.Logger) error {
+func InstallHookScripts(dir string, hookPod *pods.Pod, manifest manifest.Manifest, logger logging.Logger) error {
 	err := os.MkdirAll(dir, 0755)
 	if err != nil {
 		return err
