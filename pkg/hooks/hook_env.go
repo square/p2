@@ -24,7 +24,7 @@ func (h *HookEnv) Manifest() (manifest.Manifest, error) {
 	if path == "" {
 		return nil, util.Errorf("No manifest exported")
 	}
-	return manifest.ManifestFromPath(path)
+	return manifest.FromPath(path)
 }
 
 func (h *HookEnv) Pod() (*pods.Pod, error) {

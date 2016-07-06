@@ -107,7 +107,7 @@ func (pod *Pod) CurrentManifest() (manifest.Manifest, error) {
 	if _, err := os.Stat(currentManPath); os.IsNotExist(err) {
 		return nil, NoCurrentManifest
 	}
-	return manifest.ManifestFromPath(currentManPath)
+	return manifest.FromPath(currentManPath)
 }
 
 func (pod *Pod) Halt(manifest manifest.Manifest) (bool, error) {

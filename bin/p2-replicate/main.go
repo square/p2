@@ -54,7 +54,7 @@ func main() {
 	labeler := labels.NewConsulApplicator(client, 3)
 	healthChecker := checker.NewConsulHealthChecker(client)
 
-	manifest, err := manifest.ManifestFromURI(*manifestURI)
+	manifest, err := manifest.FromURI(*manifestURI)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}

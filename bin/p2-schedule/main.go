@@ -38,7 +38,7 @@ func main() {
 	}
 
 	for _, manifestPath := range *manifests {
-		manifest, err := manifest.ManifestFromPath(manifestPath)
+		manifest, err := manifest.FromPath(manifestPath)
 		if err != nil {
 			log.Fatalf("Could not read manifest at %s: %s\n", manifestPath, err)
 		}

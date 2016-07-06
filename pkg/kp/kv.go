@@ -232,7 +232,7 @@ func (c consulStore) Pod(podPrefix PodPrefix, nodename types.NodeName, podId typ
 	if kvPair == nil {
 		return nil, writeMeta.RequestTime, pods.NoCurrentManifest
 	}
-	manifest, err := manifest.ManifestFromBytes(kvPair.Value)
+	manifest, err := manifest.FromBytes(kvPair.Value)
 	return manifest, writeMeta.RequestTime, err
 }
 
@@ -264,7 +264,7 @@ func (c consulStore) listPods(keyPrefix string) ([]ManifestResult, time.Duration
 	var ret []ManifestResult
 
 	for _, kvp := range kvPairs {
-		manifest, err := manifest.ManifestFromBytes(kvp.Value)
+		manifest, err := manifest.FromBytes(kvp.Value)
 		if err != nil {
 			return nil, queryMeta.RequestTime, err
 		}
@@ -301,7 +301,7 @@ func (c consulStore) WatchPod(
 	for pair := range kvpChan {
 		out := ManifestResult{Path: key}
 		if pair != nil {
-			manifest, err := manifest.ManifestFromBytes(pair.Value)
+			manifest, err := manifest.FromBytes(pair.Value)
 			if err != nil {
 				select {
 				case <-quitChan:
@@ -352,7 +352,7 @@ func (c consulStore) WatchPods(
 	for kvPairs := range kvPairsChan {
 		manifests := make([]ManifestResult, 0, len(kvPairs))
 		for _, pair := range kvPairs {
-			manifest, err := manifest.ManifestFromBytes(pair.Value)
+			manifest, err := manifest.FromBytes(pair.Value)
 			if err != nil {
 				select {
 				case <-quitChan:

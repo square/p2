@@ -45,7 +45,7 @@ type HashErr struct {
 
 // SumBytes parses the given contents of a manifest file and returns its canonical hash.
 func SumBytes(data []byte) HashErr {
-	m, err := manifest.ManifestFromBytes(data)
+	m, err := manifest.FromBytes(data)
 	if err != nil {
 		return HashErr{"", err}
 	}

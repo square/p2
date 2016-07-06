@@ -94,7 +94,7 @@ func (rc *RC) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	m, err := manifest.ManifestFromBytes([]byte(rawRC.Manifest))
+	m, err := manifest.FromBytes([]byte(rawRC.Manifest))
 	if err != nil {
 		return err
 	}

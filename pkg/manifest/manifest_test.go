@@ -18,7 +18,7 @@ func TestPodManifestCanBeRead(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	testPath := filepath.Join(filepath.Dir(filename), "test_manifest.yaml")
 
-	manifest, err := ManifestFromPath(testPath)
+	manifest, err := FromPath(testPath)
 	Assert(t).IsNil(err, "Should not have failed to get pod manifest.")
 	Assert(t).AreEqual("hello", string(manifest.ID()), "Id read from manifest didn't have expected value")
 	Assert(t).AreEqual(manifest.GetLaunchableStanzas()["app"].Location, "hoisted-hello_def456.tar.gz", "Location read from manifest didn't have expected value")
@@ -125,7 +125,7 @@ func TestPodManifestCanBeWritten(t *testing.T) {
 
 func TestPodManifestCanWriteItsConfigStanzaSeparately(t *testing.T) {
 	config := testPod()
-	manifest, err := ManifestFromBytes([]byte(config))
+	manifest, err := FromBytes([]byte(config))
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 
 	buff := bytes.Buffer{}
@@ -137,7 +137,7 @@ func TestPodManifestCanWriteItsConfigStanzaSeparately(t *testing.T) {
 
 func TestPodManifestCanReportItsSHA(t *testing.T) {
 	config := testPodOldStatus()
-	manifest, err := ManifestFromBytes([]byte(config))
+	manifest, err := FromBytes([]byte(config))
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 	val, err := manifest.SHA()
 	Assert(t).IsNil(err, "should not have erred when getting SHA")
@@ -150,7 +150,7 @@ func TestPodManifestCanReportItsSHA(t *testing.T) {
 
 func TestPodManifestLaunchablesCGroups(t *testing.T) {
 	config := testPod()
-	manifest, _ := ManifestFromBytes([]byte(config))
+	manifest, _ := FromBytes([]byte(config))
 	launchables := manifest.GetLaunchableStanzas()
 	Assert(t).AreEqual(len(launchables), 1, "Expected exactly one launchable in the manifest")
 	for _, launchable := range launchables {
@@ -179,7 +179,7 @@ func TestStatusHTTP(t *testing.T) {
 		{`{ id: thepod, status: { http: true } }`, true},
 	}
 	for _, test := range tests {
-		manifest, err := ManifestFromBytes([]byte(test.config))
+		manifest, err := FromBytes([]byte(test.config))
 		Assert(t).IsNil(err, "should not have erred when building manifest")
 
 		Assert(t).AreEqual(test.expected, manifest.GetStatusHTTP(), "uses the correct protocol")
@@ -197,7 +197,7 @@ func TestStatusPath(t *testing.T) {
 		{`{ id: thepod, status: { path: /_foobar } }`, "/_foobar"},
 	}
 	for _, test := range tests {
-		manifest, err := ManifestFromBytes([]byte(test.config))
+		manifest, err := FromBytes([]byte(test.config))
 		Assert(t).IsNil(err, "should not have erred when building manifest")
 
 		Assert(t).AreEqual(test.expected, manifest.GetStatusPath(), "uses the correct path")
@@ -215,7 +215,7 @@ func TestStatusPort(t *testing.T) {
 		{`{ id: thepod, status: { port: 398 } }`, 398},
 	}
 	for _, test := range tests {
-		manifest, err := ManifestFromBytes([]byte(test.config))
+		manifest, err := FromBytes([]byte(test.config))
 		Assert(t).IsNil(err, "should not have erred when building manifest")
 
 		Assert(t).AreEqual(test.expected, manifest.GetStatusPort(), "uses the correct port")
@@ -224,13 +224,13 @@ func TestStatusPort(t *testing.T) {
 
 func TestRunAs(t *testing.T) {
 	config := testPod()
-	manifest, err := ManifestFromBytes([]byte(config))
+	manifest, err := FromBytes([]byte(config))
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 
 	Assert(t).AreEqual(manifest.RunAsUser(), string(manifest.ID()), "RunAsUser() didn't match expectations")
 
 	config += `run_as: specialuser`
-	manifest, err = ManifestFromBytes([]byte(config))
+	manifest, err = FromBytes([]byte(config))
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 	Assert(t).AreEqual(manifest.RunAsUser(), "specialuser", "RunAsUser() didn't match expectations")
 }
@@ -238,7 +238,7 @@ func TestRunAs(t *testing.T) {
 func TestByteOrderPreserved(t *testing.T) {
 	// The yaml keys here are intentionally ordered in a way that without special
 	// care, the bytes returned by manifest.Bytes() would be in a different order
-	// than the bytes passed in to ManifestFromBytes()
+	// than the bytes passed in to FromBytes()
 	manifestBytes := []byte(`id: thepod
 launchables:
   my-app:
@@ -249,7 +249,7 @@ status_port: 8000
 config:
   ENVIRONMENT: staging
 `)
-	manifest, err := ManifestFromBytes(manifestBytes)
+	manifest, err := FromBytes(manifestBytes)
 	Assert(t).IsNil(err, "should not have erred constructing manifest from bytes")
 	outBytes, err := manifest.Marshal()
 	Assert(t).IsNil(err, "should not have erred extracting manifest struct to bytes")
@@ -291,7 +291,7 @@ status_port: 8000
 config:
   ENVIRONMENT: staging
 `)
-	manifest, err := ManifestFromBytes(manifestBytes)
+	manifest, err := FromBytes(manifestBytes)
 	Assert(t).IsNil(err, "should not have erred constructing manifest from bytes")
 
 	builder := manifest.GetBuilder()

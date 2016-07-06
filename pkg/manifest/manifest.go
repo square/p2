@@ -253,43 +253,43 @@ func (mb builder) SetRunAsUser(user string) {
 	mb.manifest.RunAs = user
 }
 
-// ManifestFromPath constructs a Manifest from a local file. This function is a helper for
-// ManifestFromBytes().
-func ManifestFromPath(path string) (Manifest, error) {
+// FromPath constructs a Manifest from a local file. This function is a helper for
+// FromBytes().
+func FromPath(path string) (Manifest, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	return ManifestFromReader(f)
+	return FromReader(f)
 }
 
-// ManifestFromURI constructs a Manifest from data located at a URI. This function is a
-// helper for ManifestFromBytes().
-func ManifestFromURI(manifestUri *url.URL) (Manifest, error) {
+// FromURI constructs a Manifest from data located at a URI. This function is a
+// helper for FromBytes().
+func FromURI(manifestUri *url.URL) (Manifest, error) {
 	f, err := uri.DefaultFetcher.Open(manifestUri)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	return ManifestFromReader(f)
+	return FromReader(f)
 }
 
-// ManifestFromReader constructs a Manifest from an open Reader. All bytes will be read
+// FromReader constructs a Manifest from an open Reader. All bytes will be read
 // from the Reader. The caller is responsible for closing the Reader, if necessary. This
-// function is a helper for ManifestFromBytes().
-func ManifestFromReader(reader io.Reader) (Manifest, error) {
+// function is a helper for FromBytes().
+func FromReader(reader io.Reader) (Manifest, error) {
 	bytes, err := ioutil.ReadAll(reader)
 	if err != nil {
 		return nil, err
 	}
-	return ManifestFromBytes(bytes)
+	return FromBytes(bytes)
 }
 
-// ManifestFromBytes constructs a Manifest by parsing its serialized representation. The
+// FromBytes constructs a Manifest by parsing its serialized representation. The
 // manifest can be a raw YAML document or a PGP clearsigned YAML document. If signed, the
 // signature components will be stored inside the Manifest instance.
-func ManifestFromBytes(bytes []byte) (Manifest, error) {
+func FromBytes(bytes []byte) (Manifest, error) {
 	manifest := &manifest{}
 
 	// Preserve the raw manifest so that manifest.Bytes() returns bytes in

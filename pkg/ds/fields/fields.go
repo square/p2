@@ -95,7 +95,7 @@ func (ds *DaemonSet) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	podManifest, err := manifest.ManifestFromBytes([]byte(rawDS.Manifest))
+	podManifest, err := manifest.FromBytes([]byte(rawDS.Manifest))
 	if err != nil {
 		return err
 	}

@@ -29,7 +29,7 @@ func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 	log.Println("Starting bootstrap")
-	agentManifest, err := manifest.ManifestFromPath(*agentManifestPath)
+	agentManifest, err := manifest.FromPath(*agentManifestPath)
 	if err != nil {
 		log.Fatalln("Could not get agent manifest: %s", err)
 	}
@@ -38,7 +38,7 @@ func main() {
 	var consulPod *pods.Pod
 	var consulManifest manifest.Manifest
 	if *existingConsul == "" {
-		consulManifest, err = manifest.ManifestFromPath(*consulManifestPath)
+		consulManifest, err = manifest.FromPath(*consulManifestPath)
 		if err != nil {
 			log.Fatalf("Could not get consul manifest: %s", err)
 		}

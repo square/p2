@@ -35,7 +35,7 @@ func main() {
 
 	var podManifest manifest.Manifest
 	if *manifestPath != "" {
-		podManifest, err = manifest.ManifestFromPath(*manifestPath)
+		podManifest, err = manifest.FromPath(*manifestPath)
 		if err != nil {
 			log.Fatalln(err)
 		}

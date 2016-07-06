@@ -156,7 +156,7 @@ func generatePreparerPod(workdir string) (string, error) {
 		return "", err
 	}
 
-	manifest, err := manifest.ManifestFromPath(prepBin2Pod.ManifestPath)
+	manifest, err := manifest.FromPath(prepBin2Pod.ManifestPath)
 	if err != nil {
 		return "", err
 	}
@@ -267,7 +267,7 @@ mkdir -p $HOOKED_POD_HOME
 	}
 	manifestPath := createUserBin2Pod.ManifestPath
 
-	userHookManifest, err := manifest.ManifestFromPath(manifestPath)
+	userHookManifest, err := manifest.FromPath(manifestPath)
 	if err != nil {
 		return err
 	}

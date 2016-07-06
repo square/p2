@@ -86,7 +86,7 @@ func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
 	sigWriter.Write(manifestBytes)
 	sigWriter.Close()
 
-	podManifest, err = manifest.ManifestFromBytes(buf.Bytes())
+	podManifest, err = manifest.FromBytes(buf.Bytes())
 	Assert(t).IsNil(err, "should have generated manifest from signed bytes")
 
 	fakeIntent := fakeStoreWithManifests(kp.ManifestResult{

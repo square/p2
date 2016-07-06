@@ -187,7 +187,7 @@ type rctlParams struct {
 }
 
 func (r rctlParams) Create(manifestPath, nodeSelector string, podLabels map[string]string, rcLabels map[string]string) {
-	manifest, err := manifest.ManifestFromPath(manifestPath)
+	manifest, err := manifest.FromPath(manifestPath)
 	if err != nil {
 		r.logger.WithErrorAndFields(err, logrus.Fields{
 			"manifest": manifestPath,

@@ -30,14 +30,14 @@ func getTestPod() *Pod {
 
 func getTestPodManifest(t *testing.T) manifest.Manifest {
 	testPath := util.From(runtime.Caller(0)).ExpandPath("test_manifest.yaml")
-	pod, err := manifest.ManifestFromPath(testPath)
+	pod, err := manifest.FromPath(testPath)
 	Assert(t).IsNil(err, "couldn't read test manifest")
 	return pod
 }
 
 func getUpdatedManifest(t *testing.T) manifest.Manifest {
 	podPath := util.From(runtime.Caller(0)).ExpandPath("updated_manifest.yaml")
-	pod, err := manifest.ManifestFromPath(podPath)
+	pod, err := manifest.FromPath(podPath)
 	Assert(t).IsNil(err, "couldn't read test manifest")
 	return pod
 }
@@ -103,7 +103,7 @@ config:
 	currUser, err := user.Current()
 	Assert(t).IsNil(err, "Could not get the current user")
 	manifestStr += fmt.Sprintf("run_as: %s", currUser.Username)
-	manifest, err := manifest.ManifestFromBytes(bytes.NewBufferString(manifestStr).Bytes())
+	manifest, err := manifest.FromBytes(bytes.NewBufferString(manifestStr).Bytes())
 	Assert(t).IsNil(err, "should not have erred reading the manifest")
 
 	podTemp, _ := ioutil.TempDir("", "pod")
@@ -239,7 +239,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 	oldPath, err := pod.WriteCurrentManifest(updated.GetManifest())
 	Assert(t).IsNil(err, "should have written the current manifest and linked the old one")
 
-	writtenOld, err := manifest.ManifestFromPath(oldPath)
+	writtenOld, err := manifest.FromPath(oldPath)
 	Assert(t).IsNil(err, "should have written a manifest to the old path")
 	manifestMustEqual(existing.GetManifest(), writtenOld, t)
 

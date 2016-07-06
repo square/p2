@@ -115,7 +115,7 @@ func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest
 
 func testManifest(t *testing.T) manifest.Manifest {
 	manifestPath := util.From(runtime.Caller(0)).ExpandPath("test_manifest.yaml")
-	manifest, err := manifest.ManifestFromPath(manifestPath)
+	manifest, err := manifest.FromPath(manifestPath)
 	if err != nil {
 		t.Fatal("No test manifest found, failing\n")
 	}
@@ -149,7 +149,7 @@ func testSignedManifest(t *testing.T, modify func(manifest.Builder, *openpgp.Ent
 	sigWriter.Write(manifestBytes)
 	sigWriter.Close()
 
-	manifest, err := manifest.ManifestFromBytes(buf.Bytes())
+	manifest, err := manifest.FromBytes(buf.Bytes())
 	Assert(t).IsNil(err, "should have generated manifest from signed bytes")
 
 	return manifest, fakeSigner

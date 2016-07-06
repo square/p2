@@ -79,7 +79,7 @@ func main() {
 		podID := types.PodID(*createPodID)
 		selector := selectorFrom(az)
 
-		manifest, err := manifest.ManifestFromPath(*createManifest)
+		manifest, err := manifest.FromPath(*createManifest)
 		if err != nil {
 			log.Fatalf("%s", err)
 		}
@@ -195,7 +195,7 @@ func main() {
 				}
 			}
 			if *updateManifest != "" {
-				manifest, err := manifest.ManifestFromPath(*updateManifest)
+				manifest, err := manifest.FromPath(*updateManifest)
 				if err != nil {
 					return ds, util.Errorf("%s", err)
 				}

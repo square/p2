@@ -25,7 +25,7 @@ func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 
-	manifest, err := manifest.ManifestFromURI(*manifestURI)
+	manifest, err := manifest.FromURI(*manifestURI)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
