@@ -54,11 +54,29 @@ func TestGetLaunchable(t *testing.T) {
 		l, _ := pod.getLaunchable(stanza, "foouser", runit.RestartPolicyAlways)
 		launchable := l.(hoist.LaunchAdapter).Launchable
 		Assert(t).AreEqual("app", launchable.Id, "Launchable Id did not have expected value")
+		Assert(t).AreEqual("def456", launchable.Version, "Launchable version did not have expected value")
 		Assert(t).AreEqual("hello__app", launchable.ServiceId, "Launchable ServiceId did not have expected value")
 		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
 		Assert(t).IsTrue(launchable.ExecNoLimit, "GetLaunchable() should always set ExecNoLimit to true for hoist launchables")
 		Assert(t).AreEqual(launchable.RestartPolicy, runit.RestartPolicyAlways, "Default RestartPolicy for a launchable should be 'always'")
 	}
+}
+
+func TestGetLaunchableNoVersion(t *testing.T) {
+	launchableStanza := manifest.LaunchableStanza{
+		LaunchableId:   "somelaunchable",
+		Location:       "https://server.com/somelaunchable", // note this doesn't have a version identifier
+		LaunchableType: "hoist",
+	}
+	pod := getTestPod()
+	l, _ := pod.getLaunchable(launchableStanza, "foouser", runit.RestartPolicyAlways)
+	launchable := l.(hoist.LaunchAdapter).Launchable
+	Assert(t).AreEqual("somelaunchable", launchable.Id, "Launchable Id did not have expected value")
+	Assert(t).AreEqual("", launchable.Version, "Launchable version did not have expected value")
+	Assert(t).AreEqual("hello__somelaunchable", launchable.ServiceId, "Launchable ServiceId did not have expected value")
+	Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
+	Assert(t).IsTrue(launchable.ExecNoLimit, "GetLaunchable() should always set ExecNoLimit to true for hoist launchables")
+	Assert(t).AreEqual(launchable.RestartPolicy, runit.RestartPolicyAlways, "Default RestartPolicy for a launchable should be 'always'")
 }
 
 func TestPodCanWriteEnvFile(t *testing.T) {

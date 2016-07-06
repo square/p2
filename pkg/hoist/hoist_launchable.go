@@ -282,7 +282,11 @@ func (hl *Launchable) Install(downloader artifact.Downloader) error {
 // version is derived from the location, using the naming scheme
 // <the-app>_<unique-version-string>.tar.gz
 func (hl *Launchable) Name() string {
-	return fmt.Sprintf("%s_%s", hl.Id, hl.Version)
+	name := hl.Id
+	if hl.Version != "" {
+		name = name + "_" + hl.Version
+	}
+	return name
 }
 
 func (*Launchable) Type() string {
