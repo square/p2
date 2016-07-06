@@ -4,7 +4,7 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -12,7 +12,7 @@ import (
 // It potentially takes into account considerations such as existing load on the nodes,
 // label selectors, and more.
 type Scheduler interface {
-	EligibleNodes(pods.Manifest, klabels.Selector) ([]types.NodeName, error)
+	EligibleNodes(manifest.Manifest, klabels.Selector) ([]types.NodeName, error)
 }
 
 type applicatorScheduler struct {
@@ -25,7 +25,7 @@ func NewApplicatorScheduler(applicator labels.Applicator) *applicatorScheduler {
 	return &applicatorScheduler{applicator: applicator}
 }
 
-func (sel *applicatorScheduler) EligibleNodes(_ pods.Manifest, selector klabels.Selector) ([]types.NodeName, error) {
+func (sel *applicatorScheduler) EligibleNodes(_ manifest.Manifest, selector klabels.Selector) ([]types.NodeName, error) {
 	nodes, err := sel.applicator.GetMatches(selector, labels.NODE)
 	if err != nil {
 		return nil, err

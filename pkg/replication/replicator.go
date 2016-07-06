@@ -6,7 +6,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -24,7 +24,7 @@ type Replicator interface {
 
 // Replicator creates replications
 type replicator struct {
-	manifest  pods.Manifest // the manifest to replicate
+	manifest  manifest.Manifest // the manifest to replicate
 	logger    logging.Logger
 	nodes     []types.NodeName
 	active    int // maximum number of nodes to update concurrently
@@ -37,7 +37,7 @@ type replicator struct {
 }
 
 func NewReplicator(
-	manifest pods.Manifest,
+	manifest manifest.Manifest,
 	logger logging.Logger,
 	nodes []types.NodeName,
 	active int,

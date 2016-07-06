@@ -1,0 +1,23 @@
+id: hello
+# any base agent that passes this label expression will
+# attempt to run it. Zones and colo-groups collapse into
+# this labeling mechanism
+# label: "%{PA & EXTERNAL}" # aspirational
+# we could alternatively give each host its own label and
+# manually schedule them this way in an initial phase.
+# label: %{foo.bar.square | bam.biz.square}
+# instances: 3 # aspirational
+launchables:
+  app:
+    launchable_type: hoist
+    launchable_id: app
+    location: hoisted-hello_def456.tar.gz
+
+config:
+  # is written to a file and passed as CONFIG_FILE to the process
+  ENVIRONMENT: staging
+  TMPDIR: /data/app/ocrcard/current/tmp
+  hoptoad:
+    url: https://hoptoad.com/notifier_api/v2/notices/
+    api_key: aabbccddeeffgghhiiijjjkkklll
+    api_key_warn: aabbccddeeffgghhiiijjjkkklll

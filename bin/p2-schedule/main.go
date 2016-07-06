@@ -6,7 +6,7 @@ import (
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/flags"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -38,7 +38,7 @@ func main() {
 	}
 
 	for _, manifestPath := range *manifests {
-		manifest, err := pods.ManifestFromPath(manifestPath)
+		manifest, err := manifest.ManifestFromPath(manifestPath)
 		if err != nil {
 			log.Fatalf("Could not read manifest at %s: %s\n", manifestPath, err)
 		}

@@ -15,6 +15,7 @@ import (
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -27,21 +28,21 @@ func getTestPod() *Pod {
 	return NewPod(types.PodID("hello"), "/data/pods/test")
 }
 
-func getTestPodManifest(t *testing.T) Manifest {
+func getTestPodManifest(t *testing.T) manifest.Manifest {
 	testPath := util.From(runtime.Caller(0)).ExpandPath("test_manifest.yaml")
-	pod, err := ManifestFromPath(testPath)
+	pod, err := manifest.ManifestFromPath(testPath)
 	Assert(t).IsNil(err, "couldn't read test manifest")
 	return pod
 }
 
-func getUpdatedManifest(t *testing.T) Manifest {
+func getUpdatedManifest(t *testing.T) manifest.Manifest {
 	podPath := util.From(runtime.Caller(0)).ExpandPath("updated_manifest.yaml")
-	pod, err := ManifestFromPath(podPath)
+	pod, err := manifest.ManifestFromPath(podPath)
 	Assert(t).IsNil(err, "couldn't read test manifest")
 	return pod
 }
 
-func getLaunchableStanzasFromTestManifest(t *testing.T) map[string]types.LaunchableStanza {
+func getLaunchableStanzasFromTestManifest(t *testing.T) map[string]manifest.LaunchableStanza {
 	return getTestPodManifest(t).GetLaunchableStanzas()
 }
 
@@ -102,7 +103,7 @@ config:
 	currUser, err := user.Current()
 	Assert(t).IsNil(err, "Could not get the current user")
 	manifestStr += fmt.Sprintf("run_as: %s", currUser.Username)
-	manifest, err := ManifestFromBytes(bytes.NewBufferString(manifestStr).Bytes())
+	manifest, err := manifest.ManifestFromBytes(bytes.NewBufferString(manifestStr).Bytes())
 	Assert(t).IsNil(err, "should not have erred reading the manifest")
 
 	podTemp, _ := ioutil.TempDir("", "pod")
@@ -216,43 +217,35 @@ func TestLogInfo(t *testing.T) {
 }
 
 func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
-	existing := getTestPodManifest(t).(*manifest)
-	updated := getUpdatedManifest(t).(*manifest)
+	existing := getTestPodManifest(t).GetBuilder()
+	updated := getUpdatedManifest(t).GetBuilder()
 
 	poddir, err := ioutil.TempDir("", "poddir")
 	Assert(t).IsNil(err, "couldn't create tempdir")
 	pod := NewPod(types.PodID("testPod"), poddir)
 
 	// set the RunAs user to the user running the test, because when we
-	// write files we need an owner. Unset them after the write so that the
-	// manifests match the manifests on disk
-	oldPath := func() string {
-		currUser, err := user.Current()
-		Assert(t).IsNil(err, "Could not get the current user")
-		existing.RunAs = currUser.Username
-		defer func() { existing.RunAs = "" }()
-		updated.RunAs = currUser.Username
-		defer func() { updated.RunAs = "" }()
+	// write files we need an owner.
+	currUser, err := user.Current()
+	Assert(t).IsNil(err, "Could not get the current user")
+	existing.SetRunAsUser(currUser.Username)
+	updated.SetRunAsUser(currUser.Username)
 
-		manifestContent, err := existing.Marshal()
-		Assert(t).IsNil(err, "couldn't get manifest bytes")
-		err = ioutil.WriteFile(pod.currentPodManifestPath(), manifestContent, 0744)
-		Assert(t).IsNil(err, "should have written current manifest")
+	manifestContent, err := existing.GetManifest().Marshal()
+	Assert(t).IsNil(err, "couldn't get manifest bytes")
+	err = ioutil.WriteFile(pod.currentPodManifestPath(), manifestContent, 0744)
+	Assert(t).IsNil(err, "should have written current manifest")
 
-		oldPath, err := pod.WriteCurrentManifest(updated)
-		Assert(t).IsNil(err, "should have written the current manifest and linked the old one")
-		return oldPath
-	}()
-	existing.RunAs = ""
-	updated.RunAs = ""
+	oldPath, err := pod.WriteCurrentManifest(updated.GetManifest())
+	Assert(t).IsNil(err, "should have written the current manifest and linked the old one")
 
-	writtenOld, err := ManifestFromPath(oldPath)
+	writtenOld, err := manifest.ManifestFromPath(oldPath)
 	Assert(t).IsNil(err, "should have written a manifest to the old path")
-	manifestMustEqual(existing, writtenOld, t)
+	manifestMustEqual(existing.GetManifest(), writtenOld, t)
 
 	writtenCurrent, err := pod.CurrentManifest()
 	Assert(t).IsNil(err, "the manifest was not written properly")
-	manifestMustEqual(updated, writtenCurrent, t)
+	manifestMustEqual(updated.GetManifest(), writtenCurrent, t)
 }
 
 func TestBuildRunitServices(t *testing.T) {
@@ -275,9 +268,10 @@ func TestBuildRunitServices(t *testing.T) {
 	outFilePath := filepath.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
-	testManifest := &manifest{RestartPolicy: runit.RestartPolicyAlways}
+	testManifest := manifest.NewManifestBuilder()
+	testManifest.SetRestartPolicy(runit.RestartPolicyAlways)
 	testLaunchable := hl.If()
-	pod.buildRunitServices([]launch.Launchable{testLaunchable}, testManifest)
+	pod.buildRunitServices([]launch.Launchable{testLaunchable}, testManifest.GetManifest())
 
 	f, err := os.Open(outFilePath)
 	defer f.Close()
@@ -333,7 +327,7 @@ func TestUninstall(t *testing.T) {
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
 }
 
-func manifestMustEqual(expected, actual Manifest, t *testing.T) {
+func manifestMustEqual(expected, actual manifest.Manifest, t *testing.T) {
 	actualSha, err := actual.SHA()
 	Assert(t).IsNil(err, "should have gotten SHA from old manifest")
 	expectedSha, err := expected.SHA()

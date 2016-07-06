@@ -17,7 +17,7 @@ import (
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
@@ -54,7 +54,7 @@ func main() {
 	labeler := labels.NewConsulApplicator(client, 3)
 	healthChecker := checker.NewConsulHealthChecker(client)
 
-	manifest, err := pods.ManifestFromURI(*manifestURI)
+	manifest, err := manifest.ManifestFromURI(*manifestURI)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}

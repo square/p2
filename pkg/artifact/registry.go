@@ -4,7 +4,7 @@ import (
 	"net/url"
 
 	"github.com/square/p2/pkg/auth"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -13,7 +13,7 @@ type Registry interface {
 	// Given a LaunchableStanza from a pod manifest, returns a URL from which the
 	// artifact can be fetched an a struct containing the locations of files that
 	// can be used to verify artifact integrity
-	LocationDataForLaunchable(stanza types.LaunchableStanza) (*url.URL, auth.VerificationData, error)
+	LocationDataForLaunchable(stanza manifest.LaunchableStanza) (*url.URL, auth.VerificationData, error)
 }
 
 type registry struct{}
@@ -35,7 +35,7 @@ func NewRegistry() Registry {
 // manifest: ".manifest"
 // manifest signature: ".manifest.sig"
 // build signature: ".sig"
-func (a registry) LocationDataForLaunchable(stanza types.LaunchableStanza) (*url.URL, auth.VerificationData, error) {
+func (a registry) LocationDataForLaunchable(stanza manifest.LaunchableStanza) (*url.URL, auth.VerificationData, error) {
 	if stanza.Location == "" && stanza.Version.ID == "" {
 		return nil, auth.VerificationData{}, util.Errorf("Launchable must provide either \"location\" or \"version\" fields")
 	}

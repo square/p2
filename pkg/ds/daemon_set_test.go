@@ -13,7 +13,7 @@ import (
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -131,16 +131,16 @@ func TestSchedule(t *testing.T) {
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
-	manifestBuilder := pods.NewManifestBuilder()
+	manifestBuilder := manifest.NewManifestBuilder()
 	manifestBuilder.SetID(podID)
-	manifest := manifestBuilder.GetManifest()
+	podManifest := manifestBuilder.GetManifest()
 
 	nodeSelector := klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"})
 
-	dsData, err := dsStore.Create(manifest, minHealth, clusterName, nodeSelector, podID)
+	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID)
 	Assert(t).IsNil(err, "expected no error creating request")
 
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]pods.Manifest), make(map[string]kp.WatchResult))
+	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
 	ds := New(

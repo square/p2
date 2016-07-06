@@ -7,7 +7,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/ds/fields"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -29,7 +29,7 @@ type Store interface {
 	// The node selector is used to determine what nodes the daemon set may schedule on.
 	// The pod label set is applied to every pod the daemon set schedules.
 	Create(
-		manifest pods.Manifest,
+		manifest manifest.Manifest,
 		minHealth int,
 		name fields.ClusterName,
 		nodeSelector labels.Selector,

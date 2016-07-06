@@ -9,6 +9,7 @@ import (
 
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -28,16 +29,16 @@ func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 	log.Println("Starting bootstrap")
-	agentManifest, err := pods.ManifestFromPath(*agentManifestPath)
+	agentManifest, err := manifest.ManifestFromPath(*agentManifestPath)
 	if err != nil {
 		log.Fatalln("Could not get agent manifest: %s", err)
 	}
 	log.Println("Installing and launching consul")
 
 	var consulPod *pods.Pod
-	var consulManifest pods.Manifest
+	var consulManifest manifest.Manifest
 	if *existingConsul == "" {
-		consulManifest, err = pods.ManifestFromPath(*consulManifestPath)
+		consulManifest, err = manifest.ManifestFromPath(*consulManifestPath)
 		if err != nil {
 			log.Fatalf("Could not get consul manifest: %s", err)
 		}
@@ -86,7 +87,7 @@ func main() {
 	log.Println("Bootstrapping complete")
 }
 
-func installConsul(consulPod *pods.Pod, consulManifest pods.Manifest) error {
+func installConsul(consulPod *pods.Pod, consulManifest manifest.Manifest) error {
 	// Inject servicebuilder?
 	err := consulPod.Install(consulManifest, auth.NopVerifier())
 	if err != nil {
@@ -169,7 +170,7 @@ func verifyReality(waitTime time.Duration, consulID types.PodID, agentID types.P
 	}
 }
 
-func scheduleForThisHost(manifest pods.Manifest, alsoReality bool) error {
+func scheduleForThisHost(manifest manifest.Manifest, alsoReality bool) error {
 	store := kp.NewConsulStore(kp.NewConsulClient(kp.Options{
 		Token: *consulToken,
 	}))
@@ -189,7 +190,7 @@ func scheduleForThisHost(manifest pods.Manifest, alsoReality bool) error {
 	return nil
 }
 
-func installBaseAgent(agentManifest pods.Manifest) error {
+func installBaseAgent(agentManifest manifest.Manifest) error {
 	agentPod := pods.NewPod(agentManifest.ID(), pods.PodPath(*podRoot, agentManifest.ID()))
 	err := agentPod.Install(agentManifest, auth.NopVerifier())
 	if err != nil {

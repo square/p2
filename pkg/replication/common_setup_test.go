@@ -10,7 +10,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 
 	"github.com/Sirupsen/logrus"
@@ -212,8 +212,8 @@ func basicLogger() logging.Logger {
 	)
 }
 
-func basicManifest() pods.Manifest {
-	builder := pods.NewManifestBuilder()
+func basicManifest() manifest.Manifest {
+	builder := manifest.NewManifestBuilder()
 	builder.SetID(testPodId)
 	return builder.GetManifest()
 }

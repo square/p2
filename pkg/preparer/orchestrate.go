@@ -8,6 +8,7 @@ import (
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util/size"
@@ -22,22 +23,22 @@ var svlogdExec = []string{"svlogd", "-tt", "./main"}
 
 type Pod interface {
 	hooks.Pod
-	Launch(pods.Manifest) (bool, error)
-	Install(pods.Manifest, auth.ArtifactVerifier) error
+	Launch(manifest.Manifest) (bool, error)
+	Install(manifest.Manifest, auth.ArtifactVerifier) error
 	Uninstall() error
-	Verify(pods.Manifest, auth.Policy) error
-	Halt(pods.Manifest) (bool, error)
-	Prune(size.ByteCount, pods.Manifest)
+	Verify(manifest.Manifest, auth.Policy) error
+	Halt(manifest.Manifest) (bool, error)
+	Prune(size.ByteCount, manifest.Manifest)
 }
 
 type Hooks interface {
-	RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest pods.Manifest) error
+	RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest manifest.Manifest) error
 }
 
 type Store interface {
 	ListPods(podPrefix kp.PodPrefix, nodeName types.NodeName) ([]kp.ManifestResult, time.Duration, error)
-	SetPod(podPrefix kp.PodPrefix, nodeName types.NodeName, podManifest pods.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodeName types.NodeName, podId types.PodID) (pods.Manifest, time.Duration, error)
+	SetPod(podPrefix kp.PodPrefix, nodeName types.NodeName, podManifest manifest.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodeName types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
 	DeletePod(podPrefix kp.PodPrefix, nodeName types.NodeName, podId types.PodID) (time.Duration, error)
 	WatchPods(
 		podPrefix kp.PodPrefix,
@@ -131,7 +132,7 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	}
 }
 
-func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest pods.Manifest, logger logging.Logger) {
+func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest manifest.Manifest, logger logging.Logger) {
 	err := p.hooks.RunHookType(hookType, pod, manifest)
 	if err != nil {
 		logger.WithErrorAndFields(err, logrus.Fields{
@@ -239,7 +240,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 }
 
 // check if a manifest satisfies the authorization requirement of this preparer
-func (p *Preparer) authorize(manifest pods.Manifest, logger logging.Logger) bool {
+func (p *Preparer) authorize(manifest manifest.Manifest, logger logging.Logger) bool {
 	err := p.authPolicy.AuthorizeApp(manifest, logger)
 	if err != nil {
 		if err, ok := err.(auth.Error); ok {

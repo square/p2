@@ -8,6 +8,7 @@ import (
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
 )
@@ -15,7 +16,7 @@ import (
 // In memory kp store useful in tests. Currently does not implement the entire
 // kp.Store interface
 type FakePodStore struct {
-	podResults    map[FakePodStoreKey]pods.Manifest
+	podResults    map[FakePodStoreKey]manifest.Manifest
 	healthResults map[string]kp.WatchResult
 
 	// represents locks that are held. Will be shared between any
@@ -28,9 +29,9 @@ type FakePodStore struct {
 
 var _ kp.Store = &FakePodStore{}
 
-func NewFakePodStore(podResults map[FakePodStoreKey]pods.Manifest, healthResults map[string]kp.WatchResult) *FakePodStore {
+func NewFakePodStore(podResults map[FakePodStoreKey]manifest.Manifest, healthResults map[string]kp.WatchResult) *FakePodStore {
 	if podResults == nil {
-		podResults = make(map[FakePodStoreKey]pods.Manifest)
+		podResults = make(map[FakePodStoreKey]manifest.Manifest)
 	}
 	if healthResults == nil {
 		healthResults = make(map[string]kp.WatchResult)
@@ -56,12 +57,12 @@ func FakePodStoreKeyFor(podPrefix kp.PodPrefix, hostname types.NodeName, podId t
 	}
 }
 
-func (f *FakePodStore) SetPod(podPrefix kp.PodPrefix, hostname types.NodeName, manifest pods.Manifest) (time.Duration, error) {
+func (f *FakePodStore) SetPod(podPrefix kp.PodPrefix, hostname types.NodeName, manifest manifest.Manifest) (time.Duration, error) {
 	f.podResults[FakePodStoreKeyFor(podPrefix, hostname, manifest.ID())] = manifest
 	return 0, nil
 }
 
-func (f *FakePodStore) Pod(podPrefix kp.PodPrefix, hostname types.NodeName, podId types.PodID) (pods.Manifest, time.Duration, error) {
+func (f *FakePodStore) Pod(podPrefix kp.PodPrefix, hostname types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error) {
 	if pod, ok := f.podResults[FakePodStoreKeyFor(podPrefix, hostname, podId)]; !ok {
 		return nil, 0, pods.NoCurrentManifest
 	} else {

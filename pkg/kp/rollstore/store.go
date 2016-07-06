@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
 
@@ -48,7 +48,7 @@ type Store interface {
 		minimumReplicas int,
 		leaveOld bool,
 		rollDelay time.Duration,
-		newRCManifest pods.Manifest,
+		newRCManifest manifest.Manifest,
 		newRCNodeSelector klabels.Selector,
 		newRCPodLabels klabels.Set,
 		newRCLabels klabels.Set,
@@ -64,7 +64,7 @@ type Store interface {
 		minimumReplicas int,
 		leaveOld bool,
 		rollDelay time.Duration,
-		newRCManifest pods.Manifest,
+		newRCManifest manifest.Manifest,
 		newRCNodeSelector klabels.Selector,
 		newRCPodLabels klabels.Set,
 		newRCLabels klabels.Set,

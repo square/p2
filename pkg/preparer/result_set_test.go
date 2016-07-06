@@ -7,12 +7,12 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 )
 
-func podWithID(id string) pods.Manifest {
-	builder := pods.NewManifestBuilder()
+func podWithID(id string) manifest.Manifest {
+	builder := manifest.NewManifestBuilder()
 	builder.SetID(types.PodID(id))
 	return builder.GetManifest()
 }

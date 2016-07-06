@@ -6,6 +6,7 @@ import (
 
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
@@ -32,21 +33,21 @@ func main() {
 
 	pod := pods.NewPod(types.PodID(path.Base(*podDir)), *podDir)
 
-	var manifest pods.Manifest
+	var podManifest manifest.Manifest
 	if *manifestPath != "" {
-		manifest, err = pods.ManifestFromPath(*manifestPath)
+		podManifest, err = manifest.ManifestFromPath(*manifestPath)
 		if err != nil {
 			log.Fatalln(err)
 		}
 	} else {
-		manifest, err = pod.CurrentManifest()
+		podManifest, err = pod.CurrentManifest()
 		if err != nil {
 			log.Fatalln(err)
 		}
 	}
 
 	log.Printf("About to run %s hooks for pod %s\n", hookType, pod.Path())
-	err = dir.RunHookType(hookType, pod, manifest)
+	err = dir.RunHookType(hookType, pod, podManifest)
 	if err != nil {
 		log.Fatalln(err)
 	}

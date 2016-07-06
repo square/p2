@@ -52,7 +52,7 @@ type Policy interface {
 	Close()
 }
 
-// auth.Manifest mirrors pods.Manifest, listing only the data
+// auth.Manifest mirrors manifest.Manifest, listing only the data
 // accessors that auth logic cares about.
 type Manifest interface {
 	ID() types.PodID

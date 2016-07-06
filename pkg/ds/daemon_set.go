@@ -12,7 +12,7 @@ import (
 	"github.com/square/p2/pkg/kp/dsstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/types"
 )
@@ -58,7 +58,7 @@ type kpStore interface {
 	SetPod(
 		podPrefix kp.PodPrefix,
 		nodeName types.NodeName,
-		manifest pods.Manifest,
+		manifest manifest.Manifest,
 	) (time.Duration, error)
 
 	DeletePod(podPrefix kp.PodPrefix,

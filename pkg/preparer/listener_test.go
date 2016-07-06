@@ -18,7 +18,7 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -62,18 +62,18 @@ func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
 
 	current, err := user.Current()
 	Assert(t).IsNil(err, "test setup: could not get the current user")
-	builder := pods.NewManifestBuilder()
+	builder := manifest.NewManifestBuilder()
 	builder.SetID("users")
 	builder.SetRunAsUser(current.Username)
-	builder.SetLaunchables(map[string]types.LaunchableStanza{
+	builder.SetLaunchables(map[string]manifest.LaunchableStanza{
 		"create": {
 			Location:       util.From(runtime.Caller(0)).ExpandPath("hoisted-hello_def456.tar.gz"),
 			LaunchableType: "hoist",
 			LaunchableId:   "create",
 		},
 	})
-	manifest := builder.GetManifest()
-	manifestBytes, err := manifest.Marshal()
+	podManifest := builder.GetManifest()
+	manifestBytes, err := podManifest.Marshal()
 	Assert(t).IsNil(err, "manifest bytes error should have been nil")
 
 	fakeSigner, err := openpgp.NewEntity("p2", "p2-test", "p2@squareup.com", nil)
@@ -86,12 +86,12 @@ func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
 	sigWriter.Write(manifestBytes)
 	sigWriter.Close()
 
-	manifest, err = pods.ManifestFromBytes(buf.Bytes())
+	podManifest, err = manifest.ManifestFromBytes(buf.Bytes())
 	Assert(t).IsNil(err, "should have generated manifest from signed bytes")
 
 	fakeIntent := fakeStoreWithManifests(kp.ManifestResult{
 		Path:     path.Join(string(hookPrefix), "users"),
-		Manifest: manifest,
+		Manifest: podManifest,
 	})
 
 	listener := HookListener{

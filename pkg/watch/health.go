@@ -9,7 +9,7 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util/param"
@@ -35,7 +35,7 @@ var HEALTHCHECK_TIMEOUT = param.Int64("healthcheck_timeout", 5)
 // tree, and a bool that indicates whether or not the pod
 // has a running MonitorHealth go routine
 type PodWatch struct {
-	manifest      pods.Manifest
+	manifest      manifest.Manifest
 	updater       kp.HealthUpdater
 	statusChecker StatusChecker
 

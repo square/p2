@@ -13,7 +13,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/util"
 )
@@ -83,7 +83,7 @@ func NewConsul(client *api.Client, retries int) *consulStore {
 	}
 }
 
-func (s *consulStore) Create(manifest pods.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
+func (s *consulStore) Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
 	rc, err := s.innerCreate(manifest, nodeSelector, podLabels)
 
 	// TODO: measure whether retries are is important in practice
@@ -110,7 +110,7 @@ func (s *consulStore) Create(manifest pods.Manifest, nodeSelector klabels.Select
 }
 
 // these parts of Create may require a retry
-func (s *consulStore) innerCreate(manifest pods.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
+func (s *consulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
 	id := fields.ID(uuid.New())
 	rcp, err := s.rcPath(id)
 	if err != nil {

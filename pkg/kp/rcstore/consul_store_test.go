@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/kp/kptest"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/rc/fields"
 
 	"github.com/hashicorp/consul/api"
@@ -509,7 +509,7 @@ func verifyLockInfoTestCase(t *testing.T, lockInfoTestCase LockInfoTestCase, inC
 
 func rcsWithIDs(t *testing.T, id string, num int) api.KVPairs {
 	var pairs api.KVPairs
-	builder := pods.NewManifestBuilder()
+	builder := manifest.NewManifestBuilder()
 	builder.SetID("slug")
 	manifest := builder.GetManifest()
 	for i := 0; i < num; i++ {

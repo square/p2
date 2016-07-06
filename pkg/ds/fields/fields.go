@@ -5,7 +5,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/labels"
 
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -28,7 +28,7 @@ type DaemonSet struct {
 	Disabled bool
 
 	// The pod manifest that should be scheduled on nodes
-	Manifest pods.Manifest
+	Manifest manifest.Manifest
 
 	// Minimum health for nodes when scheduling
 	MinHealth int
@@ -95,7 +95,7 @@ func (ds *DaemonSet) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	podManifest, err := pods.ManifestFromBytes([]byte(rawDS.Manifest))
+	podManifest, err := manifest.ManifestFromBytes([]byte(rawDS.Manifest))
 	if err != nil {
 		return err
 	}

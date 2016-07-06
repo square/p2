@@ -11,7 +11,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/manifest"
 )
 
 var DEFAULT_PATH = "/usr/local/p2hooks.d"
@@ -182,7 +182,7 @@ func (h *Hook) Run() {
 	}
 }
 
-func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest pods.Manifest, logger logging.Logger) error {
+func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest manifest.Manifest, logger logging.Logger) error {
 	configFileName, err := podManifest.ConfigFileName()
 	if err != nil {
 		return err
@@ -219,7 +219,7 @@ func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest 
 	return runDirectory(dirpath, hookEnvironment, logger)
 }
 
-func (h *HookDir) RunHookType(hookType HookType, pod Pod, manifest pods.Manifest) error {
+func (h *HookDir) RunHookType(hookType HookType, pod Pod, manifest manifest.Manifest) error {
 	logger := h.logger.SubLogger(logrus.Fields{
 		"pod":      manifest.ID(),
 		"pod_path": pod.Path(),

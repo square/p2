@@ -9,6 +9,7 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/version"
 )
@@ -24,7 +25,7 @@ func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 
-	manifest, err := pods.ManifestFromURI(*manifestURI)
+	manifest, err := manifest.ManifestFromURI(*manifestURI)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
