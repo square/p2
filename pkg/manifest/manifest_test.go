@@ -94,7 +94,7 @@ QyB184dCJQnFbcQslyXDSR4Lal12NPvxbtK/4YYXZZVwf4hKCfVqvmG2zgwINDc=
 }
 
 func TestPodManifestCanBeWritten(t *testing.T) {
-	builder := NewManifestBuilder()
+	builder := NewBuilder()
 	builder.SetID("thepod")
 	launchables := map[string]LaunchableStanza{
 		"my-app": {
@@ -256,15 +256,15 @@ config:
 	Assert(t).AreEqual(string(outBytes), string(manifestBytes), "Byte order should not have changed when unmarshaling and remarshaling a manifest")
 }
 
-func TestManifestBuilder(t *testing.T) {
-	builder := NewManifestBuilder()
+func TestBuilder(t *testing.T) {
+	builder := NewBuilder()
 	builder.SetID("testpod")
 	manifest := builder.GetManifest()
 
 	Assert(t).AreEqual(string(manifest.ID()), "testpod", "id of built manifest did not match expected")
 }
 
-func TestManifestBuilderStripsFields(t *testing.T) {
+func TestBuilderStripsFields(t *testing.T) {
 	podManifest := manifest{
 		raw:       []byte("foo"),
 		signature: []byte("bar"),
@@ -296,18 +296,18 @@ config:
 
 	builder := manifest.GetBuilder()
 	builtManifest := builder.GetManifest()
-	Assert(t).AreEqual(string(builtManifest.ID()), "thepod", "Expected manifest ID to be preserved when converted to ManifestBuilder and back")
+	Assert(t).AreEqual(string(builtManifest.ID()), "thepod", "Expected manifest ID to be preserved when converted to Builder and back")
 }
 
 func TestGetConfigInitializesIfEmpty(t *testing.T) {
-	builder := NewManifestBuilder()
+	builder := NewBuilder()
 	manifest := builder.GetManifest()
 	config := manifest.GetConfig()
 	Assert(t).IsNotNil(config, "Expected returned config to be instantiated by GetConfig() if not set")
 }
 
 func TestGetConfigReturnsCopy(t *testing.T) {
-	builder := NewManifestBuilder()
+	builder := NewBuilder()
 	manifest := builder.GetManifest()
 	config := manifest.GetConfig()
 	config2 := manifest.GetConfig()
@@ -327,13 +327,13 @@ func TestSetConfigErrsIfBadYAML(t *testing.T) {
 	cantMarshalConfig := make(map[interface{}]interface{})
 	cantMarshalConfig["foo"] = CantMarshal{}
 
-	builder := NewManifestBuilder()
+	builder := NewBuilder()
 	err := builder.SetConfig(cantMarshalConfig)
 	Assert(t).IsNotNil(err, "Should have erred setting config with a type that cannot be marshaled as YAML")
 }
 
 func TestSetConfigCopies(t *testing.T) {
-	builder := NewManifestBuilder()
+	builder := NewBuilder()
 	config := map[interface{}]interface{}{
 		"foo": "bar",
 	}

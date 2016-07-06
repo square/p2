@@ -124,7 +124,7 @@ func testManifest(t *testing.T) manifest.Manifest {
 
 var fakeSigner *openpgp.Entity
 
-func testSignedManifest(t *testing.T, modify func(manifest.ManifestBuilder, *openpgp.Entity)) (manifest.Manifest, *openpgp.Entity) {
+func testSignedManifest(t *testing.T, modify func(manifest.Builder, *openpgp.Entity)) (manifest.Manifest, *openpgp.Entity) {
 	testManifest := testManifest(t)
 
 	if fakeSigner == nil {
@@ -134,9 +134,9 @@ func testSignedManifest(t *testing.T, modify func(manifest.ManifestBuilder, *ope
 	}
 
 	if modify != nil {
-		testManifestBuilder := testManifest.GetBuilder()
-		modify(testManifestBuilder, fakeSigner)
-		testManifest = testManifestBuilder.GetManifest()
+		testBuilder := testManifest.GetBuilder()
+		modify(testBuilder, fakeSigner)
+		testManifest = testBuilder.GetManifest()
 	}
 
 	manifestBytes, err := testManifest.Marshal()
@@ -227,7 +227,7 @@ func TestPreparerLaunchesNewPodsThatArentInstalledYet(t *testing.T) {
 }
 
 func TestPreparerLaunchesPodsThatHaveDifferentSHAs(t *testing.T) {
-	builder := manifest.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID("hello")
 	existing := builder.GetManifest()
 
@@ -279,7 +279,7 @@ func TestPreparerFailsIfInstallFails(t *testing.T) {
 }
 
 func TestPreparerWillLaunchPreparerAsRoot(t *testing.T) {
-	builder := manifest.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID(POD_ID)
 	builder.SetRunAsUser("root")
 	illegalManifest := builder.GetManifest()
@@ -379,7 +379,7 @@ func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 }
 
 func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *testing.T) {
-	manifest, fakeSigner := testSignedManifest(t, func(b manifest.ManifestBuilder, _ *openpgp.Entity) {
+	manifest, fakeSigner := testSignedManifest(t, func(b manifest.Builder, _ *openpgp.Entity) {
 		b.SetID(POD_ID)
 	})
 
@@ -395,7 +395,7 @@ func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *tes
 }
 
 func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
-	manifest, fakeSigner := testSignedManifest(t, func(b manifest.ManifestBuilder, _ *openpgp.Entity) {
+	manifest, fakeSigner := testSignedManifest(t, func(b manifest.Builder, _ *openpgp.Entity) {
 		b.SetID(POD_ID)
 	})
 
@@ -415,7 +415,7 @@ func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 
 func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 	sig := ""
-	manifest, fakeSigner := testSignedManifest(t, func(b manifest.ManifestBuilder, e *openpgp.Entity) {
+	manifest, fakeSigner := testSignedManifest(t, func(b manifest.Builder, e *openpgp.Entity) {
 		b.SetID(POD_ID)
 		sig = fmt.Sprintf("%X", e.PrimaryKey.Fingerprint)
 	})

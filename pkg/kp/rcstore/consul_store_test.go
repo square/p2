@@ -509,7 +509,7 @@ func verifyLockInfoTestCase(t *testing.T, lockInfoTestCase LockInfoTestCase, inC
 
 func rcsWithIDs(t *testing.T, id string, num int) api.KVPairs {
 	var pairs api.KVPairs
-	builder := manifest.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID("slug")
 	manifest := builder.GetManifest()
 	for i := 0; i < num; i++ {

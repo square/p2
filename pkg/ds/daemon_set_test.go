@@ -131,7 +131,7 @@ func TestSchedule(t *testing.T) {
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
-	manifestBuilder := manifest.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 

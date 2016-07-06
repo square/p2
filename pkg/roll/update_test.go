@@ -351,7 +351,7 @@ func SimulateRollingUpgrade(t *testing.T, full, nonew, strictRemove bool) {
 }
 
 func podWithIDAndPort(id string, port int) manifest.Manifest {
-	builder := manifest.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID(types.PodID(id))
 	builder.SetStatusPort(port)
 	return builder.GetManifest()

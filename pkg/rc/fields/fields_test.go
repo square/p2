@@ -10,7 +10,7 @@ import (
 )
 
 func TestJSONMarshal(t *testing.T) {
-	mb := manifest.NewManifestBuilder()
+	mb := manifest.NewBuilder()
 	mb.SetID("hello")
 	m := mb.GetManifest()
 

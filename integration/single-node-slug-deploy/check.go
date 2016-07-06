@@ -317,7 +317,7 @@ func getConsulManifest(dir string) (string, error) {
 		"file://%s",
 		util.From(runtime.Caller(0)).ExpandPath("../hoisted-consul_052.tar.gz"),
 	)
-	builder := manifest.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID("consul")
 	stanzas := map[string]manifest.LaunchableStanza{
 		"consul": {
@@ -393,7 +393,7 @@ func scheduleRCTLServer(dir string) error {
 
 func createHelloReplicationController(dir string) (fields.ID, error) {
 	hello := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-hello_def456.tar.gz"))
-	builder := manifest.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID("hello")
 	builder.SetStatusPort(43770)
 	stanzas := map[string]manifest.LaunchableStanza{

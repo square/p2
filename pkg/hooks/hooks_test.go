@@ -76,7 +76,7 @@ func TestDirectoriesDoNotBreakEverything(t *testing.T) {
 }
 
 func testManifest() manifest.Manifest {
-	builder := manifest.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID(podId)
 	return builder.GetManifest()
 }

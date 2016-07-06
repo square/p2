@@ -62,7 +62,7 @@ func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
 
 	current, err := user.Current()
 	Assert(t).IsNil(err, "test setup: could not get the current user")
-	builder := manifest.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID("users")
 	builder.SetRunAsUser(current.Username)
 	builder.SetLaunchables(map[string]manifest.LaunchableStanza{

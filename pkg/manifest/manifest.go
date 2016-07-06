@@ -54,7 +54,7 @@ type StatusStanza struct {
 	LocalhostOnly bool   `yaml:"localhost_only,omitempty"`
 }
 
-type ManifestBuilder interface {
+type Builder interface {
 	GetManifest() Manifest
 	SetID(types.PodID)
 	SetConfig(config map[interface{}]interface{}) error
@@ -66,22 +66,22 @@ type ManifestBuilder interface {
 	SetRestartPolicy(runit.RestartPolicy)
 }
 
-var _ ManifestBuilder = manifestBuilder{}
+var _ Builder = builder{}
 
-func NewManifestBuilder() ManifestBuilder {
-	return manifestBuilder{&manifest{}}
+func NewBuilder() Builder {
+	return builder{&manifest{}}
 }
 
-func (m manifestBuilder) GetManifest() Manifest {
+func (m builder) GetManifest() Manifest {
 	return m.manifest
 }
 
-type manifestBuilder struct {
+type builder struct {
 	*manifest
 }
 
 // Read-only immutable interface for manifests. To programmatically build a
-// manifest, use ManifestBuilder
+// manifest, use Builder
 type Manifest interface {
 	ID() types.PodID
 	RunAsUser() string
@@ -101,7 +101,7 @@ type Manifest interface {
 	SignatureData() (plaintext, signature []byte)
 	GetRestartPolicy() runit.RestartPolicy
 
-	GetBuilder() ManifestBuilder
+	GetBuilder() Builder
 }
 
 // assert manifest implements Manifest and UnsignedManifest
@@ -126,8 +126,8 @@ type manifest struct {
 	signature []byte
 }
 
-func (m *manifest) GetBuilder() ManifestBuilder {
-	builder := manifestBuilder{
+func (m *manifest) GetBuilder() Builder {
+	builder := builder{
 		&manifest{},
 	}
 	*builder.manifest = *m
@@ -141,7 +141,7 @@ func (manifest *manifest) ID() types.PodID {
 	return manifest.Id
 }
 
-func (m manifestBuilder) SetID(id types.PodID) {
+func (m builder) SetID(id types.PodID) {
 	m.manifest.Id = id
 }
 
@@ -182,7 +182,7 @@ func (manifest *manifest) GetConfig() map[interface{}]interface{} {
 	return configCopy
 }
 
-func (m manifestBuilder) SetConfig(config map[interface{}]interface{}) error {
+func (m builder) SetConfig(config map[interface{}]interface{}) error {
 	// Confirm that the data passed in can be successfully serialized as YAML
 	bytes, err := yaml.Marshal(config)
 	if err != nil {
@@ -249,7 +249,7 @@ func (manifest *manifest) RunAsUser() string {
 	return string(manifest.ID())
 }
 
-func (mb manifestBuilder) SetRunAsUser(user string) {
+func (mb builder) SetRunAsUser(user string) {
 	mb.manifest.RunAs = user
 }
 

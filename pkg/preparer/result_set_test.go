@@ -12,7 +12,7 @@ import (
 )
 
 func podWithID(id string) manifest.Manifest {
-	builder := manifest.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID(types.PodID(id))
 	return builder.GetManifest()
 }

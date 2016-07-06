@@ -55,7 +55,7 @@ func setup(t *testing.T) (
 
 	rcStore = rcstore.NewFake()
 
-	manifestBuilder := manifest.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID("testPod")
 	podManifest := manifestBuilder.GetManifest()
 

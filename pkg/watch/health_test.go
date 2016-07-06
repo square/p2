@@ -143,7 +143,7 @@ func newWatch(id types.PodID) *PodWatch {
 }
 
 func newManifestResult(id types.PodID) kp.ManifestResult {
-	builder := manifest.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID(id)
 	builder.SetStatusPort(1) // StatusPort must != 0 for updatePods to use it
 	return kp.ManifestResult{

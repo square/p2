@@ -1082,7 +1082,7 @@ func testRollValue(id rc_fields.ID) fields.Update {
 }
 
 func testManifest() manifest.Manifest {
-	builder := manifest.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID("slug")
 	return builder.GetManifest()
 }

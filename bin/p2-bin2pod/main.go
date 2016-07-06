@@ -75,7 +75,7 @@ func main() {
 	kingpin.MustParse(bin2pod.Parse(os.Args[1:]))
 
 	res := result{}
-	manifestBuilder := manifest.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID(podID())
 
 	stanza := manifest.LaunchableStanza{}
@@ -157,7 +157,7 @@ func makeTar(workingDir string) (string, error) {
 	return tarPath, nil
 }
 
-func addManifestConfig(manifestBuilder manifest.ManifestBuilder) error {
+func addManifestConfig(manifestBuilder manifest.Builder) error {
 	podConfig := make(map[interface{}]interface{})
 	for _, pair := range *config {
 		res := strings.Split(pair, "=")

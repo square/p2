@@ -31,7 +31,7 @@ func TestCreate(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := manifest.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID("")
 
 	podManifest := manifestBuilder.GetManifest()
@@ -45,7 +45,7 @@ func TestCreate(t *testing.T) {
 		t.Error("Expected create to fail on bad manifest pod id")
 	}
 
-	manifestBuilder = manifest.NewManifestBuilder()
+	manifestBuilder = manifest.NewBuilder()
 	manifestBuilder.SetID("different_pod_id")
 
 	podManifest = manifestBuilder.GetManifest()
@@ -63,7 +63,7 @@ func createDaemonSet(store *consulStore, t *testing.T) ds_fields.DaemonSet {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := manifest.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID(podID)
 
 	manifest := manifestBuilder.GetManifest()
@@ -139,7 +139,7 @@ func TestGet(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := manifest.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID(podID)
 
 	manifest := manifestBuilder.GetManifest()
@@ -204,7 +204,7 @@ func TestList(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := manifest.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID(firstPodID)
 
 	firstManifest := manifestBuilder.GetManifest()
@@ -217,7 +217,7 @@ func TestList(t *testing.T) {
 	// Create second DaemonSet
 	secondPodID := types.PodID("different_pod_id")
 
-	manifestBuilder = manifest.NewManifestBuilder()
+	manifestBuilder = manifest.NewBuilder()
 	manifestBuilder.SetID(secondPodID)
 
 	secondManifest := manifestBuilder.GetManifest()
@@ -257,7 +257,7 @@ func TestMutate(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := manifest.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
@@ -301,7 +301,7 @@ func TestMutate(t *testing.T) {
 	someOtherName := ds_fields.ClusterName("some_other_name")
 	someOtherPodID := types.PodID("some_other_pod_id")
 
-	manifestBuilder = manifest.NewManifestBuilder()
+	manifestBuilder = manifest.NewBuilder()
 	manifestBuilder.SetID(someOtherPodID)
 	someOtherManifest := manifestBuilder.GetManifest()
 
@@ -390,7 +390,7 @@ func TestWatch(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := manifest.NewManifestBuilder()
+	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
@@ -403,7 +403,7 @@ func TestWatch(t *testing.T) {
 	//
 	someOtherPodID := types.PodID("some_other_pod_id")
 
-	manifestBuilder = manifest.NewManifestBuilder()
+	manifestBuilder = manifest.NewBuilder()
 	manifestBuilder.SetID(someOtherPodID)
 	someOtherManifest := manifestBuilder.GetManifest()
 

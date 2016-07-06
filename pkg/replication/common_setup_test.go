@@ -213,7 +213,7 @@ func basicLogger() logging.Logger {
 }
 
 func basicManifest() manifest.Manifest {
-	builder := manifest.NewManifestBuilder()
+	builder := manifest.NewBuilder()
 	builder.SetID(testPodId)
 	return builder.GetManifest()
 }
