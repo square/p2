@@ -663,14 +663,14 @@ func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsU
 		return nil, err
 	}
 
-	// The path of a launchable URL is expected to end with
-	// /<launchable_id>_<version>.tar.gz. The launchable needs the
-	// <version> currently, which we parse from the URL. Future work is
-	// planned to implement more explicit versions specified in the
-	// manifest.LaunchableStanza in the pod manifest
+	// The path of a launchable URL is generally expected to end with
+	// <launchable_id>_<version>.tar.gz. The version is useful for
+	// namespacing the install directory of the launchable. For
+	// launchables that do not fit this naming convention, we simply
+	// use the launchable ID as the directory and leave version blank
 	version, err := versionFromLocation(locationURL)
 	if err != nil {
-		return nil, err
+		pod.logger.WithError(err).Warnf("Could not parse version from launchable %s.", launchableStanza.LaunchableId)
 	}
 
 	if launchableStanza.LaunchableType == "hoist" {

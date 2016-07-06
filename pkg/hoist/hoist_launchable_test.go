@@ -84,6 +84,24 @@ func TestInstallDir(t *testing.T) {
 	Assert(t).AreEqual(installDir, expectedDir, "Install dir did not have expected value")
 }
 
+func TestInstallDirNoVersion(t *testing.T) {
+	tempDir := os.TempDir()
+
+	launchable := &Launchable{
+		Id:        "testLaunchable",
+		Version:   "",
+		ServiceId: "testPod__testLaunchable",
+		RunAs:     "testuser",
+		PodEnvDir: tempDir,
+		RootDir:   tempDir,
+	}
+
+	installDir := launchable.InstallDir()
+
+	expectedDir := path.Join(tempDir, "installs", "testLaunchable")
+	Assert(t).AreEqual(installDir, expectedDir, "Install dir did not have expected value")
+}
+
 func TestMultipleExecutables(t *testing.T) {
 	fakeLaunchable, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(fakeLaunchable, sb)
