@@ -25,6 +25,7 @@ const (
 	cmdGetText    = "get"
 	cmdDeleteText = "delete"
 	cmdUpdateText = "update"
+	cmdListText   = "list"
 )
 
 var (
@@ -52,6 +53,8 @@ var (
 	updateName        = cmdUpdate.Flag("name", "The cluster name (ie. staging, production)").String()
 	updateAnnotations = cmdUpdate.Flag("annotations", "JSON string representing the complete update ").String()
 	updateID          = cmdUpdate.Flag("id", "The cluster UUID. This option is mutually exclusive with pod,az,name").String()
+
+	cmdList = kingpin.Command(cmdListText, "Lists pod clusters. ")
 )
 
 func main() {
@@ -163,6 +166,19 @@ func main() {
 		bytes, err := json.Marshal(pc)
 		if err != nil {
 			log.Fatalf("Update succeeded, but error during displaying PC: %v\n%+v", err, pc)
+			os.Exit(1)
+		}
+		fmt.Printf("%s", bytes)
+	case cmdListText:
+		pcs, err := pcstore.List()
+		if err != nil {
+			_, _ = os.Stderr.Write([]byte(fmt.Sprintf("Could not list pcs. Err follows:\n%v", err)))
+			os.Exit(1)
+		}
+
+		bytes, err := json.Marshal(pcs)
+		if err != nil {
+			_, _ = os.Stderr.Write([]byte(fmt.Sprintf("Could not marshal pc list. Err follows:\n%v", err)))
 			os.Exit(1)
 		}
 		fmt.Printf("%s", bytes)
