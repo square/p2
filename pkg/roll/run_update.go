@@ -120,7 +120,7 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 		func() error { return u.lockRCs(quit) },
 		quit,
 		u.logger,
-		"Could not lock update",
+		"Could not lock rcs",
 	) {
 		return
 	}
