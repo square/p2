@@ -60,12 +60,22 @@ type RawRC struct {
 // we own manifest.Manifest, but we don't own labels.Selector, so we have to
 // implement the json marshaling here to wrap around the interface values
 func (rc RC) MarshalJSON() ([]byte, error) {
+	rawRC, err := rc.ToRaw()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(rawRC)
+}
+
+// Converts an RC to a type that will marshal cleanly as JSON
+func (rc RC) ToRaw() (RawRC, error) {
 	var manifest []byte
 	var err error
 	if rc.Manifest != nil {
 		manifest, err = rc.Manifest.Marshal()
 		if err != nil {
-			return nil, err
+			return RawRC{}, err
 		}
 	}
 
@@ -74,14 +84,14 @@ func (rc RC) MarshalJSON() ([]byte, error) {
 		nodeSel = rc.NodeSelector.String()
 	}
 
-	return json.Marshal(RawRC{
+	return RawRC{
 		ID:              rc.ID,
 		Manifest:        string(manifest),
 		NodeSelector:    nodeSel,
 		PodLabels:       rc.PodLabels,
 		ReplicasDesired: rc.ReplicasDesired,
 		Disabled:        rc.Disabled,
-	})
+	}, nil
 }
 
 var _ json.Marshaler = RC{}

@@ -103,19 +103,24 @@ type RawPodCluster struct {
 // there. Since we don't own labels.Selector, we have to implement the json
 // marshaling here to wrap around the interface value
 func (pc PodCluster) MarshalJSON() ([]byte, error) {
+	return json.Marshal(pc.ToRaw())
+}
+
+// Converts a pod cluster to a type that will marshal cleanly to JSON.
+func (pc PodCluster) ToRaw() RawPodCluster {
 	var podSel string
 	if pc.PodSelector != nil {
 		podSel = pc.PodSelector.String()
 	}
 
-	return json.Marshal(RawPodCluster{
+	return RawPodCluster{
 		ID:               pc.ID,
 		PodID:            pc.PodID,
 		AvailabilityZone: pc.AvailabilityZone,
 		Name:             pc.Name,
 		PodSelector:      podSel,
 		Annotations:      pc.Annotations,
-	})
+	}
 }
 
 var _ json.Marshaler = PodCluster{}
