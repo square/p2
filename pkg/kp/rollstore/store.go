@@ -38,7 +38,11 @@ type Store interface {
 	// them in a deterministic order to guarantee that no two RUs will
 	// operate on the same RC and will avoid deadlock scenarios. Before
 	// the RU is created, newRCLabels will be applied to the new RC
-	CreateRollingUpdateFromExistingRCs(update fields.Update, newRCLabels klabels.Set) (fields.Update, error)
+	CreateRollingUpdateFromExistingRCs(
+		update fields.Update,
+		newRCLabels klabels.Set,
+		rollLabels klabels.Set,
+	) (fields.Update, error)
 	// Creates a rolling update using an existing RC with a known ID as the
 	// old replication controller, creates the new replication controller,
 	// and labels the new replication controller according to newRCLabels.
@@ -52,6 +56,7 @@ type Store interface {
 		newRCNodeSelector klabels.Selector,
 		newRCPodLabels klabels.Set,
 		newRCLabels klabels.Set,
+		rollLabels klabels.Set,
 	) (fields.Update, error)
 	// Creates a rolling update using a label selector to identify the old
 	// replication controller to be used.  If one does not exist, one will
@@ -68,6 +73,7 @@ type Store interface {
 		newRCNodeSelector klabels.Selector,
 		newRCPodLabels klabels.Set,
 		newRCLabels klabels.Set,
+		rollLabels klabels.Set,
 	) (fields.Update, error)
 	// delete this Update from the store
 	Delete(fields.ID) error
