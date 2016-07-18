@@ -166,7 +166,7 @@ func TestWatchPrefix(t *testing.T) {
 
 	// Process existing data
 	f.Client.KV().Put(kv1a, nil)
-	go WatchPrefix("prefix/", f.Client.KV(), pairsChan, done, testLogger(t))
+	go WatchPrefix("prefix/", f.Client.KV(), pairsChan, done, testLogger(t), 0)
 	pairs := kvToMap(<-pairsChan)
 	if !kvMatch(pairs, kv1a) {
 		t.Error("existing data not recognized")

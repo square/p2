@@ -22,18 +22,26 @@ func WatchPrefix(
 	outPairs chan<- api.KVPairs,
 	done <-chan struct{},
 	outErrors chan<- error,
+	pause time.Duration,
 ) {
 	defer close(outPairs)
 	var currentIndex uint64
 	timer := time.NewTimer(time.Duration(0))
 
+	// Pause signifies the amount of time to wait after a result is
+	// returned by the watch. Some use cases may want to respond quickly to
+	// a change after a period of stagnation, but are able to tolerate a
+	// degree of staleness in order to reduce QPS on the data store
+	if pause < 250*time.Millisecond {
+		pause = 250 * time.Millisecond
+	}
 	for {
 		select {
 		case <-done:
 			return
 		case <-timer.C:
 		}
-		timer.Reset(250 * time.Millisecond) // upper bound on request rate
+		timer.Reset(pause) // upper bound on request rate
 		pairs, queryMeta, err := SafeList(clientKV, done, prefix, &api.QueryOptions{
 			WaitIndex: currentIndex,
 		})
@@ -51,7 +59,7 @@ func WatchPrefix(
 			case <-done:
 			case outErrors <- err:
 			}
-			timer.Reset(2 * time.Second) // backoff
+			timer.Reset(2*time.Second + pause) // backoff
 		}
 	}
 }

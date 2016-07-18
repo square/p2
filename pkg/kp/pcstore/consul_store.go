@@ -302,7 +302,7 @@ func (s *consulStore) Watch(quit <-chan struct{}) <-chan WatchedPodClusters {
 	outCh := make(chan WatchedPodClusters)
 	errChan := make(chan error, 1)
 
-	go consulutil.WatchPrefix(podClusterTree, s.kv, inCh, quit, errChan)
+	go consulutil.WatchPrefix(podClusterTree, s.kv, inCh, quit, errChan, 0)
 
 	go func() {
 		var kvp api.KVPairs

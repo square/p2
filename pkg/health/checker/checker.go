@@ -150,7 +150,7 @@ func (c consulHealthChecker) WatchHealth(
 	// closed by watchPrefix when we close quitWatch
 	inCh := make(chan api.KVPairs)
 	watchErrCh := make(chan error)
-	go consulutil.WatchPrefix("health/", c.kv, inCh, quitCh, watchErrCh)
+	go consulutil.WatchPrefix("health/", c.kv, inCh, quitCh, watchErrCh, 0)
 	publishErrCh := publishLatestHealth(inCh, quitCh, resultCh)
 
 	for {
