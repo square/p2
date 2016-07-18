@@ -171,7 +171,7 @@ func (c *consulAggregator) Aggregate() {
 	outPairs := make(chan api.KVPairs)
 	done := make(chan struct{})
 	outErrors := make(chan error)
-	go consulutil.WatchPrefix(c.path+"/", c.kv, outPairs, done, outErrors)
+	go consulutil.WatchPrefix(c.path+"/", c.kv, outPairs, done, outErrors, 0)
 	for {
 		missedSends := 0
 		loopTime := time.After(c.aggregationRate)

@@ -528,7 +528,7 @@ func (s consulStore) Watch(quit <-chan struct{}) (<-chan []roll_fields.Update, <
 	inCh := make(chan api.KVPairs)
 
 	outCh, errCh := publishLatestRolls(inCh, quit)
-	go consulutil.WatchPrefix(rollTree+"/", s.kv, inCh, quit, errCh)
+	go consulutil.WatchPrefix(rollTree+"/", s.kv, inCh, quit, errCh, 0)
 
 	return outCh, errCh
 }
