@@ -69,7 +69,6 @@ func waitForNodes(
 // since these are unit tests and have little daemon sets, we will watch
 // the entire tree for each daemon set for now
 func watchDSChanges(
-	t *testing.T,
 	ds *daemonSet,
 	dsStore dsstore.Store,
 	quitCh <-chan struct{},
@@ -171,13 +170,11 @@ func TestSchedule(t *testing.T) {
 	quitCh := make(chan struct{})
 	updatedCh := make(chan *ds_fields.DaemonSet)
 	deletedCh := make(chan *ds_fields.DaemonSet)
-	nodesChangedCh := make(chan struct{})
 	defer close(quitCh)
 	defer close(updatedCh)
 	defer close(deletedCh)
-	defer close(nodesChangedCh)
-	desiresErrCh := ds.WatchDesires(quitCh, updatedCh, deletedCh, nodesChangedCh)
-	dsChangesErrCh := watchDSChanges(t, ds, dsStore, quitCh, updatedCh, deletedCh)
+	desiresErrCh := ds.WatchDesires(quitCh, updatedCh, deletedCh)
+	dsChangesErrCh := watchDSChanges(ds, dsStore, quitCh, updatedCh, deletedCh)
 
 	//
 	// Verify that the pod has been scheduled
@@ -214,10 +211,7 @@ func TestSchedule(t *testing.T) {
 		Assert(t).IsNil(err, "expected no error labeling node")
 	}
 
-	// Manually signal that nodes have been changed since a watch for that has
-	// not been implemented yet
-	nodesChangedCh <- struct{}{}
-
+	// The node watch should automatically notice a change
 	numNodes = waitForNodes(t, ds, 11, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, 11, "took too long to schedule")
 
@@ -232,10 +226,6 @@ func TestSchedule(t *testing.T) {
 	err = applicator.SetLabel(labels.NODE, "nodeOk", "cherry", "pick")
 	Assert(t).IsNil(err, "expected no error labeling nodeOk")
 	fmt.Println(applicator.GetLabels(labels.NODE, "nodeOk"))
-
-	// Manually signal that nodes have been changed since a watch for that has
-	// not been implemented yet
-	nodesChangedCh <- struct{}{}
 
 	numNodes = waitForNodes(t, ds, 12, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, 12, "took too long to schedule")
