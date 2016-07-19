@@ -14,6 +14,7 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/user"
@@ -22,7 +23,7 @@ import (
 
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type Launchable struct {
-	Id               string                // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
+	Id               manifest.LaunchableID // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
 	Version          string                // A version identifier
 	ServiceId        string                // A (host-wise) unique identifier for this launchable, used when creating runit services
 	RunAs            string                // The user to assume when launching the executable
@@ -44,7 +45,7 @@ type LaunchAdapter struct {
 	*Launchable
 }
 
-func (a LaunchAdapter) ID() string {
+func (a LaunchAdapter) ID() manifest.LaunchableID {
 	return a.Launchable.Id
 }
 
@@ -282,7 +283,7 @@ func (hl *Launchable) Install(downloader artifact.Downloader) error {
 // version is derived from the location, using the naming scheme
 // <the-app>_<unique-version-string>.tar.gz
 func (hl *Launchable) Name() string {
-	name := hl.Id
+	name := hl.Id.String()
 	if hl.Version != "" {
 		name = name + "_" + hl.Version
 	}

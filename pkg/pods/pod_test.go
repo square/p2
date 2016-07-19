@@ -43,7 +43,7 @@ func getUpdatedManifest(t *testing.T) manifest.Manifest {
 	return pod
 }
 
-func getLaunchableStanzasFromTestManifest(t *testing.T) map[string]manifest.LaunchableStanza {
+func getLaunchableStanzasFromTestManifest(t *testing.T) map[manifest.LaunchableID]manifest.LaunchableStanza {
 	return getTestPodManifest(t).GetLaunchableStanzas()
 }
 
@@ -54,7 +54,9 @@ func TestGetLaunchable(t *testing.T) {
 	for _, stanza := range launchableStanzas {
 		l, _ := pod.getLaunchable(stanza, "foouser", runit.RestartPolicyAlways)
 		launchable := l.(hoist.LaunchAdapter).Launchable
-		Assert(t).AreEqual("app", launchable.Id, "Launchable Id did not have expected value")
+		if launchable.Id != "app" {
+			t.Errorf("Launchable Id did not have expected value: wanted '%s' was '%s'", "app", launchable.Id)
+		}
 		Assert(t).AreEqual("3c021aff048ca8117593f9c71e03b87cf72fd440", launchable.Version, "Launchable version did not have expected value")
 		Assert(t).AreEqual("hello__app", launchable.ServiceId, "Launchable ServiceId did not have expected value")
 		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
@@ -72,7 +74,11 @@ func TestGetLaunchableNoVersion(t *testing.T) {
 	pod := getTestPod()
 	l, _ := pod.getLaunchable(launchableStanza, "foouser", runit.RestartPolicyAlways)
 	launchable := l.(hoist.LaunchAdapter).Launchable
-	Assert(t).AreEqual("somelaunchable", launchable.Id, "Launchable Id did not have expected value")
+
+	if launchable.Id != "somelaunchable" {
+		t.Errorf("Launchable Id did not have expected value: wanted '%s' was '%s'", "somelaunchable", launchable.Id)
+	}
+
 	Assert(t).AreEqual("", launchable.Version, "Launchable version did not have expected value")
 	Assert(t).AreEqual("hello__somelaunchable", launchable.ServiceId, "Launchable ServiceId did not have expected value")
 	Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
@@ -171,7 +177,10 @@ config:
 	for _, launchable := range launchables {
 		launchableIdEnv, err := ioutil.ReadFile(filepath.Join(launchable.EnvDir(), "LAUNCHABLE_ID"))
 		Assert(t).IsNil(err, "should not have erred reading the launchable ID env file")
-		Assert(t).AreEqual(launchable.ID(), string(launchableIdEnv), "The launchable ID did not match expected")
+
+		if launchable.ID().String() != string(launchableIdEnv) {
+			t.Errorf("Launchable Id did not have expected value: wanted '%s' was '%s'", launchable.ID().String(), launchableIdEnv)
+		}
 
 		launchableRootEnv, err := ioutil.ReadFile(filepath.Join(launchable.EnvDir(), "LAUNCHABLE_ROOT"))
 		Assert(t).IsNil(err, "should not have erred reading the launchable root env file")
@@ -187,7 +196,7 @@ func TestLogLaunchableError(t *testing.T) {
 	out := bytes.Buffer{}
 	Log.SetLogOut(&out)
 
-	testLaunchable := &hoist.Launchable{ServiceId: "TestLaunchable"}
+	testLaunchable := &hoist.Launchable{ServiceId: "TestLaunchable__hello"}
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
@@ -197,7 +206,7 @@ func TestLogLaunchableError(t *testing.T) {
 	output, err := ioutil.ReadAll(&out)
 	Assert(t).IsNil(err, "Got an error reading the logging output")
 	outputString := bytes.NewBuffer(output).String()
-	Assert(t).Matches(outputString, ContainsString("TestLaunchable"), "Expected 'TestLaunchable' to appear somewhere in log output")
+	Assert(t).Matches(outputString, ContainsString("TestLaunchable__hello"), "Expected 'TestLaunchable' to appear somewhere in log output")
 	Assert(t).Matches(outputString, ContainsString("hello"), "Expected 'hello' to appear somewhere in log output")
 	Assert(t).Matches(outputString, ContainsString("Test error occurred"), "Expected error message to appear somewhere in log output")
 }

@@ -65,7 +65,7 @@ func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
 	builder := manifest.NewBuilder()
 	builder.SetID("users")
 	builder.SetRunAsUser(current.Username)
-	builder.SetLaunchables(map[string]manifest.LaunchableStanza{
+	builder.SetLaunchables(map[manifest.LaunchableID]manifest.LaunchableStanza{
 		"create": {
 			Location:       util.From(runtime.Caller(0)).ExpandPath("hoisted-hello_def456.tar.gz"),
 			LaunchableType: "hoist",

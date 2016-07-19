@@ -19,6 +19,7 @@ import (
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/gzip"
 	"github.com/square/p2/pkg/launch"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
@@ -39,16 +40,16 @@ var RuncPath = param.String("runc_path", "/usr/local/bin/runc")
 
 // Launchable represents an installation of a container.
 type Launchable struct {
-	Location        *url.URL            // A URL where we can download the artifact from.
-	ID_             string              // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
-	ServiceID_      string              // A (host-wise) unique identifier for this launchable, used when creating runit services
-	RunAs           string              // The user to assume when launching the executable
-	RootDir         string              // The root directory of the launchable, containing N:N>=1 installs.
-	P2Exec          string              // The path to p2-exec
-	RestartTimeout  time.Duration       // How long to wait when restarting the services in this launchable.
-	RestartPolicy   runit.RestartPolicy // Dictates whether the container should be automatically restarted upon exit.
-	CgroupConfig    cgroups.Config      // Cgroup parameters to use with p2-exec
-	SuppliedEnvVars map[string]string   // User-supplied env variables
+	Location        *url.URL              // A URL where we can download the artifact from.
+	ID_             manifest.LaunchableID // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
+	ServiceID_      string                // A (host-wise) unique identifier for this launchable, used when creating runit services
+	RunAs           string                // The user to assume when launching the executable
+	RootDir         string                // The root directory of the launchable, containing N:N>=1 installs.
+	P2Exec          string                // The path to p2-exec
+	RestartTimeout  time.Duration         // How long to wait when restarting the services in this launchable.
+	RestartPolicy   runit.RestartPolicy   // Dictates whether the container should be automatically restarted upon exit.
+	CgroupConfig    cgroups.Config        // Cgroup parameters to use with p2-exec
+	SuppliedEnvVars map[string]string     // User-supplied env variables
 
 	spec *LinuxSpec // The container's "config.json"
 }
@@ -73,7 +74,7 @@ func (l *Launchable) getSpec() (*LinuxSpec, error) {
 }
 
 // ID implements the launch.Launchable interface. It returns the name of this launchable.
-func (l *Launchable) ID() string {
+func (l *Launchable) ID() manifest.LaunchableID {
 	return l.ID_
 }
 

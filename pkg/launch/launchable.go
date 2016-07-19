@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/square/p2/pkg/artifact"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util/size"
 )
@@ -33,7 +34,7 @@ type Launchable interface {
 	// Type returns a text description of the type of launchable.
 	Type() string
 	// ID returns a (pod-wise) unique ID for this launchable.
-	ID() string
+	ID() manifest.LaunchableID
 	// ServiceID returns a (host-wise) unique ID for this launchable.
 	// Unlike ID(), ServiceID() must be unique for all instances of a launchable
 	// on a single host, even if are multiple pods have the same launchable ID.
