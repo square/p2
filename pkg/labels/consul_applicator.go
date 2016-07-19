@@ -247,7 +247,7 @@ func convertLabeledToKVP(l Labeled) (*api.KVPair, error) {
 // to the cost of querying for this subtree on any sizeable fleet of machines. Instead, preparers should
 // use the httpApplicator from a server that exposes the results of this (or another)
 // implementation's watch.
-func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan []Labeled {
+func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh <-chan struct{}) chan []Labeled {
 	c.aggregatorMux.Lock()
 	defer c.aggregatorMux.Unlock()
 	aggregator, ok := c.aggregators[labelType]
@@ -257,6 +257,98 @@ func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type
 		c.aggregators[labelType] = aggregator
 	}
 	return aggregator.Watch(selector, quitCh)
+}
+
+func (c *consulApplicator) WatchMatchDiff(
+	selector labels.Selector,
+	labelType Type,
+	quitCh <-chan struct{},
+) <-chan *LabeledChanges {
+	inCh := c.WatchMatches(selector, labelType, quitCh)
+	return watchDiffLabels(inCh, quitCh, c.logger)
+}
+
+func watchDiffLabels(inCh <-chan []Labeled, quitCh <-chan struct{}, logger logging.Logger) <-chan *LabeledChanges {
+	outCh := make(chan *LabeledChanges)
+
+	go func() {
+		defer close(outCh)
+
+		var labelsList []Labeled
+
+		select {
+		case <-quitCh:
+			return
+		case val, ok := <-inCh:
+			if !ok {
+				// channel closed
+				return
+			}
+			labelsList = val
+			if labelsList == nil {
+				logger.Errorf("Unexpected nil value received from channel")
+				return
+			}
+		}
+
+		oldLabels := make(map[string]Labeled)
+		for _, labeled := range labelsList {
+			oldLabels[labeled.ID] = labeled
+		}
+
+		for {
+			var results []Labeled
+			select {
+			case <-quitCh:
+				return
+			case val, ok := <-inCh:
+				if !ok {
+					// channel closed
+					return
+				}
+				results = val
+				if results == nil {
+					logger.Errorf("Unexpected nil value received from watchDiffLabels channel")
+					return
+				}
+			}
+
+			newLabels := make(map[string]Labeled)
+			for _, labeled := range results {
+				newLabels[labeled.ID] = labeled
+			}
+
+			outgoingChanges := &LabeledChanges{}
+			for id, nodeLabel := range newLabels {
+				if _, ok := oldLabels[id]; !ok {
+					// If it was not observed, then it was created
+					outgoingChanges.Created = append(outgoingChanges.Created, nodeLabel)
+					oldLabels[id] = nodeLabel
+
+				} else if oldLabels[id].Labels.String() != nodeLabel.Labels.String() {
+					// If they are not equal, update them
+					outgoingChanges.Updated = append(outgoingChanges.Updated, nodeLabel)
+					oldLabels[id] = nodeLabel
+				}
+				// Otherwise no changes need to be made
+			}
+
+			for id, nodeLabel := range oldLabels {
+				if _, ok := newLabels[id]; !ok {
+					outgoingChanges.Deleted = append(outgoingChanges.Deleted, nodeLabel)
+					delete(oldLabels, id)
+				}
+			}
+
+			select {
+			case <-quitCh:
+				return
+			case outCh <- outgoingChanges:
+			}
+		}
+	}()
+
+	return outCh
 }
 
 // these utility functions are used primarily while we exist in a mutable

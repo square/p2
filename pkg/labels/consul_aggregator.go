@@ -108,7 +108,7 @@ func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logg
 
 // Add a new selector to the aggregator. New values on the output channel may not appear
 // right away.
-func (c *consulAggregator) Watch(selector labels.Selector, quitCh chan struct{}) chan []Labeled {
+func (c *consulAggregator) Watch(selector labels.Selector, quitCh <-chan struct{}) chan []Labeled {
 	resCh := make(chan []Labeled, 1) // this buffer is useful in sendMatches(), below
 	select {
 	case <-c.aggregatorQuit:
