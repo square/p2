@@ -19,6 +19,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
@@ -468,7 +469,7 @@ func getArtifactVerifier(preparerConfig *PreparerConfig, logger *logging.Logger)
 func getArtifactRegistry(preparerConfig *PreparerConfig) (artifact.Registry, error) {
 	if preparerConfig.ArtifactRegistryURL == "" {
 		// This will still work as long as all launchables have "location" urls specified.
-		return artifact.NewRegistry(nil, uri.DefaultFetcher), nil
+		return artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector), nil
 	}
 
 	url, err := url.Parse(preparerConfig.ArtifactRegistryURL)
@@ -476,5 +477,5 @@ func getArtifactRegistry(preparerConfig *PreparerConfig) (artifact.Registry, err
 		return nil, util.Errorf("Could not parse 'artifact_registry_url': %s", err)
 	}
 
-	return artifact.NewRegistry(url, uri.DefaultFetcher), nil
+	return artifact.NewRegistry(url, uri.DefaultFetcher, osversion.DefaultDetector), nil
 }

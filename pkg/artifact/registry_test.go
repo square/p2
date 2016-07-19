@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/url"
+	"os"
 	"testing"
 
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/uri"
 )
 
@@ -52,7 +55,7 @@ func locationLaunchable() manifest.LaunchableStanza {
 // it's only useful for tests relying on the "location" method of specifying a
 // launchable location
 func locationDataRegistry() Registry {
-	return NewRegistry(nil, fakeFetcherNoData())
+	return NewRegistry(nil, fakeFetcherNoData(), osversion.DefaultDetector)
 }
 
 func TestLocationDataForLaunchableWithLocation(t *testing.T) {
@@ -151,8 +154,23 @@ func TestVersionScheme(t *testing.T) {
 		Data: data,
 	}
 
+	tmpFile, err := ioutil.TempFile("", "os-release")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	version := "10111"
+	versionString := fmt.Sprintf("CentOS version %s (foobar)", version)
+	_, err = tmpFile.Write([]byte(versionString))
+	if err != nil {
+		t.Fatalf("Couldn't write version string to release file: %s", err)
+	}
+
+	detector := osversion.NewDetector(tmpFile.Name())
+
 	registryHost := "registryhost.com"
-	registry := NewRegistry(&url.URL{Scheme: "https", Host: registryHost}, fakeFetcher)
+	registry := NewRegistry(&url.URL{Scheme: "https", Host: registryHost}, fakeFetcher, detector)
 	artifactURL, verificationData, err := registry.LocationDataForLaunchable("launchable_id", launchable)
 	if err != nil {
 		t.Fatalf("Unexpected error getting location data: %s", err)
@@ -211,5 +229,13 @@ func TestVersionScheme(t *testing.T) {
 	// Make sure our version tag was passed
 	if query.Get("foo") != "bar" {
 		t.Error("Version tag wasn't properly passed, wanted foo=bar included in request URL")
+	}
+
+	if query.Get("os") != "CentOS" {
+		t.Error("OS version tag wasn't properly passed, wanted os=CentOS included in request URL")
+	}
+
+	if query.Get("version") != version {
+		t.Errorf("OS version tag wasn't properly passed, wanted version=%s included in request URL", version)
 	}
 }
