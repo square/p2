@@ -3,6 +3,8 @@ package labels
 import (
 	"sync"
 
+	"github.com/square/p2/pkg/logging"
+
 	"k8s.io/kubernetes/pkg/labels"
 )
 
@@ -102,11 +104,18 @@ func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type) 
 	return results, nil
 }
 
-func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan []Labeled {
+func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh <-chan struct{}) chan []Labeled {
 	ch := make(chan []Labeled)
 	go func() {
 		for {
+			select {
+			case <-quitCh:
+				return
+			default:
+			}
+
 			res, _ := app.GetMatches(selector, labelType)
+
 			select {
 			case <-quitCh:
 				return
@@ -115,6 +124,15 @@ func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type
 		}
 	}()
 	return ch
+}
+
+func (app *fakeApplicator) WatchMatchDiff(
+	selector labels.Selector,
+	labelType Type,
+	quitCh <-chan struct{},
+) <-chan *LabeledChanges {
+	inCh := app.WatchMatches(selector, labelType, quitCh)
+	return watchDiffLabels(inCh, quitCh, logging.DefaultLogger)
 }
 
 // avoid returning elements of the inner data map, otherwise concurrent callers
