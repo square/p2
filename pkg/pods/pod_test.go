@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"net/url"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -334,7 +333,7 @@ func TestInstall(t *testing.T) {
 	currentUser, err := user.Current()
 	Assert(t).IsNil(err, "test setup: couldn't get current user")
 
-	testLocation := testContext.ExpandPath("hoisted-hello_def456.tar.gz")
+	testLocation := testContext.ExpandPath("hoisted-hello_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz")
 
 	launchables := map[manifest.LaunchableID]manifest.LaunchableStanza{
 		"hello": manifest.LaunchableStanza{
@@ -355,11 +354,10 @@ func TestInstall(t *testing.T) {
 	defer os.RemoveAll(testPodDir)
 
 	pod := Pod{
-		Id:       "testPod",
-		path:     testPodDir,
-		logger:   Log.SubLogger(logrus.Fields{"pod": "testPod"}),
-		Fetcher:  fetcher,
-		Registry: artifact.NewRegistry(),
+		Id:      "testPod",
+		path:    testPodDir,
+		logger:  Log.SubLogger(logrus.Fields{"pod": "testPod"}),
+		Fetcher: fetcher,
 	}
 
 	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry())
@@ -371,7 +369,7 @@ func TestInstall(t *testing.T) {
 		"The correct url wasn't set for the curl library",
 	)
 
-	hoistedHelloUnpacked := filepath.Join(testPodDir, "hello", "installs", "hello_def456")
+	hoistedHelloUnpacked := filepath.Join(testPodDir, "hello", "installs", "hello_3c021aff048ca8117593f9c71e03b87cf72fd440")
 	if info, err := os.Stat(hoistedHelloUnpacked); err != nil || !info.IsDir() {
 		t.Fatalf("Expected %s to be the unpacked artifact location", hoistedHelloUnpacked)
 	}
@@ -392,7 +390,6 @@ func TestUninstall(t *testing.T) {
 		Id:             "testPod",
 		path:           testPodDir,
 		ServiceBuilder: serviceBuilder,
-		Registry:       artifact.NewRegistry(),
 	}
 	manifest := getTestPodManifest(t)
 	manifestContent, err := manifest.Marshal()
@@ -410,58 +407,6 @@ func TestUninstall(t *testing.T) {
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
 	_, err = os.Stat(pod.currentPodManifestPath())
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
-}
-
-func TestVersionFromLocation(t *testing.T) {
-	type testExpectation struct {
-		URIPath         string
-		ExpectedVersion string
-		ExpectError     bool
-	}
-
-	expectations := []testExpectation{
-		{
-			URIPath:         "/download/test-launchable_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz",
-			ExpectedVersion: "3c021aff048ca8117593f9c71e03b87cf72fd440",
-			ExpectError:     false,
-		},
-		{
-			URIPath:         "/download/test04_launchable2_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz",
-			ExpectedVersion: "3c021aff048ca8117593f9c71e03b87cf72fd440",
-			ExpectError:     false,
-		},
-		{
-			URIPath:         "/download/test-launchable_3c021aff048ca8117593f9c71e03b87cf72fd440-suffix.tar.gz",
-			ExpectedVersion: "3c021aff048ca8117593f9c71e03b87cf72fd440-suffix",
-			ExpectError:     false,
-		},
-		{
-			URIPath:         "/download/afb1.2.00.tar.gz",
-			ExpectedVersion: "",
-			ExpectError:     true,
-		},
-		{
-			URIPath:         "/download/jdk-2.9.0_22.tar.gz",
-			ExpectedVersion: "",
-			ExpectError:     true,
-		},
-	}
-
-	for _, expectation := range expectations {
-		uri := &url.URL{Path: expectation.URIPath}
-		version, err := versionFromLocation(uri)
-		if expectation.ExpectError && err == nil {
-			t.Errorf("Expected an error parsing version from '%s', but there wasn't one", expectation.URIPath)
-		}
-
-		if !expectation.ExpectError && err != nil {
-			t.Errorf("Unexpected error occurred parsing version from '%s': %s", expectation.URIPath, err)
-		}
-
-		if version != expectation.ExpectedVersion {
-			t.Errorf("Expected version for '%s' to be '%s', was '%s'", expectation.URIPath, expectation.ExpectedVersion, version)
-		}
-	}
 }
 
 func manifestMustEqual(expected, actual manifest.Manifest, t *testing.T) {
