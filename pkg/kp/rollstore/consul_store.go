@@ -168,7 +168,7 @@ type ConflictingRUError struct {
 }
 
 func (c *ConflictingRUError) Error() string {
-	return fmt.Sprintf("RU %s conflicts on RC %s", c.ConflictingID, c.ConflictingRCID)
+	return fmt.Sprintf("A deploy is already in progress. (RU %s conflicts on RC %s)", c.ConflictingID, c.ConflictingRCID)
 }
 
 func (s consulStore) checkForConflictingUpdates(rcIDs rc_fields.IDs) error {
