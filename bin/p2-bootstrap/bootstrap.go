@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/url"
 	"os"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/version"
 )
@@ -24,6 +26,7 @@ var (
 	timeout            = kingpin.Flag("consul-timeout", "How long to wait for consul to begin serving. 0 will skip the consul check altogether.").Default("10s").String()
 	consulToken        = kingpin.Flag("consul-token", "The ACL token to pass to consul when registering the bootstrapped pods").String()
 	podRoot            = kingpin.Flag("pod-root", "The root of where pods will be installed").Default(pods.DEFAULT_PATH).String()
+	registryURL        = kingpin.Flag("registry", "The URL of the registry to download artifacts from").URL()
 )
 
 func main() {
@@ -44,7 +47,7 @@ func main() {
 			log.Fatalf("Could not get consul manifest: %s", err)
 		}
 		consulPod = pods.NewPod(consulManifest.ID(), pods.PodPath(*podRoot, consulManifest.ID()))
-		err = installConsul(consulPod, consulManifest)
+		err = installConsul(consulPod, consulManifest, *registryURL)
 		if err != nil {
 			log.Fatalf("Could not install consul: %s", err)
 		}
@@ -78,7 +81,7 @@ func main() {
 		log.Fatalf("Could not register base agent with consul: %s", err)
 	}
 	log.Println("Installing and launching base agent")
-	err = installBaseAgent(agentManifest)
+	err = installBaseAgent(agentManifest, *registryURL)
 	if err != nil {
 		log.Fatalf("Could not install base agent: %s", err)
 	}
@@ -88,9 +91,9 @@ func main() {
 	log.Println("Bootstrapping complete")
 }
 
-func installConsul(consulPod *pods.Pod, consulManifest manifest.Manifest) error {
+func installConsul(consulPod *pods.Pod, consulManifest manifest.Manifest, registryURL *url.URL) error {
 	// Inject servicebuilder?
-	err := consulPod.Install(consulManifest, auth.NopVerifier(), artifact.NewRegistry())
+	err := consulPod.Install(consulManifest, auth.NopVerifier(), artifact.NewRegistry(registryURL, uri.DefaultFetcher))
 	if err != nil {
 		return util.Errorf("Can't install Consul, aborting: %s", err)
 	}
@@ -191,9 +194,9 @@ func scheduleForThisHost(manifest manifest.Manifest, alsoReality bool) error {
 	return nil
 }
 
-func installBaseAgent(agentManifest manifest.Manifest) error {
+func installBaseAgent(agentManifest manifest.Manifest, registryURL *url.URL) error {
 	agentPod := pods.NewPod(agentManifest.ID(), pods.PodPath(*podRoot, agentManifest.ID()))
-	err := agentPod.Install(agentManifest, auth.NopVerifier(), artifact.NewRegistry())
+	err := agentPod.Install(agentManifest, auth.NopVerifier(), artifact.NewRegistry(registryURL, uri.DefaultFetcher))
 	if err != nil {
 		return err
 	}

@@ -360,7 +360,7 @@ func TestInstall(t *testing.T) {
 		Fetcher: fetcher,
 	}
 
-	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry())
+	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(nil, uri.DefaultFetcher))
 	Assert(t).IsNil(err, "there should not have been an error when installing")
 
 	Assert(t).AreEqual(

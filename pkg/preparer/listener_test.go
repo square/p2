@@ -21,6 +21,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -103,7 +104,7 @@ func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
 		Logger:           logging.DefaultLogger,
 		authPolicy:       auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil},
 		artifactVerifier: auth.NopVerifier(),
-		artifactRegistry: artifact.NewRegistry(),
+		artifactRegistry: artifact.NewRegistry(nil, uri.DefaultFetcher),
 	}
 
 	return listener, fakeIntent.quit
