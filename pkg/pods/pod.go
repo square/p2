@@ -6,9 +6,7 @@ import (
 	"io/ioutil"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -63,7 +61,6 @@ type Pod struct {
 	LogExec        runit.Exec
 	FinishExec     runit.Exec
 	Fetcher        uri.Fetcher
-	Registry       artifact.Registry
 }
 
 func NewPod(id types.PodID, path string) *Pod {
@@ -78,7 +75,6 @@ func NewPod(id types.PodID, path string) *Pod {
 		LogExec:        runit.DefaultLogExec(),
 		FinishExec:     DefaultFinishExec,
 		Fetcher:        uri.DefaultFetcher,
-		Registry:       artifact.NewRegistry(),
 	}
 }
 
@@ -680,17 +676,7 @@ func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsU
 		}
 	}
 
-	locationURL, _, err := pod.Registry.LocationDataForLaunchable(launchableStanza)
-	if err != nil {
-		return nil, err
-	}
-
-	// The path of a launchable URL is generally expected to end with
-	// <launchable_id>_<version>.tar.gz. The version is useful for
-	// namespacing the install directory of the launchable. For
-	// launchables that do not fit this naming convention, we simply
-	// use the launchable ID as the directory and leave version blank
-	version, err := versionFromLocation(locationURL)
+	version, err := launchableStanza.LaunchableVersion()
 	if err != nil {
 		pod.logger.WithError(err).Warnf("Could not parse version from launchable %s.", launchableStanza.LaunchableId)
 	}
@@ -732,24 +718,6 @@ func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsU
 		pod.logLaunchableError(launchableStanza.LaunchableId.String(), err, "Unknown launchable type")
 		return nil, err
 	}
-}
-
-// Uses the assumption that all locations have a Path component ending in
-// /<launchable_id>_<version>.tar.gz, which is intended to be phased out in
-// favor of explicit launchable versions specified in pod manifests.
-// The version expected to be a 40 character hexadecimal string with an
-// optional hexadecimal suffix after a hyphen
-
-var locationBaseRegex = regexp.MustCompile(`^[a-z0-9-_]+_([a-f0-9]{40}(\-[a-z0-9]+)?)\.tar\.gz$`)
-
-func versionFromLocation(location *url.URL) (string, error) {
-	filename := path.Base(location.Path)
-	parts := locationBaseRegex.FindStringSubmatch(filename)
-	if parts == nil {
-		return "", util.Errorf("Malformed filename in URL: %s", filename)
-	}
-
-	return parts[1], nil
 }
 
 func (p *Pod) logError(err error, message string) {

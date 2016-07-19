@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"regexp"
 
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/runit"
@@ -49,6 +50,32 @@ type LaunchableStanza struct {
 	// can be used to query a configured artifact registry which will provide the artifact
 	// URL. Version may not be used in conjunction with Location
 	Version LaunchableVersion `yaml:"version,omitempty"`
+}
+
+func (l LaunchableStanza) LaunchableVersion() (string, error) {
+	if l.Version.ID != "" {
+		return l.Version.ID, nil
+	}
+
+	return versionFromLocation(l.Location)
+}
+
+// Uses the assumption that all locations have a Path component ending in
+// /<launchable_id>_<version>.tar.gz, which is intended to be phased out in
+// favor of explicit launchable versions specified in pod manifests.
+// The version expected to be a 40 character hexadecimal string with an
+// optional hexadecimal suffix after a hyphen
+
+var locationBaseRegex = regexp.MustCompile(`^[a-z0-9-_]+_([a-f0-9]{40}(\-[a-z0-9]+)?)\.tar\.gz$`)
+
+func versionFromLocation(location string) (string, error) {
+	filename := path.Base(location)
+	parts := locationBaseRegex.FindStringSubmatch(filename)
+	if parts == nil {
+		return "", util.Errorf("Malformed filename in URL: %s", filename)
+	}
+
+	return parts[1], nil
 }
 
 type StatusStanza struct {
