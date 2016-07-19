@@ -17,6 +17,7 @@ import (
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
@@ -360,7 +361,7 @@ func TestInstall(t *testing.T) {
 		Fetcher: fetcher,
 	}
 
-	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(nil, uri.DefaultFetcher))
+	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector))
 	Assert(t).IsNil(err, "there should not have been an error when installing")
 
 	Assert(t).AreEqual(

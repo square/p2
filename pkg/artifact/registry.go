@@ -8,11 +8,17 @@ import (
 
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 )
 
-const discoverBasePath = "/discover"
+const (
+	discoverBasePath = "/discover"
+	osTag            = "os"
+	osVersionTag     = "os_version"
+	versionTag       = "version"
+)
 
 // interface for running operations against an artifact registry.
 type Registry interface {
@@ -23,14 +29,20 @@ type Registry interface {
 }
 
 type registry struct {
-	registryURL *url.URL
-	fetcher     uri.Fetcher
+	registryURL       *url.URL
+	fetcher           uri.Fetcher
+	osVersionDetector osversion.Detector
 }
 
-func NewRegistry(registryURL *url.URL, fetcher uri.Fetcher) Registry {
+func NewRegistry(registryURL *url.URL, fetcher uri.Fetcher, osVersionDetector osversion.Detector) Registry {
+	if osVersionDetector == nil {
+		osVersionDetector = osversion.DefaultDetector
+	}
+
 	return &registry{
-		registryURL: registryURL,
-		fetcher:     fetcher,
+		registryURL:       registryURL,
+		fetcher:           fetcher,
+		osVersionDetector: osVersionDetector,
 	}
 }
 
@@ -89,6 +101,15 @@ func (a registry) fetchRegistryData(launchableID manifest.LaunchableID, version 
 	for key, val := range version.Tags {
 		query.Add(key, val)
 	}
+
+	os, osVersion, err := a.osVersionDetector.Version()
+	if err != nil {
+		return nil, auth.VerificationData{}, err
+	}
+
+	query.Add(osTag, os.String())
+	query.Add(osVersionTag, osVersion.String())
+	query.Add(versionTag, version.ID)
 
 	requestURL.RawQuery = query.Encode()
 

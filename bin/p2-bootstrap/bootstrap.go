@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
@@ -93,7 +94,7 @@ func main() {
 
 func installConsul(consulPod *pods.Pod, consulManifest manifest.Manifest, registryURL *url.URL) error {
 	// Inject servicebuilder?
-	err := consulPod.Install(consulManifest, auth.NopVerifier(), artifact.NewRegistry(registryURL, uri.DefaultFetcher))
+	err := consulPod.Install(consulManifest, auth.NopVerifier(), artifact.NewRegistry(registryURL, uri.DefaultFetcher, osversion.DefaultDetector))
 	if err != nil {
 		return util.Errorf("Can't install Consul, aborting: %s", err)
 	}
@@ -196,7 +197,7 @@ func scheduleForThisHost(manifest manifest.Manifest, alsoReality bool) error {
 
 func installBaseAgent(agentManifest manifest.Manifest, registryURL *url.URL) error {
 	agentPod := pods.NewPod(agentManifest.ID(), pods.PodPath(*podRoot, agentManifest.ID()))
-	err := agentPod.Install(agentManifest, auth.NopVerifier(), artifact.NewRegistry(registryURL, uri.DefaultFetcher))
+	err := agentPod.Install(agentManifest, auth.NopVerifier(), artifact.NewRegistry(registryURL, uri.DefaultFetcher, osversion.DefaultDetector))
 	if err != nil {
 		return err
 	}

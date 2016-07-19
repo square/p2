@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/version"
@@ -39,7 +40,7 @@ func main() {
 	pod := pods.NewPod(manifest.ID(), pods.PodPath(filepath.Join(*podRoot, "hooks", *hookType), manifest.ID()))
 
 	// for now use noop verifier in this CLI
-	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(*registryURI, uri.DefaultFetcher))
+	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(*registryURI, uri.DefaultFetcher, osversion.DefaultDetector))
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)
 	}
