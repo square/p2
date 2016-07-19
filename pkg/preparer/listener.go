@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
@@ -41,6 +42,7 @@ type HookListener struct {
 	Logger           logging.Logger
 	authPolicy       auth.Policy
 	artifactVerifier auth.ArtifactVerifier
+	artifactRegistry artifact.Registry
 }
 
 // Sync keeps manifests located at the hook pods in the intent store.
@@ -143,7 +145,7 @@ func (l *HookListener) installHook(result kp.ManifestResult) error {
 	}
 
 	// The manifest is new, go ahead and install
-	err = hookPod.Install(result.Manifest, l.artifactVerifier)
+	err = hookPod.Install(result.Manifest, l.artifactVerifier, l.artifactRegistry)
 	if err != nil {
 		sub.WithError(err).Errorln("Could not install hook")
 		return err

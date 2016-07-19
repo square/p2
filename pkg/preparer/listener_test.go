@@ -15,6 +15,7 @@ import (
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/clearsign"
 
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
@@ -102,6 +103,7 @@ func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
 		Logger:           logging.DefaultLogger,
 		authPolicy:       auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil},
 		artifactVerifier: auth.NopVerifier(),
+		artifactRegistry: artifact.NewRegistry(),
 	}
 
 	return listener, fakeIntent.quit

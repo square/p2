@@ -14,14 +14,17 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/artifact"
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 	"gopkg.in/yaml.v2"
 
+	"github.com/Sirupsen/logrus"
 	. "github.com/anthonybishopric/gotcha"
 )
 
@@ -322,6 +325,60 @@ func TestBuildRunitServices(t *testing.T) {
 	Assert(t).IsNil(err, "Got error marshalling expected map to yaml")
 
 	Assert(t).AreEqual(string(bytes), string(expected), "Servicebuilder yaml file didn't have expected contents")
+}
+
+func TestInstall(t *testing.T) {
+	fetcher := uri.NewLoggedFetcher(nil)
+	testContext := util.From(runtime.Caller(0))
+
+	currentUser, err := user.Current()
+	Assert(t).IsNil(err, "test setup: couldn't get current user")
+
+	testLocation := testContext.ExpandPath("hoisted-hello_def456.tar.gz")
+
+	launchables := map[manifest.LaunchableID]manifest.LaunchableStanza{
+		"hello": manifest.LaunchableStanza{
+			LaunchableId:   "hello",
+			Location:       testLocation,
+			LaunchableType: "hoist",
+		},
+	}
+
+	builder := manifest.NewBuilder()
+	builder.SetID("hello")
+	builder.SetLaunchables(launchables)
+	builder.SetRunAsUser(currentUser.Username)
+	manifest := builder.GetManifest()
+
+	testPodDir, err := ioutil.TempDir("", "testPodDir")
+	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
+	defer os.RemoveAll(testPodDir)
+
+	pod := Pod{
+		Id:       "testPod",
+		path:     testPodDir,
+		logger:   Log.SubLogger(logrus.Fields{"pod": "testPod"}),
+		Fetcher:  fetcher,
+		Registry: artifact.NewRegistry(),
+	}
+
+	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry())
+	Assert(t).IsNil(err, "there should not have been an error when installing")
+
+	Assert(t).AreEqual(
+		fetcher.SrcUri.String(),
+		testLocation,
+		"The correct url wasn't set for the curl library",
+	)
+
+	hoistedHelloUnpacked := filepath.Join(testPodDir, "hello", "installs", "hello_def456")
+	if info, err := os.Stat(hoistedHelloUnpacked); err != nil || !info.IsDir() {
+		t.Fatalf("Expected %s to be the unpacked artifact location", hoistedHelloUnpacked)
+	}
+	helloLaunch := filepath.Join(hoistedHelloUnpacked, "bin", "launch")
+	if info, err := os.Stat(helloLaunch); err != nil || info.IsDir() {
+		t.Fatalf("Expected %s to be a the launch script for hello", helloLaunch)
+	}
 }
 
 func TestUninstall(t *testing.T) {

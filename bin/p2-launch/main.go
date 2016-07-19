@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -43,7 +44,7 @@ func main() {
 	}
 
 	pod := pods.NewPod(manifest.ID(), pods.PodPath(*podRoot, manifest.ID()))
-	err = pod.Install(manifest, auth.NopVerifier())
+	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry())
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)
 	}

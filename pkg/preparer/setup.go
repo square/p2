@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
@@ -53,6 +54,7 @@ type Preparer struct {
 	logExec                []string
 	logBridgeBlacklist     []string
 	artifactVerifier       auth.ArtifactVerifier
+	artifactRegistry       artifact.Registry
 }
 
 type PreparerConfig struct {
@@ -313,6 +315,11 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		return nil, err
 	}
 
+	artifactRegistry, err := getArtifactRegistry(preparerConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	store, err := preparerConfig.GetStore()
 	if err != nil {
 		return nil, err
@@ -335,6 +342,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		Logger:           logger,
 		authPolicy:       authPolicy,
 		artifactVerifier: artifactVerifier,
+		artifactRegistry: artifactRegistry,
 	}
 
 	err = os.MkdirAll(preparerConfig.PodRoot, 0755)
@@ -369,6 +377,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		logExec:                logExec,
 		logBridgeBlacklist:     preparerConfig.LogBridgeBlacklist,
 		artifactVerifier:       artifactVerifier,
+		artifactRegistry:       artifactRegistry,
 	}, nil
 }
 
@@ -452,4 +461,8 @@ func getArtifactVerifier(preparerConfig *PreparerConfig, logger *logging.Logger)
 	default:
 		return nil, util.Errorf("Unrecognized artifact verification type: %v", t)
 	}
+}
+
+func getArtifactRegistry(preparerConfig *PreparerConfig) (artifact.Registry, error) {
+	return artifact.NewRegistry(), nil
 }

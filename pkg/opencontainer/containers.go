@@ -15,9 +15,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/cgroups"
-	"github.com/square/p2/pkg/gzip"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/p2exec"
@@ -172,26 +170,12 @@ func (l *Launchable) Installed() bool {
 }
 
 // Install ...
-func (l *Launchable) Install(_ artifact.Downloader) (returnedError error) {
+func (l *Launchable) PostInstall() (returnedError error) {
 	if l.Installed() {
 		return nil
 	}
 
-	data, err := uri.DefaultFetcher.Open(l.Location)
-	if err != nil {
-		return err
-	}
-	defer data.Close()
-	defer func() {
-		if returnedError != nil {
-			_ = os.RemoveAll(l.InstallDir())
-		}
-	}()
-	err = gzip.ExtractTarGz("", data, l.InstallDir())
-	if err != nil {
-		return util.Errorf("extracting %s: %s", l.Version(), err)
-	}
-	if _, err = l.getSpec(); err != nil {
+	if _, err := l.getSpec(); err != nil {
 		return err
 	}
 

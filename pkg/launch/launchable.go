@@ -5,7 +5,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util/size"
@@ -51,9 +50,9 @@ type Launchable interface {
 	Executables(serviceBuilder *runit.ServiceBuilder) ([]Executable, error)
 	// Installed returns true if this launchable is already installed.
 	Installed() bool
+	// Executes any necessary post-install steps to ready the launchable for launch
+	PostInstall() error
 
-	// Install acquires the launchable and makes it ready to be launched.
-	Install(downloader artifact.Downloader) error
 	// PostActive runs a Hoist-specific "post-activate" script in the launchable.
 	PostActivate() (string, error)
 	// Launch begins execution.
