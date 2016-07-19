@@ -319,7 +319,7 @@ func getConsulManifest(dir string) (string, error) {
 	)
 	builder := manifest.NewBuilder()
 	builder.SetID("consul")
-	stanzas := map[string]manifest.LaunchableStanza{
+	stanzas := map[manifest.LaunchableID]manifest.LaunchableStanza{
 		"consul": {
 			LaunchableId:   "consul",
 			LaunchableType: "hoist",
@@ -396,7 +396,7 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 	builder := manifest.NewBuilder()
 	builder.SetID("hello")
 	builder.SetStatusPort(43770)
-	stanzas := map[string]manifest.LaunchableStanza{
+	stanzas := map[manifest.LaunchableID]manifest.LaunchableStanza{
 		"hello": {
 			LaunchableId:   "hello",
 			LaunchableType: "hoist",

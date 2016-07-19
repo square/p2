@@ -561,7 +561,7 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 		if err != nil {
 			return util.Errorf("Could not create the environment dir for pod %s launchable %s: %s", manifest.ID(), launchable.ServiceID(), err)
 		}
-		err = writeEnvFile(launchable.EnvDir(), "LAUNCHABLE_ID", launchable.ID(), uid, gid)
+		err = writeEnvFile(launchable.EnvDir(), "LAUNCHABLE_ID", launchable.ID().String(), uid, gid)
 		if err != nil {
 			return err
 		}
@@ -640,12 +640,12 @@ func (pod *Pod) SetLogBridgeExec(logExec []string) {
 }
 
 func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
-	launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
+	launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId.String())
 	serviceId := strings.Join(
 		[]string{
-			string(pod.Id),
+			pod.Id.String(),
 			"__",
-			launchableStanza.LaunchableId,
+			launchableStanza.LaunchableId.String(),
 		}, "")
 
 	restartTimeout := pod.DefaultTimeout
@@ -692,7 +692,7 @@ func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsU
 			RestartTimeout:   restartTimeout,
 			RestartPolicy:    restartPolicy,
 			CgroupConfig:     launchableStanza.CgroupConfig,
-			CgroupConfigName: launchableStanza.LaunchableId,
+			CgroupConfigName: launchableStanza.LaunchableId.String(),
 			SuppliedEnvVars:  launchableStanza.Env,
 			Location:         locationURL,
 			VerificationData: verificationData,
@@ -717,7 +717,7 @@ func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsU
 		return ret, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported", launchableStanza.LaunchableType)
-		pod.logLaunchableError(launchableStanza.LaunchableId, err, "Unknown launchable type")
+		pod.logLaunchableError(launchableStanza.LaunchableId.String(), err, "Unknown launchable type")
 		return nil, err
 	}
 }
@@ -745,14 +745,14 @@ func (p *Pod) logError(err error, message string) {
 		Error(message)
 }
 
-func (p *Pod) logLaunchableError(launchableId string, err error, message string) {
+func (p *Pod) logLaunchableError(serviceID string, err error, message string) {
 	p.logger.WithErrorAndFields(err, logrus.Fields{
-		"launchable": launchableId}).Error(message)
+		"launchable": serviceID}).Error(message)
 }
 
-func (p *Pod) logLaunchableWarning(launchableId string, err error, message string) {
+func (p *Pod) logLaunchableWarning(serviceID string, err error, message string) {
 	p.logger.WithErrorAndFields(err, logrus.Fields{
-		"launchable": launchableId}).Warn(message)
+		"launchable": serviceID}).Warn(message)
 }
 
 func (p *Pod) logInfo(message string) {
