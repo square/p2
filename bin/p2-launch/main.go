@@ -10,6 +10,7 @@ import (
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/version"
 
@@ -44,7 +45,7 @@ func main() {
 	}
 
 	pod := pods.NewPod(manifest.ID(), pods.PodPath(*podRoot, manifest.ID()))
-	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry())
+	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(nil, uri.DefaultFetcher))
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)
 	}

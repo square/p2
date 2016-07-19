@@ -395,7 +395,7 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 	}
 
 	downloader := artifact.NewLocationDownloader(pod.Fetcher, verifier)
-	for _, stanza := range manifest.GetLaunchableStanzas() {
+	for launchableID, stanza := range manifest.GetLaunchableStanzas() {
 		// TODO: investigate passing in necessary fields to InstallDir()
 		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser(), manifest.GetRestartPolicy())
 		if err != nil {
@@ -403,9 +403,9 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 			return err
 		}
 
-		launchableURL, verificationData, err := artifactRegistry.LocationDataForLaunchable(stanza)
+		launchableURL, verificationData, err := artifactRegistry.LocationDataForLaunchable(launchableID, stanza)
 		if err != nil {
-			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to fetch location and verification data for launchable")
+			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
 			return err
 		}
 

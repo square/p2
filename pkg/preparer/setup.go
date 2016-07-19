@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -77,6 +78,7 @@ type PreparerConfig struct {
 	FinishExec             []string               `yaml:"finish_exec,omitempty"`
 	LogExec                []string               `yaml:"log_exec,omitempty"`
 	LogBridgeBlacklist     []string               `yaml:"log_bridge_blacklist,omitempty"`
+	ArtifactRegistryURL    string                 `yaml:"artifact_registry_url,omitempty"`
 
 	// Params defines a collection of miscellaneous runtime parameters defined throughout the
 	// source files.
@@ -464,5 +466,15 @@ func getArtifactVerifier(preparerConfig *PreparerConfig, logger *logging.Logger)
 }
 
 func getArtifactRegistry(preparerConfig *PreparerConfig) (artifact.Registry, error) {
-	return artifact.NewRegistry(), nil
+	if preparerConfig.ArtifactRegistryURL == "" {
+		// This will still work as long as all launchables have "location" urls specified.
+		return artifact.NewRegistry(nil, uri.DefaultFetcher), nil
+	}
+
+	url, err := url.Parse(preparerConfig.ArtifactRegistryURL)
+	if err != nil {
+		return nil, util.Errorf("Could not parse 'artifact_registry_url': %s", err)
+	}
+
+	return artifact.NewRegistry(url, uri.DefaultFetcher), nil
 }
