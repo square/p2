@@ -29,7 +29,6 @@ type DaemonSet interface {
 		quitCh <-chan struct{},
 		updatedCh <-chan *fields.DaemonSet,
 		deletedCh <-chan *fields.DaemonSet,
-		nodesChangedCh <-chan struct{},
 	) <-chan error
 
 	// CurrentPods() returns all nodes that are scheduled by this daemon set
@@ -97,9 +96,9 @@ func (ds *daemonSet) WatchDesires(
 	quitCh <-chan struct{},
 	updatedCh <-chan *fields.DaemonSet,
 	deletedCh <-chan *fields.DaemonSet,
-	nodesChangedCh <-chan struct{},
 ) <-chan error {
 	errCh := make(chan error)
+	nodesChangedCh := ds.applicator.WatchMatchDiff(ds.NodeSelector, labels.NODE, quitCh)
 
 	// Do something whenever something is changed
 	go func() {
@@ -120,6 +119,7 @@ func (ds *daemonSet) WatchDesires(
 				select {
 				case errCh <- err:
 				case <-quitCh:
+					return
 				}
 			}
 
@@ -179,23 +179,16 @@ func (ds *daemonSet) WatchDesires(
 				}
 				return
 
-			case _, ok := <-nodesChangedCh:
+			case labeledChanges, ok := <-nodesChangedCh:
 				if !ok {
 					// channel closed
 					return
 				}
-				ds.logger.NoFields().Infof("Received node update signal")
 				if ds.Disabled {
 					continue
 				}
-				err := ds.removePods()
+				err = ds.handleNodeChanges(labeledChanges)
 				if err != nil {
-					err = util.Errorf("Unable to remove pods from intent tree: %v", err)
-					continue
-				}
-				err = ds.addPods()
-				if err != nil {
-					err = util.Errorf("Unable to add pods to intent tree: %v", err)
 					continue
 				}
 
@@ -206,6 +199,40 @@ func (ds *daemonSet) WatchDesires(
 	}()
 
 	return errCh
+}
+
+// Watch for changes to nodes and sends update and delete signals
+func (ds *daemonSet) handleNodeChanges(changes *labels.LabeledChanges) error {
+	if len(changes.Updated) > 0 {
+		ds.logger.NoFields().Infof("Received node change signal")
+		err := ds.removePods()
+		if err != nil {
+			return util.Errorf("Unable to remove pods from intent tree: %v", err)
+		}
+		err = ds.addPods()
+		if err != nil {
+			return util.Errorf("Unable to add pods to intent tree: %v", err)
+		}
+		return nil
+	}
+
+	if len(changes.Created) > 0 {
+		ds.logger.NoFields().Infof("Received node create signal")
+		err := ds.addPods()
+		if err != nil {
+			return util.Errorf("Unable to add pods to intent tree: %v", err)
+		}
+	}
+
+	if len(changes.Deleted) > 0 {
+		ds.logger.NoFields().Infof("Received node delete signal")
+		err := ds.removePods()
+		if err != nil {
+			return util.Errorf("Unable to remove pods from intent tree: %v", err)
+		}
+	}
+
+	return nil
 }
 
 // addPods schedules pods for all unscheduled nodes selected by ds.nodeSelector
