@@ -1,70 +1,16 @@
 package hoist
 
 import (
-	"io/ioutil"
-	"net/url"
 	"os"
-	"os/user"
 	"path"
-	"runtime"
 	"testing"
 
-	"github.com/square/p2/pkg/artifact"
-	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
-	"github.com/square/p2/pkg/uri"
-	"github.com/square/p2/pkg/util"
 	"gopkg.in/yaml.v2"
 
 	. "github.com/anthonybishopric/gotcha"
 )
-
-func TestInstall(t *testing.T) {
-	fetcher := uri.NewLoggedFetcher(nil)
-	testContext := util.From(runtime.Caller(0))
-
-	currentUser, err := user.Current()
-	Assert(t).IsNil(err, "test setup: couldn't get current user")
-
-	testLocation := &url.URL{
-		Path: testContext.ExpandPath("hoisted-hello_def456.tar.gz"),
-	}
-
-	launchableHome, err := ioutil.TempDir("", "launchable_home")
-	Assert(t).IsNil(err, "test setup: couldn't create temp dir")
-	defer os.RemoveAll(launchableHome)
-
-	launchable := &Launchable{
-		Id:               "hello",
-		Version:          "def456",
-		ServiceId:        "hoisted-hello__hello",
-		RunAs:            currentUser.Username,
-		PodEnvDir:        launchableHome,
-		RootDir:          launchableHome,
-		Location:         testLocation,
-		VerificationData: artifact.VerificationDataForLocation(testLocation),
-	}
-
-	downloader := artifact.NewLocationDownloader(fetcher, auth.NopVerifier())
-	err = launchable.Install(downloader)
-	Assert(t).IsNil(err, "there should not have been an error when installing")
-
-	Assert(t).AreEqual(
-		*fetcher.SrcUri,
-		*testLocation,
-		"The correct url wasn't set for the curl library",
-	)
-
-	hoistedHelloUnpacked := path.Join(launchableHome, "installs", "hello_def456")
-	if info, err := os.Stat(hoistedHelloUnpacked); err != nil || !info.IsDir() {
-		t.Fatalf("Expected %s to be the unpacked artifact location", hoistedHelloUnpacked)
-	}
-	helloLaunch := path.Join(hoistedHelloUnpacked, "bin", "launch")
-	if info, err := os.Stat(helloLaunch); err != nil || info.IsDir() {
-		t.Fatalf("Expected %s to be a the launch script for hello", helloLaunch)
-	}
-}
 
 func TestInstallDir(t *testing.T) {
 	tempDir := os.TempDir()

@@ -294,13 +294,8 @@ func (hl *Launchable) Installed() bool {
 	return err == nil
 }
 
-func (hl *Launchable) Install(downloader artifact.Downloader) error {
-	if hl.Installed() {
-		// install is idempotent, no-op if already installed
-		return nil
-	}
-
-	return downloader.Download(hl.Location, hl.VerificationData, hl.InstallDir(), hl.RunAs)
+func (hl *Launchable) PostInstall() error {
+	return nil
 }
 
 // The version of the artifact is determined from the artifact location. If the

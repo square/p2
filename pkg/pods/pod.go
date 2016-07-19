@@ -381,7 +381,7 @@ func (pod *Pod) Uninstall() error {
 // Install will ensure that executables for all required services are present on the host
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
-func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifier) error {
+func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifier, artifactRegistry artifact.Registry) error {
 	podHome := pod.path
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
@@ -399,10 +399,31 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 	}
 
 	downloader := artifact.NewLocationDownloader(pod.Fetcher, verifier)
-	for _, launchable := range launchables {
-		err = launchable.Install(downloader)
+	for _, stanza := range manifest.GetLaunchableStanzas() {
+		// TODO: investigate passing in necessary fields to InstallDir()
+		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser(), manifest.GetRestartPolicy())
 		if err != nil {
 			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
+			return err
+		}
+
+		launchableURL, verificationData, err := artifactRegistry.LocationDataForLaunchable(stanza)
+		if err != nil {
+			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to fetch location and verification data for launchable")
+			return err
+		}
+
+		err = downloader.Download(launchableURL, verificationData, launchable.InstallDir(), manifest.RunAsUser())
+		if err != nil {
+			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
+			_ = os.Remove(launchable.InstallDir())
+			return err
+		}
+
+		err = launchable.PostInstall()
+		if err != nil {
+			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
+			_ = os.Remove(launchable.InstallDir())
 			return err
 		}
 	}
@@ -659,7 +680,7 @@ func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsU
 		}
 	}
 
-	locationURL, verificationData, err := pod.Registry.LocationDataForLaunchable(launchableStanza)
+	locationURL, _, err := pod.Registry.LocationDataForLaunchable(launchableStanza)
 	if err != nil {
 		return nil, err
 	}
@@ -695,14 +716,12 @@ func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsU
 			CgroupConfigName: launchableStanza.LaunchableId.String(),
 			SuppliedEnvVars:  launchableStanza.Env,
 			Location:         locationURL,
-			VerificationData: verificationData,
 			EntryPoints:      entryPoints,
 		}
 		ret.CgroupConfig.Name = ret.ServiceId
 		return ret.If(), nil
 	} else if *ExperimentalOpencontainer && launchableStanza.LaunchableType == "opencontainer" {
 		ret := &opencontainer.Launchable{
-			Location:        locationURL,
 			ID_:             launchableStanza.LaunchableId,
 			ServiceID_:      serviceId,
 			RunAs:           runAsUser,
