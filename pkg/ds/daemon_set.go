@@ -27,8 +27,8 @@ type DaemonSet interface {
 
 	WatchDesires(
 		quitCh <-chan struct{},
-		updatedCh <-chan fields.DaemonSet,
-		deletedCh <-chan struct{},
+		updatedCh <-chan *fields.DaemonSet,
+		deletedCh <-chan *fields.DaemonSet,
 		nodesChangedCh <-chan struct{},
 	) <-chan error
 
@@ -95,8 +95,8 @@ func (ds *daemonSet) ID() fields.ID {
 // The caller is responsible for sending signals when something has been changed
 func (ds *daemonSet) WatchDesires(
 	quitCh <-chan struct{},
-	updatedCh <-chan fields.DaemonSet,
-	deletedCh <-chan struct{},
+	updatedCh <-chan *fields.DaemonSet,
+	deletedCh <-chan *fields.DaemonSet,
 	nodesChangedCh <-chan struct{},
 ) <-chan error {
 	errCh := make(chan error)
@@ -124,13 +124,21 @@ func (ds *daemonSet) WatchDesires(
 			}
 
 			select {
-			case newDS := <-updatedCh:
+			case newDS, ok := <-updatedCh:
+				if !ok {
+					// channel closed
+					return
+				}
 				ds.logger.NoFields().Infof("Received daemon set update signal: %v", newDS)
+				if newDS == nil {
+					ds.logger.NoFields().Fatal("Unexpected a nil daemon set during update", *ds)
+					return
+				}
 				if ds.ID() != newDS.ID {
 					err = util.Errorf("Expected uuid to be the same, expected '%v', got '%v'", ds.ID(), newDS.ID)
 					continue
 				}
-				ds.DaemonSet = newDS
+				ds.DaemonSet = *newDS
 
 				if ds.Disabled {
 					continue
@@ -146,8 +154,21 @@ func (ds *daemonSet) WatchDesires(
 					continue
 				}
 
-			case <-deletedCh:
-				ds.logger.NoFields().Infof("Received daemon set delete signal")
+			case deleteDS, ok := <-deletedCh:
+				if !ok {
+					// channel closed
+					return
+				}
+				ds.logger.NoFields().Infof("Received daemon set delete signal: %v", deleteDS)
+				if deleteDS == nil {
+					ds.logger.NoFields().Fatal("Unexpected a nil daemon set during delete")
+					return
+				}
+				if ds.ID() != deleteDS.ID {
+					err = util.Errorf("Expected uuid to be the same, expected '%v', got '%v'", ds.ID(), deleteDS.ID)
+					continue
+				}
+
 				err = ds.clearPods()
 				if err != nil {
 					err = util.Errorf("Unable to clear pods from intent tree: %v", err)
@@ -158,7 +179,11 @@ func (ds *daemonSet) WatchDesires(
 				}
 				return
 
-			case <-nodesChangedCh:
+			case _, ok := <-nodesChangedCh:
+				if !ok {
+					// channel closed
+					return
+				}
 				ds.logger.NoFields().Infof("Received node update signal")
 				if ds.Disabled {
 					continue
@@ -263,7 +288,7 @@ func (ds *daemonSet) clearPods() error {
 }
 
 func (ds *daemonSet) schedule(node types.NodeName) error {
-	ds.logger.NoFields().Infof("Scheduling on %s", node)
+	ds.logger.NoFields().Infof("Scheduling on %s with daemon set uuid %s", node, ds.ID())
 
 	// Will apply the following label on the key <labels.POD>/<node>/<ds.Manifest.ID()>:
 	// 	{ DSIDLabel : ds.ID() }
@@ -286,7 +311,7 @@ func (ds *daemonSet) schedule(node types.NodeName) error {
 }
 
 func (ds *daemonSet) unschedule(node types.NodeName) error {
-	ds.logger.NoFields().Infof("Unscheduling from %s", node)
+	ds.logger.NoFields().Infof("Unscheduling from %s with daemon set uuid %s", node, ds.ID())
 
 	// Will remove the following key:
 	// <kp.INTENT_TREE>/<node>/<ds.Manifest.ID()>

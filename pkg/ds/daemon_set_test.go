@@ -54,7 +54,7 @@ func waitForNodes(
 			case err = <-desiresErrCh:
 				Assert(t).IsNil(err, "expected no error watches desires")
 			case err = <-changesErrCh:
-				Assert(t).IsNil(err, "expected no error watching for changes")
+				Assert(t).IsNil(err, "expected no error watching for daemon set changes")
 			default:
 			}
 
@@ -73,8 +73,8 @@ func watchDSChanges(
 	ds *daemonSet,
 	dsStore dsstore.Store,
 	quitCh <-chan struct{},
-	updatedCh chan<- ds_fields.DaemonSet,
-	deletedCh chan<- struct{},
+	updatedCh chan<- *ds_fields.DaemonSet,
+	deletedCh chan<- *ds_fields.DaemonSet,
 ) <-chan error {
 	errCh := make(chan error)
 	changesCh := dsStore.Watch(quitCh)
@@ -93,21 +93,21 @@ func watchDSChanges(
 			}
 
 			if watched.Err != nil {
-				errCh <- util.Errorf("Error occured when watching daemon sets: %v", watched.Err)
+				errCh <- util.Errorf("Error occured when watching daemon set changes: %v", watched.Err)
 			}
 
 			// Signal daemon set when changes have been made,
 			// creations are handled when WatchDesires is called, so ignore them here
 			for _, changedDS := range watched.Updated {
 				if ds.ID() == changedDS.ID {
-					ds.logger.NoFields().Infof("Watched daemon set get updated: %v", *changedDS)
-					updatedCh <- *changedDS
+					ds.logger.NoFields().Infof("Watched daemon set was updated: %v", *changedDS)
+					updatedCh <- changedDS
 				}
 			}
 			for _, changedDS := range watched.Deleted {
 				if ds.ID() == changedDS.ID {
-					ds.logger.NoFields().Infof("Watched daemon set get deleted: %v", changedDS)
-					deletedCh <- struct{}{}
+					ds.logger.NoFields().Infof("Watched daemon set was deleted: %v", *changedDS)
+					deletedCh <- changedDS
 				}
 			}
 		}
@@ -169,8 +169,8 @@ func TestSchedule(t *testing.T) {
 	// to the daemon set
 	//
 	quitCh := make(chan struct{})
-	updatedCh := make(chan ds_fields.DaemonSet)
-	deletedCh := make(chan struct{})
+	updatedCh := make(chan *ds_fields.DaemonSet)
+	deletedCh := make(chan *ds_fields.DaemonSet)
 	nodesChangedCh := make(chan struct{})
 	defer close(quitCh)
 	defer close(updatedCh)
