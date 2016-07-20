@@ -3,6 +3,7 @@ package dsstoretest
 import (
 	"sync"
 
+	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/hashicorp/consul/api"
@@ -31,6 +32,7 @@ type FakeDSStore struct {
 	daemonSets   map[fields.ID]fields.DaemonSet
 	watchers     map[fields.ID]chan FakeWatchedDaemonSet
 	watchersLock sync.Locker
+	logger       logging.Logger
 }
 
 var _ dsstore.Store = &FakeDSStore{}
@@ -40,6 +42,7 @@ func NewFake() *FakeDSStore {
 		daemonSets:   make(map[fields.ID]fields.DaemonSet),
 		watchers:     make(map[fields.ID]chan FakeWatchedDaemonSet),
 		watchersLock: &sync.Mutex{},
+		logger:       logging.DefaultLogger,
 	}
 }
 
@@ -155,6 +158,31 @@ func (s *FakeDSStore) MutateDS(
 	}
 
 	return ds, nil
+}
+
+func (s *FakeDSStore) Disable(id fields.ID) (fields.DaemonSet, error) {
+	s.logger.Infof("Attempting to disable '%s' in store now", id)
+
+	mutator := func(dsToUpdate fields.DaemonSet) (fields.DaemonSet, error) {
+		dsToUpdate.Disabled = true
+		return dsToUpdate, nil
+	}
+	newDS, err := s.MutateDS(id, mutator)
+
+	// Delete the daemon set because there was an error during mutation
+	if err != nil {
+		s.logger.Errorf("Error occured when trying to disable daemon set in store: %v, attempting to delete now", err)
+		err = s.Delete(id)
+		// If you tried to delete it and there was an error, this is fatal
+		if err != nil {
+			return fields.DaemonSet{}, err
+		}
+		s.logger.Infof("Deletion was successful for the daemon set: '%s' in store", id)
+		return fields.DaemonSet{}, nil
+	}
+
+	s.logger.Infof("Daemon set '%s' was successfully disabled in store", id)
+	return newDS, nil
 }
 
 func (s *FakeDSStore) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets {

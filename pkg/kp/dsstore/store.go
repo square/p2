@@ -52,6 +52,10 @@ type Store interface {
 	) (fields.DaemonSet, error)
 
 	Watch(quit <-chan struct{}) <-chan WatchedDaemonSets
+
+	// Disables daemon set and produces logging, if there are problems disabling,
+	// disable the daemon set, and if there are still problems, return a fatal error
+	Disable(id fields.ID) (fields.DaemonSet, error)
 }
 
 func IsNotExist(err error) bool {
