@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -54,7 +55,7 @@ func TestGetLaunchable(t *testing.T) {
 		l, _ := pod.getLaunchable(stanza, "foouser", runit.RestartPolicyAlways)
 		launchable := l.(hoist.LaunchAdapter).Launchable
 		Assert(t).AreEqual("app", launchable.Id, "Launchable Id did not have expected value")
-		Assert(t).AreEqual("def456", launchable.Version, "Launchable version did not have expected value")
+		Assert(t).AreEqual("3c021aff048ca8117593f9c71e03b87cf72fd440", launchable.Version, "Launchable version did not have expected value")
 		Assert(t).AreEqual("hello__app", launchable.ServiceId, "Launchable ServiceId did not have expected value")
 		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
 		Assert(t).IsTrue(launchable.ExecNoLimit, "GetLaunchable() should always set ExecNoLimit to true for hoist launchables")
@@ -109,7 +110,7 @@ launchables:
   my-app:
     launchable_type: hoist
     launchable_id: web
-    location: https://localhost:4444/foo/bar/baz_def456.tar.gz
+    location: https://localhost:4444/foo/bar/baz_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz
     cgroup:
       cpus: 4
       memory: 4G
@@ -343,6 +344,58 @@ func TestUninstall(t *testing.T) {
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
 	_, err = os.Stat(pod.currentPodManifestPath())
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
+}
+
+func TestVersionFromLocation(t *testing.T) {
+	type testExpectation struct {
+		URIPath         string
+		ExpectedVersion string
+		ExpectError     bool
+	}
+
+	expectations := []testExpectation{
+		{
+			URIPath:         "/download/test-launchable_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz",
+			ExpectedVersion: "3c021aff048ca8117593f9c71e03b87cf72fd440",
+			ExpectError:     false,
+		},
+		{
+			URIPath:         "/download/test04_launchable2_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz",
+			ExpectedVersion: "3c021aff048ca8117593f9c71e03b87cf72fd440",
+			ExpectError:     false,
+		},
+		{
+			URIPath:         "/download/test-launchable_3c021aff048ca8117593f9c71e03b87cf72fd440-suffix.tar.gz",
+			ExpectedVersion: "3c021aff048ca8117593f9c71e03b87cf72fd440-suffix",
+			ExpectError:     false,
+		},
+		{
+			URIPath:         "/download/afb1.2.00.tar.gz",
+			ExpectedVersion: "",
+			ExpectError:     true,
+		},
+		{
+			URIPath:         "/download/jdk-2.9.0_22.tar.gz",
+			ExpectedVersion: "",
+			ExpectError:     true,
+		},
+	}
+
+	for _, expectation := range expectations {
+		uri := &url.URL{Path: expectation.URIPath}
+		version, err := versionFromLocation(uri)
+		if expectation.ExpectError && err == nil {
+			t.Errorf("Expected an error parsing version from '%s', but there wasn't one", expectation.URIPath)
+		}
+
+		if !expectation.ExpectError && err != nil {
+			t.Errorf("Unexpected error occurred parsing version from '%s': %s", expectation.URIPath, err)
+		}
+
+		if version != expectation.ExpectedVersion {
+			t.Errorf("Expected version for '%s' to be '%s', was '%s'", expectation.URIPath, expectation.ExpectedVersion, version)
+		}
+	}
 }
 
 func manifestMustEqual(expected, actual manifest.Manifest, t *testing.T) {
