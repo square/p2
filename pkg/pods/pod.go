@@ -656,7 +656,7 @@ func (pod *Pod) SetLogBridgeExec(logExec []string) {
 	pod.LogExec = append([]string{pod.P2Exec}, p2ExecArgs.CommandLine()...)
 }
 
-func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
+func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
 	launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId.String())
 	serviceId := strings.Join(
 		[]string{

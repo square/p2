@@ -11,7 +11,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/uri"
 )
@@ -45,8 +45,8 @@ func fakeFetcherNoData() uri.Fetcher {
 	}
 }
 
-func locationLaunchable() manifest.LaunchableStanza {
-	return manifest.LaunchableStanza{
+func locationLaunchable() launch.LaunchableStanza {
+	return launch.LaunchableStanza{
 		Location: "https://fileserver.com/artifact.tar.gz",
 	}
 }
@@ -102,7 +102,7 @@ func TestLocationDataForLaunchableWithLocation(t *testing.T) {
 }
 
 func TestNeitherVersionNorLocationInvalid(t *testing.T) {
-	launchable := manifest.LaunchableStanza{}
+	launchable := launch.LaunchableStanza{}
 	registry := locationDataRegistry()
 	_, _, err := registry.LocationDataForLaunchable("launchable_id", launchable)
 	if err == nil {
@@ -111,8 +111,8 @@ func TestNeitherVersionNorLocationInvalid(t *testing.T) {
 }
 
 func TestBothVersionAndLocationInvalid(t *testing.T) {
-	launchable := manifest.LaunchableStanza{
-		Version: manifest.LaunchableVersion{
+	launchable := launch.LaunchableStanza{
+		Version: launch.LaunchableVersion{
 			ID: "some_version",
 		},
 		Location: testLocation,
@@ -125,8 +125,8 @@ func TestBothVersionAndLocationInvalid(t *testing.T) {
 }
 
 func TestVersionScheme(t *testing.T) {
-	launchable := manifest.LaunchableStanza{
-		Version: manifest.LaunchableVersion{
+	launchable := launch.LaunchableStanza{
+		Version: launch.LaunchableVersion{
 			ID:   "some_version",
 			Tags: map[string]string{"foo": "bar"},
 		},

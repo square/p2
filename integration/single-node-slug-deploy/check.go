@@ -20,6 +20,7 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/labels"
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/rc"
@@ -319,7 +320,7 @@ func getConsulManifest(dir string) (string, error) {
 	)
 	builder := manifest.NewBuilder()
 	builder.SetID("consul")
-	stanzas := map[manifest.LaunchableID]manifest.LaunchableStanza{
+	stanzas := map[launch.LaunchableID]launch.LaunchableStanza{
 		"consul": {
 			LaunchableId:   "consul",
 			LaunchableType: "hoist",
@@ -396,7 +397,7 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 	builder := manifest.NewBuilder()
 	builder.SetID("hello")
 	builder.SetStatusPort(43770)
-	stanzas := map[manifest.LaunchableID]manifest.LaunchableStanza{
+	stanzas := map[launch.LaunchableID]launch.LaunchableStanza{
 		"hello": {
 			LaunchableId:   "hello",
 			LaunchableType: "hoist",

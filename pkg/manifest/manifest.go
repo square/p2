@@ -13,9 +13,8 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"regexp"
 
-	"github.com/square/p2/pkg/cgroups"
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
@@ -23,60 +22,6 @@ import (
 	"golang.org/x/crypto/openpgp/clearsign"
 	"gopkg.in/yaml.v2"
 )
-
-type LaunchableID string
-
-func (l LaunchableID) String() string { return string(l) }
-
-type LaunchableVersion struct {
-	ID   string            `yaml:"id"`
-	Tags map[string]string `yaml:"tags"`
-}
-
-type LaunchableStanza struct {
-	LaunchableType          string            `yaml:"launchable_type"`
-	LaunchableId            LaunchableID      `yaml:"launchable_id"`
-	DigestLocation          string            `yaml:"digest_location,omitempty"`
-	DigestSignatureLocation string            `yaml:"digest_signature_location,omitempty"`
-	RestartTimeout          string            `yaml:"restart_timeout,omitempty"`
-	CgroupConfig            cgroups.Config    `yaml:"cgroup,omitempty"`
-	Env                     map[string]string `yaml:"env,omitempty"`
-
-	// The URL from which the launchable can be downloaded. May not be used
-	// in conjunction with Version
-	Location string `yaml:"location"`
-
-	// An alternative to using Location to inform artifact downloading. Version information
-	// can be used to query a configured artifact registry which will provide the artifact
-	// URL. Version may not be used in conjunction with Location
-	Version LaunchableVersion `yaml:"version,omitempty"`
-}
-
-func (l LaunchableStanza) LaunchableVersion() (string, error) {
-	if l.Version.ID != "" {
-		return l.Version.ID, nil
-	}
-
-	return versionFromLocation(l.Location)
-}
-
-// Uses the assumption that all locations have a Path component ending in
-// /<launchable_id>_<version>.tar.gz, which is intended to be phased out in
-// favor of explicit launchable versions specified in pod manifests.
-// The version expected to be a 40 character hexadecimal string with an
-// optional hexadecimal suffix after a hyphen
-
-var locationBaseRegex = regexp.MustCompile(`^[a-z0-9-_]+_([a-f0-9]{40}(\-[a-z0-9]+)?)\.tar\.gz$`)
-
-func versionFromLocation(location string) (string, error) {
-	filename := path.Base(location)
-	parts := locationBaseRegex.FindStringSubmatch(filename)
-	if parts == nil {
-		return "", util.Errorf("Malformed filename in URL: %s", filename)
-	}
-
-	return parts[1], nil
-}
 
 type StatusStanza struct {
 	HTTP          bool   `yaml:"http,omitempty"`
@@ -93,7 +38,7 @@ type Builder interface {
 	SetStatusHTTP(statusHTTP bool)
 	SetStatusPath(statusPath string)
 	SetStatusPort(port int)
-	SetLaunchables(launchableStanzas map[LaunchableID]LaunchableStanza)
+	SetLaunchables(launchableStanzas map[launch.LaunchableID]launch.LaunchableStanza)
 	SetRestartPolicy(runit.RestartPolicy)
 }
 
@@ -121,7 +66,7 @@ type Manifest interface {
 	WriteConfig(out io.Writer) error
 	PlatformConfigFileName() (string, error)
 	WritePlatformConfig(out io.Writer) error
-	GetLaunchableStanzas() map[LaunchableID]LaunchableStanza
+	GetLaunchableStanzas() map[launch.LaunchableID]launch.LaunchableStanza
 	GetConfig() map[interface{}]interface{}
 	SHA() (string, error)
 	GetStatusHTTP() bool
@@ -139,14 +84,14 @@ type Manifest interface {
 var _ Manifest = &manifest{}
 
 type manifest struct {
-	Id                types.PodID                       `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
-	RunAs             string                            `yaml:"run_as,omitempty"`
-	LaunchableStanzas map[LaunchableID]LaunchableStanza `yaml:"launchables"`
-	Config            map[interface{}]interface{}       `yaml:"config"`
-	StatusPort        int                               `yaml:"status_port,omitempty"`
-	StatusHTTP        bool                              `yaml:"status_http,omitempty"`
-	Status            StatusStanza                      `yaml:"status,omitempty"`
-	RestartPolicy     runit.RestartPolicy               `yaml:"restart_policy,omitempty"`
+	Id                types.PodID                                     `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
+	RunAs             string                                          `yaml:"run_as,omitempty"`
+	LaunchableStanzas map[launch.LaunchableID]launch.LaunchableStanza `yaml:"launchables"`
+	Config            map[interface{}]interface{}                     `yaml:"config"`
+	StatusPort        int                                             `yaml:"status_port,omitempty"`
+	StatusHTTP        bool                                            `yaml:"status_http,omitempty"`
+	Status            StatusStanza                                    `yaml:"status,omitempty"`
+	RestartPolicy     runit.RestartPolicy                             `yaml:"restart_policy,omitempty"`
 
 	// Used to track the original bytes so that we don't reorder them when
 	// doing a yaml.Unmarshal and a yaml.Marshal in succession
@@ -176,11 +121,11 @@ func (m builder) SetID(id types.PodID) {
 	m.manifest.Id = id
 }
 
-func (manifest *manifest) GetLaunchableStanzas() map[LaunchableID]LaunchableStanza {
+func (manifest *manifest) GetLaunchableStanzas() map[launch.LaunchableID]launch.LaunchableStanza {
 	return manifest.LaunchableStanzas
 }
 
-func (manifest *manifest) SetLaunchables(launchableStanzas map[LaunchableID]LaunchableStanza) {
+func (manifest *manifest) SetLaunchables(launchableStanzas map[launch.LaunchableID]launch.LaunchableStanza) {
 	manifest.LaunchableStanzas = launchableStanzas
 }
 
@@ -393,9 +338,9 @@ func (manifest *manifest) WriteConfig(out io.Writer) error {
 }
 
 func (manifest *manifest) WritePlatformConfig(out io.Writer) error {
-	platConf := make(map[LaunchableID]interface{})
+	platConf := make(map[launch.LaunchableID]interface{})
 	for _, stanza := range manifest.LaunchableStanzas {
-		platConf[stanza.LaunchableId] = map[LaunchableID]interface{}{
+		platConf[stanza.LaunchableId] = map[launch.LaunchableID]interface{}{
 			"cgroup": stanza.CgroupConfig,
 		}
 	}

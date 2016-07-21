@@ -18,6 +18,7 @@ import (
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
@@ -68,7 +69,7 @@ func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
 	builder := manifest.NewBuilder()
 	builder.SetID("users")
 	builder.SetRunAsUser(current.Username)
-	builder.SetLaunchables(map[manifest.LaunchableID]manifest.LaunchableStanza{
+	builder.SetLaunchables(map[launch.LaunchableID]launch.LaunchableStanza{
 		"create": {
 			Location:       util.From(runtime.Caller(0)).ExpandPath("hoisted-hello_def456.tar.gz"),
 			LaunchableType: "hoist",
