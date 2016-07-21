@@ -11,7 +11,7 @@ launchables:
   app:
     launchable_type: hoist
     launchable_id: app
-    location: hoisted-hello_def456.tar.gz
+    location: hoisted-hello_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz
 
 config:
   # is written to a file and passed as CONFIG_FILE to the process

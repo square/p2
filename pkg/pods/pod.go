@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -717,18 +718,20 @@ func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsU
 
 // Uses the assumption that all locations have a Path component ending in
 // /<launchable_id>_<version>.tar.gz, which is intended to be phased out in
-// favor of explicit launchable versions specified in pod manifests
-// Version may not contain an underscore
+// favor of explicit launchable versions specified in pod manifests.
+// The version expected to be a 40 character hexadecimal string with an
+// optional hexadecimal suffix after a hyphen
+
+var locationBaseRegex = regexp.MustCompile(`^[a-z0-9-_]+_([a-f0-9]{40}(\-[a-z0-9]+)?)\.tar\.gz$`)
+
 func versionFromLocation(location *url.URL) (string, error) {
 	filename := path.Base(location.Path)
-	parts := strings.Split(filename, "_")
-	if len(parts) < 2 {
+	parts := locationBaseRegex.FindStringSubmatch(filename)
+	if parts == nil {
 		return "", util.Errorf("Malformed filename in URL: %s", filename)
 	}
 
-	versionAndExtension := parts[len(parts)-1]
-
-	return versionAndExtension[:len(versionAndExtension)-len(".tar.gz")], nil
+	return parts[1], nil
 }
 
 func (p *Pod) logError(err error, message string) {
