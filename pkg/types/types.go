@@ -18,6 +18,21 @@ func (p PodID) String() string {
 	return string(p)
 }
 
+type PodLocation struct {
+	Node  NodeName
+	PodID PodID
+}
+type PodLocations []PodLocation
+
+// Nodes returns a list of just the locations' nodes.
+func (l PodLocations) Nodes() []NodeName {
+	nodes := make([]NodeName, len(l))
+	for i, pod := range l {
+		nodes[i] = pod.Node
+	}
+	return nodes
+}
+
 // Wraps sets.String to provide the functionality of a set when dealing with
 // the NodeName type (which is a string)
 type NodeSet struct {

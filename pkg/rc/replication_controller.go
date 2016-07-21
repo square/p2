@@ -39,22 +39,7 @@ type ReplicationController interface {
 	WatchDesires(quit <-chan struct{}) <-chan error
 
 	// CurrentPods() returns all pods managed by this replication controller.
-	CurrentPods() (PodLocations, error)
-}
-
-type PodLocation struct {
-	Node  types.NodeName
-	PodID types.PodID
-}
-type PodLocations []PodLocation
-
-// Nodes returns a list of just the locations' nodes.
-func (l PodLocations) Nodes() []types.NodeName {
-	nodes := make([]types.NodeName, len(l))
-	for i, pod := range l {
-		nodes[i] = pod.Node
-	}
-	return nodes
+	CurrentPods() (types.PodLocations, error)
 }
 
 // These methods are the same as the methods of the same name in kp.Store.
@@ -203,7 +188,7 @@ func (rc *replicationController) meetDesires() error {
 	return rc.ensureConsistency(current)
 }
 
-func (rc *replicationController) addPods(current PodLocations) error {
+func (rc *replicationController) addPods(current types.PodLocations) error {
 	currentNodes := current.Nodes()
 	eligible, err := rc.eligibleNodes()
 	if err != nil {
@@ -266,7 +251,7 @@ func (rc *replicationController) alertInfo(msg string) alerting.AlertInfo {
 	}
 }
 
-func (rc *replicationController) removePods(current PodLocations) error {
+func (rc *replicationController) removePods(current types.PodLocations) error {
 	currentNodes := current.Nodes()
 	eligible, err := rc.eligibleNodes()
 	if err != nil {
@@ -301,7 +286,7 @@ func (rc *replicationController) removePods(current PodLocations) error {
 	return nil
 }
 
-func (rc *replicationController) ensureConsistency(current PodLocations) error {
+func (rc *replicationController) ensureConsistency(current types.PodLocations) error {
 	manifestSHA, err := rc.Manifest.SHA()
 	if err != nil {
 		return err
@@ -335,7 +320,7 @@ func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {
 	return rc.scheduler.EligibleNodes(rc.Manifest, rc.NodeSelector)
 }
 
-func (rc *replicationController) CurrentPods() (PodLocations, error) {
+func (rc *replicationController) CurrentPods() (types.PodLocations, error) {
 	selector := klabels.Everything().Add(RCIDLabel, klabels.EqualsOperator, []string{rc.ID().String()})
 
 	podMatches, err := rc.podApplicator.GetMatches(selector, labels.POD)
@@ -343,7 +328,7 @@ func (rc *replicationController) CurrentPods() (PodLocations, error) {
 		return nil, err
 	}
 
-	result := make(PodLocations, len(podMatches))
+	result := make(types.PodLocations, len(podMatches))
 	for i, podMatch := range podMatches {
 		// ID will be something like <nodename>/<podid>.
 		node, podID, err := labels.NodeAndPodIDFromPodLabel(podMatch)

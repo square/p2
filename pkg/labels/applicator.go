@@ -53,6 +53,12 @@ type Labeled struct {
 	Labels    labels.Set
 }
 
+type LabeledChanges struct {
+	Created []Labeled
+	Updated []Labeled
+	Deleted []Labeled
+}
+
 func (l Labeled) SameAs(o Labeled) bool {
 	return l.ID == o.ID && l.LabelType == o.LabelType
 }
@@ -86,5 +92,13 @@ type Applicator interface {
 	// the quit channel - this will be indicated by the closing of the result channel. For
 	// this reason, callers should **always** verify that the channel is closed by checking
 	// the "ok" boolean or using `range`.
-	WatchMatches(selector labels.Selector, labelType Type, quitCh chan struct{}) chan []Labeled
+	WatchMatches(selector labels.Selector, labelType Type, quitCh <-chan struct{}) chan []Labeled
+
+	// WatchMatchDiff does a diff on top of the results form the WatchMatches and
+	// returns a LabeledChanges structure which contain changes
+	WatchMatchDiff(
+		selector labels.Selector,
+		labelType Type,
+		quitCh <-chan struct{},
+	) <-chan *LabeledChanges
 }

@@ -27,28 +27,12 @@ type DaemonSet interface {
 
 	WatchDesires(
 		quitCh <-chan struct{},
-		updatedCh <-chan fields.DaemonSet,
-		deletedCh <-chan struct{},
-		nodesChangedCh <-chan struct{},
+		updatedCh <-chan *fields.DaemonSet,
+		deletedCh <-chan *fields.DaemonSet,
 	) <-chan error
 
 	// CurrentPods() returns all nodes that are scheduled by this daemon set
-	CurrentPods() (PodLocations, error)
-}
-
-type PodLocation struct {
-	Node  types.NodeName
-	PodID types.PodID
-}
-type PodLocations []PodLocation
-
-// Nodes returns a list of just the locations' nodes.
-func (l PodLocations) Nodes() []types.NodeName {
-	nodes := make([]types.NodeName, len(l))
-	for i, pod := range l {
-		nodes[i] = pod.Node
-	}
-	return nodes
+	CurrentPods() (types.PodLocations, error)
 }
 
 // These methods are the same as the methods of the same name in kp.Store.
@@ -110,11 +94,11 @@ func (ds *daemonSet) ID() fields.ID {
 // The caller is responsible for sending signals when something has been changed
 func (ds *daemonSet) WatchDesires(
 	quitCh <-chan struct{},
-	updatedCh <-chan fields.DaemonSet,
-	deletedCh <-chan struct{},
-	nodesChangedCh <-chan struct{},
+	updatedCh <-chan *fields.DaemonSet,
+	deletedCh <-chan *fields.DaemonSet,
 ) <-chan error {
 	errCh := make(chan error)
+	nodesChangedCh := ds.applicator.WatchMatchDiff(ds.NodeSelector, labels.NODE, quitCh)
 
 	// Do something whenever something is changed
 	go func() {
@@ -135,17 +119,26 @@ func (ds *daemonSet) WatchDesires(
 				select {
 				case errCh <- err:
 				case <-quitCh:
+					return
 				}
 			}
 
 			select {
-			case newDS := <-updatedCh:
+			case newDS, ok := <-updatedCh:
+				if !ok {
+					// channel closed
+					return
+				}
 				ds.logger.NoFields().Infof("Received daemon set update signal: %v", newDS)
+				if newDS == nil {
+					ds.logger.NoFields().Fatal("Unexpected a nil daemon set during update", *ds)
+					return
+				}
 				if ds.ID() != newDS.ID {
 					err = util.Errorf("Expected uuid to be the same, expected '%v', got '%v'", ds.ID(), newDS.ID)
 					continue
 				}
-				ds.DaemonSet = newDS
+				ds.DaemonSet = *newDS
 
 				if ds.Disabled {
 					continue
@@ -161,8 +154,21 @@ func (ds *daemonSet) WatchDesires(
 					continue
 				}
 
-			case <-deletedCh:
-				ds.logger.NoFields().Infof("Received daemon set delete signal")
+			case deleteDS, ok := <-deletedCh:
+				if !ok {
+					// channel closed
+					return
+				}
+				ds.logger.NoFields().Infof("Received daemon set delete signal: %v", deleteDS)
+				if deleteDS == nil {
+					ds.logger.NoFields().Fatal("Unexpected a nil daemon set during delete")
+					return
+				}
+				if ds.ID() != deleteDS.ID {
+					err = util.Errorf("Expected uuid to be the same, expected '%v', got '%v'", ds.ID(), deleteDS.ID)
+					continue
+				}
+
 				err = ds.clearPods()
 				if err != nil {
 					err = util.Errorf("Unable to clear pods from intent tree: %v", err)
@@ -173,19 +179,16 @@ func (ds *daemonSet) WatchDesires(
 				}
 				return
 
-			case <-nodesChangedCh:
-				ds.logger.NoFields().Infof("Received node update signal")
+			case labeledChanges, ok := <-nodesChangedCh:
+				if !ok {
+					// channel closed
+					return
+				}
 				if ds.Disabled {
 					continue
 				}
-				err := ds.removePods()
+				err = ds.handleNodeChanges(labeledChanges)
 				if err != nil {
-					err = util.Errorf("Unable to remove pods from intent tree: %v", err)
-					continue
-				}
-				err = ds.addPods()
-				if err != nil {
-					err = util.Errorf("Unable to add pods to intent tree: %v", err)
 					continue
 				}
 
@@ -196,6 +199,40 @@ func (ds *daemonSet) WatchDesires(
 	}()
 
 	return errCh
+}
+
+// Watch for changes to nodes and sends update and delete signals
+func (ds *daemonSet) handleNodeChanges(changes *labels.LabeledChanges) error {
+	if len(changes.Updated) > 0 {
+		ds.logger.NoFields().Infof("Received node change signal")
+		err := ds.removePods()
+		if err != nil {
+			return util.Errorf("Unable to remove pods from intent tree: %v", err)
+		}
+		err = ds.addPods()
+		if err != nil {
+			return util.Errorf("Unable to add pods to intent tree: %v", err)
+		}
+		return nil
+	}
+
+	if len(changes.Created) > 0 {
+		ds.logger.NoFields().Infof("Received node create signal")
+		err := ds.addPods()
+		if err != nil {
+			return util.Errorf("Unable to add pods to intent tree: %v", err)
+		}
+	}
+
+	if len(changes.Deleted) > 0 {
+		ds.logger.NoFields().Infof("Received node delete signal")
+		err := ds.removePods()
+		if err != nil {
+			return util.Errorf("Unable to remove pods from intent tree: %v", err)
+		}
+	}
+
+	return nil
 }
 
 // addPods schedules pods for all unscheduled nodes selected by ds.nodeSelector
@@ -278,7 +315,7 @@ func (ds *daemonSet) clearPods() error {
 }
 
 func (ds *daemonSet) schedule(node types.NodeName) error {
-	ds.logger.NoFields().Infof("Scheduling on %s", node)
+	ds.logger.NoFields().Infof("Scheduling on %s with daemon set uuid %s", node, ds.ID())
 
 	// Will apply the following label on the key <labels.POD>/<node>/<ds.Manifest.ID()>:
 	// 	{ DSIDLabel : ds.ID() }
@@ -301,7 +338,7 @@ func (ds *daemonSet) schedule(node types.NodeName) error {
 }
 
 func (ds *daemonSet) unschedule(node types.NodeName) error {
-	ds.logger.NoFields().Infof("Unscheduling from %s", node)
+	ds.logger.NoFields().Infof("Unscheduling from %s with daemon set uuid %s", node, ds.ID())
 
 	// Will remove the following key:
 	// <kp.INTENT_TREE>/<node>/<ds.Manifest.ID()>
@@ -321,7 +358,7 @@ func (ds *daemonSet) unschedule(node types.NodeName) error {
 	return nil
 }
 
-func (ds *daemonSet) CurrentPods() (PodLocations, error) {
+func (ds *daemonSet) CurrentPods() (types.PodLocations, error) {
 	// Changing DaemonSet.ID is not permitted, so as long as there is no uuid
 	// collision, this will always get the current pod path that this daemon set
 	// had scheduled on
@@ -332,7 +369,7 @@ func (ds *daemonSet) CurrentPods() (PodLocations, error) {
 		return nil, util.Errorf("Unable to get matches on pod tree: %v", err)
 	}
 
-	result := make(PodLocations, len(podMatches))
+	result := make(types.PodLocations, len(podMatches))
 	for i, podMatch := range podMatches {
 		// ID will be something like <node>/<PodID>
 		node, podID, err := labels.NodeAndPodIDFromPodLabel(podMatch)

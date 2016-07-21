@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/hashicorp/consul/api"
@@ -230,4 +231,103 @@ func TestCASNoRetries(t *testing.T) {
 	Assert(t).IsNotNil(err, "should have failed on first try")
 	_, ok := err.(CASError)
 	Assert(t).IsTrue(ok, "should have returned a CASError")
+}
+
+func TestWatchMatchDiff(t *testing.T) {
+	c := &consulApplicator{
+		logger:      logging.DefaultLogger,
+		kv:          &failOnceLabelStore{inner: &fakeLabelStore{data: map[string][]byte{}}},
+		retries:     3,
+		aggregators: map[Type]*consulAggregator{},
+		retryMetric: metrics.NewGauge(),
+	}
+
+	quitCh := make(chan struct{})
+	defer close(quitCh)
+	inCh := c.WatchMatchDiff(labels.Everything(), NODE, quitCh)
+
+	var changes *LabeledChanges
+	select {
+	case changes = <-inCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Expected something on channel but found nothing")
+	}
+	Assert(t).AreEqual(len(changes.Created), 0, "expected number of created labels to match")
+	Assert(t).AreEqual(len(changes.Updated), 0, "expected number of updated labels to match")
+	Assert(t).AreEqual(len(changes.Deleted), 0, "expected number of deleted labels to match")
+
+	// Create a label and verify that it was created
+	err := c.SetLabel(NODE, "node1", "foo", "bar")
+	Assert(t).IsNil(err, "expected no error setting label")
+
+	select {
+	case changes = <-inCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Expected something on channel but found nothing")
+	}
+	Assert(t).AreEqual(len(changes.Created), 1, "expected number of created labels to match")
+	Assert(t).AreEqual(len(changes.Updated), 0, "expected number of updated labels to match")
+	Assert(t).AreEqual(len(changes.Deleted), 0, "expected number of deleted labels to match")
+
+	// Create another label and update one and verify
+	err = c.SetLabel(NODE, "node2", "foo", "bar")
+	Assert(t).IsNil(err, "expected no error setting label")
+	err = c.SetLabel(NODE, "node1", "foo", "foo")
+	Assert(t).IsNil(err, "expected no error setting label")
+
+	select {
+	case changes = <-inCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Expected something on channel but found nothing")
+	}
+	Assert(t).AreEqual(len(changes.Created), 1, "expected number of created labels to match")
+	Assert(t).AreEqual(len(changes.Updated), 1, "expected number of updated labels to match")
+	Assert(t).AreEqual(len(changes.Deleted), 0, "expected number of deleted labels to match")
+
+	// Delete a label and create one
+	err = c.RemoveAllLabels(NODE, "node1")
+	Assert(t).IsNil(err, "expected no error removing labels")
+	err = c.SetLabel(NODE, "node3", "foo", "bar")
+	Assert(t).IsNil(err, "expected no error setting label")
+
+	select {
+	case changes = <-inCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Expected something on channel but found nothing")
+	}
+	Assert(t).AreEqual(len(changes.Created), 1, "expected number of created labels to match")
+	Assert(t).AreEqual(len(changes.Updated), 0, "expected number of updated labels to match")
+	Assert(t).AreEqual(len(changes.Deleted), 1, "expected number of deleted labels to match")
+
+	// Create, Update, and Delete a label
+	err = c.SetLabel(NODE, "node4", "foo", "bar")
+	Assert(t).IsNil(err, "expected no error setting label")
+	err = c.SetLabel(NODE, "node3", "foo", "foo")
+	Assert(t).IsNil(err, "expected no error setting label")
+	err = c.RemoveAllLabels(NODE, "node2")
+	Assert(t).IsNil(err, "expected no error removing labels")
+
+	select {
+	case changes = <-inCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Expected something on channel but found nothing")
+	}
+	Assert(t).AreEqual(len(changes.Created), 1, "expected number of created labels to match")
+	Assert(t).AreEqual(len(changes.Updated), 1, "expected number of updated labels to match")
+	Assert(t).AreEqual(len(changes.Deleted), 1, "expected number of deleted labels to match")
+
+	// Remove the remaining two labels
+	err = c.RemoveAllLabels(NODE, "node3")
+	Assert(t).IsNil(err, "expected no error removing labels")
+	err = c.RemoveAllLabels(NODE, "node4")
+	Assert(t).IsNil(err, "expected no error removing labels")
+
+	select {
+	case changes = <-inCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Expected something on channel but found nothing")
+	}
+	Assert(t).AreEqual(len(changes.Created), 0, "expected number of created labels to match")
+	Assert(t).AreEqual(len(changes.Updated), 0, "expected number of updated labels to match")
+	Assert(t).AreEqual(len(changes.Deleted), 2, "expected number of deleted labels to match")
 }
