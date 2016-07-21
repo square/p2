@@ -215,7 +215,7 @@ func (s consulStore) checkForConflictingUpdates(rcIDs rc_fields.IDs) error {
 //      labels on replication controllers referring back to the RUs that they
 //      refer to. Then a constant lookup can be done for those labels, and the
 //      operation can be aborted.
-func (s consulStore) CreateRollingUpdateFromExistingRCs(u roll_fields.Update, newRCLabels klabels.Set) (roll_fields.Update, error) {
+func (s consulStore) CreateRollingUpdateFromExistingRCs(u roll_fields.Update, newRCLabels klabels.Set, rollLabels klabels.Set) (roll_fields.Update, error) {
 	session, renewalErrCh, err := s.newRUCreationSession()
 	if err != nil {
 		return roll_fields.Update{}, err
@@ -242,7 +242,7 @@ func (s consulStore) CreateRollingUpdateFromExistingRCs(u roll_fields.Update, ne
 		return roll_fields.Update{}, err
 	}
 
-	return s.attemptRUCreation(u, renewalErrCh)
+	return s.attemptRUCreation(u, rollLabels, renewalErrCh)
 }
 
 // Like CreateRollingUpdateFromExistingRCs except will create the new RC based
@@ -258,6 +258,7 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	newRCNodeSelector klabels.Selector,
 	newRCPodLabels klabels.Set,
 	newRCLabels klabels.Set,
+	rollLabels klabels.Set,
 ) (u roll_fields.Update, err error) {
 	// There are cases where this function will create the new RC and
 	// subsequently fail, in which case we need to do some cleanup.
@@ -341,7 +342,7 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 		RollDelay:       rollDelay,
 	}
 
-	return s.attemptRUCreation(u, renewalErrCh)
+	return s.attemptRUCreation(u, rollLabels, renewalErrCh)
 }
 
 // Creates a rolling update that may or may not already have an existing old
@@ -360,6 +361,7 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	newRCNodeSelector klabels.Selector,
 	newRCPodLabels klabels.Set,
 	newRCLabels klabels.Set,
+	rollLabels klabels.Set,
 ) (u roll_fields.Update, err error) {
 	// This function may or may not create old and new RCs and subsequently
 	// fail, so we defer a function that does any cleanup (if applicable)
@@ -491,7 +493,7 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		LeaveOld:        leaveOld,
 		RollDelay:       rollDelay,
 	}
-	return s.attemptRUCreation(u, renewalErrCh)
+	return s.attemptRUCreation(u, rollLabels, renewalErrCh)
 }
 
 func (s consulStore) Delete(id roll_fields.ID) error {
@@ -504,6 +506,13 @@ func (s consulStore) Delete(id roll_fields.ID) error {
 	if err != nil {
 		return consulutil.NewKVError("delete", key, err)
 	}
+
+	err = s.labeler.RemoveAllLabels(labels.RU, id.String())
+	if err != nil {
+		// TODO: If this fails, then we have some dangling labels. The labeler does retry a few times though
+		return err
+	}
+
 	return nil
 }
 
@@ -639,7 +648,16 @@ func kvpToRU(kvp *api.KVPair) (roll_fields.Update, error) {
 // Attempts to create a rolling update. Checks sessionErrCh for session renewal
 // errors just before actually doing the creation to minimize the likelihood of
 // race conditions resulting in conflicting RUs
-func (s consulStore) attemptRUCreation(u roll_fields.Update, sessionErrCh chan error) (roll_fields.Update, error) {
+func (s consulStore) attemptRUCreation(u roll_fields.Update, rollLabels klabels.Set, sessionErrCh chan error) (createdRU roll_fields.Update, err error) {
+	// If we create an RU, we also want to create its labels. If the second step
+	// fails, we want to best-effort remove the RU
+	var ruCleanup func()
+	defer func() {
+		if err != nil && ruCleanup != nil {
+			ruCleanup()
+		}
+	}()
+
 	b, err := json.Marshal(u)
 	if err != nil {
 		return u, err
@@ -672,6 +690,18 @@ func (s consulStore) attemptRUCreation(u roll_fields.Update, sessionErrCh chan e
 		if !success {
 			return u, util.Errorf("update with new RC ID %s already exists", u.NewRC)
 		}
+
+		ruCleanup = func() {
+			err := s.Delete(u.ID())
+			if err != nil {
+				s.logger.WithError(err).Errorln("Unable to cleanup RU %s after failed labeling attempt", u.ID())
+			}
+		}
+	}
+
+	err = s.labeler.SetLabels(labels.RU, u.ID().String(), rollLabels)
+	if err != nil {
+		return roll_fields.Update{}, err
 	}
 
 	return u, nil

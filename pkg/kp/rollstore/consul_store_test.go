@@ -218,7 +218,7 @@ func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
 		"some_key": "some_val",
 	})
 
-	_, err := rollstore.CreateRollingUpdateFromExistingRCs(update, newRCLabels)
+	u, err := rollstore.CreateRollingUpdateFromExistingRCs(update, newRCLabels, newRCLabels)
 	if err != nil {
 		t.Fatalf("Unexpected error creating update: %s", err)
 	}
@@ -244,6 +244,15 @@ func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
 	if rcLabels.Labels["some_key"] != "some_val" {
 		t.Errorf("Expected labels to be set on new RC")
 	}
+
+	ruLabels, err := rollstore.labeler.GetLabels(labels.RU, u.ID().String())
+	if err != nil {
+		t.Fatalf("Unable to fetch labels for newly created new RU: %s", err)
+	}
+
+	if ruLabels.Labels["some_key"] != "some_val" {
+		t.Errorf("Expected labels to be set on new RU")
+	}
 }
 
 // Test that if a conflicting update exists, a new one will not be admitted
@@ -263,7 +272,7 @@ func TestCreateExistingRCsMutualExclusion(t *testing.T) {
 		OldRC: oldRCID,
 	}
 
-	_, err := rollstore.CreateRollingUpdateFromExistingRCs(update, nil)
+	_, err := rollstore.CreateRollingUpdateFromExistingRCs(update, nil, nil)
 	if err == nil {
 		t.Fatal("Expected update creation to fail due to conflict")
 	}
@@ -310,7 +319,7 @@ func TestCreateFailsIfCantAcquireLock(t *testing.T) {
 		t.Fatalf("Unable to acquire conflicting lock on old rc: %s", err)
 	}
 
-	_, err = rollstore.CreateRollingUpdateFromExistingRCs(update, nil)
+	_, err = rollstore.CreateRollingUpdateFromExistingRCs(update, nil, nil)
 	if err == nil {
 		t.Fatal("Expected update creation to fail due to lock conflict")
 	}
@@ -339,6 +348,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 		testManifest(),
 		testNodeSelector(),
 		nil,
+		newRCLabels,
 		newRCLabels,
 	)
 
@@ -372,6 +382,15 @@ func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 	if rcLabels.Labels["some_key"] != "some_val" {
 		t.Errorf("Expected labels to be set on new RC")
 	}
+
+	ruLabels, err := rollstore.labeler.GetLabels(labels.RU, newUpdate.ID().String())
+	if err != nil {
+		t.Fatalf("Unable to fetch labels for newly created new RU: %s", err)
+	}
+
+	if ruLabels.Labels["some_key"] != "some_val" {
+		t.Errorf("Expected labels to be set on new RU")
+	}
 }
 
 func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T) {
@@ -393,6 +412,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 		testNodeSelector(),
 		nil,
 		nil,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("Unable to create conflicting update: %s", err)
@@ -406,6 +426,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 		0,
 		testManifest(),
 		testNodeSelector(),
+		nil,
 		nil,
 		nil,
 	)
@@ -472,6 +493,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDFailsIfCantAcquireLock(t *tes
 		testNodeSelector(),
 		nil,
 		nil,
+		nil,
 	)
 
 	if err == nil {
@@ -518,6 +540,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist
 		testNodeSelector(),
 		nil,
 		newRCLabels,
+		newRCLabels,
 	)
 
 	if err != nil {
@@ -554,6 +577,15 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist
 	if rcLabels.Labels["some_key"] != "some_val" {
 		t.Errorf("Expected labels to be set on old RC")
 	}
+
+	ruLabels, err := rollstore.labeler.GetLabels(labels.RU, u.ID().String())
+	if err != nil {
+		t.Fatalf("Unable to fetch labels for newly created new RU: %s", err)
+	}
+
+	if ruLabels.Labels["some_key"] != "some_val" {
+		t.Errorf("Expected labels to be set on new RU")
+	}
 }
 
 func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *testing.T) {
@@ -585,6 +617,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *t
 		0,
 		testManifest(),
 		testNodeSelector(),
+		nil,
 		nil,
 		nil,
 	)
@@ -653,6 +686,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenTwoMat
 		testNodeSelector(),
 		nil,
 		nil,
+		nil,
 	)
 
 	if err == nil {
@@ -708,6 +742,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenExisti
 		testNodeSelector(),
 		nil,
 		nil,
+		nil,
 	)
 
 	if err == nil {
@@ -751,6 +786,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 		testNodeSelector(),
 		nil,
 		nil,
+		nil,
 	)
 
 	if err != nil {
@@ -770,6 +806,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 		0,
 		testManifest(),
 		testNodeSelector(),
+		nil,
 		nil,
 		nil,
 	)
@@ -807,6 +844,7 @@ func TestLeaveOldInvalidIfNoOldRC(t *testing.T) {
 		0,
 		testManifest(),
 		testNodeSelector(),
+		nil,
 		nil,
 		nil,
 	)
