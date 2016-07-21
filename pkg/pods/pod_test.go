@@ -46,7 +46,7 @@ func getUpdatedManifest(t *testing.T) manifest.Manifest {
 	return pod
 }
 
-func getLaunchableStanzasFromTestManifest(t *testing.T) map[manifest.LaunchableID]manifest.LaunchableStanza {
+func getLaunchableStanzasFromTestManifest(t *testing.T) map[launch.LaunchableID]launch.LaunchableStanza {
 	return getTestPodManifest(t).GetLaunchableStanzas()
 }
 
@@ -69,7 +69,7 @@ func TestGetLaunchable(t *testing.T) {
 }
 
 func TestGetLaunchableNoVersion(t *testing.T) {
-	launchableStanza := manifest.LaunchableStanza{
+	launchableStanza := launch.LaunchableStanza{
 		LaunchableId:   "somelaunchable",
 		Location:       "https://server.com/somelaunchable", // note this doesn't have a version identifier
 		LaunchableType: "hoist",
@@ -336,8 +336,8 @@ func TestInstall(t *testing.T) {
 
 	testLocation := testContext.ExpandPath("hoisted-hello_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz")
 
-	launchables := map[manifest.LaunchableID]manifest.LaunchableStanza{
-		"hello": manifest.LaunchableStanza{
+	launchables := map[launch.LaunchableID]launch.LaunchableStanza{
+		"hello": launch.LaunchableStanza{
 			LaunchableId:   "hello",
 			Location:       testLocation,
 			LaunchableType: "hoist",

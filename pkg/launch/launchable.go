@@ -3,12 +3,75 @@ package launch
 import (
 	"fmt"
 	"io"
+	"path"
+	"regexp"
 	"strings"
 
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
 )
+
+type LaunchableID string
+
+func (l LaunchableID) String() string { return string(l) }
+
+type LaunchableVersion struct {
+	ID   string            `yaml:"id"`
+	Tags map[string]string `yaml:"tags"`
+}
+
+type LaunchableStanza struct {
+	LaunchableType          string            `yaml:"launchable_type"`
+	LaunchableId            LaunchableID      `yaml:"launchable_id"`
+	DigestLocation          string            `yaml:"digest_location,omitempty"`
+	DigestSignatureLocation string            `yaml:"digest_signature_location,omitempty"`
+	RestartTimeout          string            `yaml:"restart_timeout,omitempty"`
+	CgroupConfig            cgroups.Config    `yaml:"cgroup,omitempty"`
+	Env                     map[string]string `yaml:"env,omitempty"`
+
+	// Specifies which files or directories (relative to launchable root)
+	// should be launched under runit. Only launchables of type "hoist"
+	// make use of this field, and if empty, a default of ["bin/launch"]
+	// is used
+	EntryPoints []string `yaml:"entry_points,omitempty"`
+
+	// The URL from which the launchable can be downloaded. May not be used
+	// in conjunction with Version
+	Location string `yaml:"location"`
+
+	// An alternative to using Location to inform artifact downloading. Version information
+	// can be used to query a configured artifact registry which will provide the artifact
+	// URL. Version may not be used in conjunction with Location
+	Version LaunchableVersion `yaml:"version,omitempty"`
+}
+
+func (l LaunchableStanza) LaunchableVersion() (string, error) {
+	if l.Version.ID != "" {
+		return l.Version.ID, nil
+	}
+
+	return versionFromLocation(l.Location)
+}
+
+// Uses the assumption that all locations have a Path component ending in
+// /<launchable_id>_<version>.tar.gz, which is intended to be phased out in
+// favor of explicit launchable versions specified in pod manifests.
+// The version expected to be a 40 character hexadecimal string with an
+// optional hexadecimal suffix after a hyphen
+
+var locationBaseRegex = regexp.MustCompile(`^[a-z0-9-_]+_([a-f0-9]{40}(\-[a-z0-9]+)?)\.tar\.gz$`)
+
+func versionFromLocation(location string) (string, error) {
+	filename := path.Base(location)
+	parts := locationBaseRegex.FindStringSubmatch(filename)
+	if parts == nil {
+		return "", util.Errorf("Malformed filename in URL: %s", filename)
+	}
+
+	return parts[1], nil
+}
 
 const DefaultAllowableDiskUsage = 10 * size.Gibibyte
 
@@ -33,7 +96,7 @@ type Launchable interface {
 	// Type returns a text description of the type of launchable.
 	Type() string
 	// ID returns a (pod-wise) unique ID for this launchable.
-	ID() manifest.LaunchableID
+	ID() LaunchableID
 	// ServiceID returns a (host-wise) unique ID for this launchable.
 	// Unlike ID(), ServiceID() must be unique for all instances of a launchable
 	// on a single host, even if are multiple pods have the same launchable ID.
