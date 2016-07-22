@@ -77,6 +77,7 @@ func setup(t *testing.T) (
 		applicator,
 		logging.DefaultLogger,
 		alerter,
+		nil,
 	).(*replicationController)
 
 	return
