@@ -401,9 +401,8 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 
 	ret.Desired = rcFields.ReplicasDesired
 
-	currentPods, err := rc.New(rcFields, u.kps, u.rcs, u.sched, u.labeler, u.logger, u.alerter).CurrentPods()
+	currentPods, err := rc.New(rcFields, u.kps, u.rcs, u.sched, u.labeler, u.logger, u.alerter, u.errorReporter).CurrentPods()
 	if err != nil {
-		u.errorReporter.Report(err, nil, 1)
 		return ret, err
 	}
 	ret.Current = len(currentPods)
