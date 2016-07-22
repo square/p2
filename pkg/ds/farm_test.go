@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -412,4 +413,62 @@ func TestFarmSchedule(t *testing.T) {
 	labeled, err = dsf.applicator.GetLabels(labels.POD, "node2/testPod")
 	Assert(t).IsNil(err, "Expected no error getting labels")
 	Assert(t).IsFalse(labeled.Labels.Has(DSIDLabel), "Expected pod not to have a dsID label")
+}
+
+func TestCleanupPods(t *testing.T) {
+	dsStore := dsstoretest.NewFake()
+	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	applicator := labels.NewFakeApplicator()
+
+	// Make some dangling pod labels and instantiate a farm and expect it clean it up
+	podID := types.PodID("testPod")
+	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder.SetID(podID)
+	podManifest := manifestBuilder.GetManifest()
+
+	for i := 0; i < 10; i++ {
+		nodeName := fmt.Sprintf("node%v", i)
+		id := labels.MakePodLabelKey(types.NodeName(nodeName), podID)
+		err := applicator.SetLabel(labels.POD, id, DSIDLabel, "impossible_id")
+		Assert(t).IsNil(err, "Expected no error labeling node")
+
+		_, err = kpStore.SetPod(kp.INTENT_TREE, types.NodeName(nodeName), podManifest)
+		Assert(t).IsNil(err, "Expected no error added pod to intent tree")
+	}
+
+	// Assert that precondition is true
+	for i := 0; i < 10; i++ {
+		nodeName := fmt.Sprintf("node%v", i)
+		id := labels.MakePodLabelKey(types.NodeName(nodeName), podID)
+		labeled, err := applicator.GetLabels(labels.POD, id)
+		Assert(t).IsNil(err, "Expected no error getting labels")
+		Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Precondition failed: Pod must have a dsID label")
+
+		_, _, err = kpStore.Pod(kp.INTENT_TREE, types.NodeName(nodeName), podID)
+		Assert(t).IsNil(err, "Expected no error getting pod from intent store")
+		Assert(t).AreNotEqual(err, pods.NoCurrentManifest, "Precondition failed: Pod was not in intent store")
+	}
+
+	// Instantiate farm
+	dsf := NewFarm(kpStore, dsStore, applicator, logging.DefaultLogger, nil)
+
+	quitCh := make(chan struct{})
+	defer close(quitCh)
+	go func() {
+		dsf.Start(quitCh)
+	}()
+
+	waitForFarm()
+
+	// Make there are no nodes left
+	for i := 0; i < 10; i++ {
+		nodeName := fmt.Sprintf("node%v", i)
+		id := labels.MakePodLabelKey(types.NodeName(nodeName), podID)
+		labeled, err := dsf.applicator.GetLabels(labels.POD, id)
+		Assert(t).IsNil(err, "Expected no error getting labels")
+		Assert(t).IsFalse(labeled.Labels.Has(DSIDLabel), "Expected pod not to have a dsID label")
+
+		_, _, err = kpStore.Pod(kp.INTENT_TREE, types.NodeName(nodeName), podID)
+		Assert(t).AreEqual(err, pods.NoCurrentManifest, "Expected to find pod in intent store")
+	}
 }

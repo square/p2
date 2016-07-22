@@ -3,8 +3,8 @@ package ds
 import (
 	"fmt"
 	"sync"
+	"time"
 
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
@@ -16,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/types"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -27,7 +28,6 @@ type Farm struct {
 	scheduler  scheduler.Scheduler
 	applicator labels.Applicator
 
-	// TODO: Make use of these locks
 	children map[fields.ID]*childDS
 	childMu  sync.Mutex
 
@@ -66,7 +66,78 @@ func NewFarm(
 }
 
 func (dsf *Farm) Start(quitCh <-chan struct{}) {
+	go dsf.cleanupDaemonSetPods(quitCh)
 	dsf.mainLoop(quitCh)
+}
+
+const cleanupInterval = 60 * time.Second
+
+// This function removes all pods with a DSIDLabel where the daemon set id does
+// not exist in the store at every interval specified because it is possible
+// that the farm will unexpectedly crash or someone deletes or modifies a node
+func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
+	timer := time.NewTimer(time.Duration(0))
+
+	for {
+		select {
+		case <-quitCh:
+			return
+		case <-timer.C:
+		}
+		timer.Reset(cleanupInterval)
+
+		allDaemonSets, err := dsf.dsStore.List()
+		if err != nil {
+			dsf.logger.Errorf("Unable to get daemon sets from intent tree in daemon set farm: %v", err)
+			continue
+		}
+
+		dsIDMap := make(map[fields.ID]ds_fields.DaemonSet)
+		for _, dsFields := range allDaemonSets {
+			dsIDMap[dsFields.ID] = dsFields
+		}
+
+		dsIDLabelSelector := klabels.Everything().
+			Add(DSIDLabel, klabels.ExistsOperator, []string{})
+
+		allPods, err := dsf.applicator.GetMatches(dsIDLabelSelector, labels.POD)
+		if err != nil {
+			dsf.logger.Errorf("Unable to get matches for daemon sets in pod store: %v", err)
+			continue
+		}
+
+		for _, podLabels := range allPods {
+			// Only check if it is a pod scheduled by a daemon set
+			dsID := podLabels.Labels.Get(DSIDLabel)
+
+			// Check if the daemon set exists, if it doesn't unschedule the pod
+			if _, ok := dsIDMap[fields.ID(dsID)]; ok {
+				continue
+			}
+
+			nodeName, podID, err := labels.NodeAndPodIDFromPodLabel(podLabels)
+			if err != nil {
+				dsf.logger.NoFields().Error(err)
+				continue
+			}
+
+			// TODO: Since this mirrors the unschedule function in daemon_set.go,
+			// We should find a nice way to couple them together
+			dsf.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with dangling daemon set uuid '%v'", podID, nodeName, dsID)
+
+			_, err = dsf.kpStore.DeletePod(kp.INTENT_TREE, nodeName, podID)
+			if err != nil {
+				dsf.logger.NoFields().Errorf("Unable to delete pod id '%v' in node '%v', from intent tree: %v", podID, nodeName, err)
+				continue
+			}
+
+			id := labels.MakePodLabelKey(nodeName, podID)
+			err = dsf.applicator.RemoveLabel(labels.POD, id, DSIDLabel)
+			if err != nil {
+				dsf.logger.NoFields().Errorf("Error removing ds pod id label '%v': %v", id, err)
+			}
+		}
+	}
 }
 
 func (dsf *Farm) mainLoop(quitCh <-chan struct{}) {
