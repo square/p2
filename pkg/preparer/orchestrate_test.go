@@ -10,6 +10,7 @@ import (
 	"time"
 
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
@@ -47,7 +48,7 @@ func (t *TestPod) Launch(manifest manifest.Manifest) (bool, error) {
 	return t.launchSuccess, nil
 }
 
-func (t *TestPod) Install(manifest manifest.Manifest, _ auth.ArtifactVerifier) error {
+func (t *TestPod) Install(manifest manifest.Manifest, _ auth.ArtifactVerifier, _ artifact.Registry) error {
 	t.installed = true
 	return t.installErr
 }

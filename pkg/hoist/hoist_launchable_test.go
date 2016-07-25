@@ -1,70 +1,16 @@
 package hoist
 
 import (
-	"io/ioutil"
-	"net/url"
 	"os"
-	"os/user"
 	"path"
-	"runtime"
 	"testing"
 
-	"github.com/square/p2/pkg/artifact"
-	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
-	"github.com/square/p2/pkg/uri"
-	"github.com/square/p2/pkg/util"
 	"gopkg.in/yaml.v2"
 
 	. "github.com/anthonybishopric/gotcha"
 )
-
-func TestInstall(t *testing.T) {
-	fetcher := uri.NewLoggedFetcher(nil)
-	testContext := util.From(runtime.Caller(0))
-
-	currentUser, err := user.Current()
-	Assert(t).IsNil(err, "test setup: couldn't get current user")
-
-	testLocation := &url.URL{
-		Path: testContext.ExpandPath("hoisted-hello_def456.tar.gz"),
-	}
-
-	launchableHome, err := ioutil.TempDir("", "launchable_home")
-	Assert(t).IsNil(err, "test setup: couldn't create temp dir")
-	defer os.RemoveAll(launchableHome)
-
-	launchable := &Launchable{
-		Id:               "hello",
-		Version:          "def456",
-		ServiceId:        "hoisted-hello__hello",
-		RunAs:            currentUser.Username,
-		PodEnvDir:        launchableHome,
-		RootDir:          launchableHome,
-		Location:         testLocation,
-		VerificationData: artifact.VerificationDataForLocation(testLocation),
-	}
-
-	downloader := artifact.NewLocationDownloader(fetcher, auth.NopVerifier())
-	err = launchable.Install(downloader)
-	Assert(t).IsNil(err, "there should not have been an error when installing")
-
-	Assert(t).AreEqual(
-		*fetcher.SrcUri,
-		*testLocation,
-		"The correct url wasn't set for the curl library",
-	)
-
-	hoistedHelloUnpacked := path.Join(launchableHome, "installs", "hello_def456")
-	if info, err := os.Stat(hoistedHelloUnpacked); err != nil || !info.IsDir() {
-		t.Fatalf("Expected %s to be the unpacked artifact location", hoistedHelloUnpacked)
-	}
-	helloLaunch := path.Join(hoistedHelloUnpacked, "bin", "launch")
-	if info, err := os.Stat(helloLaunch); err != nil || info.IsDir() {
-		t.Fatalf("Expected %s to be a the launch script for hello", helloLaunch)
-	}
-}
 
 func TestInstallDir(t *testing.T) {
 	tempDir := os.TempDir()
@@ -102,6 +48,9 @@ func TestInstallDirNoVersion(t *testing.T) {
 	Assert(t).AreEqual(installDir, expectedDir, "Install dir did not have expected value")
 }
 
+// This test is plays out the scenario where no entry points are explicitly declared
+// in the launchable stanza for the launchable. Therefore, bin/launch should be treated
+// as an entry point and that is it.
 func TestMultipleExecutables(t *testing.T) {
 	fakeLaunchable, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(fakeLaunchable, sb)
@@ -111,8 +60,98 @@ func TestMultipleExecutables(t *testing.T) {
 
 	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__script1", "/var/service/testPod__testLaunchable__script2"}
 	Assert(t).AreEqual(2, len(executables), "Found an unexpected number of runit services")
-	Assert(t).AreEqual(executables[0].Service.Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
-	Assert(t).AreEqual(executables[1].Service.Path, expectedServicePaths[1], "Runit service paths from launchable did not match expected")
+
+	for _, expected := range expectedServicePaths {
+		found := false
+		for _, executable := range executables {
+			if executable.Service.Path == expected {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			t.Errorf("Did not find %s among executable paths", expected)
+		}
+	}
+}
+
+// This test exercises the functionality of having two entry points specified in a pod manifest,
+// in this case bin/launch and bin/start
+func TestMultipleEntryPoints(t *testing.T) {
+	fakeLaunchable, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(fakeLaunchable, sb)
+
+	fakeLaunchable.EntryPoints = append(fakeLaunchable.EntryPoints, "bin/start")
+	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
+
+	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
+
+	expectedServicePaths := []string{
+		"/var/service/testPod__testLaunchable__script1",
+		"/var/service/testPod__testLaunchable__script2",
+		"/var/service/testPod__testLaunchable__start",
+	}
+	Assert(t).AreEqual(3, len(executables), "Found an unexpected number of runit services")
+
+	for _, expected := range expectedServicePaths {
+		found := false
+		for _, executable := range executables {
+			if executable.Service.Path == expected {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			t.Errorf("Did not find %s among executable paths", expected)
+		}
+	}
+}
+
+// Tests that bin/launch is ignored if it is not specified as an entry point
+func TestNonStandardEntryPoint(t *testing.T) {
+	fakeLaunchable, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(fakeLaunchable, sb)
+
+	fakeLaunchable.EntryPoints = []string{"bin/start"}
+	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
+
+	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
+
+	expectedServicePaths := []string{
+		"/var/service/testPod__testLaunchable__start",
+	}
+	Assert(t).AreEqual(1, len(executables), "Found an unexpected number of runit services")
+
+	for _, expected := range expectedServicePaths {
+		found := false
+		for _, executable := range executables {
+			if executable.Service.Path == expected {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			t.Errorf("Did not find %s among executable paths", expected)
+		}
+	}
+}
+
+// Tests that the Executables() function fails if two runit services with the same
+// service name will be created. We specify bin/start (a normal file) and bin/start2
+// (a directory containing one file called start) which will generate a naming
+// collision and thus (we hope) an error
+func TestErrorIfConflictingServiceNames(t *testing.T) {
+	fakeLaunchable, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(fakeLaunchable, sb)
+
+	fakeLaunchable.EntryPoints = []string{"bin/start", "bin/start2"}
+	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
+
+	Assert(t).IsNotNil(err, "Expected naming collision error calling Executables()")
+	Assert(t).AreEqual(0, len(executables), "Found an unexpected number of runit services")
 }
 
 func TestSingleRunitService(t *testing.T) {

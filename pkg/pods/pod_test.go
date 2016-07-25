@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"net/url"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -14,14 +13,18 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/artifact"
+	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 	"gopkg.in/yaml.v2"
 
+	"github.com/Sirupsen/logrus"
 	. "github.com/anthonybishopric/gotcha"
 )
 
@@ -43,7 +46,7 @@ func getUpdatedManifest(t *testing.T) manifest.Manifest {
 	return pod
 }
 
-func getLaunchableStanzasFromTestManifest(t *testing.T) map[string]manifest.LaunchableStanza {
+func getLaunchableStanzasFromTestManifest(t *testing.T) map[launch.LaunchableID]launch.LaunchableStanza {
 	return getTestPodManifest(t).GetLaunchableStanzas()
 }
 
@@ -54,7 +57,9 @@ func TestGetLaunchable(t *testing.T) {
 	for _, stanza := range launchableStanzas {
 		l, _ := pod.getLaunchable(stanza, "foouser", runit.RestartPolicyAlways)
 		launchable := l.(hoist.LaunchAdapter).Launchable
-		Assert(t).AreEqual("app", launchable.Id, "Launchable Id did not have expected value")
+		if launchable.Id != "app" {
+			t.Errorf("Launchable Id did not have expected value: wanted '%s' was '%s'", "app", launchable.Id)
+		}
 		Assert(t).AreEqual("3c021aff048ca8117593f9c71e03b87cf72fd440", launchable.Version, "Launchable version did not have expected value")
 		Assert(t).AreEqual("hello__app", launchable.ServiceId, "Launchable ServiceId did not have expected value")
 		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
@@ -64,7 +69,7 @@ func TestGetLaunchable(t *testing.T) {
 }
 
 func TestGetLaunchableNoVersion(t *testing.T) {
-	launchableStanza := manifest.LaunchableStanza{
+	launchableStanza := launch.LaunchableStanza{
 		LaunchableId:   "somelaunchable",
 		Location:       "https://server.com/somelaunchable", // note this doesn't have a version identifier
 		LaunchableType: "hoist",
@@ -72,7 +77,11 @@ func TestGetLaunchableNoVersion(t *testing.T) {
 	pod := getTestPod()
 	l, _ := pod.getLaunchable(launchableStanza, "foouser", runit.RestartPolicyAlways)
 	launchable := l.(hoist.LaunchAdapter).Launchable
-	Assert(t).AreEqual("somelaunchable", launchable.Id, "Launchable Id did not have expected value")
+
+	if launchable.Id != "somelaunchable" {
+		t.Errorf("Launchable Id did not have expected value: wanted '%s' was '%s'", "somelaunchable", launchable.Id)
+	}
+
 	Assert(t).AreEqual("", launchable.Version, "Launchable version did not have expected value")
 	Assert(t).AreEqual("hello__somelaunchable", launchable.ServiceId, "Launchable ServiceId did not have expected value")
 	Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
@@ -171,7 +180,10 @@ config:
 	for _, launchable := range launchables {
 		launchableIdEnv, err := ioutil.ReadFile(filepath.Join(launchable.EnvDir(), "LAUNCHABLE_ID"))
 		Assert(t).IsNil(err, "should not have erred reading the launchable ID env file")
-		Assert(t).AreEqual(launchable.ID(), string(launchableIdEnv), "The launchable ID did not match expected")
+
+		if launchable.ID().String() != string(launchableIdEnv) {
+			t.Errorf("Launchable Id did not have expected value: wanted '%s' was '%s'", launchable.ID().String(), launchableIdEnv)
+		}
 
 		launchableRootEnv, err := ioutil.ReadFile(filepath.Join(launchable.EnvDir(), "LAUNCHABLE_ROOT"))
 		Assert(t).IsNil(err, "should not have erred reading the launchable root env file")
@@ -187,7 +199,7 @@ func TestLogLaunchableError(t *testing.T) {
 	out := bytes.Buffer{}
 	Log.SetLogOut(&out)
 
-	testLaunchable := &hoist.Launchable{ServiceId: "TestLaunchable"}
+	testLaunchable := &hoist.Launchable{ServiceId: "TestLaunchable__hello"}
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
@@ -197,7 +209,7 @@ func TestLogLaunchableError(t *testing.T) {
 	output, err := ioutil.ReadAll(&out)
 	Assert(t).IsNil(err, "Got an error reading the logging output")
 	outputString := bytes.NewBuffer(output).String()
-	Assert(t).Matches(outputString, ContainsString("TestLaunchable"), "Expected 'TestLaunchable' to appear somewhere in log output")
+	Assert(t).Matches(outputString, ContainsString("TestLaunchable__hello"), "Expected 'TestLaunchable' to appear somewhere in log output")
 	Assert(t).Matches(outputString, ContainsString("hello"), "Expected 'hello' to appear somewhere in log output")
 	Assert(t).Matches(outputString, ContainsString("Test error occurred"), "Expected error message to appear somewhere in log output")
 }
@@ -315,6 +327,59 @@ func TestBuildRunitServices(t *testing.T) {
 	Assert(t).AreEqual(string(bytes), string(expected), "Servicebuilder yaml file didn't have expected contents")
 }
 
+func TestInstall(t *testing.T) {
+	fetcher := uri.NewLoggedFetcher(nil)
+	testContext := util.From(runtime.Caller(0))
+
+	currentUser, err := user.Current()
+	Assert(t).IsNil(err, "test setup: couldn't get current user")
+
+	testLocation := testContext.ExpandPath("hoisted-hello_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz")
+
+	launchables := map[launch.LaunchableID]launch.LaunchableStanza{
+		"hello": launch.LaunchableStanza{
+			LaunchableId:   "hello",
+			Location:       testLocation,
+			LaunchableType: "hoist",
+		},
+	}
+
+	builder := manifest.NewBuilder()
+	builder.SetID("hello")
+	builder.SetLaunchables(launchables)
+	builder.SetRunAsUser(currentUser.Username)
+	manifest := builder.GetManifest()
+
+	testPodDir, err := ioutil.TempDir("", "testPodDir")
+	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
+	defer os.RemoveAll(testPodDir)
+
+	pod := Pod{
+		Id:      "testPod",
+		path:    testPodDir,
+		logger:  Log.SubLogger(logrus.Fields{"pod": "testPod"}),
+		Fetcher: fetcher,
+	}
+
+	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector))
+	Assert(t).IsNil(err, "there should not have been an error when installing")
+
+	Assert(t).AreEqual(
+		fetcher.SrcUri.String(),
+		testLocation,
+		"The correct url wasn't set for the curl library",
+	)
+
+	hoistedHelloUnpacked := filepath.Join(testPodDir, "hello", "installs", "hello_3c021aff048ca8117593f9c71e03b87cf72fd440")
+	if info, err := os.Stat(hoistedHelloUnpacked); err != nil || !info.IsDir() {
+		t.Fatalf("Expected %s to be the unpacked artifact location", hoistedHelloUnpacked)
+	}
+	helloLaunch := filepath.Join(hoistedHelloUnpacked, "bin", "launch")
+	if info, err := os.Stat(helloLaunch); err != nil || info.IsDir() {
+		t.Fatalf("Expected %s to be a the launch script for hello", helloLaunch)
+	}
+}
+
 func TestUninstall(t *testing.T) {
 	fakeSB := runit.FakeServiceBuilder()
 	defer fakeSB.Cleanup()
@@ -326,7 +391,6 @@ func TestUninstall(t *testing.T) {
 		Id:             "testPod",
 		path:           testPodDir,
 		ServiceBuilder: serviceBuilder,
-		Registry:       artifact.NewRegistry(),
 	}
 	manifest := getTestPodManifest(t)
 	manifestContent, err := manifest.Marshal()
@@ -344,58 +408,6 @@ func TestUninstall(t *testing.T) {
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
 	_, err = os.Stat(pod.currentPodManifestPath())
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
-}
-
-func TestVersionFromLocation(t *testing.T) {
-	type testExpectation struct {
-		URIPath         string
-		ExpectedVersion string
-		ExpectError     bool
-	}
-
-	expectations := []testExpectation{
-		{
-			URIPath:         "/download/test-launchable_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz",
-			ExpectedVersion: "3c021aff048ca8117593f9c71e03b87cf72fd440",
-			ExpectError:     false,
-		},
-		{
-			URIPath:         "/download/test04_launchable2_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz",
-			ExpectedVersion: "3c021aff048ca8117593f9c71e03b87cf72fd440",
-			ExpectError:     false,
-		},
-		{
-			URIPath:         "/download/test-launchable_3c021aff048ca8117593f9c71e03b87cf72fd440-suffix.tar.gz",
-			ExpectedVersion: "3c021aff048ca8117593f9c71e03b87cf72fd440-suffix",
-			ExpectError:     false,
-		},
-		{
-			URIPath:         "/download/afb1.2.00.tar.gz",
-			ExpectedVersion: "",
-			ExpectError:     true,
-		},
-		{
-			URIPath:         "/download/jdk-2.9.0_22.tar.gz",
-			ExpectedVersion: "",
-			ExpectError:     true,
-		},
-	}
-
-	for _, expectation := range expectations {
-		uri := &url.URL{Path: expectation.URIPath}
-		version, err := versionFromLocation(uri)
-		if expectation.ExpectError && err == nil {
-			t.Errorf("Expected an error parsing version from '%s', but there wasn't one", expectation.URIPath)
-		}
-
-		if !expectation.ExpectError && err != nil {
-			t.Errorf("Unexpected error occurred parsing version from '%s': %s", expectation.URIPath, err)
-		}
-
-		if version != expectation.ExpectedVersion {
-			t.Errorf("Expected version for '%s' to be '%s', was '%s'", expectation.URIPath, expectation.ExpectedVersion, version)
-		}
-	}
 }
 
 func manifestMustEqual(expected, actual manifest.Manifest, t *testing.T) {

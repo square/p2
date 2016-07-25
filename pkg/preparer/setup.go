@@ -6,17 +6,20 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strings"
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
@@ -53,6 +56,7 @@ type Preparer struct {
 	logExec                []string
 	logBridgeBlacklist     []string
 	artifactVerifier       auth.ArtifactVerifier
+	artifactRegistry       artifact.Registry
 }
 
 type PreparerConfig struct {
@@ -75,6 +79,7 @@ type PreparerConfig struct {
 	FinishExec             []string               `yaml:"finish_exec,omitempty"`
 	LogExec                []string               `yaml:"log_exec,omitempty"`
 	LogBridgeBlacklist     []string               `yaml:"log_bridge_blacklist,omitempty"`
+	ArtifactRegistryURL    string                 `yaml:"artifact_registry_url,omitempty"`
 
 	// Params defines a collection of miscellaneous runtime parameters defined throughout the
 	// source files.
@@ -313,6 +318,11 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		return nil, err
 	}
 
+	artifactRegistry, err := getArtifactRegistry(preparerConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	store, err := preparerConfig.GetStore()
 	if err != nil {
 		return nil, err
@@ -335,6 +345,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		Logger:           logger,
 		authPolicy:       authPolicy,
 		artifactVerifier: artifactVerifier,
+		artifactRegistry: artifactRegistry,
 	}
 
 	err = os.MkdirAll(preparerConfig.PodRoot, 0755)
@@ -369,6 +380,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		logExec:                logExec,
 		logBridgeBlacklist:     preparerConfig.LogBridgeBlacklist,
 		artifactVerifier:       artifactVerifier,
+		artifactRegistry:       artifactRegistry,
 	}, nil
 }
 
@@ -452,4 +464,18 @@ func getArtifactVerifier(preparerConfig *PreparerConfig, logger *logging.Logger)
 	default:
 		return nil, util.Errorf("Unrecognized artifact verification type: %v", t)
 	}
+}
+
+func getArtifactRegistry(preparerConfig *PreparerConfig) (artifact.Registry, error) {
+	if preparerConfig.ArtifactRegistryURL == "" {
+		// This will still work as long as all launchables have "location" urls specified.
+		return artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector), nil
+	}
+
+	url, err := url.Parse(preparerConfig.ArtifactRegistryURL)
+	if err != nil {
+		return nil, util.Errorf("Could not parse 'artifact_registry_url': %s", err)
+	}
+
+	return artifact.NewRegistry(url, uri.DefaultFetcher, osversion.DefaultDetector), nil
 }

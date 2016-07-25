@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -63,7 +62,6 @@ type Pod struct {
 	LogExec        runit.Exec
 	FinishExec     runit.Exec
 	Fetcher        uri.Fetcher
-	Registry       artifact.Registry
 }
 
 func NewPod(id types.PodID, path string) *Pod {
@@ -78,7 +76,6 @@ func NewPod(id types.PodID, path string) *Pod {
 		LogExec:        runit.DefaultLogExec(),
 		FinishExec:     DefaultFinishExec,
 		Fetcher:        uri.DefaultFetcher,
-		Registry:       artifact.NewRegistry(),
 	}
 }
 
@@ -381,7 +378,7 @@ func (pod *Pod) Uninstall() error {
 // Install will ensure that executables for all required services are present on the host
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
-func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifier) error {
+func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifier, artifactRegistry artifact.Registry) error {
 	podHome := pod.path
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
@@ -399,10 +396,31 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 	}
 
 	downloader := artifact.NewLocationDownloader(pod.Fetcher, verifier)
-	for _, launchable := range launchables {
-		err = launchable.Install(downloader)
+	for launchableID, stanza := range manifest.GetLaunchableStanzas() {
+		// TODO: investigate passing in necessary fields to InstallDir()
+		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser(), manifest.GetRestartPolicy())
 		if err != nil {
 			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
+			return err
+		}
+
+		launchableURL, verificationData, err := artifactRegistry.LocationDataForLaunchable(launchableID, stanza)
+		if err != nil {
+			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
+			return err
+		}
+
+		err = downloader.Download(launchableURL, verificationData, launchable.InstallDir(), manifest.RunAsUser())
+		if err != nil {
+			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
+			_ = os.Remove(launchable.InstallDir())
+			return err
+		}
+
+		err = launchable.PostInstall()
+		if err != nil {
+			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
+			_ = os.Remove(launchable.InstallDir())
 			return err
 		}
 	}
@@ -561,7 +579,7 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 		if err != nil {
 			return util.Errorf("Could not create the environment dir for pod %s launchable %s: %s", manifest.ID(), launchable.ServiceID(), err)
 		}
-		err = writeEnvFile(launchable.EnvDir(), "LAUNCHABLE_ID", launchable.ID(), uid, gid)
+		err = writeEnvFile(launchable.EnvDir(), "LAUNCHABLE_ID", launchable.ID().String(), uid, gid)
 		if err != nil {
 			return err
 		}
@@ -639,13 +657,13 @@ func (pod *Pod) SetLogBridgeExec(logExec []string) {
 	pod.LogExec = append([]string{pod.P2Exec}, p2ExecArgs.CommandLine()...)
 }
 
-func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
-	launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId)
+func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
+	launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId.String())
 	serviceId := strings.Join(
 		[]string{
-			string(pod.Id),
+			pod.Id.String(),
 			"__",
-			launchableStanza.LaunchableId,
+			launchableStanza.LaunchableId.String(),
 		}, "")
 
 	restartTimeout := pod.DefaultTimeout
@@ -659,22 +677,17 @@ func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsU
 		}
 	}
 
-	locationURL, verificationData, err := pod.Registry.LocationDataForLaunchable(launchableStanza)
-	if err != nil {
-		return nil, err
-	}
-
-	// The path of a launchable URL is generally expected to end with
-	// <launchable_id>_<version>.tar.gz. The version is useful for
-	// namespacing the install directory of the launchable. For
-	// launchables that do not fit this naming convention, we simply
-	// use the launchable ID as the directory and leave version blank
-	version, err := versionFromLocation(locationURL)
+	version, err := launchableStanza.LaunchableVersion()
 	if err != nil {
 		pod.logger.WithError(err).Warnf("Could not parse version from launchable %s.", launchableStanza.LaunchableId)
 	}
 
 	if launchableStanza.LaunchableType == "hoist" {
+		entryPoints := launchableStanza.EntryPoints
+		if len(entryPoints) == 0 {
+			entryPoints = append(entryPoints, path.Join("bin", "launch"))
+		}
+
 		ret := &hoist.Launchable{
 			Version:          version,
 			Id:               launchableStanza.LaunchableId,
@@ -687,16 +700,14 @@ func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsU
 			RestartTimeout:   restartTimeout,
 			RestartPolicy:    restartPolicy,
 			CgroupConfig:     launchableStanza.CgroupConfig,
-			CgroupConfigName: launchableStanza.LaunchableId,
+			CgroupConfigName: launchableStanza.LaunchableId.String(),
 			SuppliedEnvVars:  launchableStanza.Env,
-			Location:         locationURL,
-			VerificationData: verificationData,
+			EntryPoints:      entryPoints,
 		}
 		ret.CgroupConfig.Name = ret.ServiceId
 		return ret.If(), nil
 	} else if *ExperimentalOpencontainer && launchableStanza.LaunchableType == "opencontainer" {
 		ret := &opencontainer.Launchable{
-			Location:        locationURL,
 			ID_:             launchableStanza.LaunchableId,
 			ServiceID_:      serviceId,
 			RunAs:           runAsUser,
@@ -711,27 +722,9 @@ func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsU
 		return ret, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported", launchableStanza.LaunchableType)
-		pod.logLaunchableError(launchableStanza.LaunchableId, err, "Unknown launchable type")
+		pod.logLaunchableError(launchableStanza.LaunchableId.String(), err, "Unknown launchable type")
 		return nil, err
 	}
-}
-
-// Uses the assumption that all locations have a Path component ending in
-// /<launchable_id>_<version>.tar.gz, which is intended to be phased out in
-// favor of explicit launchable versions specified in pod manifests.
-// The version expected to be a 40 character hexadecimal string with an
-// optional hexadecimal suffix after a hyphen
-
-var locationBaseRegex = regexp.MustCompile(`^[a-z0-9-_]+_([a-f0-9]{40}(\-[a-z0-9]+)?)\.tar\.gz$`)
-
-func versionFromLocation(location *url.URL) (string, error) {
-	filename := path.Base(location.Path)
-	parts := locationBaseRegex.FindStringSubmatch(filename)
-	if parts == nil {
-		return "", util.Errorf("Malformed filename in URL: %s", filename)
-	}
-
-	return parts[1], nil
 }
 
 func (p *Pod) logError(err error, message string) {
@@ -739,14 +732,14 @@ func (p *Pod) logError(err error, message string) {
 		Error(message)
 }
 
-func (p *Pod) logLaunchableError(launchableId string, err error, message string) {
+func (p *Pod) logLaunchableError(serviceID string, err error, message string) {
 	p.logger.WithErrorAndFields(err, logrus.Fields{
-		"launchable": launchableId}).Error(message)
+		"launchable": serviceID}).Error(message)
 }
 
-func (p *Pod) logLaunchableWarning(launchableId string, err error, message string) {
+func (p *Pod) logLaunchableWarning(serviceID string, err error, message string) {
 	p.logger.WithErrorAndFields(err, logrus.Fields{
-		"launchable": launchableId}).Warn(message)
+		"launchable": serviceID}).Warn(message)
 }
 
 func (p *Pod) logInfo(message string) {

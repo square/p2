@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
@@ -24,7 +25,7 @@ var svlogdExec = []string{"svlogd", "-tt", "./main"}
 type Pod interface {
 	hooks.Pod
 	Launch(manifest.Manifest) (bool, error)
-	Install(manifest.Manifest, auth.ArtifactVerifier) error
+	Install(manifest.Manifest, auth.ArtifactVerifier, artifact.Registry) error
 	Uninstall() error
 	Verify(manifest.Manifest, auth.Policy) error
 	Halt(manifest.Manifest) (bool, error)
@@ -288,7 +289,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 
 	logger.NoFields().Infoln("Installing pod and launchables")
 
-	err := pod.Install(pair.Intent, p.artifactVerifier)
+	err := pod.Install(pair.Intent, p.artifactVerifier, p.artifactRegistry)
 	if err != nil {
 		// install failed, abort and retry
 		logger.WithError(err).Errorln("Install failed")

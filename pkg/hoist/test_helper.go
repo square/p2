@@ -15,13 +15,14 @@ func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuild
 	launchableInstallDir := util.From(runtime.Caller(0)).ExpandPath(dirName)
 
 	launchable := &Launchable{
-		Id:        "testLaunchable",
-		ServiceId: "testPod__testLaunchable",
-		RunAs:     "testPod",
-		PodEnvDir: tempDir,
-		RootDir:   launchableInstallDir,
-		P2Exec:    util.From(runtime.Caller(0)).ExpandPath("fake_p2-exec"),
-		Version:   "abc123",
+		Id:          "testLaunchable",
+		ServiceId:   "testPod__testLaunchable",
+		RunAs:       "testPod",
+		PodEnvDir:   tempDir,
+		RootDir:     launchableInstallDir,
+		P2Exec:      util.From(runtime.Caller(0)).ExpandPath("fake_p2-exec"),
+		Version:     "abc123",
+		EntryPoints: []string{"bin/launch"},
 	}
 
 	curUser, err := user.Current()
