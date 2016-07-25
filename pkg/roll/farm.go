@@ -7,7 +7,6 @@ import (
 	"github.com/Sirupsen/logrus"
 
 	"github.com/square/p2/pkg/alerting"
-	"github.com/square/p2/pkg/error_reporter"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
@@ -24,7 +23,7 @@ import (
 )
 
 type Factory interface {
-	New(roll_fields.Update, logging.Logger, kp.Session, alerting.Alerter, error_reporter.Reporter) Update
+	New(roll_fields.Update, logging.Logger, kp.Session, alerting.Alerter) Update
 }
 
 type UpdateFactory struct {
@@ -35,16 +34,12 @@ type UpdateFactory struct {
 	Scheduler     scheduler.Scheduler
 }
 
-func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session kp.Session, alerter alerting.Alerter, errorReporter error_reporter.Reporter) Update {
+func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session kp.Session, alerter alerting.Alerter) Update {
 	if alerter == nil {
 		alerter = alerting.NewNop()
 	}
 
-	if errorReporter == nil {
-		errorReporter = error_reporter.NewNop()
-	}
-
-	return NewUpdate(u, f.KPStore, f.RCStore, f.HealthChecker, f.Labeler, f.Scheduler, l, session, alerter, errorReporter)
+	return NewUpdate(u, f.KPStore, f.RCStore, f.HealthChecker, f.Labeler, f.Scheduler, l, session, alerter)
 }
 
 type RCGetter interface {
@@ -71,9 +66,8 @@ type Farm struct {
 	childMu  sync.Mutex
 	session  kp.Session
 
-	logger        logging.Logger
-	alerter       alerting.Alerter
-	errorReporter error_reporter.Reporter
+	logger  logging.Logger
+	alerter alerting.Alerter
 
 	labeler    labels.Applicator
 	rcSelector klabels.Selector
@@ -157,11 +151,9 @@ START_LOOP:
 				if rcstore.IsNotExist(err) {
 					err := util.Errorf("Expected RC %s to exist", rlField.NewRC)
 					rlLogger.WithError(err).Errorln()
-					rlf.errorReporter.Report(err, nil, 1)
 					continue
 				} else if err != nil {
 					rlLogger.WithError(err).Errorln("Could not read new RC")
-					rlf.errorReporter.Report(err, nil, 1)
 					continue
 				}
 
@@ -178,7 +170,6 @@ START_LOOP:
 				shouldWorkOnOld, err := rlf.shouldWorkOn(rlField.OldRC)
 				if err != nil {
 					rlLogger.WithError(err).Errorf("Could not determine if should work on RC %s, skipping", rlField.OldRC)
-					rlf.errorReporter.Report(err, nil, 1)
 					continue
 				}
 				if !shouldWorkOnOld {
@@ -189,7 +180,6 @@ START_LOOP:
 				shouldWorkOnNew, err := rlf.shouldWorkOn(rlField.NewRC)
 				if err != nil {
 					rlLogger.WithError(err).Errorf("Could not determine if should work on RC %s, skipping", rlField.ID())
-					rlf.errorReporter.Report(err, nil, 1)
 					continue
 				}
 				if !shouldWorkOnNew {
@@ -200,7 +190,6 @@ START_LOOP:
 				lockPath, err := rollstore.RollLockPath(rlField.ID())
 				if err != nil {
 					rlLogger.WithError(err).Errorln("Unable to compute roll lock path")
-					rlf.errorReporter.Report(err, nil, 1)
 				}
 
 				unlocker, err := rlf.session.Lock(lockPath)
@@ -220,7 +209,7 @@ START_LOOP:
 				// at this point the ru is ours, time to spin it up
 				rlLogger.WithField("new_rc", rlField.ID()).Infof("Acquired lock on update %s -> %s, spawning", rlField.OldRC, rlField.ID())
 
-				newChild := rlf.factory.New(rlField, rlLogger, rlf.session, rlf.alerter, rlf.errorReporter)
+				newChild := rlf.factory.New(rlField, rlLogger, rlf.session, rlf.alerter)
 				childQuit := make(chan struct{})
 				rlf.children[rlField.ID()] = childRU{
 					ru:       newChild,
@@ -236,7 +225,6 @@ START_LOOP:
 							rlLogger.WithError(err).
 								WithField("new_rc", rlField.NewRC).
 								Errorln("Caught panic in roll farm")
-							rlf.errorReporter.Report(err, nil, 1)
 
 							// Release the child so that another farm can reattempt
 							rlf.childMu.Lock()
@@ -254,7 +242,6 @@ START_LOOP:
 					// so if we fail to delete it, we have to retry
 					for err := rlf.rls.Delete(id); err != nil; err = rlf.rls.Delete(id) {
 						rlLogger.WithError(err).Errorln("Could not delete update")
-						rlf.errorReporter.Report(err, nil, 1)
 						time.Sleep(1 * time.Second)
 					}
 				}(rlField.ID()) // do not close over rlField, it's a loop variable
@@ -301,7 +288,6 @@ func (rlf *Farm) releaseChild(id roll_fields.ID) {
 		err := unlocker.Unlock()
 		if err != nil {
 			rlf.logger.WithField("ru", id).Warnln("Could not release update lock")
-			rlf.errorReporter.Report(err, nil, 1)
 		}
 	}
 	delete(rlf.children, id)

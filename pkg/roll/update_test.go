@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/square/p2/pkg/error_reporter"
 	"github.com/square/p2/pkg/health"
 	checkertest "github.com/square/p2/pkg/health/checker/test"
 	"github.com/square/p2/pkg/kp"
@@ -198,7 +197,6 @@ func TestLockRCs(t *testing.T) {
 		nil,
 		logging.DefaultLogger,
 		session,
-		nil,
 		nil,
 	).(*update)
 	err = update.lockRCs(make(<-chan struct{}))
@@ -432,7 +430,6 @@ func updateWithHealth(t *testing.T,
 			OldRC: oldRC.ID,
 			NewRC: newRC.ID,
 		},
-		errorReporter: error_reporter.NewNop(),
 	}, oldManifest, newManifest
 }
 
