@@ -675,6 +675,11 @@ func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsU
 	}
 
 	if launchableStanza.LaunchableType == "hoist" {
+		entryPoints := launchableStanza.EntryPoints
+		if len(entryPoints) == 0 {
+			entryPoints = append(entryPoints, path.Join("bin", "launch"))
+		}
+
 		ret := &hoist.Launchable{
 			Version:          version,
 			Id:               launchableStanza.LaunchableId,
@@ -691,6 +696,7 @@ func (pod *Pod) getLaunchable(launchableStanza manifest.LaunchableStanza, runAsU
 			SuppliedEnvVars:  launchableStanza.Env,
 			Location:         locationURL,
 			VerificationData: verificationData,
+			EntryPoints:      entryPoints,
 		}
 		ret.CgroupConfig.Name = ret.ServiceId
 		return ret.If(), nil
