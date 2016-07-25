@@ -37,6 +37,7 @@ type Launchable struct {
 	SuppliedEnvVars  map[string]string     // A map of user-supplied environment variables to be exported for this launchable
 	Location         *url.URL              // URL to download the artifact from
 	VerificationData auth.VerificationData // Paths to files used to verify the artifact
+	EntryPoints      []string              // paths to entry points to launch under runit
 }
 
 // LaunchAdapter adapts a hoist.Launchable to the launch.Launchable interface.
@@ -214,51 +215,75 @@ func (hl *Launchable) Executables(
 		return []launch.Executable{}, util.Errorf("%s is not installed", hl.ServiceId)
 	}
 
-	binLaunchPath := filepath.Join(hl.InstallDir(), "bin", "launch")
+	// Maps service name to a launch.Executable to guarantee that no two services can share
+	// a name.
+	executableMap := make(map[string]launch.Executable)
 
-	binLaunchInfo, err := os.Stat(binLaunchPath)
-	if os.IsNotExist(err) {
-		return []launch.Executable{}, nil
-	} else if err != nil {
-		return nil, util.Errorf("%s", err)
-	}
+	for _, relativeEntryPoint := range hl.EntryPoints {
+		absEntryPointPath := filepath.Join(hl.InstallDir(), relativeEntryPoint)
 
-	// we support bin/launch being a file, or a directory, so we check here.
-	services := []os.FileInfo{binLaunchInfo}
-	serviceDir := filepath.Dir(binLaunchPath)
-	if binLaunchInfo.IsDir() {
-		serviceDir = binLaunchPath
-		services, err = ioutil.ReadDir(binLaunchPath)
-		if err != nil {
-			return nil, err
+		entryPointInfo, err := os.Stat(absEntryPointPath)
+		if os.IsNotExist(err) {
+			return []launch.Executable{}, nil
+		} else if err != nil {
+			return nil, util.Errorf("%s", err)
+		}
+
+		// an entry point can be a file or a directory. If it's a file, simply
+		// add it to our services map. Otherwise, add each file under it.
+		var serviceDir string
+		var services []os.FileInfo
+		if entryPointInfo.IsDir() {
+			serviceDir = absEntryPointPath
+			services, err = ioutil.ReadDir(absEntryPointPath)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			serviceDir = filepath.Dir(absEntryPointPath)
+			services = append(services, entryPointInfo)
+		}
+
+		for _, service := range services {
+			serviceName := fmt.Sprintf("%s__%s", hl.ServiceId, service.Name())
+
+			// Make sure we don't have two services with the same name
+			// (which is possible because) multiple entry points may be
+			// specified
+
+			if _, ok := executableMap[serviceName]; ok {
+				return nil, util.Errorf("Multiple services found with name %s", serviceName)
+			}
+
+			p2ExecArgs := p2exec.P2ExecArgs{
+				Command:          []string{filepath.Join(serviceDir, service.Name())},
+				User:             hl.RunAs,
+				EnvDirs:          []string{hl.PodEnvDir, hl.EnvDir()},
+				NoLimits:         hl.ExecNoLimit,
+				CgroupConfigName: hl.CgroupConfigName,
+				CgroupName:       hl.ServiceId,
+			}
+			execCmd := append([]string{hl.P2Exec}, p2ExecArgs.CommandLine()...)
+
+			executableMap[serviceName] = launch.Executable{
+				Service: runit.Service{
+					Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
+					Name: serviceName,
+				},
+				LogAgent: runit.Service{
+					Path: filepath.Join(serviceBuilder.RunitRoot, serviceName, "log"),
+					Name: serviceName + " logAgent",
+				},
+				Exec: execCmd,
+			}
 		}
 	}
 
 	var executables []launch.Executable
-	for _, service := range services {
-		serviceName := fmt.Sprintf("%s__%s", hl.ServiceId, service.Name())
-		p2ExecArgs := p2exec.P2ExecArgs{
-			Command:          []string{filepath.Join(serviceDir, service.Name())},
-			User:             hl.RunAs,
-			EnvDirs:          []string{hl.PodEnvDir, hl.EnvDir()},
-			NoLimits:         hl.ExecNoLimit,
-			CgroupConfigName: hl.CgroupConfigName,
-			CgroupName:       hl.ServiceId,
-		}
-		execCmd := append([]string{hl.P2Exec}, p2ExecArgs.CommandLine()...)
-
-		executables = append(executables, launch.Executable{
-			Service: runit.Service{
-				Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
-				Name: serviceName,
-			},
-			LogAgent: runit.Service{
-				Path: filepath.Join(serviceBuilder.RunitRoot, serviceName, "log"),
-				Name: serviceName + " logAgent",
-			},
-			Exec: execCmd,
-		})
+	for _, executable := range executableMap {
+		executables = append(executables, executable)
 	}
+
 	return executables, nil
 }
 

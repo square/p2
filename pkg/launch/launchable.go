@@ -31,6 +31,12 @@ type LaunchableStanza struct {
 	CgroupConfig            cgroups.Config    `yaml:"cgroup,omitempty"`
 	Env                     map[string]string `yaml:"env,omitempty"`
 
+	// Specifies which files or directories (relative to launchable root)
+	// should be launched under runit. Only launchables of type "hoist"
+	// make use of this field, and if empty, a default of ["bin/launch"]
+	// is used
+	EntryPoints []string `yaml:"entry_points,omitempty"`
+
 	// The URL from which the launchable can be downloaded. May not be used
 	// in conjunction with Version
 	Location string `yaml:"location"`

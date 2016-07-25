@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -682,6 +683,11 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 	}
 
 	if launchableStanza.LaunchableType == "hoist" {
+		entryPoints := launchableStanza.EntryPoints
+		if len(entryPoints) == 0 {
+			entryPoints = append(entryPoints, path.Join("bin", "launch"))
+		}
+
 		ret := &hoist.Launchable{
 			Version:          version,
 			Id:               launchableStanza.LaunchableId,
@@ -696,6 +702,7 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 			CgroupConfig:     launchableStanza.CgroupConfig,
 			CgroupConfigName: launchableStanza.LaunchableId.String(),
 			SuppliedEnvVars:  launchableStanza.Env,
+			EntryPoints:      entryPoints,
 		}
 		ret.CgroupConfig.Name = ret.ServiceId
 		return ret.If(), nil
