@@ -131,7 +131,7 @@ func (ds *daemonSet) WatchDesires(
 				}
 				ds.logger.NoFields().Infof("Received daemon set update signal: %v", newDS)
 				if newDS == nil {
-					ds.logger.NoFields().Fatal("Unexpected a nil daemon set during update", *ds)
+					ds.logger.Errorf("Unexpected nil daemon set during update")
 					return
 				}
 				if ds.ID() != newDS.ID {
@@ -161,7 +161,7 @@ func (ds *daemonSet) WatchDesires(
 				}
 				ds.logger.NoFields().Infof("Received daemon set delete signal: %v", deleteDS)
 				if deleteDS == nil {
-					ds.logger.NoFields().Fatal("Unexpected a nil daemon set during delete")
+					ds.logger.Errorf("Unexpected nil daemon set during delete")
 					return
 				}
 				if ds.ID() != deleteDS.ID {
