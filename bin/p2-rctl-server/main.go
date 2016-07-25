@@ -119,7 +119,7 @@ func main() {
 	}
 
 	// Run the farms!
-	go rc.NewFarm(kpStore, rcStore, sched, labeler, rcSub.Chan(), logger, klabels.Everything(), alerter).Start(nil)
+	go rc.NewFarm(kpStore, rcStore, sched, labeler, rcSub.Chan(), logger, klabels.Everything(), alerter, nil).Start(nil)
 	roll.NewFarm(roll.UpdateFactory{
 		KPStore:       kpStore,
 		RCStore:       rcStore,

@@ -331,7 +331,7 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int, pagerduty
 			NewRC:           rc_fields.ID(newID),
 			DesiredReplicas: want,
 			MinimumReplicas: need,
-		}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, session, alerter).Run(quit)
+		}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, session, alerter, nil).Run(quit)
 		close(result)
 	}()
 

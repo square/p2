@@ -8,6 +8,7 @@ import (
 	"github.com/Sirupsen/logrus"
 
 	"github.com/square/p2/pkg/alerting"
+	"github.com/square/p2/pkg/error_reporter"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
@@ -32,8 +33,9 @@ type update struct {
 	labeler labels.Applicator
 	sched   scheduler.Scheduler
 
-	logger  logging.Logger
-	alerter alerting.Alerter
+	logger        logging.Logger
+	alerter       alerting.Alerter
+	errorReporter error_reporter.Reporter
 
 	session kp.Session
 
@@ -55,6 +57,7 @@ func NewUpdate(
 	logger logging.Logger,
 	session kp.Session,
 	alerter alerting.Alerter,
+	errorReporter error_reporter.Reporter,
 ) Update {
 	if alerter == nil {
 		alerter = alerting.NewNop()
@@ -65,15 +68,16 @@ func NewUpdate(
 		"minimum_replicas": f.MinimumReplicas,
 	})
 	return &update{
-		Update:  f,
-		kps:     kps,
-		rcs:     rcs,
-		hcheck:  hcheck,
-		labeler: labeler,
-		sched:   sched,
-		logger:  logger,
-		session: session,
-		alerter: alerter,
+		Update:        f,
+		kps:           kps,
+		rcs:           rcs,
+		hcheck:        hcheck,
+		labeler:       labeler,
+		sched:         sched,
+		logger:        logger,
+		session:       session,
+		alerter:       alerter,
+		errorReporter: errorReporter,
 	}
 }
 
@@ -100,9 +104,10 @@ const (
 // retries a given function until it returns a nil error or the quit channel is
 // closed. returns true if it exited in the former case, false in the latter.
 // errors are sent to the given logger with the given string as the message.
-func RetryOrQuit(f func() error, quit <-chan struct{}, logger logging.Logger, errtext string) bool {
+func (u *update) RetryOrQuit(f func() error, quit <-chan struct{}, logger logging.Logger, errtext string) bool {
 	for err := f(); err != nil; err = f() {
 		logger.WithError(err).Errorln(errtext)
+		u.errorReporter.Report(err, nil, 1)
 		select {
 		case <-quit:
 			return false
@@ -116,7 +121,7 @@ func RetryOrQuit(f func() error, quit <-chan struct{}, logger logging.Logger, er
 func (u *update) Run(quit <-chan struct{}) (ret bool) {
 	u.logger.NoFields().Debugln("Locking")
 	// TODO: implement API for blocking locks and use that instead of retrying
-	if !RetryOrQuit(
+	if !u.RetryOrQuit(
 		func() error { return u.lockRCs(quit) },
 		quit,
 		u.logger,
@@ -127,14 +132,14 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 	defer u.unlockRCs(quit)
 
 	u.logger.NoFields().Debugln("Enabling")
-	if !RetryOrQuit(u.enable, quit, u.logger, "Could not enable/disable RCs") {
+	if !u.RetryOrQuit(u.enable, quit, u.logger, "Could not enable/disable RCs") {
 		return
 	}
 
 	u.logger.NoFields().Debugln("Launching health watch")
 	var newFields rcf.RC
 	var err error
-	if !RetryOrQuit(func() error {
+	if !u.RetryOrQuit(func() error {
 		newFields, err = u.rcs.Get(u.NewRC)
 		if rcstore.IsNotExist(err) {
 			return util.Errorf("Replication controller %s is unexpectedly empty", u.NewRC)
@@ -161,13 +166,13 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 	// rollout complete, clean up old RC if told to do so
 	if !u.LeaveOld {
 		u.logger.NoFields().Infoln("Cleaning up old RC")
-		if !RetryOrQuit(func() error { return u.rcs.SetDesiredReplicas(u.OldRC, 0) }, quit, u.logger, "Could not zero old replica count") {
+		if !u.RetryOrQuit(func() error { return u.rcs.SetDesiredReplicas(u.OldRC, 0) }, quit, u.logger, "Could not zero old replica count") {
 			return
 		}
-		if !RetryOrQuit(func() error { return u.rcs.Enable(u.OldRC) }, quit, u.logger, "Could not enable old RC") {
+		if !u.RetryOrQuit(func() error { return u.rcs.Enable(u.OldRC) }, quit, u.logger, "Could not enable old RC") {
 			return
 		}
-		if !RetryOrQuit(func() error { return u.rcs.Delete(u.OldRC, false) }, quit, u.logger, "Could not delete old RC") {
+		if !u.RetryOrQuit(func() error { return u.rcs.Delete(u.OldRC, false) }, quit, u.logger, "Could not delete old RC") {
 			return
 		}
 	}
@@ -182,12 +187,14 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 			return false
 		case err := <-hErrs:
 			u.logger.WithError(err).Errorln("Could not read health checks")
+			u.errorReporter.Report(err, nil, 1)
 		case checks := <-hChecks:
 			newNodes, err := u.countHealthy(u.NewRC, checks)
 			if err != nil {
 				u.logger.WithErrorAndFields(err, logrus.Fields{
 					"new": newNodes,
 				}).Errorln("Could not count nodes on new RC")
+				u.errorReporter.Report(err, nil, 1)
 				break
 			}
 			oldNodes, err := u.countHealthy(u.OldRC, checks)
@@ -195,6 +202,7 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 				u.logger.WithErrorAndFields(err, logrus.Fields{
 					"old": oldNodes,
 				}).Errorln("Could not count nodes on old RC")
+				u.errorReporter.Report(err, nil, 1)
 				break
 			}
 
@@ -228,9 +236,9 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 					// determine the new value of `next`, which may have changed
 					// following the delay.
 					nextRemove, nextAdd, err = u.shouldRollAfterDelay(podID)
-
 					if err != nil {
 						u.logger.NoFields().Errorln(err)
+						u.errorReporter.Report(err, nil, 1)
 						break
 					}
 				}
@@ -245,6 +253,7 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 					err = u.rcs.AddDesiredReplicas(u.OldRC, -nextRemove)
 					if err != nil {
 						u.logger.WithError(err).Errorln("Could not decrement old replica count")
+						u.errorReporter.Report(err, nil, 1)
 						break
 					}
 				}
@@ -252,6 +261,7 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 					err = u.rcs.AddDesiredReplicas(u.NewRC, nextAdd)
 					if err != nil {
 						u.logger.WithError(err).Errorln("Could not increment new replica count")
+						u.errorReporter.Report(err, nil, 1)
 						break
 					}
 				}
@@ -297,6 +307,7 @@ func (u *update) lockRCs(done <-chan struct{}) error {
 	if _, ok := err.(consulutil.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock new %s", u.NewRC)
 	} else if err != nil {
+		u.errorReporter.Report(err, nil, 1)
 		return err
 	}
 	u.newRCUnlocker = newUnlocker
@@ -304,7 +315,7 @@ func (u *update) lockRCs(done <-chan struct{}) error {
 	oldUnlocker, err := u.rcs.LockForMutation(u.OldRC, u.session)
 	if err != nil {
 		// The second key couldn't be locked, so release the first key before retrying.
-		RetryOrQuit(
+		u.RetryOrQuit(
 			func() error { return newUnlocker.Unlock() },
 			done,
 			u.logger,
@@ -314,6 +325,7 @@ func (u *update) lockRCs(done <-chan struct{}) error {
 	if _, ok := err.(consulutil.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock old %s", u.OldRC)
 	} else if err != nil {
+		u.errorReporter.Report(err, nil, 1)
 		return err
 	}
 	u.oldRCUnlocker = oldUnlocker
@@ -333,7 +345,7 @@ func (u *update) unlockRCs(done <-chan struct{}) {
 			wg.Add(1)
 			go func(unlocker consulutil.Unlocker) {
 				defer wg.Done()
-				RetryOrQuit(
+				u.RetryOrQuit(
 					func() error {
 						return unlocker.Unlock()
 					},
@@ -353,11 +365,13 @@ func (u *update) enable() error {
 	// Disable the old RC first to make sure that the two RCs don't fight each other.
 	err := u.rcs.Disable(u.OldRC)
 	if err != nil {
+		u.errorReporter.Report(err, nil, 1)
 		return err
 	}
 
 	err = u.rcs.Enable(u.NewRC)
 	if err != nil {
+		u.errorReporter.Report(err, nil, 1)
 		return err
 	}
 
@@ -378,14 +392,16 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 	rcFields, err := u.rcs.Get(id)
 	if rcstore.IsNotExist(err) {
 		err := util.Errorf("RC %s did not exist", id)
+		u.errorReporter.Report(err, nil, 1)
 		return ret, err
 	} else if err != nil {
+		u.errorReporter.Report(err, nil, 1)
 		return ret, err
 	}
 
 	ret.Desired = rcFields.ReplicasDesired
 
-	currentPods, err := rc.New(rcFields, u.kps, u.rcs, u.sched, u.labeler, u.logger, u.alerter).CurrentPods()
+	currentPods, err := rc.New(rcFields, u.kps, u.rcs, u.sched, u.labeler, u.logger, u.alerter, u.errorReporter).CurrentPods()
 	if err != nil {
 		return ret, err
 	}
@@ -403,6 +419,7 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 		// TODO: is reality checking an rc-layer concern?
 		realManifest, _, err := u.kps.Pod(kp.REALITY_TREE, node, rcFields.Manifest.ID())
 		if err != nil {
+			u.errorReporter.Report(err, nil, 1)
 			return ret, err
 		}
 		realSHA, _ := realManifest.SHA()
@@ -425,7 +442,7 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 			ret.Unknown++
 		}
 	}
-	return ret, err
+	return ret, nil
 }
 
 func (u *update) shouldRollAfterDelay(podID types.PodID) (int, int, error) {
@@ -433,23 +450,31 @@ func (u *update) shouldRollAfterDelay(podID types.PodID) (int, int, error) {
 	// worse since we last looked, or there is an error, we break this iteration.
 	checks, err := u.hcheck.Service(podID.String())
 	if err != nil {
-		return 0, 0, util.Errorf("Could not retrieve health following delay: %v", err)
+		err = util.Errorf("Could not retrieve health following delay: %v", err)
+		u.errorReporter.Report(err, nil, 1)
+		return 0, 0, err
 	}
 
 	afterDelayNew, err := u.countHealthy(u.NewRC, checks)
 	if err != nil {
-		return 0, 0, util.Errorf("Could not determine new service health: %v", err)
+		err = util.Errorf("Could not determine new service health: %v", err)
+		u.errorReporter.Report(err, nil, 1)
+		return 0, 0, err
 	}
 
 	afterDelayOld, err := u.countHealthy(u.OldRC, checks)
 	if err != nil {
-		return 0, 0, util.Errorf("Could not determine old service health: %v", err)
+		err = util.Errorf("Could not determine old service health: %v", err)
+		u.errorReporter.Report(err, nil, 1)
+		return 0, 0, err
 	}
 
 	afterDelayRemove, afterDelayAdd := rollAlgorithm(u.rollAlgorithmParams(afterDelayOld, afterDelayNew))
 
 	if afterDelayRemove <= 0 && afterDelayAdd <= 0 {
-		return 0, 0, util.Errorf("No nodes can be safely updated after %v roll delay, will wait again", u.RollDelay)
+		err = util.Errorf("No nodes can be safely updated after %v roll delay, will wait again", u.RollDelay)
+		u.errorReporter.Report(err, nil, 1)
+		return 0, 0, err
 	}
 
 	return afterDelayRemove, afterDelayAdd, nil

@@ -8,6 +8,7 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
+	"github.com/square/p2/pkg/error_reporter"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/rcstore"
@@ -43,9 +44,10 @@ type Farm struct {
 	childMu  sync.Mutex
 	session  kp.Session
 
-	logger     logging.Logger
-	alerter    alerting.Alerter
-	rcSelector klabels.Selector
+	logger        logging.Logger
+	alerter       alerting.Alerter
+	errorReporter error_reporter.Reporter
+	rcSelector    klabels.Selector
 
 	metrics *rcmetrics.Metrics
 }
@@ -65,22 +67,27 @@ func NewFarm(
 	logger logging.Logger,
 	rcSelector klabels.Selector,
 	alerter alerting.Alerter,
+	errorReporter error_reporter.Reporter,
 ) *Farm {
 	if alerter == nil {
 		alerter = alerting.NewNop()
 	}
 
+	if errorReporter == nil {
+		errorReporter = error_reporter.NewNop()
+	}
 	return &Farm{
-		kpStore:    kpStore,
-		rcStore:    rcs,
-		scheduler:  scheduler,
-		labeler:    labeler,
-		sessions:   sessions,
-		logger:     logger,
-		children:   make(map[fields.ID]childRC),
-		alerter:    alerter,
-		rcSelector: rcSelector,
-		metrics:    rcmetrics.NewMetrics(logger),
+		kpStore:       kpStore,
+		rcStore:       rcs,
+		scheduler:     scheduler,
+		labeler:       labeler,
+		sessions:      sessions,
+		logger:        logger,
+		children:      make(map[fields.ID]childRC),
+		alerter:       alerter,
+		errorReporter: errorReporter,
+		rcSelector:    rcSelector,
+		metrics:       rcmetrics.NewMetrics(logger),
 	}
 }
 
@@ -120,6 +127,7 @@ START_LOOP:
 			return
 		case err := <-rcErr:
 			rcf.logger.WithError(err).Errorln("Could not read consul replication controllers")
+			rcf.errorReporter.Report(err, nil, 1)
 		case rcFields := <-rcWatch:
 			startTime := time.Now()
 			rcf.logger.WithField("n", len(rcFields)).Debugln("Received replication controller update")
@@ -150,6 +158,7 @@ START_LOOP:
 				shouldWorkOnRC, err := rcf.shouldWorkOn(rcField.ID)
 				if err != nil {
 					rcLogger.WithError(err).Errorf("Could not determine if should work on RC %s, skipping", rcField.ID)
+					rcf.errorReporter.Report(err, nil, 1)
 					continue
 				}
 
@@ -183,6 +192,7 @@ START_LOOP:
 					rcf.labeler,
 					rcLogger,
 					rcf.alerter,
+					rcf.errorReporter,
 				)
 				childQuit := make(chan struct{})
 				rcf.children[rcField.ID] = childRC{
@@ -199,6 +209,7 @@ START_LOOP:
 							rcLogger.WithError(err).
 								WithField("rc_id", rcField.ID).
 								Errorln("Caught panic in rc farm")
+							rcf.errorReporter.Report(err, nil, 1)
 						}
 					}()
 					// disabled-ness is handled in watchdesires
@@ -288,6 +299,7 @@ func (rcf *Farm) releaseChild(id fields.ID) {
 		unlocker := rcf.children[id].unlocker
 		err := unlocker.Unlock()
 		if err != nil {
+			rcf.errorReporter.Report(err, nil, 1)
 			rcf.logger.WithField("rc", id).Warnln("Could not release replication controller lock")
 		}
 	}
