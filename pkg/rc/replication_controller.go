@@ -8,7 +8,6 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
-	"github.com/square/p2/pkg/error_reporter"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
@@ -74,7 +73,6 @@ type replicationController struct {
 	scheduler     scheduler.Scheduler
 	podApplicator labels.Applicator
 	alerter       alerting.Alerter
-	errorReporter error_reporter.Reporter
 }
 
 func New(
@@ -85,14 +83,9 @@ func New(
 	podApplicator labels.Applicator,
 	logger logging.Logger,
 	alerter alerting.Alerter,
-	errorReporter error_reporter.Reporter,
 ) ReplicationController {
 	if alerter == nil {
 		alerter = alerting.NewNop()
-	}
-
-	if errorReporter == nil {
-		errorReporter = error_reporter.NewNop()
 	}
 
 	return &replicationController{
@@ -104,7 +97,6 @@ func New(
 		scheduler:     scheduler,
 		podApplicator: podApplicator,
 		alerter:       alerter,
-		errorReporter: errorReporter,
 	}
 }
 
@@ -134,7 +126,6 @@ func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error
 	// (Notice that two goroutines may be writing to the output error channel)
 	go func() {
 		for err := range errInChannel {
-			rc.errorReporter.Report(err, nil, 1)
 			errOutChannel <- err
 		}
 		channelsClosed <- struct{}{}
@@ -165,7 +156,6 @@ func (rc *replicationController) meetDesires() error {
 
 	current, err := rc.CurrentPods()
 	if err != nil {
-		rc.errorReporter.Report(err, nil, 1)
 		return err
 	}
 
@@ -191,7 +181,6 @@ func (rc *replicationController) meetDesires() error {
 	if nodesChanged {
 		current, err = rc.CurrentPods()
 		if err != nil {
-			rc.errorReporter.Report(err, nil, 1)
 			return err
 		}
 	}
@@ -203,7 +192,6 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 	currentNodes := current.Nodes()
 	eligible, err := rc.eligibleNodes()
 	if err != nil {
-		rc.errorReporter.Report(err, nil, 1)
 		return err
 	}
 
@@ -301,13 +289,11 @@ func (rc *replicationController) removePods(current types.PodLocations) error {
 func (rc *replicationController) ensureConsistency(current types.PodLocations) error {
 	manifestSHA, err := rc.Manifest.SHA()
 	if err != nil {
-		rc.errorReporter.Report(err, nil, 1)
 		return err
 	}
 	for _, pod := range current {
 		intent, _, err := rc.kpStore.Pod(kp.INTENT_TREE, pod.Node, types.PodID(pod.PodID))
 		if err != nil && err != pods.NoCurrentManifest {
-			rc.errorReporter.Report(err, nil, 1)
 			return err
 		}
 		var intentSHA string
@@ -315,7 +301,6 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 			intentSHA, err = intent.SHA()
 			if err != nil {
 				rc.logger.WithError(err).WithField("node", pod.Node).Warn("Could not hash manifest to determine consistency of intent")
-				rc.errorReporter.Report(err, nil, 1)
 			}
 			if intentSHA == manifestSHA {
 				continue
@@ -332,13 +317,7 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 }
 
 func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {
-	nodes, err := rc.scheduler.EligibleNodes(rc.Manifest, rc.NodeSelector)
-	if err != nil {
-		rc.errorReporter.Report(err, nil, 1)
-		return nil, err
-	}
-
-	return nodes, nil
+	return rc.scheduler.EligibleNodes(rc.Manifest, rc.NodeSelector)
 }
 
 func (rc *replicationController) CurrentPods() (types.PodLocations, error) {
@@ -346,7 +325,6 @@ func (rc *replicationController) CurrentPods() (types.PodLocations, error) {
 
 	podMatches, err := rc.podApplicator.GetMatches(selector, labels.POD)
 	if err != nil {
-		rc.errorReporter.Report(err, nil, 1)
 		return nil, err
 	}
 
@@ -355,7 +333,6 @@ func (rc *replicationController) CurrentPods() (types.PodLocations, error) {
 		// ID will be something like <nodename>/<podid>.
 		node, podID, err := labels.NodeAndPodIDFromPodLabel(podMatch)
 		if err != nil {
-			rc.errorReporter.Report(err, nil, 1)
 			return nil, err
 		}
 		result[i].Node = node
@@ -392,33 +369,21 @@ func (rc *replicationController) schedule(node types.NodeName) error {
 		return rc.podApplicator.SetLabel(labels.POD, podID, k, v)
 	})
 	if err != nil {
-		rc.errorReporter.Report(err, nil, 1)
 		return err
 	}
 
 	_, err = rc.kpStore.SetPod(kp.INTENT_TREE, node, rc.Manifest)
-	if err != nil {
-		rc.errorReporter.Report(err, nil, 1)
-		return err
-	}
-	return nil
+	return err
 }
 
 func (rc *replicationController) unschedule(node types.NodeName) error {
 	rc.logger.NoFields().Infof("Unscheduling from %s", node)
 	_, err := rc.kpStore.DeletePod(kp.INTENT_TREE, node, rc.Manifest.ID())
 	if err != nil {
-		rc.errorReporter.Report(err, nil, 1)
 		return err
 	}
 
-	err = rc.forEachLabel(node, func(podID, k, _ string) error {
+	return rc.forEachLabel(node, func(podID, k, _ string) error {
 		return rc.podApplicator.RemoveLabel(labels.POD, podID, k)
 	})
-	if err != nil {
-		rc.errorReporter.Report(err, nil, 1)
-		return err
-	}
-
-	return nil
 }
