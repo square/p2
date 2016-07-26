@@ -437,6 +437,30 @@ func (m manifest) GetRestartPolicy() runit.RestartPolicy {
 	return m.RestartPolicy
 }
 
+// This is intended to be a temporary error type allowing libraries that depend
+// on ValidManifest() to distinguish errors related to the 'version' key not
+// being supported from other types of errors. This is useful for testing
+// manifests that contain a version key prior to merging the functionality.
+// TODO: remove this type when version key support is complete.
+type versionKeyNotSupported struct {
+	message string
+}
+
+func (m versionKeyNotSupported) Error() string {
+	return m.message
+}
+
+func VersionKeyNotSupportedError(launchableID string) error {
+	return versionKeyNotSupported{
+		message: fmt.Sprintf("'%s': 'version' launchable key not yet supported", launchableID),
+	}
+}
+
+func IsVersionKeyNotSupported(err error) bool {
+	_, ok := err.(versionKeyNotSupported)
+	return ok
+}
+
 // ValidManifest checks the internal consistency of a manifest. Returns an error if the
 // data is inconsistent or "nil" otherwise.
 func ValidManifest(m Manifest) error {
@@ -450,7 +474,7 @@ func ValidManifest(m Manifest) error {
 		case stanza.LaunchableId == "":
 			return fmt.Errorf("'%s': launchable must contain a 'launchable_id'", key)
 		case stanza.Version.ID != "":
-			return fmt.Errorf("'%s': 'version' launchable key not yet supported", key)
+			return VersionKeyNotSupportedError(key)
 		case stanza.Location == "":
 			return fmt.Errorf("'%s': launchable must contain a 'location'", key)
 		}
