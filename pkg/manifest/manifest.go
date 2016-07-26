@@ -419,10 +419,10 @@ func ValidManifest(m Manifest) error {
 			return fmt.Errorf("'%s': launchable must contain a 'launchable_type'", key)
 		case stanza.LaunchableId == "":
 			return fmt.Errorf("'%s': launchable must contain a 'launchable_id'", key)
-		case stanza.Version.ID != "":
-			return fmt.Errorf("'%s': 'version' launchable key not yet supported", key)
-		case stanza.Location == "":
-			return fmt.Errorf("'%s': launchable must contain a 'location'", key)
+		case stanza.Location == "" && stanza.Version.ID == "":
+			return fmt.Errorf("'%s': launchable must contain a 'location' or 'version'", key)
+		case stanza.Location != "" && stanza.Version.ID != "":
+			return fmt.Errorf("'%s': launchable must not contain both 'location' and 'version'", key)
 		}
 	}
 	return nil
