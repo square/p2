@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/cgroups"
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/util/size"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -23,7 +24,10 @@ func TestPodManifestCanBeRead(t *testing.T) {
 	Assert(t).AreEqual("hello", string(manifest.ID()), "Id read from manifest didn't have expected value")
 	Assert(t).AreEqual(manifest.GetLaunchableStanzas()["app"].Location, "hoisted-hello_def456.tar.gz", "Location read from manifest didn't have expected value")
 	Assert(t).AreEqual("hoist", manifest.GetLaunchableStanzas()["app"].LaunchableType, "LaunchableType read from manifest didn't have expected value")
-	Assert(t).AreEqual("app", manifest.GetLaunchableStanzas()["app"].LaunchableId, "LaunchableId read from manifest didn't have expected value")
+
+	if manifest.GetLaunchableStanzas()["app"].LaunchableId != "app" {
+		t.Errorf("Expected launchable id to be '%s', but was '%s'", "app", manifest.GetLaunchableStanzas()["app"].LaunchableId)
+	}
 
 	Assert(t).AreEqual("staging", manifest.GetConfig()["ENVIRONMENT"], "Should have read the ENVIRONMENT from the config stanza")
 	hoptoad := manifest.GetConfig()["hoptoad"].(map[interface{}]interface{})
@@ -96,7 +100,7 @@ QyB184dCJQnFbcQslyXDSR4Lal12NPvxbtK/4YYXZZVwf4hKCfVqvmG2zgwINDc=
 func TestPodManifestCanBeWritten(t *testing.T) {
 	builder := NewBuilder()
 	builder.SetID("thepod")
-	launchables := map[string]LaunchableStanza{
+	launchables := map[launch.LaunchableID]launch.LaunchableStanza{
 		"my-app": {
 			LaunchableType: "hoist",
 			LaunchableId:   "web",

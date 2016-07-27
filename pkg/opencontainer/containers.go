@@ -15,9 +15,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/cgroups"
-	"github.com/square/p2/pkg/gzip"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
@@ -40,7 +38,7 @@ var RuncPath = param.String("runc_path", "/usr/local/bin/runc")
 // Launchable represents an installation of a container.
 type Launchable struct {
 	Location        *url.URL            // A URL where we can download the artifact from.
-	ID_             string              // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
+	ID_             launch.LaunchableID // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
 	ServiceID_      string              // A (host-wise) unique identifier for this launchable, used when creating runit services
 	RunAs           string              // The user to assume when launching the executable
 	RootDir         string              // The root directory of the launchable, containing N:N>=1 installs.
@@ -73,7 +71,7 @@ func (l *Launchable) getSpec() (*LinuxSpec, error) {
 }
 
 // ID implements the launch.Launchable interface. It returns the name of this launchable.
-func (l *Launchable) ID() string {
+func (l *Launchable) ID() launch.LaunchableID {
 	return l.ID_
 }
 
@@ -171,26 +169,12 @@ func (l *Launchable) Installed() bool {
 }
 
 // Install ...
-func (l *Launchable) Install(_ artifact.Downloader) (returnedError error) {
+func (l *Launchable) PostInstall() (returnedError error) {
 	if l.Installed() {
 		return nil
 	}
 
-	data, err := uri.DefaultFetcher.Open(l.Location)
-	if err != nil {
-		return err
-	}
-	defer data.Close()
-	defer func() {
-		if returnedError != nil {
-			_ = os.RemoveAll(l.InstallDir())
-		}
-	}()
-	err = gzip.ExtractTarGz("", data, l.InstallDir())
-	if err != nil {
-		return util.Errorf("extracting %s: %s", l.Version(), err)
-	}
-	if _, err = l.getSpec(); err != nil {
+	if _, err := l.getSpec(); err != nil {
 		return err
 	}
 

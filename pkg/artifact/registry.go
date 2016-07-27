@@ -1,11 +1,23 @@
 package artifact
 
 import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"net/url"
 
 	"github.com/square/p2/pkg/auth"
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/launch"
+	"github.com/square/p2/pkg/osversion"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
+)
+
+const (
+	discoverBasePath = "/discover"
+	osTag            = "os"
+	osVersionTag     = "os_version"
+	versionTag       = "version"
 )
 
 // interface for running operations against an artifact registry.
@@ -13,13 +25,25 @@ type Registry interface {
 	// Given a LaunchableStanza from a pod manifest, returns a URL from which the
 	// artifact can be fetched an a struct containing the locations of files that
 	// can be used to verify artifact integrity
-	LocationDataForLaunchable(stanza manifest.LaunchableStanza) (*url.URL, auth.VerificationData, error)
+	LocationDataForLaunchable(launchableID launch.LaunchableID, stanza launch.LaunchableStanza) (*url.URL, auth.VerificationData, error)
 }
 
-type registry struct{}
+type registry struct {
+	registryURL       *url.URL
+	fetcher           uri.Fetcher
+	osVersionDetector osversion.Detector
+}
 
-func NewRegistry() Registry {
-	return &registry{}
+func NewRegistry(registryURL *url.URL, fetcher uri.Fetcher, osVersionDetector osversion.Detector) Registry {
+	if osVersionDetector == nil {
+		osVersionDetector = osversion.DefaultDetector
+	}
+
+	return &registry{
+		registryURL:       registryURL,
+		fetcher:           fetcher,
+		osVersionDetector: osVersionDetector,
+	}
 }
 
 // Given a launchable stanza, returns the URL from which the artifact may be downloaded, as
@@ -35,7 +59,7 @@ func NewRegistry() Registry {
 // manifest: ".manifest"
 // manifest signature: ".manifest.sig"
 // build signature: ".sig"
-func (a registry) LocationDataForLaunchable(stanza manifest.LaunchableStanza) (*url.URL, auth.VerificationData, error) {
+func (a registry) LocationDataForLaunchable(launchableID launch.LaunchableID, stanza launch.LaunchableStanza) (*url.URL, auth.VerificationData, error) {
 	if stanza.Location == "" && stanza.Version.ID == "" {
 		return nil, auth.VerificationData{}, util.Errorf("Launchable must provide either \"location\" or \"version\" fields")
 	}
@@ -55,7 +79,103 @@ func (a registry) LocationDataForLaunchable(stanza manifest.LaunchableStanza) (*
 		return location, verificationData, nil
 	}
 
-	return nil, auth.VerificationData{}, util.Errorf("Version key in launchable stanza not implemented")
+	if a.registryURL == nil {
+		return nil, auth.VerificationData{}, util.Errorf("No artifact registry configured and location field not present on launchable %s", launchableID)
+	}
+
+	return a.fetchRegistryData(launchableID, stanza.Version)
+}
+
+type RegistryResponse struct {
+	ArtifactLocation          string `json:"location"`
+	ManifestLocation          string `json:"manifest_location"`
+	ManifestSignatureLocation string `json:"manifest_signature_location"`
+	BuildSignatureLocation    string `json:"signature_location"`
+}
+
+func (a registry) fetchRegistryData(launchableID launch.LaunchableID, version launch.LaunchableVersion) (*url.URL, auth.VerificationData, error) {
+	requestURL := &url.URL{
+		Path: fmt.Sprintf("%s/%s", discoverBasePath, launchableID),
+	}
+	query := url.Values{}
+	for key, val := range version.Tags {
+		query.Add(key, val)
+	}
+
+	os, osVersion, err := a.osVersionDetector.Version()
+	if err != nil {
+		return nil, auth.VerificationData{}, err
+	}
+
+	query.Add(osTag, os.String())
+	query.Add(osVersionTag, osVersion.String())
+	query.Add(versionTag, version.ID)
+
+	requestURL.RawQuery = query.Encode()
+
+	data, err := a.fetcher.Open(a.registryURL.ResolveReference(requestURL))
+	if err != nil {
+		return nil, auth.VerificationData{}, err
+	}
+	defer data.Close()
+
+	respBytes, err := ioutil.ReadAll(data)
+	if err != nil {
+		return nil, auth.VerificationData{}, util.Errorf("Could not read response from artifact registry: %s", err)
+	}
+
+	var registryResponse RegistryResponse
+	err = json.Unmarshal(respBytes, &registryResponse)
+	if err != nil {
+		return nil, auth.VerificationData{}, util.Errorf("Could not unmarshal JSON response from artifact registry: %s", err)
+	}
+
+	// Require artifact URL to be present, other fields are optional but returned
+	var artifactURL *url.URL
+	if registryResponse.ArtifactLocation == "" {
+		return nil, auth.VerificationData{}, util.Errorf("No artifact url returned in registry response")
+	} else {
+		artifactURL, err = url.Parse(registryResponse.ArtifactLocation)
+		if err != nil {
+			return nil, auth.VerificationData{}, util.Errorf("Could not parse artifact url in registry response: %s", err)
+		}
+	}
+
+	authData, err := a.authDataFromRegistryResponse(registryResponse)
+	if err != nil {
+		return nil, auth.VerificationData{}, err
+	}
+
+	return artifactURL, authData, nil
+}
+
+func (a registry) authDataFromRegistryResponse(registryResponse RegistryResponse) (auth.VerificationData, error) {
+	verificationData := auth.VerificationData{}
+	if registryResponse.ManifestLocation != "" {
+		manifestURL, err := url.Parse(registryResponse.ManifestLocation)
+		if err != nil {
+			return verificationData, util.Errorf("Couldn't parse manifest URL from registry response: %s", err)
+		}
+		verificationData.ManifestLocation = manifestURL
+	}
+
+	if registryResponse.ManifestSignatureLocation != "" {
+		manifestSignatureURL, err := url.Parse(registryResponse.ManifestSignatureLocation)
+		if err != nil {
+			return verificationData, util.Errorf("Couldn't parse manifest signature URL from registry response: %s", err)
+		}
+		verificationData.ManifestSignatureLocation = manifestSignatureURL
+	}
+
+	if registryResponse.BuildSignatureLocation != "" {
+		buildSignatureURL, err := url.Parse(registryResponse.BuildSignatureLocation)
+		if err != nil {
+			return verificationData, util.Errorf("Couldn't parse build signature URL from registry response: %s", err)
+		}
+		verificationData.BuildSignatureLocation = buildSignatureURL
+	}
+
+	return verificationData, nil
 }
 
 func VerificationDataForLocation(location *url.URL) auth.VerificationData {

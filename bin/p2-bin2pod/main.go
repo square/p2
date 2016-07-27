@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
@@ -78,8 +79,8 @@ func main() {
 	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID(podID())
 
-	stanza := manifest.LaunchableStanza{}
-	stanza.LaunchableId = podID().String()
+	stanza := launch.LaunchableStanza{}
+	stanza.LaunchableId = launch.LaunchableID(podID())
 	stanza.LaunchableType = "hoist"
 
 	workingDir := activeDir()
@@ -99,8 +100,8 @@ func main() {
 		res.FinalLocation = tarLocation
 	}
 
-	manifestBuilder.SetLaunchables(map[string]manifest.LaunchableStanza{
-		podID().String(): stanza,
+	manifestBuilder.SetLaunchables(map[launch.LaunchableID]launch.LaunchableStanza{
+		launch.LaunchableID(podID()): stanza,
 	})
 
 	if err != nil {
