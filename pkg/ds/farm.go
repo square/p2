@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/pkg/ds/fields"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/dsstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -28,8 +29,12 @@ type Farm struct {
 	scheduler  scheduler.Scheduler
 	applicator labels.Applicator
 
+	// session stream for the daemon sets locked by this farm
+	sessions <-chan string
+
 	children map[fields.ID]*childDS
 	childMu  sync.Mutex
+	session  kp.Session
 
 	logger  logging.Logger
 	alerter alerting.Alerter
@@ -47,6 +52,7 @@ func NewFarm(
 	kpStore kp.Store,
 	dsStore dsstore.Store,
 	applicator labels.Applicator,
+	sessions <-chan string,
 	logger logging.Logger,
 	alerter alerting.Alerter,
 ) *Farm {
@@ -59,6 +65,7 @@ func NewFarm(
 		dsStore:    dsStore,
 		scheduler:  scheduler.NewApplicatorScheduler(applicator),
 		applicator: applicator,
+		sessions:   sessions,
 		children:   make(map[fields.ID]*childDS),
 		logger:     logger,
 		alerter:    alerter,
@@ -66,8 +73,12 @@ func NewFarm(
 }
 
 func (dsf *Farm) Start(quitCh <-chan struct{}) {
-	go dsf.cleanupDaemonSetPods(quitCh)
-	dsf.mainLoop(quitCh)
+	consulutil.WithSession(quitCh, dsf.sessions, func(sessionQuit <-chan struct{}, sessionID string) {
+		dsf.logger.WithField("session", sessionID).Infoln("Acquired new session for ds farm")
+		dsf.session = dsf.kpStore.NewUnmanagedSession(sessionID, "")
+		go dsf.cleanupDaemonSetPods(sessionQuit)
+		dsf.mainLoop(sessionQuit)
+	})
 }
 
 const cleanupInterval = 60 * time.Second
@@ -146,6 +157,10 @@ func (dsf *Farm) mainLoop(quitCh <-chan struct{}) {
 	dsWatch := dsf.dsStore.Watch(subQuit)
 
 	defer dsf.closeAllChildren()
+	defer func() {
+		dsf.session = nil
+	}()
+	defer dsf.logger.NoFields().Infoln("Session expired, releasing daemon sets")
 
 	var changes dsstore.WatchedDaemonSets
 	var err error

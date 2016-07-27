@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/dsstore/dsstoretest"
 	"github.com/square/p2/pkg/kp/kptest"
@@ -12,6 +13,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -35,11 +37,21 @@ func TestContendNodes(t *testing.T) {
 	dsStore := dsstoretest.NewFake()
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
-	dsf := NewFarm(kpStore, dsStore, applicator, logging.DefaultLogger, nil)
+	dsf := &Farm{
+		dsStore:    dsStore,
+		kpStore:    kpStore,
+		scheduler:  scheduler.NewApplicatorScheduler(applicator),
+		applicator: applicator,
+		children:   make(map[ds_fields.ID]*childDS),
+		session:    kptest.NewSession(),
+		logger:     logging.DefaultLogger,
+		alerter:    alerting.NewNop(),
+	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
 	go func() {
-		dsf.Start(quitCh)
+		go dsf.cleanupDaemonSetPods(quitCh)
+		dsf.mainLoop(quitCh)
 	}()
 
 	//
@@ -129,11 +141,21 @@ func TestContendSelectors(t *testing.T) {
 	dsStore := dsstoretest.NewFake()
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
-	dsf := NewFarm(kpStore, dsStore, applicator, logging.DefaultLogger, nil)
+	dsf := &Farm{
+		dsStore:    dsStore,
+		kpStore:    kpStore,
+		scheduler:  scheduler.NewApplicatorScheduler(applicator),
+		applicator: applicator,
+		children:   make(map[ds_fields.ID]*childDS),
+		session:    kptest.NewSession(),
+		logger:     logging.DefaultLogger,
+		alerter:    alerting.NewNop(),
+	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
 	go func() {
-		dsf.Start(quitCh)
+		go dsf.cleanupDaemonSetPods(quitCh)
+		dsf.mainLoop(quitCh)
 	}()
 
 	//
@@ -261,11 +283,21 @@ func TestFarmSchedule(t *testing.T) {
 	dsStore := dsstoretest.NewFake()
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
-	dsf := NewFarm(kpStore, dsStore, applicator, logging.DefaultLogger, nil)
+	dsf := &Farm{
+		dsStore:    dsStore,
+		kpStore:    kpStore,
+		scheduler:  scheduler.NewApplicatorScheduler(applicator),
+		applicator: applicator,
+		children:   make(map[ds_fields.ID]*childDS),
+		session:    kptest.NewSession(),
+		logger:     logging.DefaultLogger,
+		alerter:    alerting.NewNop(),
+	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
 	go func() {
-		dsf.Start(quitCh)
+		go dsf.cleanupDaemonSetPods(quitCh)
+		dsf.mainLoop(quitCh)
 	}()
 
 	// Make two daemon sets with difference node selectors
@@ -450,12 +482,21 @@ func TestCleanupPods(t *testing.T) {
 	}
 
 	// Instantiate farm
-	dsf := NewFarm(kpStore, dsStore, applicator, logging.DefaultLogger, nil)
-
+	dsf := &Farm{
+		dsStore:    dsStore,
+		kpStore:    kpStore,
+		scheduler:  scheduler.NewApplicatorScheduler(applicator),
+		applicator: applicator,
+		children:   make(map[ds_fields.ID]*childDS),
+		session:    kptest.NewSession(),
+		logger:     logging.DefaultLogger,
+		alerter:    alerting.NewNop(),
+	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
 	go func() {
-		dsf.Start(quitCh)
+		go dsf.cleanupDaemonSetPods(quitCh)
+		dsf.mainLoop(quitCh)
 	}()
 
 	waitForFarm()
