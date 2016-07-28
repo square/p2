@@ -115,7 +115,15 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 							quitChanMap[pair.ID] = make(chan struct{})
 							go p.handlePods(podChanMap[pair.ID], quitChanMap[pair.ID])
 						}
-						podChanMap[pair.ID] <- pair
+						// It is possible for the goroutine responsible for performing the installation
+						// of a particular pod ID to be stalled or mid-deploy. This should not cause
+						// this loop to block. Intent results will be re-sent within the watch expiration
+						// loop time.
+						select {
+						case podChanMap[pair.ID] <- pair:
+						case <-time.After(5 * time.Second):
+							p.Logger.WithField("pod", pair.ID).Warnln("Missed possible manifest update, will wait for next watch.")
+						}
 					}
 				}
 			}
