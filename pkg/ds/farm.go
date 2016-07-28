@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/ds/fields"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
+	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/dsstore"
@@ -37,6 +38,8 @@ type Farm struct {
 
 	logger  logging.Logger
 	alerter alerting.Alerter
+
+	healthChecker *checker.ConsulHealthChecker
 }
 
 type childDS struct {
@@ -55,20 +58,21 @@ func NewFarm(
 	sessions <-chan string,
 	logger logging.Logger,
 	alerter alerting.Alerter,
+	healthChecker *checker.ConsulHealthChecker,
 ) *Farm {
 	if alerter == nil {
 		alerter = alerting.NewNop()
 	}
 
 	return &Farm{
-		kpStore:    kpStore,
-		dsStore:    dsStore,
-		scheduler:  scheduler.NewApplicatorScheduler(applicator),
-		applicator: applicator,
-		sessions:   sessions,
-		children:   make(map[fields.ID]*childDS),
-		logger:     logger,
-		alerter:    alerter,
+		kpStore:       kpStore,
+		dsStore:       dsStore,
+		scheduler:     scheduler.NewApplicatorScheduler(applicator),
+		applicator:    applicator,
+		children:      make(map[fields.ID]*childDS),
+		logger:        logger,
+		alerter:       alerter,
+		healthChecker: healthChecker,
 	}
 }
 
@@ -507,6 +511,7 @@ func (dsf *Farm) spawnDaemonSet(
 		dsf.kpStore,
 		dsf.applicator,
 		dsLogger,
+		dsf.healthChecker,
 	)
 
 	quitSpawnCh := make(chan struct{})

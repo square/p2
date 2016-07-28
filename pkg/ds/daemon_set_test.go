@@ -148,6 +148,7 @@ func TestSchedule(t *testing.T) {
 		kpStore,
 		applicator,
 		logging.DefaultLogger,
+		nil,
 	).(*daemonSet)
 
 	scheduled := scheduledPods(t, ds)
