@@ -11,6 +11,7 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/ds/fields"
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -214,6 +215,24 @@ func (s *consulStore) MutateDS(
 	return ds, nil
 }
 
+func (s *consulStore) Disable(id fields.ID) (fields.DaemonSet, error) {
+	s.logger.Infof("Attempting to disable '%s' in store now", id)
+
+	mutator := func(dsToUpdate fields.DaemonSet) (fields.DaemonSet, error) {
+		dsToUpdate.Disabled = true
+		return dsToUpdate, nil
+	}
+	newDS, err := s.MutateDS(id, mutator)
+
+	if err != nil {
+		s.logger.Errorf("Error occured when trying to disable daemon set in store")
+		return fields.DaemonSet{}, err
+	}
+
+	s.logger.Infof("Daemon set '%s' was successfully disabled in store", id)
+	return newDS, nil
+}
+
 // Watch watches dsTree for changes and returns a blocking channel
 // where the client can read a WatchedDaemonSets object which contain
 // changed daemon sets
@@ -321,6 +340,24 @@ func (s *consulStore) dsPath(dsID fields.ID) (string, error) {
 		return "", util.Errorf("Path requested for empty DS id")
 	}
 	return path.Join(dsTree, dsID.String()), nil
+}
+
+func (s *consulStore) dsLockPath(dsID fields.ID) (string, error) {
+	dsPath, err := s.dsPath(dsID)
+	if err != nil {
+		return "", err
+	}
+	return path.Join(consulutil.LOCK_TREE, dsPath), nil
+}
+
+// Acquires a lock on the DS that should be used by DS farm goroutines, whose
+// job it is to carry out the intent of the DS
+func (s *consulStore) LockForOwnership(dsID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
+	lockPath, err := s.dsLockPath(dsID)
+	if err != nil {
+		return nil, err
+	}
+	return session.Lock(lockPath)
 }
 
 func kvpToDS(kvp *api.KVPair) (fields.DaemonSet, error) {

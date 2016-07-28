@@ -74,6 +74,13 @@ func (n NodeSet) Difference(other NodeSet) NodeSet {
 	}
 }
 
+func (n NodeSet) Intersection(other NodeSet) NodeSet {
+	diff := n.String.Intersection(other.String)
+	return NodeSet{
+		String: diff,
+	}
+}
+
 func (n NodeSet) Equal(other NodeSet) bool {
 	return n.String.Equal(other.String)
 }

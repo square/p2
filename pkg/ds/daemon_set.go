@@ -25,6 +25,27 @@ const (
 type DaemonSet interface {
 	ID() fields.ID
 
+	IsDisabled() bool
+
+	// Returns the daemon set's pod id
+	PodID() types.PodID
+
+	ClusterName() fields.ClusterName
+
+	GetNodeSelector() klabels.Selector
+
+	// Returns a list of all nodes that are selected by this daemon set's selector
+	EligibleNodes() ([]types.NodeName, error)
+
+	// WatchDesires watches for changes to its daemon set, then schedule/unschedule
+	// pods to to the nodes that it is responsible for
+	//
+	// Whatever calls WatchDesires is responsible for sending signals for whether
+	// the daemon set updated or deleted
+	//
+	// When this is first called, it assumes that the daemon set is created
+	//
+	// The caller is responsible for sending signals when something has been changed
 	WatchDesires(
 		quitCh <-chan struct{},
 		updatedCh <-chan *fields.DaemonSet,
@@ -83,15 +104,26 @@ func (ds *daemonSet) ID() fields.ID {
 	return ds.DaemonSet.ID
 }
 
-// WatchDesires watches for changes to its daemon set, then schedule/unschedule
-// pods to to the nodes that it is responsible for
-//
-// Whatever calls WatchDesires is responsible for sending signals for whether
-// the daemon set updated or deleted
-//
-// When this is first called, it assumes that the daemon set is created
-//
-// The caller is responsible for sending signals when something has been changed
+func (ds *daemonSet) IsDisabled() bool {
+	return ds.DaemonSet.Disabled
+}
+
+func (ds *daemonSet) PodID() types.PodID {
+	return ds.DaemonSet.PodID
+}
+
+func (ds *daemonSet) ClusterName() fields.ClusterName {
+	return ds.DaemonSet.Name
+}
+
+func (ds *daemonSet) GetNodeSelector() klabels.Selector {
+	return ds.DaemonSet.NodeSelector
+}
+
+func (ds *daemonSet) EligibleNodes() ([]types.NodeName, error) {
+	return ds.scheduler.EligibleNodes(ds.Manifest, ds.NodeSelector)
+}
+
 func (ds *daemonSet) WatchDesires(
 	quitCh <-chan struct{},
 	updatedCh <-chan *fields.DaemonSet,
@@ -131,7 +163,7 @@ func (ds *daemonSet) WatchDesires(
 				}
 				ds.logger.NoFields().Infof("Received daemon set update signal: %v", newDS)
 				if newDS == nil {
-					ds.logger.NoFields().Fatal("Unexpected a nil daemon set during update", *ds)
+					ds.logger.Errorf("Unexpected nil daemon set during update")
 					return
 				}
 				if ds.ID() != newDS.ID {
@@ -161,7 +193,7 @@ func (ds *daemonSet) WatchDesires(
 				}
 				ds.logger.NoFields().Infof("Received daemon set delete signal: %v", deleteDS)
 				if deleteDS == nil {
-					ds.logger.NoFields().Fatal("Unexpected a nil daemon set during delete")
+					ds.logger.Errorf("Unexpected nil daemon set during delete")
 					return
 				}
 				if ds.ID() != deleteDS.ID {
@@ -243,10 +275,12 @@ func (ds *daemonSet) addPods() error {
 	}
 	currentNodes := podLocations.Nodes()
 
-	eligible, err := ds.scheduler.EligibleNodes(ds.Manifest, ds.NodeSelector)
+	eligible, err := ds.EligibleNodes()
 	if err != nil {
 		return util.Errorf("Error retrieving eligible nodes for daemon set: %v", err)
 	}
+	// TODO: Grab a lock here for the pod_id before adding something to check
+	// contention and then disable
 
 	// Get the difference in nodes that we need to schedule on and then sort them
 	// for deterministic ordering
@@ -271,7 +305,7 @@ func (ds *daemonSet) removePods() error {
 	}
 	currentNodes := podLocations.Nodes()
 
-	eligible, err := ds.scheduler.EligibleNodes(ds.Manifest, ds.NodeSelector)
+	eligible, err := ds.EligibleNodes()
 	if err != nil {
 		return util.Errorf("Error retrieving eligible nodes for daemon set: %v", err)
 	}
@@ -315,7 +349,7 @@ func (ds *daemonSet) clearPods() error {
 }
 
 func (ds *daemonSet) schedule(node types.NodeName) error {
-	ds.logger.NoFields().Infof("Scheduling on %s with daemon set uuid %s", node, ds.ID())
+	ds.logger.NoFields().Infof("Scheduling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest.ID(), node, ds.ID())
 
 	// Will apply the following label on the key <labels.POD>/<node>/<ds.Manifest.ID()>:
 	// 	{ DSIDLabel : ds.ID() }
@@ -332,19 +366,19 @@ func (ds *daemonSet) schedule(node types.NodeName) error {
 	// eg intent/127.0.0.1/test = test_pod
 	_, err = ds.kpStore.SetPod(kp.INTENT_TREE, node, ds.Manifest)
 	if err != nil {
-		return util.Errorf("Error adding pod to intent tree: %v", err)
+		return util.Errorf("Error adding pod '%v' in node '%v', to intent tree: %v", ds.Manifest.ID(), node, err)
 	}
 	return nil
 }
 
 func (ds *daemonSet) unschedule(node types.NodeName) error {
-	ds.logger.NoFields().Infof("Unscheduling from %s with daemon set uuid %s", node, ds.ID())
+	ds.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest.ID(), node, ds.ID())
 
 	// Will remove the following key:
 	// <kp.INTENT_TREE>/<node>/<ds.Manifest.ID()>
 	_, err := ds.kpStore.DeletePod(kp.INTENT_TREE, node, ds.Manifest.ID())
 	if err != nil {
-		return util.Errorf("Unable to delete pod from intent tree: %v", err)
+		return util.Errorf("Unable to delete pod id '%v' in node '%v', from intent tree: %v", ds.Manifest.ID(), node, err)
 	}
 
 	// Will remove the following label on the key <labels.POD>/<node>/<ds.Manifest.ID()>: DSIDLabel
