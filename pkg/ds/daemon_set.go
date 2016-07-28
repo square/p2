@@ -30,6 +30,8 @@ type DaemonSet interface {
 	// Returns the daemon set's pod id
 	PodID() types.PodID
 
+	ClusterName() fields.ClusterName
+
 	GetNodeSelector() klabels.Selector
 
 	// Returns a list of all nodes that are selected by this daemon set's selector
@@ -108,6 +110,10 @@ func (ds *daemonSet) IsDisabled() bool {
 
 func (ds *daemonSet) PodID() types.PodID {
 	return ds.DaemonSet.PodID
+}
+
+func (ds *daemonSet) ClusterName() fields.ClusterName {
+	return ds.DaemonSet.Name
 }
 
 func (ds *daemonSet) GetNodeSelector() klabels.Selector {
