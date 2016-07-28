@@ -7,6 +7,8 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/ds/fields"
+	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 )
@@ -56,6 +58,9 @@ type Store interface {
 	// Disables daemon set and produces logging, if there are problems disabling,
 	// disable the daemon set, and if there are still problems, return a fatal error
 	Disable(id fields.ID) (fields.DaemonSet, error)
+
+	// Locks an daemon set for ownership,
+	LockForOwnership(rcID fields.ID, session kp.Session) (consulutil.Unlocker, error)
 }
 
 func IsNotExist(err error) bool {

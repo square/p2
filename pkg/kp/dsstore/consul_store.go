@@ -11,6 +11,7 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/ds/fields"
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -339,6 +340,24 @@ func (s *consulStore) dsPath(dsID fields.ID) (string, error) {
 		return "", util.Errorf("Path requested for empty DS id")
 	}
 	return path.Join(dsTree, dsID.String()), nil
+}
+
+func (s *consulStore) dsLockPath(dsID fields.ID) (string, error) {
+	dsPath, err := s.dsPath(dsID)
+	if err != nil {
+		return "", err
+	}
+	return path.Join(consulutil.LOCK_TREE, dsPath), nil
+}
+
+// Acquires a lock on the DS that should be used by DS farm goroutines, whose
+// job it is to carry out the intent of the DS
+func (s *consulStore) LockForOwnership(dsID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
+	lockPath, err := s.dsLockPath(dsID)
+	if err != nil {
+		return nil, err
+	}
+	return session.Lock(lockPath)
 }
 
 func kvpToDS(kvp *api.KVPair) (fields.DaemonSet, error) {

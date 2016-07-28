@@ -1,14 +1,17 @@
 package dsstoretest
 
 import (
+	"fmt"
 	"sync"
 
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/pborman/uuid"
 	"github.com/square/p2/pkg/ds/fields"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/dsstore"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
@@ -232,4 +235,9 @@ func (s *FakeDSStore) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemon
 	}()
 
 	return outCh
+}
+
+func (s *FakeDSStore) LockForOwnership(dsID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
+	key := fmt.Sprintf("%s/%s", dsID, "ownership_lock")
+	return session.Lock(key)
 }

@@ -28,7 +28,6 @@ type Farm struct {
 	dsStore    dsstore.Store
 	scheduler  scheduler.Scheduler
 	applicator labels.Applicator
-
 	// session stream for the daemon sets locked by this farm
 	sessions <-chan string
 
@@ -46,6 +45,7 @@ type childDS struct {
 	updatedCh chan<- *ds_fields.DaemonSet
 	deletedCh chan<- *ds_fields.DaemonSet
 	errCh     <-chan error
+	unlocker  consulutil.Unlocker
 }
 
 func NewFarm(
@@ -156,11 +156,11 @@ func (dsf *Farm) mainLoop(quitCh <-chan struct{}) {
 	defer close(subQuit)
 	dsWatch := dsf.dsStore.Watch(subQuit)
 
-	defer dsf.closeAllChildren()
+	defer dsf.logger.NoFields().Infoln("Session expired, releasing daemon sets")
 	defer func() {
 		dsf.session = nil
 	}()
-	defer dsf.logger.NoFields().Infoln("Session expired, releasing daemon sets")
+	defer dsf.closeAllChildren()
 
 	var changes dsstore.WatchedDaemonSets
 	var err error
@@ -206,9 +206,19 @@ func (dsf *Farm) closeAllChildren() {
 
 func (dsf *Farm) closeChild(dsID fields.ID) {
 	if child, ok := dsf.children[dsID]; ok {
+		dsf.logger.WithField("ds", dsID).Infoln("Releasing daemon set")
 		close(child.quitCh)
 		close(child.updatedCh)
 		close(child.deletedCh)
+
+		// if our lock is active, attempt to gracefully release it on this daemon set
+		if dsf.session != nil {
+			unlocker := dsf.children[dsID].unlocker
+			err := unlocker.Unlock()
+			if err != nil {
+				dsf.logger.WithField("ds", dsID).Warnln("Could not release daemon set lock")
+			}
+		}
 		delete(dsf.children, dsID)
 	}
 }
@@ -224,6 +234,23 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 		for _, dsFields := range changes.Created {
 			dsf.logger.Infof("%v", *dsFields)
 
+			dsLogger := dsf.makeDSLogger(*dsFields)
+			dsUnlocker, err := dsf.dsStore.LockForOwnership(dsFields.ID, dsf.session)
+
+			if _, ok := err.(consulutil.AlreadyLockedError); ok {
+				// Lock was either already acquired by another farm or it was Acquired
+				// by this farm
+				if _, ok := dsf.children[dsFields.ID]; !ok {
+					dsLogger.Debugln("Lock on daemon set was already acquired by another farm")
+					continue
+				}
+			} else if err != nil {
+				// The session probably either expired or there was probably a network
+				// error, so the rest will probably fail
+				dsf.makeSessionExpiryAlert(*dsFields, dsLogger, err)
+				return
+			}
+
 			// If the daemon set contends with another daemon set, disable it
 			dsIDContended, isContended, err := dsf.dsContends(dsFields)
 			if err != nil {
@@ -238,9 +265,9 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 					dsf.logger.Errorf("Error occurred when trying to disable daemon set: %v", err)
 					continue
 				}
-				dsf.children[newDS.ID] = dsf.spawnDaemonSet(&newDS)
+				dsf.children[newDS.ID] = dsf.spawnDaemonSet(&newDS, dsUnlocker, dsLogger)
 			} else {
-				dsf.children[dsFields.ID] = dsf.spawnDaemonSet(dsFields)
+				dsf.children[dsFields.ID] = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger)
 			}
 		}
 	}
@@ -249,6 +276,19 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 		dsf.logger.Infof("The following daemon sets have been updated:")
 		for _, dsFields := range changes.Updated {
 			dsf.logger.Infof("%v", *dsFields)
+
+			dsLogger := dsf.makeDSLogger(*dsFields)
+			_, err := dsf.dsStore.LockForOwnership(dsFields.ID, dsf.session)
+
+			if _, ok := err.(consulutil.AlreadyLockedError); ok {
+				if _, ok := dsf.children[dsFields.ID]; !ok {
+					dsLogger.Debugln("Lock on daemon set was already acquired by another farm")
+					continue
+				}
+			} else if err != nil {
+				dsf.makeSessionExpiryAlert(*dsFields, dsLogger, err)
+				return
+			}
 
 			// If the daemon set contends with another daemon set, disable it
 			if _, ok := dsf.children[dsFields.ID]; ok {
@@ -277,6 +317,20 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 		dsf.logger.Infof("The following daemon sets have been deleted:")
 		for _, dsFields := range changes.Deleted {
 			dsf.logger.Infof("%v", *dsFields)
+
+			dsLogger := dsf.makeDSLogger(*dsFields)
+			_, err := dsf.dsStore.LockForOwnership(dsFields.ID, dsf.session)
+
+			if _, ok := err.(consulutil.AlreadyLockedError); ok {
+				if _, ok := dsf.children[dsFields.ID]; !ok {
+					dsLogger.Debugln("Lock on daemon set was already acquired by another farm")
+					continue
+				}
+			} else if err != nil {
+				dsf.makeSessionExpiryAlert(*dsFields, dsLogger, err)
+				return
+			}
+
 			if child, ok := dsf.children[dsFields.ID]; ok {
 				select {
 				case <-quitCh:
@@ -291,6 +345,35 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 				}
 			}
 		}
+	}
+}
+
+func (dsf *Farm) makeDSLogger(dsFields ds_fields.DaemonSet) logging.Logger {
+	return dsf.logger.SubLogger(logrus.Fields{
+		"ds":  dsFields.ID,
+		"pod": dsFields.Manifest.ID(),
+	})
+}
+
+func (dsf *Farm) makeSessionExpiryAlert(dsFields ds_fields.DaemonSet, dsLogger logging.Logger, err error) {
+	dsLogger.WithError(err).Errorln("Got error while locking daemon set in farm - session may be expired")
+
+	if alertErr := dsf.alerter.Alert(alerting.AlertInfo{
+		Description: "Got error while locking daemon set - session may be expired",
+		IncidentKey: "ds_session_expired",
+		Details: struct {
+			ID           ds_fields.ID          `json:"id"`
+			Name         ds_fields.ClusterName `json:"cluster_name"`
+			NodeSelector string                `json:"node_selector"`
+			PodID        types.PodID           `json:"pod_id"`
+		}{
+			ID:           dsFields.ID,
+			Name:         dsFields.Name,
+			NodeSelector: dsFields.NodeSelector.String(),
+			PodID:        dsFields.PodID,
+		},
+	}); alertErr != nil {
+		dsf.logger.WithError(alertErr).Errorln("Unable to deliver alert!")
 	}
 }
 
@@ -413,12 +496,11 @@ func (dsf *Farm) raiseContentionAlert(oldDS DaemonSet, newDS ds_fields.DaemonSet
 }
 
 // Creates a functioning daemon set that will watch and write to the pod tree
-func (dsf *Farm) spawnDaemonSet(dsFields *ds_fields.DaemonSet) *childDS {
-	dsLogger := dsf.logger.SubLogger(logrus.Fields{
-		"ds":  dsFields.ID,
-		"pod": dsFields.Manifest.ID(),
-	})
-
+func (dsf *Farm) spawnDaemonSet(
+	dsFields *ds_fields.DaemonSet,
+	dsUnlocker consulutil.Unlocker,
+	dsLogger logging.Logger,
+) *childDS {
 	ds := New(
 		*dsFields,
 		dsf.dsStore,
@@ -439,5 +521,6 @@ func (dsf *Farm) spawnDaemonSet(dsFields *ds_fields.DaemonSet) *childDS {
 		updatedCh: updatedCh,
 		deletedCh: deletedCh,
 		errCh:     desiresCh,
+		unlocker:  dsUnlocker,
 	}
 }
