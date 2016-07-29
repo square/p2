@@ -238,21 +238,26 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 		for _, dsFields := range changes.Created {
 			dsf.logger.Infof("%v", *dsFields)
 
+			var dsUnlocker consulutil.Unlocker
+			var err error
 			dsLogger := dsf.makeDSLogger(*dsFields)
-			dsUnlocker, err := dsf.dsStore.LockForOwnership(dsFields.ID, dsf.session)
 
-			if _, ok := err.(consulutil.AlreadyLockedError); ok {
-				// Lock was either already acquired by another farm or it was Acquired
-				// by this farm
-				if _, ok := dsf.children[dsFields.ID]; !ok {
-					dsLogger.Debugln("Lock on daemon set was already acquired by another farm")
+			// If it is not in our map, then try to acquire the lock
+			if _, ok := dsf.children[dsFields.ID]; !ok {
+				dsUnlocker, err = dsf.dsStore.LockForOwnership(dsFields.ID, dsf.session)
+				if _, ok := err.(consulutil.AlreadyLockedError); ok {
+					// Lock was either already acquired by another farm or it was Acquired
+					// by this farm
+					dsf.logger.Infof("Lock on daemon set '%v' was already acquired by another farm", dsFields.ID)
 					continue
+
+				} else if err != nil {
+					// The session probably either expired or there was probably a network
+					// error, so the rest will probably fail
+					dsf.makeSessionExpiryAlert(*dsFields, dsLogger, err)
+					return
 				}
-			} else if err != nil {
-				// The session probably either expired or there was probably a network
-				// error, so the rest will probably fail
-				dsf.makeSessionExpiryAlert(*dsFields, dsLogger, err)
-				return
+				dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
 			}
 
 			// If the daemon set contends with another daemon set, disable it
@@ -282,16 +287,18 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 			dsf.logger.Infof("%v", *dsFields)
 
 			dsLogger := dsf.makeDSLogger(*dsFields)
-			_, err := dsf.dsStore.LockForOwnership(dsFields.ID, dsf.session)
 
-			if _, ok := err.(consulutil.AlreadyLockedError); ok {
-				if _, ok := dsf.children[dsFields.ID]; !ok {
-					dsLogger.Debugln("Lock on daemon set was already acquired by another farm")
+			if _, ok := dsf.children[dsFields.ID]; !ok {
+				_, err := dsf.dsStore.LockForOwnership(dsFields.ID, dsf.session)
+				if _, ok := err.(consulutil.AlreadyLockedError); ok {
+					dsf.logger.Infof("Lock on daemon set '%v' was already acquired by another farm", dsFields.ID)
 					continue
+
+				} else if err != nil {
+					dsf.makeSessionExpiryAlert(*dsFields, dsLogger, err)
+					return
 				}
-			} else if err != nil {
-				dsf.makeSessionExpiryAlert(*dsFields, dsLogger, err)
-				return
+				dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
 			}
 
 			// If the daemon set contends with another daemon set, disable it
@@ -306,7 +313,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 					dsf.logger.Errorf("Updated daemon set '%s' contends with %s", dsFields.ID, dsIDContended)
 					newDS, err := dsf.dsStore.Disable(dsFields.ID)
 					if err != nil {
-						dsf.logger.Errorf("Error occurred when trying to delete daemon set: %v", err)
+						dsf.logger.Errorf("Error occurred when trying to disable daemon set: %v", err)
 						continue
 					}
 					dsf.children[newDS.ID].updatedCh <- &newDS
@@ -323,16 +330,18 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 			dsf.logger.Infof("%v", *dsFields)
 
 			dsLogger := dsf.makeDSLogger(*dsFields)
-			_, err := dsf.dsStore.LockForOwnership(dsFields.ID, dsf.session)
 
-			if _, ok := err.(consulutil.AlreadyLockedError); ok {
-				if _, ok := dsf.children[dsFields.ID]; !ok {
-					dsLogger.Debugln("Lock on daemon set was already acquired by another farm")
+			if _, ok := dsf.children[dsFields.ID]; !ok {
+				_, err := dsf.dsStore.LockForOwnership(dsFields.ID, dsf.session)
+				if _, ok := err.(consulutil.AlreadyLockedError); ok {
+					dsf.logger.Infof("Lock on daemon set '%v' was already acquired by another farm", dsFields.ID)
 					continue
+
+				} else if err != nil {
+					dsf.makeSessionExpiryAlert(*dsFields, dsLogger, err)
+					return
 				}
-			} else if err != nil {
-				dsf.makeSessionExpiryAlert(*dsFields, dsLogger, err)
-				return
+				dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
 			}
 
 			if child, ok := dsf.children[dsFields.ID]; ok {
