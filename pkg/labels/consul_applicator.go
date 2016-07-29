@@ -273,28 +273,7 @@ func watchDiffLabels(inCh <-chan []Labeled, quitCh <-chan struct{}, logger loggi
 
 	go func() {
 		defer close(outCh)
-
-		var labelsList []Labeled
-
-		select {
-		case <-quitCh:
-			return
-		case val, ok := <-inCh:
-			if !ok {
-				// channel closed
-				return
-			}
-			labelsList = val
-			if labelsList == nil {
-				logger.Errorf("Unexpected nil value received from channel")
-				return
-			}
-		}
-
 		oldLabels := make(map[string]Labeled)
-		for _, labeled := range labelsList {
-			oldLabels[labeled.ID] = labeled
-		}
 
 		for {
 			var results []Labeled
@@ -307,10 +286,6 @@ func watchDiffLabels(inCh <-chan []Labeled, quitCh <-chan struct{}, logger loggi
 					return
 				}
 				results = val
-				if results == nil {
-					logger.Errorf("Unexpected nil value received from watchDiffLabels channel")
-					return
-				}
 			}
 
 			newLabels := make(map[string]Labeled)
