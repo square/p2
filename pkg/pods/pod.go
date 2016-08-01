@@ -701,6 +701,7 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 			RestartPolicy:    restartPolicy,
 			CgroupConfig:     launchableStanza.CgroupConfig,
 			CgroupConfigName: launchableStanza.LaunchableId.String(),
+			CgroupName:       serviceId,
 			SuppliedEnvVars:  launchableStanza.Env,
 			EntryPoints:      entryPoints,
 		}
