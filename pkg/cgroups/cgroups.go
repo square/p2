@@ -12,8 +12,6 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-var DefaultCgexec = "/bin/cgexec"
-
 // maps cgroup subsystems to their respective paths
 type Subsystems struct {
 	CPU    string
