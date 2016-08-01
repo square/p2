@@ -32,6 +32,7 @@ type Launchable struct {
 	ExecNoLimit      bool                  // If set, execute with the -n (--no-limit) argument to p2-exec
 	CgroupConfig     cgroups.Config        // Cgroup parameters to use with p2-exec
 	CgroupConfigName string                // The string in PLATFORM_CONFIG to pass to p2-exec
+	CgroupName       string                // The name of the cgroup to run this launchable in
 	RestartTimeout   time.Duration         // How long to wait when restarting the services in this launchable.
 	RestartPolicy    runit.RestartPolicy   // Dictates whether the launchable should be automatically restarted upon exit.
 	SuppliedEnvVars  map[string]string     // A map of user-supplied environment variables to be exported for this launchable
@@ -138,7 +139,7 @@ func (hl *Launchable) InvokeBinScript(script string) (string, error) {
 		return "", err
 	}
 
-	cgroupName := hl.ServiceId
+	cgroupName := hl.CgroupName
 	if hl.CgroupConfigName == "" {
 		cgroupName = ""
 	}
@@ -261,7 +262,7 @@ func (hl *Launchable) Executables(
 				EnvDirs:          []string{hl.PodEnvDir, hl.EnvDir()},
 				NoLimits:         hl.ExecNoLimit,
 				CgroupConfigName: hl.CgroupConfigName,
-				CgroupName:       hl.ServiceId,
+				CgroupName:       hl.CgroupName,
 			}
 			execCmd := append([]string{hl.P2Exec}, p2ExecArgs.CommandLine()...)
 
