@@ -75,7 +75,7 @@ We strongly believe in small things that do one thing well.
 Running `rake integration` will attempt to launch a Vagrant Centos7 machine on
 your computer, launch Consul and our preparer and then launch an application.
 If you see a success message, you can `vagrant up` the halted box to check out
-the setup without needing to any work yourself.
+the setup without needing to do any work yourself.
 
 ## Dependencies
 
