@@ -360,7 +360,7 @@
 		},
 		{
 			"ImportPath": "github.com/rcrowley/go-metrics",
-			"Rev": "a5cfc242a56ba7fa70b785f678d6214837bf93b9"
+			"Rev": "bdb33529eca3e55eac7328e07c57012a797af602"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
