@@ -375,7 +375,7 @@ func (ds *daemonSet) clearPods() error {
 }
 
 func (ds *daemonSet) labelPod(node types.NodeName) error {
-	ds.logger.NoFields().Infof("Scheduling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest.ID(), node, ds.ID())
+	ds.logger.NoFields().Infof("Labelling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest.ID(), node, ds.ID())
 
 	// Will apply the following label on the key <labels.POD>/<node>/<ds.Manifest.ID()>:
 	// 	{ DSIDLabel : ds.ID() }
