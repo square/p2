@@ -69,6 +69,7 @@ func NewFarm(
 		dsStore:       dsStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		applicator:    applicator,
+		sessions:      sessions,
 		children:      make(map[fields.ID]*childDS),
 		logger:        logger,
 		alerter:       alerter,
