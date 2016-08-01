@@ -25,6 +25,8 @@ type FakePodStore struct {
 	// to error when a lock is already held
 	locks   map[string]bool
 	locksMu sync.Mutex
+
+	podLock sync.Mutex
 }
 
 var _ kp.Store = &FakePodStore{}
@@ -58,6 +60,8 @@ func FakePodStoreKeyFor(podPrefix kp.PodPrefix, hostname types.NodeName, podId t
 }
 
 func (f *FakePodStore) SetPod(podPrefix kp.PodPrefix, hostname types.NodeName, manifest manifest.Manifest) (time.Duration, error) {
+	f.podLock.Lock()
+	defer f.podLock.Unlock()
 	f.podResults[FakePodStoreKeyFor(podPrefix, hostname, manifest.ID())] = manifest
 	return 0, nil
 }
@@ -101,6 +105,8 @@ func (f *FakePodStore) AllPods(podPrefix kp.PodPrefix) ([]kp.ManifestResult, tim
 }
 
 func (f *FakePodStore) DeletePod(podPrefix kp.PodPrefix, hostname types.NodeName, podId types.PodID) (time.Duration, error) {
+	f.podLock.Lock()
+	defer f.podLock.Unlock()
 	delete(f.podResults, FakePodStoreKeyFor(podPrefix, hostname, podId))
 	return 0, nil
 }

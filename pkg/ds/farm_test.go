@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/dsstore/dsstoretest"
@@ -37,6 +38,9 @@ func TestContendNodes(t *testing.T) {
 	dsStore := dsstoretest.NewFake()
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
+	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"farm": "contendNodes",
+	})
 	dsf := &Farm{
 		dsStore:       dsStore,
 		kpStore:       kpStore,
@@ -44,7 +48,7 @@ func TestContendNodes(t *testing.T) {
 		applicator:    applicator,
 		children:      make(map[ds_fields.ID]*childDS),
 		session:       kptest.NewSession(),
-		logger:        logging.DefaultLogger,
+		logger:        logger,
 		alerter:       alerting.NewNop(),
 		healthChecker: nil,
 	}
@@ -142,6 +146,9 @@ func TestContendSelectors(t *testing.T) {
 	dsStore := dsstoretest.NewFake()
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
+	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"farm": "contendSelectors",
+	})
 	dsf := &Farm{
 		dsStore:       dsStore,
 		kpStore:       kpStore,
@@ -149,7 +156,7 @@ func TestContendSelectors(t *testing.T) {
 		applicator:    applicator,
 		children:      make(map[ds_fields.ID]*childDS),
 		session:       kptest.NewSession(),
-		logger:        logging.DefaultLogger,
+		logger:        logger,
 		alerter:       alerting.NewNop(),
 		healthChecker: nil,
 	}
@@ -285,6 +292,9 @@ func TestFarmSchedule(t *testing.T) {
 	dsStore := dsstoretest.NewFake()
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
+	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"farm": "farmSchedule",
+	})
 	dsf := &Farm{
 		dsStore:       dsStore,
 		kpStore:       kpStore,
@@ -292,7 +302,7 @@ func TestFarmSchedule(t *testing.T) {
 		applicator:    applicator,
 		children:      make(map[ds_fields.ID]*childDS),
 		session:       kptest.NewSession(),
-		logger:        logging.DefaultLogger,
+		logger:        logger,
 		alerter:       alerting.NewNop(),
 		healthChecker: nil,
 	}
@@ -485,6 +495,9 @@ func TestCleanupPods(t *testing.T) {
 	}
 
 	// Instantiate farm
+	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"farm": "cleanupPods",
+	})
 	dsf := &Farm{
 		dsStore:       dsStore,
 		kpStore:       kpStore,
@@ -492,7 +505,7 @@ func TestCleanupPods(t *testing.T) {
 		applicator:    applicator,
 		children:      make(map[ds_fields.ID]*childDS),
 		session:       kptest.NewSession(),
-		logger:        logging.DefaultLogger,
+		logger:        logger,
 		alerter:       alerting.NewNop(),
 		healthChecker: nil,
 	}
@@ -516,4 +529,229 @@ func TestCleanupPods(t *testing.T) {
 		_, _, err = kpStore.Pod(kp.INTENT_TREE, types.NodeName(nodeName), podID)
 		Assert(t).AreEqual(err, pods.NoCurrentManifest, "Expected to find pod in intent store")
 	}
+}
+
+func TestMultipleFarms(t *testing.T) {
+	dsStore := dsstoretest.NewFake()
+	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	applicator := labels.NewFakeApplicator()
+	session := kptest.NewSession()
+	firstLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"farm": "firstMultiple",
+	})
+	//
+	// Instantiate first farm
+	//
+	firstFarm := &Farm{
+		dsStore:    dsStore,
+		kpStore:    kpStore,
+		scheduler:  scheduler.NewApplicatorScheduler(applicator),
+		applicator: applicator,
+		children:   make(map[ds_fields.ID]*childDS),
+		session:    session,
+		logger:     firstLogger,
+		alerter:    alerting.NewNop(),
+	}
+	firstQuitCh := make(chan struct{})
+	defer close(firstQuitCh)
+	go func() {
+		go firstFarm.cleanupDaemonSetPods(firstQuitCh)
+		firstFarm.mainLoop(firstQuitCh)
+	}()
+
+	//
+	// Instantiate second farm
+	//
+	secondLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"farm": "secondMultiple",
+	})
+	secondFarm := &Farm{
+		dsStore:    dsStore,
+		kpStore:    kpStore,
+		scheduler:  scheduler.NewApplicatorScheduler(applicator),
+		applicator: applicator,
+		children:   make(map[ds_fields.ID]*childDS),
+		session:    session,
+		logger:     secondLogger,
+		alerter:    alerting.NewNop(),
+	}
+	secondQuitCh := make(chan struct{})
+	defer close(secondQuitCh)
+	go func() {
+		go secondFarm.cleanupDaemonSetPods(secondQuitCh)
+		secondFarm.mainLoop(secondQuitCh)
+	}()
+
+	// Make two daemon sets with difference node selectors
+	// First daemon set
+	podID := types.PodID("testPod")
+	minHealth := 0
+	clusterName := ds_fields.ClusterName("some_name")
+
+	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder.SetID(podID)
+	podManifest := manifestBuilder.GetManifest()
+
+	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
+	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID)
+	Assert(t).IsNil(err, "Expected no error creating request")
+
+	// Second daemon set
+	anotherNodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
+	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, anotherNodeSelector, podID)
+	Assert(t).IsNil(err, "Expected no error creating request")
+
+	// Make a node and verify that it was scheduled by the first daemon set
+	applicator.SetLabel(labels.NODE, "node1", pc_fields.AvailabilityZoneLabel, "az1")
+	waitForFarm()
+
+	labeled, err := applicator.GetLabels(labels.POD, "node1/testPod")
+	Assert(t).IsNil(err, "Expected no error getting labels")
+	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	dsID := labeled.Labels.Get(DSIDLabel)
+	Assert(t).AreEqual(dsData.ID.String(), dsID, "Unexpected dsID labeled")
+
+	// Make a second node and verify that it was scheduled by the second daemon set
+	applicator.SetLabel(labels.NODE, "node2", pc_fields.AvailabilityZoneLabel, "az2")
+	waitForFarm()
+
+	labeled, err = applicator.GetLabels(labels.POD, "node2/testPod")
+	Assert(t).IsNil(err, "Expected no error getting labels")
+	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	dsID = labeled.Labels.Get(DSIDLabel)
+	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
+
+	// Make a third unschedulable node and verify it doesn't get scheduled by anything
+	applicator.SetLabel(labels.NODE, "node3", pc_fields.AvailabilityZoneLabel, "undefined")
+	waitForFarm()
+
+	labeled, err = applicator.GetLabels(labels.POD, "node3/testPod")
+	Assert(t).IsNil(err, "Expected no error getting labels")
+	Assert(t).IsFalse(labeled.Labels.Has(DSIDLabel), "Expected pod not to have a dsID label")
+
+	// Now add 10 new nodes and verify that they are scheduled by the first daemon set
+	for i := 0; i < 10; i++ {
+		nodeName := fmt.Sprintf("good_node%v", i)
+		err := applicator.SetLabel(labels.NODE, nodeName, pc_fields.AvailabilityZoneLabel, "az1")
+		Assert(t).IsNil(err, "expected no error labeling node")
+	}
+	waitForFarm()
+	for i := 0; i < 10; i++ {
+		podPath := fmt.Sprintf("good_node%v/testPod", i)
+		labeled, err = applicator.GetLabels(labels.POD, podPath)
+		Assert(t).IsNil(err, "Expected no error getting labels")
+		Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+		dsID := labeled.Labels.Get(DSIDLabel)
+		Assert(t).AreEqual(dsData.ID.String(), dsID, "Unexpected dsID labeled")
+	}
+
+	//
+	// Update a daemon set's node selector and expect a node to be unscheduled
+	//
+	mutator := func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
+		dsToUpdate.NodeSelector = someSelector
+		return dsToUpdate, nil
+	}
+	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	Assert(t).IsNil(err, "Expected no error mutating daemon set")
+	waitForFarm()
+
+	// Verify node2 is unscheduled
+	labeled, err = applicator.GetLabels(labels.POD, "node2/testPod")
+	Assert(t).IsNil(err, "Expected no error getting labels")
+	Assert(t).IsFalse(labeled.Labels.Has(DSIDLabel), "Expected pod not to have a dsID label")
+
+	//
+	// Now update the node selector to schedule node2 again and verify
+	//
+	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
+		dsToUpdate.NodeSelector = someSelector
+		return dsToUpdate, nil
+	}
+	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	Assert(t).IsNil(err, "Expected no error mutating daemon set")
+	waitForFarm()
+
+	// Verify node2 is scheduled
+	labeled, err = applicator.GetLabels(labels.POD, "node2/testPod")
+	Assert(t).IsNil(err, "Expected no error getting labels")
+	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	dsID = labeled.Labels.Get(DSIDLabel)
+	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
+
+	//
+	// Disabling a daemon set should not unschedule any nodes
+	//
+	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		dsToUpdate.Disabled = true
+
+		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
+		dsToUpdate.NodeSelector = someSelector
+		return dsToUpdate, nil
+	}
+	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	Assert(t).IsNil(err, "Expected no error mutating daemon set")
+	waitForFarm()
+
+	// Verify it is disabled
+	anotherDSData, _, err = dsStore.Get(anotherDSData.ID)
+	Assert(t).IsNil(err, "Expected no error getting daemon set")
+	Assert(t).IsTrue(anotherDSData.Disabled, "Expected daemon set to be disabled")
+
+	if _, ok := firstFarm.children[anotherDSData.ID]; ok {
+		Assert(t).IsTrue(firstFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be disabled in only one farm")
+		if _, ok := secondFarm.children[anotherDSData.ID]; ok {
+			Assert(t).IsFalse(secondFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be disabled in only one farm")
+		}
+	} else if _, ok := secondFarm.children[anotherDSData.ID]; ok {
+		Assert(t).IsTrue(secondFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be disabled in only one farm")
+		if _, ok := firstFarm.children[anotherDSData.ID]; ok {
+			Assert(t).IsFalse(firstFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be disabled in only one farm")
+		}
+	} else {
+		t.Fatalf("Expected daemon set to be disabled in only one farm")
+	}
+
+	// Verify node2 is scheduled
+	labeled, err = applicator.GetLabels(labels.POD, "node2/testPod")
+	Assert(t).IsNil(err, "Expected no error getting labels")
+	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	dsID = labeled.Labels.Get(DSIDLabel)
+	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
+
+	//
+	// Enable a daemon set should make the dameon set resume its regular activities
+	//
+	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		dsToUpdate.Disabled = false
+		return dsToUpdate, nil
+	}
+	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	Assert(t).IsNil(err, "Expected no error mutating daemon set")
+	waitForFarm()
+
+	// Verify it is enabled
+	anotherDSData, _, err = dsStore.Get(anotherDSData.ID)
+	Assert(t).IsNil(err, "Expected no error getting daemon set")
+	Assert(t).IsFalse(anotherDSData.Disabled, "Expected daemon set to be enabled")
+	if _, ok := firstFarm.children[anotherDSData.ID]; ok {
+		Assert(t).IsFalse(firstFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be enabled in only one farm")
+		if _, ok := secondFarm.children[anotherDSData.ID]; ok {
+			Assert(t).IsTrue(secondFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be enabled in only one farm")
+		}
+	} else if _, ok := secondFarm.children[anotherDSData.ID]; ok {
+		Assert(t).IsFalse(secondFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be enabled in only one farm")
+		if _, ok := firstFarm.children[anotherDSData.ID]; ok {
+			Assert(t).IsTrue(firstFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be enabled in only one farm")
+		}
+	} else {
+		t.Fatalf("Expected daemon set to be disabled in only one farm")
+	}
+
+	// Verify node2 is unscheduled
+	labeled, err = applicator.GetLabels(labels.POD, "node2/testPod")
+	Assert(t).IsNil(err, "Expected no error getting labels")
+	Assert(t).IsFalse(labeled.Labels.Has(DSIDLabel), "Expected pod not to have a dsID label")
 }

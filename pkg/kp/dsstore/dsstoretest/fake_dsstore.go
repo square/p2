@@ -18,12 +18,6 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
-const (
-	created = "created"
-	updated = "updated"
-	deleted = "deleted"
-)
-
 type FakeWatchedDaemonSet struct {
 	DaemonSet *fields.DaemonSet
 	Operation string
@@ -32,20 +26,18 @@ type FakeWatchedDaemonSet struct {
 
 // Used for unit testing
 type FakeDSStore struct {
-	daemonSets   map[fields.ID]fields.DaemonSet
-	watchers     map[fields.ID]chan FakeWatchedDaemonSet
-	watchersLock sync.Locker
-	logger       logging.Logger
+	daemonSets map[fields.ID]fields.DaemonSet
+	writeLock  sync.Locker
+	logger     logging.Logger
 }
 
 var _ dsstore.Store = &FakeDSStore{}
 
 func NewFake() *FakeDSStore {
 	return &FakeDSStore{
-		daemonSets:   make(map[fields.ID]fields.DaemonSet),
-		watchers:     make(map[fields.ID]chan FakeWatchedDaemonSet),
-		watchersLock: &sync.Mutex{},
-		logger:       logging.DefaultLogger,
+		daemonSets: make(map[fields.ID]fields.DaemonSet),
+		writeLock:  &sync.Mutex{},
+		logger:     logging.DefaultLogger,
 	}
 }
 
@@ -66,40 +58,25 @@ func (s *FakeDSStore) Create(
 		NodeSelector: nodeSelector,
 		PodID:        podID,
 	}
-	s.daemonSets[id] = ds
 
-	s.watchersLock.Lock()
-	defer s.watchersLock.Unlock()
+	s.writeLock.Lock()
+	defer s.writeLock.Unlock()
 
-	if _, ok := s.watchers[id]; ok {
+	if _, ok := s.daemonSets[id]; ok {
 		return ds, util.Errorf("Daemon set uuid collision on id: %v", id)
 	}
-
-	watched := FakeWatchedDaemonSet{
-		DaemonSet: &ds,
-		Operation: created,
-		Err:       nil,
-	}
-	s.watchers[id] = make(chan FakeWatchedDaemonSet, 1)
-	s.watchers[id] <- watched
+	s.daemonSets[id] = ds
 
 	return ds, nil
 }
 
 func (s *FakeDSStore) Delete(id fields.ID) error {
-	if ds, ok := s.daemonSets[id]; ok {
-		s.watchersLock.Lock()
-		defer s.watchersLock.Unlock()
-		if watcher, ok := s.watchers[id]; ok {
-			delete(s.daemonSets, id)
-			watched := FakeWatchedDaemonSet{
-				DaemonSet: &ds,
-				Operation: deleted,
-				Err:       nil,
-			}
-			watcher <- watched
-			return nil
-		}
+	s.writeLock.Lock()
+	defer s.writeLock.Unlock()
+
+	if _, ok := s.daemonSets[id]; ok {
+		delete(s.daemonSets, id)
+		return nil
 	}
 	return dsstore.NoDaemonSet
 }
@@ -130,6 +107,9 @@ func (s *FakeDSStore) MutateDS(
 	id fields.ID,
 	mutator func(fields.DaemonSet) (fields.DaemonSet, error),
 ) (fields.DaemonSet, error) {
+	s.writeLock.Lock()
+	defer s.writeLock.Unlock()
+
 	ds, _, err := s.Get(id)
 	if err != nil {
 		return fields.DaemonSet{}, err
@@ -141,24 +121,6 @@ func (s *FakeDSStore) MutateDS(
 	}
 
 	s.daemonSets[id] = ds
-
-	s.watchersLock.Lock()
-	defer s.watchersLock.Unlock()
-	if watcher, ok := s.watchers[id]; ok {
-		watched := FakeWatchedDaemonSet{
-			DaemonSet: &ds,
-			Operation: updated,
-			Err:       nil,
-		}
-		// In case you mutate more than once and no one reads from the channel
-		// this will prevent a deadlock, if no one reads from the update, replacing
-		// the data in the channel will still keep the functionality of the fake watch
-		select {
-		case <-watcher:
-			watcher <- watched
-		case watcher <- watched:
-		}
-	}
 
 	return ds, nil
 }
@@ -174,22 +136,15 @@ func (s *FakeDSStore) Disable(id fields.ID) (fields.DaemonSet, error) {
 
 	// Delete the daemon set because there was an error during mutation
 	if err != nil {
-		s.logger.Errorf("Error occured when trying to disable daemon set in store: %v, attempting to delete now", err)
-		err = s.Delete(id)
-		// If you tried to delete it and there was an error, this is fatal
-		if err != nil {
-			return fields.DaemonSet{}, err
-		}
-		s.logger.Infof("Deletion was successful for the daemon set: '%s' in store", id)
-		return fields.DaemonSet{}, nil
+		return newDS, util.Errorf("Error occured when trying to disable daemon set in store: %v", err)
 	}
 
 	s.logger.Infof("Daemon set '%s' was successfully disabled in store", id)
 	return newDS, nil
 }
 
-func (s *FakeDSStore) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets {
-	outCh := make(chan dsstore.WatchedDaemonSets)
+func (s *FakeDSStore) WatchList(quitCh <-chan struct{}) <-chan []fields.DaemonSet {
+	outCh := make(chan []fields.DaemonSet)
 
 	go func() {
 		for {
@@ -199,35 +154,14 @@ func (s *FakeDSStore) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemon
 			default:
 			}
 
-			s.watchersLock.Lock()
-			outgoingChanges := dsstore.WatchedDaemonSets{}
-			var watchersToDelete []fields.ID
-			// Reads in new changes that are sent to FakeDSStore.watchers
-			for _, ch := range s.watchers {
-				select {
-				case watched := <-ch:
-					switch watched.Operation {
-					case created:
-						outgoingChanges.Created = append(outgoingChanges.Created, watched.DaemonSet)
-					case updated:
-						outgoingChanges.Updated = append(outgoingChanges.Updated, watched.DaemonSet)
-					case deleted:
-						outgoingChanges.Deleted = append(outgoingChanges.Deleted, watched.DaemonSet)
-						watchersToDelete = append(watchersToDelete, watched.DaemonSet.ID)
-					default:
-					}
-				default:
-				}
+			dsList, err := s.List()
+			if err != nil {
+				s.logger.Errorf("Encountered an error in WatchList: '%v'", err)
 			}
-			// Remove deleted watchers
-			for _, id := range watchersToDelete {
-				delete(s.watchers, id)
-			}
-			s.watchersLock.Unlock()
 
 			// Blocks until the receiver quits or reads outCh's previous output
 			select {
-			case outCh <- outgoingChanges:
+			case outCh <- dsList:
 			case <-quitCh:
 				return
 			}
@@ -235,6 +169,95 @@ func (s *FakeDSStore) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemon
 	}()
 
 	return outCh
+}
+
+func (s *FakeDSStore) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets {
+	inCh := s.WatchList(quitCh)
+	return s.watchDiffDaemonSets(inCh, quitCh)
+}
+
+func (s *FakeDSStore) watchDiffDaemonSets(inCh <-chan []fields.DaemonSet, quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets {
+	outCh := make(chan dsstore.WatchedDaemonSets)
+
+	go func() {
+		defer close(outCh)
+		oldDSs := make(map[fields.ID]fields.DaemonSet)
+
+		for {
+			var results []fields.DaemonSet
+			select {
+			case <-quitCh:
+				return
+			case val, ok := <-inCh:
+				if !ok {
+					// channel closed
+					return
+				}
+				results = val
+			}
+
+			newDSs := make(map[fields.ID]fields.DaemonSet)
+			for _, ds := range results {
+				newDSs[ds.ID] = ds
+			}
+
+			outgoingChanges := dsstore.WatchedDaemonSets{}
+			for id, ds := range newDSs {
+				copyDS := ds
+
+				if _, ok := oldDSs[id]; !ok {
+					// If it was not observed, then it was created
+					outgoingChanges.Created = append(outgoingChanges.Created, &copyDS)
+					oldDSs[id] = copyDS
+
+				} else if !dsEquals(oldDSs[id], copyDS) {
+					// If they are not equal, update them
+					outgoingChanges.Updated = append(outgoingChanges.Updated, &copyDS)
+					oldDSs[id] = copyDS
+				}
+				// Otherwise no changes need to be made
+			}
+
+			for id, ds := range oldDSs {
+				copyDS := ds
+				if _, ok := newDSs[id]; !ok {
+					outgoingChanges.Deleted = append(outgoingChanges.Deleted, &copyDS)
+					delete(oldDSs, id)
+				}
+			}
+
+			select {
+			case <-quitCh:
+				return
+			case outCh <- outgoingChanges:
+			}
+		}
+	}()
+
+	return outCh
+}
+
+func dsEquals(firstDS fields.DaemonSet, secondDS fields.DaemonSet) bool {
+	if (firstDS.ID != secondDS.ID) ||
+		(firstDS.Disabled != secondDS.Disabled) ||
+		(firstDS.MinHealth != secondDS.MinHealth) ||
+		(firstDS.Name != secondDS.Name) ||
+		(firstDS.NodeSelector.String() != secondDS.NodeSelector.String()) ||
+		(firstDS.PodID != secondDS.PodID) {
+		return false
+	}
+
+	firstSHA, err := firstDS.Manifest.SHA()
+	if err != nil {
+		return false
+	}
+
+	secondSHA, err := secondDS.Manifest.SHA()
+	if err != nil {
+		return false
+	}
+
+	return firstSHA == secondSHA
 }
 
 func (s *FakeDSStore) LockForOwnership(dsID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
