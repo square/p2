@@ -88,7 +88,7 @@ func (subsys Subsystems) SetCPU(name string, cpus int) error {
 		quota = -1
 	}
 
-	err := os.Mkdir(filepath.Join(subsys.CPU, name), 0755)
+	err := os.MkdirAll(filepath.Join(subsys.CPU, name), 0755)
 	if err != nil && !os.IsExist(err) {
 		return err
 	}
@@ -132,7 +132,7 @@ func (subsys Subsystems) SetMemory(name string, bytes int) error {
 		hardLimit = -1
 	}
 
-	err := os.Mkdir(filepath.Join(subsys.Memory, name), 0755)
+	err := os.MkdirAll(filepath.Join(subsys.Memory, name), 0755)
 	if err != nil && !os.IsExist(err) {
 		return err
 	}
