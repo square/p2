@@ -1,7 +1,11 @@
 package podstatus
 
 import (
+	"encoding/json"
 	"time"
+
+	"github.com/square/p2/pkg/kp/statusstore"
+	"github.com/square/p2/pkg/util"
 )
 
 type FinishState string
@@ -42,4 +46,24 @@ type ServiceStatus struct {
 // Encapsulates the state of all services running in a pod.
 type PodStatus struct {
 	ServiceStatus []ServiceStatus `json:"service_status"`
+}
+
+func statusToPodStatus(rawStatus statusstore.Status) (PodStatus, error) {
+	var podStatus PodStatus
+
+	err := json.Unmarshal(rawStatus.Bytes(), &podStatus)
+	if err != nil {
+		return PodStatus{}, util.Errorf("Could not unmarshal raw status as pod status: %s", err)
+	}
+
+	return podStatus, nil
+}
+
+func podStatusToStatus(podStatus PodStatus) (statusstore.Status, error) {
+	bytes, err := json.Marshal(podStatus)
+	if err != nil {
+		return statusstore.Status{}, util.Errorf("Could not marshal pod status as json bytes: %s", err)
+	}
+
+	return statusstore.Status(bytes), nil
 }
