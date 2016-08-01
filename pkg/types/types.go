@@ -4,11 +4,89 @@
 package types
 
 import (
+	"path"
+	"strings"
+
+	"github.com/square/p2/pkg/util"
+
+	"github.com/pborman/uuid"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
 type NodeName string
+
+// Refers to the id: key in a pod manifest, i.e. the name of the application
+// running in the pod.  There may be multiple copies (pods) of a given pod id
+// running at a given time
 type PodID string
+
+// A unique identifier for each pod (instance). At the time of defining this
+// type a PodUniqueKey is is the hostname of the node on which the pod is running
+// and the pod id joined with a slash, e.g. "example.com/mysql" if a pod with id
+// "mysql" is running on a node "example.com".
+//
+// P2 will begin using uuids instead of the previous format to better support
+// running multiple pods with the same pod id on the same node. Certain new
+// functionality will only be supported for pods with UUID unique keys, hence
+// the need for the bool.
+type PodUniqueKey struct {
+	// The actual key, e.g. "example.com/mysql" under the old format or a uuid
+	// under the new format
+	ID string
+
+	// Tracks whether the key is a uuid or the node/pod_id concatenation. Some
+	// features will require isUUID to be true.
+	IsUUID bool
+}
+
+func NewPodUUID() PodUniqueKey {
+	return PodUniqueKey{
+		ID:     uuid.New(),
+		IsUUID: true,
+	}
+}
+
+// Deduces a PodUniqueKey from a consul path. This is useful as pod keys are transitioned
+// from using node name and pod ID to using UUIDs.
+// Input is expected to have 3 '/' separated sections, e.g. 'intent/<node>/<pod_id>' or
+// 'intent/<node>/<pod_uuid>' if the prefix is "intent" or "reality"
+//
+// /hooks is also a valid pod prefix and the key under it will not be a uuid.
+func PodUniqueKeyFromConsulPath(consulPath string) (PodUniqueKey, error) {
+	keyParts := strings.Split(consulPath, "/")
+	if len(keyParts) == 0 {
+		return PodUniqueKey{}, util.Errorf("Malformed key '%s'", consulPath)
+	}
+
+	if keyParts[0] == "hooks" {
+		return PodUniqueKey{
+			ID:     consulPath,
+			IsUUID: false,
+		}, nil
+	}
+
+	if len(keyParts) != 3 {
+		return PodUniqueKey{}, util.Errorf("Malformed key '%s'", consulPath)
+	}
+
+	// Unforunately we can't use kp.INTENT_TREE and kp.REALITY_TREE here because of an import cycle
+	if keyParts[0] != "intent" && keyParts[0] != "reality" {
+		return PodUniqueKey{}, util.Errorf("Unrecognized key tree '%s' (must be intent or reality)", keyParts[0])
+	}
+
+	// Parse() returns nil if the input string does not match the uuid spec
+	if uuid.Parse(keyParts[2]) != nil {
+		return PodUniqueKey{
+			ID:     keyParts[2],
+			IsUUID: true,
+		}, nil
+	}
+
+	return PodUniqueKey{
+		ID:     path.Join(keyParts[1], keyParts[2]),
+		IsUUID: false,
+	}, nil
+}
 
 func (n NodeName) String() string {
 	return string(n)
