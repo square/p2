@@ -28,6 +28,29 @@ func TestSetAndGetStatus(t *testing.T) {
 	}
 }
 
+func TestEmptyStringNotAllowed(t *testing.T) {
+	status := Status([]byte("some_status"))
+	store := storeWithFakeKV()
+
+	// Attempt to set status with empty resource type
+	err := store.SetStatus("", "some_id", "some_namespace", status)
+	if err == nil {
+		t.Error("Should have gotten an error using an empty resource type")
+	}
+
+	// Attempt to set status with empty id type
+	err = store.SetStatus(PC, "", "some_namespace", status)
+	if err == nil {
+		t.Error("Should have gotten an error using an empty resource ID")
+	}
+
+	// Attempt to set status with empty namespace
+	err = store.SetStatus(PC, "some_id", "", status)
+	if err == nil {
+		t.Error("Should have gotten an error using an empty namespace")
+	}
+}
+
 func TestDeleteStatus(t *testing.T) {
 	status := Status([]byte("some_status"))
 	store := storeWithFakeKV()

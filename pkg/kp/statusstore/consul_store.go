@@ -44,12 +44,16 @@ func IsNoStatus(err error) bool {
 }
 
 func (s *consulStore) SetStatus(t ResourceType, id ResourceID, namespace Namespace, status Status) error {
-	key := namespacedResourcePath(t, id, namespace)
+	key, err := namespacedResourcePath(t, id, namespace)
+	if err != nil {
+		return err
+	}
+
 	pair := &api.KVPair{
 		Key:   key,
 		Value: status.Bytes(),
 	}
-	_, err := s.kv.Put(pair, nil)
+	_, err = s.kv.Put(pair, nil)
 	if err != nil {
 		return consulutil.NewKVError("put", key, err)
 	}
@@ -58,7 +62,11 @@ func (s *consulStore) SetStatus(t ResourceType, id ResourceID, namespace Namespa
 }
 
 func (s *consulStore) GetStatus(t ResourceType, id ResourceID, namespace Namespace) (Status, error) {
-	key := namespacedResourcePath(t, id, namespace)
+	key, err := namespacedResourcePath(t, id, namespace)
+	if err != nil {
+		return nil, err
+	}
+
 	pair, _, err := s.kv.Get(key, nil)
 	if err != nil {
 		return nil, consulutil.NewKVError("get", key, err)
@@ -72,8 +80,12 @@ func (s *consulStore) GetStatus(t ResourceType, id ResourceID, namespace Namespa
 }
 
 func (s *consulStore) DeleteStatus(t ResourceType, id ResourceID, namespace Namespace) error {
-	key := namespacedResourcePath(t, id, namespace)
-	_, err := s.kv.Delete(key, nil)
+	key, err := namespacedResourcePath(t, id, namespace)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.kv.Delete(key, nil)
 	if err != nil {
 		return consulutil.NewKVError("delete", key, err)
 	}
@@ -82,8 +94,12 @@ func (s *consulStore) DeleteStatus(t ResourceType, id ResourceID, namespace Name
 }
 
 func (s *consulStore) GetAllStatusForResource(t ResourceType, id ResourceID) (map[Namespace]Status, error) {
+	prefix, err := resourcePath(t, id)
+	if err != nil {
+		return nil, err
+	}
+
 	ret := make(map[Namespace]Status)
-	prefix := resourcePath(t, id)
 	pairs, _, err := s.kv.List(prefix, nil)
 	if err != nil {
 		return nil, consulutil.NewKVError("list", prefix, err)
@@ -105,8 +121,12 @@ func (s *consulStore) GetAllStatusForResource(t ResourceType, id ResourceID) (ma
 }
 
 func (s *consulStore) GetAllStatusForResourceType(t ResourceType) (map[ResourceID]map[Namespace]Status, error) {
+	prefix, err := resourceTypePath(t)
+	if err != nil {
+		return nil, err
+	}
+
 	ret := make(map[ResourceID]map[Namespace]Status)
-	prefix := resourceTypePath(t)
 	pairs, _, err := s.kv.List(prefix, nil)
 	if err != nil {
 		return nil, consulutil.NewKVError("list", prefix, err)
@@ -132,16 +152,37 @@ func (s *consulStore) GetAllStatusForResourceType(t ResourceType) (map[ResourceI
 	return ret, nil
 }
 
-func resourceTypePath(t ResourceType) string {
-	return path.Join(statusTree, t.String())
+func resourceTypePath(t ResourceType) (string, error) {
+	if t == "" {
+		return "", util.Errorf("Resource type cannot be blank")
+	}
+	return path.Join(statusTree, t.String()), nil
 }
 
-func resourcePath(t ResourceType, id ResourceID) string {
-	return path.Join(resourceTypePath(t), id.String())
+func resourcePath(t ResourceType, id ResourceID) (string, error) {
+	if id == "" {
+		return "", util.Errorf("resource ID cannot be blank")
+	}
+
+	typePath, err := resourceTypePath(t)
+	if err != nil {
+		return "", err
+	}
+
+	return path.Join(typePath, id.String()), nil
 }
 
-func namespacedResourcePath(t ResourceType, id ResourceID, namespace Namespace) string {
-	return path.Join(resourcePath(t, id), namespace.String())
+func namespacedResourcePath(t ResourceType, id ResourceID, namespace Namespace) (string, error) {
+	if namespace == "" {
+		return "", util.Errorf("Blank namespace not allowed")
+	}
+
+	rPath, err := resourcePath(t, id)
+	if err != nil {
+		return "", err
+	}
+
+	return path.Join(rPath, namespace.String()), nil
 }
 
 // in consul, the key for a status looks like
