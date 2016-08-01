@@ -416,8 +416,8 @@
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v2",
-			"Comment": "v2.1.11",
-			"Rev": "8cccfa8eb2e3183254457fb1749b2667fbc364c7"
+			"Comment": "v2.2.2",
+			"Rev": "e5900212cbf65b181d3d8e08308ef06a01d117cf"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
