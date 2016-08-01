@@ -8,7 +8,7 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/DataDog/datadog-go/statsd",
-			"Rev": "b050cd8f4d7c394545fd7d966c8e2909ce89d552"
+			"Rev": "cc2f4770f4d61871e19bfee967bc767fe730b0d9"
 		},
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
