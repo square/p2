@@ -1,7 +1,10 @@
 package kp
 
 import (
+	"fmt"
 	"testing"
+
+	"github.com/pborman/uuid"
 )
 
 func TestGetHealthNoEntry(t *testing.T) {
@@ -47,5 +50,73 @@ func TestGetHealthWithEntry(t *testing.T) {
 	}
 	if watchRes.Service != watch.Service {
 		t.Fatalf("watchRes and watch Service did not match. GetHealth failed: %#v", watchRes)
+	}
+}
+
+func TestPodUniqueKeyFromConsulPath(t *testing.T) {
+	type expectation struct {
+		path string
+		err  bool
+		uuid bool
+		str  string
+	}
+
+	uuid := uuid.New()
+	expectations := []expectation{
+		{
+			path: "intent/example.com/mysql",
+			err:  false,
+			uuid: false,
+			str:  "example.com/mysql",
+		},
+		{
+			path: "reality/example.com/mysql",
+			err:  false,
+			uuid: false,
+			str:  "example.com/mysql",
+		},
+		{
+			path: "labels/example.com/mysql",
+			err:  true,
+		},
+		{
+			path: "intent/example/com/mysql",
+			err:  true,
+		},
+		{
+			path: "hooks/all_hooks",
+			err:  false,
+			uuid: false,
+			str:  "hooks/all_hooks",
+		},
+		{
+			path: fmt.Sprintf("intent/example.com/%s", uuid),
+			uuid: true,
+			str:  uuid,
+			err:  false,
+		},
+	}
+
+	for _, expectation := range expectations {
+		podUniqueKey, err := PodUniqueKeyFromConsulPath(expectation.path)
+		if expectation.err {
+			if err == nil {
+				t.Errorf("Expected an error for key '%s'", expectation.path)
+			}
+			continue
+		}
+
+		if err != nil {
+			t.Error("Unexpected error for key '%s': %s", expectation.path, err)
+			continue
+		}
+
+		if podUniqueKey.IsUUID != expectation.uuid {
+			t.Errorf("Expected IsUUID() to be %t, was %t", expectation.uuid, podUniqueKey.IsUUID)
+		}
+
+		if podUniqueKey.ID != expectation.str {
+			t.Errorf("Expected key string to be %s, was %t", expectation.str, podUniqueKey.ID)
+		}
 	}
 }

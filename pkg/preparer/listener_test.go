@@ -94,7 +94,6 @@ func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
 	Assert(t).IsNil(err, "should have generated manifest from signed bytes")
 
 	fakeIntent := fakeStoreWithManifests(kp.ManifestResult{
-		Path:     path.Join(string(hookPrefix), "users"),
 		Manifest: podManifest,
 	})
 

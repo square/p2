@@ -4,11 +4,6 @@
 package types
 
 import (
-	"path"
-	"strings"
-
-	"github.com/square/p2/pkg/util"
-
 	"github.com/pborman/uuid"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
@@ -44,48 +39,6 @@ func NewPodUUID() PodUniqueKey {
 		ID:     uuid.New(),
 		IsUUID: true,
 	}
-}
-
-// Deduces a PodUniqueKey from a consul path. This is useful as pod keys are transitioned
-// from using node name and pod ID to using UUIDs.
-// Input is expected to have 3 '/' separated sections, e.g. 'intent/<node>/<pod_id>' or
-// 'intent/<node>/<pod_uuid>' if the prefix is "intent" or "reality"
-//
-// /hooks is also a valid pod prefix and the key under it will not be a uuid.
-func PodUniqueKeyFromConsulPath(consulPath string) (PodUniqueKey, error) {
-	keyParts := strings.Split(consulPath, "/")
-	if len(keyParts) == 0 {
-		return PodUniqueKey{}, util.Errorf("Malformed key '%s'", consulPath)
-	}
-
-	if keyParts[0] == "hooks" {
-		return PodUniqueKey{
-			ID:     consulPath,
-			IsUUID: false,
-		}, nil
-	}
-
-	if len(keyParts) != 3 {
-		return PodUniqueKey{}, util.Errorf("Malformed key '%s'", consulPath)
-	}
-
-	// Unforunately we can't use kp.INTENT_TREE and kp.REALITY_TREE here because of an import cycle
-	if keyParts[0] != "intent" && keyParts[0] != "reality" {
-		return PodUniqueKey{}, util.Errorf("Unrecognized key tree '%s' (must be intent or reality)", keyParts[0])
-	}
-
-	// Parse() returns nil if the input string does not match the uuid spec
-	if uuid.Parse(keyParts[2]) != nil {
-		return PodUniqueKey{
-			ID:     keyParts[2],
-			IsUUID: true,
-		}, nil
-	}
-
-	return PodUniqueKey{
-		ID:     path.Join(keyParts[1], keyParts[2]),
-		IsUUID: false,
-	}, nil
 }
 
 func (n NodeName) String() string {

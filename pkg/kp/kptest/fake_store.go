@@ -80,9 +80,18 @@ func (f *FakePodStore) ListPods(podPrefix kp.PodPrefix, hostname types.NodeName)
 		if key.podPrefix == podPrefix && key.hostname == hostname {
 			// TODO(mpuncel) make ManifestResult not contain the path, it's silly to have to do things like this
 			path := path.Join(string(podPrefix), hostname.String(), string(manifest.ID()))
+			uniqueKey, err := kp.PodUniqueKeyFromConsulPath(path)
+			if err != nil {
+				return nil, 0, err
+			}
+
 			res = append(res, kp.ManifestResult{
 				Manifest: manifest,
-				Path:     path,
+				PodLocation: types.PodLocation{
+					Node:  hostname,
+					PodID: manifest.ID(),
+				},
+				PodUniqueKey: uniqueKey,
 			})
 		}
 	}
@@ -96,9 +105,18 @@ func (f *FakePodStore) AllPods(podPrefix kp.PodPrefix) ([]kp.ManifestResult, tim
 			continue
 		}
 		path := path.Join(string(podPrefix), key.hostname.String(), string(manifest.ID()))
+		uniqueKey, err := kp.PodUniqueKeyFromConsulPath(path)
+		if err != nil {
+			return nil, 0, err
+		}
+
 		res = append(res, kp.ManifestResult{
 			Manifest: manifest,
-			Path:     path,
+			PodLocation: types.PodLocation{
+				Node:  key.hostname,
+				PodID: manifest.ID(),
+			},
+			PodUniqueKey: uniqueKey,
 		})
 	}
 	return res, 0, nil
