@@ -1,61 +1,84 @@
 package replication
 
 import (
+	"sync"
+
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/types"
-	"github.com/square/p2/pkg/util"
-
-	"sync"
 )
 
 type podHealth struct {
-	podId        types.PodID
-	health       checker.ConsulHealthChecker
-	healthAccess sync.Mutex
-	curHealth    map[types.NodeName]health.Result
-	hasResults   *sync.Cond
-	quit         chan struct{}
+	podId   types.PodID
+	checker checker.ConsulHealthChecker
+	quit    chan struct{}
+
+	cond      *sync.Cond // guards curHealth
+	curHealth map[types.NodeName]health.Result
 }
 
-func AggregateHealth(id types.PodID, checker checker.ConsulHealthChecker) podHealth {
-	p := podHealth{podId: id, health: checker, hasResults: sync.NewCond(&sync.Mutex{})}
-	p.hasResults.L.Lock()
+func AggregateHealth(id types.PodID, checker checker.ConsulHealthChecker) *podHealth {
+	p := &podHealth{
+		podId:   id,
+		checker: checker,
+		cond:    sync.NewCond(&sync.Mutex{}),
+	}
 	go p.beginWatch()
-	p.hasResults.Wait()
+
+	// Wait for first update
+	p.cond.L.Lock()
+	for p.curHealth == nil {
+		p.cond.Wait()
+	}
+	p.cond.L.Unlock()
+
 	return p
 }
 
 func (p *podHealth) beginWatch() {
+	// TODO: hook up error reporting
 	errCh := make(chan error)
-	quitCh := make(chan struct{})
+	go func() {
+		for range errCh {
+		}
+	}()
+
 	resultCh := make(chan map[types.NodeName]health.Result)
-	go p.health.WatchService(p.podId.String(), resultCh, errCh, quitCh)
+	go p.checker.WatchService(p.podId.String(), resultCh, errCh, p.quit)
+
+	// Always unblock AggregateHealth()
+	defer func() {
+		p.cond.L.Lock()
+		defer p.cond.L.Unlock()
+		if p.curHealth == nil {
+			p.curHealth = make(map[types.NodeName]health.Result)
+			p.cond.Broadcast()
+		}
+	}()
+
 	for {
 		select {
 		case <-p.quit:
-			close(quitCh)
-		case res := <-resultCh:
-			p.healthAccess.Lock()
-			p.hasResults.Broadcast()
+			return
+		case res, ok := <-resultCh:
+			if !ok {
+				return
+			}
+			p.cond.L.Lock()
+			p.cond.Broadcast()
 			p.curHealth = res
-			p.healthAccess.Unlock()
+			p.cond.L.Unlock()
 		}
 	}
 }
 
-func (p *podHealth) GetHealth(host types.NodeName) (health.Result, error) {
-	p.healthAccess.Lock()
-	defer p.healthAccess.Unlock()
-	res, ok := p.curHealth[host]
-	if !ok {
-		return health.Result{}, util.Errorf("%v does not have health currently", host)
-	}
-	return res, nil
+func (p *podHealth) GetHealth(host types.NodeName) (health.Result, bool) {
+	p.cond.L.Lock()
+	defer p.cond.L.Unlock()
+	h, ok := p.curHealth[host]
+	return h, ok
 }
 
 func (p *podHealth) Stop() {
-	p.healthAccess.Lock()
-	defer p.healthAccess.Unlock()
 	close(p.quit)
 }

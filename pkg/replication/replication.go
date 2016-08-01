@@ -257,7 +257,7 @@ func (r replication) handleRenewalErrors(session kp.Session, renewalErrCh chan e
 }
 
 // note: logging should be delegated somehow
-func (r replication) updateOne(node types.NodeName, done chan<- types.NodeName, quitCh <-chan struct{}, aggregateHealth podHealth) {
+func (r replication) updateOne(node types.NodeName, done chan<- types.NodeName, quitCh <-chan struct{}, aggregateHealth *podHealth) {
 	targetSHA, _ := r.manifest.SHA()
 	nodeLogger := r.logger.SubLogger(logrus.Fields{"node": node})
 	nodeLogger.WithField("sha", targetSHA).Infoln("Updating node")
@@ -317,17 +317,24 @@ func (r *replication) ensureInReality(node types.NodeName, quitCh <-chan struct{
 	}
 }
 
-func (r *replication) ensureHealthy(node types.NodeName, done chan<- types.NodeName, quitCh <-chan struct{}, nodeLogger logging.Logger, aggregateHealth podHealth) {
+func (r *replication) ensureHealthy(
+	node types.NodeName,
+	done chan<- types.NodeName,
+	quitCh <-chan struct{},
+	nodeLogger logging.Logger,
+	aggregateHealth *podHealth,
+) {
 	for {
 		select {
 		case <-quitCh:
 			return
 		case <-time.After(1 * time.Second):
-			res, err := aggregateHealth.GetHealth(node)
-			if err != nil {
-				nodeLogger.WithErrorAndFields(err, logrus.Fields{
+			res, ok := aggregateHealth.GetHealth(node)
+			if !ok {
+				nodeLogger.WithFields(logrus.Fields{
 					"node": node,
 				}).Errorln("Could not get health, retrying")
+				// Zero res should be treated like "critical"
 			}
 			id := res.ID
 			status := res.Status
