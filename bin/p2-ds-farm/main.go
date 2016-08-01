@@ -32,6 +32,8 @@ func SessionName() string {
 }
 
 func main() {
+	quitCh := make(chan struct{})
+
 	_, consulOpts := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(consulOpts)
 	logger := logging.NewLogger(logrus.Fields{})
@@ -46,13 +48,11 @@ func main() {
 		LockDelay: 5 * time.Second,
 		Behavior:  api.SessionBehaviorDelete,
 		TTL:       "15s",
-	}, client, sessions, nil, logger)
+	}, client, sessions, quitCh, logger)
 	pub := stream.NewStringValuePublisher(sessions, "")
-	rcSub := pub.Subscribe(nil)
+	dsSub := pub.Subscribe(nil)
 
-	dsf := ds_farm.NewFarm(kpStore, dsStore, applicator, rcSub.Chan(), logger, nil, &healthChecker)
-
-	quitCh := make(chan struct{})
+	dsf := ds_farm.NewFarm(kpStore, dsStore, applicator, dsSub.Chan(), logger, nil, &healthChecker)
 
 	go func() {
 		// clear lock immediately on ctrl-C
