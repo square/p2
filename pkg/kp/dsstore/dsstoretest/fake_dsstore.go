@@ -1,7 +1,7 @@
 package dsstoretest
 
 import (
-	"fmt"
+	"path"
 	"sync"
 
 	"github.com/square/p2/pkg/kp"
@@ -17,6 +17,8 @@ import (
 	"github.com/square/p2/pkg/types"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
+
+const dsTree string = "daemon_sets"
 
 type FakeWatchedDaemonSet struct {
 	DaemonSet *fields.DaemonSet
@@ -260,7 +262,26 @@ func dsEquals(firstDS fields.DaemonSet, secondDS fields.DaemonSet) bool {
 	return firstSHA == secondSHA
 }
 
+func (s *FakeDSStore) dsPath(dsID fields.ID) (string, error) {
+	if dsID == "" {
+		return "", util.Errorf("Path requested for empty DS id")
+	}
+	return path.Join(dsTree, dsID.String()), nil
+}
+
+func (s *FakeDSStore) dsLockPath(dsID fields.ID) (string, error) {
+	dsPath, err := s.dsPath(dsID)
+	if err != nil {
+		return "", err
+	}
+	return path.Join(consulutil.LOCK_TREE, dsPath), nil
+}
+
 func (s *FakeDSStore) LockForOwnership(dsID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
-	key := fmt.Sprintf("%s/%s", dsID, "ownership_lock")
-	return session.Lock(key)
+	lockPath, err := s.dsLockPath(dsID)
+	if err != nil {
+		return nil, err
+	}
+	s.logger.Logger.Infof("Locking daemon set on the following path: '%v'", lockPath)
+	return session.Lock(lockPath)
 }
