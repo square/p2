@@ -320,24 +320,22 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 			}
 
 			// If the daemon set contends with another daemon set, disable it
-			if _, ok := dsf.children[dsFields.ID]; ok {
-				dsIDContended, isContended, err := dsf.dsContends(dsFields)
+			dsIDContended, isContended, err := dsf.dsContends(dsFields)
+			if err != nil {
+				dsf.logger.Errorf("Error occurred when trying to check for daemon set contention: %v", err)
+				continue
+			}
+
+			if isContended {
+				dsf.logger.Errorf("Updated daemon set '%s' contends with %s", dsFields.ID, dsIDContended)
+				newDS, err := dsf.dsStore.Disable(dsFields.ID)
 				if err != nil {
-					dsf.logger.Errorf("Error occurred when trying to check for daemon set contention: %v", err)
+					dsf.logger.Errorf("Error occurred when trying to disable daemon set: %v", err)
 					continue
 				}
-
-				if isContended {
-					dsf.logger.Errorf("Updated daemon set '%s' contends with %s", dsFields.ID, dsIDContended)
-					newDS, err := dsf.dsStore.Disable(dsFields.ID)
-					if err != nil {
-						dsf.logger.Errorf("Error occurred when trying to disable daemon set: %v", err)
-						continue
-					}
-					dsf.children[newDS.ID].updatedCh <- &newDS
-				} else {
-					dsf.children[dsFields.ID].updatedCh <- dsFields
-				}
+				dsf.children[newDS.ID].updatedCh <- &newDS
+			} else {
+				dsf.children[dsFields.ID].updatedCh <- dsFields
 			}
 		}
 	}
@@ -347,9 +345,11 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 		for _, dsFields := range changes.Deleted {
 			dsf.logger.Infof("%v", *dsFields)
 
+			var ok bool
+			var child *childDS
 			dsLogger := dsf.makeDSLogger(*dsFields)
 
-			if _, ok := dsf.children[dsFields.ID]; !ok {
+			if child, ok = dsf.children[dsFields.ID]; !ok {
 				_, err := dsf.dsStore.LockForOwnership(dsFields.ID, dsf.session)
 				if _, ok := err.(consulutil.AlreadyLockedError); ok {
 					dsf.logger.Infof("Lock on daemon set '%v' was already acquired by another farm", dsFields.ID)
@@ -365,18 +365,16 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 				dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
 			}
 
-			if child, ok := dsf.children[dsFields.ID]; ok {
-				select {
-				case <-quitCh:
-					return
-				case err := <-child.errCh:
-					if err != nil {
-						dsf.logger.Errorf("Error occurred when deleting spawned daemon set '%v': %v", dsFields, err)
-					}
-					dsf.closeChild(dsFields.ID)
-				case child.deletedCh <- dsFields:
-					dsf.closeChild(dsFields.ID)
+			select {
+			case <-quitCh:
+				return
+			case err := <-child.errCh:
+				if err != nil {
+					dsf.logger.Errorf("Error occurred when deleting spawned daemon set '%v': %v", dsFields, err)
 				}
+				dsf.closeChild(dsFields.ID)
+			case child.deletedCh <- dsFields:
+				dsf.closeChild(dsFields.ID)
 			}
 		}
 	}
