@@ -14,10 +14,27 @@ type FakeKV struct {
 	mu      sync.Mutex
 }
 
+func NewKVWithEntries(entries map[string]*api.KVPair) FakeKV {
+	if entries == nil {
+		entries = make(map[string]*api.KVPair)
+	}
+
+	return FakeKV{
+		Entries: entries,
+	}
+}
+
 func (f FakeKV) Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.Entries[key], nil, nil
+}
+
+func (f FakeKV) Put(pair *api.KVPair, q *api.WriteOptions) (*api.WriteMeta, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Entries[pair.Key] = pair
+	return nil, nil
 }
 
 func (f FakeKV) List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
@@ -43,8 +60,16 @@ func (f FakeKV) CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, e
 	return true, nil, nil
 }
 func (f FakeKV) Delete(key string, w *api.WriteOptions) (*api.WriteMeta, error) {
-	return nil, util.Errorf("Not implemented")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.Entries[key]; ok {
+		delete(f.Entries, key)
+	} else {
+		return nil, util.Errorf("Key '%s' not found, could not be deleted", key)
+	}
+
+	return nil, nil
 }
 func (f FakeKV) Acquire(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
-	return false, nil, util.Errorf("Not implemented")
+	panic("Not implemented")
 }
