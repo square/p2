@@ -297,7 +297,7 @@ func (ds *daemonSet) addPods() error {
 	// Get the difference in nodes that we need to schedule on and then sort them
 	// for deterministic ordering
 	toScheduleSorted := types.NewNodeSet(eligible...).Difference(types.NewNodeSet(currentNodes...)).ListNodes()
-	ds.logger.NoFields().Infof("Need to schedule %d nodes", len(toScheduleSorted))
+	ds.logger.NoFields().Infof("Need to label %d nodes", len(toScheduleSorted))
 
 	for _, node := range toScheduleSorted {
 		err := ds.labelPod(node)
@@ -306,6 +306,7 @@ func (ds *daemonSet) addPods() error {
 		}
 	}
 
+	ds.logger.Infof("Need to schedule %v nodes", len(currentNodes))
 	if len(currentNodes) > 0 {
 		return ds.PublishToReplication()
 	}
@@ -341,6 +342,7 @@ func (ds *daemonSet) removePods() error {
 		}
 	}
 
+	ds.logger.Infof("Need to schedule %v nodes", len(currentNodes))
 	if len(currentNodes) > 0 {
 		return ds.PublishToReplication()
 	}
@@ -494,6 +496,7 @@ func (ds *daemonSet) CancelReplication() {
 
 	if ds.currentReplication != nil {
 		ds.currentReplication.Cancel()
+		ds.logger.Info("Replication cancelled")
 		ds.currentReplication = nil
 	}
 }
