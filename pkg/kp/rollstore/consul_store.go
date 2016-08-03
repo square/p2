@@ -60,7 +60,7 @@ type consulStore struct {
 
 var _ Store = consulStore{}
 
-func NewConsul(c *api.Client, logger *logging.Logger) Store {
+func NewConsul(c consulutil.ConsulClient, logger *logging.Logger) Store {
 	if logger == nil {
 		logger = &logging.DefaultLogger
 	}

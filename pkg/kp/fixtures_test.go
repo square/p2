@@ -4,20 +4,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/consul/api"
+	"github.com/square/p2/pkg/kp/consulutil"
 
-	"github.com/square/p2/pkg/consultest"
+	"github.com/hashicorp/consul/api"
 )
 
 type ConsulTestFixture struct {
-	consultest.Fixture
+	consulutil.Fixture
 	Store Store
 }
 
 // Create a new test fixture that spins up a local Consul server.
 func NewConsulTestFixture(t *testing.T) *ConsulTestFixture {
 	f := new(ConsulTestFixture)
-	f.Fixture = consultest.NewFixture(t)
+	f.Fixture = consulutil.NewFixture(t)
 	f.Store = NewConsulStore(f.Client)
 	return f
 }

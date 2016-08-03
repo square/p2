@@ -48,7 +48,7 @@ var (
 type consulHealthManager struct {
 	sessionPub *stream.StringValuePublisher // Publishes the current session
 	done       chan struct{}                // Close this to stop reporting health
-	client     *api.Client                  // Connection to the Consul agent
+	client     consulutil.ConsulClient      // Connection to the Consul agent
 	node       types.NodeName
 	logger     logging.Logger // Logger for health events
 }
@@ -176,7 +176,7 @@ type writeResult struct {
 //   B. Write the recent service state to Consul. At most one outstanding write will be
 //      in-flight at any time.
 func processHealthUpdater(
-	client *api.Client,
+	client consulutil.ConsulClient,
 	checksStream <-chan WatchResult,
 	sessionsStream <-chan string,
 	logger logging.Logger,

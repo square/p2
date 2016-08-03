@@ -7,14 +7,13 @@ import (
 
 	"github.com/hashicorp/consul/api"
 
-	"github.com/square/p2/pkg/consultest"
 	"github.com/square/p2/pkg/logging"
 )
 
 // A basic test of the ConsulSessionManager: create a session, then quit.
 func TestSessionBasics(t *testing.T) {
 	t.Parallel()
-	f := consultest.NewFixture(t)
+	f := NewFixture(t)
 	defer f.Stop()
 
 	sessions := make(chan string)

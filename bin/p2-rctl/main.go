@@ -176,7 +176,7 @@ func SessionName() string {
 // and terminates the program on failure
 type rctlParams struct {
 	httpClient *http.Client
-	baseClient *api.Client
+	baseClient consulutil.ConsulClient
 	rcs        rcstore.Store
 	rls        rollstore.Store
 	sched      scheduler.Scheduler

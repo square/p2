@@ -29,7 +29,7 @@ var SessionRetrySeconds = param.Int("session_retry_seconds", 5)
 //   logger:  Errors will be logged to this logger.
 func SessionManager(
 	config api.SessionEntry,
-	client *api.Client,
+	client ConsulClient,
 	output chan<- string,
 	done chan struct{},
 	logger logging.Logger,

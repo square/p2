@@ -75,7 +75,7 @@ func (e CASError) Error() string {
 
 var _ Store = &consulStore{}
 
-func NewConsul(client *api.Client, retries int) *consulStore {
+func NewConsul(client consulutil.ConsulClient, retries int) *consulStore {
 	return &consulStore{
 		retries:    retries,
 		applicator: labels.NewConsulApplicator(client, retries),

@@ -8,8 +8,6 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/hashicorp/consul/api"
-
-	"github.com/square/p2/pkg/consultest"
 )
 
 // PairRecord is a record of a single update to the Consul KV store
@@ -149,7 +147,7 @@ func testLogger(t *testing.T) chan<- error {
 // its prefix.
 func TestWatchPrefix(t *testing.T) {
 	t.Parallel()
-	f := consultest.NewFixture(t)
+	f := NewFixture(t)
 	defer f.Stop()
 
 	done := make(chan struct{})
@@ -211,7 +209,7 @@ func TestWatchPrefix(t *testing.T) {
 
 func TestWatchSingle(t *testing.T) {
 	t.Parallel()
-	f := consultest.NewFixture(t)
+	f := NewFixture(t)
 	defer f.Stop()
 
 	done := make(chan struct{})
@@ -453,7 +451,7 @@ func TestWatchNewKeysExistingData(t *testing.T) {
 
 func TestWatchDiff(t *testing.T) {
 	t.Parallel()
-	f := consultest.NewFixture(t)
+	f := NewFixture(t)
 	defer f.Stop()
 
 	done := make(chan struct{})

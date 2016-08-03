@@ -35,7 +35,6 @@ type Store interface {
 	GetServiceHealth(service string) (map[string]WatchResult, error)
 	WatchPod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
 	WatchPods(podPrefix PodPrefix, nodename types.NodeName, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult)
-	Ping() error
 	ListPods(podPrefix PodPrefix, nodename types.NodeName) ([]ManifestResult, time.Duration, error)
 	AllPods(podPrefix PodPrefix) ([]ManifestResult, time.Duration, error)
 	LockHolder(key string) (string, string, error)
@@ -97,10 +96,10 @@ func (r WatchResult) IsStale() bool {
 }
 
 type consulStore struct {
-	client *api.Client
+	client consulutil.ConsulClient
 }
 
-func NewConsulStore(client *api.Client) Store {
+func NewConsulStore(client consulutil.ConsulClient) Store {
 	return &consulStore{
 		client: client,
 	}
@@ -369,29 +368,6 @@ func (c consulStore) WatchPods(
 		case podChan <- manifests:
 		}
 	}
-}
-
-// Ping confirms that the store's Consul agent can be reached and it has a
-// leader. If the return is nil, then the store should be ready to accept
-// requests.
-//
-// If the return is non-nil, this typically indicates that either Consul is
-// unreachable (eg the agent is not listening on the target port) or has not
-// found a leader (in which case Consul returns a 500 to all endpoints, except
-// the status types).
-//
-// If a cluster is starting for the first time, it may report a leader just
-// before beginning raft replication, thus rejecting requests made at that
-// exact moment.
-func (c consulStore) Ping() error {
-	_, qm, err := c.client.Catalog().Nodes(&api.QueryOptions{RequireConsistent: true})
-	if err != nil {
-		return consulutil.NewKVError("ping", "/catalog/nodes", err)
-	}
-	if qm == nil || !qm.KnownLeader {
-		return util.Errorf("No known leader")
-	}
-	return nil
 }
 
 func HealthPath(service string, node types.NodeName) string {

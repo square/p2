@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/kp/pcstore"
 	"github.com/square/p2/pkg/labels"
@@ -16,7 +17,6 @@ import (
 	"github.com/square/p2/pkg/types"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -104,7 +104,7 @@ func (p *printSyncer) Type() pcstore.ConcreteSyncerType {
 	return "print_syncer"
 }
 
-func watchPodClusters(client *api.Client) {
+func watchPodClusters(client consulutil.ConsulClient) {
 	logger := &logging.DefaultLogger
 	logger.Infoln("Beginning pod cluster watch")
 

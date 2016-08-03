@@ -8,9 +8,11 @@ import (
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
+	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
@@ -105,6 +107,28 @@ func installConsul(consulPod *pods.Pod, consulManifest manifest.Manifest, regist
 	return nil
 }
 
+// Ping confirms that Consul can be reached and it has a leader. If the return
+// is nil, then consul should be ready to accept requests.
+//
+// If the return is non-nil, this typically indicates that either Consul is
+// unreachable (eg the agent is not listening on the target port) or has not
+// found a leader (in which case Consul returns a 500 to all endpoints, except
+// the status types).
+//
+// If a cluster is starting for the first time, it may report a leader just
+// before beginning raft replication, thus rejecting requests made at that
+// exact moment.
+func Ping(client *api.Client) error {
+	_, qm, err := client.Catalog().Nodes(&api.QueryOptions{RequireConsistent: true})
+	if err != nil {
+		return consulutil.NewKVError("ping", "/catalog/nodes", err)
+	}
+	if qm == nil || !qm.KnownLeader {
+		return util.Errorf("No known leader")
+	}
+	return nil
+}
+
 func verifyConsulUp(timeout string) error {
 	timeoutDur, err := time.ParseDuration(timeout)
 	if err != nil {
@@ -114,14 +138,17 @@ func verifyConsulUp(timeout string) error {
 		return nil
 	}
 
-	store := kp.NewConsulStore(kp.NewConsulClient(kp.Options{
-		Token: *consulToken, // not actually necessary because this endpoint is unauthenticated
-	}))
+	config := api.DefaultConfig()
+	config.Token = *consulToken
+	client, err := api.NewClient(config)
+	if err != nil {
+		return util.Errorf("Could not construct consul client: '%s'", err)
+	}
 	consulIsUp := make(chan struct{})
 	go func() {
 		for {
 			time.Sleep(200 * time.Millisecond)
-			err := store.Ping()
+			err := Ping(client)
 			if err == nil {
 				consulIsUp <- struct{}{}
 				return

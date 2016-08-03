@@ -44,7 +44,7 @@ type healthKV interface {
 }
 
 type consulHealthChecker struct {
-	client      *api.Client
+	client      consulutil.ConsulClient
 	kv          healthKV
 	consulStore healthStore
 }
@@ -52,7 +52,7 @@ type consulHealth interface {
 	Node(types.NodeName, *api.QueryOptions) ([]*api.HealthCheck, *api.QueryMeta, error)
 }
 
-func NewConsulHealthChecker(client *api.Client) ConsulHealthChecker {
+func NewConsulHealthChecker(client consulutil.ConsulClient) ConsulHealthChecker {
 	return consulHealthChecker{
 		client:      client,
 		kv:          client.KV(),

@@ -44,7 +44,7 @@ func (e CASError) Error() string {
 // Make sure functions declared in the Store interface have the proper contract
 var _ Store = &consulStore{}
 
-func NewConsul(client *api.Client, retries int, logger *logging.Logger) Store {
+func NewConsul(client consulutil.ConsulClient, retries int, logger *logging.Logger) Store {
 	return &consulStore{
 		retries:    retries,
 		applicator: labels.NewConsulApplicator(client, retries),
