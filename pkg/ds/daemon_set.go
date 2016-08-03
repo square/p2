@@ -184,6 +184,7 @@ func (ds *daemonSet) WatchDesires(
 				ds.DaemonSet = *newDS
 
 				if ds.Disabled {
+					ds.CancelReplication()
 					continue
 				}
 				err := ds.removePods()
@@ -296,7 +297,7 @@ func (ds *daemonSet) addPods() error {
 	// Get the difference in nodes that we need to schedule on and then sort them
 	// for deterministic ordering
 	toScheduleSorted := types.NewNodeSet(eligible...).Difference(types.NewNodeSet(currentNodes...)).ListNodes()
-	ds.logger.NoFields().Infof("Need to schedule %d nodes", len(toScheduleSorted))
+	ds.logger.NoFields().Infof("Need to label %d nodes", len(toScheduleSorted))
 
 	for _, node := range toScheduleSorted {
 		err := ds.labelPod(node)
@@ -305,7 +306,8 @@ func (ds *daemonSet) addPods() error {
 		}
 	}
 
-	if len(toScheduleSorted) > 0 {
+	ds.logger.Infof("Need to schedule %v nodes", len(currentNodes))
+	if len(currentNodes) > 0 {
 		return ds.PublishToReplication()
 	}
 
@@ -340,7 +342,8 @@ func (ds *daemonSet) removePods() error {
 		}
 	}
 
-	if len(podLocations)-len(toUnscheduleSorted) > 0 {
+	ds.logger.Infof("Need to schedule %v nodes", len(currentNodes))
+	if len(currentNodes) > 0 {
 		return ds.PublishToReplication()
 	}
 
@@ -449,6 +452,7 @@ func (ds *daemonSet) PublishToReplication() error {
 	)
 	if err != nil {
 		ds.logger.Errorf("Could not initialize replicator: %s", err)
+		return err
 	}
 
 	ds.logger.Info("New replicator was made")
@@ -495,6 +499,7 @@ func (ds *daemonSet) CancelReplication() {
 
 	if ds.currentReplication != nil {
 		ds.currentReplication.Cancel()
+		ds.logger.Info("Replication cancelled")
 		ds.currentReplication = nil
 	}
 }
