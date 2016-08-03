@@ -458,11 +458,10 @@ func (ds *daemonSet) PublishToReplication() error {
 	ds.logger.Info("New replicator was made")
 
 	// Do not override locks, ignore controllers, and don't check for preparers
-	replication, errCh, err := repl.InitializeReplicationWithCheck(
+	replication, errCh, err := repl.InitializeReplicationWithNodeFilter(
 		false,
 		true,
 		replication.DefaultConcurrentReality,
-		false,
 	)
 	if err != nil {
 		ds.logger.Errorf("Unable to initialize replication: %s", err)
