@@ -60,7 +60,6 @@ func main() {
 		signal.Notify(signals, os.Interrupt)
 		<-signals
 		close(quitCh)
-		os.Exit(1)
 	}()
 
 	dsf.Start(quitCh)
