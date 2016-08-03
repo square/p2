@@ -13,6 +13,7 @@ import (
 	"github.com/pborman/uuid"
 
 	"github.com/square/p2/pkg/kp/consulutil"
+	"github.com/square/p2/pkg/kp/podstore"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
@@ -103,11 +104,18 @@ func (r WatchResult) IsStale() bool {
 
 type consulStore struct {
 	client consulutil.ConsulClient
+
+	// The /intent tree can now contain pods that have UUID keys, which
+	// means they are managed by a podstore.Store interface. The /intent
+	// tree will contain indices that refer to a pod there, and when we
+	// find one we'll have to ask the pod store for the full pod info
+	podStore podstore.Store
 }
 
 func NewConsulStore(client consulutil.ConsulClient) Store {
 	return &consulStore{
-		client: client,
+		client:   client,
+		podStore: podstore.NewConsul(client.KV()),
 	}
 }
 
@@ -269,14 +277,10 @@ func (c consulStore) listPods(keyPrefix string) ([]ManifestResult, time.Duration
 	var ret []ManifestResult
 
 	for _, kvp := range kvPairs {
-		result, err := manifestResultFromPair(kvp)
+		result, err := c.manifestResultFromPair(kvp)
 		if err != nil {
-			if IsUUIDNotImplemented(err) {
-				// Just list all the pods that are implemented
-				continue
-			}
-
-			return nil, 0, err
+			// Just list all the pods that we can
+			continue
 		}
 
 		ret = append(ret, result)
@@ -312,7 +316,7 @@ func (c consulStore) WatchPod(
 	for pair := range kvpChan {
 		out := ManifestResult{}
 		if pair != nil {
-			out, err = manifestResultFromPair(pair)
+			out, err = c.manifestResultFromPair(pair)
 			if err != nil {
 				select {
 				case <-quitChan:
@@ -361,7 +365,7 @@ func (c consulStore) WatchPods(
 	for kvPairs := range kvPairsChan {
 		manifests := make([]ManifestResult, 0, len(kvPairs))
 		for _, pair := range kvPairs {
-			manifestResult, err := manifestResultFromPair(pair)
+			manifestResult, err := c.manifestResultFromPair(pair)
 			if err != nil {
 				select {
 				case <-quitChan:
@@ -395,7 +399,7 @@ func (c consulStore) WatchAllPods(
 	for kvPairs := range kvPairsChan {
 		manifests := make([]ManifestResult, 0, len(kvPairs))
 		for _, pair := range kvPairs {
-			manifestResult, err := manifestResultFromPair(pair)
+			manifestResult, err := c.manifestResultFromPair(pair)
 			if err != nil {
 				select {
 				case <-quitChan:
@@ -424,50 +428,47 @@ func HealthPath(service string, node types.NodeName) string {
 func (c consulStore) NewHealthManager(node types.NodeName, logger logging.Logger) HealthManager {
 	return c.newSessionHealthManager(node, logger)
 }
-
-// Custom error type for returning errors related to uuid consul keys being
-// partially implemented. This is useful for things that list keys that would
-// prefer to omit keys using uuids instead of returning an error result
-type UUIDNotImplemented struct {
-	key string
-}
-
-func (u UUIDNotImplemented) Error() string {
-	return fmt.Sprintf("Key '%s' contains a uuid which is not yet supported", u.key)
-}
-
-func IsUUIDNotImplemented(err error) bool {
-	_, ok := err.(UUIDNotImplemented)
-	return ok
-}
-
-func manifestResultFromPair(pair *api.KVPair) (ManifestResult, error) {
+func (c consulStore) manifestResultFromPair(pair *api.KVPair) (ManifestResult, error) {
 	podUniqueKey, err := PodUniqueKeyFromConsulPath(pair.Key)
 	if err != nil {
 		return ManifestResult{}, err
 	}
 
+	var podManifest manifest.Manifest
+	var node types.NodeName
 	if podUniqueKey != nil {
-		return ManifestResult{}, UUIDNotImplemented{
-			key: pair.Key,
+		var podIndex podstore.PodIndex
+		err := json.Unmarshal(pair.Value, &podIndex)
+		if err != nil {
+			return ManifestResult{}, util.Errorf("Could not parse '%s' as pod index", pair.Key)
+		}
+
+		// TODO: add caching to pod store, since we're going to be doing a
+		// query per index now. Or wait til consul 0.7 and use batch fetch
+		pod, err := c.podStore.ReadPodFromIndex(podIndex)
+		if err != nil {
+			return ManifestResult{}, err
+		}
+
+		podManifest = pod.Manifest
+		node = pod.Node
+	} else {
+		podManifest, err = manifest.FromBytes(pair.Value)
+		if err != nil {
+			return ManifestResult{}, err
+		}
+
+		node, err = extractNodeFromKey(pair.Key)
+		if err != nil {
+			return ManifestResult{}, err
 		}
 	}
 
-	manifest, err := manifest.FromBytes(pair.Value)
-	if err != nil {
-		return ManifestResult{}, err
-	}
-
-	node, err := extractNodeFromKey(pair.Key)
-	if err != nil {
-		return ManifestResult{}, err
-	}
-
 	return ManifestResult{
-		Manifest: manifest,
+		Manifest: podManifest,
 		PodLocation: types.PodLocation{
 			Node:  node,
-			PodID: manifest.ID(),
+			PodID: podManifest.ID(),
 		},
 		PodUniqueKey: podUniqueKey,
 	}, nil
