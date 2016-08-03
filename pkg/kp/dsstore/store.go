@@ -2,6 +2,7 @@ package dsstore
 
 import (
 	"errors"
+	"time"
 
 	"k8s.io/kubernetes/pkg/labels"
 
@@ -36,6 +37,7 @@ type Store interface {
 		name fields.ClusterName,
 		nodeSelector labels.Selector,
 		podID types.PodID,
+		timeout time.Duration,
 	) (fields.DaemonSet, error)
 
 	// Gets a daemon set by ID, if it does not exist, it will produce an error

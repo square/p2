@@ -2,6 +2,7 @@ package fields
 
 import (
 	"encoding/json"
+	"time"
 
 	"k8s.io/kubernetes/pkg/labels"
 
@@ -41,17 +42,20 @@ type DaemonSet struct {
 
 	// PodID to deploy
 	PodID types.PodID
+
+	Timeout time.Duration
 }
 
 // RawDaemonSet defines the JSON format used to store data into Consul
 type RawDaemonSet struct {
-	ID           ID          `json:"id"`
-	Disabled     bool        `json:"disabled"`
-	Manifest     string      `json:"manifest"`
-	MinHealth    int         `json:"min_health"`
-	Name         ClusterName `json:"cluster_name"`
-	NodeSelector string      `json:"node_selector"`
-	PodID        types.PodID `json:"pod_id"`
+	ID           ID            `json:"id"`
+	Disabled     bool          `json:"disabled"`
+	Manifest     string        `json:"manifest"`
+	MinHealth    int           `json:"min_health"`
+	Name         ClusterName   `json:"cluster_name"`
+	NodeSelector string        `json:"node_selector"`
+	PodID        types.PodID   `json:"pod_id"`
+	Timeout      time.Duration `json:"timeout"`
 }
 
 // MarshalJSON implements the json.Marshaler interface for serializing the DS
@@ -80,6 +84,7 @@ func (ds DaemonSet) MarshalJSON() ([]byte, error) {
 		Name:         ds.Name,
 		NodeSelector: nodeSelector,
 		PodID:        ds.PodID,
+		Timeout:      ds.Timeout,
 	})
 }
 
@@ -113,6 +118,7 @@ func (ds *DaemonSet) UnmarshalJSON(b []byte) error {
 		Name:         rawDS.Name,
 		NodeSelector: nodeSelector,
 		PodID:        rawDS.PodID,
+		Timeout:      rawDS.Timeout,
 	}
 	return nil
 }

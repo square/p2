@@ -449,6 +449,7 @@ func (ds *daemonSet) PublishToReplication() error {
 		*ds.healthChecker,
 		health.HealthState(health.Passing),
 		lockMessage,
+		ds.Timeout,
 	)
 	if err != nil {
 		ds.logger.Errorf("Could not initialize replicator: %s", err)

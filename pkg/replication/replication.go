@@ -4,6 +4,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/square/p2/pkg/health"
@@ -74,6 +75,13 @@ type replication struct {
 	// Semaphore that sets a maximum value on the number of concurrent
 	// reality requests that can be fired simultaneously.
 	concurrentRealityRequests chan struct{}
+
+	// Used to timeout daemon set replications
+	timeout time.Duration
+
+	// Used to log replications that have timed out
+	timedOutReplications      []types.NodeName
+	timedOutReplicationsMutex sync.Mutex
 }
 
 // Attempts to claim a lock on replicating this pod. Other pkg/replication
@@ -218,10 +226,12 @@ func (r replication) Enact() {
 	}()
 
 	// the main blocking loop processes replies from workers
+	defer r.logger.Info("Replication is over")
 	for doneIndex := 0; doneIndex < len(r.nodes); {
 		select {
 		case <-done:
 			doneIndex++
+			r.logger.Infof("Nodes done (or timed out): %v", doneIndex)
 		case <-r.quitCh:
 			return
 		}
@@ -278,8 +288,39 @@ func (r replication) updateOne(node types.NodeName, done chan<- types.NodeName, 
 		)
 	}
 
-	r.ensureInReality(node, quitCh, nodeLogger, targetSHA)
-	r.ensureHealthy(node, done, quitCh, nodeLogger, aggregateHealth)
+	completedChan := make(chan struct{})
+	updateOneQuit := make(chan struct{})
+	defer close(updateOneQuit)
+
+	go func() {
+		defer close(completedChan)
+		r.ensureInReality(node, updateOneQuit, nodeLogger, targetSHA)
+		r.ensureHealthy(node, updateOneQuit, nodeLogger, aggregateHealth)
+	}()
+
+	if r.timeout == NoTimeout {
+		select {
+		case <-completedChan:
+		case <-quitCh:
+			return
+		}
+	} else {
+		// Wait until either completion, timeout, or a quit
+		select {
+		case <-completedChan:
+		case <-time.After(r.timeout):
+			r.timedOutReplicationsMutex.Lock()
+			r.timedOutReplications = append(r.timedOutReplications, node)
+			r.timedOutReplicationsMutex.Unlock()
+			r.logger.Errorf("The host '%v' timed out during replication for pod '%v'", node.String(), r.manifest.ID())
+		case <-quitCh:
+			return
+		}
+	}
+	select {
+	case done <- node:
+	case <-quitCh:
+	}
 }
 
 func (r *replication) queryReality(node types.NodeName) (manifest.Manifest, error) {
@@ -319,7 +360,6 @@ func (r *replication) ensureInReality(node types.NodeName, quitCh <-chan struct{
 
 func (r *replication) ensureHealthy(
 	node types.NodeName,
-	done chan<- types.NodeName,
 	quitCh <-chan struct{},
 	nodeLogger logging.Logger,
 	aggregateHealth *podHealth,
@@ -348,13 +388,6 @@ func (r *replication) ensureHealthy(
 				nodeLogger.WithFields(logrus.Fields{"check": id, "health": status}).Infoln("Node is not healthy")
 			} else {
 				r.logger.WithField("node", node).Infoln("Node is current and healthy")
-
-				// say that we're done or respond to a quit
-				select {
-				case done <- node:
-					return
-				case <-quitCh:
-				}
 			}
 		}
 	}

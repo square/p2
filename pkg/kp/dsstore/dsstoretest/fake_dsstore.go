@@ -3,6 +3,7 @@ package dsstoretest
 import (
 	"path"
 	"sync"
+	"time"
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
@@ -49,6 +50,7 @@ func (s *FakeDSStore) Create(
 	name fields.ClusterName,
 	nodeSelector klabels.Selector,
 	podID types.PodID,
+	timeout time.Duration,
 ) (fields.DaemonSet, error) {
 	id := fields.ID(uuid.New())
 	ds := fields.DaemonSet{
@@ -59,6 +61,7 @@ func (s *FakeDSStore) Create(
 		Name:         name,
 		NodeSelector: nodeSelector,
 		PodID:        podID,
+		Timeout:      timeout,
 	}
 
 	s.writeLock.Lock()
@@ -245,7 +248,8 @@ func dsEquals(firstDS fields.DaemonSet, secondDS fields.DaemonSet) bool {
 		(firstDS.MinHealth != secondDS.MinHealth) ||
 		(firstDS.Name != secondDS.Name) ||
 		(firstDS.NodeSelector.String() != secondDS.NodeSelector.String()) ||
-		(firstDS.PodID != secondDS.PodID) {
+		(firstDS.PodID != secondDS.PodID) ||
+		(firstDS.Timeout != secondDS.Timeout) {
 		return false
 	}
 
