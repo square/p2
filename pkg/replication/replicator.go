@@ -21,12 +21,12 @@ type Replicator interface {
 		concurrentRealityNodes int,
 	) (Replication, chan error, error)
 
-	// Same as InitializeReplication but can skip the checkPreparers
-	InitializeReplicationWithCheck(
+	// This will be more lenient with whether or not the preparers are on the hosts
+	// Hosts being deployed to without a preparer will be removed from r.nodes
+	InitializeReplicationWithNodeFilter(
 		overrideLock bool,
 		ignoreControllers bool,
 		concurrentRealityRequests int,
-		checkPreparers bool,
 	) (Replication, chan error, error)
 }
 
@@ -79,42 +79,39 @@ func (r replicator) InitializeReplication(
 	ignoreControllers bool,
 	concurrentRealityRequests int,
 ) (Replication, chan error, error) {
-	return r.initializeReplicationWithCheck(
-		overrideLock,
-		ignoreControllers,
-		concurrentRealityRequests,
-		true,
-	)
-}
-
-func (r replicator) InitializeReplicationWithCheck(
-	overrideLock bool,
-	ignoreControllers bool,
-	concurrentRealityRequests int,
-	checkPreparers bool,
-) (Replication, chan error, error) {
-	return r.initializeReplicationWithCheck(
-		overrideLock,
-		ignoreControllers,
-		concurrentRealityRequests,
-		checkPreparers,
-	)
-}
-
-func (r replicator) initializeReplicationWithCheck(
-	overrideLock bool,
-	ignoreControllers bool,
-	concurrentRealityRequests int,
-	checkPreparers bool,
-) (Replication, chan error, error) {
-	var err error
-
-	if checkPreparers {
-		err = r.checkPreparers()
-		if err != nil {
-			return nil, nil, err
-		}
+	err := r.checkPreparers()
+	if err != nil {
+		return nil, nil, err
 	}
+
+	return r.initializeReplication(
+		overrideLock,
+		ignoreControllers,
+		concurrentRealityRequests,
+	)
+}
+
+func (r replicator) InitializeReplicationWithNodeFilter(
+	overrideLock bool,
+	ignoreControllers bool,
+	concurrentRealityRequests int,
+) (Replication, chan error, error) {
+	validNodes := r.nodesWithoutPreparer()
+	r.nodes = validNodes
+
+	return r.initializeReplication(
+		overrideLock,
+		ignoreControllers,
+		concurrentRealityRequests,
+	)
+}
+
+func (r replicator) initializeReplication(
+	overrideLock bool,
+	ignoreControllers bool,
+	concurrentRealityRequests int,
+) (Replication, chan error, error) {
+
 	if concurrentRealityRequests <= 0 {
 		concurrentRealityRequests = DefaultConcurrentReality
 	}
@@ -136,7 +133,7 @@ func (r replicator) initializeReplicationWithCheck(
 		concurrentRealityRequests: make(chan struct{}, concurrentRealityRequests),
 	}
 
-	err = replication.lockHosts(overrideLock, r.lockMessage)
+	err := replication.lockHosts(overrideLock, r.lockMessage)
 	if err != nil {
 		return nil, errCh, err
 	}
@@ -159,4 +156,16 @@ func (r replicator) checkPreparers() error {
 		}
 	}
 	return nil
+}
+
+// Returns hosts in r.nodes that are being deployed to but do not have a preparer
+func (r replicator) nodesWithoutPreparer() []types.NodeName {
+	var newNodes []types.NodeName
+	for _, host := range r.nodes {
+		_, _, err := r.store.Pod(kp.REALITY_TREE, host, preparer.POD_ID)
+		if err == nil {
+			newNodes = append(newNodes, host)
+		}
+	}
+	return newNodes
 }
