@@ -184,6 +184,7 @@ func (ds *daemonSet) WatchDesires(
 				ds.DaemonSet = *newDS
 
 				if ds.Disabled {
+					ds.CancelReplication()
 					continue
 				}
 				err := ds.removePods()
