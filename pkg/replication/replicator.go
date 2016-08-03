@@ -20,6 +20,14 @@ type Replicator interface {
 		ignoreControllers bool,
 		concurrentRealityNodes int,
 	) (Replication, chan error, error)
+
+	// Same as InitializeReplication but can skip the checkPreparers
+	InitializeReplicationWithCheck(
+		overrideLock bool,
+		ignoreControllers bool,
+		concurrentRealityRequests int,
+		checkPreparers bool,
+	) (Replication, chan error, error)
 }
 
 // Replicator creates replications
@@ -71,9 +79,41 @@ func (r replicator) InitializeReplication(
 	ignoreControllers bool,
 	concurrentRealityRequests int,
 ) (Replication, chan error, error) {
-	err := r.checkPreparers()
-	if err != nil {
-		return nil, nil, err
+	return r.initializeReplicationWithCheck(
+		overrideLock,
+		ignoreControllers,
+		concurrentRealityRequests,
+		true,
+	)
+}
+
+func (r replicator) InitializeReplicationWithCheck(
+	overrideLock bool,
+	ignoreControllers bool,
+	concurrentRealityRequests int,
+	checkPreparers bool,
+) (Replication, chan error, error) {
+	return r.initializeReplicationWithCheck(
+		overrideLock,
+		ignoreControllers,
+		concurrentRealityRequests,
+		checkPreparers,
+	)
+}
+
+func (r replicator) initializeReplicationWithCheck(
+	overrideLock bool,
+	ignoreControllers bool,
+	concurrentRealityRequests int,
+	checkPreparers bool,
+) (Replication, chan error, error) {
+	var err error
+
+	if checkPreparers {
+		err = r.checkPreparers()
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	if concurrentRealityRequests <= 0 {
 		concurrentRealityRequests = DefaultConcurrentReality
