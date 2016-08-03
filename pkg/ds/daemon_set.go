@@ -305,7 +305,7 @@ func (ds *daemonSet) addPods() error {
 		}
 	}
 
-	if len(toScheduleSorted) > 0 {
+	if len(currentNodes) > 0 {
 		return ds.PublishToReplication()
 	}
 
@@ -340,7 +340,7 @@ func (ds *daemonSet) removePods() error {
 		}
 	}
 
-	if len(podLocations)-len(toUnscheduleSorted) > 0 {
+	if len(currentNodes) > 0 {
 		return ds.PublishToReplication()
 	}
 
@@ -449,6 +449,7 @@ func (ds *daemonSet) PublishToReplication() error {
 	)
 	if err != nil {
 		ds.logger.Errorf("Could not initialize replicator: %s", err)
+		return err
 	}
 
 	ds.logger.Info("New replicator was made")
