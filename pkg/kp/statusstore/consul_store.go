@@ -24,7 +24,7 @@ type consulStore struct {
 
 var _ Store = &consulStore{}
 
-func NewConsul(client *api.Client) Store {
+func NewConsul(client consulutil.ConsulClient) Store {
 	return &consulStore{
 		kv: client.KV(),
 	}
