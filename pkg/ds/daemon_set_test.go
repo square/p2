@@ -193,7 +193,8 @@ func TestSchedule(t *testing.T) {
 		t.Fatalf("Unable to get all pods from pod store: %v", err)
 	}
 	for _, val := range manifestResults {
-		Assert(t).AreEqual(val.Path, "intent/node2/testPod", "expected manifest scheduled on the right node")
+		Assert(t).AreEqual(val.PodLocation.Node, types.NodeName("node2"), "expected manifest scheduled on the right node")
+		Assert(t).AreEqual(val.PodLocation.PodID, types.PodID("testPod"), "expected manifest scheduled with correct pod ID")
 		Assert(t).AreEqual(string(val.Manifest.ID()), "testPod", "expected manifest with correct ID")
 	}
 
@@ -250,7 +251,8 @@ func TestSchedule(t *testing.T) {
 		t.Fatalf("Unable to get all pods from pod store: %v", err)
 	}
 	for _, val := range manifestResults {
-		Assert(t).AreEqual(val.Path, "intent/nodeOk/testPod", "expected manifest scheduled on the right node")
+		Assert(t).AreEqual(val.PodLocation.Node, types.NodeName("nodeOk"), "expected manifest scheduled on the right node")
+		Assert(t).AreEqual(val.PodLocation.PodID, types.PodID("testPod"), "expected manifest scheduled with correct pod ID")
 		Assert(t).AreEqual(string(val.Manifest.ID()), "testPod", "expected manifest with correct ID")
 	}
 

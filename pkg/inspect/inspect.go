@@ -3,7 +3,6 @@ package inspect
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
@@ -26,9 +25,8 @@ type NodePodStatus struct {
 }
 
 func AddKVPToMap(result kp.ManifestResult, source int, filterNode types.NodeName, filterPod types.PodID, statuses map[types.PodID]map[types.NodeName]NodePodStatus) error {
-	keySegs := strings.Split(result.Path, "/")
-	nodeName := types.NodeName(keySegs[1])
-	podId := types.PodID(keySegs[2])
+	nodeName := result.PodLocation.Node
+	podId := result.Manifest.ID()
 
 	if filterNode != "" && nodeName != filterNode {
 		return nil

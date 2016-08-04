@@ -6,9 +6,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/consul/api"
+	"github.com/pborman/uuid"
 
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
@@ -22,8 +25,9 @@ import (
 const TTL = 60 * time.Second
 
 type ManifestResult struct {
-	Manifest manifest.Manifest
-	Path     string
+	Manifest     manifest.Manifest
+	PodLocation  types.PodLocation
+	PodUniqueKey types.PodUniqueKey
 }
 
 type Store interface {
@@ -264,11 +268,17 @@ func (c consulStore) listPods(keyPrefix string) ([]ManifestResult, time.Duration
 	var ret []ManifestResult
 
 	for _, kvp := range kvPairs {
-		manifest, err := manifest.FromBytes(kvp.Value)
+		result, err := manifestResultFromPair(kvp)
 		if err != nil {
-			return nil, queryMeta.RequestTime, err
+			if IsUUIDNotImplemented(err) {
+				// Just list all the pods that are implemented
+				continue
+			}
+
+			return nil, 0, err
 		}
-		ret = append(ret, ManifestResult{manifest, kvp.Key})
+
+		ret = append(ret, result)
 	}
 
 	return ret, queryMeta.RequestTime, nil
@@ -299,9 +309,9 @@ func (c consulStore) WatchPod(
 	kvpChan := make(chan *api.KVPair)
 	go consulutil.WatchSingle(key, c.client.KV(), kvpChan, quitChan, errChan)
 	for pair := range kvpChan {
-		out := ManifestResult{Path: key}
+		out := ManifestResult{}
 		if pair != nil {
-			manifest, err := manifest.FromBytes(pair.Value)
+			out, err = manifestResultFromPair(pair)
 			if err != nil {
 				select {
 				case <-quitChan:
@@ -309,8 +319,6 @@ func (c consulStore) WatchPod(
 				case errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value):
 					continue
 				}
-			} else {
-				out.Manifest = manifest
 			}
 		}
 		select {
@@ -352,7 +360,7 @@ func (c consulStore) WatchPods(
 	for kvPairs := range kvPairsChan {
 		manifests := make([]ManifestResult, 0, len(kvPairs))
 		for _, pair := range kvPairs {
-			manifest, err := manifest.FromBytes(pair.Value)
+			manifestResult, err := manifestResultFromPair(pair)
 			if err != nil {
 				select {
 				case <-quitChan:
@@ -360,7 +368,7 @@ func (c consulStore) WatchPods(
 				case errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value):
 				}
 			} else {
-				manifests = append(manifests, ManifestResult{manifest, pair.Key})
+				manifests = append(manifests, manifestResult)
 			}
 		}
 		select {
@@ -403,4 +411,114 @@ func HealthPath(service string, node types.NodeName) string {
 
 func (c consulStore) NewHealthManager(node types.NodeName, logger logging.Logger) HealthManager {
 	return c.newSessionHealthManager(node, logger)
+}
+
+// Custom error type for returning errors related to uuid consul keys being
+// partially implemented. This is useful for things that list keys that would
+// prefer to omit keys using uuids instead of returning an error result
+type UUIDNotImplemented struct {
+	key string
+}
+
+func (u UUIDNotImplemented) Error() string {
+	return fmt.Sprintf("Key '%s' contains a uuid which is not yet supported", u.key)
+}
+
+func IsUUIDNotImplemented(err error) bool {
+	_, ok := err.(UUIDNotImplemented)
+	return ok
+}
+
+func manifestResultFromPair(pair *api.KVPair) (ManifestResult, error) {
+	podUniqueKey, err := PodUniqueKeyFromConsulPath(pair.Key)
+	if err != nil {
+		return ManifestResult{}, err
+	}
+
+	if podUniqueKey.IsUUID {
+		return ManifestResult{}, UUIDNotImplemented{
+			key: pair.Key,
+		}
+	}
+
+	manifest, err := manifest.FromBytes(pair.Value)
+	if err != nil {
+		return ManifestResult{}, err
+	}
+
+	node, err := extractNodeFromKey(pair.Key)
+	if err != nil {
+		return ManifestResult{}, err
+	}
+
+	return ManifestResult{
+		Manifest: manifest,
+		PodLocation: types.PodLocation{
+			Node:  node,
+			PodID: manifest.ID(),
+		},
+		PodUniqueKey: podUniqueKey,
+	}, nil
+}
+
+func extractNodeFromKey(key string) (types.NodeName, error) {
+	keyParts := strings.Split(key, "/")
+
+	if len(keyParts) == 0 {
+		return "", util.Errorf("Malformed key '%s'", key)
+	}
+
+	if keyParts[0] == "hooks" {
+		// Hooks are allowed to not have a node, everything else should
+		return "", nil
+	}
+
+	// A key should look like intent/<node>/<pod_id> OR intent/<node>/<uuid> for example
+	if len(keyParts) != 3 {
+		return "", util.Errorf("Malformed key '%s'", key)
+	}
+
+	return types.NodeName(keyParts[1]), nil
+}
+
+// Deduces a PodUniqueKey from a consul path. This is useful as pod keys are transitioned
+// from using node name and pod ID to using UUIDs.
+// Input is expected to have 3 '/' separated sections, e.g. 'intent/<node>/<pod_id>' or
+// 'intent/<node>/<pod_uuid>' if the prefix is "intent" or "reality"
+//
+// /hooks is also a valid pod prefix and the key under it will not be a uuid.
+func PodUniqueKeyFromConsulPath(consulPath string) (types.PodUniqueKey, error) {
+	keyParts := strings.Split(consulPath, "/")
+	if len(keyParts) == 0 {
+		return types.PodUniqueKey{}, util.Errorf("Malformed key '%s'", consulPath)
+	}
+
+	if keyParts[0] == "hooks" {
+		return types.PodUniqueKey{
+			ID:     consulPath,
+			IsUUID: false,
+		}, nil
+	}
+
+	if len(keyParts) != 3 {
+		return types.PodUniqueKey{}, util.Errorf("Malformed key '%s'", consulPath)
+	}
+
+	// Unforunately we can't use kp.INTENT_TREE and kp.REALITY_TREE here because of an import cycle
+	if keyParts[0] != "intent" && keyParts[0] != "reality" {
+		return types.PodUniqueKey{}, util.Errorf("Unrecognized key tree '%s' (must be intent or reality)", keyParts[0])
+	}
+
+	// Parse() returns nil if the input string does not match the uuid spec
+	if uuid.Parse(keyParts[2]) != nil {
+		return types.PodUniqueKey{
+			ID:     keyParts[2],
+			IsUUID: true,
+		}, nil
+	}
+
+	return types.PodUniqueKey{
+		ID:     path.Join(keyParts[1], keyParts[2]),
+		IsUUID: false,
+	}, nil
 }
