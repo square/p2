@@ -343,7 +343,7 @@ func (ds *daemonSet) removePods() error {
 	}
 
 	ds.logger.Infof("Need to schedule %v nodes", len(currentNodes))
-	if len(currentNodes) > 0 {
+	if len(currentNodes)-len(toUnscheduleSorted) > 0 {
 		return ds.PublishToReplication()
 	}
 
