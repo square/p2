@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"sync"
 
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/manifest"
@@ -91,11 +92,17 @@ var _ KV = &api.KV{}
 
 type consulStore struct {
 	consulKV KV
+
+	// A pod entry is immutable, therefore once we fetch it once we can
+	// add it to a cache and never fetch it again
+	podCache   map[types.PodUniqueKey]Pod
+	podCacheMu sync.Mutex
 }
 
 func NewConsul(consulKV KV) Store {
 	return &consulStore{
 		consulKV: consulKV,
+		podCache: make(map[types.PodUniqueKey]Pod),
 	}
 }
 
@@ -194,6 +201,8 @@ func (c *consulStore) Unschedule(podKey types.PodUniqueKey) error {
 		return consulutil.NewKVError("delete", podPath, err)
 	}
 
+	c.deleteFromCache(podKey)
+
 	_, err = c.consulKV.Delete(indexPath, nil)
 	if err != nil {
 		return IndexDeletionFailure{
@@ -246,6 +255,10 @@ func (c *consulStore) ReadPod(podKey types.PodUniqueKey) (Pod, error) {
 		return Pod{}, util.Errorf("Pod store can only read pods with uuid keys (key was '%s')", podKey.ID)
 	}
 
+	if pod, ok := c.fetchFromCache(podKey); ok {
+		return pod, nil
+	}
+
 	podPath := computePodPath(podKey)
 
 	pair, _, err := c.consulKV.Get(podPath, nil)
@@ -263,11 +276,32 @@ func (c *consulStore) ReadPod(podKey types.PodUniqueKey) (Pod, error) {
 		return Pod{}, util.Errorf("Could not unmarshal pod '%s' as json: %s", podKey.ID, err)
 	}
 
+	c.addToCache(podKey, pod)
+
 	return pod, nil
 }
 
 func (c *consulStore) ReadPodFromIndex(index PodIndex) (Pod, error) {
 	return c.ReadPod(index.PodKey)
+}
+
+func (c *consulStore) deleteFromCache(key types.PodUniqueKey) {
+	c.podCacheMu.Lock()
+	defer c.podCacheMu.Unlock()
+	delete(c.podCache, key)
+}
+
+func (c *consulStore) addToCache(key types.PodUniqueKey, pod Pod) {
+	c.podCacheMu.Lock()
+	defer c.podCacheMu.Unlock()
+	c.podCache[key] = pod
+}
+
+func (c *consulStore) fetchFromCache(key types.PodUniqueKey) (Pod, bool) {
+	c.podCacheMu.Lock()
+	defer c.podCacheMu.Unlock()
+	pod, ok := c.podCache[key]
+	return pod, ok
 }
 
 // Given a pod unique key and a node, compute the path to which the main pod
