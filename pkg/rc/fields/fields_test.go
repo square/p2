@@ -29,3 +29,9 @@ func TestJSONMarshal(t *testing.T) {
 	Assert(t).AreEqual(rc1.ID, rc2.ID, "RC ID changed when serialized")
 	Assert(t).AreEqual(rc1.Manifest.ID(), rc2.Manifest.ID(), "Manifest ID changed when serialized")
 }
+
+func TestZeroUnmarshal(t *testing.T) {
+	var rc fields.RC
+	err := json.Unmarshal([]byte(`{}`), &rc)
+	Assert(t).IsNil(err, "error unmarshaling")
+}

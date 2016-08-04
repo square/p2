@@ -371,6 +371,9 @@ func kvpToDS(kvp *api.KVPair) (fields.DaemonSet, error) {
 	if err != nil {
 		return ds, util.Errorf("Could not unmarshal DS ('%s') as json: %s", string(kvp.Value), err)
 	}
+	if ds.Manifest == nil {
+		return ds, util.Errorf("%s: DS has no manifest", kvp.Key)
+	}
 
 	return ds, nil
 }

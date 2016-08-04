@@ -104,9 +104,13 @@ func (rc *RC) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	m, err := manifest.FromBytes([]byte(rawRC.Manifest))
-	if err != nil {
-		return err
+	var m manifest.Manifest
+	if rawRC.Manifest != "" {
+		var err error
+		m, err = manifest.FromBytes([]byte(rawRC.Manifest))
+		if err != nil {
+			return err
+		}
 	}
 
 	nodeSel, err := labels.Parse(rawRC.NodeSelector)

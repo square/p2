@@ -409,6 +409,9 @@ func kvpToRC(kvp *api.KVPair) (fields.RC, error) {
 	if err != nil {
 		return rc, util.Errorf("Could not unmarshal RC ('%s') as json: %s", string(kvp.Value), err)
 	}
+	if rc.Manifest == nil {
+		return rc, util.Errorf("%s: RC has no manifest", kvp.Key)
+	}
 
 	return rc, nil
 }
