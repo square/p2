@@ -9,7 +9,7 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
-	"github.com/square/p2/pkg/kp/kptest"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -620,7 +620,7 @@ func TestWatchAll(t *testing.T) {
 
 func consulStoreWithFakeKV() *consulStore {
 	return &consulStore{
-		kv:         kptest.NewFakeKV(),
+		kv:         consulutil.NewFakeClient().KV(),
 		applicator: labels.NewFakeApplicator(),
 		logger:     logging.DefaultLogger,
 		retries:    0,
