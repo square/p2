@@ -11,7 +11,8 @@ func (t ResourceType) String() string { return string(t) }
 // Should this be collapsed with label types and "tree" names? this stuff is
 // all over the place but sometimes has subtle differences
 const (
-	PC = ResourceType("pod_clusters")
+	PC  = ResourceType("pod_clusters")
+	POD = ResourceType("pods")
 )
 
 // Unfortunately each ResourceType will carry along with it a different "ID"
