@@ -40,6 +40,7 @@ func testReplicatorAndServer(t *testing.T) (Replicator, kp.Store, consulutil.Fix
 		healthChecker,
 		threshold,
 		testLockMessage,
+		NoTimeout,
 	)
 
 	if err != nil {

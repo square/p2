@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/util"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -36,12 +37,14 @@ func TestCreate(t *testing.T) {
 
 	podManifest := manifestBuilder.GetManifest()
 
-	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID); err == nil {
+	timeout := replication.NoTimeout
+
+	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
 		t.Error("Expected create to fail on bad pod id")
 	}
 
 	podID = types.PodID("pod_id")
-	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID); err == nil {
+	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
 		t.Error("Expected create to fail on bad manifest pod id")
 	}
 
@@ -49,7 +52,7 @@ func TestCreate(t *testing.T) {
 	manifestBuilder.SetID("different_pod_id")
 
 	podManifest = manifestBuilder.GetManifest()
-	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID); err == nil {
+	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
 		t.Error("Expected create to fail on pod id and manifest pod id mismatch")
 	}
 }
@@ -68,7 +71,9 @@ func createDaemonSet(store *consulStore, t *testing.T) ds_fields.DaemonSet {
 
 	manifest := manifestBuilder.GetManifest()
 
-	ds, err := store.Create(manifest, minHealth, clusterName, selector, podID)
+	timeout := replication.NoTimeout
+
+	ds, err := store.Create(manifest, minHealth, clusterName, selector, podID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -144,7 +149,9 @@ func TestGet(t *testing.T) {
 
 	manifest := manifestBuilder.GetManifest()
 
-	ds, err := store.Create(manifest, minHealth, clusterName, selector, podID)
+	timeout := replication.NoTimeout
+
+	ds, err := store.Create(manifest, minHealth, clusterName, selector, podID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -209,7 +216,9 @@ func TestList(t *testing.T) {
 
 	firstManifest := manifestBuilder.GetManifest()
 
-	firstDS, err := store.Create(firstManifest, minHealth, clusterName, selector, firstPodID)
+	timeout := replication.NoTimeout
+
+	firstDS, err := store.Create(firstManifest, minHealth, clusterName, selector, firstPodID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -221,7 +230,7 @@ func TestList(t *testing.T) {
 	manifestBuilder.SetID(secondPodID)
 
 	secondManifest := manifestBuilder.GetManifest()
-	secondDS, err := store.Create(secondManifest, minHealth, clusterName, selector, secondPodID)
+	secondDS, err := store.Create(secondManifest, minHealth, clusterName, selector, secondPodID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -261,7 +270,9 @@ func TestMutate(t *testing.T) {
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
-	ds, err := store.Create(podManifest, minHealth, clusterName, selector, podID)
+	timeout := replication.NoTimeout
+
+	ds, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -394,7 +405,9 @@ func TestWatch(t *testing.T) {
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
-	ds, err := store.Create(podManifest, minHealth, clusterName, selector, podID)
+	timeout := replication.NoTimeout
+
+	ds, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -407,7 +420,7 @@ func TestWatch(t *testing.T) {
 	manifestBuilder.SetID(someOtherPodID)
 	someOtherManifest := manifestBuilder.GetManifest()
 
-	someOtherDS, err := store.Create(someOtherManifest, minHealth, clusterName, selector, someOtherPodID)
+	someOtherDS, err := store.Create(someOtherManifest, minHealth, clusterName, selector, someOtherPodID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"time"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/pborman/uuid"
@@ -59,16 +60,17 @@ func (s *consulStore) Create(
 	name fields.ClusterName,
 	nodeSelector klabels.Selector,
 	podID types.PodID,
+	timeout time.Duration,
 ) (fields.DaemonSet, error) {
 	if err := checkManifestPodID(podID, manifest); err != nil {
 		return fields.DaemonSet{}, util.Errorf("Error verifying manifest pod id: %v", err)
 	}
 
-	ds, err := s.innerCreate(manifest, minHealth, name, nodeSelector, podID)
+	ds, err := s.innerCreate(manifest, minHealth, name, nodeSelector, podID, timeout)
 	// TODO: measure whether retries are is important in practice
 	for i := 0; i < s.retries; i++ {
 		if _, ok := err.(CASError); ok {
-			ds, err = s.innerCreate(manifest, minHealth, name, nodeSelector, podID)
+			ds, err = s.innerCreate(manifest, minHealth, name, nodeSelector, podID, timeout)
 		} else {
 			break
 		}
@@ -86,6 +88,7 @@ func (s *consulStore) innerCreate(
 	name fields.ClusterName,
 	nodeSelector klabels.Selector,
 	podID types.PodID,
+	timeout time.Duration,
 ) (fields.DaemonSet, error) {
 	id := fields.ID(uuid.New())
 	dsPath, err := s.dsPath(id)
@@ -100,6 +103,7 @@ func (s *consulStore) innerCreate(
 		Name:         name,
 		NodeSelector: nodeSelector,
 		PodID:        podID,
+		Timeout:      timeout,
 	}
 	// Marshals ds into []bytes using overloaded MarshalJSON
 	rawDS, err := json.Marshal(ds)

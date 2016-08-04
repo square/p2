@@ -1,6 +1,8 @@
 package replication
 
 import (
+	"time"
+
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
@@ -13,6 +15,10 @@ import (
 )
 
 const DefaultConcurrentReality = 3
+
+// Normal replications will have no timeout, but daemon sets will
+// because it is unlikely that all hosts are healthy at all times
+const NoTimeout = time.Duration(-1)
 
 type Replicator interface {
 	InitializeReplication(
@@ -42,6 +48,9 @@ type replicator struct {
 	threshold health.HealthState // minimum state to treat as "healthy"
 
 	lockMessage string
+
+	// Used to timeout daemon set replications
+	timeout time.Duration
 }
 
 func NewReplicator(
@@ -54,6 +63,7 @@ func NewReplicator(
 	health checker.ConsulHealthChecker,
 	threshold health.HealthState,
 	lockMessage string,
+	timeout time.Duration,
 ) (Replicator, error) {
 	if active < 1 {
 		return replicator{}, util.Errorf("Active must be >= 1, was %d", active)
@@ -68,6 +78,7 @@ func NewReplicator(
 		health:      health,
 		threshold:   threshold,
 		lockMessage: lockMessage,
+		timeout:     timeout,
 	}, nil
 }
 
@@ -134,6 +145,7 @@ func (r replicator) initializeReplicationWithCheck(
 		replicationDoneCh:      make(chan struct{}),
 		quitCh:                 make(chan struct{}),
 		concurrentRealityRequests: make(chan struct{}, concurrentRealityRequests),
+		timeout:                   r.timeout,
 	}
 
 	err = replication.lockHosts(overrideLock, r.lockMessage)

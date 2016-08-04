@@ -94,6 +94,7 @@ func main() {
 		healthChecker,
 		health.HealthState(*threshold),
 		lockMessage,
+		replication.NoTimeout,
 	)
 	if err != nil {
 		log.Fatalf("Could not initialize replicator: %s", err)

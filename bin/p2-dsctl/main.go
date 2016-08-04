@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"time"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
@@ -29,6 +30,8 @@ const (
 	CmdDisable = "disable"
 	CmdDelete  = "delete"
 	CmdUpdate  = "update"
+
+	TimeoutNotSpecified = time.Duration(-1)
 )
 
 var (
@@ -38,6 +41,7 @@ var (
 	createMinHealth = cmdCreate.Flag("minhealth", "The minimum health of the daemon set").Required().String()
 	createName      = cmdCreate.Flag("name", "The cluster name (ie. staging, production)").Required().String()
 	createPodID     = cmdCreate.Flag("pod", "The pod ID on the daemon set").Required().String()
+	createTimeout   = cmdCreate.Flag("timeout", "Non-zero timeout for replicating hosts. e.g. 1m2s for 1 minute and 2 seconds").Required().Duration()
 
 	cmdGet = kingpin.Command(CmdGet, "Show a daemon set.")
 	getID  = cmdGet.Arg("id", "The uuid for the daemon set").Required().String()
@@ -60,6 +64,7 @@ var (
 	updateMinHealth = cmdUpdate.Flag("minhealth", "The minimum health of the daemon set").String()
 	updateName      = cmdUpdate.Flag("name", "The cluster name (ie. staging, production)").String()
 	updatePodID     = cmdUpdate.Flag("pod", "The pod ID on the daemon set").String()
+	updateTimeout   = cmdUpdate.Flag("timeout", "Non-zero timeout for replicating hosts. e.g. 1m2s for 1 minute and 2 seconds").Default(TimeoutNotSpecified.String()).Duration()
 )
 
 func main() {
@@ -84,7 +89,11 @@ func main() {
 			log.Fatalf("%s", err)
 		}
 
-		ds, err := dsstore.Create(manifest, minHealth, name, selector, podID)
+		if *createTimeout <= time.Duration(0) {
+			log.Fatalf("Timeout must be a positive non-zero value, got '%v'", *createTimeout)
+		}
+
+		ds, err := dsstore.Create(manifest, minHealth, name, selector, podID, *createTimeout)
 		if err != nil {
 			log.Fatalf("err: %v", err)
 		}
@@ -192,6 +201,15 @@ func main() {
 				if ds.PodID != podID {
 					changed = true
 					ds.PodID = podID
+				}
+			}
+			if *updateTimeout != TimeoutNotSpecified {
+				if *updateTimeout <= time.Duration(0) {
+					return ds, util.Errorf("Timeout must be a positive non-zero value, got '%v'", *createTimeout)
+				}
+				if ds.Timeout != *updateTimeout {
+					changed = true
+					ds.Timeout = *updateTimeout
 				}
 			}
 			if *updateManifest != "" {

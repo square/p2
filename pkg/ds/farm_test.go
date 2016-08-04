@@ -14,6 +14,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/types"
 
@@ -71,8 +72,10 @@ func TestContendNodes(t *testing.T) {
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
+	timeout := replication.NoTimeout
+
 	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
-	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID)
+	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 
 	// Make a node and verify that it was scheduled
@@ -87,7 +90,7 @@ func TestContendNodes(t *testing.T) {
 
 	// Make another daemon set with a contending AvailabilityZoneLabel and verify
 	// that it gets disabled and that the node label does not change
-	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID)
+	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).AreNotEqual(dsData.ID.String(), anotherDSData.ID.String(), "Precondition failed")
 	Assert(t).IsNil(err, "Expected no error creating request")
 
@@ -112,7 +115,7 @@ func TestContendNodes(t *testing.T) {
 	// then verify that it has been disabled and the node hasn't been overwritten
 	//
 	anotherSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"undefined"})
-	badDS, err := dsStore.Create(podManifest, minHealth, clusterName, anotherSelector, podID)
+	badDS, err := dsStore.Create(podManifest, minHealth, clusterName, anotherSelector, podID, timeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 
 	mutator := func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
@@ -180,11 +183,13 @@ func TestContendSelectors(t *testing.T) {
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
+	timeout := replication.NoTimeout
+
 	everythingSelector := klabels.Everything()
-	firstDSData, err := dsStore.Create(podManifest, minHealth, clusterName, everythingSelector, podID)
+	firstDSData, err := dsStore.Create(podManifest, minHealth, clusterName, everythingSelector, podID, timeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 	waitForFarm()
-	secondDSData, err := dsStore.Create(podManifest, minHealth, clusterName, everythingSelector, podID)
+	secondDSData, err := dsStore.Create(podManifest, minHealth, clusterName, everythingSelector, podID, timeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 	waitForFarm()
 
@@ -202,7 +207,7 @@ func TestContendSelectors(t *testing.T) {
 	// Add another daemon set with different selector and verify it gets disabled
 	someSelector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"nowhere"})
-	thirdDSData, err := dsStore.Create(podManifest, minHealth, clusterName, someSelector, podID)
+	thirdDSData, err := dsStore.Create(podManifest, minHealth, clusterName, someSelector, podID, timeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 	waitForFarm()
 
@@ -264,7 +269,7 @@ func TestContendSelectors(t *testing.T) {
 	equalSelector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
 
-	fourthDSData, err := dsStore.Create(anotherPodManifest, minHealth, clusterName, equalSelector, anotherPodID)
+	fourthDSData, err := dsStore.Create(anotherPodManifest, minHealth, clusterName, equalSelector, anotherPodID, timeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 	waitForFarm()
 
@@ -274,7 +279,7 @@ func TestContendSelectors(t *testing.T) {
 	Assert(t).IsFalse(fourthDS.Disabled, "Expected daemon set to be enabled")
 	Assert(t).IsFalse(dsf.children[fourthDS.ID].ds.IsDisabled(), "Expected daemon set to be enabled")
 
-	fifthDSData, err := dsStore.Create(anotherPodManifest, minHealth, clusterName, equalSelector, anotherPodID)
+	fifthDSData, err := dsStore.Create(anotherPodManifest, minHealth, clusterName, equalSelector, anotherPodID, timeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 	waitForFarm()
 
@@ -323,13 +328,15 @@ func TestFarmSchedule(t *testing.T) {
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
+	timeout := replication.NoTimeout
+
 	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
-	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID)
+	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 
 	// Second daemon set
 	anotherNodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
-	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, anotherNodeSelector, podID)
+	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, anotherNodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 
 	// Make a node and verify that it was scheduled by the first daemon set
@@ -592,13 +599,15 @@ func TestMultipleFarms(t *testing.T) {
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
+	timeout := replication.NoTimeout
+
 	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
-	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID)
+	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 
 	// Second daemon set
 	anotherNodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
-	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, anotherNodeSelector, podID)
+	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, anotherNodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 
 	// Make a node and verify that it was scheduled by the first daemon set

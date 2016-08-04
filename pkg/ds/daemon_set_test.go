@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/square/p2/pkg/kp/dsstore"
@@ -135,8 +136,9 @@ func TestSchedule(t *testing.T) {
 	podManifest := manifestBuilder.GetManifest()
 
 	nodeSelector := klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"})
+	timeout := replication.NoTimeout
 
-	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID)
+	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "expected no error creating request")
 
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
