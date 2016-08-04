@@ -100,9 +100,13 @@ func (ds *DaemonSet) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	podManifest, err := manifest.FromBytes([]byte(rawDS.Manifest))
-	if err != nil {
-		return err
+	var podManifest manifest.Manifest
+	if rawDS.Manifest != "" {
+		var err error
+		podManifest, err = manifest.FromBytes([]byte(rawDS.Manifest))
+		if err != nil {
+			return err
+		}
 	}
 
 	nodeSelector, err := labels.Parse(rawDS.NodeSelector)
