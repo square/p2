@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/square/p2/pkg/consultest"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -24,7 +24,7 @@ const (
 	testPreparerManifest = `id: p2-preparer`
 )
 
-func testReplicatorAndServer(t *testing.T) (Replicator, kp.Store, consultest.Fixture) {
+func testReplicatorAndServer(t *testing.T) (Replicator, kp.Store, consulutil.Fixture) {
 	active := 1
 	store, f := makeStore(t)
 
@@ -48,15 +48,15 @@ func testReplicatorAndServer(t *testing.T) (Replicator, kp.Store, consultest.Fix
 	return replicator, store, f
 }
 
-func makeStore(t *testing.T) (kp.Store, consultest.Fixture) {
-	f := consultest.NewFixture(t)
+func makeStore(t *testing.T) (kp.Store, consulutil.Fixture) {
+	f := consulutil.NewFixture(t)
 	store := kp.NewConsulStore(f.Client)
 	return store, f
 }
 
 // Adds preparer manifest to reality tree to fool replication library into
 // thinking it is installed on the test nodes
-func setupPreparers(fixture consultest.Fixture) {
+func setupPreparers(fixture consulutil.Fixture) {
 	for _, node := range testNodes {
 		key := fmt.Sprintf("reality/%s/p2-preparer", node)
 		fixture.SetKV(key, []byte(testPreparerManifest))

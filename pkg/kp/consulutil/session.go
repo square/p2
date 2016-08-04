@@ -99,7 +99,7 @@ type unlocker struct {
 // Wraps a consul client and consul session, and provides coordination for
 // renewals and errors
 type Session struct {
-	client  *api.Client
+	client  ConsulClient
 	session string
 	name    string
 
@@ -115,7 +115,7 @@ type Session struct {
 	renewalCh <-chan time.Time
 }
 
-func NewManagedSession(client *api.Client, session string, name string, quitCh chan struct{}, renewalErrCh chan error, renewalCh <-chan time.Time) *Session {
+func NewManagedSession(client ConsulClient, session string, name string, quitCh chan struct{}, renewalErrCh chan error, renewalCh <-chan time.Time) *Session {
 	sess := &Session{
 		client:       client,
 		session:      session,
@@ -133,7 +133,7 @@ func NewManagedSession(client *api.Client, session string, name string, quitCh c
 // Creates a Session struct using an existing consul session, and does
 // not set up auto-renewal. Use this constructor when the underlying session
 // already exists and should not be managed here.
-func NewUnmanagedSession(client *api.Client, session, name string) Session {
+func NewUnmanagedSession(client ConsulClient, session, name string) Session {
 	return Session{
 		client:  client,
 		session: session,

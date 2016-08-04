@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/kp/rcstore"
@@ -26,7 +27,7 @@ const (
 )
 
 func TestNewConsul(t *testing.T) {
-	store := NewConsul(&api.Client{}, nil)
+	store := NewConsul(kp.NewConsulClient(kp.Options{}), nil)
 	rollstore := store.(consulStore)
 	if rollstore.kv == nil {
 		t.Fatal("kv should not be nil for constructed rollstore")

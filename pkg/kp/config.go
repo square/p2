@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/square/p2/pkg/kp/consulutil"
+
 	"github.com/hashicorp/consul/api"
 )
 
@@ -24,7 +26,7 @@ type Options struct {
 	WaitTime time.Duration
 }
 
-func NewConsulClient(opts Options) *api.Client {
+func NewConsulClient(opts Options) consulutil.ConsulClient {
 	conf := api.DefaultConfig()
 	if opts.Address != "" {
 		conf.Address = opts.Address
@@ -41,6 +43,6 @@ func NewConsulClient(opts Options) *api.Client {
 	}
 
 	// error is always nil
-	ret, _ := api.NewClient(conf)
-	return ret
+	client, _ := api.NewClient(conf)
+	return consulutil.ConsulClientFromRaw(client)
 }

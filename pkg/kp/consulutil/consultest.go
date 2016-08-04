@@ -1,7 +1,9 @@
-// The consultest package contains common routines for setting up a live Consul server for
-// use in unit tests. The server runs within the test process and uses an isolated
-// in-memory data store.
-package consultest
+// package consulutil contains common routines for setting up a live Consul
+// server for use in unit tests. The server runs within the test process and
+// uses an isolated in-memory data store.
+// This functionality is not currently recommended for use due to data
+/// races present in the github.com/hashicorp/consul/testutil package.
+package consulutil
 
 import (
 	"fmt"
@@ -22,7 +24,7 @@ import (
 type Fixture struct {
 	Agent    *agent.Agent
 	Servers  []*agent.HTTPServer
-	Client   *api.Client
+	Client   ConsulClient
 	T        *testing.T
 	HTTPPort int
 }
@@ -90,13 +92,14 @@ func NewFixture(t *testing.T) Fixture {
 		t.Fatal("creating Consul client:", err)
 	}
 
+	consulClient := ConsulClientFromRaw(client)
 	testutil.WaitForLeader(t, a.RPC, config.Datacenter)
 
 	t.Log("starting Consul server with port:", config.Ports.HTTP)
 	return Fixture{
 		Agent:    a,
 		Servers:  servers,
-		Client:   client,
+		Client:   consulClient,
 		T:        t,
 		HTTPPort: config.Ports.HTTP,
 	}

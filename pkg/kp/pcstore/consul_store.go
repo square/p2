@@ -42,7 +42,7 @@ var _ Store = &consulStore{}
 // NOTE: The "retries" concept is mimicking what is built in rcstore.
 // TODO: explore transactionality of operations and returning errors instead of
 // using retries
-func NewConsul(client *api.Client, retries int, logger *logging.Logger) Store {
+func NewConsul(client consulutil.ConsulClient, retries int, logger *logging.Logger) Store {
 	return &consulStore{
 		applicator: labels.NewConsulApplicator(client, retries),
 		kv:         client.KV(),

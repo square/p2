@@ -7,10 +7,10 @@ import (
 	"os/user"
 	"path"
 
-	"github.com/hashicorp/consul/api"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
@@ -31,7 +31,7 @@ var (
 type P2RM struct {
 	Store   kp.Store
 	RCStore rcstore.Store
-	Client  *api.Client
+	Client  consulutil.ConsulClient
 	Labeler labels.Applicator
 
 	LabelID  string
@@ -41,7 +41,7 @@ type P2RM struct {
 
 // NewP2RM is a constructor for the P2RM type. It will generate the necessary
 // storage types based on its api.Client argument
-func NewP2RM(client *api.Client, podName string, nodeName types.NodeName) *P2RM {
+func NewP2RM(client consulutil.ConsulClient, podName string, nodeName types.NodeName) *P2RM {
 	rm := &P2RM{}
 	rm.Client = client
 	rm.Store = kp.NewConsulStore(client)
