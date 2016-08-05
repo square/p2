@@ -24,7 +24,8 @@ import (
 
 const (
 	// This label is applied to pods owned by an RC.
-	DSIDLabel = "daemon_set_id"
+	DSIDLabel     = "daemon_set_id"
+	RetryInterval = time.Duration(5 * time.Minute)
 )
 
 type DaemonSet interface {
@@ -157,6 +158,9 @@ func (ds *daemonSet) WatchDesires(
 			if err != nil {
 				select {
 				case errCh <- err:
+					// Retry the replication for extra robustness
+					time.Sleep(RetryInterval)
+					err = ds.PublishToReplication()
 				case <-quitCh:
 					return
 				}
