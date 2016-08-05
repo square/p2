@@ -167,11 +167,13 @@ func (*FakePodStore) Ping() error {
 }
 
 func (*FakePodStore) LockHolder(key string) (string, string, error) {
-	panic("not implemented")
+	// Not implemented -- for now, this will never produce an error
+	return "Happy name", "Happy ID", nil
 }
 
 func (*FakePodStore) DestroyLockHolder(id string) error {
-	panic("not implemented")
+	// Not implemented -- for now, this will never produce an error
+	return nil
 }
 
 func (*FakePodStore) NewUnmanagedSession(session string, name string) kp.Session {

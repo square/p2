@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/user"
-	"sync"
 	"time"
 
 	"github.com/square/p2/pkg/health"
@@ -79,9 +78,6 @@ type daemonSet struct {
 
 	// This is the current replication enact go routine that is running
 	currentReplication replication.Replication
-
-	// This locks are used to make sure only one replication is going on at the same time
-	replicationLock sync.Mutex
 }
 
 type dsContention struct {
@@ -146,7 +142,7 @@ func (ds *daemonSet) WatchDesires(
 	go func() {
 		var err error
 		defer close(errCh)
-		defer ds.CancelReplication()
+		defer ds.cancelReplication()
 
 		// Try to schedule pods when this begins watching
 		if !ds.Disabled {
@@ -184,10 +180,10 @@ func (ds *daemonSet) WatchDesires(
 				ds.DaemonSet = *newDS
 
 				if ds.Disabled {
-					ds.CancelReplication()
+					ds.cancelReplication()
 					continue
 				}
-				err := ds.removePods()
+				err = ds.removePods()
 				if err != nil {
 					err = util.Errorf("Unable to remove pods from intent tree: %v", err)
 					continue
@@ -333,7 +329,7 @@ func (ds *daemonSet) removePods() error {
 	toUnscheduleSorted := types.NewNodeSet(currentNodes...).Difference(types.NewNodeSet(eligible...)).ListNodes()
 	ds.logger.NoFields().Infof("Need to unschedule %d nodes", len(toUnscheduleSorted))
 
-	ds.CancelReplication()
+	ds.cancelReplication()
 
 	for _, node := range toUnscheduleSorted {
 		err := ds.unschedule(node)
@@ -343,7 +339,7 @@ func (ds *daemonSet) removePods() error {
 	}
 
 	ds.logger.Infof("Need to schedule %v nodes", len(currentNodes))
-	if len(currentNodes) > 0 {
+	if len(currentNodes)-len(toUnscheduleSorted) > 0 {
 		return ds.PublishToReplication()
 	}
 
@@ -365,7 +361,7 @@ func (ds *daemonSet) clearPods() error {
 	toUnscheduleSorted := types.NewNodeSet(currentNodes...).ListNodes()
 	ds.logger.NoFields().Infof("Need to unschedule %d nodes", len(toUnscheduleSorted))
 
-	ds.CancelReplication()
+	ds.cancelReplication()
 
 	for _, node := range toUnscheduleSorted {
 		err := ds.unschedule(node)
@@ -414,11 +410,9 @@ func (ds *daemonSet) unschedule(node types.NodeName) error {
 }
 
 func (ds *daemonSet) PublishToReplication() error {
-	// TODO: We need to specifically turn this on to work
-	if ds.healthChecker == nil {
-		ds.logger.Info("Healthchecker is nil")
-		return nil
-	}
+	// We must cancel the replication because if we try to call
+	// InitializeReplicationWithCheck, we will get an error
+	ds.cancelReplication()
 
 	podLocations, err := ds.CurrentPods()
 	if err != nil {
@@ -479,27 +473,22 @@ func (ds *daemonSet) PublishToReplication() error {
 		}
 	}()
 
-	ds.replicationLock.Lock()
-	if ds.currentReplication != nil {
-		ds.currentReplication.Cancel()
-	}
 	// Set a new replication
 	ds.currentReplication = replication
 
 	go replication.Enact()
-	ds.replicationLock.Unlock()
 
 	ds.logger.Info("Replication enacted")
 
 	return nil
 }
 
-func (ds *daemonSet) CancelReplication() {
-	ds.replicationLock.Lock()
-	defer ds.replicationLock.Unlock()
-
+// It is also okay to call this multiple times because it keeps track of when
+// it has been cancelled by checking whether ds.currentReplication == nil
+func (ds *daemonSet) cancelReplication() {
 	if ds.currentReplication != nil {
 		ds.currentReplication.Cancel()
+		ds.currentReplication.WaitForReplication()
 		ds.logger.Info("Replication cancelled")
 		ds.currentReplication = nil
 	}

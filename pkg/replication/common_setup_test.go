@@ -6,6 +6,7 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
+	fake_checker "github.com/square/p2/pkg/health/checker/test"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
@@ -28,7 +29,7 @@ func testReplicatorAndServer(t *testing.T) (Replicator, kp.Store, consulutil.Fix
 	active := 1
 	store, f := makeStore(t)
 
-	healthChecker := happyHealthChecker()
+	healthChecker := fake_checker.HappyHealthChecker(testNodes)
 	threshold := health.Passing
 	replicator, err := NewReplicator(
 		basicManifest(),
@@ -65,75 +66,6 @@ func setupPreparers(fixture consulutil.Fixture) {
 }
 
 // TODO: these health checkers could be move to the health/checker/test package.
-
-type alwaysHappyHealthChecker struct {
-	allNodes []types.NodeName
-}
-
-func (h alwaysHappyHealthChecker) WatchNodeService(
-	nodeName types.NodeName,
-	serviceID string,
-	resultCh chan<- health.Result,
-	errCh chan<- error,
-	quitCh <-chan struct{},
-) {
-	happyResult := health.Result{
-		ID:     testPodId,
-		Status: health.Passing,
-	}
-	for {
-		select {
-		case <-quitCh:
-			return
-		case resultCh <- happyResult:
-		}
-	}
-}
-
-func (h alwaysHappyHealthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
-	results := make(map[types.NodeName]health.Result)
-	for _, node := range testNodes {
-		results[node] = health.Result{
-			ID:     testPodId,
-			Status: health.Passing,
-		}
-	}
-	return results, nil
-}
-
-func (h alwaysHappyHealthChecker) WatchService(
-	serviceID string,
-	resultCh chan<- map[types.NodeName]health.Result,
-	errCh chan<- error,
-	quitCh <-chan struct{},
-) {
-	allHappy := make(map[types.NodeName]health.Result)
-	for _, node := range h.allNodes {
-		allHappy[node] = health.Result{
-			ID:     testPodId,
-			Status: health.Passing,
-		}
-	}
-	for {
-		select {
-		case <-quitCh:
-			return
-		case resultCh <- allHappy:
-		}
-	}
-}
-
-func (h alwaysHappyHealthChecker) WatchHealth(_ chan []*health.Result,
-	errCh chan<- error,
-	quitCh <-chan struct{}) {
-	panic("not implemented")
-}
-
-// creates an implementation of checker.ConsulHealthChecker that always reports
-// satisfied health checks for testing purposes
-func happyHealthChecker() checker.ConsulHealthChecker {
-	return alwaysHappyHealthChecker{testNodes}
-}
 
 type channelBasedHealthChecker struct {
 	// maps node name to a channel on which fake results can be provided

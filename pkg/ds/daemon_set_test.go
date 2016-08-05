@@ -19,6 +19,7 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
+	fake_checker "github.com/square/p2/pkg/health/checker/test"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -144,13 +145,25 @@ func TestSchedule(t *testing.T) {
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
+	var allNodes []types.NodeName
+	allNodes = append(allNodes, "node1", "node2", "nodeOk")
+	for i := 0; i < 10; i++ {
+		nodeName := fmt.Sprintf("good_node%v", i)
+		allNodes = append(allNodes, types.NodeName(nodeName))
+	}
+	for i := 0; i < 10; i++ {
+		nodeName := fmt.Sprintf("bad_node%v", i)
+		allNodes = append(allNodes, types.NodeName(nodeName))
+	}
+	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+
 	ds := New(
 		dsData,
 		dsStore,
 		kpStore,
 		applicator,
 		logging.DefaultLogger,
-		nil,
+		&happyHealthChecker,
 	).(*daemonSet)
 
 	scheduled := scheduledPods(t, ds)
@@ -306,4 +319,97 @@ func TestSchedule(t *testing.T) {
 		t.Fatalf("Unable to get all pods from pod store: %v", err)
 	}
 	Assert(t).AreEqual(len(manifestResults), 0, "expected all manifests to have been unscheduled")
+}
+
+func TestPublishToReplication(t *testing.T) {
+	//
+	// Setup fixture and schedule a pod
+	//
+	dsStore := dsstoretest.NewFake()
+
+	podID := types.PodID("testPod")
+	minHealth := 1
+	clusterName := ds_fields.ClusterName("some_name")
+
+	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder.SetID(podID)
+	podManifest := manifestBuilder.GetManifest()
+
+	nodeSelector := klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"})
+	timeout := replication.NoTimeout
+
+	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
+	Assert(t).IsNil(err, "expected no error creating request")
+
+	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	applicator := labels.NewFakeApplicator()
+
+	var allNodes []types.NodeName
+	allNodes = append(allNodes, "node1", "node2")
+	for i := 0; i < 10; i++ {
+		nodeName := fmt.Sprintf("good_node%v", i)
+		allNodes = append(allNodes, types.NodeName(nodeName))
+	}
+	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+
+	ds := New(
+		dsData,
+		dsStore,
+		kpStore,
+		applicator,
+		logging.DefaultLogger,
+		&happyHealthChecker,
+	).(*daemonSet)
+
+	scheduled := scheduledPods(t, ds)
+	Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
+	manifestResults, _, err := kpStore.AllPods(kp.INTENT_TREE)
+	if err != nil {
+		t.Fatalf("Unable to get all pods from pod store: %v", err)
+	}
+	Assert(t).AreEqual(len(manifestResults), 0, "expected no manifests to have been scheduled")
+
+	err = applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
+	Assert(t).IsNil(err, "expected no error labeling node1")
+	err = applicator.SetLabel(labels.NODE, "node2", "nodeQuality", "good")
+	Assert(t).IsNil(err, "expected no error labeling node1")
+
+	//
+	// Adds a watch that will automatically send a signal when a change was made
+	// to the daemon set
+	//
+	quitCh := make(chan struct{})
+	updatedCh := make(chan *ds_fields.DaemonSet)
+	deletedCh := make(chan *ds_fields.DaemonSet)
+	defer close(quitCh)
+	defer close(updatedCh)
+	defer close(deletedCh)
+	desiresErrCh := ds.WatchDesires(quitCh, updatedCh, deletedCh)
+	dsChangesErrCh := watchDSChanges(ds, dsStore, quitCh, updatedCh, deletedCh)
+
+	//
+	// Verify that 2 pods have been scheduled
+	//
+	numNodes := waitForNodes(t, ds, 2, desiresErrCh, dsChangesErrCh)
+	Assert(t).AreEqual(numNodes, 2, "took too long to schedule")
+
+	scheduled = scheduledPods(t, ds)
+	Assert(t).AreEqual(len(scheduled), 2, "expected a node to have been labeled")
+
+	// Mutate the daemon set so that the node is unscheduled, this should not produce an error
+	mutator := func(dsToChange ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		dsToChange.NodeSelector = klabels.Everything().
+			Add("nodeQuality", klabels.EqualsOperator, []string{"bad"})
+		return dsToChange, nil
+	}
+	_, err = dsStore.MutateDS(ds.ID(), mutator)
+	Assert(t).IsNil(err, "Unxpected error trying to mutate daemon set")
+
+	select {
+	case <-time.After(1 * time.Second):
+	case err := <-desiresErrCh:
+		t.Fatalf("Unexpected error unscheduling pod: %v", err)
+	}
+	numNodes = waitForNodes(t, ds, 0, desiresErrCh, dsChangesErrCh)
+	Assert(t).AreEqual(numNodes, 0, "took too long to unschedule")
 }

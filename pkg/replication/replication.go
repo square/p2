@@ -48,6 +48,10 @@ type Replication interface {
 
 	// Cancel the prescribed replication
 	Cancel()
+
+	// Will block until the r.quitCh is closed
+	// this is used to synchronize updates which quickly cancel and re-enact the replicaton
+	WaitForReplication()
 }
 
 // A replication contains the information required to do a single replication (deploy).
@@ -241,6 +245,12 @@ func (r replication) Enact() {
 // Cancels all goroutines (e.g. replication and lock renewal)
 func (r replication) Cancel() {
 	close(r.replicationCancelledCh)
+}
+
+func (r replication) WaitForReplication() {
+	select {
+	case <-r.quitCh:
+	}
 }
 
 // Listen for errors in lock renewal. If the lock can't be renewed, we need to
