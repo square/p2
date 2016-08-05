@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -14,34 +15,43 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/dsstore"
 	"github.com/square/p2/pkg/kp/flags"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
-	pc_fields "github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
-	"k8s.io/kubernetes/pkg/labels"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 const (
-	CmdCreate  = "create"
-	CmdGet     = "get"
-	CmdList    = "list"
-	CmdEnable  = "enable"
-	CmdDisable = "disable"
-	CmdDelete  = "delete"
-	CmdUpdate  = "update"
+	CmdCreate       = "create"
+	CmdGet          = "get"
+	CmdList         = "list"
+	CmdEnable       = "enable"
+	CmdDisable      = "disable"
+	CmdDelete       = "delete"
+	CmdUpdate       = "update"
+	CmdTestSelector = "test-selector"
 
 	TimeoutNotSpecified = time.Duration(-1)
 )
 
+func flagUsed(marker *bool) kingpin.Action {
+	return func(*kingpin.ParseContext) error {
+		*marker = true
+		return nil
+	}
+}
+
 var (
-	cmdCreate       = kingpin.Command(CmdCreate, "Create a daemon set.")
-	createAZ        = cmdCreate.Flag("az", "The availability zone of the pod cluster").Required().String()
-	createManifest  = cmdCreate.Flag("manifest", "Complete manifest - must parse as JSON!").Required().String()
-	createMinHealth = cmdCreate.Flag("minhealth", "The minimum health of the daemon set").Required().String()
-	createName      = cmdCreate.Flag("name", "The cluster name (ie. staging, production)").Required().String()
-	createPodID     = cmdCreate.Flag("pod", "The pod ID on the daemon set").Required().String()
-	createTimeout   = cmdCreate.Flag("timeout", "Non-zero timeout for replicating hosts. e.g. 1m2s for 1 minute and 2 seconds").Required().Duration()
+	cmdCreate        = kingpin.Command(CmdCreate, "Create a daemon set.")
+	createSelector   = cmdCreate.Flag("selector", "The node selector, uses the same syntax as the test-selector command").Required().String()
+	createManifest   = cmdCreate.Flag("manifest", "Complete manifest - must parse as JSON!").Required().String()
+	createMinHealth  = cmdCreate.Flag("minhealth", "The minimum health of the daemon set").Required().String()
+	createName       = cmdCreate.Flag("name", "The cluster name (ie. staging, production)").Required().String()
+	createPodID      = cmdCreate.Flag("pod", "The pod ID on the daemon set").Required().String()
+	createTimeout    = cmdCreate.Flag("timeout", "Non-zero timeout for replicating hosts. e.g. 1m2s for 1 minute and 2 seconds").Required().Duration()
+	createEverywhere = cmdCreate.Flag("everywhere", "Sets selector to match everything regardless of its value").Bool()
 
 	cmdGet = kingpin.Command(CmdGet, "Show a daemon set.")
 	getID  = cmdGet.Arg("id", "The uuid for the daemon set").Required().String()
@@ -57,14 +67,25 @@ var (
 	cmdDelete = kingpin.Command(CmdDelete, "Delete daemon set.")
 	deleteID  = cmdDelete.Arg("id", "The uuid for the daemon set").Required().String()
 
-	cmdUpdate       = kingpin.Command(CmdUpdate, "Update a daemon set.")
-	updateID        = cmdUpdate.Arg("id", "The uuid for the daemon set").Required().String()
-	updateAZ        = cmdUpdate.Flag("az", "The availability zone of the pod cluster").String()
-	updateManifest  = cmdUpdate.Flag("manifest", "Complete manifest - must parse as JSON!").String()
-	updateMinHealth = cmdUpdate.Flag("minhealth", "The minimum health of the daemon set").String()
-	updateName      = cmdUpdate.Flag("name", "The cluster name (ie. staging, production)").String()
-	updatePodID     = cmdUpdate.Flag("pod", "The pod ID on the daemon set").String()
-	updateTimeout   = cmdUpdate.Flag("timeout", "Non-zero timeout for replicating hosts. e.g. 1m2s for 1 minute and 2 seconds").Default(TimeoutNotSpecified.String()).Duration()
+	cmdUpdate           = kingpin.Command(CmdUpdate, "Update a daemon set.")
+	updateID            = cmdUpdate.Arg("id", "The uuid for the daemon set").Required().String()
+	updateSelectorGiven = false
+	updateSelector      = cmdUpdate.Flag("selector", "The node selector, uses the same syntax as the test-selector command").Action(flagUsed(&updateSelectorGiven)).String()
+	updateManifest      = cmdUpdate.Flag("manifest", "Complete manifest - must parse as JSON!").String()
+	updateMinHealth     = cmdUpdate.Flag("minhealth", "The minimum health of the daemon set").String()
+	updateName          = cmdUpdate.Flag("name", "The cluster name (ie. staging, production)").String()
+	updatePodID         = cmdUpdate.Flag("pod", "The pod ID on the daemon set").String()
+	updateTimeout       = cmdUpdate.Flag("timeout", "Non-zero timeout for replicating hosts. e.g. 1m2s for 1 minute and 2 seconds").Default(TimeoutNotSpecified.String()).Duration()
+	updateEverywhere    = cmdUpdate.Flag("everywhere", "Sets selector to match everything regardless of its value").Bool()
+
+	cmdTestSelector = kingpin.Command(CmdTestSelector, `
+		This will output the hosts that match the selector,
+		The selector string uses same syntax as the kubernetes selectors without flags.
+		An example command is:
+		p2-dsctl test-selector "ice-cream in (the-fridge)"`,
+	)
+	testSelectorString     = cmdTestSelector.Flag("selector", "The raw selector represented as a string").String()
+	testSelectorEverywhere = cmdTestSelector.Flag("everywhere", "Sets selector to match everything regardless of its value").Bool()
 )
 
 func main() {
@@ -72,17 +93,16 @@ func main() {
 	client := kp.NewConsulClient(consulOpts)
 	logger := logging.NewLogger(logrus.Fields{})
 	dsstore := dsstore.NewConsul(client, 3, &logger)
+	applicator := labels.NewConsulApplicator(client, 3)
 
 	switch cmd {
 	case CmdCreate:
-		az := pc_fields.AvailabilityZone(*createAZ)
 		minHealth, err := strconv.Atoi(*createMinHealth)
 		if err != nil {
 			log.Fatalf("Invalid value for minimum health, expected integer: %v", err)
 		}
 		name := ds_fields.ClusterName(*createName)
 		podID := types.PodID(*createPodID)
-		selector := selectorFrom(az)
 
 		manifest, err := manifest.FromPath(*createManifest)
 		if err != nil {
@@ -91,6 +111,18 @@ func main() {
 
 		if *createTimeout <= time.Duration(0) {
 			log.Fatalf("Timeout must be a positive non-zero value, got '%v'", *createTimeout)
+		}
+
+		selectorString := *createSelector
+		if *createEverywhere {
+			selectorString = klabels.Everything().String()
+		} else if selectorString == "" {
+			selectorString = klabels.Nothing().String()
+			log.Fatal("Explicit everything selector not allowed, please use the --everwhere flag")
+		}
+		selector, err := parseNodeSelectorWithPrompt(klabels.Nothing(), selectorString, applicator)
+		if err != nil {
+			log.Fatalf("Error occurred: %v", err)
 		}
 
 		ds, err := dsstore.Create(manifest, minHealth, name, selector, podID, *createTimeout)
@@ -171,14 +203,6 @@ func main() {
 
 		mutator := func(ds ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
 			changed := false
-
-			if *updateAZ != "" {
-				selector := selectorFrom(pc_fields.AvailabilityZone(*updateAZ))
-				if ds.NodeSelector.String() != selector.String() {
-					changed = true
-					ds.NodeSelector = selectorFrom(pc_fields.AvailabilityZone(*updateAZ))
-				}
-			}
 			if *updateMinHealth != "" {
 				minHealth, err := strconv.Atoi(*updateMinHealth)
 				if err != nil {
@@ -230,6 +254,22 @@ func main() {
 					ds.Manifest = manifest
 				}
 			}
+			if updateSelectorGiven {
+				selectorString := *updateSelector
+				if *updateEverywhere {
+					selectorString = klabels.Everything().String()
+				} else if selectorString == "" {
+					return ds, util.Errorf("Explicit everything selector not allowed, please use the --everwhere flag")
+				}
+				selector, err := parseNodeSelectorWithPrompt(ds.NodeSelector, selectorString, applicator)
+				if err != nil {
+					return ds, util.Errorf("Error occurred: %v", err)
+				}
+				if ds.NodeSelector.String() != selector.String() {
+					changed = true
+					ds.NodeSelector = selector
+				}
+			}
 
 			if !changed {
 				return ds, util.Errorf("No changes were made")
@@ -244,12 +284,100 @@ func main() {
 		fmt.Printf("The daemon set '%s' has been successfully updated in consul", id.String())
 		fmt.Println()
 
+	case CmdTestSelector:
+		selectorString := *testSelectorString
+		if *testSelectorEverywhere {
+			selectorString = klabels.Everything().String()
+		} else if selectorString == "" {
+			fmt.Println("Explicit everything selector not allowed, please use the --everwhere flag")
+		}
+		selector, err := parseNodeSelector(selectorString)
+		if err != nil {
+			log.Fatalf("Error occurred: %v", err)
+		}
+
+		matches, err := applicator.GetMatches(selector, labels.NODE)
+		if err != nil {
+			log.Fatalf("Error getting matching labels: %v", err)
+		}
+		fmt.Println(matches)
+
 	default:
 		log.Fatalf("Unrecognized command %v", cmd)
 	}
 }
 
-func selectorFrom(az pc_fields.AvailabilityZone) labels.Selector {
-	return labels.Everything().
-		Add(pc_fields.AvailabilityZoneLabel, labels.InOperator, []string{az.String()})
+func parseNodeSelectorWithPrompt(
+	oldSelector klabels.Selector,
+	newSelectorString string,
+	applicator labels.Applicator,
+) (klabels.Selector, error) {
+	newSelector, err := parseNodeSelector(newSelectorString)
+	if err != nil {
+		return newSelector, err
+	}
+	if oldSelector.String() == newSelector.String() {
+		return newSelector, nil
+	}
+
+	newNodeLabels, err := applicator.GetMatches(newSelector, labels.NODE)
+	if err != nil {
+		return newSelector, util.Errorf("Error getting matching labels: %v", err)
+	}
+
+	oldNodeLabels, err := applicator.GetMatches(oldSelector, labels.NODE)
+	if err != nil {
+		return newSelector, util.Errorf("Error getting matching labels: %v", err)
+	}
+
+	toRemove, toAdd := makeNodeChanges(oldNodeLabels, newNodeLabels)
+
+	fmt.Printf("Changing deployment from '%v' to '%v':\n", oldSelector.String(), newSelectorString)
+	fmt.Printf("Removing:%9s hosts %s\n", fmt.Sprintf("-%v", len(toRemove)), toRemove)
+	fmt.Printf("Adding:  %9s hosts %s\n", fmt.Sprintf("+%v", len(toAdd)), toAdd)
+	fmt.Println("Continue?")
+	if !confirm() {
+		return newSelector, util.Errorf("User cancelled")
+	}
+
+	return newSelector, nil
+}
+
+func parseNodeSelector(selectorString string) (klabels.Selector, error) {
+	selector, err := klabels.Parse(selectorString)
+	if err != nil {
+		return selector, util.Errorf("Malformed selector: %v", err)
+	}
+	return selector, nil
+}
+
+// Returns nodes to be removed and nodes to be added
+func makeNodeChanges(oldNodeLabels []labels.Labeled, newNodeLabels []labels.Labeled) ([]types.NodeName, []types.NodeName) {
+	var oldNodeNames []types.NodeName
+	var newNodeNames []types.NodeName
+
+	for _, node := range oldNodeLabels {
+		oldNodeNames = append(oldNodeNames, types.NodeName(node.ID))
+	}
+
+	for _, node := range newNodeLabels {
+		newNodeNames = append(newNodeNames, types.NodeName(node.ID))
+	}
+
+	toRemove := types.NewNodeSet(oldNodeNames...).Difference(types.NewNodeSet(newNodeNames...)).ListNodes()
+	toAdd := types.NewNodeSet(newNodeNames...).Difference(types.NewNodeSet(oldNodeNames...)).ListNodes()
+
+	return toRemove, toAdd
+}
+
+// Confirm asks the user to type "y" and returns whether they do so.
+func confirm() bool {
+	fmt.Printf(`Type "y" to confirm [n]: `)
+	var input string
+	_, err := fmt.Scanln(&input)
+	if err != nil {
+		return false
+	}
+	resp := strings.TrimSpace(strings.ToLower(input))
+	return resp == "y" || resp == "yes"
 }
