@@ -20,6 +20,7 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
+	fake_checker "github.com/square/p2/pkg/health/checker/test"
 	pc_fields "github.com/square/p2/pkg/pc/fields"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
@@ -42,6 +43,11 @@ func TestContendNodes(t *testing.T) {
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "contendNodes",
 	})
+
+	var allNodes []types.NodeName
+	allNodes = append(allNodes, "node1")
+	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+
 	dsf := &Farm{
 		dsStore:       dsStore,
 		kpStore:       kpStore,
@@ -51,7 +57,7 @@ func TestContendNodes(t *testing.T) {
 		session:       kptest.NewSession(),
 		logger:        logger,
 		alerter:       alerting.NewNop(),
-		healthChecker: nil,
+		healthChecker: &happyHealthChecker,
 	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
@@ -152,6 +158,10 @@ func TestContendSelectors(t *testing.T) {
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "contendSelectors",
 	})
+
+	var allNodes []types.NodeName
+	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+
 	dsf := &Farm{
 		dsStore:       dsStore,
 		kpStore:       kpStore,
@@ -161,7 +171,7 @@ func TestContendSelectors(t *testing.T) {
 		session:       kptest.NewSession(),
 		logger:        logger,
 		alerter:       alerting.NewNop(),
-		healthChecker: nil,
+		healthChecker: &happyHealthChecker,
 	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
@@ -300,6 +310,15 @@ func TestFarmSchedule(t *testing.T) {
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "farmSchedule",
 	})
+
+	var allNodes []types.NodeName
+	allNodes = append(allNodes, "node1", "node2", "node3")
+	for i := 0; i < 10; i++ {
+		nodeName := fmt.Sprintf("good_node%v", i)
+		allNodes = append(allNodes, types.NodeName(nodeName))
+	}
+	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+
 	dsf := &Farm{
 		dsStore:       dsStore,
 		kpStore:       kpStore,
@@ -309,7 +328,7 @@ func TestFarmSchedule(t *testing.T) {
 		session:       kptest.NewSession(),
 		logger:        logger,
 		alerter:       alerting.NewNop(),
-		healthChecker: nil,
+		healthChecker: &happyHealthChecker,
 	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
@@ -478,6 +497,14 @@ func TestCleanupPods(t *testing.T) {
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
+	var allNodes []types.NodeName
+	allNodes = append(allNodes)
+	for i := 0; i < 10; i++ {
+		nodeName := fmt.Sprintf("node%v", i)
+		allNodes = append(allNodes, types.NodeName(nodeName))
+	}
+	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("node%v", i)
 		id := labels.MakePodLabelKey(types.NodeName(nodeName), podID)
@@ -514,7 +541,7 @@ func TestCleanupPods(t *testing.T) {
 		session:       kptest.NewSession(),
 		logger:        logger,
 		alerter:       alerting.NewNop(),
-		healthChecker: nil,
+		healthChecker: &happyHealthChecker,
 	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
@@ -546,18 +573,28 @@ func TestMultipleFarms(t *testing.T) {
 	firstLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "firstMultiple",
 	})
+
+	var allNodes []types.NodeName
+	allNodes = append(allNodes, "node1", "node2", "node3")
+	for i := 0; i < 10; i++ {
+		nodeName := fmt.Sprintf("good_node%v", i)
+		allNodes = append(allNodes, types.NodeName(nodeName))
+	}
+	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+
 	//
 	// Instantiate first farm
 	//
 	firstFarm := &Farm{
-		dsStore:    dsStore,
-		kpStore:    kpStore,
-		scheduler:  scheduler.NewApplicatorScheduler(applicator),
-		applicator: applicator,
-		children:   make(map[ds_fields.ID]*childDS),
-		session:    session,
-		logger:     firstLogger,
-		alerter:    alerting.NewNop(),
+		dsStore:       dsStore,
+		kpStore:       kpStore,
+		scheduler:     scheduler.NewApplicatorScheduler(applicator),
+		applicator:    applicator,
+		children:      make(map[ds_fields.ID]*childDS),
+		session:       session,
+		logger:        firstLogger,
+		alerter:       alerting.NewNop(),
+		healthChecker: &happyHealthChecker,
 	}
 	firstQuitCh := make(chan struct{})
 	defer close(firstQuitCh)
@@ -573,14 +610,15 @@ func TestMultipleFarms(t *testing.T) {
 		"farm": "secondMultiple",
 	})
 	secondFarm := &Farm{
-		dsStore:    dsStore,
-		kpStore:    kpStore,
-		scheduler:  scheduler.NewApplicatorScheduler(applicator),
-		applicator: applicator,
-		children:   make(map[ds_fields.ID]*childDS),
-		session:    session,
-		logger:     secondLogger,
-		alerter:    alerting.NewNop(),
+		dsStore:       dsStore,
+		kpStore:       kpStore,
+		scheduler:     scheduler.NewApplicatorScheduler(applicator),
+		applicator:    applicator,
+		children:      make(map[ds_fields.ID]*childDS),
+		session:       session,
+		logger:        secondLogger,
+		alerter:       alerting.NewNop(),
+		healthChecker: &happyHealthChecker,
 	}
 	secondQuitCh := make(chan struct{})
 	defer close(secondQuitCh)

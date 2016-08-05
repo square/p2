@@ -410,12 +410,6 @@ func (ds *daemonSet) unschedule(node types.NodeName) error {
 }
 
 func (ds *daemonSet) PublishToReplication() error {
-	// TODO: We need to specifically turn this on to work
-	if ds.healthChecker == nil {
-		ds.logger.Info("Healthchecker is nil")
-		return nil
-	}
-
 	// We must cancel the replication because if we try to call
 	// InitializeReplicationWithCheck, we will get an error
 	ds.cancelReplication()
