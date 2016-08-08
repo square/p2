@@ -17,13 +17,14 @@ import (
 var DEFAULT_PATH = "/usr/local/p2hooks.d"
 
 const (
-	HOOK_ENV_VAR                = "HOOK"
-	HOOK_EVENT_ENV_VAR          = "HOOK_EVENT"
-	HOOKED_POD_ID_ENV_VAR       = "HOOKED_POD_ID"
-	HOOKED_POD_HOME_ENV_VAR     = "HOOKED_POD_HOME"
-	HOOKED_POD_MANIFEST_ENV_VAR = "HOOKED_POD_MANIFEST"
-	HOOKED_CONFIG_PATH_ENV_VAR  = "HOOKED_CONFIG_PATH"
-	HOOKED_ENV_PATH_ENV_VAR     = "HOOKED_ENV_PATH"
+	HOOK_ENV_VAR                   = "HOOK"
+	HOOK_EVENT_ENV_VAR             = "HOOK_EVENT"
+	HOOKED_POD_ID_ENV_VAR          = "HOOKED_POD_ID"
+	HOOKED_POD_HOME_ENV_VAR        = "HOOKED_POD_HOME"
+	HOOKED_POD_MANIFEST_ENV_VAR    = "HOOKED_POD_MANIFEST"
+	HOOKED_CONFIG_PATH_ENV_VAR     = "HOOKED_CONFIG_PATH"
+	HOOKED_ENV_PATH_ENV_VAR        = "HOOKED_ENV_PATH"
+	HOOKED_CONFIG_DIR_PATH_ENV_VAR = "HOOKED_CONFIG_DIR_PATH"
 
 	DefaultTimeout = 60 * time.Second
 )
@@ -214,6 +215,7 @@ func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest 
 		fmt.Sprintf("%s=%s", HOOKED_POD_MANIFEST_ENV_VAR, tmpManifestFile.Name()),
 		fmt.Sprintf("%s=%s", HOOKED_CONFIG_PATH_ENV_VAR, path.Join(pod.ConfigDir(), configFileName)),
 		fmt.Sprintf("%s=%s", HOOKED_ENV_PATH_ENV_VAR, pod.EnvDir()),
+		fmt.Sprintf("%s=%s", HOOKED_CONFIG_DIR_PATH_ENV_VAR, pod.ConfigDir()),
 	}
 
 	return runDirectory(dirpath, hookEnvironment, logger)
