@@ -37,6 +37,10 @@ var (
 	// ExperimentalOpencontainer permits the use of the experimental "opencontainer"
 	// launchable type.
 	ExperimentalOpencontainer = param.Bool("experimental_opencontainer", false)
+
+	// NestedCgroups causes the p2-preparer to use a hierarchical cgroup naming scheme when
+	// creating new launchables.
+	NestedCgroups = param.Bool("nested_cgroups", false)
 )
 
 const DEFAULT_PATH = "/data/pods"
@@ -697,6 +701,15 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 		if len(entryPoints) == 0 {
 			entryPoints = append(entryPoints, path.Join("bin", "launch"))
 		}
+		cgroupName := serviceId
+		if *NestedCgroups {
+			cgroupName = filepath.Join(
+				"p2",
+				pod.node.String(),
+				pod.Id.String(),
+				launchableStanza.LaunchableId.String(),
+			)
+		}
 
 		ret := &hoist.Launchable{
 			Version:          version,
@@ -711,7 +724,7 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 			RestartPolicy:    restartPolicy,
 			CgroupConfig:     launchableStanza.CgroupConfig,
 			CgroupConfigName: launchableStanza.LaunchableId.String(),
-			CgroupName:       serviceId,
+			CgroupName:       cgroupName,
 			SuppliedEnvVars:  launchableStanza.Env,
 			EntryPoints:      entryPoints,
 		}
