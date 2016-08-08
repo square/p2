@@ -1,7 +1,6 @@
 package preparer
 
 import (
-	"path/filepath"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -36,9 +35,9 @@ type HookListener struct {
 	// hostname, however there are future plans to change this behavior, so
 	// the hostname is passed to WatchPods and ListPods even though it is
 	// ignored
-	Node             types.NodeName // The host to watch for hooks for
-	DestinationDir   string         // The destination directory for downloaded pods that will act as hooks
-	ExecDir          string         // The directory that will actually be executed by the HookDir
+	Node             types.NodeName   // The host to watch for hooks for
+	HookFactory      pods.HookFactory // The factory to use to create hook pods
+	ExecDir          string           // The directory that will actually be executed by the HookDir
 	Logger           logging.Logger
 	authPolicy       auth.Policy
 	artifactVerifier auth.ArtifactVerifier
@@ -104,8 +103,7 @@ func (l *HookListener) SyncOnce() error {
 
 func (l *HookListener) installHook(result kp.ManifestResult) error {
 	sub := l.Logger.SubLogger(logrus.Fields{
-		"pod":  result.Manifest.ID(),
-		"dest": l.DestinationDir,
+		"pod": result.Manifest.ID(),
 	})
 
 	err := l.authPolicy.AuthorizeHook(result.Manifest, sub)
@@ -118,11 +116,7 @@ func (l *HookListener) installHook(result kp.ManifestResult) error {
 		return err
 	}
 
-	hookPod := pods.NewPod(
-		result.Manifest.ID(),
-		l.Node,
-		filepath.Join(l.DestinationDir, string(result.Manifest.ID())),
-	)
+	hookPod := l.HookFactory.NewHookPod(result.Manifest.ID())
 
 	// Figure out if we even need to install anything.
 	// Hooks aren't running services and so there isn't a need

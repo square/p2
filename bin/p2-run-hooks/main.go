@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"os"
-	"path"
 
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/logging"
@@ -41,7 +40,10 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	pod := pods.NewPod(types.PodID(path.Base(*podDir)), types.NodeName(*nodeName), *podDir)
+	pod, err := pods.PodFromPodHome(types.NodeName(*nodeName), *podDir)
+	if err != nil {
+		log.Fatalln(err)
+	}
 
 	var podManifest manifest.Manifest
 	if *manifestPath != "" {

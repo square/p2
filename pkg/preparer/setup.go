@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -49,7 +49,7 @@ type Preparer struct {
 	hooks                  Hooks
 	hookListener           HookListener
 	Logger                 logging.Logger
-	podRoot                string
+	podFactory             pods.Factory
 	authPolicy             auth.Policy
 	maxLaunchableDiskUsage size.ByteCount
 	finishExec             []string
@@ -151,7 +151,7 @@ func UnmarshalConfig(config []byte) (*PreparerConfig, error) {
 		preparerConfig.HooksDirectory = hooks.DEFAULT_PATH
 	}
 	if preparerConfig.PodRoot == "" {
-		preparerConfig.PodRoot = pods.DEFAULT_PATH
+		preparerConfig.PodRoot = pods.DefaultPath
 	}
 	return &preparerConfig, nil
 
@@ -340,7 +340,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		Intent:           store,
 		HookPrefix:       kp.HOOK_TREE,
 		Node:             preparerConfig.NodeName,
-		DestinationDir:   path.Join(pods.DEFAULT_PATH, "hooks"),
+		HookFactory:      pods.NewHookFactory(filepath.Join(preparerConfig.PodRoot, "hooks"), preparerConfig.NodeName),
 		ExecDir:          preparerConfig.HooksDirectory,
 		Logger:           logger,
 		authPolicy:       authPolicy,
@@ -373,7 +373,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		hooks:                  hooks.Hooks(preparerConfig.HooksDirectory, &logger),
 		hookListener:           listener,
 		Logger:                 logger,
-		podRoot:                preparerConfig.PodRoot,
+		podFactory:             pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName),
 		authPolicy:             authPolicy,
 		maxLaunchableDiskUsage: maxLaunchableDiskUsage,
 		finishExec:             finishExec,

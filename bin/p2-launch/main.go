@@ -23,7 +23,7 @@ import (
 var (
 	manifestURI  = kingpin.Arg("manifest", "a path to a pod manifest that will be installed and launched immediately.").Required().URL()
 	nodeName     = kingpin.Flag("node-name", "the name of this node (default: hostname)").String()
-	podRoot      = kingpin.Flag("pod-root", "the root of the pods directory").Default(pods.DEFAULT_PATH).Short('p').String()
+	podRoot      = kingpin.Flag("pod-root", "the root of the pods directory").Default(pods.DefaultPath).Short('p').String()
 	authType     = kingpin.Flag("auth-type", "the auth policy to use e.g. (none, keyring, user)").Short('a').Default("none").String()
 	keyring      = kingpin.Flag("keyring", "the pgp keyring to use for auth policies if --auth-type other than none is given").Short('k').ExistingFile()
 	allowedUsers = kingpin.Flag("allowed-user", "a user allowed to deploy. may be specified more than once. only necessary when '--auth-type keyring' is used").Short('u').Strings()
@@ -55,7 +55,8 @@ func main() {
 		log.Fatalf("%s", err)
 	}
 
-	pod := pods.NewPod(manifest.ID(), types.NodeName(*nodeName), pods.PodPath(*podRoot, manifest.ID()))
+	podFactory := pods.NewFactory(*podRoot, types.NodeName(*nodeName))
+	pod := podFactory.NewPod(manifest.ID())
 	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector))
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)

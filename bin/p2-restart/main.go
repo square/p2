@@ -24,9 +24,9 @@ $ p2-restart --pod-dir /custom/pod/home
 
 `)
 
-	podName  = restart.Arg("pod-name", fmt.Sprintf("The name of the pod to be restarted. Looks in the default pod home '%s' for the pod", pods.DEFAULT_PATH)).String()
 	nodeName = restart.Flag("node-name", "The name of this node (default: hostname)").String()
 	podDir   = restart.Flag("pod-dir", "The directory where the pod to be restarted is located. ").String()
+	podName  = restart.Arg("pod-name", fmt.Sprintf("The name of the pod to be restarted. Looks in the default pod home '%s' for the pod", pods.DefaultPath)).String()
 )
 
 func main() {
@@ -54,12 +54,12 @@ func main() {
 
 	var path string
 	if *podName != "" {
-		path = filepath.Join(pods.DEFAULT_PATH, *podName)
+		path = filepath.Join(pods.DefaultPath, *podName)
 	} else {
 		path = *podDir
 	}
 
-	pod, err := pods.ExistingPod(types.NodeName(*nodeName), path)
+	pod, err := pods.PodFromPodHome(types.NodeName(*nodeName), path)
 	if err != nil {
 		logger.NoFields().Fatalln(err)
 	}

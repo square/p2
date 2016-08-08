@@ -186,11 +186,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				if !working {
 					p.tryRunHooks(
 						hooks.AFTER_AUTH_FAIL,
-						pods.NewPod(
-							nextLaunch.ID,
-							p.node,
-							pods.PodPath(p.podRoot, nextLaunch.ID),
-						),
+						p.podFactory.NewPod(nextLaunch.ID),
 						nextLaunch.Intent,
 						manifestLogger,
 					)
@@ -198,11 +194,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 			}
 		case <-time.After(1 * time.Second):
 			if working {
-				pod := pods.NewPod(
-					nextLaunch.ID,
-					p.node,
-					pods.PodPath(p.podRoot, nextLaunch.ID),
-				)
+				pod := p.podFactory.NewPod(nextLaunch.ID)
 
 				// TODO better solution: force the preparer to have a 0s default timeout, prevent KILLs
 				if pod.Id == POD_ID {

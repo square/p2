@@ -32,8 +32,6 @@ import (
 )
 
 var (
-	Log logging.Logger
-
 	// ExperimentalOpencontainer permits the use of the experimental "opencontainer"
 	// launchable type.
 	ExperimentalOpencontainer = param.Bool("experimental_opencontainer", false)
@@ -42,18 +40,6 @@ var (
 	// creating new launchables.
 	NestedCgroups = param.Bool("nested_cgroups", false)
 )
-
-const DEFAULT_PATH = "/data/pods"
-
-var DefaultFinishExec = []string{"/bin/true"} // type must match preparerconfig
-
-func init() {
-	Log = logging.NewLogger(logrus.Fields{})
-}
-
-func PodHome(root string, manifestId types.PodID) string {
-	return filepath.Join(root, manifestId.String())
-}
 
 type Pod struct {
 	Id             types.PodID
@@ -67,37 +53,6 @@ type Pod struct {
 	LogExec        runit.Exec
 	FinishExec     runit.Exec
 	Fetcher        uri.Fetcher
-}
-
-func NewPod(id types.PodID, node types.NodeName, home string) *Pod {
-	return &Pod{
-		Id:             id,
-		node:           node,
-		home:           home,
-		logger:         Log.SubLogger(logrus.Fields{"pod": id}),
-		SV:             runit.DefaultSV,
-		ServiceBuilder: runit.DefaultBuilder,
-		P2Exec:         p2exec.DefaultP2Exec,
-		DefaultTimeout: 60 * time.Second,
-		LogExec:        runit.DefaultLogExec(),
-		FinishExec:     DefaultFinishExec,
-		Fetcher:        uri.DefaultFetcher,
-	}
-}
-
-func ExistingPod(node types.NodeName, home string) (*Pod, error) {
-	temp := Pod{home: home}
-	manifest, err := temp.CurrentManifest()
-	if err == NoCurrentManifest {
-		return nil, util.Errorf("No current manifest set, this is not an extant pod directory")
-	} else if err != nil {
-		return nil, err
-	}
-	return NewPod(manifest.ID(), node, home), nil
-}
-
-func PodFromManifestId(manifestId types.PodID, node types.NodeName) *Pod {
-	return NewPod(manifestId, node, PodHome(DEFAULT_PATH, manifestId))
 }
 
 var NoCurrentManifest error = fmt.Errorf("No current manifest for this pod")
