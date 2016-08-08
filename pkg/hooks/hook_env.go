@@ -27,7 +27,25 @@ func (h *HookEnv) Manifest() (manifest.Manifest, error) {
 	return manifest.FromPath(path)
 }
 
-func (h *HookEnv) Pod() (*pods.Pod, error) {
+func (h *HookEnv) PodID() (types.PodID, error) {
+	id := os.Getenv(HOOKED_POD_ID_ENV_VAR)
+	if id == "" {
+		return "", util.Errorf("Did not provide a pod ID to use")
+	}
+
+	return types.PodID(id), nil
+}
+
+func (h *HookEnv) PodHome() (string, error) {
+	path := os.Getenv(HOOKED_POD_HOME_ENV_VAR)
+	if path == "" {
+		return "", util.Errorf("No pod home given for pod")
+	}
+
+	return path, nil
+}
+
+func (h *HookEnv) PodFromDisk() (*pods.Pod, error) {
 	id := os.Getenv(HOOKED_POD_ID_ENV_VAR)
 	if id == "" {
 		return nil, util.Errorf("Did not provide a pod ID to use")
@@ -37,7 +55,14 @@ func (h *HookEnv) Pod() (*pods.Pod, error) {
 		return nil, util.Errorf("No pod home given for pod ID %s", id)
 	}
 
-	return pods.NewPod(types.PodID(id), path), nil
+	pod := pods.NewPod(types.PodID(id), path)
+
+	// Spot check that the pod is actually on the disk by looking for the current manifest
+	if _, err := pod.CurrentManifest(); err != nil {
+		return nil, err
+	}
+
+	return pod, nil
 }
 
 func (h *HookEnv) Config() (*config.Config, error) {
@@ -50,6 +75,10 @@ func (h *HookEnv) Event() (HookType, error) {
 
 func (h *HookEnv) EnvPath() string {
 	return os.Getenv(HOOKED_ENV_PATH_ENV_VAR)
+}
+
+func (h *HookEnv) ConfigDirPath() string {
+	return os.Getenv(HOOKED_CONFIG_DIR_PATH_ENV_VAR)
 }
 
 func (h *HookEnv) ExitUnlessEvent(types ...HookType) HookType {
