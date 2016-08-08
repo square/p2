@@ -127,7 +127,15 @@ func (a registry) fetchRegistryData(launchableID launch.LaunchableID, version la
 	var registryResponse RegistryResponse
 	err = json.Unmarshal(respBytes, &registryResponse)
 	if err != nil {
-		return nil, auth.VerificationData{}, util.Errorf("Could not unmarshal JSON response from artifact registry: %s", err)
+		l := len(respBytes)
+		if l > 80 {
+			l = 80
+		}
+		return nil, auth.VerificationData{}, util.Errorf(
+			"bad response from artifact registry: %s: %q",
+			err,
+			string(respBytes[:l]),
+		)
 	}
 
 	// Require artifact URL to be present, other fields are optional but returned

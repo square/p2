@@ -2,6 +2,7 @@ package labels
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 
@@ -72,14 +73,27 @@ func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type) ([
 	if err != nil {
 		return []Labeled{}, err
 	}
-
 	defer resp.Body.Close()
 
-	matches := []string{}
-	decoder := json.NewDecoder(resp.Body)
-	err = decoder.Decode(&matches)
+	bodyData, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return []Labeled{}, err
+	}
+
+	matches := []string{}
+	err = json.Unmarshal(bodyData, &matches)
+	if err != nil {
+		l := len(bodyData)
+		if l > 80 {
+			l = 80
+		}
+		return []Labeled{}, util.Errorf(
+			"bad response from http applicator %s: %s: %s %q",
+			urlToGet.String(),
+			err,
+			resp.Status,
+			string(bodyData[:l]),
+		)
 	}
 
 	labeled := make([]Labeled, len(matches))
