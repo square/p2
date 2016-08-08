@@ -85,7 +85,7 @@ func (t *TestPod) Node() types.NodeName {
 	return "hostname"
 }
 
-func (t *TestPod) Path() string {
+func (t *TestPod) Home() string {
 	return os.TempDir()
 }
 

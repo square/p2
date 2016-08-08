@@ -56,7 +56,7 @@ func main() {
 		}
 	}
 
-	log.Printf("About to run %s hooks for pod %s\n", hookType, pod.Path())
+	log.Printf("About to run %s hooks for pod %s\n", hookType, pod.Home())
 	err = dir.RunHookType(hookType, pod, podManifest)
 	if err != nil {
 		log.Fatalln(err)
