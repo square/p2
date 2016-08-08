@@ -120,6 +120,7 @@ func (l *HookListener) installHook(result kp.ManifestResult) error {
 
 	hookPod := pods.NewPod(
 		result.Manifest.ID(),
+		l.Node,
 		filepath.Join(l.DestinationDir, string(result.Manifest.ID())),
 	)
 

@@ -37,6 +37,10 @@ var (
 	// ExperimentalOpencontainer permits the use of the experimental "opencontainer"
 	// launchable type.
 	ExperimentalOpencontainer = param.Bool("experimental_opencontainer", false)
+
+	// NestedCgroups causes the p2-preparer to use a hierarchical cgroup naming scheme when
+	// creating new launchables.
+	NestedCgroups = param.Bool("nested_cgroups", false)
 )
 
 const DEFAULT_PATH = "/data/pods"
@@ -53,6 +57,7 @@ func PodPath(root string, manifestId types.PodID) string {
 
 type Pod struct {
 	Id             types.PodID
+	node           types.NodeName
 	path           string
 	logger         logging.Logger
 	SV             runit.SV
@@ -64,9 +69,10 @@ type Pod struct {
 	Fetcher        uri.Fetcher
 }
 
-func NewPod(id types.PodID, path string) *Pod {
+func NewPod(id types.PodID, node types.NodeName, path string) *Pod {
 	return &Pod{
 		Id:             id,
+		node:           node,
 		path:           path,
 		logger:         Log.SubLogger(logrus.Fields{"pod": id}),
 		SV:             runit.DefaultSV,
@@ -79,7 +85,7 @@ func NewPod(id types.PodID, path string) *Pod {
 	}
 }
 
-func ExistingPod(path string) (*Pod, error) {
+func ExistingPod(node types.NodeName, path string) (*Pod, error) {
 	temp := Pod{path: path}
 	manifest, err := temp.CurrentManifest()
 	if err == NoCurrentManifest {
@@ -87,14 +93,18 @@ func ExistingPod(path string) (*Pod, error) {
 	} else if err != nil {
 		return nil, err
 	}
-	return NewPod(manifest.ID(), path), nil
+	return NewPod(manifest.ID(), node, path), nil
 }
 
-func PodFromManifestId(manifestId types.PodID) *Pod {
-	return NewPod(manifestId, PodPath(DEFAULT_PATH, manifestId))
+func PodFromManifestId(manifestId types.PodID, node types.NodeName) *Pod {
+	return NewPod(manifestId, node, PodPath(DEFAULT_PATH, manifestId))
 }
 
 var NoCurrentManifest error = fmt.Errorf("No current manifest for this pod")
+
+func (pod *Pod) Node() types.NodeName {
+	return pod.node
+}
 
 func (pod *Pod) Path() string {
 	return pod.path
@@ -691,6 +701,15 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 		if len(entryPoints) == 0 {
 			entryPoints = append(entryPoints, path.Join("bin", "launch"))
 		}
+		cgroupName := serviceId
+		if *NestedCgroups {
+			cgroupName = filepath.Join(
+				"p2",
+				pod.node.String(),
+				pod.Id.String(),
+				launchableStanza.LaunchableId.String(),
+			)
+		}
 
 		ret := &hoist.Launchable{
 			Version:          version,
@@ -705,7 +724,7 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 			RestartPolicy:    restartPolicy,
 			CgroupConfig:     launchableStanza.CgroupConfig,
 			CgroupConfigName: launchableStanza.LaunchableId.String(),
-			CgroupName:       serviceId,
+			CgroupName:       cgroupName,
 			SuppliedEnvVars:  launchableStanza.Env,
 			EntryPoints:      entryPoints,
 		}
