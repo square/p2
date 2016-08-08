@@ -8,6 +8,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -23,8 +24,9 @@ $ p2-restart --pod-dir /custom/pod/home
 
 `)
 
-	podName = restart.Arg("pod-name", fmt.Sprintf("The name of the pod to be restarted. Looks in the default pod home '%s' for the pod", pods.DEFAULT_PATH)).String()
-	podDir  = restart.Flag("pod-dir", "The directory where the pod to be restarted is located. ").String()
+	podName  = restart.Arg("pod-name", fmt.Sprintf("The name of the pod to be restarted. Looks in the default pod home '%s' for the pod", pods.DEFAULT_PATH)).String()
+	nodeName = restart.Flag("node-name", "The name of this node (default: hostname)").String()
+	podDir   = restart.Flag("pod-dir", "The directory where the pod to be restarted is located. ").String()
 )
 
 func main() {
@@ -38,6 +40,14 @@ func main() {
 	}
 	logger := pods.Log
 
+	if *nodeName == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			logger.WithError(err).Fatal("Error getting node name")
+		}
+		*nodeName = hostname
+	}
+
 	if *podName == "" && *podDir == "" {
 		logger.NoFields().Fatalln("Must pass a pod name or pod home directory")
 	}
@@ -49,7 +59,7 @@ func main() {
 		path = *podDir
 	}
 
-	pod, err := pods.ExistingPod(path)
+	pod, err := pods.ExistingPod(types.NodeName(*nodeName), path)
 	if err != nil {
 		logger.NoFields().Fatalln(err)
 	}

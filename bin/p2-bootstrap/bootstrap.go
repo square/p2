@@ -36,6 +36,11 @@ func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 	log.Println("Starting bootstrap")
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("error getting node name: %v", err)
+	}
+	nodeName := types.NodeName(hostname)
 	agentManifest, err := manifest.FromPath(*agentManifestPath)
 	if err != nil {
 		log.Fatalln("Could not get agent manifest: %s", err)
@@ -49,7 +54,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Could not get consul manifest: %s", err)
 		}
-		consulPod = pods.NewPod(consulManifest.ID(), pods.PodPath(*podRoot, consulManifest.ID()))
+		consulPod = pods.NewPod(consulManifest.ID(), nodeName, pods.PodPath(*podRoot, consulManifest.ID()))
 		err = installConsul(consulPod, consulManifest, *registryURL)
 		if err != nil {
 			log.Fatalf("Could not install consul: %s", err)
@@ -57,7 +62,7 @@ func main() {
 	} else {
 		log.Printf("Using existing Consul at %s\n", *existingConsul)
 
-		consulPod, err = pods.ExistingPod(*existingConsul)
+		consulPod, err = pods.ExistingPod(nodeName, *existingConsul)
 		if err != nil {
 			log.Fatalf("The existing consul pod is invalid: %s", err)
 		}
@@ -84,7 +89,7 @@ func main() {
 		log.Fatalf("Could not register base agent with consul: %s", err)
 	}
 	log.Println("Installing and launching base agent")
-	err = installBaseAgent(agentManifest, *registryURL)
+	err = installBaseAgent(agentManifest, nodeName, *registryURL)
 	if err != nil {
 		log.Fatalf("Could not install base agent: %s", err)
 	}
@@ -222,8 +227,8 @@ func scheduleForThisHost(manifest manifest.Manifest, alsoReality bool) error {
 	return nil
 }
 
-func installBaseAgent(agentManifest manifest.Manifest, registryURL *url.URL) error {
-	agentPod := pods.NewPod(agentManifest.ID(), pods.PodPath(*podRoot, agentManifest.ID()))
+func installBaseAgent(agentManifest manifest.Manifest, nodeName types.NodeName, registryURL *url.URL) error {
+	agentPod := pods.NewPod(agentManifest.ID(), nodeName, pods.PodPath(*podRoot, agentManifest.ID()))
 	err := agentPod.Install(agentManifest, auth.NopVerifier(), artifact.NewRegistry(registryURL, uri.DefaultFetcher, osversion.DefaultDetector))
 	if err != nil {
 		return err

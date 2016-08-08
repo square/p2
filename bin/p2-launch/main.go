@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
@@ -21,6 +22,7 @@ import (
 
 var (
 	manifestURI  = kingpin.Arg("manifest", "a path to a pod manifest that will be installed and launched immediately.").Required().URL()
+	nodeName     = kingpin.Flag("node-name", "the name of this node (default: hostname)").String()
 	podRoot      = kingpin.Flag("pod-root", "the root of the pods directory").Default(pods.DEFAULT_PATH).Short('p').String()
 	authType     = kingpin.Flag("auth-type", "the auth policy to use e.g. (none, keyring, user)").Short('a').Default("none").String()
 	keyring      = kingpin.Flag("keyring", "the pgp keyring to use for auth policies if --auth-type other than none is given").Short('k').ExistingFile()
@@ -35,6 +37,14 @@ func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
 
+	if *nodeName == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			log.Fatalf("error getting node name: %v", err)
+		}
+		*nodeName = hostname
+	}
+
 	manifest, err := manifest.FromURI(*manifestURI)
 	if err != nil {
 		log.Fatalf("%s", err)
@@ -45,7 +55,7 @@ func main() {
 		log.Fatalf("%s", err)
 	}
 
-	pod := pods.NewPod(manifest.ID(), pods.PodPath(*podRoot, manifest.ID()))
+	pod := pods.NewPod(manifest.ID(), types.NodeName(*nodeName), pods.PodPath(*podRoot, manifest.ID()))
 	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector))
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)
