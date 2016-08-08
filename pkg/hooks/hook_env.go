@@ -27,6 +27,10 @@ func (h *HookEnv) Manifest() (manifest.Manifest, error) {
 	return manifest.FromPath(path)
 }
 
+func (h *HookEnv) PodID() types.PodID {
+	return types.PodID(os.Getenv(HOOKED_POD_ID_ENV_VAR))
+}
+
 func (h *HookEnv) Pod() (*pods.Pod, error) {
 	id := os.Getenv(HOOKED_POD_ID_ENV_VAR)
 	if id == "" {
