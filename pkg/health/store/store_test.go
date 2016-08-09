@@ -1,7 +1,6 @@
 package store
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/square/p2/pkg/health"
@@ -9,7 +8,8 @@ import (
 )
 
 type FakeHealthChecker struct {
-	healthResults chan []*health.Result
+	results chan []*health.Result
+	ready   chan struct{}
 }
 
 func (hc *FakeHealthChecker) WatchNodeService(nodename types.NodeName, serviceID string, resultCh chan<- health.Result, errCh chan<- error, quitCh <-chan struct{}) {
@@ -25,32 +25,31 @@ func (hc *FakeHealthChecker) Service(serviceID string) (map[types.NodeName]healt
 }
 
 func (hc *FakeHealthChecker) WatchHealth(resultCh chan []*health.Result, errCh chan<- error, quitCh <-chan struct{}) {
-	select {
-	case result := <-hc.healthResults:
-		fmt.Printf("res %v", result)
-		resultCh <- result
-	case <-quitCh:
-		return
-	}
+	hc.results = resultCh
+	close(hc.ready)
+	<-quitCh
 }
 
-func NewFakeHealthStore() (healthChecker HealthStore, healthValues chan []*health.Result) {
-	healthResults := make(chan []*health.Result, 1) // real clients should use a buffered chan. This is unbuffered to simplify concurrency in this test
-	hc := &FakeHealthChecker{
-		healthResults: healthResults,
-	}
-	hs := NewHealthStore(hc)
+func (hc *FakeHealthChecker) Send(r []*health.Result) {
+	<-hc.ready
+	// Send three times to be sure at least one result was fully handled before returning
+	hc.results <- r
+	hc.results <- r
+	hc.results <- r
+}
 
-	return hs, healthResults
+func NewFakeHealthStore() (HealthStore, *FakeHealthChecker) {
+	hc := &FakeHealthChecker{
+		ready: make(chan struct{}),
+	}
+	return NewHealthStore(hc), hc
 }
 
 func TestStartWatchBasic(t *testing.T) {
-	hs, healthResults := NewFakeHealthStore()
 	quitCh := make(chan struct{})
-
-	go func() {
-		hs.StartWatch(quitCh)
-	}()
+	defer close(quitCh)
+	hs, checker := NewFakeHealthStore()
+	go hs.StartWatch(quitCh)
 
 	node := types.NodeName("abc01.sjc1")
 	podID1 := types.PodID("podID1")
@@ -61,15 +60,10 @@ func TestStartWatchBasic(t *testing.T) {
 		t.Errorf("expected cache to start empty, found %v", result)
 	}
 
-	healthResults <- []*health.Result{
+	checker.Send([]*health.Result{
 		&health.Result{ID: podID1, Node: node},
 		&health.Result{ID: podID2, Node: node},
-	}
-
-	healthResults <- []*health.Result{
-		&health.Result{ID: podID1, Node: node},
-		&health.Result{ID: podID2, Node: node},
-	}
+	})
 
 	result = hs.Fetch(podID1, node)
 	if result == nil {
