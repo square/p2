@@ -69,7 +69,13 @@ func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type) ([
 	urlToGet := *h.matchesEndpoint
 	urlToGet.RawQuery = params.Encode()
 
-	resp, err := h.client.Get(urlToGet.String())
+	req, err := http.NewRequest("GET", urlToGet.String(), nil)
+	if err != nil {
+		return []Labeled{}, err
+	}
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := h.client.Do(req)
 	if err != nil {
 		return []Labeled{}, err
 	}
