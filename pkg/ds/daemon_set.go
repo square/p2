@@ -145,6 +145,11 @@ func (ds *daemonSet) WatchDesires(
 		defer close(errCh)
 		defer ds.cancelReplication()
 
+		// Make a timer and stop it so the receieve from channel does not occur
+		// until a reset happens
+		timer := time.NewTimer(time.Duration(0))
+		timer.Stop()
+
 		// Try to schedule pods when this begins watching
 		if !ds.Disabled {
 			ds.logger.NoFields().Infof("Received new daemon set: %v", *ds)
@@ -158,14 +163,23 @@ func (ds *daemonSet) WatchDesires(
 			if err != nil {
 				select {
 				case errCh <- err:
-					// Retry the replication for extra robustness
-					time.Sleep(RetryInterval)
-					err = ds.PublishToReplication()
+					ds.logger.Warnf("An error has occurred in the daemon set, retrying if no changes are made in %v", RetryInterval)
+					// Retry the replication in the RetryInterval's duration
+					timer.Reset(RetryInterval)
+					// This is required in case the user disables the daemon set
+					// so that the timer would be stopped after
+					err = nil
 				case <-quitCh:
 					return
 				}
+			} else {
+				// If err == nil, stop the timer because there is no need to retry
+				timer.Stop()
 			}
 
+			// Precondition: err == nil
+			// err should be assigned a value in this select statement unless
+			// it returns or the daemon set is disabled
 			select {
 			case newDS, ok := <-updatedCh:
 				if !ok {
@@ -235,6 +249,9 @@ func (ds *daemonSet) WatchDesires(
 				if err != nil {
 					continue
 				}
+
+			case <-timer.C:
+				err = ds.PublishToReplication()
 
 			case <-quitCh:
 				return
