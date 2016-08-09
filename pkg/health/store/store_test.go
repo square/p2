@@ -32,7 +32,8 @@ func (hc *FakeHealthChecker) WatchHealth(resultCh chan []*health.Result, errCh c
 
 func (hc *FakeHealthChecker) Send(r []*health.Result) {
 	<-hc.ready
-	// Send twice to be sure at least one result was fully handled before returning
+	// Send three times to be sure at least one result was fully handled before returning
+	hc.results <- r
 	hc.results <- r
 	hc.results <- r
 }
