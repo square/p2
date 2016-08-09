@@ -150,7 +150,7 @@ func main() {
 			log.Fatalf("err: %v", err)
 		}
 		for _, ds := range dsList {
-			fmt.Println(ds.ID)
+			fmt.Printf("%s/%s:%s\n", ds.PodID, ds.Name, ds.ID)
 		}
 
 	case CmdEnable:
