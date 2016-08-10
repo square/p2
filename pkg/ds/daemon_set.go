@@ -473,9 +473,23 @@ func (ds *daemonSet) PublishToReplication() error {
 
 	ds.logger.Info("New replicator was made")
 
+	// Replication locks are designed to make sure that two replications to
+	// the same nodes cannot occur at the same time. The granularity is
+	// pod-wide as an optimization for consul performance (only need to
+	// lock a single key) with limited downside when human operators are
+	// executing deploys, because the likelihood of a lock collision is
+	// low. With daemon sets, locking is not necessary because the node
+	// sets should not overlap when they are managed properly. Even when
+	// there is a node overlap between two daemon sets, a simple mutual
+	// exclusion lock around replication will not prevent the pod manifest
+	// on an overlapped node from thrashing. Therefore, it makes sense for
+	// daemon sets to ignore this locking mechanism and always try to
+	// converge nodes to the specified manifest
+	overrideReplicationLock := true
+
 	// Do not override locks, ignore controllers, and don't check for preparers
 	replication, errCh, err := repl.InitializeReplicationWithCheck(
-		false,
+		overrideReplicationLock,
 		true,
 		replication.DefaultConcurrentReality,
 		false,
