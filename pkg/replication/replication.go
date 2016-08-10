@@ -244,6 +244,7 @@ func (r replication) Enact() {
 
 // Cancels all goroutines (e.g. replication and lock renewal)
 func (r replication) Cancel() {
+	r.logger.Infof("Replication canceled")
 	close(r.replicationCancelledCh)
 }
 
