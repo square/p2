@@ -49,7 +49,6 @@ var (
 	createManifest   = cmdCreate.Flag("manifest", "Complete manifest - must parse as JSON!").Required().String()
 	createMinHealth  = cmdCreate.Flag("minhealth", "The minimum health of the daemon set").Required().String()
 	createName       = cmdCreate.Flag("name", "The cluster name (ie. staging, production)").Required().String()
-	createPodID      = cmdCreate.Flag("pod", "The pod ID on the daemon set").Required().String()
 	createTimeout    = cmdCreate.Flag("timeout", "Non-zero timeout for replicating hosts. e.g. 1m2s for 1 minute and 2 seconds").Required().Duration()
 	createEverywhere = cmdCreate.Flag("everywhere", "Sets selector to match everything regardless of its value").Bool()
 
@@ -74,7 +73,6 @@ var (
 	updateManifest      = cmdUpdate.Flag("manifest", "Complete manifest - must parse as JSON!").String()
 	updateMinHealth     = cmdUpdate.Flag("minhealth", "The minimum health of the daemon set").String()
 	updateName          = cmdUpdate.Flag("name", "The cluster name (ie. staging, production)").String()
-	updatePodID         = cmdUpdate.Flag("pod", "The pod ID on the daemon set").String()
 	updateTimeout       = cmdUpdate.Flag("timeout", "Non-zero timeout for replicating hosts. e.g. 1m2s for 1 minute and 2 seconds").Default(TimeoutNotSpecified.String()).Duration()
 	updateEverywhere    = cmdUpdate.Flag("everywhere", "Sets selector to match everything regardless of its value").Bool()
 
@@ -102,12 +100,13 @@ func main() {
 			log.Fatalf("Invalid value for minimum health, expected integer: %v", err)
 		}
 		name := ds_fields.ClusterName(*createName)
-		podID := types.PodID(*createPodID)
 
 		manifest, err := manifest.FromPath(*createManifest)
 		if err != nil {
 			log.Fatalf("%s", err)
 		}
+
+		podID := manifest.ID()
 
 		if *createTimeout <= time.Duration(0) {
 			log.Fatalf("Timeout must be a positive non-zero value, got '%v'", *createTimeout)
@@ -220,13 +219,7 @@ func main() {
 					ds.Name = name
 				}
 			}
-			if *updatePodID != "" {
-				podID := types.PodID(*updatePodID)
-				if ds.PodID != podID {
-					changed = true
-					ds.PodID = podID
-				}
-			}
+
 			if *updateTimeout != TimeoutNotSpecified {
 				if *updateTimeout <= time.Duration(0) {
 					return ds, util.Errorf("Timeout must be a positive non-zero value, got '%v'", *createTimeout)
@@ -241,6 +234,11 @@ func main() {
 				if err != nil {
 					return ds, util.Errorf("%s", err)
 				}
+
+				if manifest.ID() != ds.PodID {
+					return ds, util.Errorf("Manifest ID of %s does not match daemon set's pod ID (%s)", manifest.ID(), ds.PodID)
+				}
+
 				dsSHA, err := ds.Manifest.SHA()
 				if err != nil {
 					return ds, util.Errorf("Unable to get SHA from consul daemon set manifest: %v", err)
