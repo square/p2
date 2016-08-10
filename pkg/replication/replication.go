@@ -398,6 +398,7 @@ func (r *replication) ensureHealthy(
 				nodeLogger.WithFields(logrus.Fields{"check": id, "health": status}).Infoln("Node is not healthy")
 			} else {
 				r.logger.WithField("node", node).Infoln("Node is current and healthy")
+				return
 			}
 		}
 	}
