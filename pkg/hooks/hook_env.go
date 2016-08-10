@@ -45,7 +45,7 @@ func (h *HookEnv) PodHome() (string, error) {
 	return path, nil
 }
 
-func (h *HookEnv) PodFromDisk() (*pods.Pod, error) {
+func (h *HookEnv) Node() (types.NodeName, error) {
 	node := os.Getenv(HOOKED_NODE_ENV_VAR)
 	if node == "" {
 		// TODO: This can't be a hard error right now. It would mean hooks built with this
@@ -53,20 +53,28 @@ func (h *HookEnv) PodFromDisk() (*pods.Pod, error) {
 		// (At the present time, hooks shouldn't care about their node name.)
 		hostname, err := os.Hostname()
 		if err != nil {
-			return nil, util.Errorf("error getting node name: %v", err)
+			return "", util.Errorf("Error getting node name: %v", err)
 		}
 		node = hostname
 	}
-	id := os.Getenv(HOOKED_POD_ID_ENV_VAR)
-	if id == "" {
-		return nil, util.Errorf("Did not provide a pod ID to use")
+	return types.NodeName(node), nil
+}
+
+func (h *HookEnv) PodFromDisk() (*pods.Pod, error) {
+	id, err := h.PodID()
+	if err != nil {
+		return nil, err
 	}
-	path := os.Getenv(HOOKED_POD_HOME_ENV_VAR)
-	if path == "" {
-		return nil, util.Errorf("No pod home given for pod ID %s", id)
+	node, err := h.Node()
+	if err != nil {
+		return nil, err
+	}
+	path, err := h.PodHome()
+	if err != nil {
+		return nil, err
 	}
 
-	pod := pods.NewPod(types.PodID(id), types.NodeName(node), path)
+	pod := pods.NewPod(id, node, path)
 
 	// Spot check that the pod is actually on the disk by looking for the current manifest
 	if _, err := pod.CurrentManifest(); err != nil {
