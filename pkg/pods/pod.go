@@ -521,6 +521,16 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 	if err != nil {
 		return util.Errorf("Could not determine pod UID/GID: %s", err)
 	}
+	var configData bytes.Buffer
+	err = manifest.WriteConfig(&configData)
+	if err != nil {
+		return err
+	}
+	var platConfigData bytes.Buffer
+	err = manifest.WritePlatformConfig(&platConfigData)
+	if err != nil {
+		return err
+	}
 
 	err = util.MkdirChownAll(pod.ConfigDir(), uid, gid, 0755)
 	if err != nil {
@@ -531,38 +541,18 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 		return err
 	}
 	configPath := filepath.Join(pod.ConfigDir(), configFileName)
-
-	file, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	defer file.Close()
+	err = writeFileChown(configPath, configData.Bytes(), uid, gid)
 	if err != nil {
-		return util.Errorf("Could not open config file for pod %s for writing: %s", manifest.ID(), err)
+		return util.Errorf("Error writing config file for pod %s: %s", manifest.ID(), err)
 	}
-	err = manifest.WriteConfig(file)
-	if err != nil {
-		return err
-	}
-	err = file.Chown(uid, gid)
-	if err != nil {
-		return err
-	}
-
 	platConfigFileName, err := manifest.PlatformConfigFileName()
 	if err != nil {
 		return err
 	}
 	platConfigPath := filepath.Join(pod.ConfigDir(), platConfigFileName)
-	platFile, err := os.OpenFile(platConfigPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	defer platFile.Close()
+	err = writeFileChown(platConfigPath, platConfigData.Bytes(), uid, gid)
 	if err != nil {
-		return util.Errorf("Could not open config file for pod %s for writing: %s", manifest.ID(), err)
-	}
-	err = manifest.WritePlatformConfig(platFile)
-	if err != nil {
-		return err
-	}
-	err = platFile.Chown(uid, gid)
-	if err != nil {
-		return err
+		return util.Errorf("Error writing platform config file for pod %s: %s", manifest.ID(), err)
 	}
 
 	err = util.MkdirChownAll(pod.EnvDir(), uid, gid, 0755)
@@ -616,20 +606,26 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 // writeEnvFile takes an environment directory (as described in http://smarden.org/runit/chpst.8.html, with the -e option)
 // and writes a new file with the given value.
 func writeEnvFile(envDir, name, value string, uid, gid int) error {
-	fpath := filepath.Join(envDir, name)
+	return writeFileChown(filepath.Join(envDir, name), []byte(value), uid, gid)
+}
 
-	buf := bytes.NewBufferString(value)
-
-	err := ioutil.WriteFile(fpath, buf.Bytes(), 0644)
+// writeFileChown writes data to a file and sets the owing user/group of the file.
+func writeFileChown(filename string, data []byte, uid, gid int) error {
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		return util.Errorf("Could not write environment config file at %s: %s", fpath, err)
+		return err
 	}
-
-	err = os.Chown(fpath, uid, gid)
+	_, err = file.Write(data)
 	if err != nil {
-		return util.Errorf("Could not chown environment config file at %s: %s", fpath, err)
+		_ = file.Close()
+		return err
 	}
-	return nil
+	err = file.Chown(uid, gid)
+	if err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
 }
 
 func (pod *Pod) Launchables(manifest manifest.Manifest) ([]launch.Launchable, error) {
