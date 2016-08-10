@@ -609,7 +609,7 @@ func writeEnvFile(envDir, name, value string, uid, gid int) error {
 	return writeFileChown(filepath.Join(envDir, name), []byte(value), uid, gid)
 }
 
-// writeFileChown writes data to a file and sets the owing user/group of the file.
+// writeFileChown writes data to a file and sets its owner.
 func writeFileChown(filename string, data []byte, uid, gid int) error {
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
