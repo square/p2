@@ -1,6 +1,7 @@
 package roll
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -218,6 +219,15 @@ START_LOOP:
 				}
 				foundChildren[rlField.ID()] = struct{}{}
 
+				err = rlf.validateRoll(rlField, rlLogger)
+				if err != nil {
+					rlLogger.WithError(err).Errorln("RU was invalid, deleting")
+
+					// Just delete the RU, the farm will clean up the lock when releaseDeletedChildren() is called
+					rlf.mustDeleteRU(rlField.ID(), rlLogger)
+					continue
+				}
+
 				go func(id roll_fields.ID) {
 					defer func() {
 						if r := recover(); r != nil {
@@ -238,12 +248,10 @@ START_LOOP:
 						// returned false, farm must have asked us to quit
 						return
 					}
-					// our lock on this RU won't be released until it's deleted,
-					// so if we fail to delete it, we have to retry
-					for err := rlf.rls.Delete(id); err != nil; err = rlf.rls.Delete(id) {
-						rlLogger.WithError(err).Errorln("Could not delete update")
-						time.Sleep(1 * time.Second)
-					}
+
+					// Block until the RU is deleted because the farm does not release locks until it detects an RU deletion
+					// our lock on this RU won't be released until it's deleted
+					rlf.mustDeleteRU(id, rlLogger)
 				}(rlField.ID()) // do not close over rlField, it's a loop variable
 			}
 
@@ -301,5 +309,38 @@ func (rlf *Farm) releaseChildren() {
 		// it's safe to delete this element during iteration,
 		// because we have already iterated over it
 		rlf.releaseChild(id)
+	}
+}
+
+// Validates that the rolling update is capable of being processed. If not, an
+// error is returned.
+// The following conditions make an RU invalid:
+// 1) New RC does not exist
+// 2) Old RC does not exist
+func (rlf *Farm) validateRoll(update roll_fields.Update, logger logging.Logger) error {
+	_, err := rlf.rcs.Get(update.NewRC)
+	if err == rcstore.NoReplicationController {
+		return fmt.Errorf("RU '%s' is invalid, new RC '%s' did not exist", update.ID(), update.NewRC)
+	} else if err != nil {
+		// There was a potentially transient consul error, we don't necessarily want to delete the RU
+		logger.WithError(err).Errorln("Could not fetch new RC to validate RU, assuming it's valid")
+	}
+
+	_, err = rlf.rcs.Get(update.OldRC)
+	if err == rcstore.NoReplicationController {
+		return fmt.Errorf("RU '%s' is invalid, old RC '%s' did not exist", update.ID(), update.OldRC)
+	} else if err != nil {
+		// There was a potentially transient consul error, we don't necessarily want to delete the RU
+		logger.WithError(err).Errorln("Could not fetch old RC in order to validate RU, assuming it's valid")
+	}
+
+	return nil
+}
+
+// Tries to delete the given RU every second until it succeeds
+func (rlf *Farm) mustDeleteRU(id roll_fields.ID, logger logging.Logger) {
+	for err := rlf.rls.Delete(id); err != nil; err = rlf.rls.Delete(id) {
+		logger.WithError(err).Errorln("Could not delete update")
+		time.Sleep(1 * time.Second)
 	}
 }
