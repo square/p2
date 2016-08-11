@@ -76,11 +76,6 @@ func (h *HookEnv) PodFromDisk() (*pods.Pod, error) {
 
 	pod := pods.NewPod(id, node, path)
 
-	// Spot check that the pod is actually on the disk by looking for the current manifest
-	if _, err := pod.CurrentManifest(); err != nil {
-		return nil, err
-	}
-
 	return pod, nil
 }
 
