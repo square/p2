@@ -48,7 +48,7 @@ func (hs *healthStore) StartWatch(quitCh <-chan struct{}) {
 		case updates := <-healthUpdates:
 			hs.cache(updates)
 		case <-quitCh:
-			hs.logger.Errorln("Quitting...")
+			hs.logger.Infoln("p2-preparer quitting, ceasing to publish health")
 			return
 		case err := <-errCh:
 			hs.logger.WithError(err).Errorln("Consul Watch error")

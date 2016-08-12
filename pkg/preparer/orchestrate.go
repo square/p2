@@ -129,7 +129,7 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 			}
 		case <-quitAndAck:
 			for podToQuit, quitCh := range quitChanMap {
-				p.Logger.WithField("pod", podToQuit).Infoln("Quitting...")
+				p.Logger.WithField("pod", podToQuit).Infof("p2-preparer quitting, ceasing to watch for updates to %s", podToQuit)
 				quitCh <- struct{}{}
 			}
 			close(quitChan)
