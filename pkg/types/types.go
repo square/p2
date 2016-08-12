@@ -27,11 +27,11 @@ type PodID string
 type PodUniqueKey struct {
 	// The actual key, e.g. "example.com/mysql" under the old format or a uuid
 	// under the new format
-	ID string
+	ID string `json:"id"`
 
 	// Tracks whether the key is a uuid or the node/pod_id concatenation. Some
 	// features will require isUUID to be true.
-	IsUUID bool
+	IsUUID bool `json:"is_uuid"`
 }
 
 func NewPodUUID() PodUniqueKey {

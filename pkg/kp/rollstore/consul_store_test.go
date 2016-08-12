@@ -3,7 +3,6 @@ package rollstore
 import (
 	"encoding/json"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/square/p2/pkg/manifest"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
-	"github.com/square/p2/pkg/util"
 
 	"github.com/hashicorp/consul/api"
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -90,11 +88,6 @@ func TestRollLockPathErrorNoID(t *testing.T) {
 	}
 }
 
-type fakeKV struct {
-	entries map[string]*api.KVPair
-	mu      sync.Mutex
-}
-
 func newRollStore(t *testing.T, entries []fields.Update) consulStore {
 	storeFields := make(map[string]*api.KVPair)
 	for _, u := range entries {
@@ -111,48 +104,13 @@ func newRollStore(t *testing.T, entries []fields.Update) consulStore {
 		}
 	}
 	return consulStore{
-		kv: fakeKV{
-			entries: storeFields,
+		kv: consulutil.FakeKV{
+			Entries: storeFields,
 		},
 		store:   kptest.NewFakePodStore(nil, nil),
 		rcstore: rcstore.NewFake(),
 		labeler: labels.NewFakeApplicator(),
 	}
-}
-
-func (f fakeKV) Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.entries[key], nil, nil
-}
-
-func (f fakeKV) List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	ret := make(api.KVPairs, 0)
-	for _, v := range f.entries {
-		ret = append(ret, v)
-	}
-	return ret, nil, nil
-}
-
-func (f fakeKV) CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if keyPair, ok := f.entries[p.Key]; ok {
-		if keyPair.ModifyIndex != p.ModifyIndex {
-			return false, nil, util.Errorf("CAS error for %s", p.Key)
-		}
-	}
-
-	f.entries[p.Key] = p
-	return true, nil, nil
-}
-func (f fakeKV) Delete(key string, w *api.WriteOptions) (*api.WriteMeta, error) {
-	return nil, util.Errorf("Not implemented")
-}
-func (f fakeKV) Acquire(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
-	return false, nil, util.Errorf("Not implemented")
 }
 
 func TestGet(t *testing.T) {
