@@ -15,7 +15,6 @@ import (
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/util/stream"
 
 	ds_farm "github.com/square/p2/pkg/ds"
 )
@@ -49,10 +48,8 @@ func main() {
 		Behavior:  api.SessionBehaviorDelete,
 		TTL:       "15s",
 	}, client, sessions, quitCh, logger)
-	pub := stream.NewStringValuePublisher(sessions, "")
-	dsSub := pub.Subscribe(nil)
 
-	dsf := ds_farm.NewFarm(kpStore, dsStore, applicator, dsSub.Chan(), logger, nil, &healthChecker)
+	dsf := ds_farm.NewFarm(kpStore, dsStore, applicator, sessions, logger, nil, &healthChecker)
 
 	go func() {
 		// clear lock immediately on ctrl-C
