@@ -151,6 +151,10 @@ func TestSchedule(t *testing.T) {
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
+	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer.Enable()
+	defer preparer.Disable()
+
 	var allNodes []types.NodeName
 	allNodes = append(allNodes, "node1", "node2", "nodeOk")
 	for i := 0; i < 10; i++ {
@@ -291,9 +295,6 @@ func TestSchedule(t *testing.T) {
 	numNodes = waitForNodes(t, ds, 23, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, 23, "took too long to schedule")
 
-	err = waitForPodsInIntent(kpStore, 23)
-	Assert(t).IsNil(err, "Unexpected number of pods scheduled")
-
 	//
 	// Deleting the daemon set should unschedule all of its nodes
 	//
@@ -336,6 +337,10 @@ func TestPublishToReplication(t *testing.T) {
 
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
+
+	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer.Enable()
+	defer preparer.Disable()
 
 	var allNodes []types.NodeName
 	allNodes = append(allNodes, "node1", "node2")

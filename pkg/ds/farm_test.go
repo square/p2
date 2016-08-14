@@ -45,6 +45,9 @@ func TestContendNodes(t *testing.T) {
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "contendNodes",
 	})
+	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer.Enable()
+	defer preparer.Disable()
 
 	var allNodes []types.NodeName
 	allNodes = append(allNodes, "node1")
@@ -153,6 +156,9 @@ func TestContendSelectors(t *testing.T) {
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "contendSelectors",
 	})
+	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer.Enable()
+	defer preparer.Disable()
 
 	var allNodes []types.NodeName
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
@@ -295,6 +301,9 @@ func TestFarmSchedule(t *testing.T) {
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "farmSchedule",
 	})
+	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer.Enable()
+	defer preparer.Disable()
 
 	var allNodes []types.NodeName
 	allNodes = append(allNodes, "node1", "node2", "node3")
@@ -468,6 +477,10 @@ func TestCleanupPods(t *testing.T) {
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
+	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer.Enable()
+	defer preparer.Disable()
+
 	// Make some dangling pod labels and instantiate a farm and expect it clean it up
 	podID := types.PodID("testPod")
 	manifestBuilder := manifest.NewBuilder()
@@ -552,6 +565,11 @@ func TestMultipleFarms(t *testing.T) {
 	dsStore := dsstoretest.NewFake()
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
+
+	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer.Enable()
+	defer preparer.Disable()
+
 	session := kptest.NewSession()
 	firstLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "firstMultiple",
