@@ -5,6 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/replication"
+	"github.com/square/p2/pkg/util"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/kp"
@@ -14,7 +17,6 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/types"
 
@@ -25,15 +27,15 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
-func waitForFarm() {
-	// If the tests fail, increasing this value may fix your problem
-	// One reason is beacause of the request rate put on the the
-	// consulutil/watch's WatchDiff function which the farm --> dsStore uses
-	time.Sleep(250 * time.Millisecond)
-}
+const (
+	replicationTimeout    = replication.NoTimeout
+	testFarmRetryInterval = time.Duration(1000 * time.Millisecond)
+)
 
 // Tests dsContends for changes to both daemon sets and nodes
 func TestContendNodes(t *testing.T) {
+	retryInterval = testFarmRetryInterval
+
 	//
 	// Instantiate farm
 	//
@@ -78,77 +80,70 @@ func TestContendNodes(t *testing.T) {
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
-	timeout := replication.NoTimeout
-
 	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
-	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
+	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = waitForCreate(dsf, dsData.ID)
+	Assert(t).IsNil(err, "Expected daemon set to be created")
 
 	// Make a node and verify that it was scheduled
 	applicator.SetLabel(labels.NODE, "node1", pc_fields.AvailabilityZoneLabel, "az1")
-	waitForFarm()
 
-	labeled, err := dsf.applicator.GetLabels(labels.POD, "node1/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	labeled, err := waitForPodLabel(applicator, true, "node1/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	dsID := labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(dsData.ID.String(), dsID, "Unexpected dsID labeled")
 
 	// Make another daemon set with a contending AvailabilityZoneLabel and verify
 	// that it gets disabled and that the node label does not change
-	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
+	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 	Assert(t).AreNotEqual(dsData.ID.String(), anotherDSData.ID.String(), "Precondition failed")
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = waitForCreate(dsf, anotherDSData.ID)
+	Assert(t).IsNil(err, "Expected daemon set to be created")
 
-	// Wait for farm
-	waitForFarm()
-
-	// Labels should not have been overwritten
-	labeled, err = dsf.applicator.GetLabels(labels.POD, "node1/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, true, "node1/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	anotherDSID := labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(dsData.ID.String(), anotherDSID, "Expected pod label not to be overwritten")
 
 	// Expect the new daemon set to be disabled both in the farm and in the dsStore
-	newDS, _, err := dsStore.Get(anotherDSData.ID)
-	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	Assert(t).IsTrue(newDS.Disabled, "Expected daemon set to be disabled")
-	Assert(t).IsTrue(dsf.children[newDS.ID].ds.IsDisabled(), "Expected daemon set to be disabled")
+	err = waitForDisabled(dsf, dsStore, anotherDSData.ID, true)
+	Assert(t).IsNil(err, "Error disabling daemon set!")
 
 	//
 	// Make a third daemon set and update its node selector to force a contend,
 	// then verify that it has been disabled and the node hasn't been overwritten
 	//
 	anotherSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"undefined"})
-	badDS, err := dsStore.Create(podManifest, minHealth, clusterName, anotherSelector, podID, timeout)
+	badDS, err := dsStore.Create(podManifest, minHealth, clusterName, anotherSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = waitForCreate(dsf, badDS.ID)
+	Assert(t).IsNil(err, "Expected daemon set to be created")
 
 	mutator := func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
 		dsToUpdate.NodeSelector = nodeSelector
 		return dsToUpdate, nil
 	}
 
-	newDS, err = dsStore.MutateDS(badDS.ID, mutator)
+	badDS, err = dsStore.MutateDS(badDS.ID, mutator)
 	Assert(t).IsNil(err, "Expected no error mutating daemon set")
-	waitForFarm()
+	err = waitForMutateSelector(dsf, badDS)
+	Assert(t).IsNil(err, "Expected daemon set to be mutated in farm")
 
-	// Labels should not have been overwritten
-	labeled, err = dsf.applicator.GetLabels(labels.POD, "node1/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, true, "node1/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	anotherDSID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(dsData.ID.String(), anotherDSID, "Expected pod label not to be overwritten")
 
-	newDS, _, err = dsStore.Get(anotherDSData.ID)
-	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	Assert(t).IsTrue(newDS.Disabled, "Expected daemon set to be disabled")
-	Assert(t).IsTrue(dsf.children[newDS.ID].ds.IsDisabled(), "Expected daemon set to be disabled")
-
+	err = waitForDisabled(dsf, dsStore, anotherDSData.ID, true)
+	Assert(t).IsNil(err, "Error disabling daemon set!")
 }
 
 // Tests dsContends for NodeSelectors
 func TestContendSelectors(t *testing.T) {
+	retryInterval = testFarmRetryInterval
+
 	//
 	// Instantiate farm
 	//
@@ -193,38 +188,34 @@ func TestContendSelectors(t *testing.T) {
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
-	timeout := replication.NoTimeout
-
 	everythingSelector := klabels.Everything()
-	firstDSData, err := dsStore.Create(podManifest, minHealth, clusterName, everythingSelector, podID, timeout)
+	firstDSData, err := dsStore.Create(podManifest, minHealth, clusterName, everythingSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
-	waitForFarm()
-	secondDSData, err := dsStore.Create(podManifest, minHealth, clusterName, everythingSelector, podID, timeout)
+	err = waitForCreate(dsf, firstDSData.ID)
+	Assert(t).IsNil(err, "Expected daemon set to be created")
+
+	secondDSData, err := dsStore.Create(podManifest, minHealth, clusterName, everythingSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
-	waitForFarm()
+	err = waitForCreate(dsf, secondDSData.ID)
+	Assert(t).IsNil(err, "Expected daemon set to be created")
 
 	// Verify that only the second daemon set is disabled
-	firstDS, _, err := dsStore.Get(firstDSData.ID)
-	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	Assert(t).IsFalse(firstDS.Disabled, "Expected daemon set to be enabled")
-	Assert(t).IsFalse(dsf.children[firstDS.ID].ds.IsDisabled(), "Expected daemon set to be enabled")
+	err = waitForDisabled(dsf, dsStore, firstDSData.ID, false)
+	Assert(t).IsNil(err, "First daemon set should not be disabled")
 
-	secondDS, _, err := dsStore.Get(secondDSData.ID)
-	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	Assert(t).IsTrue(secondDS.Disabled, "Expected daemon set to be disabled")
-	Assert(t).IsTrue(dsf.children[secondDS.ID].ds.IsDisabled(), "Expected daemon set to be disabled")
+	err = waitForDisabled(dsf, dsStore, secondDSData.ID, true)
+	Assert(t).IsNil(err, "Error disabling second daemon set")
 
 	// Add another daemon set with different selector and verify it gets disabled
 	someSelector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"nowhere"})
-	thirdDSData, err := dsStore.Create(podManifest, minHealth, clusterName, someSelector, podID, timeout)
+	thirdDSData, err := dsStore.Create(podManifest, minHealth, clusterName, someSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
-	waitForFarm()
+	err = waitForCreate(dsf, thirdDSData.ID)
+	Assert(t).IsNil(err, "Expected daemon set to be created")
 
-	thirdDS, _, err := dsStore.Get(thirdDSData.ID)
-	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	Assert(t).IsTrue(thirdDS.Disabled, "Expected daemon set to be disabled")
-	Assert(t).IsTrue(dsf.children[thirdDS.ID].ds.IsDisabled(), "Expected daemon set to be disabled")
+	err = waitForDisabled(dsf, dsStore, thirdDSData.ID, true)
+	Assert(t).IsNil(err, "Error disabling third daemon set")
 
 	//
 	// Disable first daemon set, then enable second and third daemon sets in that order
@@ -241,31 +232,25 @@ func TestContendSelectors(t *testing.T) {
 	}
 
 	// Disable first ds and verify it is disabled
-	_, err = dsStore.MutateDS(firstDS.ID, disableMutator)
+	_, err = dsStore.MutateDS(firstDSData.ID, disableMutator)
 	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	waitForFarm()
-	firstDS, _, err = dsStore.Get(firstDSData.ID)
-	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	Assert(t).IsTrue(firstDS.Disabled, "Precondition failed: Expected daemon set to be disabled")
-	Assert(t).IsTrue(dsf.children[firstDS.ID].ds.IsDisabled(), "Precondition failed: Expected daemon set to be disabled")
+
+	err = waitForDisabled(dsf, dsStore, firstDSData.ID, true)
+	Assert(t).IsNil(err, "Error disabling first daemon set")
 
 	// Enable second ds and verify it is enabled
-	_, err = dsStore.MutateDS(secondDS.ID, enableMutator)
+	_, err = dsStore.MutateDS(secondDSData.ID, enableMutator)
 	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	waitForFarm()
-	secondDS, _, err = dsStore.Get(secondDS.ID)
-	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	Assert(t).IsFalse(secondDS.Disabled, "Precondition failed: Expected daemon set to be enabled")
-	Assert(t).IsFalse(dsf.children[secondDS.ID].ds.IsDisabled(), "Expected daemon set to be enabled")
+
+	err = waitForDisabled(dsf, dsStore, secondDSData.ID, false)
+	Assert(t).IsNil(err, "Error enabling second daemon set")
 
 	// Enabled third ds and verify it disabled because it contends with second ds
-	_, err = dsStore.MutateDS(thirdDS.ID, enableMutator)
+	_, err = dsStore.MutateDS(thirdDSData.ID, enableMutator)
 	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	waitForFarm()
-	thirdDS, _, err = dsStore.Get(thirdDS.ID)
-	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	Assert(t).IsTrue(thirdDS.Disabled, "Expected daemon set to be disabled")
-	Assert(t).IsTrue(dsf.children[thirdDS.ID].ds.IsDisabled(), "Expected daemon set to be disabled")
+
+	err = waitForDisabled(dsf, dsStore, thirdDSData.ID, true)
+	Assert(t).IsNil(err, "Error disabling third daemon set")
 
 	//
 	// Test equivalent selectors, fifth ds should contend with fourth
@@ -279,28 +264,28 @@ func TestContendSelectors(t *testing.T) {
 	equalSelector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
 
-	fourthDSData, err := dsStore.Create(anotherPodManifest, minHealth, clusterName, equalSelector, anotherPodID, timeout)
+	fourthDSData, err := dsStore.Create(anotherPodManifest, minHealth, clusterName, equalSelector, anotherPodID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
-	waitForFarm()
+	err = waitForCreate(dsf, fourthDSData.ID)
+	Assert(t).IsNil(err, "Expected daemon set to be created")
 
-	// Verify it is enabled
-	fourthDS, _, err := dsStore.Get(fourthDSData.ID)
-	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	Assert(t).IsFalse(fourthDS.Disabled, "Expected daemon set to be enabled")
-	Assert(t).IsFalse(dsf.children[fourthDS.ID].ds.IsDisabled(), "Expected daemon set to be enabled")
+	// Verify the fourth daemon set is enabled
+	err = waitForDisabled(dsf, dsStore, fourthDSData.ID, false)
+	Assert(t).IsNil(err, "Error enabling fourth daemon set")
 
-	fifthDSData, err := dsStore.Create(anotherPodManifest, minHealth, clusterName, equalSelector, anotherPodID, timeout)
+	fifthDSData, err := dsStore.Create(anotherPodManifest, minHealth, clusterName, equalSelector, anotherPodID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
-	waitForFarm()
+	err = waitForCreate(dsf, fifthDSData.ID)
+	Assert(t).IsNil(err, "Expected daemon set to be created")
 
-	// Verify it gets disabled for its contending selector
-	fifthDS, _, err := dsStore.Get(fifthDSData.ID)
-	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	Assert(t).IsTrue(fifthDS.Disabled, "Expected daemon set to be disabled")
-	Assert(t).IsTrue(dsf.children[fifthDS.ID].ds.IsDisabled(), "Expected daemon set to be disabled")
+	// Verify that the fifth daemon set contends and gets disabled
+	err = waitForDisabled(dsf, dsStore, fifthDSData.ID, true)
+	Assert(t).IsNil(err, "Error disabling fifth daemon set")
 }
 
 func TestFarmSchedule(t *testing.T) {
+	retryInterval = testFarmRetryInterval
+
 	//
 	// Instantiate farm
 	//
@@ -347,44 +332,40 @@ func TestFarmSchedule(t *testing.T) {
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
-	timeout := replication.NoTimeout
-
 	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
-	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
+	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = waitForCreate(dsf, dsData.ID)
+	Assert(t).IsNil(err, "Expected daemon set to be created")
 
 	// Second daemon set
 	anotherNodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
-	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, anotherNodeSelector, podID, timeout)
+	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, anotherNodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = waitForCreate(dsf, anotherDSData.ID)
+	Assert(t).IsNil(err, "Expected daemon set to be created")
 
 	// Make a node and verify that it was scheduled by the first daemon set
 	applicator.SetLabel(labels.NODE, "node1", pc_fields.AvailabilityZoneLabel, "az1")
-	waitForFarm()
 
-	labeled, err := dsf.applicator.GetLabels(labels.POD, "node1/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	labeled, err := waitForPodLabel(applicator, true, "node1/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	dsID := labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(dsData.ID.String(), dsID, "Unexpected dsID labeled")
 
 	// Make a second node and verify that it was scheduled by the second daemon set
 	applicator.SetLabel(labels.NODE, "node2", pc_fields.AvailabilityZoneLabel, "az2")
-	waitForFarm()
 
-	labeled, err = dsf.applicator.GetLabels(labels.POD, "node2/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, true, "node2/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
 	// Make a third unschedulable node and verify it doesn't get scheduled by anything
 	applicator.SetLabel(labels.NODE, "node3", pc_fields.AvailabilityZoneLabel, "undefined")
-	waitForFarm()
 
-	labeled, err = dsf.applicator.GetLabels(labels.POD, "node3/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsFalse(labeled.Labels.Has(DSIDLabel), "Expected pod not to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, false, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 
 	// Now add 10 new nodes and verify that they are scheduled by the first daemon set
 	for i := 0; i < 10; i++ {
@@ -392,11 +373,10 @@ func TestFarmSchedule(t *testing.T) {
 		err := applicator.SetLabel(labels.NODE, nodeName, pc_fields.AvailabilityZoneLabel, "az1")
 		Assert(t).IsNil(err, "expected no error labeling node")
 	}
-	waitForFarm()
 	for i := 0; i < 10; i++ {
 		podPath := fmt.Sprintf("good_node%v/testPod", i)
-		labeled, err = dsf.applicator.GetLabels(labels.POD, podPath)
-		Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+		labeled, err = waitForPodLabel(applicator, true, podPath)
+		Assert(t).IsNil(err, "Expected pod to have a dsID label")
 		dsID := labeled.Labels.Get(DSIDLabel)
 		Assert(t).AreEqual(dsData.ID.String(), dsID, "Unexpected dsID labeled")
 	}
@@ -409,14 +389,14 @@ func TestFarmSchedule(t *testing.T) {
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
-	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	anotherDSData, err = dsStore.MutateDS(anotherDSData.ID, mutator)
 	Assert(t).IsNil(err, "Expected no error mutating daemon set")
-	waitForFarm()
+	err = waitForMutateSelector(dsf, anotherDSData)
+	Assert(t).IsNil(err, "Expected daemon set to be mutated in farm")
 
 	// Verify node2 is unscheduled
-	labeled, err = dsf.applicator.GetLabels(labels.POD, "node2/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsFalse(labeled.Labels.Has(DSIDLabel), "Expected pod not to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, false, "node2/testPod")
+	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 
 	//
 	// Now update the node selector to schedule node2 again and verify
@@ -425,14 +405,14 @@ func TestFarmSchedule(t *testing.T) {
 		dsToUpdate.NodeSelector = anotherNodeSelector
 		return dsToUpdate, nil
 	}
-	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	anotherDSData, err = dsStore.MutateDS(anotherDSData.ID, mutator)
 	Assert(t).IsNil(err, "Expected no error mutating daemon set")
-	waitForFarm()
+	err = waitForMutateSelector(dsf, anotherDSData)
+	Assert(t).IsNil(err, "Expected daemon set to be mutated in farm")
 
 	// Verify node2 is scheduled
-	labeled, err = dsf.applicator.GetLabels(labels.POD, "node2/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, true, "node2/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
@@ -446,20 +426,19 @@ func TestFarmSchedule(t *testing.T) {
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
-	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	anotherDSData, err = dsStore.MutateDS(anotherDSData.ID, mutator)
 	Assert(t).IsNil(err, "Expected no error mutating daemon set")
-	waitForFarm()
+	err = waitForMutateSelector(dsf, anotherDSData)
+	Assert(t).IsNil(err, "Expected daemon set to be mutated in farm")
 
 	// Verify it is disabled
-	anotherDSData, _, err = dsStore.Get(anotherDSData.ID)
-	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	Assert(t).IsTrue(anotherDSData.Disabled, "Expected daemon set to be disabled")
-	Assert(t).IsTrue(dsf.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be disabled")
+	err = waitForDisabled(dsf, dsStore, anotherDSData.ID, true)
+	Assert(t).IsNil(err, "Error disabling daemon set")
 
 	// Verify node2 is scheduled
-	labeled, err = dsf.applicator.GetLabels(labels.POD, "node2/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, true, "node2/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
+
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
@@ -470,23 +449,21 @@ func TestFarmSchedule(t *testing.T) {
 		dsToUpdate.Disabled = false
 		return dsToUpdate, nil
 	}
-	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	anotherDSData, err = dsStore.MutateDS(anotherDSData.ID, mutator)
 	Assert(t).IsNil(err, "Expected no error mutating daemon set")
-	waitForFarm()
 
 	// Verify it is enabled
-	anotherDSData, _, err = dsStore.Get(anotherDSData.ID)
-	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	Assert(t).IsFalse(anotherDSData.Disabled, "Expected daemon set to be enabled")
-	Assert(t).IsFalse(dsf.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be enabled")
+	err = waitForDisabled(dsf, dsStore, anotherDSData.ID, false)
+	Assert(t).IsNil(err, "Error enabling daemon set")
 
 	// Verify node2 is unscheduled
-	labeled, err = dsf.applicator.GetLabels(labels.POD, "node2/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsFalse(labeled.Labels.Has(DSIDLabel), "Expected pod not to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, false, "node2/testPod")
+	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 }
 
 func TestCleanupPods(t *testing.T) {
+	retryInterval = testFarmRetryInterval
+
 	dsStore := dsstoretest.NewFake()
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -550,22 +527,28 @@ func TestCleanupPods(t *testing.T) {
 		dsf.mainLoop(quitCh)
 	}()
 
-	waitForFarm()
-
 	// Make there are no nodes left
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("node%v", i)
 		id := labels.MakePodLabelKey(types.NodeName(nodeName), podID)
-		labeled, err := dsf.applicator.GetLabels(labels.POD, id)
-		Assert(t).IsNil(err, "Expected no error getting labels")
-		Assert(t).IsFalse(labeled.Labels.Has(DSIDLabel), "Expected pod not to have a dsID label")
+		_, err := waitForPodLabel(applicator, false, id)
+		Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 
-		_, _, err = kpStore.Pod(kp.INTENT_TREE, types.NodeName(nodeName), podID)
-		Assert(t).AreEqual(err, pods.NoCurrentManifest, "Expected to find pod in intent store")
+		condition := func() error {
+			_, _, err = kpStore.Pod(kp.INTENT_TREE, types.NodeName(nodeName), podID)
+			if err != pods.NoCurrentManifest {
+				return util.Errorf("Expected pod to be deleted in intent store")
+			}
+			return nil
+		}
+		err = waitForCondition(condition)
+		Assert(t).IsNil(err, "Error cleaning up pods")
 	}
 }
 
 func TestMultipleFarms(t *testing.T) {
+	retryInterval = testFarmRetryInterval
+
 	dsStore := dsstoretest.NewFake()
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -637,44 +620,36 @@ func TestMultipleFarms(t *testing.T) {
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
-	timeout := replication.NoTimeout
-
 	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
-	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
+	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 
 	// Second daemon set
 	anotherNodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
-	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, anotherNodeSelector, podID, timeout)
+	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, anotherNodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 
 	// Make a node and verify that it was scheduled by the first daemon set
 	applicator.SetLabel(labels.NODE, "node1", pc_fields.AvailabilityZoneLabel, "az1")
-	waitForFarm()
 
-	labeled, err := applicator.GetLabels(labels.POD, "node1/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	labeled, err := waitForPodLabel(applicator, true, "node1/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	dsID := labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(dsData.ID.String(), dsID, "Unexpected dsID labeled")
 
 	// Make a second node and verify that it was scheduled by the second daemon set
 	applicator.SetLabel(labels.NODE, "node2", pc_fields.AvailabilityZoneLabel, "az2")
-	waitForFarm()
 
-	labeled, err = applicator.GetLabels(labels.POD, "node2/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, true, "node2/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
 	// Make a third unschedulable node and verify it doesn't get scheduled by anything
 	applicator.SetLabel(labels.NODE, "node3", pc_fields.AvailabilityZoneLabel, "undefined")
-	waitForFarm()
 
-	labeled, err = applicator.GetLabels(labels.POD, "node3/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsFalse(labeled.Labels.Has(DSIDLabel), "Expected pod not to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, false, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 
 	// Now add 10 new nodes and verify that they are scheduled by the first daemon set
 	for i := 0; i < 10; i++ {
@@ -682,12 +657,10 @@ func TestMultipleFarms(t *testing.T) {
 		err := applicator.SetLabel(labels.NODE, nodeName, pc_fields.AvailabilityZoneLabel, "az1")
 		Assert(t).IsNil(err, "expected no error labeling node")
 	}
-	waitForFarm()
 	for i := 0; i < 10; i++ {
 		podPath := fmt.Sprintf("good_node%v/testPod", i)
-		labeled, err = applicator.GetLabels(labels.POD, podPath)
-		Assert(t).IsNil(err, "Expected no error getting labels")
-		Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+		labeled, err = waitForPodLabel(applicator, true, podPath)
+		Assert(t).IsNil(err, "Expected pod to have a dsID label")
 		dsID := labeled.Labels.Get(DSIDLabel)
 		Assert(t).AreEqual(dsData.ID.String(), dsID, "Unexpected dsID labeled")
 	}
@@ -700,14 +673,14 @@ func TestMultipleFarms(t *testing.T) {
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
-	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	anotherDSData, err = dsStore.MutateDS(anotherDSData.ID, mutator)
 	Assert(t).IsNil(err, "Expected no error mutating daemon set")
-	waitForFarm()
+	err = waitForMutateSelectorFarms(firstFarm, secondFarm, anotherDSData)
+	Assert(t).IsNil(err, "Expected daemon set to be mutated in farm")
 
 	// Verify node2 is unscheduled
-	labeled, err = applicator.GetLabels(labels.POD, "node2/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsFalse(labeled.Labels.Has(DSIDLabel), "Expected pod not to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, false, "node2/testPod")
+	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 
 	//
 	// Now update the node selector to schedule node2 again and verify
@@ -717,14 +690,14 @@ func TestMultipleFarms(t *testing.T) {
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
-	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	anotherDSData, err = dsStore.MutateDS(anotherDSData.ID, mutator)
 	Assert(t).IsNil(err, "Expected no error mutating daemon set")
-	waitForFarm()
+	err = waitForMutateSelectorFarms(firstFarm, secondFarm, anotherDSData)
+	Assert(t).IsNil(err, "Expected daemon set to be mutated in farm")
 
 	// Verify node2 is scheduled
-	labeled, err = applicator.GetLabels(labels.POD, "node2/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, true, "node2/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
@@ -740,31 +713,44 @@ func TestMultipleFarms(t *testing.T) {
 	}
 	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
 	Assert(t).IsNil(err, "Expected no error mutating daemon set")
-	waitForFarm()
+	err = waitForMutateSelectorFarms(firstFarm, secondFarm, anotherDSData)
+	Assert(t).IsNil(err, "Expected daemon set to be mutated in farm")
 
 	// Verify it is disabled
-	anotherDSData, _, err = dsStore.Get(anotherDSData.ID)
-	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	Assert(t).IsTrue(anotherDSData.Disabled, "Expected daemon set to be disabled")
+	condition := func() error {
+		anotherDSData, _, err = dsStore.Get(anotherDSData.ID)
+		if err != nil {
+			return util.Errorf("Expected no error getting daemon set")
+		}
+		if !anotherDSData.Disabled {
+			return util.Errorf("Expected daemon set to be disabled")
+		}
 
-	if _, ok := firstFarm.children[anotherDSData.ID]; ok {
-		Assert(t).IsTrue(firstFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be disabled in only one farm")
-		if _, ok := secondFarm.children[anotherDSData.ID]; ok {
-			Assert(t).IsFalse(secondFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be disabled in only one farm")
-		}
-	} else if _, ok := secondFarm.children[anotherDSData.ID]; ok {
-		Assert(t).IsTrue(secondFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be disabled in only one farm")
 		if _, ok := firstFarm.children[anotherDSData.ID]; ok {
-			Assert(t).IsFalse(firstFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be disabled in only one farm")
+			if !firstFarm.children[anotherDSData.ID].ds.IsDisabled() {
+				return util.Errorf("Expected daemon set to be disabled in only one farm")
+			}
+			if _, ok := secondFarm.children[anotherDSData.ID]; ok {
+				return util.Errorf("Expected daemon set to be held by only one farm")
+			}
+		} else if _, ok := secondFarm.children[anotherDSData.ID]; ok {
+			if !secondFarm.children[anotherDSData.ID].ds.IsDisabled() {
+				return util.Errorf("Expected daemon set to be disabled in only one farm")
+			}
+			if _, ok := firstFarm.children[anotherDSData.ID]; ok {
+				return util.Errorf("Expected daemon set to be held by only one farm")
+			}
+		} else {
+			return util.Errorf("Expected daemon set to be disabled in only one farm")
 		}
-	} else {
-		t.Fatalf("Expected daemon set to be disabled in only one farm")
+		return nil
 	}
+	err = waitForCondition(condition)
+	Assert(t).IsNil(err, "Error disabling daemon set!")
 
 	// Verify node2 is scheduled
-	labeled, err = applicator.GetLabels(labels.POD, "node2/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Expected pod to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, true, "node2/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
@@ -777,28 +763,179 @@ func TestMultipleFarms(t *testing.T) {
 	}
 	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
 	Assert(t).IsNil(err, "Expected no error mutating daemon set")
-	waitForFarm()
 
 	// Verify it is enabled
-	anotherDSData, _, err = dsStore.Get(anotherDSData.ID)
-	Assert(t).IsNil(err, "Expected no error getting daemon set")
-	Assert(t).IsFalse(anotherDSData.Disabled, "Expected daemon set to be enabled")
-	if _, ok := firstFarm.children[anotherDSData.ID]; ok {
-		Assert(t).IsFalse(firstFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be enabled in only one farm")
-		if _, ok := secondFarm.children[anotherDSData.ID]; ok {
-			Assert(t).IsTrue(secondFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be enabled in only one farm")
+	condition = func() error {
+		anotherDSData, _, err = dsStore.Get(anotherDSData.ID)
+		if err != nil {
+			return util.Errorf("Expected no error getting daemon set")
 		}
-	} else if _, ok := secondFarm.children[anotherDSData.ID]; ok {
-		Assert(t).IsFalse(secondFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be enabled in only one farm")
+		if anotherDSData.Disabled {
+			return util.Errorf("Expected daemon set to be enabled")
+		}
+
 		if _, ok := firstFarm.children[anotherDSData.ID]; ok {
-			Assert(t).IsTrue(firstFarm.children[anotherDSData.ID].ds.IsDisabled(), "Expected daemon set to be enabled in only one farm")
+			if firstFarm.children[anotherDSData.ID].ds.IsDisabled() {
+				return util.Errorf("Expected daemon set to be enabled in only one farm")
+			}
+			if _, ok := secondFarm.children[anotherDSData.ID]; ok {
+				return util.Errorf("Expected daemon set to be held by only one farm")
+			}
+		} else if _, ok := secondFarm.children[anotherDSData.ID]; ok {
+			if secondFarm.children[anotherDSData.ID].ds.IsDisabled() {
+				return util.Errorf("Expected daemon set to be enabled in only one farm")
+			}
+			if _, ok := firstFarm.children[anotherDSData.ID]; ok {
+				return util.Errorf("Expected daemon set to be held by only one farm")
+			}
+		} else {
+			return util.Errorf("Expected daemon set to be enabled in only one farm")
 		}
-	} else {
-		t.Fatalf("Expected daemon set to be disabled in only one farm")
+		return nil
 	}
+	err = waitForCondition(condition)
+	Assert(t).IsNil(err, "Error enabling daemon set!")
 
 	// Verify node2 is unscheduled
-	labeled, err = applicator.GetLabels(labels.POD, "node2/testPod")
-	Assert(t).IsNil(err, "Expected no error getting labels")
-	Assert(t).IsFalse(labeled.Labels.Has(DSIDLabel), "Expected pod not to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, false, "node2/testPod")
+	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
+}
+
+func waitForPodLabel(applicator labels.Applicator, hasDSIDLabel bool, podPath string) (labels.Labeled, error) {
+	var labeled labels.Labeled
+	var err error
+
+	condition := func() error {
+		var val bool
+		labeled, err = applicator.GetLabels(labels.POD, podPath)
+		if err == nil {
+			val = labeled.Labels.Has(DSIDLabel)
+			if hasDSIDLabel == val {
+				return nil
+			}
+		}
+		return util.Errorf("Expected hasIDLabel to be '%v', got '%v'", hasDSIDLabel, val)
+	}
+
+	err = waitForCondition(condition)
+	return labeled, err
+}
+
+func waitForDisabled(
+	dsf *Farm,
+	dsStore *dsstoretest.FakeDSStore,
+	dsID ds_fields.ID,
+	isDisabled bool,
+) error {
+	var newDS ds_fields.DaemonSet
+	var err error
+
+	condition := func() error {
+		newDS, _, err = dsStore.Get(dsID)
+		if err != nil {
+			return util.Errorf("Expected no error getting daemon set")
+		}
+		if newDS.Disabled != isDisabled {
+			return util.Errorf("Unexpected disabled value. Expected '%v', got '%v'",
+				newDS.Disabled,
+				isDisabled,
+			)
+		}
+		if _, ok := dsf.children[newDS.ID]; !ok {
+			return util.Errorf("Expected farm to create child daemon set with id '%v'", dsID)
+		}
+		if dsf.children[newDS.ID].ds.IsDisabled() != isDisabled {
+			return util.Errorf("Unexpected disabled value in farm. Expected '%v', got '%v'",
+				dsf.children[newDS.ID].ds.IsDisabled(),
+				isDisabled,
+			)
+		}
+		return nil
+	}
+	return waitForCondition(condition)
+}
+
+// Polls for the farm to get be populated by a daemon set with the same id
+func waitForCreate(dsf *Farm, dsID ds_fields.ID) error {
+	condition := func() error {
+		if _, ok := dsf.children[dsID]; ok {
+			return nil
+		}
+		return util.Errorf("Farm does not have daemon set id")
+	}
+	return waitForCondition(condition)
+}
+
+// Polls for the farm to be populated by a daemon set with the same
+// id, disabled value, and node selector as the daemon set in the argument
+func waitForMutateSelector(dsf *Farm, ds ds_fields.DaemonSet) error {
+	condition := func() error {
+		if anotherDS, ok := dsf.children[ds.ID]; ok {
+			if ds.ID != anotherDS.ds.ID() ||
+				ds.NodeSelector.String() != anotherDS.ds.GetNodeSelector().String() {
+				return util.Errorf(
+					"Daemon sets do not match, expected '%v', '%v', got '%v', '%v'",
+					ds.ID,
+					ds.NodeSelector.String(),
+					anotherDS.ds.ID(),
+					anotherDS.ds.GetNodeSelector().String(),
+				)
+			}
+			return nil
+		}
+		return util.Errorf("Farm does not have daemon set id: '%v'", ds.ID)
+	}
+	return waitForCondition(condition)
+}
+
+// Polls for either farm to get be populated by a daemon set with the same
+// node selector as the daemon set in the argument
+func waitForMutateSelectorFarms(firstFarm *Farm, secondFarm *Farm, ds ds_fields.DaemonSet) error {
+	condition := func() error {
+		if anotherDS, ok := firstFarm.children[ds.ID]; ok {
+			if ds.ID != anotherDS.ds.ID() ||
+				ds.NodeSelector.String() != anotherDS.ds.GetNodeSelector().String() {
+				return util.Errorf(
+					"Daemon sets do not match, expected '%v', '%v', got '%v', '%v'",
+					ds.ID,
+					ds.NodeSelector.String(),
+					anotherDS.ds.ID(),
+					anotherDS.ds.GetNodeSelector().String(),
+				)
+			}
+			return nil
+		} else if anotherDS, ok := secondFarm.children[ds.ID]; ok {
+			if ds.ID != anotherDS.ds.ID() ||
+				ds.NodeSelector.String() != anotherDS.ds.GetNodeSelector().String() {
+				return util.Errorf(
+					"Daemon sets do not match, expected '%v', '%v', got '%v', '%v'",
+					ds.ID,
+					ds.NodeSelector.String(),
+					anotherDS.ds.ID(),
+					anotherDS.ds.GetNodeSelector().String(),
+				)
+			}
+			return nil
+		}
+		return util.Errorf("Farm does not have daemon set id")
+	}
+	return waitForCondition(condition)
+}
+
+// Polls for a condition to happen, will return an error if it does not happen
+// before the timeout
+func waitForCondition(condition func() error) error {
+	timeout := time.After(10 * time.Second)
+	timedOut := false
+	err := condition()
+
+	for err != nil && !timedOut {
+		select {
+		case <-timeout:
+			timedOut = true
+		case <-time.Tick(100 * time.Millisecond):
+			err = condition()
+		}
+	}
+	return err
 }
