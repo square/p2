@@ -104,8 +104,6 @@ func main() {
 		TTL:       "15s",
 	}, client, sessions, nil, logger)
 	pub := stream.NewStringValuePublisher(sessions, "")
-	rcSub := pub.Subscribe()
-	rlSub := pub.Subscribe()
 
 	alerter := alerting.NewNop()
 	if *pagerdutyServiceKey != "" {
@@ -119,12 +117,31 @@ func main() {
 	}
 
 	// Run the farms!
-	go rc.NewFarm(kpStore, rcStore, sched, labeler, rcSub.Chan(), logger, klabels.Everything(), alerter).Start(nil)
-	roll.NewFarm(roll.UpdateFactory{
-		KPStore:       kpStore,
-		RCStore:       rcStore,
-		HealthChecker: healthChecker,
-		Labeler:       labeler,
-		Scheduler:     sched,
-	}, kpStore, rollStore, rcStore, rlSub.Chan(), logger, labeler, klabels.Everything(), alerter).Start(nil)
+	go rc.NewFarm(
+		kpStore,
+		rcStore,
+		sched,
+		labeler,
+		pub.Subscribe().Chan(),
+		logger,
+		klabels.Everything(),
+		alerter,
+	).Start(nil)
+	roll.NewFarm(
+		roll.UpdateFactory{
+			KPStore:       kpStore,
+			RCStore:       rcStore,
+			HealthChecker: healthChecker,
+			Labeler:       labeler,
+			Scheduler:     sched,
+		},
+		kpStore,
+		rollStore,
+		rcStore,
+		pub.Subscribe().Chan(),
+		logger,
+		labeler,
+		klabels.Everything(),
+		alerter,
+	).Start(nil)
 }
