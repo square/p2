@@ -1,7 +1,6 @@
 package stream
 
 import (
-	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -52,10 +51,28 @@ func receiveAllAsync(c <-chan string, done <-chan struct{}) <-chan []string {
 	return retChan
 }
 
+// validRecv checks if a sequence of values received by a subscriber is consistent with
+// the values sent to the publisher. The two are not necessarily the same because the
+// receiver might omit intermediate values, though the final value should be the same.
+func validRecv(sent, received []string) bool {
+RecvLoop:
+	for _, r := range received {
+		for i, s := range sent {
+			if r == s {
+				sent = sent[i+1 : len(sent)]
+				continue RecvLoop
+			}
+		}
+		return false
+	}
+	return len(sent) == 0
+}
+
 // Test that sending to a publisher does not block when there are no subscribers
 func TestSink(t *testing.T) {
 	t.Parallel()
 	input := make(chan string)
+	defer close(input)
 	_ = NewStringValuePublisher(input, "")
 	input <- "this"
 	input <- "doesn't"
@@ -66,6 +83,7 @@ func TestSink(t *testing.T) {
 func TestLastValue(t *testing.T) {
 	t.Parallel()
 	input := make(chan string)
+	defer close(input)
 	p := NewStringValuePublisher(input, "init")
 
 	s1 := p.Subscribe()
@@ -83,21 +101,12 @@ func TestLastValue(t *testing.T) {
 	}
 
 	input <- "world"
-	wg := sync.WaitGroup{}
-	wg.Add(2)
-	go func() {
-		if v := <-s1.Chan(); v != "world" {
-			t.Error("did not receive second value. got:", v)
-		}
-		wg.Done()
-	}()
-	go func() {
-		if v := <-s2.Chan(); v != "world" {
-			t.Error("did not receive second value. got:", v)
-		}
-		wg.Done()
-	}()
-	wg.Wait()
+	if v := <-s1.Chan(); v != "world" {
+		t.Error("did not receive second value. got:", v)
+	}
+	if v := <-s2.Chan(); v != "world" {
+		t.Error("did not receive second value. got:", v)
+	}
 }
 
 // Test that when the input channel is closed, subscription channels are closed too.
@@ -117,8 +126,8 @@ func TestClose(t *testing.T) {
 	close(input)
 
 	vals := <-vChan
-	if !reflect.DeepEqual(vals, seq) {
-		t.Error("channel didn't receive all values. got:", vals)
+	if !validRecv(seq, vals) {
+		t.Error("inconsistent: sent", vals, "received", vals)
 	}
 }
 
@@ -143,6 +152,7 @@ func TestUnsubscribe(t *testing.T) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	input := make(chan string)
+	defer close(input)
 	p := NewStringValuePublisher(input, "init")
 
 	s1 := p.Subscribe() // sends "init"
@@ -151,11 +161,12 @@ func TestUnsubscribe(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if val := <-s1.Chan(); val != "init" {
-			t.Error("dropped first value, got", val)
+		v := <-s1.Chan()
+		if v == "init" {
+			v = <-s1.Chan()
 		}
-		if val := <-s1.Chan(); val != "hello" {
-			t.Error("dropped second value, got", val)
+		if v != "hello" {
+			t.Fatal("received unexpected value", v)
 		}
 		s1.Unsubscribe()
 		close(unsubscribed)
@@ -181,6 +192,7 @@ func TestUnsubscribe(t *testing.T) {
 func TestUnsubscribeImmediate(t *testing.T) {
 	t.Parallel()
 	input := make(chan string, 1)
+	defer close(input)
 	p := NewStringValuePublisher(input, "init")
 	s := p.Subscribe()
 	s.Unsubscribe()
@@ -189,59 +201,6 @@ func TestUnsubscribeImmediate(t *testing.T) {
 	input <- "no"
 	input <- "blocking"
 	input <- "here"
-}
-
-// A complex test of unsubscriptions. Doesn't test anything in particular.
-func TestUnsubscribeComplex(t *testing.T) {
-	t.Parallel()
-	input := make(chan string, 3)
-	p := NewStringValuePublisher(input, "init")
-
-	s1 := p.Subscribe()
-	<-s1.Chan()
-	s2 := p.Subscribe()
-	<-s2.Chan()
-
-	// Queue messages to be sent to the subscribers
-	input <- "A"
-	input <- "B"
-	input <- "C"
-	close(input)
-
-	// S2 will receive "A" then unsubscribe, maybe receive "B", never receive "C"
-	unsubscribed := make(chan struct{})
-	doneSending := make(chan struct{})
-	doneChecking := make(chan struct{})
-	go func() {
-		v1, ok := <-s2.Chan()
-		if v1 != "A" {
-			t.Error("did not receive expected value 'A'. got:", v1)
-		}
-		if !ok {
-			t.Error("subscription channel closed early")
-		}
-
-		s2.Unsubscribe()
-		close(unsubscribed)
-
-		values, ok := receiveAll(s2.Chan(), doneSending)
-		if !ok {
-			t.Error("s2 should not be closed")
-		}
-		if len(values) > 0 && values[0] != "B" {
-			t.Error("expected to receive 'B', got:", values[0])
-		}
-		if len(values) > 1 {
-			t.Error("received too many values:", values)
-		}
-		close(doneChecking)
-	}()
-	<-s1.Chan()
-	<-unsubscribed
-	<-s1.Chan()
-	<-s1.Chan()
-	close(doneSending)
-	<-doneChecking
 }
 
 // Test that unsubscribing an arbitrary subscriber doesn't block the other subscribers.
@@ -259,7 +218,7 @@ func TestUnsubscribeIndependence(t *testing.T) {
 	v3Chan := receiveAllAsync(s3.Chan(), nil)
 
 	input <- "foo"
-	s2.Unsubscribe()
+	s2.Unsubscribe() // concurrent with sending "foo" to s2
 	input <- "bar"
 	input <- "blah"
 	close(input)
@@ -269,15 +228,17 @@ func TestUnsubscribeIndependence(t *testing.T) {
 	close(doneSending)
 	v2 := <-v2Chan
 	expected := []string{"init", "foo", "bar", "blah"}
-	if !reflect.DeepEqual(v1, expected) {
+	if !validRecv(expected, v1) {
 		t.Error("sub1 got unexpected sequence:", v1)
 	}
 	// Receives are asynchronous. The only error is receiving a value whose send happened
 	// after the unsubscribe.
-	if len(v2) > 2 || !reflect.DeepEqual(v2, expected[:len(v2)]) {
-		t.Error("sub2 got unexpected sequence:", v2)
+	for _, s := range v2 {
+		if s == "bar" || s == "blah" {
+			t.Error("sub2 got unexpected sequence:", v2)
+		}
 	}
-	if !reflect.DeepEqual(v3, expected) {
+	if !validRecv(expected, v3) {
 		t.Error("sub3 got unexpected sequence:", v3)
 	}
 }
