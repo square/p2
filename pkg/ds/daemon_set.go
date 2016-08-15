@@ -251,7 +251,17 @@ func (ds *daemonSet) WatchDesires(
 				}
 
 			case <-timer.C:
-				err = ds.PublishToReplication()
+				// Account for any operations that could have failed and retry the replication
+				err = ds.removePods()
+				if err != nil {
+					err = util.Errorf("Unable to remove pods from intent tree: %v", err)
+					continue
+				}
+				err = ds.addPods()
+				if err != nil {
+					err = util.Errorf("Unable to add pods to intent tree: %v", err)
+					continue
+				}
 
 			case <-quitCh:
 				return
