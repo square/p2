@@ -1,6 +1,7 @@
 package replication
 
 import (
+	"errors"
 	"time"
 
 	"github.com/square/p2/pkg/health"
@@ -14,11 +15,19 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-const DefaultConcurrentReality = 3
+const (
+	DefaultConcurrentReality = 3
 
-// Normal replications will have no timeout, but daemon sets will
-// because it is unlikely that all hosts are healthy at all times
-const NoTimeout = time.Duration(-1)
+	// Normal replications will have no timeout, but daemon sets will
+	// because it is unlikely that all hosts are healthy at all times
+	NoTimeout = time.Duration(-1)
+)
+
+var (
+	errTimeout   = errors.New("Update timed out")
+	errCancelled = errors.New("Replication cancelled")
+	errQuit      = errors.New("Replication quit")
+)
 
 type Replicator interface {
 	InitializeReplication(
@@ -143,10 +152,13 @@ func (r replicator) initializeReplicationWithCheck(
 		errCh:     errCh,
 		replicationCancelledCh: make(chan struct{}),
 		replicationDoneCh:      make(chan struct{}),
+		enactedCh:              make(chan struct{}),
 		quitCh:                 make(chan struct{}),
 		concurrentRealityRequests: make(chan struct{}, concurrentRealityRequests),
 		timeout:                   r.timeout,
 	}
+	// To make a closed channel
+	close(replication.enactedCh)
 
 	err = replication.lockHosts(overrideLock, r.lockMessage)
 	if err != nil {
