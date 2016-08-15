@@ -115,7 +115,7 @@ func (m *consulHealthManager) NewUpdater(pod types.PodID, service string) Health
 		checker: checksStream,
 	}
 	go func() {
-		sub := m.sessionPub.Subscribe(nil)
+		sub := m.sessionPub.Subscribe()
 		defer sub.Unsubscribe()
 		processHealthUpdater(
 			m.client,

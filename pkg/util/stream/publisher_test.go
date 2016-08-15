@@ -68,7 +68,7 @@ func TestLastValue(t *testing.T) {
 	input := make(chan string)
 	p := NewStringValuePublisher(input, "init")
 
-	s1 := p.Subscribe(nil)
+	s1 := p.Subscribe()
 	if v := <-s1.Chan(); v != "init" {
 		t.Error("did not receive initial value. got:", v)
 	}
@@ -77,7 +77,7 @@ func TestLastValue(t *testing.T) {
 	if v := <-s1.Chan(); v != "hello" {
 		t.Error("did not receive first value. got:", v)
 	}
-	s2 := p.Subscribe(nil)
+	s2 := p.Subscribe()
 	if v := <-s2.Chan(); v != "hello" {
 		t.Error("subscription did not get most recent value. got:", v)
 	}
@@ -107,7 +107,7 @@ func TestClose(t *testing.T) {
 
 	input := make(chan string)
 	p := NewStringValuePublisher(input, seq[0])
-	s := p.Subscribe(nil)
+	s := p.Subscribe()
 	// Read messages until the channel is closed
 	vChan := receiveAllAsync(s.Chan(), nil)
 
@@ -128,7 +128,7 @@ func TestAlwaysClosed(t *testing.T) {
 	input := make(chan string)
 	close(input)
 	p := NewStringValuePublisher(input, "first")
-	s := p.Subscribe(nil)
+	s := p.Subscribe()
 	if v, ok := <-s.Chan(); !ok || v != "first" {
 		t.Errorf("received wrong value: %v/%v", v, ok)
 	}
@@ -140,17 +140,41 @@ func TestAlwaysClosed(t *testing.T) {
 // Test that unsubscribing basically works.
 func TestUnsubscribe(t *testing.T) {
 	t.Parallel()
+	var wg sync.WaitGroup
+	defer wg.Wait()
 	input := make(chan string)
 	p := NewStringValuePublisher(input, "init")
-	s1 := p.Subscribe(make(chan string, 2))
+
+	s1 := p.Subscribe() // sends "init"
+	unsubscribed := make(chan struct{})
+	sentMore := make(chan struct{})
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if val := <-s1.Chan(); val != "init" {
+			t.Error("dropped first value, got", val)
+		}
+		if val := <-s1.Chan(); val != "hello" {
+			t.Error("dropped second value, got", val)
+		}
+		s1.Unsubscribe()
+		close(unsubscribed)
+		<-sentMore
+
+		// No more messages should be received, but we can't wait forever to verify that.
+		select {
+		case val := <-s1.Chan():
+			t.Error("got extra value", val)
+		case <-time.After(20 * time.Millisecond):
+		}
+	}()
+
 	input <- "hello"
-	s1.Unsubscribe()
+	<-unsubscribed
+	// These sends happen after the unsubscribe
 	input <- "world"
-	time.Sleep(10 * time.Millisecond)
-	if count := flush(s1.Chan()); count > 2 {
-		t.Error("received too many messages:", count)
-	}
 	input <- "this shouldn't block"
+	close(sentMore)
 }
 
 // Test that immediately unsubscribing after subscribing won't block a sender.
@@ -158,7 +182,7 @@ func TestUnsubscribeImmediate(t *testing.T) {
 	t.Parallel()
 	input := make(chan string, 1)
 	p := NewStringValuePublisher(input, "init")
-	s := p.Subscribe(make(chan string))
+	s := p.Subscribe()
 	s.Unsubscribe()
 	s = nil
 
@@ -173,9 +197,9 @@ func TestUnsubscribeComplex(t *testing.T) {
 	input := make(chan string, 3)
 	p := NewStringValuePublisher(input, "init")
 
-	s1 := p.Subscribe(make(chan string))
+	s1 := p.Subscribe()
 	<-s1.Chan()
-	s2 := p.Subscribe(make(chan string))
+	s2 := p.Subscribe()
 	<-s2.Chan()
 
 	// Queue messages to be sent to the subscribers
@@ -227,11 +251,11 @@ func TestUnsubscribeIndependence(t *testing.T) {
 	p := NewStringValuePublisher(input, "init")
 
 	doneSending := make(chan struct{})
-	s1 := p.Subscribe(nil)
+	s1 := p.Subscribe()
 	v1Chan := receiveAllAsync(s1.Chan(), nil)
-	s2 := p.Subscribe(nil)
+	s2 := p.Subscribe()
 	v2Chan := receiveAllAsync(s2.Chan(), doneSending)
-	s3 := p.Subscribe(nil)
+	s3 := p.Subscribe()
 	v3Chan := receiveAllAsync(s3.Chan(), nil)
 
 	input <- "foo"

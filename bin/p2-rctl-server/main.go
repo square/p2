@@ -104,8 +104,8 @@ func main() {
 		TTL:       "15s",
 	}, client, sessions, nil, logger)
 	pub := stream.NewStringValuePublisher(sessions, "")
-	rcSub := pub.Subscribe(nil)
-	rlSub := pub.Subscribe(nil)
+	rcSub := pub.Subscribe()
+	rlSub := pub.Subscribe()
 
 	alerter := alerting.NewNop()
 	if *pagerdutyServiceKey != "" {
