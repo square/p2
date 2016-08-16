@@ -25,6 +25,11 @@ type WatchedDaemonSets struct {
 	Err     error
 }
 
+type WatchedDaemonSetList struct {
+	DaemonSets []fields.DaemonSet
+	Err        error
+}
+
 // Store represents an interface for persisting daemon set to Consul,
 // as well as restoring daemon set from Consul.
 type Store interface {
@@ -56,6 +61,9 @@ type Store interface {
 	) (fields.DaemonSet, error)
 
 	Watch(quit <-chan struct{}) <-chan WatchedDaemonSets
+
+	// Returns a list of all the daemon sets that are on the tree
+	WatchAll(quit <-chan struct{}) <-chan WatchedDaemonSetList
 
 	// Disables daemon set and produces logging, if there are problems disabling,
 	// disable the daemon set, and if there are still problems, return a fatal error
