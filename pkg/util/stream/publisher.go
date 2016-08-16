@@ -68,16 +68,10 @@ func (p *StringValuePublisher) read() {
 	}
 }
 
-// Subscribe creates a new subscription to the publisher's data stream. If a nil channel
-// argument is passed, one will be created for the caller. If a channel is provided, the
-// subscription takes ownership of the channel and will close it if the publisher's input
-// is closed.
-func (p *StringValuePublisher) Subscribe(values chan string) *StringSubscription {
-	if values == nil {
-		values = make(chan string)
-	}
+// Subscribe creates a new subscription to the publisher's data stream.
+func (p *StringValuePublisher) Subscribe() *StringSubscription {
 	s := &StringSubscription{
-		values:      values,
+		values:      make(chan string),
 		initialized: make(chan struct{}),
 		canceled:    make(chan struct{}),
 		publisher:   p,
