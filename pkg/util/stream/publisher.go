@@ -6,10 +6,10 @@ import (
 
 // StringValuePublisher exposes methods allowing string values to be published via
 // channels. The publisher receives a stream of string values from one channel and
-// broadcasts (via a blocking channel send) the value to all subscribers. When the input
-// channel is closed, all subscriptions are closed too. The most recent value is buffered,
-// and when a new subscription is created, the recent value is immediately sent (even when
-// the input is closed).
+// broadcasts the value to all subscribers. When the input channel is closed, all
+// subscriptions are closed too. The most recent value is buffered, and when a new
+// subscription is created, the recent value is immediately sent (even when the input is
+// closed).
 type StringValuePublisher struct {
 	in <-chan string // the input data stream
 
@@ -21,10 +21,8 @@ type StringValuePublisher struct {
 
 // StringSubscription manages one subscription to a StringValuePublisher.
 type StringSubscription struct {
-	values      chan string           // value channel
-	initialized chan struct{}         // closed after the first value has been sent
-	canceled    chan struct{}         // closed when unsubscribed
-	publisher   *StringValuePublisher // the publisher subscribed to
+	values    chan string           // value channel
+	publisher *StringValuePublisher // the publisher subscribed to
 }
 
 // NewStringPublisher creates a new StringPublisher that reads from the given input
@@ -41,53 +39,41 @@ func (p *StringValuePublisher) read() {
 	for val := range p.in {
 		p.mutex.Lock()
 		p.value = val
-		subs := p.subscribers
-		p.mutex.Unlock()
-		for _, s := range subs {
-			if ok := s.waitForReady(); ok {
-				select {
-				case s.values <- val:
-					// This send might block if the subscriber has quit receiving from its
-					// values channel.
-				case <-s.canceled:
-				}
+		for _, s := range p.subscribers {
+			// If the subscriber hasn't yet received the last value that was published,
+			// remove it and replace it with the current value.
+			select {
+			case <-s.values:
+			default:
 			}
+			s.values <- val
 		}
+		p.mutex.Unlock()
 	}
 	// Send the close to all subscribers
 	p.mutex.Lock()
-	subs := p.subscribers
+	for _, s := range p.subscribers {
+		close(s.values)
+	}
 	p.in = nil
 	p.subscribers = nil
 	p.closed = true
 	p.mutex.Unlock()
-	for _, s := range subs {
-		if ok := s.waitForReady(); ok {
-			s.close()
-		}
-	}
 }
 
 // Subscribe creates a new subscription to the publisher's data stream.
 func (p *StringValuePublisher) Subscribe() *StringSubscription {
 	s := &StringSubscription{
-		values:      make(chan string),
-		initialized: make(chan struct{}),
-		canceled:    make(chan struct{}),
-		publisher:   p,
+		values:    make(chan string, 1),
+		publisher: p,
 	}
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	// Send the first value in another goroutine to avoid blocking this one
+	s.values <- p.value
 	if p.closed {
-		go func(firstValue string) {
-			s.sendFirst(firstValue)
-			s.close()
-		}(p.value)
+		close(s.values)
 	} else {
-		// Append doesn't modify existing slices, so it's still safe.
 		p.subscribers = append(p.subscribers, s)
-		go s.sendFirst(p.value)
 	}
 	return s
 }
@@ -97,19 +83,16 @@ func (p *StringValuePublisher) unsubscribe(subscription *StringSubscription) {
 	defer p.mutex.Unlock()
 	for i, s := range p.subscribers {
 		if s == subscription {
-			// Subscribe() and read() assume their slices' contents are immutable
 			subLen := len(p.subscribers)
-			newSub := make([]*StringSubscription, subLen-1)
-			copy(newSub[:i], p.subscribers[:i])
-			copy(newSub[i:subLen-1], p.subscribers[i+1:subLen])
-			p.subscribers = newSub
+			copy(p.subscribers[i:subLen-1], p.subscribers[i+1:subLen])
+			p.subscribers = p.subscribers[:subLen-1]
 			return
 		}
 	}
 }
 
-// Chan returns a channel that delivers string values from the publisher. Returns a
-// receive-only channel with a buffer size of 1.
+// Chan returns a channel that delivers string values from the publisher. Slow readers may
+// miss intermediate updates to the value.
 func (s *StringSubscription) Chan() <-chan string {
 	return s.values
 }
@@ -120,41 +103,4 @@ func (s *StringSubscription) Chan() <-chan string {
 func (s *StringSubscription) Unsubscribe() {
 	s.publisher.unsubscribe(s)
 	s.publisher = nil
-	close(s.canceled)
-}
-
-// waitForReady blocks until the sendFirst() goroutine finishes executing. At that point,
-// either (1) the subscription has received its first value and is ready to receive
-// further streaming values, or (2) the subscription has been canceled and there should be
-// no further attempts to send values.
-//
-// Returns false if the subscription has been canceled. Returns true if the subscriber
-// hasn't yet canceled.
-func (s *StringSubscription) waitForReady() bool {
-	<-s.initialized
-	select {
-	case <-s.canceled:
-		return false
-	default:
-		return true
-	}
-}
-
-// sendFirst sends the first value to the subscription stream, then marks the subscription
-// as ready for more streaming data.
-func (s *StringSubscription) sendFirst(val string) {
-	defer close(s.initialized)
-	select {
-	case s.values <- val:
-	case <-s.canceled:
-	}
-}
-
-// close the subscription's data stream if the subscription wasn't previously canceled
-func (s *StringSubscription) close() {
-	select {
-	default:
-		close(s.values)
-	case <-s.canceled:
-	}
 }
