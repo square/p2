@@ -62,12 +62,21 @@ type RawDaemonSet struct {
 // to JSON format. Lets json interface know how to marshal a DaemonSet
 // Can be called using json.Marshal
 func (ds DaemonSet) MarshalJSON() ([]byte, error) {
+	rawDS, err := ds.ToRaw()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(rawDS)
+}
+
+// Converts a pod cluster to a type that will marshal cleanly to JSON.
+func (ds *DaemonSet) ToRaw() (RawDaemonSet, error) {
 	var manifest []byte
 	var err error
 	if ds.Manifest != nil {
 		manifest, err = ds.Manifest.Marshal()
 		if err != nil {
-			return nil, err
+			return RawDaemonSet{}, err
 		}
 	}
 
@@ -76,7 +85,7 @@ func (ds DaemonSet) MarshalJSON() ([]byte, error) {
 		nodeSelector = ds.NodeSelector.String()
 	}
 
-	return json.Marshal(RawDaemonSet{
+	return RawDaemonSet{
 		ID:           ds.ID,
 		Disabled:     ds.Disabled,
 		Manifest:     string(manifest),
@@ -85,7 +94,7 @@ func (ds DaemonSet) MarshalJSON() ([]byte, error) {
 		NodeSelector: nodeSelector,
 		PodID:        ds.PodID,
 		Timeout:      ds.Timeout,
-	})
+	}, nil
 }
 
 // Assert DaemonSet.MashalJSON is implemented in json.Marshaler

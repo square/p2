@@ -181,6 +181,38 @@ func (s *FakeDSStore) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemon
 	return s.watchDiffDaemonSets(inCh, quitCh)
 }
 
+func (s *FakeDSStore) WatchAll(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSetList {
+	inCh := s.WatchList(quitCh)
+	outCh := make(chan dsstore.WatchedDaemonSetList)
+
+	go func() {
+		defer close(outCh)
+
+		for {
+			var results dsstore.WatchedDaemonSetList
+			select {
+			case <-quitCh:
+				return
+			case val, ok := <-inCh:
+				if !ok {
+					// channel closed
+					return
+				}
+				results.DaemonSets = val
+				results.Err = nil
+			}
+
+			select {
+			case <-quitCh:
+				return
+			case outCh <- results:
+			}
+		}
+	}()
+
+	return outCh
+}
+
 func (s *FakeDSStore) watchDiffDaemonSets(inCh <-chan []fields.DaemonSet, quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets {
 	outCh := make(chan dsstore.WatchedDaemonSets)
 

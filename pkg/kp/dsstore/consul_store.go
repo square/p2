@@ -326,6 +326,61 @@ func (s *consulStore) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
 	return outCh
 }
 
+// WatchAll watches dsTree for all the daemon sets and returns a blocking
+// channel where the client can read a WatchedDaemonSetsList object which
+// contain all of the daemon sets currently on the tree
+func (s *consulStore) WatchAll(quitCh <-chan struct{}) <-chan WatchedDaemonSetList {
+	inCh := make(chan api.KVPairs)
+	outCh := make(chan WatchedDaemonSetList)
+	errCh := make(chan error, 1)
+
+	// Watch for changes in the dsTree and deletedDSTree
+	go consulutil.WatchPrefix(dsTree, s.kv, inCh, quitCh, errCh, time.Duration(250*time.Millisecond))
+
+	go func() {
+		defer close(outCh)
+		defer close(errCh)
+
+		var kvp api.KVPairs
+		for {
+			select {
+			case <-quitCh:
+				return
+			case err := <-errCh:
+				s.logger.WithError(err).Errorf("WatchPrefix returned error, recovered.")
+			case kvp = <-inCh:
+				if kvp == nil {
+					// nothing to do
+					continue
+				}
+			}
+
+			daemonSets := WatchedDaemonSetList{}
+
+			dsList, err := kvpsToDSs(kvp)
+			if err != nil {
+				daemonSets.Err = err
+				select {
+				case <-quitCh:
+					return
+				case outCh <- daemonSets:
+					continue
+				}
+			}
+
+			daemonSets.DaemonSets = dsList
+
+			select {
+			case outCh <- daemonSets:
+			case <-quitCh:
+				return
+			}
+		}
+	}()
+
+	return outCh
+}
+
 func checkManifestPodID(dsPodID types.PodID, manifest manifest.Manifest) error {
 	if dsPodID == "" {
 		return util.Errorf("Daemon set must have a pod id")
