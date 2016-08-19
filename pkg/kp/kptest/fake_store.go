@@ -162,6 +162,10 @@ func (*FakePodStore) WatchPods(podPrefix kp.PodPrefix, nodename types.NodeName, 
 	panic("not implemented")
 }
 
+func (*FakePodStore) WatchAllPods(podPrefix kp.PodPrefix, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []kp.ManifestResult, pauseTime time.Duration) {
+	panic("not implemented")
+}
+
 func (*FakePodStore) Ping() error {
 	panic("not implemented")
 }
