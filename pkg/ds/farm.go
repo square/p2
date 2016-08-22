@@ -266,7 +266,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 				} else if err != nil {
 					// The session probably either expired or there was probably a network
 					// error, so the rest will probably fail
-					dsf.makeSessionExpiryAlert(*dsFields, dsLogger, err)
+					dsf.handleSessionExpiry(*dsFields, dsLogger, err)
 					dsf.releaseLock(dsUnlocker)
 					return
 				}
@@ -313,7 +313,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 					continue
 
 				} else if err != nil {
-					dsf.makeSessionExpiryAlert(*dsFields, dsLogger, err)
+					dsf.handleSessionExpiry(*dsFields, dsLogger, err)
 					return
 				}
 				dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
@@ -359,7 +359,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 					continue
 
 				} else if err != nil {
-					dsf.makeSessionExpiryAlert(*dsFields, dsLogger, err)
+					dsf.handleSessionExpiry(*dsFields, dsLogger, err)
 					return
 				}
 				dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
@@ -386,27 +386,13 @@ func (dsf *Farm) makeDSLogger(dsFields ds_fields.DaemonSet) logging.Logger {
 		"pod": dsFields.Manifest.ID(),
 	})
 }
-
-func (dsf *Farm) makeSessionExpiryAlert(dsFields ds_fields.DaemonSet, dsLogger logging.Logger, err error) {
-	dsLogger.WithError(err).Errorln("Got error while locking daemon set in ds farm - session may be expired")
-
-	if alertErr := dsf.alerter.Alert(alerting.AlertInfo{
-		Description: "Got error while locking daemon set - session may be expired",
-		IncidentKey: "ds_session_expired",
-		Details: struct {
-			ID           ds_fields.ID          `json:"id"`
-			Name         ds_fields.ClusterName `json:"cluster_name"`
-			NodeSelector string                `json:"node_selector"`
-			PodID        types.PodID           `json:"pod_id"`
-		}{
-			ID:           dsFields.ID,
-			Name:         dsFields.Name,
-			NodeSelector: dsFields.NodeSelector.String(),
-			PodID:        dsFields.PodID,
-		},
-	}); alertErr != nil {
-		dsf.logger.WithError(alertErr).Errorln("Unable to deliver alert!")
-	}
+func (dsf *Farm) handleSessionExpiry(dsFields ds_fields.DaemonSet, dsLogger logging.Logger, err error) {
+	dsLogger.WithFields(logrus.Fields{
+		"ID":           dsFields.ID,
+		"Name":         dsFields.Name,
+		"NodeSelector": dsFields.NodeSelector.String(),
+		"PodID":        dsFields.PodID,
+	}).WithError(err).Errorln("Got error while locking daemon set in ds farm - session may be expired")
 }
 
 func (dsf *Farm) releaseLock(unlocker consulutil.Unlocker) {
