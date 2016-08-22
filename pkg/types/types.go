@@ -50,8 +50,8 @@ func (p PodID) String() string {
 }
 
 type PodLocation struct {
-	Node  NodeName
-	PodID PodID
+	Node  NodeName `json:"node"`
+	PodID PodID    `json:"pod_id"`
 }
 type PodLocations []PodLocation
 
