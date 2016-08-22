@@ -174,8 +174,8 @@ func (c *consulStore) Schedule(manifest manifest.Manifest, node types.NodeName) 
 }
 
 func (c *consulStore) Unschedule(podKey types.PodUniqueKey) error {
-	if !podKey.IsUUID {
-		return util.Errorf("Pod store can only delete pods with uuid keys (key was '%s')", podKey.ID)
+	if podKey.ID == "" {
+		return util.Errorf("Pod store can only delete pods with uuid keys")
 	}
 
 	// Read the pod so we know which node the secondary index will have
@@ -251,8 +251,8 @@ func IsNoPod(err error) bool {
 }
 
 func (c *consulStore) ReadPod(podKey types.PodUniqueKey) (Pod, error) {
-	if !podKey.IsUUID {
-		return Pod{}, util.Errorf("Pod store can only read pods with uuid keys (key was '%s')", podKey.ID)
+	if podKey.ID == "" {
+		return Pod{}, util.Errorf("Pod store can only read pods with uuid keys")
 	}
 
 	if pod, ok := c.fetchFromCache(podKey); ok {

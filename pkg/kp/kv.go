@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"path"
 	"strings"
 	"time"
 
@@ -25,9 +24,11 @@ import (
 const TTL = 60 * time.Second
 
 type ManifestResult struct {
-	Manifest     manifest.Manifest
-	PodLocation  types.PodLocation
-	PodUniqueKey types.PodUniqueKey
+	Manifest    manifest.Manifest
+	PodLocation types.PodLocation
+
+	// This is expected to be nil for "legacy" pods that do not have a uuid, and non-nil for uuid pods.
+	PodUniqueKey *types.PodUniqueKey
 }
 
 type Store interface {
@@ -446,7 +447,7 @@ func manifestResultFromPair(pair *api.KVPair) (ManifestResult, error) {
 		return ManifestResult{}, err
 	}
 
-	if podUniqueKey.IsUUID {
+	if podUniqueKey != nil {
 		return ManifestResult{}, UUIDNotImplemented{
 			key: pair.Key,
 		}
@@ -498,38 +499,31 @@ func extractNodeFromKey(key string) (types.NodeName, error) {
 // 'intent/<node>/<pod_uuid>' if the prefix is "intent" or "reality"
 //
 // /hooks is also a valid pod prefix and the key under it will not be a uuid.
-func PodUniqueKeyFromConsulPath(consulPath string) (types.PodUniqueKey, error) {
+func PodUniqueKeyFromConsulPath(consulPath string) (*types.PodUniqueKey, error) {
 	keyParts := strings.Split(consulPath, "/")
 	if len(keyParts) == 0 {
-		return types.PodUniqueKey{}, util.Errorf("Malformed key '%s'", consulPath)
+		return nil, util.Errorf("Malformed key '%s'", consulPath)
 	}
 
 	if keyParts[0] == "hooks" {
-		return types.PodUniqueKey{
-			ID:     consulPath,
-			IsUUID: false,
-		}, nil
+		return nil, nil
 	}
 
 	if len(keyParts) != 3 {
-		return types.PodUniqueKey{}, util.Errorf("Malformed key '%s'", consulPath)
+		return nil, util.Errorf("Malformed key '%s'", consulPath)
 	}
 
 	// Unforunately we can't use kp.INTENT_TREE and kp.REALITY_TREE here because of an import cycle
 	if keyParts[0] != "intent" && keyParts[0] != "reality" {
-		return types.PodUniqueKey{}, util.Errorf("Unrecognized key tree '%s' (must be intent or reality)", keyParts[0])
+		return nil, util.Errorf("Unrecognized key tree '%s' (must be intent or reality)", keyParts[0])
 	}
 
 	// Parse() returns nil if the input string does not match the uuid spec
 	if uuid.Parse(keyParts[2]) != nil {
-		return types.PodUniqueKey{
-			ID:     keyParts[2],
-			IsUUID: true,
+		return &types.PodUniqueKey{
+			ID: keyParts[2],
 		}, nil
 	}
 
-	return types.PodUniqueKey{
-		ID:     path.Join(keyParts[1], keyParts[2]),
-		IsUUID: false,
-	}, nil
+	return nil, nil
 }

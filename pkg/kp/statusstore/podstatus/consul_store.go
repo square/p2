@@ -24,8 +24,8 @@ func NewConsul(statusStore statusstore.Store, namespace statusstore.Namespace) S
 }
 
 func (c *consulStore) Get(key types.PodUniqueKey) (PodStatus, error) {
-	if !key.IsUUID {
-		return PodStatus{}, util.Errorf("Could not get status for pod '%s': pod status is only compatible with pods with uuid keys", key.ID)
+	if key.ID == "" {
+		return PodStatus{}, util.Errorf("Cannot retrieve status for a pod with an empty uuid")
 	}
 
 	status, err := c.statusStore.GetStatus(statusstore.POD, statusstore.ResourceID(key.ID), c.namespace)
@@ -37,8 +37,8 @@ func (c *consulStore) Get(key types.PodUniqueKey) (PodStatus, error) {
 }
 
 func (c *consulStore) Set(key types.PodUniqueKey, status PodStatus) error {
-	if !key.IsUUID {
-		return util.Errorf("Could not set status for pod '%s': pod status is only compatible with pods with uuid keys", key.ID)
+	if key.ID == "" {
+		return util.Errorf("Could not set status for pod with empty uuid")
 	}
 
 	rawStatus, err := podStatusToStatus(status)
