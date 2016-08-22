@@ -29,7 +29,7 @@ import (
 
 func getTestPod() *Pod {
 	podFactory := NewFactory("/data/pods", "testNode")
-	return podFactory.NewPod("hello")
+	return podFactory.NewPod("hello", nil)
 }
 
 func getTestPodManifest(t *testing.T) manifest.Manifest {
@@ -143,7 +143,7 @@ config:
 	podTemp, _ := ioutil.TempDir("", "pod")
 
 	podFactory := NewFactory(podTemp, "testNode")
-	pod := podFactory.NewPod(manifest.ID())
+	pod := podFactory.NewPod(manifest.ID(), nil)
 
 	launchables := make([]launch.Launchable, 0)
 	for _, stanza := range manifest.GetLaunchableStanzas() {
@@ -211,7 +211,7 @@ func TestLogLaunchableError(t *testing.T) {
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
 	factory := NewFactory(DefaultPath, "testNode")
-	pod := factory.NewPod(testManifest.ID())
+	pod := factory.NewPod(testManifest.ID(), nil)
 	pod.logLaunchableError(testLaunchable.ServiceId, testErr, message)
 
 	output, err := ioutil.ReadAll(&out)
@@ -230,7 +230,7 @@ func TestLogError(t *testing.T) {
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
 	factory := NewFactory(DefaultPath, "testNode")
-	pod := factory.NewPod(testManifest.ID())
+	pod := factory.NewPod(testManifest.ID(), nil)
 	pod.logError(testErr, message)
 
 	output, err := ioutil.ReadAll(&out)
@@ -246,7 +246,7 @@ func TestLogInfo(t *testing.T) {
 
 	testManifest := getTestPodManifest(t)
 	factory := NewFactory(DefaultPath, "testNode")
-	pod := factory.NewPod(testManifest.ID())
+	pod := factory.NewPod(testManifest.ID(), nil)
 	message := "Pod did something good"
 	pod.logInfo(message)
 
@@ -263,7 +263,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 
 	poddir, err := ioutil.TempDir("", "poddir")
 	Assert(t).IsNil(err, "couldn't create tempdir")
-	pod := newPodWithHome("testPod", poddir, "testNode")
+	pod := newPodWithHome("testPod", nil, poddir, "testNode")
 
 	// set the RunAs user to the user running the test, because when we
 	// write files we need an owner.
