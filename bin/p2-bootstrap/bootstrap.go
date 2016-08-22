@@ -56,7 +56,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("Could not get consul manifest: %s", err)
 		}
-		consulPod = podFactory.NewPod(consulManifest.ID())
+
+		// Consul will never have a uuid (for now)
+		consulPod = podFactory.NewPod(consulManifest.ID(), nil)
 		err = installConsul(consulPod, consulManifest, *registryURL)
 		if err != nil {
 			log.Fatalf("Could not install consul: %s", err)
@@ -230,7 +232,8 @@ func scheduleForThisHost(manifest manifest.Manifest, alsoReality bool) error {
 }
 
 func installBaseAgent(podFactory pods.Factory, agentManifest manifest.Manifest, registryURL *url.URL) error {
-	agentPod := podFactory.NewPod(agentManifest.ID())
+	// preparer will never have a uuid (for now)
+	agentPod := podFactory.NewPod(agentManifest.ID(), nil)
 	err := agentPod.Install(agentManifest, auth.NopVerifier(), artifact.NewRegistry(registryURL, uri.DefaultFetcher, osversion.DefaultDetector))
 	if err != nil {
 		return err

@@ -212,7 +212,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				if !working {
 					p.tryRunHooks(
 						hooks.AFTER_AUTH_FAIL,
-						p.podFactory.NewPod(nextLaunch.ID),
+						p.podFactory.NewPod(nextLaunch.ID, nil),
 						nextLaunch.Intent,
 						manifestLogger,
 					)
@@ -220,7 +220,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 			}
 		case <-time.After(backoffTime):
 			if working {
-				pod := p.podFactory.NewPod(nextLaunch.ID)
+				pod := p.podFactory.NewPod(nextLaunch.ID, nil)
 
 				// TODO better solution: force the preparer to have a 0s default timeout, prevent KILLs
 				if pod.Id == POD_ID {
