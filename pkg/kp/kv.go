@@ -39,6 +39,7 @@ type Store interface {
 	GetServiceHealth(service string) (map[string]WatchResult, error)
 	WatchPod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
 	WatchPods(podPrefix PodPrefix, nodename types.NodeName, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult)
+	WatchAllPods(podPrefix PodPrefix, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult, pauseTime time.Duration)
 	ListPods(podPrefix PodPrefix, nodename types.NodeName) ([]ManifestResult, time.Duration, error)
 	AllPods(podPrefix PodPrefix) ([]ManifestResult, time.Duration, error)
 	LockHolder(key string) (string, string, error)
@@ -356,6 +357,40 @@ func (c consulStore) WatchPods(
 
 	kvPairsChan := make(chan api.KVPairs)
 	go consulutil.WatchPrefix(keyPrefix, c.client.KV(), kvPairsChan, quitChan, errChan, 0)
+	for kvPairs := range kvPairsChan {
+		manifests := make([]ManifestResult, 0, len(kvPairs))
+		for _, pair := range kvPairs {
+			manifestResult, err := manifestResultFromPair(pair)
+			if err != nil {
+				select {
+				case <-quitChan:
+					return
+				case errChan <- util.Errorf("Could not parse pod manifest at %s: %s. Content follows: \n%s", pair.Key, err, pair.Value):
+				}
+			} else {
+				manifests = append(manifests, manifestResult)
+			}
+		}
+		select {
+		case <-quitChan:
+			return
+		case podChan <- manifests:
+		}
+	}
+}
+
+// Does the same thing as WatchPods, but does so on all the nodes instead
+func (c consulStore) WatchAllPods(
+	podPrefix PodPrefix,
+	quitChan <-chan struct{},
+	errChan chan<- error,
+	podChan chan<- []ManifestResult,
+	pauseTime time.Duration,
+) {
+	defer close(podChan)
+
+	kvPairsChan := make(chan api.KVPairs)
+	go consulutil.WatchPrefix(string(podPrefix), c.client.KV(), kvPairsChan, quitChan, errChan, pauseTime)
 	for kvPairs := range kvPairsChan {
 		manifests := make([]ManifestResult, 0, len(kvPairs))
 		for _, pair := range kvPairs {
