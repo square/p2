@@ -27,7 +27,7 @@ func TestSetAndGetStatus(t *testing.T) {
 		t.Fatalf("Unexpected error setting status: %s", err)
 	}
 
-	status, err := store.Get(podKey)
+	status, _, err := store.Get(podKey)
 	if err != nil {
 		t.Fatalf("Unexpected error getting status: %s", err)
 	}

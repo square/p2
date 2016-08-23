@@ -61,22 +61,22 @@ func (s *consulStore) SetStatus(t ResourceType, id ResourceID, namespace Namespa
 	return nil
 }
 
-func (s *consulStore) GetStatus(t ResourceType, id ResourceID, namespace Namespace) (Status, error) {
+func (s *consulStore) GetStatus(t ResourceType, id ResourceID, namespace Namespace) (Status, *api.QueryMeta, error) {
 	key, err := namespacedResourcePath(t, id, namespace)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	pair, _, err := s.kv.Get(key, nil)
+	pair, queryMeta, err := s.kv.Get(key, nil)
 	if err != nil {
-		return nil, consulutil.NewKVError("get", key, err)
+		return nil, nil, consulutil.NewKVError("get", key, err)
 	}
 
 	if pair == nil {
-		return nil, NoStatusError{key}
+		return nil, queryMeta, NoStatusError{key}
 	}
 
-	return pair.Value, nil
+	return pair.Value, queryMeta, nil
 }
 
 func (s *consulStore) DeleteStatus(t ResourceType, id ResourceID, namespace Namespace) error {

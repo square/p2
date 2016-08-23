@@ -5,13 +5,20 @@ import (
 	"sync"
 
 	"github.com/square/p2/pkg/kp/statusstore"
+
+	"github.com/hashicorp/consul/api"
 )
 
 // Implementation of the statusstore.Store interface that can be used for unit
 // testing
 type FakeStatusStore struct {
+	// mu synchronizes access to Statuses and Last Index
+	mu sync.Mutex
+
 	Statuses map[StatusIdentifier]statusstore.Status
-	mu       sync.Mutex
+
+	// Imitates the ModifyIndex capability of consul, enabling CAS operations
+	LastIndex uint64
 }
 
 var _ statusstore.Store = &FakeStatusStore{}
@@ -43,6 +50,7 @@ func (s *FakeStatusStore) SetStatus(
 	defer s.mu.Unlock()
 	identifier := StatusIdentifier{t, id, namespace}
 	s.Statuses[identifier] = status
+	s.LastIndex++
 	return nil
 }
 
@@ -50,17 +58,17 @@ func (s *FakeStatusStore) GetStatus(
 	t statusstore.ResourceType,
 	id statusstore.ResourceID,
 	namespace statusstore.Namespace,
-) (statusstore.Status, error) {
+) (statusstore.Status, *api.QueryMeta, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	identifier := StatusIdentifier{t, id, namespace}
 	status, ok := s.Statuses[identifier]
 	if !ok {
-		return statusstore.Status{}, statusstore.NoStatusError{Key: identifier.String()}
+		return statusstore.Status{}, &api.QueryMeta{}, statusstore.NoStatusError{Key: identifier.String()}
 	}
 
-	return status, nil
+	return status, &api.QueryMeta{LastIndex: s.LastIndex}, nil
 }
 
 func (s *FakeStatusStore) DeleteStatus(
@@ -73,6 +81,7 @@ func (s *FakeStatusStore) DeleteStatus(
 
 	identifier := StatusIdentifier{t, id, namespace}
 	delete(s.Statuses, identifier)
+	s.LastIndex++
 	return nil
 }
 

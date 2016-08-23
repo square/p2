@@ -4,6 +4,8 @@ import (
 	"github.com/square/p2/pkg/kp/statusstore"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
+
+	"github.com/hashicorp/consul/api"
 )
 
 type consulStore struct {
@@ -23,17 +25,22 @@ func NewConsul(statusStore statusstore.Store, namespace statusstore.Namespace) S
 	}
 }
 
-func (c *consulStore) Get(key types.PodUniqueKey) (PodStatus, error) {
+func (c *consulStore) Get(key types.PodUniqueKey) (PodStatus, *api.QueryMeta, error) {
 	if key.ID == "" {
-		return PodStatus{}, util.Errorf("Cannot retrieve status for a pod with an empty uuid")
+		return PodStatus{}, nil, util.Errorf("Cannot retrieve status for a pod with an empty uuid")
 	}
 
-	status, err := c.statusStore.GetStatus(statusstore.POD, statusstore.ResourceID(key.ID), c.namespace)
+	status, queryMeta, err := c.statusStore.GetStatus(statusstore.POD, statusstore.ResourceID(key.ID), c.namespace)
 	if err != nil {
-		return PodStatus{}, err
+		return PodStatus{}, queryMeta, err
 	}
 
-	return statusToPodStatus(status)
+	podStatus, err := statusToPodStatus(status)
+	if err != nil {
+		return PodStatus{}, queryMeta, err
+	}
+
+	return podStatus, queryMeta, nil
 }
 
 func (c *consulStore) Set(key types.PodUniqueKey, status PodStatus) error {

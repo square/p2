@@ -1,5 +1,9 @@
 package statusstore
 
+import (
+	"github.com/hashicorp/consul/api"
+)
+
 // The root of the status tree (e.g. in Consul)
 const statusTree string = "status"
 
@@ -44,7 +48,7 @@ type Store interface {
 
 	// Get the status for a particular resource specified by ResourceType and ID,
 	// namespaced by a Namespace string
-	GetStatus(t ResourceType, id ResourceID, namespace Namespace) (Status, error)
+	GetStatus(t ResourceType, id ResourceID, namespace Namespace) (Status, *api.QueryMeta, error)
 
 	// Delete the status entry for a resource that has been deleted once the
 	// deletion has been processed
