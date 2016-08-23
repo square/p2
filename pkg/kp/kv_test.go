@@ -67,13 +67,11 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 			path: "intent/example.com/mysql",
 			err:  false,
 			uuid: false,
-			str:  "example.com/mysql",
 		},
 		{
 			path: "reality/example.com/mysql",
 			err:  false,
 			uuid: false,
-			str:  "example.com/mysql",
 		},
 		{
 			path: "labels/example.com/mysql",
@@ -87,7 +85,6 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 			path: "hooks/all_hooks",
 			err:  false,
 			uuid: false,
-			str:  "hooks/all_hooks",
 		},
 		{
 			path: fmt.Sprintf("intent/example.com/%s", uuid),
@@ -111,11 +108,11 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 			continue
 		}
 
-		if podUniqueKey.IsUUID != expectation.uuid {
-			t.Errorf("Expected IsUUID() to be %t, was %t", expectation.uuid, podUniqueKey.IsUUID)
+		if (podUniqueKey != nil) != expectation.uuid {
+			t.Errorf("Expected (podUniqueKey != nil) to be %t, was %t", expectation.uuid, podUniqueKey != nil)
 		}
 
-		if podUniqueKey.ID != expectation.str {
+		if expectation.uuid && podUniqueKey.ID != expectation.str {
 			t.Errorf("Expected key string to be %s, was %t", expectation.str, podUniqueKey.ID)
 		}
 	}

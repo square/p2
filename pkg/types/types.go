@@ -15,29 +15,22 @@ type NodeName string
 // running at a given time
 type PodID string
 
-// A unique identifier for each pod (instance). At the time of defining this
-// type a PodUniqueKey is is the hostname of the node on which the pod is running
-// and the pod id joined with a slash, e.g. "example.com/mysql" if a pod with id
-// "mysql" is running on a node "example.com".
+// A unique identifier for each pod (instance) expressed as a UUID. Supporting
+// UUIDs is a new feature, meaning that this type will typically be used within
+// a pointer. A nil *PodUniqueKey signifies a legacy pod for which there is no
+// uuid.
 //
 // P2 will begin using uuids instead of the previous format to better support
 // running multiple pods with the same pod id on the same node. Certain new
 // functionality will only be supported for pods with UUID unique keys, hence
-// the need for the bool.
+// the need for using pointers and checking for non-nil values.
 type PodUniqueKey struct {
-	// The actual key, e.g. "example.com/mysql" under the old format or a uuid
-	// under the new format
-	ID string `json:"id"`
-
-	// Tracks whether the key is a uuid or the node/pod_id concatenation. Some
-	// features will require isUUID to be true.
-	IsUUID bool `json:"is_uuid"`
+	ID string `json:"id"` // a uuid
 }
 
 func NewPodUUID() PodUniqueKey {
 	return PodUniqueKey{
-		ID:     uuid.New(),
-		IsUUID: true,
+		ID: uuid.New(),
 	}
 }
 
