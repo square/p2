@@ -14,4 +14,5 @@ type Store interface {
 	Get(types.PodUniqueKey) (PodStatus, *api.QueryMeta, error)
 	Set(types.PodUniqueKey, PodStatus) error
 	CAS(key types.PodUniqueKey, status PodStatus, modifyIndex uint64) error
+	MutateStatus(key types.PodUniqueKey, mutator func(PodStatus) (PodStatus, error)) error
 }

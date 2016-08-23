@@ -68,3 +68,30 @@ func (c *consulStore) CAS(key types.PodUniqueKey, status PodStatus, modifyIndex 
 
 	return c.statusStore.CASStatus(statusstore.POD, statusstore.ResourceID(key.ID), c.namespace, rawStatus, modifyIndex)
 }
+
+// Convenience function for only mutating a part of the status structure.
+// First, the status is retrieved and the consul ModifyIndex is read. The
+// status is then passed to a mutator function, and then the new status is
+// written back to consul using a CAS operation, guaranteeing that nothing else
+// about the status changed.
+func (c *consulStore) MutateStatus(key types.PodUniqueKey, mutator func(PodStatus) (PodStatus, error)) error {
+	var lastIndex uint64
+	status, queryMeta, err := c.Get(key)
+	switch {
+	case statusstore.IsNoStatus(err):
+		// We just want to make sure the key doesn't exist when we set it, so
+		// use an index of 0
+		lastIndex = 0
+	case err != nil:
+		return err
+	default:
+		lastIndex = queryMeta.LastIndex
+	}
+
+	newStatus, err := mutator(status)
+	if err != nil {
+		return err
+	}
+
+	return c.CAS(key, newStatus, lastIndex)
+}
