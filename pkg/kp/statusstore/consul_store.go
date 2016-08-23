@@ -16,6 +16,7 @@ type consulKV interface {
 	Put(pair *api.KVPair, opts *api.WriteOptions) (*api.WriteMeta, error)
 	Delete(key string, opts *api.WriteOptions) (*api.WriteMeta, error)
 	Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
+	CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
 }
 
 type consulStore struct {
@@ -56,6 +57,51 @@ func (s *consulStore) SetStatus(t ResourceType, id ResourceID, namespace Namespa
 	_, err = s.kv.Put(pair, nil)
 	if err != nil {
 		return consulutil.NewKVError("put", key, err)
+	}
+
+	return nil
+}
+
+// Custom error type for when CAS was performed with a stale index
+type staleIndex struct {
+	key   string
+	index uint64
+}
+
+func NewStaleIndex(key string, index uint64) staleIndex {
+	return staleIndex{
+		key:   key,
+		index: index,
+	}
+}
+
+func (s staleIndex) Error() string {
+	return fmt.Sprintf("CAS failed for '%s', index of '%d' was stale", s.key, s.index)
+}
+
+func IsStaleIndex(err error) bool {
+	_, ok := err.(staleIndex)
+	return ok
+}
+
+func (s *consulStore) CASStatus(t ResourceType, id ResourceID, namespace Namespace, status Status, modifyIndex uint64) error {
+	key, err := namespacedResourcePath(t, id, namespace)
+	if err != nil {
+		return err
+	}
+
+	pair := &api.KVPair{
+		Key:         key,
+		Value:       status.Bytes(),
+		ModifyIndex: modifyIndex,
+	}
+	success, _, err := s.kv.CAS(pair, nil)
+	if err != nil {
+		return consulutil.NewKVError("cas", key, err)
+	}
+
+	if !success {
+		return NewStaleIndex(key, modifyIndex)
 	}
 
 	return nil

@@ -54,6 +54,25 @@ func (s *FakeStatusStore) SetStatus(
 	return nil
 }
 
+func (s *FakeStatusStore) CASStatus(
+	t statusstore.ResourceType,
+	id statusstore.ResourceID,
+	namespace statusstore.Namespace,
+	status statusstore.Status,
+	modifyIndex uint64,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if modifyIndex != s.LastIndex {
+		return statusstore.NewStaleIndex(id.String(), modifyIndex)
+	}
+
+	identifier := StatusIdentifier{t, id, namespace}
+	s.Statuses[identifier] = status
+	s.LastIndex++
+	return nil
+}
+
 func (s *FakeStatusStore) GetStatus(
 	t statusstore.ResourceType,
 	id statusstore.ResourceID,

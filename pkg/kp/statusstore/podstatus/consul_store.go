@@ -55,3 +55,16 @@ func (c *consulStore) Set(key types.PodUniqueKey, status PodStatus) error {
 
 	return c.statusStore.SetStatus(statusstore.POD, statusstore.ResourceID(key.ID), c.namespace, rawStatus)
 }
+
+func (c *consulStore) CAS(key types.PodUniqueKey, status PodStatus, modifyIndex uint64) error {
+	if key.ID == "" {
+		return util.Errorf("Could not set status for pod with empty uuid")
+	}
+
+	rawStatus, err := podStatusToStatus(status)
+	if err != nil {
+		return err
+	}
+
+	return c.statusStore.CASStatus(statusstore.POD, statusstore.ResourceID(key.ID), c.namespace, rawStatus, modifyIndex)
+}
