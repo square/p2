@@ -56,6 +56,7 @@ var (
 	getID  = cmdGet.Arg("id", "The uuid for the daemon set").Required().String()
 
 	cmdList = kingpin.Command(CmdList, "List daemon sets.")
+	listPod = cmdList.Flag("pod", "The pod ID of the daemon set").String()
 
 	cmdEnable = kingpin.Command(CmdEnable, "Enable daemon set.")
 	enableID  = cmdEnable.Arg("id", "The uuid for the daemon set").Required().String()
@@ -148,8 +149,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("err: %v", err)
 		}
+		podID := types.PodID(*listPod)
 		for _, ds := range dsList {
-			fmt.Printf("%s/%s:%s\n", ds.PodID, ds.Name, ds.ID)
+			if *listPod == "" || podID == ds.PodID {
+				fmt.Printf("%s/%s:%s\n", ds.PodID, ds.Name, ds.ID)
+			}
 		}
 
 	case CmdEnable:
