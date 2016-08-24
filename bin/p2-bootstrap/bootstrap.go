@@ -28,7 +28,7 @@ var (
 	agentManifestPath  = kingpin.Flag("agent-pod", "A path to the manifest that will used to boot the base agent.").ExistingFile()
 	timeout            = kingpin.Flag("consul-timeout", "How long to wait for consul to begin serving. 0 will skip the consul check altogether.").Default("10s").String()
 	consulToken        = kingpin.Flag("consul-token", "The ACL token to pass to consul when registering the bootstrapped pods").String()
-	podRoot            = kingpin.Flag("pod-root", "The root of where pods will be installed").Default(pods.DEFAULT_PATH).String()
+	podRoot            = kingpin.Flag("pod-root", "The root of where pods will be installed").Default(pods.DefaultPath).String()
 	registryURL        = kingpin.Flag("registry", "The URL of the registry to download artifacts from").URL()
 )
 
@@ -47,6 +47,8 @@ func main() {
 	}
 	log.Println("Installing and launching consul")
 
+	podFactory := pods.NewFactory(*podRoot, nodeName)
+
 	var consulPod *pods.Pod
 	var consulManifest manifest.Manifest
 	if *existingConsul == "" {
@@ -54,7 +56,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Could not get consul manifest: %s", err)
 		}
-		consulPod = pods.NewPod(consulManifest.ID(), nodeName, pods.PodPath(*podRoot, consulManifest.ID()))
+		consulPod = podFactory.NewPod(consulManifest.ID())
 		err = installConsul(consulPod, consulManifest, *registryURL)
 		if err != nil {
 			log.Fatalf("Could not install consul: %s", err)
@@ -62,7 +64,7 @@ func main() {
 	} else {
 		log.Printf("Using existing Consul at %s\n", *existingConsul)
 
-		consulPod, err = pods.ExistingPod(nodeName, *existingConsul)
+		consulPod, err = pods.PodFromPodHome(nodeName, *existingConsul)
 		if err != nil {
 			log.Fatalf("The existing consul pod is invalid: %s", err)
 		}
@@ -89,7 +91,7 @@ func main() {
 		log.Fatalf("Could not register base agent with consul: %s", err)
 	}
 	log.Println("Installing and launching base agent")
-	err = installBaseAgent(agentManifest, nodeName, *registryURL)
+	err = installBaseAgent(podFactory, agentManifest, *registryURL)
 	if err != nil {
 		log.Fatalf("Could not install base agent: %s", err)
 	}
@@ -227,8 +229,8 @@ func scheduleForThisHost(manifest manifest.Manifest, alsoReality bool) error {
 	return nil
 }
 
-func installBaseAgent(agentManifest manifest.Manifest, nodeName types.NodeName, registryURL *url.URL) error {
-	agentPod := pods.NewPod(agentManifest.ID(), nodeName, pods.PodPath(*podRoot, agentManifest.ID()))
+func installBaseAgent(podFactory pods.Factory, agentManifest manifest.Manifest, registryURL *url.URL) error {
+	agentPod := podFactory.NewPod(agentManifest.ID())
 	err := agentPod.Install(agentManifest, auth.NopVerifier(), artifact.NewRegistry(registryURL, uri.DefaultFetcher, osversion.DefaultDetector))
 	if err != nil {
 		return err

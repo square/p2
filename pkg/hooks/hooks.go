@@ -35,7 +35,7 @@ type Pod interface {
 	ConfigDir() string
 	EnvDir() string
 	Node() types.NodeName
-	Path() string
+	Home() string
 }
 
 type HookDir struct {
@@ -215,7 +215,7 @@ func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest 
 		fmt.Sprintf("%s=%s", HOOK_EVENT_ENV_VAR, hType.String()),
 		fmt.Sprintf("%s=%s", HOOKED_NODE_ENV_VAR, pod.Node()),
 		fmt.Sprintf("%s=%s", HOOKED_POD_ID_ENV_VAR, podManifest.ID()),
-		fmt.Sprintf("%s=%s", HOOKED_POD_HOME_ENV_VAR, pod.Path()),
+		fmt.Sprintf("%s=%s", HOOKED_POD_HOME_ENV_VAR, pod.Home()),
 		fmt.Sprintf("%s=%s", HOOKED_POD_MANIFEST_ENV_VAR, tmpManifestFile.Name()),
 		fmt.Sprintf("%s=%s", HOOKED_CONFIG_PATH_ENV_VAR, path.Join(pod.ConfigDir(), configFileName)),
 		fmt.Sprintf("%s=%s", HOOKED_ENV_PATH_ENV_VAR, pod.EnvDir()),
@@ -228,7 +228,7 @@ func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest 
 func (h *HookDir) RunHookType(hookType HookType, pod Pod, manifest manifest.Manifest) error {
 	logger := h.logger.SubLogger(logrus.Fields{
 		"pod":      manifest.ID(),
-		"pod_path": pod.Path(),
+		"pod_path": pod.Home(),
 		"event":    hookType.String(),
 	})
 	logger.NoFields().Infof("Running %s hooks", hookType.String())

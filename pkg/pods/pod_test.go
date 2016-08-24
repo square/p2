@@ -19,7 +19,6 @@ import (
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/runit"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 	"gopkg.in/yaml.v2"
@@ -29,7 +28,8 @@ import (
 )
 
 func getTestPod() *Pod {
-	return NewPod(types.PodID("hello"), "testNode", "/data/pods/test")
+	podFactory := NewFactory("/data/pods", "testNode")
+	return podFactory.NewPod("hello")
 }
 
 func getTestPodManifest(t *testing.T) manifest.Manifest {
@@ -136,7 +136,8 @@ config:
 
 	podTemp, _ := ioutil.TempDir("", "pod")
 
-	pod := NewPod(manifest.ID(), "testNode", PodPath(podTemp, manifest.ID()))
+	podFactory := NewFactory(podTemp, "testNode")
+	pod := podFactory.NewPod(manifest.ID())
 
 	launchables := make([]launch.Launchable, 0)
 	for _, stanza := range manifest.GetLaunchableStanzas() {
@@ -203,7 +204,8 @@ func TestLogLaunchableError(t *testing.T) {
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
-	pod := PodFromManifestId(testManifest.ID(), "testNode")
+	factory := NewFactory(DefaultPath, "testNode")
+	pod := factory.NewPod(testManifest.ID())
 	pod.logLaunchableError(testLaunchable.ServiceId, testErr, message)
 
 	output, err := ioutil.ReadAll(&out)
@@ -221,7 +223,8 @@ func TestLogError(t *testing.T) {
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
-	pod := PodFromManifestId(testManifest.ID(), "testNode")
+	factory := NewFactory(DefaultPath, "testNode")
+	pod := factory.NewPod(testManifest.ID())
 	pod.logError(testErr, message)
 
 	output, err := ioutil.ReadAll(&out)
@@ -236,7 +239,8 @@ func TestLogInfo(t *testing.T) {
 	Log.SetLogOut(&out)
 
 	testManifest := getTestPodManifest(t)
-	pod := PodFromManifestId(testManifest.ID(), "testNode")
+	factory := NewFactory(DefaultPath, "testNode")
+	pod := factory.NewPod(testManifest.ID())
 	message := "Pod did something good"
 	pod.logInfo(message)
 
@@ -253,7 +257,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 
 	poddir, err := ioutil.TempDir("", "poddir")
 	Assert(t).IsNil(err, "couldn't create tempdir")
-	pod := NewPod(types.PodID("testPod"), "testNode", poddir)
+	pod := newPodWithHome("testPod", poddir, "testNode")
 
 	// set the RunAs user to the user running the test, because when we
 	// write files we need an owner.
@@ -287,7 +291,7 @@ func TestBuildRunitServices(t *testing.T) {
 	pod := Pod{
 		P2Exec:         "/usr/bin/p2-exec",
 		Id:             "testPod",
-		path:           "/data/pods/testPod",
+		home:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
 		LogExec:        runit.DefaultLogExec(),
 		FinishExec:     DefaultFinishExec,
@@ -356,7 +360,7 @@ func TestInstall(t *testing.T) {
 
 	pod := Pod{
 		Id:      "testPod",
-		path:    testPodDir,
+		home:    testPodDir,
 		logger:  Log.SubLogger(logrus.Fields{"pod": "testPod"}),
 		Fetcher: fetcher,
 	}
@@ -389,7 +393,7 @@ func TestUninstall(t *testing.T) {
 	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
 	pod := Pod{
 		Id:             "testPod",
-		path:           testPodDir,
+		home:           testPodDir,
 		ServiceBuilder: serviceBuilder,
 	}
 	manifest := getTestPodManifest(t)

@@ -22,6 +22,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
+	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
@@ -56,7 +57,7 @@ func (f *fakeIntentStore) ListPods(podPrefix kp.PodPrefix, nodeName types.NodeNa
 	return f.manifests, 0, nil
 }
 
-func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
+func testHookListener(t *testing.T) (HookListener, string, <-chan struct{}) {
 	hookPrefix := kp.HOOK_TREE
 	destDir, _ := ioutil.TempDir("", "pods")
 	defer os.RemoveAll(destDir)
@@ -97,22 +98,24 @@ func testHookListener(t *testing.T) (HookListener, <-chan struct{}) {
 		Manifest: podManifest,
 	})
 
+	hookFactory := pods.NewHookFactory(destDir, "testNode")
+
 	listener := HookListener{
 		Intent:           fakeIntent,
 		HookPrefix:       hookPrefix,
 		ExecDir:          execDir,
-		DestinationDir:   destDir,
+		HookFactory:      hookFactory,
 		Logger:           logging.DefaultLogger,
 		authPolicy:       auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil},
 		artifactVerifier: auth.NopVerifier(),
 		artifactRegistry: artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector),
 	}
 
-	return listener, fakeIntent.quit
+	return listener, destDir, fakeIntent.quit
 }
 
 func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
-	listener, quit := testHookListener(t)
+	listener, destDir, quit := testHookListener(t)
 
 	errCh := make(chan error, 1)
 	listener.Sync(quit, errCh)
@@ -122,7 +125,7 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 	default:
 	}
 
-	currentAlias := path.Join(listener.DestinationDir, "users", "create", "current", "bin", "launch")
+	currentAlias := path.Join(destDir, "users", "create", "current", "bin", "launch")
 	_, err := os.Stat(currentAlias)
 	Assert(t).IsNil(err, fmt.Sprintf("%s should have been created", currentAlias))
 
@@ -132,10 +135,10 @@ func TestHookPodsInstallAndLinkCorrectly(t *testing.T) {
 }
 
 func TestSyncHooksOnce(t *testing.T) {
-	listener, _ := testHookListener(t)
+	listener, destDir, _ := testHookListener(t)
 	err := listener.SyncOnce()
 	Assert(t).IsNil(err, "There should not have been an error in the call to SyncOnce()")
-	currentAlias := path.Join(listener.DestinationDir, "users", "create", "current", "bin", "launch")
+	currentAlias := path.Join(destDir, "users", "create", "current", "bin", "launch")
 	_, err = os.Stat(currentAlias)
 	Assert(t).IsNil(err, fmt.Sprintf("%s should have been created", currentAlias))
 

@@ -32,8 +32,6 @@ import (
 )
 
 var (
-	Log logging.Logger
-
 	// ExperimentalOpencontainer permits the use of the experimental "opencontainer"
 	// launchable type.
 	ExperimentalOpencontainer = param.Bool("experimental_opencontainer", false)
@@ -43,22 +41,10 @@ var (
 	NestedCgroups = param.Bool("nested_cgroups", false)
 )
 
-const DEFAULT_PATH = "/data/pods"
-
-var DefaultFinishExec = []string{"/bin/true"} // type must match preparerconfig
-
-func init() {
-	Log = logging.NewLogger(logrus.Fields{})
-}
-
-func PodPath(root string, manifestId types.PodID) string {
-	return filepath.Join(root, string(manifestId))
-}
-
 type Pod struct {
 	Id             types.PodID
 	node           types.NodeName
-	path           string
+	home           string
 	logger         logging.Logger
 	SV             runit.SV
 	ServiceBuilder *runit.ServiceBuilder
@@ -69,45 +55,14 @@ type Pod struct {
 	Fetcher        uri.Fetcher
 }
 
-func NewPod(id types.PodID, node types.NodeName, path string) *Pod {
-	return &Pod{
-		Id:             id,
-		node:           node,
-		path:           path,
-		logger:         Log.SubLogger(logrus.Fields{"pod": id}),
-		SV:             runit.DefaultSV,
-		ServiceBuilder: runit.DefaultBuilder,
-		P2Exec:         p2exec.DefaultP2Exec,
-		DefaultTimeout: 60 * time.Second,
-		LogExec:        runit.DefaultLogExec(),
-		FinishExec:     DefaultFinishExec,
-		Fetcher:        uri.DefaultFetcher,
-	}
-}
-
-func ExistingPod(node types.NodeName, path string) (*Pod, error) {
-	temp := Pod{path: path}
-	manifest, err := temp.CurrentManifest()
-	if err == NoCurrentManifest {
-		return nil, util.Errorf("No current manifest set, this is not an extant pod directory")
-	} else if err != nil {
-		return nil, err
-	}
-	return NewPod(manifest.ID(), node, path), nil
-}
-
-func PodFromManifestId(manifestId types.PodID, node types.NodeName) *Pod {
-	return NewPod(manifestId, node, PodPath(DEFAULT_PATH, manifestId))
-}
-
 var NoCurrentManifest error = fmt.Errorf("No current manifest for this pod")
 
 func (pod *Pod) Node() types.NodeName {
 	return pod.node
 }
 
-func (pod *Pod) Path() string {
-	return pod.path
+func (pod *Pod) Home() string {
+	return pod.home
 }
 
 func (pod *Pod) CurrentManifest() (manifest.Manifest, error) {
@@ -341,15 +296,15 @@ func (pod *Pod) revertCurrentManifest(lastPath string) error {
 }
 
 func (pod *Pod) currentPodManifestPath() string {
-	return filepath.Join(pod.path, "current_manifest.yaml")
+	return filepath.Join(pod.home, "current_manifest.yaml")
 }
 
 func (pod *Pod) ConfigDir() string {
-	return filepath.Join(pod.path, "config")
+	return filepath.Join(pod.home, "config")
 }
 
 func (pod *Pod) EnvDir() string {
-	return filepath.Join(pod.path, "env")
+	return filepath.Join(pod.home, "env")
 }
 
 func (pod *Pod) Uninstall() error {
@@ -382,14 +337,14 @@ func (pod *Pod) Uninstall() error {
 	}
 
 	// remove pod home dir
-	return os.RemoveAll(pod.path)
+	return os.RemoveAll(pod.home)
 }
 
 // Install will ensure that executables for all required services are present on the host
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
 func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifier, artifactRegistry artifact.Registry) error {
-	podHome := pod.path
+	podHome := pod.home
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
 		return util.Errorf("Could not determine pod UID/GID for %s: %s", manifest.RunAsUser(), err)
@@ -567,7 +522,7 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 	if err != nil {
 		return err
 	}
-	err = writeEnvFile(pod.EnvDir(), "POD_HOME", pod.Path(), uid, gid)
+	err = writeEnvFile(pod.EnvDir(), "POD_HOME", pod.Home(), uid, gid)
 	if err != nil {
 		return err
 	}
@@ -668,7 +623,7 @@ func (pod *Pod) SetLogBridgeExec(logExec []string) {
 }
 
 func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
-	launchableRootDir := filepath.Join(pod.path, launchableStanza.LaunchableId.String())
+	launchableRootDir := filepath.Join(pod.home, launchableStanza.LaunchableId.String())
 	serviceId := strings.Join(
 		[]string{
 			pod.Id.String(),

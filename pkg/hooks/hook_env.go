@@ -61,22 +61,16 @@ func (h *HookEnv) Node() (types.NodeName, error) {
 }
 
 func (h *HookEnv) PodFromDisk() (*pods.Pod, error) {
-	id, err := h.PodID()
-	if err != nil {
-		return nil, err
-	}
 	node, err := h.Node()
 	if err != nil {
 		return nil, err
 	}
-	path, err := h.PodHome()
+	podHome, err := h.PodHome()
 	if err != nil {
 		return nil, err
 	}
 
-	pod := pods.NewPod(id, node, path)
-
-	return pod, nil
+	return pods.PodFromPodHome(types.NodeName(node), podHome)
 }
 
 func (h *HookEnv) Config() (*config.Config, error) {
