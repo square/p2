@@ -22,6 +22,11 @@ import (
 	"github.com/Sirupsen/logrus"
 )
 
+type nodeUpdated struct {
+	node types.NodeName
+	err  error
+}
+
 type replicationError struct {
 	err error
 	// Indicates if the error halted replication or if it is recoverable
@@ -73,6 +78,9 @@ type replication struct {
 	// signals any supplementary goroutines to exit once the
 	// replication has completed successfully
 	replicationDoneCh chan struct{}
+	// The enacted channel will allow us to know when the replication is ongoing
+	// This is originally closed during initialization
+	enactedCh chan struct{}
 	// Used to cancel replication due to a lock renewal failure or a
 	// cancellation by the caller
 	quitCh chan struct{}
@@ -92,7 +100,7 @@ type replication struct {
 // operations for this pod ID will not be able to take place.
 // if overrideLock is true, will destroy any session holding any of the keys we
 // wish to lock
-func (r replication) lockHosts(overrideLock bool, lockMessage string) error {
+func (r *replication) lockHosts(overrideLock bool, lockMessage string) error {
 	session, renewalErrCh, err := r.store.NewSession(lockMessage, nil)
 	if err != nil {
 		return err
@@ -115,7 +123,7 @@ func (r replication) lockHosts(overrideLock bool, lockMessage string) error {
 
 // Attempts to claim a lock. If the overrideLock is set, any existing lock holder
 // will be destroyed and one more attempt will be made to acquire the lock
-func (r replication) lock(session kp.Session, lockPath string, overrideLock bool) (consulutil.Unlocker, error) {
+func (r *replication) lock(session kp.Session, lockPath string, overrideLock bool) (consulutil.Unlocker, error) {
 	unlocker, err := session.Lock(lockPath)
 
 	if _, ok := err.(consulutil.AlreadyLockedError); ok {
@@ -149,7 +157,7 @@ func (r replication) lock(session kp.Session, lockPath string, overrideLock bool
 // checkForManaged() checks whether there are any existing pods that this replication
 // would modify that are already managed by a controller. If there is such a pod, the
 // change should go through its controller, not here.
-func (r replication) checkForManaged() error {
+func (r *replication) checkForManaged() error {
 	var badNodes []string
 	for _, node := range r.nodes {
 		podID := path.Join(node.String(), string(r.manifest.ID()))
@@ -173,8 +181,11 @@ func (r replication) checkForManaged() error {
 // Execute the replication.
 // note: error management could use some improvement, errors coming out of
 // updateOne need to be scoped to the node that they came from
-func (r replication) Enact() {
+func (r *replication) Enact() {
 	defer close(r.replicationDoneCh)
+
+	r.enactedCh = make(chan struct{})
+	defer close(r.enactedCh)
 
 	// Sort nodes from least healthy to most healthy to maximize overall
 	// cluster health
@@ -200,18 +211,42 @@ func (r replication) Enact() {
 	sort.Sort(order)
 
 	nodeQueue := make(chan types.NodeName)
-	done := make(chan types.NodeName)
-	innerQuit := make(chan struct{})
-
-	// all child goroutines will be terminated on return
-	defer close(innerQuit)
+	done := make(chan nodeUpdated)
 
 	aggregateHealth := AggregateHealth(r.manifest.ID(), r.health)
 	// this loop multiplexes the node queue across some goroutines
 	for i := 0; i < r.active; i++ {
 		go func() {
 			for node := range nodeQueue {
-				r.updateOne(node, done, innerQuit, aggregateHealth)
+				exitCh := make(chan struct{})
+				timeoutCh := make(chan struct{})
+
+				go func() {
+					defer close(exitCh)
+					err = r.updateOne(node, done, timeoutCh, aggregateHealth)
+					done <- nodeUpdated{
+						node: node,
+						err:  err,
+					}
+				}()
+
+				if r.timeout == NoTimeout {
+					select {
+					case <-exitCh:
+					case <-r.quitCh:
+						return
+					}
+				} else {
+					// Wait until either completion, timeout, or a quit
+					select {
+					case <-exitCh:
+					case <-time.After(r.timeout):
+						close(timeoutCh)
+					case <-r.quitCh:
+						return
+					}
+				}
+
 			}
 		}()
 	}
@@ -233,9 +268,21 @@ func (r replication) Enact() {
 	defer r.logger.Info("Replication is over")
 	for doneIndex := 0; doneIndex < len(r.nodes); {
 		select {
-		case <-done:
+		case status := <-done:
 			doneIndex++
-			r.logger.Infof("Nodes done (or timed out): %v", doneIndex)
+			if status.err == errTimeout {
+				r.timedOutReplicationsMutex.Lock()
+				r.timedOutReplications = append(r.timedOutReplications, status.node)
+				r.timedOutReplicationsMutex.Unlock()
+				r.logger.Errorf("The host '%v' timed out during replication for pod '%v'", status.node, r.manifest.ID())
+
+			} else if status.err == errCancelled {
+				r.logger.Errorf("The host '%v' was cancelled (probably due to an update) during replication for pod '%v'", status.node, r.manifest.ID())
+			} else {
+				r.logger.Errorf("An unexpected error has occurred: %v", status.err)
+			}
+			r.logger.Infof("The host '%v' successfully replicated the pod '%v'", status.node, r.manifest.ID())
+			r.logger.Infof("%v nodes left", doneIndex-len(r.nodes))
 		case <-r.quitCh:
 			return
 		}
@@ -243,20 +290,18 @@ func (r replication) Enact() {
 }
 
 // Cancels all goroutines (e.g. replication and lock renewal)
-func (r replication) Cancel() {
+func (r *replication) Cancel() {
 	close(r.replicationCancelledCh)
 }
 
-func (r replication) WaitForReplication() {
-	select {
-	case <-r.quitCh:
-	}
+func (r *replication) WaitForReplication() {
+	<-r.quitCh
 }
 
 // Listen for errors in lock renewal. If the lock can't be renewed, we need to
 // 1) stop replication and 2) communicate the error up a level
 // If replication finishes, destroy the lock
-func (r replication) handleRenewalErrors(session kp.Session, renewalErrCh chan error) {
+func (r *replication) handleRenewalErrors(session kp.Session, renewalErrCh chan error) {
 	defer func() {
 		close(r.quitCh)
 		close(r.errCh)
@@ -266,6 +311,8 @@ func (r replication) handleRenewalErrors(session kp.Session, renewalErrCh chan e
 	select {
 	case <-r.replicationDoneCh:
 	case <-r.replicationCancelledCh:
+		// If the replication is enacted, wait for it to exit
+		<-r.enactedCh
 	case err := <-renewalErrCh:
 		// communicate the error to the caller.
 		r.errCh <- replicationError{
@@ -277,7 +324,12 @@ func (r replication) handleRenewalErrors(session kp.Session, renewalErrCh chan e
 }
 
 // note: logging should be delegated somehow
-func (r replication) updateOne(node types.NodeName, done chan<- types.NodeName, quitCh <-chan struct{}, aggregateHealth *podHealth) {
+func (r *replication) updateOne(
+	node types.NodeName,
+	done chan<- nodeUpdated,
+	timeoutCh <-chan struct{},
+	aggregateHealth *podHealth,
+) error {
 	targetSHA, _ := r.manifest.SHA()
 	nodeLogger := r.logger.SubLogger(logrus.Fields{"node": node})
 	nodeLogger.WithField("sha", targetSHA).Infoln("Updating node")
@@ -287,50 +339,35 @@ func (r replication) updateOne(node types.NodeName, done chan<- types.NodeName, 
 		node,
 		r.manifest,
 	)
+
+	exponentialBackoff := time.Duration(1 * time.Second)
+	timer := time.NewTimer(exponentialBackoff)
 	for err != nil {
 		nodeLogger.WithError(err).Errorln("Could not write intent store")
 		r.errCh <- err
-		time.Sleep(1 * time.Second)
-		_, err = r.store.SetPod(
-			kp.INTENT_TREE,
-			node,
-			r.manifest,
-		)
-	}
 
-	completedChan := make(chan struct{})
-	updateOneQuit := make(chan struct{})
-	defer close(updateOneQuit)
-
-	go func() {
-		defer close(completedChan)
-		r.ensureInReality(node, updateOneQuit, nodeLogger, targetSHA)
-		r.ensureHealthy(node, updateOneQuit, nodeLogger, aggregateHealth)
-	}()
-
-	if r.timeout == NoTimeout {
 		select {
-		case <-completedChan:
-		case <-quitCh:
-			return
-		}
-	} else {
-		// Wait until either completion, timeout, or a quit
-		select {
-		case <-completedChan:
-		case <-time.After(r.timeout):
-			r.timedOutReplicationsMutex.Lock()
-			r.timedOutReplications = append(r.timedOutReplications, node)
-			r.timedOutReplicationsMutex.Unlock()
-			r.logger.Errorf("The host '%v' timed out during replication for pod '%v'", node.String(), r.manifest.ID())
-		case <-quitCh:
-			return
+		case <-r.quitCh:
+			return errQuit
+		case <-timeoutCh:
+			return errTimeout
+		case <-r.replicationCancelledCh:
+			return errCancelled
+		case <-timer.C:
+			_, err = r.store.SetPod(
+				kp.INTENT_TREE,
+				node,
+				r.manifest,
+			)
+			exponentialBackoff = exponentialBackoff * 2
+			timer.Reset(exponentialBackoff)
 		}
 	}
-	select {
-	case done <- node:
-	case <-quitCh:
+	err = r.ensureInReality(node, timeoutCh, nodeLogger, targetSHA)
+	if err != nil {
+		return err
 	}
+	return r.ensureHealthy(node, timeoutCh, nodeLogger, aggregateHealth)
 }
 
 func (r *replication) queryReality(node types.NodeName) (manifest.Manifest, error) {
@@ -342,11 +379,20 @@ func (r *replication) queryReality(node types.NodeName) (manifest.Manifest, erro
 	return man, err
 }
 
-func (r *replication) ensureInReality(node types.NodeName, quitCh <-chan struct{}, nodeLogger logging.Logger, targetSHA string) {
+func (r *replication) ensureInReality(
+	node types.NodeName,
+	timeoutCh <-chan struct{},
+	nodeLogger logging.Logger,
+	targetSHA string,
+) error {
 	for {
 		select {
-		case <-quitCh:
-			return
+		case <-r.quitCh:
+			return errQuit
+		case <-timeoutCh:
+			return errTimeout
+		case <-r.replicationCancelledCh:
+			return errCancelled
 		case <-time.After(5 * time.Second):
 			man, err := r.queryReality(node)
 			if err == pods.NoCurrentManifest {
@@ -359,7 +405,7 @@ func (r *replication) ensureInReality(node types.NodeName, quitCh <-chan struct{
 				receivedSHA, _ := man.SHA()
 				if receivedSHA == targetSHA {
 					nodeLogger.NoFields().Infoln("Node is current")
-					return
+					return nil
 				} else {
 					nodeLogger.WithFields(logrus.Fields{"current": receivedSHA, "target": targetSHA}).Infoln("Waiting for current")
 				}
@@ -370,14 +416,18 @@ func (r *replication) ensureInReality(node types.NodeName, quitCh <-chan struct{
 
 func (r *replication) ensureHealthy(
 	node types.NodeName,
-	quitCh <-chan struct{},
+	timeoutCh <-chan struct{},
 	nodeLogger logging.Logger,
 	aggregateHealth *podHealth,
-) {
+) error {
 	for {
 		select {
-		case <-quitCh:
-			return
+		case <-r.quitCh:
+			return errQuit
+		case <-timeoutCh:
+			return errTimeout
+		case <-r.replicationCancelledCh:
+			return errCancelled
 		case <-time.After(1 * time.Second):
 			res, ok := aggregateHealth.GetHealth(node)
 			if !ok {
@@ -398,7 +448,7 @@ func (r *replication) ensureHealthy(
 				nodeLogger.WithFields(logrus.Fields{"check": id, "health": status}).Infoln("Node is not healthy")
 			} else {
 				r.logger.WithField("node", node).Infoln("Node is current and healthy")
-				return
+				return nil
 			}
 		}
 	}

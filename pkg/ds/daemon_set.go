@@ -24,8 +24,11 @@ import (
 
 const (
 	// This label is applied to pods owned by an RC.
-	DSIDLabel     = "daemon_set_id"
-	RetryInterval = time.Duration(5 * time.Minute)
+	DSIDLabel = "daemon_set_id"
+)
+
+var (
+	retryInterval = time.Duration(5 * time.Minute)
 )
 
 type DaemonSet interface {
@@ -163,9 +166,9 @@ func (ds *daemonSet) WatchDesires(
 			if err != nil {
 				select {
 				case errCh <- err:
-					ds.logger.Warnf("An error has occurred in the daemon set, retrying if no changes are made in %v", RetryInterval)
+					ds.logger.Warnf("An error has occurred in the daemon set, retrying if no changes are made in %v", retryInterval)
 					// Retry the replication in the RetryInterval's duration
-					timer.Reset(RetryInterval)
+					timer.Reset(retryInterval)
 					// This is required in case the user disables the daemon set
 					// so that the timer would be stopped after
 					err = nil
@@ -251,7 +254,17 @@ func (ds *daemonSet) WatchDesires(
 				}
 
 			case <-timer.C:
-				err = ds.PublishToReplication()
+				// Account for any operations that could have failed and retry the replication
+				err = ds.removePods()
+				if err != nil {
+					err = util.Errorf("Unable to remove pods from intent tree: %v", err)
+					continue
+				}
+				err = ds.addPods()
+				if err != nil {
+					err = util.Errorf("Unable to add pods to intent tree: %v", err)
+					continue
+				}
 
 			case <-quitCh:
 				return

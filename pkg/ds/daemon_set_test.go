@@ -23,6 +23,10 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
+const (
+	testDSRetryInterval = time.Duration(1000 * time.Millisecond)
+)
+
 func scheduledPods(t *testing.T, ds *daemonSet) []labels.Labeled {
 	selector := klabels.Everything().Add(DSIDLabel, klabels.EqualsOperator, []string{ds.ID().String()})
 	labeled, err := ds.applicator.GetMatches(selector, labels.POD)
@@ -37,7 +41,7 @@ func waitForNodes(
 	desiresErrCh <-chan error,
 	dsChangesErrCh <-chan error,
 ) int {
-	timeout := time.After(2 * time.Second)
+	timeout := time.After(10 * time.Second)
 	podLocations, err := ds.CurrentPods()
 	Assert(t).IsNil(err, "expected no error getting pod locations")
 	timedOut := false
@@ -123,6 +127,8 @@ func watchDSChanges(
 // 	- mutations to a daemon set
 //	- deleting a daemon set
 func TestSchedule(t *testing.T) {
+	retryInterval = testFarmRetryInterval
+
 	//
 	// Setup fixture and schedule a pod
 	//
@@ -144,6 +150,10 @@ func TestSchedule(t *testing.T) {
 
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
+
+	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer.Enable()
+	defer preparer.Disable()
 
 	var allNodes []types.NodeName
 	allNodes = append(allNodes, "node1", "node2", "nodeOk")
@@ -168,11 +178,9 @@ func TestSchedule(t *testing.T) {
 
 	scheduled := scheduledPods(t, ds)
 	Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
-	manifestResults, _, err := kpStore.AllPods(kp.INTENT_TREE)
-	if err != nil {
-		t.Fatalf("Unable to get all pods from pod store: %v", err)
-	}
-	Assert(t).AreEqual(len(manifestResults), 0, "expected no manifests to have been scheduled")
+
+	err = waitForPodsInIntent(kpStore, 0)
+	Assert(t).IsNil(err, "Unexpected number of pods scheduled")
 
 	err = applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -203,15 +211,8 @@ func TestSchedule(t *testing.T) {
 	Assert(t).AreEqual(scheduled[0].ID, "node2/testPod", "expected node labeled with the daemon set's id")
 
 	// Verify that the scheduled pod is correct
-	manifestResults, _, err = kpStore.AllPods(kp.INTENT_TREE)
-	if err != nil {
-		t.Fatalf("Unable to get all pods from pod store: %v", err)
-	}
-	for _, val := range manifestResults {
-		Assert(t).AreEqual(val.PodLocation.Node, types.NodeName("node2"), "expected manifest scheduled on the right node")
-		Assert(t).AreEqual(val.PodLocation.PodID, types.PodID("testPod"), "expected manifest scheduled with correct pod ID")
-		Assert(t).AreEqual(string(val.Manifest.ID()), "testPod", "expected manifest with correct ID")
-	}
+	err = waitForSpecificPod(kpStore, "node2", types.PodID("testPod"))
+	Assert(t).IsNil(err, "Unexpected pod scheduled")
 
 	//
 	// Add 10 good nodes and 10 bad nodes then verify
@@ -261,15 +262,8 @@ func TestSchedule(t *testing.T) {
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
 
 	// Verify that the scheduled pod is correct
-	manifestResults, _, err = kpStore.AllPods(kp.INTENT_TREE)
-	if err != nil {
-		t.Fatalf("Unable to get all pods from pod store: %v", err)
-	}
-	for _, val := range manifestResults {
-		Assert(t).AreEqual(val.PodLocation.Node, types.NodeName("nodeOk"), "expected manifest scheduled on the right node")
-		Assert(t).AreEqual(val.PodLocation.PodID, types.PodID("testPod"), "expected manifest scheduled with correct pod ID")
-		Assert(t).AreEqual(string(val.Manifest.ID()), "testPod", "expected manifest with correct ID")
-	}
+	err = waitForSpecificPod(kpStore, "nodeOk", types.PodID("testPod"))
+	Assert(t).IsNil(err, "Unexpected pod scheduled")
 
 	//
 	// Disabling the daemon set and making a change should not do anything
@@ -314,14 +308,14 @@ func TestSchedule(t *testing.T) {
 
 	scheduled = scheduledPods(t, ds)
 	Assert(t).AreEqual(len(scheduled), 0, "expected all nodes to have been unlabeled")
-	manifestResults, _, err = kpStore.AllPods(kp.INTENT_TREE)
-	if err != nil {
-		t.Fatalf("Unable to get all pods from pod store: %v", err)
-	}
-	Assert(t).AreEqual(len(manifestResults), 0, "expected all manifests to have been unscheduled")
+
+	err = waitForPodsInIntent(kpStore, 0)
+	Assert(t).IsNil(err, "Unexpected number of pods scheduled")
 }
 
 func TestPublishToReplication(t *testing.T) {
+	retryInterval = testFarmRetryInterval
+
 	//
 	// Setup fixture and schedule a pod
 	//
@@ -344,6 +338,10 @@ func TestPublishToReplication(t *testing.T) {
 	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
+	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer.Enable()
+	defer preparer.Disable()
+
 	var allNodes []types.NodeName
 	allNodes = append(allNodes, "node1", "node2")
 	for i := 0; i < 10; i++ {
@@ -363,11 +361,8 @@ func TestPublishToReplication(t *testing.T) {
 
 	scheduled := scheduledPods(t, ds)
 	Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
-	manifestResults, _, err := kpStore.AllPods(kp.INTENT_TREE)
-	if err != nil {
-		t.Fatalf("Unable to get all pods from pod store: %v", err)
-	}
-	Assert(t).AreEqual(len(manifestResults), 0, "expected no manifests to have been scheduled")
+	err = waitForPodsInIntent(kpStore, 0)
+	Assert(t).IsNil(err, "Unexpected number of pods scheduled")
 
 	err = applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -412,4 +407,44 @@ func TestPublishToReplication(t *testing.T) {
 	}
 	numNodes = waitForNodes(t, ds, 0, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, 0, "took too long to unschedule")
+}
+
+// Polls for the store to have the same number of pods as the argument
+func waitForPodsInIntent(kpStore *kptest.FakePodStore, numPodsExpected int) error {
+	condition := func() error {
+		manifestResults, _, err := kpStore.AllPods(kp.INTENT_TREE)
+		if err != nil {
+			return util.Errorf("Unable to get all pods from pod store: %v", err)
+		}
+		if len(manifestResults) != numPodsExpected {
+			return util.Errorf(
+				"Expected no manifests to be scheduled, got '%v' manifests, expected '%v'",
+				len(manifestResults),
+				numPodsExpected,
+			)
+		}
+		return nil
+	}
+	return waitForCondition(condition)
+}
+
+// Polls for the store to have a pod with the same pod id and node name
+func waitForSpecificPod(kpStore *kptest.FakePodStore, nodeName types.NodeName, podID types.PodID) error {
+	condition := func() error {
+		manifestResults, _, err := kpStore.AllPods(kp.INTENT_TREE)
+		if err != nil {
+			return util.Errorf("Unable to get all pods from pod store: %v", err)
+		}
+		if manifestResults[0].PodLocation.Node != nodeName {
+			return util.Errorf("expected manifest scheduled on the right node")
+		}
+		if manifestResults[0].PodLocation.PodID != podID {
+			return util.Errorf("expected manifest scheduled with correct pod ID")
+		}
+		if manifestResults[0].Manifest.ID() != podID {
+			return util.Errorf("expected manifest with correct ID")
+		}
+		return nil
+	}
+	return waitForCondition(condition)
 }
