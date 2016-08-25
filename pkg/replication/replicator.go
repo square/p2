@@ -68,6 +68,10 @@ func NewReplicator(
 	if active < 1 {
 		return replicator{}, util.Errorf("Active must be >= 1, was %d", active)
 	}
+	if active > 50 {
+		logger.Infof("Number of concurrent updates (%v) is greater than 50, reducing to 50", active)
+		active = 50
+	}
 	return replicator{
 		manifest:    manifest,
 		logger:      logger,
