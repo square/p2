@@ -1017,7 +1017,7 @@ func TestWatchAndSync(t *testing.T) {
 
 func consulStoreWithFakeKV() *consulStore {
 	return &consulStore{
-		kv:         kptest.NewFakeKV(),
+		kv:         consulutil.NewFakeClient().KV(),
 		applicator: labels.NewFakeApplicator(),
 		logger:     logging.DefaultLogger,
 	}

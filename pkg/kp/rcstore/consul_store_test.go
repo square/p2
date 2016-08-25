@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/square/p2/pkg/kp/kptest"
+	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/rc/fields"
 
@@ -313,9 +313,8 @@ type LockInfoTestCase struct {
 }
 
 func TestPublishLatestRCsWithLockInfoNoLocks(t *testing.T) {
-	rcstore := consulStore{
-		kv: kptest.NewFakeKV(),
-	}
+	client := consulutil.NewFakeClient()
+	rcstore := NewConsul(client, 1)
 
 	inCh := make(chan []fields.RC)
 	defer close(inCh)
@@ -376,10 +375,9 @@ func TestPublishLatestRCsWithLockInfoNoLocks(t *testing.T) {
 }
 
 func TestPublishLatestRCsWithLockInfoWithLocks(t *testing.T) {
-	fakeKV := kptest.NewFakeKV()
-	rcstore := consulStore{
-		kv: fakeKV,
-	}
+	client := consulutil.NewFakeClient()
+	fakeKV := client.KV()
+	rcstore := NewConsul(client, 1)
 
 	inCh := make(chan []fields.RC)
 	defer close(inCh)

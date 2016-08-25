@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/square/p2/pkg/kp/kptest"
+	"github.com/square/p2/pkg/kp/consulutil"
 )
 
 func TestSetAndGetStatus(t *testing.T) {
@@ -230,6 +230,6 @@ func TestGetAllStatusForResourceType(t *testing.T) {
 
 func storeWithFakeKV() *consulStore {
 	return &consulStore{
-		kv: kptest.NewFakeKV(),
+		kv: consulutil.NewFakeClient().KV(),
 	}
 }

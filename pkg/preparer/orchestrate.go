@@ -98,6 +98,22 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 			p.Logger.WithError(err).
 				Errorln("there was an error reading the manifest")
 		case intentResults := <-podChan:
+			// There are two types of pods that can be present in
+			// intentResults now, "legacy" pods which have a nil
+			// PodUniqueKey (i.e. no uuid), and "uuid" pods, which have a
+			// non-nil PodUniqueKey and therefore a uuid. We do not
+			// expect uuid pods to have a corresponding /reality entry,
+			// they instead have /status entries. For now, we filter out
+			// pods with a non-nil PodUniqueKey to preserve old behavior,
+			// future work will handle these.
+
+			var legacyPods []kp.ManifestResult
+			for _, result := range intentResults {
+				if result.PodUniqueKey == nil {
+					legacyPods = append(legacyPods, result)
+				}
+			}
+
 			realityResults, _, err := p.store.ListPods(kp.REALITY_TREE, p.node)
 			if err != nil {
 				p.Logger.WithError(err).Errorln("Could not check reality")
@@ -107,7 +123,7 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 				if !checkResultsForID(intentResults, POD_ID) {
 					p.Logger.NoFields().Errorln("Intent results set did not contain p2-preparer pod ID, consul data may be corrupted")
 				} else {
-					resultPairs := ZipResultSets(intentResults, realityResults)
+					resultPairs := ZipResultSets(legacyPods, realityResults)
 					for _, pair := range resultPairs {
 						if _, ok := podChanMap[pair.ID]; !ok {
 							// spin goroutine for this pod

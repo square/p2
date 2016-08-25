@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/square/p2/pkg/kp/consulutil"
+	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/types"
+
 	"github.com/pborman/uuid"
 )
 
@@ -116,4 +120,83 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 			t.Errorf("Expected key string to be %s, was %t", expectation.str, podUniqueKey.ID)
 		}
 	}
+}
+
+func TestAllPods(t *testing.T) {
+	fakeConsulClient := consulutil.NewFakeClient()
+	store := NewConsulStore(fakeConsulClient)
+
+	consulStore, ok := store.(*consulStore)
+	if !ok {
+		t.Fatal("Type assertion to consulStore struct type failed")
+	}
+
+	// Add a new uuid pod (i.e. we expect an index rather than a manifest to be written to /intent)
+	uuidKey, err := consulStore.podStore.Schedule(testManifest("first_pod"), "node1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now write a legacy manifest to /intent
+	_, err = store.SetPod(INTENT_TREE, "node2", testManifest("second_pod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Now retrieve all the pods and make sure the manifest results are sane
+	allPods, _, err := store.AllPods(INTENT_TREE)
+	if err != nil {
+		t.Fatalf("Unexpected error calling all pods: %s", err)
+	}
+
+	if len(allPods) != 2 {
+		t.Errorf("Expected 2 pods to be returned, but there were '%d'", len(allPods))
+	}
+
+	// Make sure the legacy pod was found
+	legacyFound := false
+	for _, result := range allPods {
+		if result.PodLocation.Node == "node2" {
+			legacyFound = true
+			if result.Manifest.ID() != "second_pod" {
+				t.Errorf("Legacy pod manifest should have had id '%s' but was '%s'", "second_pod", result.Manifest.ID())
+			}
+
+			if result.PodUniqueKey != nil {
+				t.Error("Legacy pod should not have a uuid")
+			}
+		}
+	}
+
+	if !legacyFound {
+		t.Error("Didn't find the legacy (non uuid) pod")
+	}
+
+	uuidPodFound := false
+	for _, result := range allPods {
+		if result.PodLocation.Node == "node1" {
+			uuidPodFound = true
+			if result.Manifest.ID() != "first_pod" {
+				t.Errorf("UUID pod manifest should have had id '%s' but was '%s'", "first_pod", result.Manifest.ID())
+			}
+
+			if result.PodUniqueKey == nil {
+				t.Error("UUID pod should have a uuid")
+			}
+
+			if result.PodUniqueKey.ID != uuidKey.ID {
+				t.Errorf("Expected legacy pod to have PodUniqueKeyID '%s', was '%s'", "node2/second_pod", result.PodUniqueKey.ID)
+			}
+		}
+	}
+
+	if !uuidPodFound {
+		t.Error("Didn't find uuid pod")
+	}
+}
+
+func testManifest(id types.PodID) manifest.Manifest {
+	builder := manifest.NewBuilder()
+	builder.SetID(id)
+	return builder.GetManifest()
 }
