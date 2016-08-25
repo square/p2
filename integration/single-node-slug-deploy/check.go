@@ -531,10 +531,11 @@ func targetLogs() string {
 }
 
 func verifyHealthChecks(config *preparer.PreparerConfig, services []string) error {
-	store, err := config.GetStore()
+	client, err := config.GetConsulClient()
 	if err != nil {
 		return err
 	}
+	store := kp.NewConsulStore(client)
 
 	time.Sleep(5 * time.Second)
 	// check consul for health information for each app
