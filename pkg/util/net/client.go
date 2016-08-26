@@ -31,7 +31,9 @@ func GetTransport(extras map[string]string, rt http.RoundTripper) *headerTranspo
 // on every request.
 func NewHeaderClient(extras map[string]string, rt http.RoundTripper) *http.Client {
 	if len(extras) == 0 {
-		return http.DefaultClient
+		return &http.Client{
+			Transport: rt,
+		}
 	}
 
 	return &http.Client{
