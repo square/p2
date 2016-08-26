@@ -5,10 +5,11 @@ package flags
 import (
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 
 	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/util/net"
+	netutil "github.com/square/p2/pkg/util/net"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -19,6 +20,9 @@ func ParseWithConsulOptions() (string, kp.Options) {
 	headers := kingpin.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
 	https := kingpin.Flag("https", "Use HTTPS").Bool()
 	wait := kingpin.Flag("wait", "Maximum duration for Consul watches, before resetting and starting again.").Default("30s").Duration()
+	caFile := kingpin.Flag("tls-ca-file", "File containing the x509 PEM-encoded CA ").ExistingFile()
+	keyFile := kingpin.Flag("tls-key-file", "File containing the x509 PEM-encoded private key").ExistingFile()
+	certFile := kingpin.Flag("tls-cert-file", "File containing the x509 PEM-encoded public key certificate").ExistingFile()
 
 	cmd := kingpin.Parse()
 
@@ -29,10 +33,28 @@ func ParseWithConsulOptions() (string, kp.Options) {
 		}
 		*token = string(tokenBytes)
 	}
+	var transport http.RoundTripper
+	if *caFile != "" || *keyFile != "" || *certFile != "" {
+		tlsConfig, err := netutil.GetTLSConfig(*certFile, *keyFile, *caFile)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		transport = &http.Transport{
+			TLSClientConfig: tlsConfig,
+			// same dialer as http.DefaultTransport
+			Dial: (&net.Dialer{
+				Timeout:   http.DefaultClient.Timeout,
+				KeepAlive: http.DefaultClient.Timeout,
+			}).Dial,
+		}
+	} else {
+		transport = http.DefaultTransport
+	}
 	return cmd, kp.Options{
 		Address:  *url,
 		Token:    *token,
-		Client:   net.NewHeaderClient(*headers, http.DefaultTransport),
+		Client:   netutil.NewHeaderClient(*headers, transport),
 		HTTPS:    *https,
 		WaitTime: *wait,
 	}
