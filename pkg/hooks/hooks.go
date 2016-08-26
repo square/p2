@@ -28,7 +28,7 @@ const (
 	HOOKED_ENV_PATH_ENV_VAR        = "HOOKED_ENV_PATH"
 	HOOKED_CONFIG_DIR_PATH_ENV_VAR = "HOOKED_CONFIG_DIR_PATH"
 
-	DefaultTimeout = 60 * time.Second
+	DefaultTimeout = 120 * time.Second
 )
 
 type Pod interface {
