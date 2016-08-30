@@ -44,6 +44,15 @@ func TestFileWithoutDir(t *testing.T) {
 	})
 }
 
+func TestSelfHardlink(t *testing.T) {
+	testExtraction(t, "file_with_selflink.tar.gz", func(tarErr error, dest string) {
+		Assert(t).IsNil(tarErr, "expected no error extracting tarball")
+
+		_, err := os.Stat(filepath.Join(dest, "a"))
+		Assert(t).IsNil(err, "expected no error statting extracted file")
+	})
+}
+
 func TestPathWithParent(t *testing.T) {
 	testExtraction(t, "path_with_parent.tar.gz", func(tarErr error, dest string) {
 		Assert(t).IsNotNil(tarErr, "expected error extracting tarball")
