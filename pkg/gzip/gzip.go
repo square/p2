@@ -95,6 +95,13 @@ func ExtractTarGz(owner string, fp io.Reader, dest string) (err error) {
 				return util.Errorf("error setting owner of %s: %s", fpath, err)
 			}
 		case tar.TypeLink:
+			// If you include a file multiple times in an invocation of
+			// Gnu tar, it stores anything after the first as a hard link
+			// to itself.  Since such a structure can't otherwise exist, we
+			// can simply skip it.
+			if hdr.Name == hdr.Linkname {
+				continue
+			}
 			// hardlink paths are encoded relative to the tarball root, rather than
 			// the path of the link itself, so we need to resolve that path
 			linkTarget, err := filepath.Rel(filepath.Dir(hdr.Name), hdr.Linkname)
