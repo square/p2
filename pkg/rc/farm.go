@@ -112,6 +112,18 @@ func (rcf *Farm) mainLoop(quit <-chan struct{}) {
 
 START_LOOP:
 	for {
+		// Check the quit channel independently of the others before entering a multi-channel select.
+		// This gives the quit channel priority over the others and ensures we quit in a timely manner
+		// to avoid a situation where multiple farms handle the same RC.
+		select {
+		case <-quit:
+			rcf.logger.NoFields().Infoln("Session expired, releasing replication controllers")
+			rcf.session = nil
+			rcf.releaseChildren()
+			return
+		default:
+		}
+
 		select {
 		case <-quit:
 			rcf.logger.NoFields().Infoln("Session expired, releasing replication controllers")
