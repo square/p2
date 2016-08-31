@@ -298,38 +298,27 @@ func (s *consulStore) FindWhereLabeled(podID types.PodID,
 // WatchedPodCluster objects. The goroutine maintaining the watch will block on
 // writing to this channel so it's up to the caller to read it with haste.
 func (s *consulStore) Watch(quit <-chan struct{}) <-chan WatchedPodClusters {
-	inCh := make(chan api.KVPairs)
 	outCh := make(chan WatchedPodClusters)
-	errChan := make(chan error, 1)
 
-	go consulutil.WatchPrefix(podClusterTree, s.kv, inCh, quit, errChan, 0)
+	inCh := consulutil.WatchPrefixNew(podClusterTree, s.kv, quit, 0)
 
 	go func() {
-		var kvp api.KVPairs
-		for {
-			select {
-			case <-quit:
-				return
-			case err := <-errChan:
-				s.logger.WithError(err).Errorf("WatchPrefix returned error, recovered.")
-			case kvp = <-inCh:
-				if kvp == nil {
-					// nothing to do
-					continue
-				}
+		for result := range inCh {
+			if result.Err != nil {
+				s.logger.WithError(result.Err).Errorf("WatchPrefix returned error, recovered.")
+			}
+
+			if result.Pairs == nil {
+				// nothing to do
+				continue
 			}
 
 			clusters := WatchedPodClusters{}
 
-			pcs, err := kvpsToPC(kvp)
+			pcs, err := kvpsToPC(result.Pairs)
 			if err != nil {
 				clusters.Err = err
-				select {
-				case <-quit:
-					return
-				case outCh <- clusters:
-					continue
-				}
+				outCh <- clusters
 			}
 
 			for _, pc := range pcs {
@@ -339,11 +328,7 @@ func (s *consulStore) Watch(quit <-chan struct{}) <-chan WatchedPodClusters {
 				clusters.Clusters = append(clusters.Clusters, &pcPtr)
 			}
 
-			select {
-			case outCh <- clusters:
-			case <-quit:
-				return
-			}
+			outCh <- clusters
 		}
 	}()
 
