@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/consul/api"
 )
 
+// DEPRECATED: use WatchPrefixNew() instead.
 // WatchPrefix watches a Consul prefix for changes to any keys that have the prefix. When
 // anything changes, all Key/Value pairs having that prefix will be written to the
 // provided channel.
@@ -62,6 +63,79 @@ func WatchPrefix(
 			timer.Reset(2*time.Second + pause) // backoff
 		}
 	}
+}
+
+type PairsResult struct {
+	Pairs api.KVPairs
+	Err   error
+}
+
+// Like WatchPrefix(), but has a different and better control flow. WatchPrefix() takes its
+// two output channels (outPairs and outErrors) as arguments, as well as a quit channel.
+// This means that the caller of WatchPrefix is responsible both for closing the output
+// channels and the quit channel, which is an anti-pattern.
+//
+// WatchPrefixNew() instead creates a single output channel with errors and data passed
+// together, and closes the channel itself when quit is closed. This way, the caller of
+// WatchPrefixNew() can simply do a "for out := range output { }" to read all data and
+// exit.
+func WatchPrefixNew(
+	prefix string,
+	clientKV ConsulLister,
+	done <-chan struct{},
+	pause time.Duration,
+) <-chan PairsResult {
+	out := make(chan PairsResult)
+
+	var currentIndex uint64
+	timer := time.NewTimer(time.Duration(0))
+
+	// Pause signifies the amount of time to wait after a result is
+	// returned by the watch. Some use cases may want to respond quickly to
+	// a change after a period of stagnation, but are able to tolerate a
+	// degree of staleness in order to reduce QPS on the data store
+	if pause < 250*time.Millisecond {
+		pause = 250 * time.Millisecond
+	}
+	go func() {
+		defer close(out)
+		for {
+			select {
+			case <-done:
+				return
+			case <-timer.C:
+			}
+			timer.Reset(pause) // upper bound on request rate
+			pairs, queryMeta, err := SafeList(clientKV, done, prefix, &api.QueryOptions{
+				WaitIndex: currentIndex,
+			})
+			switch err {
+			case CanceledError:
+				// This means SafeList got the "done" signal before we did, swallow the error and exit.
+				return
+			case nil:
+				currentIndex = queryMeta.LastIndex
+				result := PairsResult{
+					Pairs: pairs,
+				}
+				select {
+				case <-done:
+				case out <- result:
+				}
+			default:
+				result := PairsResult{
+					Err: err,
+				}
+				select {
+				case <-done:
+				case out <- result:
+				}
+				timer.Reset(2*time.Second + pause) // backoff
+			}
+		}
+	}()
+
+	return out
 }
 
 // WatchSingle has the same semantics as WatchPrefix, but for a single key in
