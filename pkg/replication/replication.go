@@ -282,7 +282,7 @@ func (r *replication) Enact() {
 				r.logger.Errorf("An unexpected error has occurred: %v", status.err)
 			}
 			r.logger.Infof("The host '%v' successfully replicated the pod '%v'", status.node, r.manifest.ID())
-			r.logger.Infof("%v nodes left", doneIndex-len(r.nodes))
+			r.logger.Infof("%v nodes left", len(r.nodes)-doneIndex)
 		case <-r.quitCh:
 			return
 		}
