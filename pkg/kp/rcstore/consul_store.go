@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/pborman/uuid"
@@ -184,7 +185,7 @@ func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan
 	inCh := make(chan api.KVPairs)
 
 	outCh, errCh := publishLatestRCs(inCh, quit)
-	go consulutil.WatchPrefix(rcTree+"/", s.kv, inCh, quit, errCh, 0)
+	go consulutil.WatchPrefix(rcTree+"/", s.kv, inCh, quit, errCh, 1*time.Second)
 
 	return outCh, errCh
 }
@@ -214,7 +215,7 @@ func (s *consulStore) WatchNewWithRCLockInfo(quit <-chan struct{}) (<-chan []RCL
 	combinedErrCh := make(chan error)
 
 	rcCh, rcErrCh := publishLatestRCs(inCh, quit)
-	go consulutil.WatchPrefix(rcTree+"/", s.kv, inCh, quit, rcErrCh, 0)
+	go consulutil.WatchPrefix(rcTree+"/", s.kv, inCh, quit, rcErrCh, 1*time.Second)
 
 	// Process RC updates and augment them with lock information
 	outCh, lockInfoErrCh := s.publishLatestRCsWithLockInfo(rcCh, quit)
