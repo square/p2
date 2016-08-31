@@ -822,7 +822,10 @@ func TestPublishLatestRolls(t *testing.T) {
 	go func() {
 		select {
 		case <-quitCh:
-		case err := <-errCh:
+		case err, ok := <-errCh:
+			if !ok {
+				return
+			}
 			t.Fatalf("Unexpected error on errCh: %s", err)
 		}
 	}()

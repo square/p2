@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/square/p2",
-	"GoVersion": "go1.5",
+	"GoVersion": "go1.7",
 	"GodepVersion": "v74",
 	"Packages": [
 		"./..."
@@ -146,7 +146,6 @@
 		},
 		{
 			"ImportPath": "github.com/fsouza/go-dockerclient/external/golang.org/x/net/context",
-			"Comment": "0.2.1-847-g299d728",
 			"Rev": "299d728486342c894e7fafd68e3a4b89623bef1d"
 		},
 		{
@@ -371,6 +370,14 @@
 			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
 		},
 		{
+			"ImportPath": "golang.org/x/crypto/ed25519",
+			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+		},
+		{
+			"ImportPath": "golang.org/x/crypto/ed25519/internal/edwards25519",
+			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+		},
+		{
 			"ImportPath": "golang.org/x/crypto/openpgp",
 			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
 		},
@@ -404,7 +411,7 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
-			"Rev": "0c607074acd38c5f23d1344dfe74c977464d1257"
+			"Rev": "d58ca6618b994150e624f6888d871f4709db51a0"
 		},
 		{
 			"ImportPath": "golang.org/x/sys/unix",
@@ -442,14 +449,6 @@
 			"ImportPath": "k8s.io/kubernetes/pkg/util/validation",
 			"Comment": "v1.2.0-alpha.4",
 			"Rev": "4a9b0fc7153c733832d70c9f6d0796db177643a6"
-		},
-		{
-			"ImportPath": "golang.org/x/crypto/ed25519",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
-		},
-		{
-			"ImportPath": "golang.org/x/crypto/ed25519/internal/edwards25519",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
 		}
 	]
 }
