@@ -104,6 +104,7 @@ func main() {
 		*overrideLock,
 		*ignoreControllers,
 		*concurrentRealityChecks,
+		0,
 	)
 	if err != nil {
 		log.Fatalf("Unable to initialize replication: %s", err)

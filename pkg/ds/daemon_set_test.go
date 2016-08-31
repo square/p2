@@ -174,6 +174,7 @@ func TestSchedule(t *testing.T) {
 		applicator,
 		logging.DefaultLogger,
 		&happyHealthChecker,
+		0,
 	).(*daemonSet)
 
 	scheduled := scheduledPods(t, ds)
@@ -357,6 +358,7 @@ func TestPublishToReplication(t *testing.T) {
 		applicator,
 		logging.DefaultLogger,
 		&happyHealthChecker,
+		0,
 	).(*daemonSet)
 
 	scheduled := scheduledPods(t, ds)

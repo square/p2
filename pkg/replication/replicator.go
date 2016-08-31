@@ -34,6 +34,7 @@ type Replicator interface {
 		overrideLock bool,
 		ignoreControllers bool,
 		concurrentRealityNodes int,
+		rateLimitInterval time.Duration,
 	) (Replication, chan error, error)
 
 	// Same as InitializeReplication but can skip the checkPreparers
@@ -42,6 +43,7 @@ type Replicator interface {
 		ignoreControllers bool,
 		concurrentRealityRequests int,
 		checkPreparers bool,
+		rateLimitInterval time.Duration,
 	) (Replication, chan error, error)
 }
 
@@ -102,12 +104,14 @@ func (r replicator) InitializeReplication(
 	overrideLock bool,
 	ignoreControllers bool,
 	concurrentRealityRequests int,
+	rateLimitInterval time.Duration,
 ) (Replication, chan error, error) {
 	return r.initializeReplicationWithCheck(
 		overrideLock,
 		ignoreControllers,
 		concurrentRealityRequests,
 		true,
+		rateLimitInterval,
 	)
 }
 
@@ -116,12 +120,14 @@ func (r replicator) InitializeReplicationWithCheck(
 	ignoreControllers bool,
 	concurrentRealityRequests int,
 	checkPreparers bool,
+	rateLimitInterval time.Duration,
 ) (Replication, chan error, error) {
 	return r.initializeReplicationWithCheck(
 		overrideLock,
 		ignoreControllers,
 		concurrentRealityRequests,
 		checkPreparers,
+		rateLimitInterval,
 	)
 }
 
@@ -130,6 +136,7 @@ func (r replicator) initializeReplicationWithCheck(
 	ignoreControllers bool,
 	concurrentRealityRequests int,
 	checkPreparers bool,
+	rateLimitInterval time.Duration,
 ) (Replication, chan error, error) {
 	var err error
 
@@ -143,17 +150,24 @@ func (r replicator) initializeReplicationWithCheck(
 		concurrentRealityRequests = DefaultConcurrentReality
 	}
 
+	// NewTicker() requires the value passed to it to be positive.
+	if rateLimitInterval <= 0 {
+		rateLimitInterval = 1 * time.Nanosecond
+	}
+	ticker := time.NewTicker(rateLimitInterval)
+
 	errCh := make(chan error)
 	replication := &replication{
-		active:    r.active,
-		nodes:     r.nodes,
-		store:     r.store,
-		labeler:   r.labeler,
-		manifest:  r.manifest,
-		health:    r.health,
-		threshold: r.threshold,
-		logger:    r.logger,
-		errCh:     errCh,
+		active:      r.active,
+		nodes:       r.nodes,
+		store:       r.store,
+		labeler:     r.labeler,
+		manifest:    r.manifest,
+		health:      r.health,
+		threshold:   r.threshold,
+		logger:      r.logger,
+		rateLimiter: *ticker,
+		errCh:       errCh,
 		replicationCancelledCh: make(chan struct{}),
 		replicationDoneCh:      make(chan struct{}),
 		enactedCh:              make(chan struct{}),
