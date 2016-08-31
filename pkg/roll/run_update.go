@@ -177,6 +177,16 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 // returns true if roll succeeded, false if asked to quit.
 func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]health.Result, hErrs <-chan error, quit <-chan struct{}) bool {
 	for {
+		// Select on just the quit channel before entering the select with both quit and hChecks. This protects against a situation where
+		// hChecks and quit are both ready, and hChecks might be chosen due to the random choice semantics of select {}. If multiple
+		// iterations continue after quit is closed, a dangerous situation is created because multiple farm instances might end up
+		// handling the same RU.
+		select {
+		case <-quit:
+			return false
+		default:
+		}
+
 		select {
 		case <-quit:
 			return false
