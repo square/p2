@@ -66,8 +66,8 @@ func WatchPrefix(
 }
 
 type PairsResult struct {
-	pairs api.KVPairs
-	err   error
+	Pairs api.KVPairs
+	Err   error
 }
 
 // Like WatchPrefix(), but has a different and better control flow. WatchPrefix() takes its
@@ -116,7 +116,7 @@ func WatchPrefixNew(
 			case nil:
 				currentIndex = queryMeta.LastIndex
 				result := PairsResult{
-					pairs: pairs,
+					Pairs: pairs,
 				}
 				select {
 				case <-done:
@@ -124,7 +124,7 @@ func WatchPrefixNew(
 				}
 			default:
 				result := PairsResult{
-					err: err,
+					Err: err,
 				}
 				select {
 				case <-done:
