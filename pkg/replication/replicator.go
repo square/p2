@@ -111,6 +111,7 @@ func (r replicator) InitializeReplication(
 		ignoreControllers,
 		concurrentRealityRequests,
 		true,
+		false,
 		rateLimitInterval,
 	)
 }
@@ -127,6 +128,7 @@ func (r replicator) InitializeReplicationWithCheck(
 		ignoreControllers,
 		concurrentRealityRequests,
 		checkPreparers,
+		false,
 		rateLimitInterval,
 	)
 }
@@ -136,6 +138,7 @@ func (r replicator) initializeReplicationWithCheck(
 	ignoreControllers bool,
 	concurrentRealityRequests int,
 	checkPreparers bool,
+	skipLocking bool,
 	rateLimitInterval time.Duration,
 ) (Replication, chan error, error) {
 	var err error
@@ -178,10 +181,15 @@ func (r replicator) initializeReplicationWithCheck(
 	// To make a closed channel
 	close(replication.enactedCh)
 
-	session, renewalErrCh, err := replication.lockHosts(overrideLock, r.lockMessage)
-	if err != nil {
-		return nil, errCh, err
+	var session kp.Session
+	var renewalErrCh chan error
+	if !skipLocking {
+		session, renewalErrCh, err = replication.lockHosts(overrideLock, r.lockMessage)
+		if err != nil {
+			return nil, errCh, err
+		}
 	}
+	// It is safe to call this with nils for session and renewalErrCh
 	go replication.handleReplicationEnd(session, renewalErrCh)
 
 	if !ignoreControllers {
