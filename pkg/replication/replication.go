@@ -70,6 +70,10 @@ type replication struct {
 	threshold health.HealthState // minimum state to treat as "healthy"
 	logger    logging.Logger
 
+	// Used to rate limit node updates. A node will not be updated
+	// until a value can be read off of the channel.
+	rateLimiter time.Ticker
+
 	// communicates errors back to the caller, such as an error renewing
 	// the deploy lock
 	errCh chan<- error
@@ -221,6 +225,12 @@ func (r *replication) Enact() {
 				exitCh := make(chan struct{})
 				timeoutCh := make(chan struct{})
 
+				// Wait until we can read off the rate limit channel before
+				// updating the node
+				_, ok := <-r.rateLimiter.C
+				if !ok {
+					return
+				}
 				go func() {
 					defer close(exitCh)
 					err = r.updateOne(node, done, timeoutCh, aggregateHealth)
@@ -305,6 +315,7 @@ func (r *replication) handleRenewalErrors(session kp.Session, renewalErrCh chan 
 	defer func() {
 		close(r.quitCh)
 		close(r.errCh)
+		r.rateLimiter.Stop()
 		_ = session.Destroy()
 	}()
 

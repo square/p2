@@ -82,6 +82,9 @@ type daemonSet struct {
 
 	// This is the current replication enact go routine that is running
 	currentReplication replication.Replication
+
+	// Indicates how long to wait between updating each node during a replication
+	rateLimitInterval time.Duration
 }
 
 type dsContention struct {
@@ -96,6 +99,7 @@ func New(
 	applicator labels.Applicator,
 	logger logging.Logger,
 	healthChecker *checker.ConsulHealthChecker,
+	rateLimitInterval time.Duration,
 ) DaemonSet {
 	return &daemonSet{
 		DaemonSet: fields,
@@ -107,6 +111,7 @@ func New(
 		scheduler:          scheduler.NewApplicatorScheduler(applicator),
 		healthChecker:      healthChecker,
 		currentReplication: nil,
+		rateLimitInterval:  rateLimitInterval,
 	}
 }
 
@@ -503,6 +508,7 @@ func (ds *daemonSet) PublishToReplication() error {
 		true, // ignore Replication Controllers
 		replication.DefaultConcurrentReality,
 		false, // Ignore missing preparers by writing intent/ anyway
+		ds.rateLimitInterval,
 	)
 	if err != nil {
 		ds.logger.Errorf("Unable to initialize replication: %s", err)

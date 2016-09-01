@@ -31,6 +31,8 @@ type Farm struct {
 	applicator labels.Applicator
 	// session stream for the daemon sets locked by this farm
 	sessions <-chan string
+	// The time to wait between node updates for each replication
+	rateLimitInterval time.Duration
 
 	children map[fields.ID]*childDS
 	childMu  sync.Mutex
@@ -59,21 +61,23 @@ func NewFarm(
 	logger logging.Logger,
 	alerter alerting.Alerter,
 	healthChecker *checker.ConsulHealthChecker,
+	rateLimitInterval time.Duration,
 ) *Farm {
 	if alerter == nil {
 		alerter = alerting.NewNop()
 	}
 
 	return &Farm{
-		kpStore:       kpStore,
-		dsStore:       dsStore,
-		scheduler:     scheduler.NewApplicatorScheduler(applicator),
-		applicator:    applicator,
-		sessions:      sessions,
-		children:      make(map[fields.ID]*childDS),
-		logger:        logger,
-		alerter:       alerter,
-		healthChecker: healthChecker,
+		kpStore:           kpStore,
+		dsStore:           dsStore,
+		scheduler:         scheduler.NewApplicatorScheduler(applicator),
+		applicator:        applicator,
+		sessions:          sessions,
+		children:          make(map[fields.ID]*childDS),
+		logger:            logger,
+		alerter:           alerter,
+		healthChecker:     healthChecker,
+		rateLimitInterval: rateLimitInterval,
 	}
 }
 
@@ -536,6 +540,7 @@ func (dsf *Farm) spawnDaemonSet(
 		dsf.applicator,
 		dsLogger,
 		dsf.healthChecker,
+		dsf.rateLimitInterval,
 	)
 
 	quitSpawnCh := make(chan struct{})
