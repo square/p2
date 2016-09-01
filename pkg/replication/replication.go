@@ -350,7 +350,28 @@ func (r *replication) updateOne(
 	nodeLogger := r.logger.SubLogger(logrus.Fields{"node": node})
 	nodeLogger.WithField("sha", targetSHA).Infoln("Updating node")
 
-	_, err := r.store.SetPod(
+	nodeReality, err := r.queryReality(node)
+	if err != nil || nodeReality == nil {
+		nodeLogger.WithError(err).Errorln("Could not read Reality for this node. Will proceed to schedule onto it.")
+	}
+
+	if nodeReality != nil {
+		nodeRealitySHA, err := nodeReality.SHA()
+		if err != nil {
+			nodeLogger.WithError(err).Errorln("Unable to compute manifest SHA for this node. Attempting to schedule anyway")
+		}
+		replicationRealitySHA, err := r.manifest.SHA()
+		if err != nil {
+			nodeLogger.WithError(err).Errorln("Unable to compute manifest SHA for this daemon set. Attempting to schedule anyway")
+		}
+
+		if nodeRealitySHA == replicationRealitySHA {
+			nodeLogger.Info("Reality for this node matches this DS. No action required.")
+			return nil
+		}
+	}
+
+	_, err = r.store.SetPod(
 		kp.INTENT_TREE,
 		node,
 		r.manifest,
