@@ -291,10 +291,11 @@ func (r *replication) Enact() {
 
 			} else if status.err == errCancelled {
 				r.logger.Errorf("The host '%v' was cancelled (probably due to an update) during replication for pod '%v'", status.node, r.manifest.ID())
-			} else {
+			} else if status.err != nil {
 				r.logger.Errorf("An unexpected error has occurred: %v", status.err)
+			} else {
+				r.logger.Infof("The host '%v' successfully replicated the pod '%v'", status.node, r.manifest.ID())
 			}
-			r.logger.Infof("The host '%v' successfully replicated the pod '%v'", status.node, r.manifest.ID())
 			r.logger.Infof("%v nodes left", len(r.nodes)-doneIndex)
 		case <-r.quitCh:
 			return
