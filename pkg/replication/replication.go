@@ -72,7 +72,7 @@ type replication struct {
 
 	// Used to rate limit node updates. A node will not be updated
 	// until a value can be read off of the channel.
-	rateLimiter time.Ticker
+	rateLimiter *time.Ticker
 
 	// communicates errors back to the caller, such as an error renewing
 	// the deploy lock
@@ -225,11 +225,14 @@ func (r *replication) Enact() {
 				exitCh := make(chan struct{})
 				timeoutCh := make(chan struct{})
 
-				// Wait until we can read off the rate limit channel before
-				// updating the node
-				_, ok := <-r.rateLimiter.C
-				if !ok {
-					return
+				if r.rateLimiter != nil {
+					// Wait until we can read off the rate limit channel before
+					// updating the node
+					select {
+					case <-r.rateLimiter.C:
+					case <-r.quitCh:
+						return
+					}
 				}
 				go func() {
 					defer close(exitCh)
@@ -315,7 +318,9 @@ func (r *replication) handleRenewalErrors(session kp.Session, renewalErrCh chan 
 	defer func() {
 		close(r.quitCh)
 		close(r.errCh)
-		r.rateLimiter.Stop()
+		if r.rateLimiter != nil {
+			r.rateLimiter.Stop()
+		}
 		_ = session.Destroy()
 	}()
 
