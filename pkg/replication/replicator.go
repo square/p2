@@ -37,12 +37,13 @@ type Replicator interface {
 		rateLimitInterval time.Duration,
 	) (Replication, chan error, error)
 
-	// Same as InitializeReplication but can skip the checkPreparers
-	InitializeReplicationWithCheck(
-		overrideLock bool,
-		ignoreControllers bool,
+	// InitializeDaemonSetReplication creates a Replication with parameters suitable for a daemon set.
+	// Specifically:
+	// * locks are overridden
+	// * replication controllers are ignored
+	// * and preparers are not checked.
+	InitializeDaemonSetReplication(
 		concurrentRealityRequests int,
-		checkPreparers bool,
 		rateLimitInterval time.Duration,
 	) (Replication, chan error, error)
 }
@@ -116,19 +117,16 @@ func (r replicator) InitializeReplication(
 	)
 }
 
-func (r replicator) InitializeReplicationWithCheck(
-	overrideLock bool,
-	ignoreControllers bool,
+func (r replicator) InitializeDaemonSetReplication(
 	concurrentRealityRequests int,
-	checkPreparers bool,
 	rateLimitInterval time.Duration,
 ) (Replication, chan error, error) {
 	return r.initializeReplicationWithCheck(
-		overrideLock,
-		ignoreControllers,
+		true, // override locks
+		true, // ignore Replication Controllers
 		concurrentRealityRequests,
-		checkPreparers,
-		false,
+		false, // Ignore missing preparers by writing intent/ anyway
+		false, // do not skip locking
 		rateLimitInterval,
 	)
 }
