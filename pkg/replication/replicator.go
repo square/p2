@@ -151,10 +151,10 @@ func (r replicator) initializeReplicationWithCheck(
 	}
 
 	// NewTicker() requires the value passed to it to be positive.
-	if rateLimitInterval <= 0 {
-		rateLimitInterval = 1 * time.Nanosecond
+	var ticker *time.Ticker
+	if rateLimitInterval > 0 {
+		ticker = time.NewTicker(rateLimitInterval)
 	}
-	ticker := time.NewTicker(rateLimitInterval)
 
 	errCh := make(chan error)
 	replication := &replication{
@@ -166,7 +166,7 @@ func (r replicator) initializeReplicationWithCheck(
 		health:      r.health,
 		threshold:   r.threshold,
 		logger:      r.logger,
-		rateLimiter: *ticker,
+		rateLimiter: ticker,
 		errCh:       errCh,
 		replicationCancelledCh: make(chan struct{}),
 		replicationDoneCh:      make(chan struct{}),
