@@ -39,7 +39,7 @@ type Replicator interface {
 
 	// InitializeDaemonSetReplication creates a Replication with parameters suitable for a daemon set.
 	// Specifically:
-	// * locks are overridden
+	// * hosts are not locked
 	// * replication controllers are ignored
 	// * and preparers are not checked.
 	InitializeDaemonSetReplication(
@@ -122,11 +122,11 @@ func (r replicator) InitializeDaemonSetReplication(
 	rateLimitInterval time.Duration,
 ) (Replication, chan error, error) {
 	return r.initializeReplicationWithCheck(
-		true, // override locks
+		true, // override locks (irrelevant; they're being skipped)
 		true, // ignore Replication Controllers
 		concurrentRealityRequests,
 		false, // Ignore missing preparers by writing intent/ anyway
-		false, // do not skip locking
+		true,  // skip locking
 		rateLimitInterval,
 	)
 }
