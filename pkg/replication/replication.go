@@ -317,10 +317,13 @@ func (r *replication) WaitForReplication() {
 // * The replication is canceled.
 // * Errors in lock renewal (as signaled on the passed channel).
 //   In this case, the error needs to be communicated up a level.
+//   The passed channel may be nil, in which case this case is not checked,
+//   but the others still are.
 //
 // When replication finishes for any of these reasons, this function is responsible for:
 // * Stopping the replication (if it has not already)
-// * Destroying its session (passed in to this function)
+// * Destroying its session (passed in to this function.
+//   Passing nil is legal, in which case it is not destroyed)
 func (r *replication) handleReplicationEnd(session kp.Session, renewalErrCh chan error) {
 	defer func() {
 		close(r.quitCh)
@@ -328,7 +331,9 @@ func (r *replication) handleReplicationEnd(session kp.Session, renewalErrCh chan
 		if r.rateLimiter != nil {
 			r.rateLimiter.Stop()
 		}
-		_ = session.Destroy()
+		if session != nil {
+			_ = session.Destroy()
+		}
 	}()
 
 	select {
