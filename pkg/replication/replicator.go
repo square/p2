@@ -37,12 +37,13 @@ type Replicator interface {
 		rateLimitInterval time.Duration,
 	) (Replication, chan error, error)
 
-	// Same as InitializeReplication but can skip the checkPreparers
-	InitializeReplicationWithCheck(
-		overrideLock bool,
-		ignoreControllers bool,
+	// InitializeDaemonSetReplication creates a Replication with parameters suitable for a daemon set.
+	// Specifically:
+	// * hosts are not locked
+	// * replication controllers are ignored
+	// * and preparers are not checked.
+	InitializeDaemonSetReplication(
 		concurrentRealityRequests int,
-		checkPreparers bool,
 		rateLimitInterval time.Duration,
 	) (Replication, chan error, error)
 }
@@ -111,22 +112,21 @@ func (r replicator) InitializeReplication(
 		ignoreControllers,
 		concurrentRealityRequests,
 		true,
+		false,
 		rateLimitInterval,
 	)
 }
 
-func (r replicator) InitializeReplicationWithCheck(
-	overrideLock bool,
-	ignoreControllers bool,
+func (r replicator) InitializeDaemonSetReplication(
 	concurrentRealityRequests int,
-	checkPreparers bool,
 	rateLimitInterval time.Duration,
 ) (Replication, chan error, error) {
 	return r.initializeReplicationWithCheck(
-		overrideLock,
-		ignoreControllers,
+		true, // override locks (irrelevant; they're being skipped)
+		true, // ignore Replication Controllers
 		concurrentRealityRequests,
-		checkPreparers,
+		false, // Ignore missing preparers by writing intent/ anyway
+		true,  // skip locking
 		rateLimitInterval,
 	)
 }
@@ -136,6 +136,7 @@ func (r replicator) initializeReplicationWithCheck(
 	ignoreControllers bool,
 	concurrentRealityRequests int,
 	checkPreparers bool,
+	skipLocking bool,
 	rateLimitInterval time.Duration,
 ) (Replication, chan error, error) {
 	var err error
@@ -178,10 +179,17 @@ func (r replicator) initializeReplicationWithCheck(
 	// To make a closed channel
 	close(replication.enactedCh)
 
-	err = replication.lockHosts(overrideLock, r.lockMessage)
-	if err != nil {
-		return nil, errCh, err
+	var session kp.Session
+	var renewalErrCh chan error
+	if !skipLocking {
+		session, renewalErrCh, err = replication.lockHosts(overrideLock, r.lockMessage)
+		if err != nil {
+			return nil, errCh, err
+		}
 	}
+	// It is safe to call this with nils for session and renewalErrCh
+	go replication.handleReplicationEnd(session, renewalErrCh)
+
 	if !ignoreControllers {
 		err = replication.checkForManaged()
 		if err != nil {
