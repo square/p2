@@ -1,6 +1,7 @@
 package consulutil
 
 import (
+	"math/rand"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -35,6 +36,8 @@ func SessionManager(
 	logger logging.Logger,
 ) {
 	logger.NoFields().Info("session manager: starting up")
+
+	timer := time.NewTimer(0)
 	for {
 		// Check for exit signal
 		select {
@@ -42,7 +45,7 @@ func SessionManager(
 			logger.NoFields().Info("session manager: shutting down")
 			close(output)
 			return
-		default:
+		case <-timer.C:
 		}
 		// Establish a new session
 		id, _, err := client.Session().CreateNoChecks(&config, nil)
@@ -65,6 +68,11 @@ func SessionManager(
 				sessionLogger.NoFields().Info("session manager: released session")
 			}
 			output <- ""
+
+			// Wait a random amount of time between 0 and 10 seconds before attempting to
+			// re-establish a session. This protects against a thundering herd of sessions
+			// attempting to be re-establish
+			timer.Reset(time.Duration(rand.Int31n(10000)) * time.Millisecond)
 		case <-done:
 			// Don't bother reporting the new session if exiting
 			_, _ = client.Session().Destroy(id, nil)
