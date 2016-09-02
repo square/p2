@@ -104,10 +104,10 @@ type replication struct {
 // operations for this pod ID will not be able to take place.
 // if overrideLock is true, will destroy any session holding any of the keys we
 // wish to lock
-func (r *replication) lockHosts(overrideLock bool, lockMessage string) error {
+func (r *replication) lockHosts(overrideLock bool, lockMessage string) (kp.Session, chan error, error) {
 	session, renewalErrCh, err := r.store.NewSession(lockMessage, nil)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	lockPath := kp.ReplicationLockPath(r.manifest.ID())
@@ -117,12 +117,10 @@ func (r *replication) lockHosts(overrideLock bool, lockMessage string) error {
 	_, err = r.lock(session, lockPath, overrideLock)
 	if err != nil {
 		_ = session.Destroy()
-		return err
+		return nil, nil, err
 	}
 
-	go r.handleRenewalErrors(session, renewalErrCh)
-
-	return nil
+	return session, renewalErrCh, nil
 }
 
 // Attempts to claim a lock. If the overrideLock is set, any existing lock holder
@@ -312,10 +310,18 @@ func (r *replication) WaitForReplication() {
 	<-r.quitCh
 }
 
-// Listen for errors in lock renewal. If the lock can't be renewed, we need to
-// 1) stop replication and 2) communicate the error up a level
-// If replication finishes, destroy the lock
-func (r *replication) handleRenewalErrors(session kp.Session, renewalErrCh chan error) {
+// handleReplicationEnd listens for various events that can cause the replication to end.
+//
+// These are:
+// * The replication signals that it has finished executing.
+// * The replication is canceled.
+// * Errors in lock renewal (as signaled on the passed channel).
+//   In this case, the error needs to be communicated up a level.
+//
+// When replication finishes for any of these reasons, this function is responsible for:
+// * Stopping the replication (if it has not already)
+// * Destroying its session (passed in to this function)
+func (r *replication) handleReplicationEnd(session kp.Session, renewalErrCh chan error) {
 	defer func() {
 		close(r.quitCh)
 		close(r.errCh)

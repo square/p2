@@ -178,10 +178,12 @@ func (r replicator) initializeReplicationWithCheck(
 	// To make a closed channel
 	close(replication.enactedCh)
 
-	err = replication.lockHosts(overrideLock, r.lockMessage)
+	session, renewalErrCh, err := replication.lockHosts(overrideLock, r.lockMessage)
 	if err != nil {
 		return nil, errCh, err
 	}
+	go replication.handleReplicationEnd(session, renewalErrCh)
+
 	if !ignoreControllers {
 		err = replication.checkForManaged()
 		if err != nil {
