@@ -283,18 +283,19 @@ func (r *replication) Enact() {
 		select {
 		case status := <-done:
 			doneIndex++
-			if status.err == errTimeout {
+			switch status.err {
+			case errTimeout:
 				r.timedOutReplicationsMutex.Lock()
 				r.timedOutReplications = append(r.timedOutReplications, status.node)
 				r.timedOutReplicationsMutex.Unlock()
 				r.logger.Errorf("The host '%v' timed out during replication for pod '%v'", status.node, r.manifest.ID())
-
-			} else if status.err == errCancelled {
+			case errCancelled:
 				r.logger.Errorf("The host '%v' was cancelled (probably due to an update) during replication for pod '%v'", status.node, r.manifest.ID())
-			} else {
+			case nil:
+				r.logger.Infof("The host '%v' successfully replicated the pod '%v'", status.node, r.manifest.ID())
+			default:
 				r.logger.Errorf("An unexpected error has occurred: %v", status.err)
 			}
-			r.logger.Infof("The host '%v' successfully replicated the pod '%v'", status.node, r.manifest.ID())
 			r.logger.Infof("%v nodes left", len(r.nodes)-doneIndex)
 		case <-r.quitCh:
 			return
