@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -156,4 +157,19 @@ func TestAddUnrecognizedHook(t *testing.T) {
 
 	err := logger.AddHook("unrecognized_type", "some_destination")
 	Assert(t).IsNotNil(err, "Expected an error for adding an unrecognized hook output type")
+}
+
+func TestConcurrent(t *testing.T) {
+	logger := NewLogger(nil)
+	const n = 100
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		i := i
+		go func() {
+			logger.Infoln(i)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
 }

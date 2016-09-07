@@ -26,7 +26,12 @@ func (ProcessCounter) Levels() []logrus.Level {
 }
 
 func (p *ProcessCounter) Fire(entry *logrus.Entry) error {
-	entry.Data["Counter"] = atomic.AddUint64(&p.counter, 1) - 1
-	entry.Data["PID"] = os.Getpid()
+	data := make(logrus.Fields, len(entry.Data)+2)
+	for k, v := range entry.Data {
+		data[k] = v
+	}
+	data["Counter"] = atomic.AddUint64(&p.counter, 1) - 1
+	data["PID"] = os.Getpid()
+	entry.Data = data
 	return nil
 }
