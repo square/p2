@@ -19,7 +19,7 @@ func (l LaunchableID) String() string { return string(l) }
 
 type LaunchableVersion struct {
 	ID   string            `yaml:"id"`
-	Tags map[string]string `yaml:"tags"`
+	Tags map[string]string `yaml:"tags,omitempty"`
 }
 
 type LaunchableStanza struct {
@@ -39,7 +39,7 @@ type LaunchableStanza struct {
 
 	// The URL from which the launchable can be downloaded. May not be used
 	// in conjunction with Version
-	Location string `yaml:"location"`
+	Location string `yaml:"location,omitempty"`
 
 	// An alternative to using Location to inform artifact downloading. Version information
 	// can be used to query a configured artifact registry which will provide the artifact
