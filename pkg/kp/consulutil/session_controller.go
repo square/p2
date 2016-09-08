@@ -64,7 +64,10 @@ func SessionManager(
 			} else {
 				sessionLogger.NoFields().Info("session manager: released session")
 			}
-			output <- ""
+			select {
+			case output <- "":
+			case <-done:
+			}
 		case <-done:
 			// Don't bother reporting the new session if exiting
 			_, _ = client.Session().Destroy(id, nil)
