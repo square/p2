@@ -159,7 +159,7 @@ func TestAddUnrecognizedHook(t *testing.T) {
 	Assert(t).IsNotNil(err, "Expected an error for adding an unrecognized hook output type")
 }
 
-// TestConsurrent checks that one logger can be used concurrently without panics (e.g.,
+// TestConcurrent checks that one logger can be used concurrently without panics (e.g.,
 // from concurrent map accesses) or data races (if the race detector is enabled), which
 // will fail the test instead of explicit t.Error() calls.
 func TestConcurrent(t *testing.T) {
