@@ -42,6 +42,41 @@ func TestSessionBasics(t *testing.T) {
 	}
 }
 
+// TestExit checks that the session manager function exits once the session reader quits
+// reading and signals to the manager to exit.
+func TestExit(t *testing.T) {
+	t.Parallel()
+	f := NewFixture(t)
+	defer f.Stop()
+
+	sessions := make(chan string)
+	done := make(chan struct{})
+	exited := make(chan struct{})
+	go func() {
+		SessionManager(
+			api.SessionEntry{TTL: "10s"},
+			f.Client,
+			sessions,
+			done,
+			logging.TestLogger(),
+		)
+		close(exited)
+	}()
+
+	// Wait for a session to appear
+	for s := ""; s == ""; s = <-sessions {
+	}
+
+	// Closing the "done" channel signals to the session manager that the reader has quit
+	// reading the stream. It should exit soon thereafter.
+	close(done)
+	select {
+	case <-exited:
+	case <-time.After(20 * time.Second):
+		t.Error("timed out waiting for SessionManager to exit")
+	}
+}
+
 // A basic test of WithSession: create and destroy sessions
 func TestWithSession(t *testing.T) {
 	t.Parallel()
