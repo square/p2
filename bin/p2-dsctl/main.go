@@ -46,7 +46,7 @@ func flagUsed(marker *bool) kingpin.Action {
 var (
 	cmdCreate        = kingpin.Command(CmdCreate, "Create a daemon set.")
 	createSelector   = cmdCreate.Flag("selector", "The node selector, uses the same syntax as the test-selector command").Required().String()
-	createManifest   = cmdCreate.Flag("manifest", "Complete manifest - must parse as JSON!").Required().String()
+	createManifest   = cmdCreate.Flag("manifest", "Path to signed manifest file").Required().String()
 	createMinHealth  = cmdCreate.Flag("minhealth", "The minimum health of the daemon set").Required().String()
 	createName       = cmdCreate.Flag("name", "The cluster name (ie. staging, production)").Required().String()
 	createTimeout    = cmdCreate.Flag("timeout", "Non-zero timeout for replicating hosts. e.g. 1m2s for 1 minute and 2 seconds").Required().Duration()
@@ -71,7 +71,7 @@ var (
 	updateID            = cmdUpdate.Arg("id", "The uuid for the daemon set").Required().String()
 	updateSelectorGiven = false
 	updateSelector      = cmdUpdate.Flag("selector", "The node selector, uses the same syntax as the test-selector command").Action(flagUsed(&updateSelectorGiven)).String()
-	updateManifest      = cmdUpdate.Flag("manifest", "Complete manifest - must parse as JSON!").String()
+	updateManifest      = cmdUpdate.Flag("manifest", "Path to signed manifest file").String()
 	updateMinHealth     = cmdUpdate.Flag("minhealth", "The minimum health of the daemon set").String()
 	updateName          = cmdUpdate.Flag("name", "The cluster name (ie. staging, production)").String()
 	updateTimeout       = cmdUpdate.Flag("timeout", "Non-zero timeout for replicating hosts. e.g. 1m2s for 1 minute and 2 seconds").Default(TimeoutNotSpecified.String()).Duration()
