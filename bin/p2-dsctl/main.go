@@ -125,6 +125,10 @@ func main() {
 			log.Fatalf("Error occurred: %v", err)
 		}
 
+		if err = confirmMinheathForSelector(minHealth, selector, applicator); err != nil {
+			log.Fatalf("Error occurred: %v", err)
+		}
+
 		ds, err := dsstore.Create(manifest, minHealth, name, selector, podID, *createTimeout)
 		if err != nil {
 			log.Fatalf("err: %v", err)
@@ -276,6 +280,13 @@ func main() {
 			if !changed {
 				return ds, util.Errorf("No changes were made")
 			}
+
+			if updateSelectorGiven || *updateMinHealth != "" {
+				if err := confirmMinheathForSelector(ds.MinHealth, ds.NodeSelector, applicator); err != nil {
+					return ds, util.Errorf("Error occurred: %v", err)
+				}
+			}
+
 			return ds, nil
 		}
 
@@ -343,6 +354,20 @@ func parseNodeSelectorWithPrompt(
 	}
 
 	return newSelector, nil
+}
+
+func confirmMinheathForSelector(minHealth int, selector klabels.Selector, applicator labels.Applicator) error {
+	matches, err := applicator.GetMatches(selector, labels.NODE)
+	if err != nil {
+		return err
+	}
+	if len(matches) < minHealth {
+		fmt.Printf("Your selector matches %d nodes but your minhealth is set to only %d, this daemon set will not replicate. Continue?\n", len(matches), minHealth)
+		if !confirm() {
+			return util.Errorf("User cancelled")
+		}
+	}
+	return nil
 }
 
 func parseNodeSelector(selectorString string) (klabels.Selector, error) {
