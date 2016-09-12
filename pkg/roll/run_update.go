@@ -164,9 +164,6 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 		if !RetryOrQuit(func() error { return u.rcs.SetDesiredReplicas(u.OldRC, 0) }, quit, u.logger, "Could not zero old replica count") {
 			return
 		}
-		if !RetryOrQuit(func() error { return u.rcs.Enable(u.OldRC) }, quit, u.logger, "Could not enable old RC") {
-			return
-		}
 		if !RetryOrQuit(func() error { return u.rcs.Delete(u.OldRC, false) }, quit, u.logger, "Could not delete old RC") {
 			return
 		}
