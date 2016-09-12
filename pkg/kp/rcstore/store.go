@@ -40,6 +40,9 @@ type Store interface {
 	SetDesiredReplicas(fields.ID, int) error
 	// Add the given integer to the given RC's replica count (bounding at zero).
 	AddDesiredReplicas(fields.ID, int) error
+	// First check that the desired replica count for the given RC is the given integer
+	// (returning an error if it is not), and if it is, set it to the given integer.
+	CASDesiredReplicas(rcID fields.ID, expectedValue int, newValue int) error
 
 	// Set the RC to be enabled. An enabled RC will attempt to meet its desires.
 	Enable(fields.ID) error

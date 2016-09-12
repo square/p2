@@ -460,6 +460,16 @@ func (s *consulStore) AddDesiredReplicas(id fields.ID, n int) error {
 	})
 }
 
+func (s *consulStore) CASDesiredReplicas(id fields.ID, expected int, n int) error {
+	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
+		if rc.ReplicasDesired != expected {
+			return rc, fmt.Errorf("replication controller %s has %d desired replicas instead of %d, not setting to %d", rc.ID, rc.ReplicasDesired, expected, n)
+		}
+		rc.ReplicasDesired = n
+		return rc, nil
+	})
+}
+
 func (s *consulStore) Delete(id fields.ID, force bool) error {
 	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
 		if !force && rc.ReplicasDesired != 0 {
