@@ -141,6 +141,23 @@ func (s *fakeStore) AddDesiredReplicas(id fields.ID, n int) error {
 	return nil
 }
 
+func (s *fakeStore) CASDesiredReplicas(id fields.ID, expected int, n int) error {
+	entry, ok := s.rcs[id]
+	if !ok {
+		return util.Errorf("Nonexistent RC")
+	}
+
+	if entry.ReplicasDesired != expected {
+		return util.Errorf("pre-empted")
+	}
+
+	entry.ReplicasDesired = n
+	for _, channel := range entry.watchers {
+		channel <- struct{}{}
+	}
+	return nil
+}
+
 func (s *fakeStore) Delete(id fields.ID, force bool) error {
 	entry, ok := s.rcs[id]
 	if !ok {
