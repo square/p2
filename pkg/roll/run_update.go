@@ -252,14 +252,14 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 					"nextAdd":    nextAdd,
 				}).Infof("Adding %d new nodes and removing %d old nodes", nextAdd, nextRemove)
 				if nextRemove > 0 {
-					err = u.rcs.AddDesiredReplicas(u.OldRC, -nextRemove)
+					err = u.rcs.CASDesiredReplicas(u.OldRC, oldNodes.Desired, oldNodes.Desired-nextRemove)
 					if err != nil {
 						u.logger.WithError(err).Errorln("Could not decrement old replica count")
 						break
 					}
 				}
 				if nextAdd > 0 {
-					err = u.rcs.AddDesiredReplicas(u.NewRC, nextAdd)
+					err = u.rcs.CASDesiredReplicas(u.NewRC, newNodes.Desired, newNodes.Desired+nextAdd)
 					if err != nil {
 						u.logger.WithError(err).Errorln("Could not increment new replica count")
 						break
