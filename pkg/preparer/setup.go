@@ -1,8 +1,6 @@
 package preparer
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -25,6 +23,7 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
+	netutil "github.com/square/p2/pkg/util/net"
 	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/util/size"
 	"gopkg.in/yaml.v2"
@@ -170,41 +169,6 @@ func loadToken(path string) (string, error) {
 	return strings.TrimSpace(string(token)), nil
 }
 
-// getTLSConfig constructs a tls.Config that uses keys/certificates in the given files.
-func getTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
-	var certs []tls.Certificate
-	if certFile != "" || keyFile != "" {
-		if certFile == "" || keyFile == "" {
-			return nil, util.Errorf("TLS client requires both cert file and key file")
-		}
-		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-		if err != nil {
-			return nil, util.Errorf("Could not load keypair: %s", err)
-		}
-		certs = append(certs, cert)
-	}
-
-	var cas *x509.CertPool
-	if caFile != "" {
-		cas = x509.NewCertPool()
-		caBytes, err := ioutil.ReadFile(caFile)
-		if err != nil {
-			return nil, err
-		}
-		ok := cas.AppendCertsFromPEM(caBytes)
-		if !ok {
-			return nil, util.Errorf("Could not parse certificate file: %s", caFile)
-		}
-	}
-
-	tlsConfig := &tls.Config{
-		Certificates: certs,
-		ClientCAs:    cas,
-		RootCAs:      cas,
-	}
-	return tlsConfig, nil
-}
-
 // GetStore constructs a key-value store from the given configuration.
 func (c *PreparerConfig) GetStore() (kp.Store, error) {
 	opts, err := c.getOpts()
@@ -238,7 +202,7 @@ func (c *PreparerConfig) getOpts() (kp.Options, error) {
 }
 
 func (c *PreparerConfig) GetClient(cxnTimeout time.Duration) (*http.Client, error) {
-	tlsConfig, err := getTLSConfig(c.CertFile, c.KeyFile, c.CAFile)
+	tlsConfig, err := netutil.GetTLSConfig(c.CertFile, c.KeyFile, c.CAFile)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +217,7 @@ func (c *PreparerConfig) GetClient(cxnTimeout time.Duration) (*http.Client, erro
 }
 
 func (c *PreparerConfig) GetInsecureClient(cxnTimeout time.Duration) (*http.Client, error) {
-	tlsConfig, err := getTLSConfig(c.CertFile, c.KeyFile, c.CAFile)
+	tlsConfig, err := netutil.GetTLSConfig(c.CertFile, c.KeyFile, c.CAFile)
 	if err != nil {
 		return nil, err
 	}
