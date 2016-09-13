@@ -54,7 +54,8 @@ func WatchPrefix(
 		timer.Reset(pause) // upper bound on request rate
 		safeListStart = time.Now()
 		pairs, queryMeta, err := SafeList(clientKV, done, prefix, &api.QueryOptions{
-			WaitIndex: currentIndex,
+			WaitIndex:  currentIndex,
+			AllowStale: true,
 		})
 		listLatencyHistogram.Update(int64(time.Since(safeListStart) / time.Millisecond))
 		switch err {
@@ -298,7 +299,8 @@ func WatchDiff(
 
 			safeListStart = time.Now()
 			pairs, queryMeta, err := SafeList(clientKV, quitCh, prefix, &api.QueryOptions{
-				WaitIndex: currentIndex,
+				WaitIndex:  currentIndex,
+				AllowStale: true,
 			})
 			listLatencyHistogram.Update(int64(time.Since(safeListStart) / time.Millisecond))
 
