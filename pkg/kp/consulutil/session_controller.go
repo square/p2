@@ -8,11 +8,17 @@ import (
 
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util/param"
+	"github.com/square/p2/pkg/util/randseed"
 )
 
-// SessionRetrySeconds specifies how long to wait between retries when establishing a
-// session to Consul.
-var SessionRetrySeconds = param.Int("session_retry_seconds", 5)
+// SessionRetrySeconds specifies the base time to wait between retries when establishing a
+// session. In the presence of errors, the effective time is derived from this base
+// following a strategy of exponential backoff with jitter.
+var SessionRetrySeconds = param.Int("session_retry_seconds", 10)
+
+// SessionMaxRetrySeconds is the maximum number of seconds to wait between failed
+// attempts to acquire a session.
+var SessionMaxRetrySeconds = param.Int("session_max_retry_seconds", 300)
 
 // SessionManager continually creates and maintains Consul sessions. It is intended to be
 // run in its own goroutine. If one session expires, a new one will be created. As
@@ -34,8 +40,29 @@ func SessionManager(
 	done chan struct{},
 	logger logging.Logger,
 ) {
+	prng := randseed.NewRand()
+	baseDelay := time.Duration(*SessionRetrySeconds) * time.Second
+	maxDelay := time.Duration(*SessionMaxRetrySeconds) * time.Second
+	useDelay := false
+	var delay time.Duration
+
 	logger.NoFields().Info("session manager: starting up")
 	for {
+		if useDelay {
+			// Normalize timeout range
+			if delay < baseDelay {
+				delay = baseDelay
+			} else if delay > maxDelay {
+				delay = maxDelay
+			}
+			select {
+			case <-time.After(time.Duration(prng.Int63n(int64(delay)))):
+			case <-done:
+			}
+		} else {
+			// Skip the delay on the first loop iteration
+			useDelay = true
+		}
 		// Check for exit signal
 		select {
 		case <-done:
@@ -48,9 +75,12 @@ func SessionManager(
 		id, _, err := client.Session().CreateNoChecks(&config, nil)
 		if err != nil {
 			logger.WithError(err).Error("session manager: error creating Consul session")
-			time.Sleep(time.Duration(*SessionRetrySeconds) * time.Second)
+			// Exponential backoff
+			delay = delay * 2
 			continue
 		}
+		successTime := time.Now()
+		delay = baseDelay
 		sessionLogger := logger.SubLogger(logrus.Fields{
 			"session": id,
 		})
@@ -61,6 +91,12 @@ func SessionManager(
 			err = client.Session().RenewPeriodic(config.TTL, id, nil, done)
 			if err != nil {
 				sessionLogger.WithError(err).Error("session manager: lost session")
+				// Session loss is an indicator that Consul is very congested and we must
+				// back off. However, it isn't clear how long to wait for. As a heuristic,
+				// just ensure that "maxDelay" time has passed since the last successful
+				// session creation. A session that doesn't survive long gets delayed a
+				// lot; an infrequent loss gets a low delay.
+				delay = maxDelay - time.Since(successTime)
 			} else {
 				sessionLogger.NoFields().Info("session manager: released session")
 			}
