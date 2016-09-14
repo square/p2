@@ -13,10 +13,12 @@ import (
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/rc/fields"
-	"github.com/square/p2/pkg/rc/rcmetrics"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/util"
+
+	"github.com/rcrowley/go-metrics"
 )
 
 // The Farm is responsible for spawning and reaping replication controllers
@@ -46,8 +48,6 @@ type Farm struct {
 	logger     logging.Logger
 	alerter    alerting.Alerter
 	rcSelector klabels.Selector
-
-	metrics *rcmetrics.Metrics
 }
 
 type childRC struct {
@@ -80,13 +80,7 @@ func NewFarm(
 		children:   make(map[fields.ID]childRC),
 		alerter:    alerter,
 		rcSelector: rcSelector,
-		metrics:    rcmetrics.NewMetrics(logger),
 	}
-}
-
-// Set the rcmetrics.Metrics struct to record metrics on.
-func (rcf *Farm) SetMetricsRegistry(registry rcmetrics.MetricsRegistry) error {
-	return rcf.metrics.SetMetricsRegistry(registry)
 }
 
 // Start is a blocking function that monitors Consul for replication controllers.
@@ -232,7 +226,8 @@ START_LOOP:
 			endTime := time.Now()
 			processingTime := endTime.Sub(startTime)
 			rcf.logger.WithField("rc_processing_time", processingTime.String()).Infoln("Finished processing RC update")
-			rcf.metrics.RecordRCProcessingTime(processingTime)
+			histogram := metrics.GetOrRegisterHistogram("rc_processing_time", p2metrics.Registry, metrics.NewExpDecaySample(1028, 0.015))
+			histogram.Update(int64(processingTime))
 		}
 	}
 }
