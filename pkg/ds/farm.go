@@ -5,9 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/square/p2/pkg/util"
-
 	"github.com/Sirupsen/logrus"
+
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/ds/fields"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
@@ -19,6 +18,8 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/util"
+
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
