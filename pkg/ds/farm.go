@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/square/p2/pkg/util"
-
 	"github.com/Sirupsen/logrus"
+	"github.com/rcrowley/go-metrics"
+
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/ds/fields"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
@@ -17,8 +17,11 @@ import (
 	"github.com/square/p2/pkg/kp/dsstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/util"
+
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -111,6 +114,9 @@ func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
 			dsf.logger.Errorf("Unable to get daemon sets from intent tree in daemon set farm: %v", err)
 			continue
 		}
+
+		countHistogram := metrics.GetOrRegisterHistogram("ds_count", p2metrics.Registry, metrics.NewExpDecaySample(1028, 0.015))
+		countHistogram.Update(int64(len(allDaemonSets)))
 
 		dsIDMap := make(map[fields.ID]ds_fields.DaemonSet)
 		for _, dsFields := range allDaemonSets {
