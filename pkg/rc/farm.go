@@ -129,6 +129,8 @@ START_LOOP:
 		case rcFields := <-rcWatch:
 			startTime := time.Now()
 			rcf.logger.WithField("n", len(rcFields)).Debugln("Received replication controller update")
+			countHistogram := metrics.GetOrRegisterHistogram("rc_count", p2metrics.Registry, metrics.NewExpDecaySample(1028, 0.015))
+			countHistogram.Update(int64(len(rcFields)))
 
 			rcf.failsafe(rcFields)
 

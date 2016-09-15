@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/rcrowley/go-metrics"
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health/checker"
@@ -15,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/kp/rollstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/rc/fields"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/scheduler"
@@ -140,6 +142,8 @@ START_LOOP:
 			rlf.logger.WithError(err).Errorln("Could not read consul updates")
 		case rlFields := <-rlWatch:
 			rlf.logger.WithField("n", len(rlFields)).Debugln("Received update update")
+			countHistogram := metrics.GetOrRegisterHistogram("ru_count", p2metrics.Registry, metrics.NewExpDecaySample(1028, 0.015))
+			countHistogram.Update(int64(len(rlFields)))
 
 			// track which children were found in the returned set
 			foundChildren := make(map[roll_fields.ID]struct{})
