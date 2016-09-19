@@ -334,7 +334,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	return &Preparer{
 		node:                   preparerConfig.NodeName,
 		store:                  store,
-		hooks:                  hooks.Hooks(preparerConfig.HooksDirectory, &logger),
+		hooks:                  hooks.Hooks(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger),
 		hookListener:           listener,
 		Logger:                 logger,
 		podFactory:             pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName),

@@ -19,6 +19,7 @@ var (
 	hookDir      = kingpin.Flag("hook-dir", "The root of the hooks").Default(hooks.DEFAULT_PATH).String()
 	manifestPath = kingpin.Flag("manifest", "The manifest to use (this is useful when we are in the before_install phase)").ExistingFile()
 	nodeName     = kingpin.Flag("node-name", "The name of this node (default: hostname)").String()
+	podRoot      = kingpin.Flag("pod-root", "The system root for pods").Default(pods.DefaultPath).String()
 )
 
 func main() {
@@ -33,7 +34,7 @@ func main() {
 		*nodeName = hostname
 	}
 
-	dir := hooks.Hooks(*hookDir, &logging.DefaultLogger)
+	dir := hooks.Hooks(*hookDir, *podRoot, &logging.DefaultLogger)
 
 	hookType, err := hooks.AsHookType(*hookType)
 	if err != nil {
