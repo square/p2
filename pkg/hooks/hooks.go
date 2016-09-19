@@ -27,6 +27,7 @@ const (
 	HOOKED_CONFIG_PATH_ENV_VAR     = "HOOKED_CONFIG_PATH"
 	HOOKED_ENV_PATH_ENV_VAR        = "HOOKED_ENV_PATH"
 	HOOKED_CONFIG_DIR_PATH_ENV_VAR = "HOOKED_CONFIG_DIR_PATH"
+	HOOKED_SYSTEM_POD_ROOT_ENV_VAR = "HOOKED_SYSTEM_POD_ROOT"
 
 	DefaultTimeout = 120 * time.Second
 )
@@ -40,6 +41,7 @@ type Pod interface {
 
 type HookDir struct {
 	dirpath string
+	podRoot string
 	logger  *logging.Logger
 }
 
@@ -77,8 +79,12 @@ func AsHookType(value string) (HookType, error) {
 	}
 }
 
-func Hooks(dirpath string, logger *logging.Logger) *HookDir {
-	return &HookDir{dirpath, logger}
+func Hooks(dirpath string, podRoot string, logger *logging.Logger) *HookDir {
+	return &HookDir{
+		dirpath: dirpath,
+		podRoot: podRoot,
+		logger:  logger,
+	}
 }
 
 // runDirectory executes all executable files in a given directory path.
@@ -220,6 +226,7 @@ func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest 
 		fmt.Sprintf("%s=%s", HOOKED_CONFIG_PATH_ENV_VAR, path.Join(pod.ConfigDir(), configFileName)),
 		fmt.Sprintf("%s=%s", HOOKED_ENV_PATH_ENV_VAR, pod.EnvDir()),
 		fmt.Sprintf("%s=%s", HOOKED_CONFIG_DIR_PATH_ENV_VAR, pod.ConfigDir()),
+		fmt.Sprintf("%s=%s", HOOKED_SYSTEM_POD_ROOT_ENV_VAR, h.podRoot),
 	}
 
 	return runDirectory(dirpath, hookEnvironment, logger)

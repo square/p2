@@ -60,6 +60,9 @@ func (h *HookEnv) Node() (types.NodeName, error) {
 	return types.NodeName(node), nil
 }
 
+// Initializes a pod from the current_manifest.yaml file in the pod's home directory. This function
+// will error or return an old manifest if run during an inappropriate hook event, use of this
+// function is discouraged in most cases
 func (h *HookEnv) PodFromDisk() (*pods.Pod, error) {
 	node, err := h.Node()
 	if err != nil {
@@ -71,6 +74,18 @@ func (h *HookEnv) PodFromDisk() (*pods.Pod, error) {
 	}
 
 	return pods.PodFromPodHome(types.NodeName(node), podHome)
+}
+
+// Initializes a pod based on the hooked pod manifest and the system pod root
+func (h *HookEnv) Pod() (*pods.Pod, error) {
+	factory := pods.NewFactory(os.Getenv(HOOKED_SYSTEM_POD_ROOT_ENV_VAR), HOOKED_NODE_ENV_VAR)
+
+	podID, err := h.PodID()
+	if err != nil {
+		return nil, err
+	}
+
+	return factory.NewPod(podID), nil
 }
 
 func (h *HookEnv) Config() (*config.Config, error) {
