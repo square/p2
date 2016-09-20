@@ -239,7 +239,7 @@ func TestVersionScheme(t *testing.T) {
 		t.Errorf("OS version tag wasn't properly passed, wanted os_version=%s included in request URL", osVersion)
 	}
 
-	if query.Get("version") != launchable.Version.ID {
+	if query.Get("version") != launchable.Version.ID.String() {
 		t.Errorf("Version tag wasn't properly passed, wanted version=%s included in the request URL", launchable.Version.ID)
 	}
 }

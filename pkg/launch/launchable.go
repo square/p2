@@ -17,9 +17,13 @@ type LaunchableID string
 
 func (l LaunchableID) String() string { return string(l) }
 
+type LaunchableVersionID string
+
+func (l LaunchableVersionID) String() string { return string(l) }
+
 type LaunchableVersion struct {
-	ID   string            `yaml:"id"`
-	Tags map[string]string `yaml:"tags,omitempty"`
+	ID   LaunchableVersionID `yaml:"id"`
+	Tags map[string]string   `yaml:"tags,omitempty"`
 }
 
 type LaunchableStanza struct {
@@ -47,7 +51,7 @@ type LaunchableStanza struct {
 	Version LaunchableVersion `yaml:"version,omitempty"`
 }
 
-func (l LaunchableStanza) LaunchableVersion() (string, error) {
+func (l LaunchableStanza) LaunchableVersion() (LaunchableVersionID, error) {
 	if l.Version.ID != "" {
 		return l.Version.ID, nil
 	}
@@ -63,14 +67,14 @@ func (l LaunchableStanza) LaunchableVersion() (string, error) {
 
 var locationBaseRegex = regexp.MustCompile(`^[a-z0-9-_]+_([a-f0-9]{40}(\-[a-z0-9]+)?)\.tar\.gz$`)
 
-func versionFromLocation(location string) (string, error) {
+func versionFromLocation(location string) (LaunchableVersionID, error) {
 	filename := path.Base(location)
 	parts := locationBaseRegex.FindStringSubmatch(filename)
 	if parts == nil {
 		return "", util.Errorf("Malformed filename in URL: %s", filename)
 	}
 
-	return parts[1], nil
+	return LaunchableVersionID(parts[1]), nil
 }
 
 const DefaultAllowableDiskUsage = 10 * size.Gibibyte

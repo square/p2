@@ -60,7 +60,11 @@ func TestGetLaunchable(t *testing.T) {
 		if launchable.Id != "app" {
 			t.Errorf("Launchable Id did not have expected value: wanted '%s' was '%s'", "app", launchable.Id)
 		}
-		Assert(t).AreEqual("3c021aff048ca8117593f9c71e03b87cf72fd440", launchable.Version, "Launchable version did not have expected value")
+
+		expectedVersion := "3c021aff048ca8117593f9c71e03b87cf72fd440"
+		if launchable.Version.String() != expectedVersion {
+			t.Errorf("Launchable version did not have expected value: wanted '%s' was '%s'", expectedVersion, launchable.Version)
+		}
 		Assert(t).AreEqual("hello__app", launchable.ServiceId, "Launchable ServiceId did not have expected value")
 		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
 		Assert(t).IsTrue(launchable.ExecNoLimit, "GetLaunchable() should always set ExecNoLimit to true for hoist launchables")
@@ -82,7 +86,9 @@ func TestGetLaunchableNoVersion(t *testing.T) {
 		t.Errorf("Launchable Id did not have expected value: wanted '%s' was '%s'", "somelaunchable", launchable.Id)
 	}
 
-	Assert(t).AreEqual("", launchable.Version, "Launchable version did not have expected value")
+	if launchable.Version != "" {
+		t.Errorf("Launchable version should have been empty, was '%s'", launchable.Version)
+	}
 	Assert(t).AreEqual("hello__somelaunchable", launchable.ServiceId, "Launchable ServiceId did not have expected value")
 	Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
 	Assert(t).IsTrue(launchable.ExecNoLimit, "GetLaunchable() should always set ExecNoLimit to true for hoist launchables")

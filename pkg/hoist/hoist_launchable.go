@@ -22,23 +22,23 @@ import (
 
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type Launchable struct {
-	Id               launch.LaunchableID   // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
-	Version          string                // A version identifier
-	ServiceId        string                // A (host-wise) unique identifier for this launchable, used when creating runit services
-	RunAs            string                // The user to assume when launching the executable
-	PodEnvDir        string                // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
-	RootDir          string                // The root directory of the launchable, containing N:N>=1 installs.
-	P2Exec           string                // Struct that can be used to build a p2-exec invocation with appropriate flags
-	ExecNoLimit      bool                  // If set, execute with the -n (--no-limit) argument to p2-exec
-	CgroupConfig     cgroups.Config        // Cgroup parameters to use with p2-exec
-	CgroupConfigName string                // The string in PLATFORM_CONFIG to pass to p2-exec
-	CgroupName       string                // The name of the cgroup to run this launchable in
-	RestartTimeout   time.Duration         // How long to wait when restarting the services in this launchable.
-	RestartPolicy    runit.RestartPolicy   // Dictates whether the launchable should be automatically restarted upon exit.
-	SuppliedEnvVars  map[string]string     // A map of user-supplied environment variables to be exported for this launchable
-	Location         *url.URL              // URL to download the artifact from
-	VerificationData auth.VerificationData // Paths to files used to verify the artifact
-	EntryPoints      []string              // paths to entry points to launch under runit
+	Id               launch.LaunchableID        // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
+	Version          launch.LaunchableVersionID // A version identifier
+	ServiceId        string                     // A (host-wise) unique identifier for this launchable, used when creating runit services
+	RunAs            string                     // The user to assume when launching the executable
+	PodEnvDir        string                     // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
+	RootDir          string                     // The root directory of the launchable, containing N:N>=1 installs.
+	P2Exec           string                     // Struct that can be used to build a p2-exec invocation with appropriate flags
+	ExecNoLimit      bool                       // If set, execute with the -n (--no-limit) argument to p2-exec
+	CgroupConfig     cgroups.Config             // Cgroup parameters to use with p2-exec
+	CgroupConfigName string                     // The string in PLATFORM_CONFIG to pass to p2-exec
+	CgroupName       string                     // The name of the cgroup to run this launchable in
+	RestartTimeout   time.Duration              // How long to wait when restarting the services in this launchable.
+	RestartPolicy    runit.RestartPolicy        // Dictates whether the launchable should be automatically restarted upon exit.
+	SuppliedEnvVars  map[string]string          // A map of user-supplied environment variables to be exported for this launchable
+	Location         *url.URL                   // URL to download the artifact from
+	VerificationData auth.VerificationData      // Paths to files used to verify the artifact
+	EntryPoints      []string                   // paths to entry points to launch under runit
 }
 
 // LaunchAdapter adapts a hoist.Launchable to the launch.Launchable interface.
@@ -305,7 +305,7 @@ func (hl *Launchable) PostInstall() error {
 func (hl *Launchable) Name() string {
 	name := hl.Id.String()
 	if hl.Version != "" {
-		name = name + "_" + hl.Version
+		name = name + "_" + hl.Version.String()
 	}
 	return name
 }
