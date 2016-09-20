@@ -109,7 +109,7 @@ func (a registry) fetchRegistryData(launchableID launch.LaunchableID, version la
 
 	query.Add(osTag, os.String())
 	query.Add(osVersionTag, osVersion.String())
-	query.Add(versionTag, version.ID)
+	query.Add(versionTag, version.ID.String())
 
 	requestURL.RawQuery = query.Encode()
 

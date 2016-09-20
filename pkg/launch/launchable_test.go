@@ -7,7 +7,7 @@ import (
 func TestVersionFromLocation(t *testing.T) {
 	type testExpectation struct {
 		Location        string
-		ExpectedVersion string
+		ExpectedVersion LaunchableVersionID
 		ExpectError     bool
 	}
 
