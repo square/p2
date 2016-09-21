@@ -15,6 +15,7 @@ import (
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc"
 	rcf "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
@@ -409,10 +410,16 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 		node := pod.Node
 		// TODO: is reality checking an rc-layer concern?
 		realManifest, _, err := u.kps.Pod(kp.REALITY_TREE, node, rcFields.Manifest.ID())
-		if err != nil {
+		if err != nil && err != pods.NoCurrentManifest {
 			return ret, err
 		}
-		realSHA, _ := realManifest.SHA()
+
+		// if realManifest is nil, we use an empty string for comparison purposes against rc
+		// manifest SHA, which works for that purpose.
+		var realSHA string
+		if realManifest != nil {
+			realSHA, _ = realManifest.SHA()
+		}
 		targetSHA, _ := rcFields.Manifest.SHA()
 		if targetSHA == realSHA {
 			ret.Real++
