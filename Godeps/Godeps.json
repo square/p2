@@ -418,6 +418,14 @@
 			"Rev": "d58ca6618b994150e624f6888d871f4709db51a0"
 		},
 		{
+			"ImportPath": "golang.org/x/net/http2",
+			"Rev": "d58ca6618b994150e624f6888d871f4709db51a0"
+		},
+		{
+			"ImportPath": "golang.org/x/net/http2/hpack",
+			"Rev": "d58ca6618b994150e624f6888d871f4709db51a0"
+		},
+		{
 			"ImportPath": "golang.org/x/sys/unix",
 			"Rev": "a646d33e2ee3172a661fc09bca23bb4889a41bc8"
 		},
