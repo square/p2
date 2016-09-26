@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"golang.org/x/net/http2"
+	"gopkg.in/yaml.v2"
+
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
@@ -27,7 +30,6 @@ import (
 	netutil "github.com/square/p2/pkg/util/net"
 	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/util/size"
-	"gopkg.in/yaml.v2"
 )
 
 // DefaultConsulAddress is the default location for Consul when none is configured.
@@ -64,6 +66,7 @@ type PreparerConfig struct {
 	ConsulAddress          string                 `yaml:"consul_address"`
 	ConsulHttps            bool                   `yaml:"consul_https,omitempty"`
 	ConsulTokenPath        string                 `yaml:"consul_token_path,omitempty"`
+	HTTP2                  bool                   `yaml:"http2,omitempty"`
 	HooksDirectory         string                 `yaml:"hooks_directory"`
 	CAFile                 string                 `yaml:"ca_file,omitempty"`
 	CertFile               string                 `yaml:"cert_file,omitempty"`
@@ -212,35 +215,37 @@ func (c *PreparerConfig) getOpts() (kp.Options, error) {
 	}, err
 }
 
-func (c *PreparerConfig) GetClient(cxnTimeout time.Duration) (*http.Client, error) {
+func (c *PreparerConfig) getClient(
+	cxnTimeout time.Duration,
+	insecureSkipVerify bool,
+) (*http.Client, error) {
 	tlsConfig, err := netutil.GetTLSConfig(c.CertFile, c.KeyFile, c.CAFile)
 	if err != nil {
 		return nil, err
 	}
-	return &http.Client{Transport: &http.Transport{
+	tlsConfig.InsecureSkipVerify = insecureSkipVerify
+	transport := &http.Transport{
 		TLSClientConfig: tlsConfig,
 		// same dialer as http.DefaultTransport
 		Dial: (&net.Dialer{
 			Timeout:   cxnTimeout,
 			KeepAlive: cxnTimeout,
 		}).Dial,
-	}}, nil
+	}
+	if c.HTTP2 {
+		if err = http2.ConfigureTransport(transport); err != nil {
+			return nil, err
+		}
+	}
+	return &http.Client{Transport: transport}, nil
+}
+
+func (c *PreparerConfig) GetClient(cxnTimeout time.Duration) (*http.Client, error) {
+	return c.getClient(cxnTimeout, false)
 }
 
 func (c *PreparerConfig) GetInsecureClient(cxnTimeout time.Duration) (*http.Client, error) {
-	tlsConfig, err := netutil.GetTLSConfig(c.CertFile, c.KeyFile, c.CAFile)
-	if err != nil {
-		return nil, err
-	}
-	tlsConfig.InsecureSkipVerify = true
-	return &http.Client{Transport: &http.Transport{
-		TLSClientConfig: tlsConfig,
-		// same dialer as http.DefaultTransport
-		Dial: (&net.Dialer{
-			Timeout:   cxnTimeout,
-			KeepAlive: cxnTimeout,
-		}).Dial,
-	}}, nil
+	return c.getClient(cxnTimeout, true)
 }
 
 func addHooks(preparerConfig *PreparerConfig, logger logging.Logger) {
