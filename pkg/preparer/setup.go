@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -83,6 +84,10 @@ type PreparerConfig struct {
 	// Params defines a collection of miscellaneous runtime parameters defined throughout the
 	// source files.
 	Params param.Values `yaml:"params"`
+
+	// Use a single Store so that all requests go through the same HTTP client.
+	mux   sync.Mutex
+	store kp.Store
 }
 
 // --- Deployer ACL strategies ---
@@ -130,7 +135,7 @@ func LoadConfig(configPath string) (*PreparerConfig, error) {
 func UnmarshalConfig(config []byte) (*PreparerConfig, error) {
 	appConfig := AppConfig{}
 	err := yaml.Unmarshal(config, &appConfig)
-	preparerConfig := appConfig.P2PreparerConfig
+	preparerConfig := &appConfig.P2PreparerConfig
 	if err != nil {
 		return nil, util.Errorf("The config file %s was malformatted - %s", config, err)
 	}
@@ -152,7 +157,7 @@ func UnmarshalConfig(config []byte) (*PreparerConfig, error) {
 	if preparerConfig.PodRoot == "" {
 		preparerConfig.PodRoot = pods.DefaultPath
 	}
-	return &preparerConfig, nil
+	return preparerConfig, nil
 
 }
 
@@ -171,12 +176,18 @@ func loadToken(path string) (string, error) {
 
 // GetStore constructs a key-value store from the given configuration.
 func (c *PreparerConfig) GetStore() (kp.Store, error) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	if c.store != nil {
+		return c.store, nil
+	}
 	opts, err := c.getOpts()
 	if err != nil {
 		return nil, err
 	}
-	client := kp.NewConsulClient(opts)
-	return kp.NewConsulStore(client), nil
+	store := kp.NewConsulStore(kp.NewConsulClient(opts))
+	c.store = store
+	return store, nil
 }
 
 func (c *PreparerConfig) getOpts() (kp.Options, error) {
