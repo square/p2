@@ -323,7 +323,9 @@ func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {
 func (rc *replicationController) CurrentPods() (types.PodLocations, error) {
 	selector := klabels.Everything().Add(RCIDLabel, klabels.EqualsOperator, []string{rc.ID().String()})
 
-	podMatches, err := rc.podApplicator.GetMatches(selector, labels.POD)
+	// replication controllers can only pass cachedMatch = false because their operations for matching
+	// replica counts are not necessarily idempotent.
+	podMatches, err := rc.podApplicator.GetMatches(selector, labels.POD, false)
 	if err != nil {
 		return nil, err
 	}

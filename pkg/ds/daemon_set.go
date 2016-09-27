@@ -85,6 +85,10 @@ type daemonSet struct {
 
 	// Indicates how long to wait between updating each node during a replication
 	rateLimitInterval time.Duration
+
+	// allow stale reads of matching pods.  We allow stale matches for daemon
+	// set queries because the consequent operations are idempotent.
+	cachedPodMatch bool
 }
 
 type dsContention struct {
@@ -100,6 +104,7 @@ func New(
 	logger logging.Logger,
 	healthChecker *checker.ConsulHealthChecker,
 	rateLimitInterval time.Duration,
+	cachedPodMatch bool,
 ) DaemonSet {
 	return &daemonSet{
 		DaemonSet: fields,
@@ -112,6 +117,7 @@ func New(
 		healthChecker:      healthChecker,
 		currentReplication: nil,
 		rateLimitInterval:  rateLimitInterval,
+		cachedPodMatch:     cachedPodMatch,
 	}
 }
 
@@ -548,7 +554,7 @@ func (ds *daemonSet) CurrentPods() (types.PodLocations, error) {
 	// had scheduled on
 	selector := klabels.Everything().Add(DSIDLabel, klabels.EqualsOperator, []string{ds.ID().String()})
 
-	podMatches, err := ds.applicator.GetMatches(selector, labels.POD)
+	podMatches, err := ds.applicator.GetMatches(selector, labels.POD, ds.cachedPodMatch)
 	if err != nil {
 		return nil, util.Errorf("Unable to get matches on pod tree: %v", err)
 	}

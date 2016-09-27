@@ -81,8 +81,10 @@ type Applicator interface {
 	// Get all Labels assigned to the given object
 	GetLabels(labelType Type, id string) (Labeled, error)
 
-	// Return all objects of the given type that match the given selector
-	GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error)
+	// Return all objects of the given type that match the given selector.
+	// When cachedMatch is enabled, Applicators may choose to use an internal cache of
+	// aggregated results to answer GetMatches queries.
+	GetMatches(selector labels.Selector, labelType Type, cachedMatch bool) ([]Labeled, error)
 
 	// Watch a label selector of a given type and see updates to that set
 	// of Labeled over time. If an error occurs, the Applicator implementation

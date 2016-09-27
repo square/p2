@@ -279,7 +279,7 @@ func (s *consulStore) FindWhereLabeled(podID types.PodID,
 		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{availabilityZone.String()}).
 		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
-	podClusters, err := s.applicator.GetMatches(sel, labels.PC)
+	podClusters, err := s.applicator.GetMatches(sel, labels.PC, false)
 	if err != nil {
 		return nil, err
 	}

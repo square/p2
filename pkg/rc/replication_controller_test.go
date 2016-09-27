@@ -84,7 +84,7 @@ func setup(t *testing.T) (
 
 func scheduledPods(t *testing.T, pods labels.Applicator) []labels.Labeled {
 	podSelector := klabels.Everything().Add("podTest", klabels.EqualsOperator, []string{"successful"})
-	labeled, err := pods.GetMatches(podSelector, labels.POD)
+	labeled, err := pods.GetMatches(podSelector, labels.POD, false)
 	Assert(t).IsNil(err, "expected no error matching pods")
 	return labeled
 }

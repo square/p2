@@ -387,7 +387,7 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	defer session.Destroy()
 
 	// Check if any RCs match the oldRCSelector
-	matches, err := s.labeler.GetMatches(oldRCSelector, labels.RC)
+	matches, err := s.labeler.GetMatches(oldRCSelector, labels.RC, false)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}

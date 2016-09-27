@@ -45,6 +45,8 @@ type Farm struct {
 	alerter alerting.Alerter
 
 	healthChecker *checker.ConsulHealthChecker
+
+	cachedPodMatch bool
 }
 
 type childDS struct {
@@ -65,6 +67,7 @@ func NewFarm(
 	alerter alerting.Alerter,
 	healthChecker *checker.ConsulHealthChecker,
 	rateLimitInterval time.Duration,
+	cachedPodMatch bool,
 ) *Farm {
 	if alerter == nil {
 		alerter = alerting.NewNop()
@@ -81,6 +84,7 @@ func NewFarm(
 		alerter:           alerter,
 		healthChecker:     healthChecker,
 		rateLimitInterval: rateLimitInterval,
+		cachedPodMatch:    cachedPodMatch,
 	}
 }
 
@@ -126,7 +130,7 @@ func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
 		dsIDLabelSelector := klabels.Everything().
 			Add(DSIDLabel, klabels.ExistsOperator, []string{})
 
-		allPods, err := dsf.applicator.GetMatches(dsIDLabelSelector, labels.POD)
+		allPods, err := dsf.applicator.GetMatches(dsIDLabelSelector, labels.POD, dsf.cachedPodMatch)
 		if err != nil {
 			dsf.logger.Errorf("Unable to get matches for daemon sets in pod store: %v", err)
 			continue
@@ -547,6 +551,7 @@ func (dsf *Farm) spawnDaemonSet(
 		dsLogger,
 		dsf.healthChecker,
 		dsf.rateLimitInterval,
+		dsf.cachedPodMatch,
 	)
 
 	quitSpawnCh := make(chan struct{})

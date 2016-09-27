@@ -26,7 +26,7 @@ func NewApplicatorScheduler(applicator labels.Applicator) *applicatorScheduler {
 }
 
 func (sel *applicatorScheduler) EligibleNodes(_ manifest.Manifest, selector klabels.Selector) ([]types.NodeName, error) {
-	nodes, err := sel.applicator.GetMatches(selector, labels.NODE)
+	nodes, err := sel.applicator.GetMatches(selector, labels.NODE, false)
 	if err != nil {
 		return nil, err
 	}

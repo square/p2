@@ -309,7 +309,7 @@ func main() {
 			log.Fatalf("Error occurred: %v", err)
 		}
 
-		matches, err := applicator.GetMatches(selector, labels.NODE)
+		matches, err := applicator.GetMatches(selector, labels.NODE, false)
 		if err != nil {
 			log.Fatalf("Error getting matching labels: %v", err)
 		}
@@ -333,12 +333,12 @@ func parseNodeSelectorWithPrompt(
 		return newSelector, nil
 	}
 
-	newNodeLabels, err := applicator.GetMatches(newSelector, labels.NODE)
+	newNodeLabels, err := applicator.GetMatches(newSelector, labels.NODE, false)
 	if err != nil {
 		return newSelector, util.Errorf("Error getting matching labels: %v", err)
 	}
 
-	oldNodeLabels, err := applicator.GetMatches(oldSelector, labels.NODE)
+	oldNodeLabels, err := applicator.GetMatches(oldSelector, labels.NODE, false)
 	if err != nil {
 		return newSelector, util.Errorf("Error getting matching labels: %v", err)
 	}
@@ -357,7 +357,7 @@ func parseNodeSelectorWithPrompt(
 }
 
 func confirmMinheathForSelector(minHealth int, selector klabels.Selector, applicator labels.Applicator) error {
-	matches, err := applicator.GetMatches(selector, labels.NODE)
+	matches, err := applicator.GetMatches(selector, labels.NODE, false)
 	if err != nil {
 		return err
 	}

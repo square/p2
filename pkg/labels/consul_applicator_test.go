@@ -134,15 +134,15 @@ func TestBasicMatch(t *testing.T) {
 
 	Assert(t).IsNil(c.SetLabel(POD, "object", "label", "value"), "should have had nil error when setting label")
 
-	matches, err := c.GetMatches(labels.Everything().Add("label", labels.EqualsOperator, []string{"value"}), POD)
+	matches, err := c.GetMatches(labels.Everything().Add("label", labels.EqualsOperator, []string{"value"}), POD, false)
 	Assert(t).IsNil(err, "should have had nil error fetching positive matches")
 	Assert(t).AreEqual(len(matches), 1, "should have had exactly one positive match")
 
-	matches, err = c.GetMatches(labels.Everything().Add("label", labels.EqualsOperator, []string{"value"}), NODE)
+	matches, err = c.GetMatches(labels.Everything().Add("label", labels.EqualsOperator, []string{"value"}), NODE, false)
 	Assert(t).IsNil(err, "should have had nil error fetching positive matches for wrong type")
 	Assert(t).AreEqual(len(matches), 0, "should have had exactly zero mistyped matches")
 
-	matches, err = c.GetMatches(labels.Everything().Add("label", labels.NotInOperator, []string{"value"}), POD)
+	matches, err = c.GetMatches(labels.Everything().Add("label", labels.NotInOperator, []string{"value"}), POD, false)
 	Assert(t).IsNil(err, "should have had nil error fetching negative matches")
 	Assert(t).AreEqual(len(matches), 0, "should have had exactly zero negative matches")
 }
@@ -155,7 +155,7 @@ func TestSetLabels(t *testing.T) {
 
 	Assert(t).IsNil(c.SetLabel(POD, "object", "label", "value"), "should have had nil error when setting label")
 
-	matches, err := c.GetMatches(labels.Everything().Add("label", labels.EqualsOperator, []string{"value"}), POD)
+	matches, err := c.GetMatches(labels.Everything().Add("label", labels.EqualsOperator, []string{"value"}), POD, false)
 	Assert(t).IsNil(err, "should have had nil error fetching positive matches")
 	Assert(t).AreEqual(len(matches), 1, "should have had exactly one positive match")
 
@@ -170,7 +170,7 @@ func TestSetLabels(t *testing.T) {
 		Add("label1", labels.EqualsOperator, []string{"value1"}).
 		Add("label2", labels.EqualsOperator, []string{"value2"})
 
-	matches, err = c.GetMatches(sel, POD)
+	matches, err = c.GetMatches(sel, POD, false)
 	Assert(t).IsNil(err, "should have had nil error fetching positive matches")
 	Assert(t).AreEqual(len(matches), 1, "should have had exactly one positive match")
 }

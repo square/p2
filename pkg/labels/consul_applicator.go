@@ -87,19 +87,36 @@ func (c *consulApplicator) GetLabels(labelType Type, id string) (Labeled, error)
 	return l, err
 }
 
-func (c *consulApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
-	// TODO: use aggregator to enable caching
-	allMatches, _, err := c.kv.List(typePath(labelType)+"/", nil)
-	if err != nil {
-		return nil, err
+func (c *consulApplicator) GetMatches(selector labels.Selector, labelType Type, cachedMatch bool) ([]Labeled, error) {
+
+	var allLabeled []Labeled
+
+	if cachedMatch {
+		aggregator := c.initAggregator(labelType)
+		cache, err := aggregator.getCache()
+		if err == nil {
+			allLabeled = cache
+		} else {
+			c.logger.Warnln("Cache was empty on query, falling back to direct Consul query")
+		}
+	}
+
+	if len(allLabeled) == 0 {
+		allMatches, _, err := c.kv.List(typePath(labelType)+"/", nil)
+		if err != nil {
+			return nil, err
+		}
+		for _, kvp := range allMatches {
+			l, err := convertKVPToLabeled(kvp)
+			if err != nil {
+				return nil, err
+			}
+			allLabeled = append(allLabeled, l)
+		}
 	}
 
 	res := []Labeled{}
-	for _, kvp := range allMatches {
-		l, err := convertKVPToLabeled(kvp)
-		if err != nil {
-			return res, err
-		}
+	for _, l := range allLabeled {
 		if selector.Matches(l.Labels) {
 			res = append(res, l)
 		}
@@ -249,6 +266,11 @@ func convertLabeledToKVP(l Labeled) (*api.KVPair, error) {
 // use the httpApplicator from a server that exposes the results of this (or another)
 // implementation's watch.
 func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh <-chan struct{}) chan []Labeled {
+	aggregator := c.initAggregator(labelType)
+	return aggregator.Watch(selector, quitCh)
+}
+
+func (c *consulApplicator) initAggregator(labelType Type) *consulAggregator {
 	c.aggregatorMux.Lock()
 	defer c.aggregatorMux.Unlock()
 	aggregator, ok := c.aggregators[labelType]
@@ -257,7 +279,7 @@ func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type
 		go aggregator.Aggregate()
 		c.aggregators[labelType] = aggregator
 	}
-	return aggregator.Watch(selector, quitCh)
+	return aggregator
 }
 
 func (c *consulApplicator) WatchMatchDiff(
