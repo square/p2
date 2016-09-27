@@ -29,7 +29,7 @@ const (
 
 func scheduledPods(t *testing.T, ds *daemonSet) []labels.Labeled {
 	selector := klabels.Everything().Add(DSIDLabel, klabels.EqualsOperator, []string{ds.ID().String()})
-	labeled, err := ds.applicator.GetMatches(selector, labels.POD)
+	labeled, err := ds.applicator.GetMatches(selector, labels.POD, false)
 	Assert(t).IsNil(err, "expected no error matching pods")
 	return labeled
 }
@@ -175,6 +175,7 @@ func TestSchedule(t *testing.T) {
 		logging.DefaultLogger,
 		&happyHealthChecker,
 		0,
+		false,
 	).(*daemonSet)
 
 	scheduled := scheduledPods(t, ds)
@@ -359,6 +360,7 @@ func TestPublishToReplication(t *testing.T) {
 		logging.DefaultLogger,
 		&happyHealthChecker,
 		0,
+		false,
 	).(*daemonSet)
 
 	scheduled := scheduledPods(t, ds)

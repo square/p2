@@ -81,7 +81,7 @@ func (app *fakeApplicator) GetLabels(labelType Type, id string) (Labeled, error)
 	}, nil
 }
 
-func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
+func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type, _ bool) ([]Labeled, error) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 	forType, ok := app.data[labelType]
@@ -114,7 +114,7 @@ func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type
 			default:
 			}
 
-			res, _ := app.GetMatches(selector, labelType)
+			res, _ := app.GetMatches(selector, labelType, false)
 
 			select {
 			case <-quitCh:

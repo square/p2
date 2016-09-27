@@ -17,6 +17,12 @@ import (
 	"github.com/square/p2/pkg/logging"
 
 	ds_farm "github.com/square/p2/pkg/ds"
+
+	"gopkg.in/alecthomas/kingpin.v2"
+)
+
+var (
+	useCachePodMatches = kingpin.Flag("use-cached-pod-matches", "If enabled, create a local cache of the pod label tree and match against that instead of querying on all pod selector queries").Bool()
 )
 
 // SessionName returns a node identifier for use when creating Consul sessions.
@@ -49,7 +55,7 @@ func main() {
 		TTL:       "15s",
 	}, client, sessions, quitCh, logger)
 
-	dsf := ds_farm.NewFarm(kpStore, dsStore, applicator, sessions, logger, nil, &healthChecker, 1*time.Second)
+	dsf := ds_farm.NewFarm(kpStore, dsStore, applicator, sessions, logger, nil, &healthChecker, 1*time.Second, *useCachePodMatches)
 
 	go func() {
 		// clear lock immediately on ctrl-C

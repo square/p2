@@ -209,6 +209,15 @@ func (c *consulAggregator) Aggregate() {
 	}
 }
 
+func (c *consulAggregator) getCache() ([]Labeled, error) {
+	c.watcherLock.Lock()
+	defer c.watcherLock.Unlock()
+	if len(c.labeledCache) == 0 {
+		return nil, fmt.Errorf("No cache available")
+	}
+	return c.labeledCache, nil
+}
+
 func (c *consulAggregator) fillCache(pairs api.KVPairs) {
 	cache := make([]Labeled, len(pairs))
 	for i, kvp := range pairs {

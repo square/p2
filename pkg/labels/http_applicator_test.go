@@ -18,6 +18,7 @@ func getMatches(t *testing.T, httpResponse string) ([]Labeled, error) {
 		Assert(t).AreEqual(r.URL.Path, endpointSuffix, "Unexpected path requested")
 		Assert(t).AreEqual(r.URL.Query().Get("selector"), "r1=v1,r2=v2", "Unexpected selector requested")
 		Assert(t).AreEqual(r.URL.Query().Get("type"), NODE.String(), "Unexpected type requested")
+		Assert(t).AreEqual(r.URL.Query().Get("cachedMatch"), "true", "Expected a cachedMatch query to be sent")
 		fmt.Fprintln(w, httpResponse)
 	}))
 	defer server.Close()
@@ -28,7 +29,7 @@ func getMatches(t *testing.T, httpResponse string) ([]Labeled, error) {
 	applicator, err := NewHttpApplicator(nil, url)
 	Assert(t).IsNil(err, "expected no error creating HTTP applicator")
 	selector := labels.Everything().Add("r1", labels.EqualsOperator, []string{"v1"}).Add("r2", labels.EqualsOperator, []string{"v2"})
-	return applicator.GetMatches(selector, NODE)
+	return applicator.GetMatches(selector, NODE, true)
 }
 
 func TestGetMatches(t *testing.T) {

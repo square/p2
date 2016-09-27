@@ -60,7 +60,7 @@ func TestMatches(t *testing.T) {
 
 	selector := labels.Everything().Add("foo", labels.EqualsOperator, []string{"bar"})
 
-	labeled, err := app.GetMatches(selector, NODE)
+	labeled, err := app.GetMatches(selector, NODE, false)
 	Assert(t).IsNil(err, "expected no error getting matches")
 
 	Assert(t).AreEqual(len(labeled), 1, "expected one match")

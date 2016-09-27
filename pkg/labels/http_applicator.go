@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"k8s.io/kubernetes/pkg/labels"
 
@@ -60,10 +61,11 @@ func (h *httpApplicator) GetLabels(labelType Type, id string) (Labeled, error) {
 	return Labeled{}, util.Errorf("GetLabels not implemented for HttpApplicator (type %s, id %s)", labelType, id)
 }
 
-func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
+func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type, cachedMatch bool) ([]Labeled, error) {
 	params := url.Values{}
 	params.Add("selector", selector.String())
 	params.Add("type", labelType.String())
+	params.Add("cachedMatch", strconv.FormatBool(cachedMatch))
 
 	// Make value copy of URL; don't want to mutate the URL in the struct.
 	urlToGet := *h.matchesEndpoint
