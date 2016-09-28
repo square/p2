@@ -1,6 +1,8 @@
 package consulutil
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/square/p2/pkg/util"
@@ -45,6 +47,10 @@ func (f FakeKV) Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMet
 	return f.Entries[key], &api.QueryMeta{}, nil
 }
 
+func (f FakeKV) Keys(prefix, separator string, q *api.QueryOptions) ([]string, *api.QueryMeta, error) {
+	return nil, nil, fmt.Errorf("not yet implemented in FakeKV")
+}
+
 func (f FakeKV) Put(pair *api.KVPair, q *api.WriteOptions) (*api.WriteMeta, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -74,10 +80,22 @@ func (f FakeKV) CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, e
 	f.Entries[p.Key] = p
 	return true, &api.WriteMeta{}, nil
 }
+
 func (f FakeKV) Delete(key string, w *api.WriteOptions) (*api.WriteMeta, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.Entries, key)
+	return &api.WriteMeta{}, nil
+}
+
+func (f FakeKV) DeleteTree(prefix string, w *api.WriteOptions) (*api.WriteMeta, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for key := range f.Entries {
+		if strings.HasPrefix(key, prefix) {
+			delete(f.Entries, key)
+		}
+	}
 	return &api.WriteMeta{}, nil
 }
 
@@ -105,4 +123,8 @@ func (f FakeKV) DeleteCAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.
 
 	delete(f.Entries, pair.Key)
 	return true, &api.WriteMeta{}, nil
+}
+
+func (f FakeKV) Release(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
+	return false, nil, fmt.Errorf("not yet implemented in FakeKV")
 }
