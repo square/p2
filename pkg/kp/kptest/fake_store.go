@@ -67,6 +67,8 @@ func (f *FakePodStore) SetPod(podPrefix kp.PodPrefix, hostname types.NodeName, m
 }
 
 func (f *FakePodStore) Pod(podPrefix kp.PodPrefix, hostname types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error) {
+	f.podLock.Lock()
+	defer f.podLock.Unlock()
 	if pod, ok := f.podResults[FakePodStoreKeyFor(podPrefix, hostname, podId)]; !ok {
 		return nil, 0, pods.NoCurrentManifest
 	} else {
@@ -75,6 +77,8 @@ func (f *FakePodStore) Pod(podPrefix kp.PodPrefix, hostname types.NodeName, podI
 }
 
 func (f *FakePodStore) ListPods(podPrefix kp.PodPrefix, hostname types.NodeName) ([]kp.ManifestResult, time.Duration, error) {
+	f.podLock.Lock()
+	defer f.podLock.Unlock()
 	res := make([]kp.ManifestResult, 0)
 	for key, manifest := range f.podResults {
 		if key.podPrefix == podPrefix && key.hostname == hostname {
@@ -99,6 +103,8 @@ func (f *FakePodStore) ListPods(podPrefix kp.PodPrefix, hostname types.NodeName)
 }
 
 func (f *FakePodStore) AllPods(podPrefix kp.PodPrefix) ([]kp.ManifestResult, time.Duration, error) {
+	f.podLock.Lock()
+	defer f.podLock.Unlock()
 	res := make([]kp.ManifestResult, 0)
 	for key, manifest := range f.podResults {
 		if key.podPrefix != podPrefix {
