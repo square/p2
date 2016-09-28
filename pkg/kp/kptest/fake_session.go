@@ -14,7 +14,7 @@ import (
 // fakeSession
 type fakeSession struct {
 	locks     map[string]bool
-	mu        sync.Mutex
+	mu        *sync.Mutex
 	destroyed bool
 
 	renewalErrCh chan error
@@ -24,10 +24,10 @@ type fakeSession struct {
 }
 
 func NewSession() kp.Session {
-	return newFakeSession(map[string]bool{}, sync.Mutex{}, make(chan error))
+	return newFakeSession(map[string]bool{}, new(sync.Mutex), make(chan error))
 }
 
-func newFakeSession(globalLocks map[string]bool, lockMutex sync.Mutex, renewalErrCh chan error) kp.Session {
+func newFakeSession(globalLocks map[string]bool, lockMutex *sync.Mutex, renewalErrCh chan error) kp.Session {
 	return &fakeSession{
 		locks:        globalLocks,
 		mu:           lockMutex,
