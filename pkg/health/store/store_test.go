@@ -61,8 +61,8 @@ func TestStartWatchBasic(t *testing.T) {
 	}
 
 	checker.Send([]*health.Result{
-		&health.Result{ID: podID1, Node: node},
-		&health.Result{ID: podID2, Node: node},
+		{ID: podID1, Node: node},
+		{ID: podID2, Node: node},
 	})
 
 	result = hs.Fetch(podID1, node)

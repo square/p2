@@ -77,7 +77,7 @@ func TestQuitAggregateAfterResults(t *testing.T) {
 	aggreg.Quit()
 	success := make(chan struct{})
 	go func() {
-		for _ = range res {
+		for range res {
 		}
 		success <- struct{}{}
 	}()
@@ -147,7 +147,7 @@ func TestQuitIndividualWatch(t *testing.T) {
 	// in a loop since it is possible that a value was sent on the channel
 	success := make(chan struct{})
 	go func() {
-		for _ = range labeledChannel1 {
+		for range labeledChannel1 {
 		}
 		success <- struct{}{}
 	}()

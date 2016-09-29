@@ -918,7 +918,7 @@ func TestPublishLatestRCsSkipsIfCorrupt(t *testing.T) {
 	}
 
 	// Now push some bogus JSON that will trigger an error
-	corruptData := []*api.KVPair{&api.KVPair{Value: []byte("bad_json")}}
+	corruptData := []*api.KVPair{{Value: []byte("bad_json")}}
 	inCh <- corruptData
 
 	select {

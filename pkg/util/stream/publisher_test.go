@@ -59,7 +59,7 @@ RecvLoop:
 	for _, r := range received {
 		for i, s := range sent {
 			if r == s {
-				sent = sent[i+1 : len(sent)]
+				sent = sent[i+1:]
 				continue RecvLoop
 			}
 		}

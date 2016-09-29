@@ -90,7 +90,7 @@ func (f *fakeSession) Destroy() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.destroyed = true
-	for k, _ := range f.locksHeld {
+	for k := range f.locksHeld {
 		delete(f.locks, k)
 	}
 	close(f.renewalErrCh)
