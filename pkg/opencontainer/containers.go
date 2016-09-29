@@ -233,7 +233,7 @@ func (l *Launchable) makeLast() error {
 func (l *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
 	err := l.start(serviceBuilder, sv)
 	if err != nil {
-		return launch.StartError{err}
+		return launch.StartError{Inner: err}
 	}
 	// No "enable" for OpenContainers
 	return nil
@@ -290,7 +290,7 @@ func (l *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv runit.SV) err
 	// "disable" script not supported for containers
 	err := l.stop(serviceBuilder, sv)
 	if err != nil {
-		return launch.StopError{err}
+		return launch.StopError{Inner: err}
 	}
 
 	err = l.makeLast()

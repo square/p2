@@ -232,12 +232,13 @@ START_LOOP:
 					continue
 				}
 
+				newRC := rlField.NewRC
 				go func(id roll_fields.ID) {
 					defer func() {
 						if r := recover(); r != nil {
 							err := util.Errorf("Caught panic in roll farm: %s", r)
 							rlLogger.WithError(err).
-								WithField("new_rc", rlField.NewRC).
+								WithField("new_rc", newRC).
 								Errorln("Caught panic in roll farm")
 
 							// Release the child so that another farm can reattempt

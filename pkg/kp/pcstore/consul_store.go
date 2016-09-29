@@ -476,8 +476,6 @@ func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) 
 			return nil
 		}
 	}
-
-	return nil
 }
 
 func (s *consulStore) getInitialClusters(syncer ConcreteSyncer) (WatchedPodClusters, error) {

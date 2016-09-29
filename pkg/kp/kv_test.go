@@ -108,7 +108,7 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 		}
 
 		if err != nil {
-			t.Error("Unexpected error for key '%s': %s", expectation.path, err)
+			t.Errorf("Unexpected error for key '%s': %s", expectation.path, err)
 			continue
 		}
 
@@ -117,7 +117,7 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 		}
 
 		if expectation.uuid && podUniqueKey.ID != expectation.str {
-			t.Errorf("Expected key string to be %s, was %t", expectation.str, podUniqueKey.ID)
+			t.Errorf("Expected key string to be %s, was %s", expectation.str, podUniqueKey.ID)
 		}
 	}
 }

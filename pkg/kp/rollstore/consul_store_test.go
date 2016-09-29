@@ -104,7 +104,7 @@ func newRollStore(t *testing.T, entries []fields.Update) consulStore {
 		}
 	}
 	return consulStore{
-		kv: consulutil.FakeKV{
+		kv: &consulutil.FakeKV{
 			Entries: storeFields,
 		},
 		store:   kptest.NewFakePodStore(nil, nil),
@@ -913,7 +913,7 @@ func TestPublishLatestRCsSkipsIfCorrupt(t *testing.T) {
 
 	for _, ru := range val {
 		if ru.ID().String() != "a" {
-			t.Errorf("Expected all RUs to have id %s, was %s", "a", ru.ID)
+			t.Errorf("Expected all RUs to have id %s, was %s", "a", ru.ID())
 		}
 	}
 
@@ -947,7 +947,7 @@ func TestPublishLatestRCsSkipsIfCorrupt(t *testing.T) {
 
 	for _, ru := range val {
 		if ru.ID().String() != "b" {
-			t.Errorf("Expected all RUs to have id %s, was %s", "b", ru.ID)
+			t.Errorf("Expected all RUs to have id %s, was %s", "b", ru.ID())
 		}
 	}
 }
@@ -1029,7 +1029,7 @@ func TestPublishQuitsOnInChannelCloseAfterData(t *testing.T) {
 
 	for _, ru := range val {
 		if ru.ID().String() != "a" {
-			t.Errorf("Expected all RUs to have id %s, was %s", "a", ru.ID)
+			t.Errorf("Expected all RUs to have id %s, was %s", "a", ru.ID())
 		}
 	}
 

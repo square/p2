@@ -503,7 +503,7 @@ func (dsf *Farm) raiseContentionAlert(oldDS DaemonSet, newDS ds_fields.DaemonSet
 	}
 
 	if alertErr := dsf.alerter.Alert(alerting.AlertInfo{
-		Description: fmt.Sprintf("New ds '%v', contends with '%v'", oldDS.ID, newDS.ID),
+		Description: fmt.Sprintf("New ds '%v', contends with '%v'", oldDS.ID(), newDS.ID),
 		IncidentKey: "preemptive_ds_contention",
 		Details: struct {
 			OldID           ds_fields.ID          `json:"old_id"`

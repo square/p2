@@ -375,7 +375,7 @@ func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
-	p.authPolicy = auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil}
+	p.authPolicy = auth.FixedKeyringPolicy{Keyring: openpgp.EntityList{fakeSigner}}
 
 	Assert(t).IsTrue(
 		p.authorize(manifest, logging.DefaultLogger),
@@ -391,7 +391,7 @@ func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *tes
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
-	p.authPolicy = auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil}
+	p.authPolicy = auth.FixedKeyringPolicy{Keyring: openpgp.EntityList{fakeSigner}}
 
 	Assert(t).IsTrue(
 		p.authorize(manifest, logging.DefaultLogger),

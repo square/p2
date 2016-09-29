@@ -31,34 +31,34 @@ func NewFakeClient() *FakeConsulClient {
 	}
 }
 
-func NewKVWithEntries(entries map[string]*api.KVPair) FakeKV {
+func NewKVWithEntries(entries map[string]*api.KVPair) *FakeKV {
 	if entries == nil {
 		entries = make(map[string]*api.KVPair)
 	}
 
-	return FakeKV{
+	return &FakeKV{
 		Entries: entries,
 	}
 }
 
-func (f FakeKV) Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
+func (f *FakeKV) Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.Entries[key], &api.QueryMeta{}, nil
 }
 
-func (f FakeKV) Keys(prefix, separator string, q *api.QueryOptions) ([]string, *api.QueryMeta, error) {
+func (f *FakeKV) Keys(prefix, separator string, q *api.QueryOptions) ([]string, *api.QueryMeta, error) {
 	return nil, nil, fmt.Errorf("not yet implemented in FakeKV")
 }
 
-func (f FakeKV) Put(pair *api.KVPair, q *api.WriteOptions) (*api.WriteMeta, error) {
+func (f *FakeKV) Put(pair *api.KVPair, q *api.WriteOptions) (*api.WriteMeta, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Entries[pair.Key] = pair
 	return &api.WriteMeta{}, nil
 }
 
-func (f FakeKV) List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
+func (f *FakeKV) List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	ret := make(api.KVPairs, 0)
@@ -68,7 +68,7 @@ func (f FakeKV) List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.Quer
 	return ret, &api.QueryMeta{}, nil
 }
 
-func (f FakeKV) CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
+func (f *FakeKV) CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if keyPair, ok := f.Entries[p.Key]; ok {
@@ -81,14 +81,14 @@ func (f FakeKV) CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, e
 	return true, &api.WriteMeta{}, nil
 }
 
-func (f FakeKV) Delete(key string, w *api.WriteOptions) (*api.WriteMeta, error) {
+func (f *FakeKV) Delete(key string, w *api.WriteOptions) (*api.WriteMeta, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.Entries, key)
 	return &api.WriteMeta{}, nil
 }
 
-func (f FakeKV) DeleteTree(prefix string, w *api.WriteOptions) (*api.WriteMeta, error) {
+func (f *FakeKV) DeleteTree(prefix string, w *api.WriteOptions) (*api.WriteMeta, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for key := range f.Entries {
@@ -102,7 +102,7 @@ func (f FakeKV) DeleteTree(prefix string, w *api.WriteOptions) (*api.WriteMeta, 
 // The fake implementation of this is just the same as writing a key, we expect
 // callers to be using the /lock subtree so real keys won't ever appear like
 // locks
-func (f FakeKV) Acquire(pair *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
+func (f *FakeKV) Acquire(pair *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if _, ok := f.Entries[pair.Key]; ok {
@@ -113,7 +113,7 @@ func (f FakeKV) Acquire(pair *api.KVPair, q *api.WriteOptions) (bool, *api.Write
 	return true, nil, nil
 }
 
-func (f FakeKV) DeleteCAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error) {
+func (f *FakeKV) DeleteCAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	_, ok := f.Entries[pair.Key]
@@ -125,6 +125,6 @@ func (f FakeKV) DeleteCAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.
 	return true, &api.WriteMeta{}, nil
 }
 
-func (f FakeKV) Release(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
+func (f *FakeKV) Release(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
 	return false, nil, fmt.Errorf("not yet implemented in FakeKV")
 }

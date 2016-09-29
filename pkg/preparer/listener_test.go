@@ -106,7 +106,7 @@ func testHookListener(t *testing.T) (HookListener, string, <-chan struct{}) {
 		ExecDir:          execDir,
 		HookFactory:      hookFactory,
 		Logger:           logging.DefaultLogger,
-		authPolicy:       auth.FixedKeyringPolicy{openpgp.EntityList{fakeSigner}, nil},
+		authPolicy:       auth.FixedKeyringPolicy{Keyring: openpgp.EntityList{fakeSigner}},
 		artifactVerifier: auth.NopVerifier(),
 		artifactRegistry: artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector),
 	}

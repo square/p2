@@ -223,7 +223,7 @@ func TestIsRetriable(t *testing.T) {
 	for i, testCase := range testCases {
 		actual := isRetriable(testCase.err)
 		if actual != testCase.expectation {
-			t.Errorf("test case %d: expected %b got %b", i, testCase.expectation, actual)
+			t.Errorf("test case %d: expected %t got %t", i, testCase.expectation, actual)
 		}
 	}
 }

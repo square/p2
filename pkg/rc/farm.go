@@ -205,7 +205,7 @@ START_LOOP:
 						if r := recover(); r != nil {
 							err := util.Errorf("Caught panic in rc farm: %s", r)
 							rcLogger.WithError(err).
-								WithField("rc_id", rcField.ID).
+								WithField("rc_id", id).
 								Errorln("Caught panic in rc farm")
 						}
 					}()

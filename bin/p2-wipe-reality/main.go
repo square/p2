@@ -38,7 +38,7 @@ func main() {
 		log.Printf("Deleting %v from reality\n", pod.Manifest.ID())
 		_, err := store.DeletePod(kp.REALITY_TREE, types.NodeName(*nodeName), pod.Manifest.ID())
 		if err != nil {
-			log.Fatalf("Could not remove %v from pod reality tree: %v", err)
+			log.Fatalf("Could not remove %s/%s from pod reality tree: %v", *nodeName, pod.Manifest.ID(), err)
 		}
 	}
 }
