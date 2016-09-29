@@ -20,3 +20,4 @@ script:
   - rake test_all
   - integration/travis.sh
   - rake errcheck
+  - go vet ./bin/... ./pkg/...
