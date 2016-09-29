@@ -57,7 +57,7 @@ func (s *FakeStatusStore) GetStatus(
 	identifier := StatusIdentifier{t, id, namespace}
 	status, ok := s.Statuses[identifier]
 	if !ok {
-		return statusstore.Status{}, statusstore.NoStatusError{identifier.String()}
+		return statusstore.Status{}, statusstore.NoStatusError{Key: identifier.String()}
 	}
 
 	return status, nil

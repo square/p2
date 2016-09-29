@@ -119,7 +119,6 @@ func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type, ca
 
 func (h *httpApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh <-chan struct{}) chan []Labeled {
 	panic("Not implemented")
-	return nil
 }
 
 func (h *httpApplicator) WatchMatchDiff(

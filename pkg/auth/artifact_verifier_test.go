@@ -96,7 +96,7 @@ func testNotVerifiedWithFiles(t *testing.T, files []testFile, verifier ArtifactV
 
 	err = verifier.VerifyHoistArtifact(localCopy, verificationData)
 	if err == nil {
-		t.Fatal("Expected files %v to fail verification, but didn't")
+		t.Fatal("Expected files to fail verification, but didn't")
 	}
 }
 

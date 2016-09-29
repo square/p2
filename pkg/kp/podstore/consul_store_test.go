@@ -210,7 +210,7 @@ func TestReadPodFromIndex(t *testing.T) {
 
 // Returns a store, as well as a reference to the underlying KV so that tests can reach a layer underneath to
 // verify store behavior.
-func storeWithFakeKV(t *testing.T, pods map[string]Pod, indices map[string]PodIndex) (Store, consulutil.FakeKV) {
+func storeWithFakeKV(t *testing.T, pods map[string]Pod, indices map[string]PodIndex) (Store, *consulutil.FakeKV) {
 	entries := make(map[string]*api.KVPair)
 	for key, pod := range pods {
 		bytes, err := json.Marshal(pod)
