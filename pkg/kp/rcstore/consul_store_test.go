@@ -116,7 +116,7 @@ func TestPublishLatestRCsSkipsIfCorrupt(t *testing.T) {
 	}
 
 	// Now push some bogus JSON that will trigger an error
-	corruptData := []*api.KVPair{&api.KVPair{Value: []byte("bad_json")}}
+	corruptData := []*api.KVPair{{Value: []byte("bad_json")}}
 	inCh <- corruptData
 
 	select {
@@ -330,7 +330,7 @@ func TestPublishLatestRCsWithLockInfoNoLocks(t *testing.T) {
 
 	// Create a test case with 2 RCs with no locks
 	unlockedCase := LockInfoTestCase{
-		InputRCs: []fields.RC{fields.RC{ID: "abc"}, fields.RC{ID: "123"}},
+		InputRCs: []fields.RC{{ID: "abc"}, {ID: "123"}},
 		ExpectedOutput: []RCLockResult{
 			{
 				RC: fields.RC{ID: "abc"},
@@ -354,9 +354,9 @@ func TestPublishLatestRCsWithLockInfoNoLocks(t *testing.T) {
 	// create a new case
 	unlockedCase2 := LockInfoTestCase{
 		InputRCs: []fields.RC{
-			fields.RC{ID: "abc"},
-			fields.RC{ID: "123"},
-			fields.RC{ID: "456"},
+			{ID: "abc"},
+			{ID: "123"},
+			{ID: "456"},
 		},
 		ExpectedOutput: []RCLockResult{
 			{
@@ -393,7 +393,7 @@ func TestPublishLatestRCsWithLockInfoWithLocks(t *testing.T) {
 
 	// Create a test case with 2 RCs with no locks
 	lockedCase := LockInfoTestCase{
-		InputRCs: []fields.RC{fields.RC{ID: "abc"}, fields.RC{ID: "123"}},
+		InputRCs: []fields.RC{{ID: "abc"}, {ID: "123"}},
 		ExpectedOutput: []RCLockResult{
 			{
 				RC:                fields.RC{ID: "abc"},
@@ -432,7 +432,7 @@ func TestPublishLatestRCsWithLockInfoWithLocks(t *testing.T) {
 
 	// Add an update creation lock to the second one
 	lockedCase2 := LockInfoTestCase{
-		InputRCs: []fields.RC{fields.RC{ID: "abc"}, fields.RC{ID: "123"}},
+		InputRCs: []fields.RC{{ID: "abc"}, {ID: "123"}},
 		ExpectedOutput: []RCLockResult{
 			{
 				RC:                fields.RC{ID: "abc"},

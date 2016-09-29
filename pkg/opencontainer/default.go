@@ -4,7 +4,7 @@ package opencontainer
 var DefaultRuntimeSpec = LinuxRuntimeSpec{
 	RuntimeSpec: RuntimeSpec{
 		Mounts: map[string]Mount{
-			"cgroup": Mount{
+			"cgroup": {
 				Type:   "cgroup",
 				Source: "cgroup",
 				Options: []string{
@@ -14,7 +14,7 @@ var DefaultRuntimeSpec = LinuxRuntimeSpec{
 					"relatime",
 				},
 			},
-			"dev": Mount{
+			"dev": {
 				Type:   "tmpfs",
 				Source: "tmpfs",
 				Options: []string{
@@ -24,7 +24,7 @@ var DefaultRuntimeSpec = LinuxRuntimeSpec{
 					"size=65536k",
 				},
 			},
-			"devpts": Mount{
+			"devpts": {
 				Type:   "devpts",
 				Source: "devpts",
 				Options: []string{
@@ -36,7 +36,7 @@ var DefaultRuntimeSpec = LinuxRuntimeSpec{
 					"gid=5",
 				},
 			},
-			"mqueue": Mount{
+			"mqueue": {
 				Type:   "mqueue",
 				Source: "mqueue",
 				Options: []string{
@@ -45,11 +45,11 @@ var DefaultRuntimeSpec = LinuxRuntimeSpec{
 					"nodev",
 				},
 			},
-			"proc": Mount{
+			"proc": {
 				Type:   "proc",
 				Source: "proc",
 			},
-			"shm": Mount{
+			"shm": {
 				Type:   "tmpfs",
 				Source: "shm",
 				Options: []string{
@@ -60,7 +60,7 @@ var DefaultRuntimeSpec = LinuxRuntimeSpec{
 					"size=65536k",
 				},
 			},
-			"sysfs": Mount{
+			"sysfs": {
 				Type:   "sysfs",
 				Source: "sysfs",
 				Options: []string{

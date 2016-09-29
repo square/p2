@@ -37,6 +37,7 @@ const (
 var DefaultSVPath = "/usr/bin/sv"
 
 var DefaultSV *sv
+
 func init() {
 	// Setup in init so if DefaultSVPath is changed at build time we use the changed value
 	DefaultSV = &sv{Bin: DefaultSVPath}

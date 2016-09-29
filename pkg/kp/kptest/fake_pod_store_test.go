@@ -14,11 +14,11 @@ func TestFakeServiceHealth(t *testing.T) {
 	targetStatus := "healthy"
 
 	fake.healthResults = map[string]kp.WatchResult{
-		kp.HealthPath("shrimpy", "aaa1.dfw.square"): kp.WatchResult{
+		kp.HealthPath("shrimpy", "aaa1.dfw.square"): {
 			Service: "shrimpy",
 			Status:  "critical",
 		},
-		kp.HealthPath(targetService, targetHost): kp.WatchResult{
+		kp.HealthPath(targetService, targetHost): {
 			Service: targetService,
 			Status:  targetStatus,
 		},

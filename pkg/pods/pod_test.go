@@ -320,12 +320,12 @@ func TestBuildRunitServices(t *testing.T) {
 	Assert(t).IsNil(err, "Got an unexpected error reading the servicebuilder yaml file")
 
 	expectedMap := map[string]runit.ServiceTemplate{
-		executables[0].Service.Name: runit.ServiceTemplate{
+		executables[0].Service.Name: {
 			Run:    executables[0].Exec,
 			Log:    runit.DefaultLogExec(),
 			Finish: pod.FinishExecForLaunchable(testLaunchable),
 		},
-		executables[1].Service.Name: runit.ServiceTemplate{
+		executables[1].Service.Name: {
 			Run:    executables[1].Exec,
 			Log:    runit.DefaultLogExec(),
 			Finish: pod.FinishExecForLaunchable(testLaunchable),
@@ -347,7 +347,7 @@ func TestInstall(t *testing.T) {
 	testLocation := testContext.ExpandPath("hoisted-hello_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz")
 
 	launchables := map[launch.LaunchableID]launch.LaunchableStanza{
-		"hello": launch.LaunchableStanza{
+		"hello": {
 			LaunchableId:   "hello",
 			Location:       testLocation,
 			LaunchableType: "hoist",

@@ -78,14 +78,14 @@ func TestUnschedule(t *testing.T) {
 
 	// Initialize the store with entries at the pod path and index path
 	pods := map[string]Pod{
-		podPath: Pod{
+		podPath: {
 			Manifest: testManifest(),
 			Node:     node,
 		},
 	}
 
 	indices := map[string]PodIndex{
-		indexPath: PodIndex{
+		indexPath: {
 			PodKey: key,
 		},
 	}

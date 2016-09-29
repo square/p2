@@ -70,7 +70,7 @@ func (c *Config) ReadMap(key string) (*Config, error) {
 
 func (c *Config) Keys() []string {
 	keys := []string{}
-	for intf, _ := range c.unpacked {
+	for intf := range c.unpacked {
 		strVal, ok := intf.(string)
 		if ok {
 			keys = append(keys, strVal)

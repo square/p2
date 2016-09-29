@@ -14,7 +14,7 @@ import (
 )
 
 var fakeTemplate map[string]ServiceTemplate = map[string]ServiceTemplate{
-	"foo": ServiceTemplate{
+	"foo": {
 		Run: []string{"foo", "one", "two"},
 		Log: []string{"log", "three", "four"},
 	},
