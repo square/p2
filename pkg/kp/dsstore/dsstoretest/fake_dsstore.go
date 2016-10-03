@@ -181,7 +181,8 @@ func (s *FakeDSStore) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemon
 	return s.watchDiffDaemonSets(inCh, quitCh)
 }
 
-func (s *FakeDSStore) WatchAll(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSetList {
+// pauseTime not implemented
+func (s *FakeDSStore) WatchAll(quitCh <-chan struct{}, _ time.Duration) <-chan dsstore.WatchedDaemonSetList {
 	inCh := s.WatchList(quitCh)
 	outCh := make(chan dsstore.WatchedDaemonSetList)
 
