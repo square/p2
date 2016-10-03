@@ -6,6 +6,7 @@ import (
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/flags"
+	"github.com/square/p2/pkg/kp/podstore"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
@@ -16,6 +17,7 @@ var (
 	manifests  = kingpin.Arg("manifests", "one or more manifest files to schedule in the intent store").Strings()
 	nodeName   = kingpin.Flag("node", "The node to do the scheduling on. Uses the hostname by default.").String()
 	hookGlobal = kingpin.Flag("hook", "Schedule as a global hook.").Bool()
+	uuidPod    = kingpin.Flag("uuid-pod", "Schedule the pod using the new UUID scheme").Bool()
 )
 
 func main() {
@@ -23,6 +25,7 @@ func main() {
 	_, opts, _ := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(opts)
 	store := kp.NewConsulStore(client)
+	podStore := podstore.NewConsul(client.KV())
 
 	if *nodeName == "" {
 		hostname, err := os.Hostname()
@@ -42,6 +45,17 @@ func main() {
 		if err != nil {
 			log.Fatalf("Could not read manifest at %s: %s\n", manifestPath, err)
 		}
+
+		if *uuidPod {
+			uniqueKey, err := podStore.Schedule(manifest, types.NodeName(*nodeName))
+			if err != nil {
+				log.Fatalf("Could not schedule pod: %s", err)
+			}
+			log.Printf("Scheduled %s as %s", manifest.ID(), uniqueKey.ID)
+			continue
+		}
+
+		// Legacy pod
 		podPrefix := kp.INTENT_TREE
 		if *hookGlobal {
 			podPrefix = kp.HOOK_TREE
