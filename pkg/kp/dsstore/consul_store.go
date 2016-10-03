@@ -329,13 +329,13 @@ func (s *consulStore) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
 // WatchAll watches dsTree for all the daemon sets and returns a blocking
 // channel where the client can read a WatchedDaemonSetsList object which
 // contain all of the daemon sets currently on the tree
-func (s *consulStore) WatchAll(quitCh <-chan struct{}) <-chan WatchedDaemonSetList {
+func (s *consulStore) WatchAll(quitCh <-chan struct{}, pauseTime time.Duration) <-chan WatchedDaemonSetList {
 	inCh := make(chan api.KVPairs)
 	outCh := make(chan WatchedDaemonSetList)
 	errCh := make(chan error, 1)
 
 	// Watch for changes in the dsTree and deletedDSTree
-	go consulutil.WatchPrefix(dsTree, s.kv, inCh, quitCh, errCh, 5*time.Second)
+	go consulutil.WatchPrefix(dsTree, s.kv, inCh, quitCh, errCh, pauseTime)
 
 	go func() {
 		defer close(outCh)

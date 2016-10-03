@@ -63,7 +63,7 @@ type Store interface {
 	Watch(quit <-chan struct{}) <-chan WatchedDaemonSets
 
 	// Returns a list of all the daemon sets that are on the tree
-	WatchAll(quit <-chan struct{}) <-chan WatchedDaemonSetList
+	WatchAll(quit <-chan struct{}, pauseTime time.Duration) <-chan WatchedDaemonSetList
 
 	// Disables daemon set and produces logging, if there are problems disabling,
 	// disable the daemon set, and if there are still problems, return a fatal error

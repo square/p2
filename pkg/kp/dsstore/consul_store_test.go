@@ -547,7 +547,7 @@ func TestWatchAll(t *testing.T) {
 	// Watch for create and verify
 	//
 	quitCh := make(chan struct{})
-	inCh := store.WatchAll(quitCh)
+	inCh := store.WatchAll(quitCh, 0)
 	defer close(quitCh)
 
 	var watched WatchedDaemonSetList
