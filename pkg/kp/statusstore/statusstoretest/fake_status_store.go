@@ -36,7 +36,8 @@ func (s StatusIdentifier) String() string {
 
 func NewFake() *FakeStatusStore {
 	return &FakeStatusStore{
-		Statuses: make(map[StatusIdentifier]statusstore.Status),
+		Statuses:  make(map[StatusIdentifier]statusstore.Status),
+		LastIndex: 1234, // start above 0 to not allow some false positives on edge cases (e.g. CAS on a non-existing key)
 	}
 }
 
@@ -63,11 +64,17 @@ func (s *FakeStatusStore) CASStatus(
 ) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if modifyIndex != s.LastIndex {
+	identifier := StatusIdentifier{t, id, namespace}
+	if modifyIndex == 0 {
+		// Check that the key doesn't exist which is what consul does https://www.consul.io/docs/agent/http/kv.html
+		_, ok := s.Statuses[identifier]
+		if ok {
+			return statusstore.NewStaleIndex(id.String(), modifyIndex)
+		}
+	} else if modifyIndex != s.LastIndex {
 		return statusstore.NewStaleIndex(id.String(), modifyIndex)
 	}
 
-	identifier := StatusIdentifier{t, id, namespace}
 	s.Statuses[identifier] = status
 	s.LastIndex++
 	return nil
@@ -84,7 +91,10 @@ func (s *FakeStatusStore) GetStatus(
 	identifier := StatusIdentifier{t, id, namespace}
 	status, ok := s.Statuses[identifier]
 	if !ok {
-		return statusstore.Status{}, &api.QueryMeta{}, statusstore.NoStatusError{Key: identifier.String()}
+		// The behavior of the consul API is to return the last index even on
+		// a 404, making it somewhat difficult to do a CAS operation
+		// afterward (have to use 0 for the index).
+		return statusstore.Status{}, &api.QueryMeta{LastIndex: s.LastIndex}, statusstore.NoStatusError{Key: identifier.String()}
 	}
 
 	return status, &api.QueryMeta{LastIndex: s.LastIndex}, nil
