@@ -81,7 +81,7 @@ var (
 		This will output the hosts that match the selector,
 		The selector string uses same syntax as the kubernetes selectors without flags.
 		An example command is:
-		p2-dsctl test-selector "ice-cream in (the-fridge)"`,
+		p2-dsctl test-selector --selector SELECTOR`,
 	)
 	testSelectorString     = cmdTestSelector.Flag("selector", "The raw selector represented as a string").String()
 	testSelectorEverywhere = cmdTestSelector.Flag("everywhere", "Sets selector to match everything regardless of its value").Bool()
