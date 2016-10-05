@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/statusstore"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 )
@@ -14,11 +15,53 @@ type ManifestPair struct {
 	ID      types.PodID
 	Intent  manifest.Manifest
 	Reality manifest.Manifest
+
+	// Used to determine where reality came from (and should be written to). If nil,
+	// reality should be written to the /reality tree. If non-nil, status should be
+	// written to the pod status store
+	PodUniqueKey *types.PodUniqueKey
 }
 
-// Given two lists of ManifestResults, group them into pairs based on their
-// pod ID. This function assumes that each list has unique pod IDs (ie no
-// duplicates), otherwise its behavior is undefined.
+func (p *Preparer) ZipUUIDPods(uuidPods []kp.ManifestResult) []ManifestPair {
+	var ret []ManifestPair
+	for _, uuidPod := range uuidPods {
+
+		if uuidPod.PodUniqueKey == nil {
+			// This shouldn't happen and probably should result in an error at some
+			// point. However, given that uuid pods are new functionality it's a soft
+			// error for now
+			continue
+		}
+
+		var realityManifest manifest.Manifest
+		status, _, err := p.podStatusStore.Get(*uuidPod.PodUniqueKey)
+		if err != nil && !statusstore.IsNoStatus(err) {
+			// Soft error for same reasoning as above
+			continue
+		} else if err == nil {
+			realityManifest, err = manifest.FromBytes([]byte(status.Manifest))
+			if err != nil {
+				// Soft error for now
+				continue
+			}
+		}
+
+		ret = append(ret, ManifestPair{
+			ID:           uuidPod.PodLocation.PodID,
+			PodUniqueKey: uuidPod.PodUniqueKey,
+			Intent:       uuidPod.Manifest,
+			Reality:      realityManifest,
+		})
+	}
+
+	return ret
+}
+
+// Given two lists of ManifestResults, group them into pairs based on their pod
+// ID. This function assumes that each list has unique pod IDs (ie no
+// duplicates), otherwise its behavior is undefined. All returned ManifestPair
+// values will have a nil PodUniqueKey because this function only handles
+// legacy (non-uuid) pods
 func ZipResultSets(intent, reality []kp.ManifestResult) (ret []ManifestPair) {
 	sort.Sort(sortByID(intent))
 	sort.Sort(sortByID(reality))
@@ -41,22 +84,25 @@ func ZipResultSets(intent, reality []kp.ManifestResult) (ret []ManifestPair) {
 			// if rID == "", then realityIndex is out of range, but we're still in
 			// the loop, therefore intentIndex must be in range
 			ret = append(ret, ManifestPair{
-				ID:     iID,
-				Intent: intent[intentIndex].Manifest,
+				ID:           iID,
+				Intent:       intent[intentIndex].Manifest,
+				PodUniqueKey: nil,
 			})
 			intentIndex++
 		} else if rID != "" && (iID == "" || rID < iID) {
 			// and vice versa
 			ret = append(ret, ManifestPair{
-				ID:      rID,
-				Reality: reality[realityIndex].Manifest,
+				ID:           rID,
+				Reality:      reality[realityIndex].Manifest,
+				PodUniqueKey: nil,
 			})
 			realityIndex++
 		} else {
 			ret = append(ret, ManifestPair{
-				ID:      rID,
-				Intent:  intent[intentIndex].Manifest,
-				Reality: reality[realityIndex].Manifest,
+				ID:           rID,
+				Intent:       intent[intentIndex].Manifest,
+				Reality:      reality[realityIndex].Manifest,
+				PodUniqueKey: nil,
 			})
 			intentIndex++
 			realityIndex++
