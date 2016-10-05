@@ -16,6 +16,7 @@ type consulKV interface {
 	Put(pair *api.KVPair, opts *api.WriteOptions) (*api.WriteMeta, error)
 	Delete(key string, opts *api.WriteOptions) (*api.WriteMeta, error)
 	Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
+	CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
 }
 
 type consulStore struct {
@@ -61,22 +62,67 @@ func (s *consulStore) SetStatus(t ResourceType, id ResourceID, namespace Namespa
 	return nil
 }
 
-func (s *consulStore) GetStatus(t ResourceType, id ResourceID, namespace Namespace) (Status, error) {
+// Custom error type for when CAS was performed with a stale index
+type staleIndex struct {
+	key   string
+	index uint64
+}
+
+func NewStaleIndex(key string, index uint64) staleIndex {
+	return staleIndex{
+		key:   key,
+		index: index,
+	}
+}
+
+func (s staleIndex) Error() string {
+	return fmt.Sprintf("CAS failed for '%s', index of '%d' was stale", s.key, s.index)
+}
+
+func IsStaleIndex(err error) bool {
+	_, ok := err.(staleIndex)
+	return ok
+}
+
+func (s *consulStore) CASStatus(t ResourceType, id ResourceID, namespace Namespace, status Status, modifyIndex uint64) error {
 	key, err := namespacedResourcePath(t, id, namespace)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	pair, _, err := s.kv.Get(key, nil)
+	pair := &api.KVPair{
+		Key:         key,
+		Value:       status.Bytes(),
+		ModifyIndex: modifyIndex,
+	}
+	success, _, err := s.kv.CAS(pair, nil)
 	if err != nil {
-		return nil, consulutil.NewKVError("get", key, err)
+		return consulutil.NewKVError("cas", key, err)
+	}
+
+	if !success {
+		return NewStaleIndex(key, modifyIndex)
+	}
+
+	return nil
+}
+
+func (s *consulStore) GetStatus(t ResourceType, id ResourceID, namespace Namespace) (Status, *api.QueryMeta, error) {
+	key, err := namespacedResourcePath(t, id, namespace)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	pair, queryMeta, err := s.kv.Get(key, nil)
+	if err != nil {
+		return nil, nil, consulutil.NewKVError("get", key, err)
 	}
 
 	if pair == nil {
-		return nil, NoStatusError{key}
+		return nil, queryMeta, NoStatusError{key}
 	}
 
-	return pair.Value, nil
+	return pair.Value, queryMeta, nil
 }
 
 func (s *consulStore) DeleteStatus(t ResourceType, id ResourceID, namespace Namespace) error {

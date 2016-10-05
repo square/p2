@@ -10,6 +10,7 @@ import (
 
 type FinishState string
 type ServiceState string
+type PodState string
 
 const (
 	// Indicates the state of a completion of a service
@@ -23,6 +24,10 @@ const (
 	Pending  ServiceState = "pending"
 	Running  ServiceState = "running"
 	Finished ServiceState = "finished"
+
+	PodLaunched PodState = "launched"
+	PodPending  PodState = "pending"
+	PodRemoved  PodState = "removed"
 )
 
 // Encapsulates information relating to the exit of a service.
@@ -46,6 +51,11 @@ type ServiceStatus struct {
 // Encapsulates the state of all services running in a pod.
 type PodStatus struct {
 	ServiceStatus []ServiceStatus `json:"service_status"`
+	PodStatus     PodState        `json:"status"`
+
+	// String representing the pod manifest for the running pod. Will be
+	// empty if it hasn't yet been launched
+	Manifest string `json:"manifest"`
 }
 
 func statusToPodStatus(rawStatus statusstore.Status) (PodStatus, error) {

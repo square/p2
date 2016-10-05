@@ -18,7 +18,7 @@ func TestSetAndGetStatus(t *testing.T) {
 	}
 
 	// Confirm that we get the same thing back when we Get() it
-	returnedStatus, err := store.GetStatus(PC, "some_id", "some_namespace")
+	returnedStatus, _, err := store.GetStatus(PC, "some_id", "some_namespace")
 	if err != nil {
 		t.Fatalf("Unable to get status: %s", err)
 	}
@@ -62,7 +62,7 @@ func TestDeleteStatus(t *testing.T) {
 	}
 
 	// Confirm that the status was successfully set
-	returnedStatus, err := store.GetStatus(PC, "some_id", "some_namespace")
+	returnedStatus, _, err := store.GetStatus(PC, "some_id", "some_namespace")
 	if err != nil {
 		t.Fatalf("Unable to get status: %s", err)
 	}
@@ -78,7 +78,7 @@ func TestDeleteStatus(t *testing.T) {
 	}
 
 	// Now try to get it and confirm we get the correct error type
-	returnedStatus, err = store.GetStatus(PC, "some_id", "some_namespace")
+	returnedStatus, _, err = store.GetStatus(PC, "some_id", "some_namespace")
 	if err == nil {
 		t.Fatal("Expected an error getting a deleted status")
 	}
@@ -100,7 +100,7 @@ func TestGetAllStatusForResource(t *testing.T) {
 	}
 
 	// Confirm that the status was successfully set
-	returnedStatus, err := store.GetStatus(PC, "some_id", "some_namespace")
+	returnedStatus, _, err := store.GetStatus(PC, "some_id", "some_namespace")
 	if err != nil {
 		t.Fatalf("Unable to get status: %s", err)
 	}
@@ -116,7 +116,7 @@ func TestGetAllStatusForResource(t *testing.T) {
 	}
 
 	// Confirm that the status was successfully set
-	returnedOtherStatus, err := store.GetStatus(PC, "some_id", "some_other_namespace")
+	returnedOtherStatus, _, err := store.GetStatus(PC, "some_id", "some_other_namespace")
 	if err != nil {
 		t.Fatalf("Unable to get status: %s", err)
 	}
@@ -155,7 +155,7 @@ func TestGetAllStatusForResourceType(t *testing.T) {
 	}
 
 	// Confirm that the status was successfully set
-	returnedStatus, err := store.GetStatus(PC, "some_id", "some_namespace")
+	returnedStatus, _, err := store.GetStatus(PC, "some_id", "some_namespace")
 	if err != nil {
 		t.Fatalf("Unable to get status: %s", err)
 	}
@@ -170,7 +170,7 @@ func TestGetAllStatusForResourceType(t *testing.T) {
 		t.Fatalf("Unable to set status: %s", err)
 	}
 
-	returnedOtherStatus, err := store.GetStatus(PC, "some_id", "some_other_namespace")
+	returnedOtherStatus, _, err := store.GetStatus(PC, "some_id", "some_other_namespace")
 	if err != nil {
 		t.Fatalf("Unable to get status: %s", err)
 	}
@@ -186,7 +186,7 @@ func TestGetAllStatusForResourceType(t *testing.T) {
 	}
 
 	// Confirm that the status was successfully set
-	returnedOtherPCStatus, err := store.GetStatus(PC, "some_other_id", "some_namespace")
+	returnedOtherPCStatus, _, err := store.GetStatus(PC, "some_other_id", "some_namespace")
 	if err != nil {
 		t.Fatalf("Unable to get status: %s", err)
 	}
