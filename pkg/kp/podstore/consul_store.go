@@ -245,6 +245,16 @@ func (c *consulStore) WriteRealityIndex(podKey types.PodUniqueKey, node types.No
 	return nil
 }
 
+func (c *consulStore) DeleteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error {
+	realityIndexPath := computeRealityIndexPath(podKey, node)
+
+	_, err := c.consulKV.Delete(realityIndexPath, nil)
+	if err != nil {
+		return consulutil.NewKVError("delete", realityIndexPath, err)
+	}
+	return nil
+}
+
 // Custom error type to be returned when a pod is removed but there is a
 // failure removing the secondary index, so callers know not to retry the full
 // deletion but errors can be reported.
