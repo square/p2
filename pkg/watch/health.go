@@ -267,7 +267,6 @@ func (sc *StatusChecker) resultFromCheck(resp *http.Response, err error) (health
 		return res, nil
 	}
 
-	res.Output, err = getBody(resp)
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		res.Status = health.Passing
 	} else {
@@ -278,7 +277,7 @@ func (sc *StatusChecker) resultFromCheck(resp *http.Response, err error) (health
 
 // Go version of http status check
 func (sc *StatusChecker) StatusCheck() (*http.Response, error) {
-	return sc.Client.Get(sc.URI)
+	return sc.Client.Head(sc.URI)
 }
 
 func getBody(resp *http.Response) (string, error) {
