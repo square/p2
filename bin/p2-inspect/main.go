@@ -67,13 +67,13 @@ func main() {
 	statusMap := make(map[types.PodID]map[types.NodeName]inspect.NodePodStatus)
 
 	for _, kvp := range intents {
-		if inspect.AddKVPToMap(kvp, inspect.INTENT_SOURCE, filterNodeName, filterPodID, statusMap) != nil {
+		if err = inspect.AddKVPToMap(kvp, inspect.INTENT_SOURCE, filterNodeName, filterPodID, statusMap); err != nil {
 			log.Fatal(err)
 		}
 	}
 
 	for _, kvp := range realities {
-		if inspect.AddKVPToMap(kvp, inspect.REALITY_SOURCE, filterNodeName, filterPodID, statusMap) != nil {
+		if err = inspect.AddKVPToMap(kvp, inspect.REALITY_SOURCE, filterNodeName, filterPodID, statusMap); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -105,7 +105,7 @@ func main() {
 		err = enc.Encode(statusMap)
 	case "list":
 		// "List" format is a flattened version of "tree"
-		output := make([]inspect.NodePodStatus, 0)
+		var output []inspect.NodePodStatus
 		for podID, nodes := range statusMap {
 			for node, status := range nodes {
 				status.PodId = podID
