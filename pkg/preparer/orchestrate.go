@@ -175,6 +175,12 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 	// and we have yet to operate on it)
 	working := false
 	var manifestLogger logging.Logger
+
+	// The design of p2-preparer is to continuously retry installation
+	// failures, for example downloading of the launchable. An exponential
+	// backoff is important to avoid putting undue load on the artifact
+	// server, for example.
+	backoffTime := 1 * time.Second
 	for {
 		select {
 		case <-quit:
@@ -208,7 +214,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 					)
 				}
 			}
-		case <-time.After(1 * time.Second):
+		case <-time.After(backoffTime):
 			if working {
 				pod := p.podFactory.NewPod(nextLaunch.ID)
 
@@ -258,6 +264,15 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				if ok {
 					nextLaunch = ManifestPair{}
 					working = false
+
+					// Reset the backoff time
+					backoffTime = 1 * time.Second
+				} else {
+					// Double the backoff time with a maximum of 1 minute
+					backoffTime = backoffTime * 2
+					if backoffTime > 1*time.Minute {
+						backoffTime = 1 * time.Minute
+					}
 				}
 			}
 		}
