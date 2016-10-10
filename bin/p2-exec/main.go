@@ -9,8 +9,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/util"
@@ -29,6 +32,8 @@ var (
 	nolim          = kingpin.Flag("nolimit", "Remove rlimits.").Short('n').Bool()
 	clearEnv       = kingpin.Flag("clearenv", "Clear all environment variables before loading envDir(s).").Bool()
 	workDir        = kingpin.Flag("workdir", "Set working directory.").Short('w').String()
+	umask          = kingpin.Flag("umask", "Set the process umask. Use octal notation ex. 0022").Short('m').Default(umaskDefault).String()
+	umaskDefault   = ""
 
 	cmd = kingpin.Arg("command", "the command to execute").Required().Strings()
 )
@@ -36,6 +41,14 @@ var (
 func main() {
 	kingpin.Version(version.VERSION)
 	kingpin.Parse()
+
+	if *umask != umaskDefault {
+		effectiveUmask, err := strconv.ParseInt(*umask, 8, 0)
+		if err != nil {
+			log.Fatalf("umask not expressed in octal notation. %v\n", err)
+		}
+		unix.Umask(int(effectiveUmask))
+	}
 
 	if *clearEnv {
 		os.Clearenv()
