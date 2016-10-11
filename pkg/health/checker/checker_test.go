@@ -47,7 +47,6 @@ func TestService(t *testing.T) {
 		Node:    "node1",
 		Service: "slug",
 		Status:  "passing",
-		Output:  "OK",
 	}
 	Assert(t).AreEqual(results["node1"], expected, "Unexpected results calling Service()")
 }

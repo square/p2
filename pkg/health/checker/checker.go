@@ -234,7 +234,6 @@ func consulWatchToResult(w kp.WatchResult) health.Result {
 		Node:    w.Node,
 		Service: w.Service,
 		Status:  health.ToHealthState(w.Status),
-		Output:  w.Output,
 	}
 }
 

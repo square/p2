@@ -10,7 +10,6 @@ type Result struct {
 	Node    types.NodeName
 	Service string
 	Status  HealthState
-	Output  string
 }
 
 // ResultList is a type alias that adds some extra methods that operate on the list.
