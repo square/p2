@@ -533,7 +533,7 @@ func (ds *daemonSet) PublishToReplication() error {
 	// on an overlapped node from thrashing. Therefore, it makes sense for
 	// daemon sets to ignore this locking mechanism and always try to
 	// converge nodes to the specified manifest
-	replication, errCh, err := repl.InitializeDaemonSetReplication(
+	currentReplication, errCh, err := repl.InitializeDaemonSetReplication(
 		replication.DefaultConcurrentReality,
 		ds.rateLimitInterval,
 	)
@@ -552,9 +552,9 @@ func (ds *daemonSet) PublishToReplication() error {
 	}()
 
 	// Set a new replication
-	ds.currentReplication = replication
+	ds.currentReplication = currentReplication
 
-	go replication.Enact()
+	go currentReplication.Enact()
 
 	ds.logger.Info("Replication enacted")
 
