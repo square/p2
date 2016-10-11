@@ -363,6 +363,38 @@ func (r *replication) handleReplicationEnd(session kp.Session, renewalErrCh chan
 	}
 }
 
+func (r *replication) shouldScheduleForNode(node types.NodeName, logger logging.Logger) bool {
+	nodeReality, err := r.queryReality(node)
+	if err != nil {
+		logger.WithError(err).Errorln("Could not read Reality for this node. Will proceed to schedule onto it.")
+		return true
+	}
+	if err == pods.NoCurrentManifest {
+		logger.Infoln("Nothing installed on this node yet.")
+		return true
+	}
+
+	if nodeReality != nil {
+		nodeRealitySHA, err := nodeReality.SHA()
+		if err != nil {
+			logger.WithError(err).Errorln("Unable to compute manifest SHA for this node. Attempting to schedule anyway")
+			return true
+		}
+		replicationRealitySHA, err := r.manifest.SHA()
+		if err != nil {
+			logger.WithError(err).Errorln("Unable to compute manifest SHA for this daemon set. Attempting to schedule anyway")
+			return true
+		}
+
+		if nodeRealitySHA == replicationRealitySHA {
+			logger.Info("Reality for this node matches this DS. No action required.")
+			return false
+		}
+	}
+
+	return true
+}
+
 // note: logging should be delegated somehow
 func (r *replication) updateOne(
 	node types.NodeName,
@@ -370,32 +402,15 @@ func (r *replication) updateOne(
 	timeoutCh <-chan struct{},
 	aggregateHealth *podHealth,
 ) error {
-	targetSHA, _ := r.manifest.SHA()
 	nodeLogger := r.logger.SubLogger(logrus.Fields{"node": node})
+
+	if !r.shouldScheduleForNode(node, nodeLogger) {
+		return nil
+	}
+
+	targetSHA, _ := r.manifest.SHA()
 	nodeLogger.WithField("sha", targetSHA).Infoln("Updating node")
-
-	nodeReality, err := r.queryReality(node)
-	if err != nil || nodeReality == nil {
-		nodeLogger.WithError(err).Errorln("Could not read Reality for this node. Will proceed to schedule onto it.")
-	}
-
-	if nodeReality != nil {
-		nodeRealitySHA, err := nodeReality.SHA()
-		if err != nil {
-			nodeLogger.WithError(err).Errorln("Unable to compute manifest SHA for this node. Attempting to schedule anyway")
-		}
-		replicationRealitySHA, err := r.manifest.SHA()
-		if err != nil {
-			nodeLogger.WithError(err).Errorln("Unable to compute manifest SHA for this daemon set. Attempting to schedule anyway")
-		}
-
-		if nodeRealitySHA == replicationRealitySHA {
-			nodeLogger.Info("Reality for this node matches this DS. No action required.")
-			return nil
-		}
-	}
-
-	_, err = r.store.SetPod(
+	_, err := r.store.SetPod(
 		kp.INTENT_TREE,
 		node,
 		r.manifest,
@@ -432,12 +447,20 @@ func (r *replication) updateOne(
 }
 
 func (r *replication) queryReality(node types.NodeName) (manifest.Manifest, error) {
-	r.concurrentRealityRequests <- struct{}{}
-	defer func() {
-		<-r.concurrentRealityRequests
-	}()
-	man, _, err := r.store.Pod(kp.REALITY_TREE, node, r.manifest.ID())
-	return man, err
+	for {
+		select {
+		case r.concurrentRealityRequests <- struct{}{}:
+			man, _, err := r.store.Pod(kp.REALITY_TREE, node, r.manifest.ID())
+			<-r.concurrentRealityRequests
+			return man, err
+		case <-time.After(1 * time.Second):
+			r.logger.Infof("Waiting on concurrentRealityRequests for pod: %s/%s", node.String(), r.manifest.ID())
+		case <-time.After(1 * time.Minute):
+			err := util.Errorf("Timed out while waiting for reality query rate limit")
+			r.logger.Error(err)
+			return nil, err
+		}
+	}
 }
 
 func (r *replication) ensureInReality(
