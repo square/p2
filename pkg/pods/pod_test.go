@@ -298,6 +298,7 @@ func TestBuildRunitServices(t *testing.T) {
 	pod := Pod{
 		P2Exec:         "/usr/bin/p2-exec",
 		Id:             "testPod",
+		uniqueName:     "testPod",
 		home:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
 		LogExec:        runit.DefaultLogExec(),
@@ -307,18 +308,20 @@ func TestBuildRunitServices(t *testing.T) {
 	defer hoist.CleanupFakeLaunchable(hl, sb)
 	hl.RunAs = "testPod"
 	executables, err := hl.Executables(serviceBuilder)
+	if err != nil {
+		t.Fatal(err)
+	}
 	outFilePath := filepath.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
-	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
 	testManifest := manifest.NewBuilder()
 	testManifest.SetRestartPolicy(runit.RestartPolicyAlways)
 	testLaunchable := hl.If()
 	pod.buildRunitServices([]launch.Launchable{testLaunchable}, testManifest.GetManifest())
 
-	f, err := os.Open(outFilePath)
-	defer f.Close()
-	bytes, err := ioutil.ReadAll(f)
-	Assert(t).IsNil(err, "Got an unexpected error reading the servicebuilder yaml file")
+	bytes, err := ioutil.ReadFile(outFilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	expectedMap := map[string]runit.ServiceTemplate{
 		executables[0].Service.Name: {
@@ -400,6 +403,7 @@ func TestUninstall(t *testing.T) {
 	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
 	pod := Pod{
 		Id:             "testPod",
+		uniqueName:     "testPod",
 		home:           testPodDir,
 		ServiceBuilder: serviceBuilder,
 		logger:         logging.DefaultLogger,

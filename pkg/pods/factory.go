@@ -69,16 +69,20 @@ func NewHookFactory(hookRoot string, node types.NodeName) HookFactory {
 	}
 }
 
-func (f *factory) NewPod(id types.PodID, uniqueKey *types.PodUniqueKey) *Pod {
-	dirName := id.String()
+func uniqueName(id types.PodID, uniqueKey *types.PodUniqueKey) string {
+	name := id.String()
 	if uniqueKey != nil {
 		// If the pod was scheduled with a UUID, we want to namespace its pod home
 		// with the same uuid. This enables multiple pods with the same pod ID to
 		// exist on the same filesystem
-		dirName = fmt.Sprintf("%s-%s", dirName, uniqueKey.ID)
+		name = fmt.Sprintf("%s-%s", name, uniqueKey.ID)
 	}
-	home := filepath.Join(f.podRoot, dirName)
 
+	return name
+}
+
+func (f *factory) NewPod(id types.PodID, uniqueKey *types.PodUniqueKey) *Pod {
+	home := filepath.Join(f.podRoot, uniqueName(id, uniqueKey))
 	return newPodWithHome(id, uniqueKey, home, f.node)
 }
 
@@ -96,8 +100,10 @@ func newPodWithHome(id types.PodID, uniqueKey *types.PodUniqueKey, podHome strin
 	} else {
 		logger = Log.SubLogger(logrus.Fields{"pod": id})
 	}
+
 	return &Pod{
 		Id:             id,
+		uniqueName:     uniqueName(id, uniqueKey),
 		home:           podHome,
 		node:           node,
 		logger:         logger,
