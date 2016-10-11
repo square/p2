@@ -132,6 +132,10 @@ func updatePods(
 	for _, pod := range current {
 		inReality := false
 		for _, man := range reality {
+			if man.PodUniqueKey != nil {
+				// We don't health check uuid pods
+				continue
+			}
 			if man.Manifest.ID() == pod.manifest.ID() &&
 				man.Manifest.GetStatusHTTP() == pod.manifest.GetStatusHTTP() &&
 				man.Manifest.GetStatusLocalhostOnly() == pod.manifest.GetStatusLocalhostOnly() &&
@@ -153,6 +157,11 @@ func updatePods(
 	// for pod in reality if pod not in current: create podwatch and
 	// append to current
 	for _, man := range reality {
+		if man.PodUniqueKey != nil {
+			// We don't health check uuid pods
+			continue
+		}
+
 		missing := true
 		for _, pod := range newCurrent {
 			if man.Manifest.ID() == pod.manifest.ID() {
