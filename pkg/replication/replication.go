@@ -424,10 +424,13 @@ func (r *replication) updateOne(
 
 		select {
 		case <-r.quitCh:
+			r.logger.Infoln("Caught quit signal during updateOne")
 			return errQuit
 		case <-timeoutCh:
+			r.logger.Infoln("Caught timeout signal during updateOne")
 			return errTimeout
 		case <-r.replicationCancelledCh:
+			r.logger.Infoln("Caught cancellation signal during updateOne")
 			return errCancelled
 		case <-timer.C:
 			_, err = r.store.SetPod(
@@ -472,10 +475,13 @@ func (r *replication) ensureInReality(
 	for {
 		select {
 		case <-r.quitCh:
+			r.logger.Infoln("Caught quit signal during ensureInReality")
 			return errQuit
 		case <-timeoutCh:
+			r.logger.Infoln("Caught timeout signal during ensureInReality")
 			return errTimeout
 		case <-r.replicationCancelledCh:
+			r.logger.Infoln("Caught cancellation signal during ensureInReality")
 			return errCancelled
 		case <-time.After(5 * time.Second):
 			man, err := r.queryReality(node)
@@ -507,10 +513,13 @@ func (r *replication) ensureHealthy(
 	for {
 		select {
 		case <-r.quitCh:
+			r.logger.Infoln("Caught quit signal during ensureHealthy")
 			return errQuit
 		case <-timeoutCh:
+			r.logger.Infoln("Caught node timeout signal during ensureHealthy")
 			return errTimeout
 		case <-r.replicationCancelledCh:
+			r.logger.Infoln("Caught cancellation signal during ensureHealthy")
 			return errCancelled
 		case <-time.After(1 * time.Second):
 			res, ok := aggregateHealth.GetHealth(node)
