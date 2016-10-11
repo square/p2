@@ -420,7 +420,10 @@ func (r *replication) updateOne(
 	timer := time.NewTimer(exponentialBackoff)
 	for err != nil {
 		nodeLogger.WithError(err).Errorln("Could not write intent store")
-		r.errCh <- err
+		select {
+		case r.errCh <- err:
+		default:
+		}
 
 		select {
 		case <-r.quitCh:
