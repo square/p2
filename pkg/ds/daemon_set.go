@@ -371,8 +371,7 @@ func (ds *daemonSet) addPods() error {
 		}
 	}
 
-	ds.logger.Infof("Need to schedule %v nodes", len(currentNodes))
-	if len(currentNodes) > 0 {
+	if len(currentNodes) > 0 || len(toScheduleSorted) > 0 {
 		return ds.PublishToReplication()
 	}
 
