@@ -21,6 +21,7 @@ import (
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
+	"github.com/square/p2/pkg/kp/podstore"
 	"github.com/square/p2/pkg/kp/statusstore"
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/launch"
@@ -40,9 +41,6 @@ import (
 // TODO: IPv6
 const (
 	DefaultConsulAddress = "127.0.0.1:8500"
-
-	// Don't change this, it affects where pod status keys are read and written from
-	PreparerPodStatusNamespace statusstore.Namespace = "preparer"
 )
 
 type AppConfig struct {
@@ -58,6 +56,7 @@ type Preparer struct {
 	node                   types.NodeName
 	store                  Store
 	podStatusStore         podstatus.Store
+	podStore               podstore.Store
 	hooks                  Hooks
 	hookListener           HookListener
 	Logger                 logging.Logger
@@ -326,7 +325,8 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 
 	store := kp.NewConsulStore(client)
 	statusStore := statusstore.NewConsul(client)
-	podStatusStore := podstatus.NewConsul(statusStore, PreparerPodStatusNamespace)
+	podStatusStore := podstatus.NewConsul(statusStore, kp.PreparerPodStatusNamespace)
+	podStore := podstore.NewConsul(client.KV())
 
 	maxLaunchableDiskUsage := launch.DefaultAllowableDiskUsage
 	if preparerConfig.MaxLaunchableDiskUsage != "" {
@@ -372,6 +372,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		store:                  store,
 		hooks:                  hooks.Hooks(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger),
 		podStatusStore:         podStatusStore,
+		podStore:               podStore,
 		hookListener:           listener,
 		Logger:                 logger,
 		podFactory:             pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName),

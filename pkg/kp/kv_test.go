@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/kp/consulutil"
+	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 
@@ -167,25 +168,42 @@ func TestAllPods(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// now write a legacy manifest to /intent
+	// Add a status entry for the pod
+	err = consulStore.podStatusStore.Set(uuidKey, podstatus.PodStatus{Manifest: "id: first_pod"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write the /reality index for the pod
+	err = consulStore.podStore.WriteRealityIndex(uuidKey, "node1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now write a legacy manifest to /intent and /reality
 	_, err = store.SetPod(INTENT_TREE, "node2", testManifest("second_pod"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Now retrieve all the pods and make sure the manifest results are sane
-	allPods, _, err := store.AllPods(INTENT_TREE)
+	_, err = store.SetPod(REALITY_TREE, "node2", testManifest("second_pod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Now retrieve all the /intent pods and make sure the manifest results are sane
+	allIntentPods, _, err := store.AllPods(INTENT_TREE)
 	if err != nil {
 		t.Fatalf("Unexpected error calling all pods: %s", err)
 	}
 
-	if len(allPods) != 2 {
-		t.Errorf("Expected 2 pods to be returned, but there were '%d'", len(allPods))
+	if len(allIntentPods) != 2 {
+		t.Errorf("Expected 2 intent pods to be returned, but there were %d", len(allIntentPods))
 	}
 
 	// Make sure the legacy pod was found
 	legacyFound := false
-	for _, result := range allPods {
+	for _, result := range allIntentPods {
 		if result.PodLocation.Node == "node2" {
 			legacyFound = true
 			if result.Manifest.ID() != "second_pod" {
@@ -203,7 +221,58 @@ func TestAllPods(t *testing.T) {
 	}
 
 	uuidPodFound := false
-	for _, result := range allPods {
+	for _, result := range allIntentPods {
+		if result.PodLocation.Node == "node1" {
+			uuidPodFound = true
+			if result.Manifest.ID() != "first_pod" {
+				t.Errorf("UUID pod manifest should have had id '%s' but was '%s'", "first_pod", result.Manifest.ID())
+			}
+
+			if result.PodUniqueKey == nil {
+				t.Error("UUID pod should have a uuid")
+			}
+
+			if result.PodUniqueKey.ID != uuidKey.ID {
+				t.Errorf("Expected legacy pod to have PodUniqueKeyID '%s', was '%s'", "node2/second_pod", result.PodUniqueKey.ID)
+			}
+		}
+	}
+
+	if !uuidPodFound {
+		t.Error("Didn't find uuid pod")
+	}
+
+	// Now retrieve all the pods and make sure the manifest results are sane
+	allRealityPods, _, err := store.AllPods(REALITY_TREE)
+	if err != nil {
+		t.Fatalf("Unexpected error calling all pods: %s", err)
+	}
+
+	if len(allRealityPods) != 2 {
+		t.Errorf("Expected 2 reality pods to be returned, but there were %d", len(allRealityPods))
+	}
+
+	// Make sure the legacy pod was found
+	legacyFound = false
+	for _, result := range allRealityPods {
+		if result.PodLocation.Node == "node2" {
+			legacyFound = true
+			if result.Manifest.ID() != "second_pod" {
+				t.Errorf("Legacy pod manifest should have had id '%s' but was '%s'", "second_pod", result.Manifest.ID())
+			}
+
+			if result.PodUniqueKey != nil {
+				t.Error("Legacy pod should not have a uuid")
+			}
+		}
+	}
+
+	if !legacyFound {
+		t.Error("Didn't find the legacy (non uuid) pod")
+	}
+
+	uuidPodFound = false
+	for _, result := range allRealityPods {
 		if result.PodLocation.Node == "node1" {
 			uuidPodFound = true
 			if result.Manifest.ID() != "first_pod" {

@@ -100,6 +100,7 @@ func newRollStore(t *testing.T, entries []fields.Update) consulStore {
 			t.Fatalf("Unable to marshal test field as JSON: %s", err)
 		}
 		storeFields[path] = &api.KVPair{
+			Key:   path,
 			Value: json,
 		}
 	}
@@ -136,7 +137,7 @@ func TestList(t *testing.T) {
 	}
 
 	if len(rolls) != 2 {
-		t.Errorf("Expected 2 rolls from list operation, got %d", len(entries))
+		t.Errorf("Expected 2 rolls from list operation, got %d", len(rolls))
 	}
 
 	var matched bool

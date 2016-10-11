@@ -1,6 +1,7 @@
 package podstatus
 
 import (
+	"github.com/square/p2/pkg/kp/podstore"
 	"github.com/square/p2/pkg/kp/statusstore"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -41,6 +42,10 @@ func (c *consulStore) Get(key types.PodUniqueKey) (PodStatus, *api.QueryMeta, er
 	}
 
 	return podStatus, queryMeta, nil
+}
+
+func (c *consulStore) GetStatusFromIndex(index podstore.PodIndex) (PodStatus, *api.QueryMeta, error) {
+	return c.Get(index.PodKey)
 }
 
 func (c *consulStore) Set(key types.PodUniqueKey, status PodStatus) error {

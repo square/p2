@@ -63,7 +63,9 @@ func (f *FakeKV) List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.Que
 	defer f.mu.Unlock()
 	ret := make(api.KVPairs, 0)
 	for _, v := range f.Entries {
-		ret = append(ret, v)
+		if strings.HasPrefix(v.Key, prefix) {
+			ret = append(ret, v)
+		}
 	}
 	return ret, &api.QueryMeta{}, nil
 }
