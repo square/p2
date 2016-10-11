@@ -405,6 +405,9 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 		},
 	}
 	builder.SetLaunchables(stanzas)
+	builder.SetConfig(map[interface{}]interface{}{
+		"port": 43770,
+	})
 	manifest := builder.GetManifest()
 	manifestPath := path.Join(dir, "hello.yaml")
 
