@@ -25,6 +25,7 @@ import (
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/schedule"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -40,9 +41,12 @@ func main() {
 	// 3. Execute bootstrap with premade consul pod and preparer pod
 	// 4. Deploy p2-rctl-server pod with p2-schedule
 	// 5. Schedule a hello pod manifest with a replication controller
-	// 6. Verify that p2-rctl-server is running by checking health.
-	// 7. Verify that hello is running by checking health. Monitor using
-	// written pod label queries.
+	// 6. Schedule a hello pod as a "uuid pod"
+	// 7. Verify that p2-rctl-server is running by checking health.
+	// 8. Verify that the RC-deployed hello is running by checking health.
+	// Monitor using written pod label queries.
+	// 9. Verify that the uuid hello pod is running by curling its HTTP port.
+	// Health is not checked for uuid pods so checking health cannot be used.
 
 	// list of services running on integration test host
 	services := []string{"p2-preparer", "hello"}
@@ -93,11 +97,20 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not schedule RCTL server: %s", err)
 	}
+
+	// Schedule a "legacy" hello pod using a replication controller
 	rcID, err := createHelloReplicationController(tempdir)
 	if err != nil {
 		log.Fatalf("Could not create hello pod / rc: %s\n", err)
 	}
 	log.Printf("Created RC #%s for hello\n", rcID)
+
+	// Schedule a "uuid" hello pod on a different port
+	podUniqueKey, err := createHelloUUIDPod(tempdir)
+	if err != nil {
+		log.Fatalf("Could not schedule UUID hello pod: %s", err)
+	}
+	log.Printf("p2-schedule'd another hello instance as a uuid pod")
 
 	err = waitForPodLabeledWithRC(klabels.Everything().Add(rc.RCIDLabel, klabels.EqualsOperator, []string{rcID.String()}), rcID)
 	if err != nil {
@@ -110,6 +123,10 @@ func main() {
 	err = verifyHealthChecks(config, services)
 	if err != nil {
 		log.Fatalf("Could not get health check info from consul: %s", err)
+	}
+	err = verifyHelloUUIDRunning(podUniqueKey)
+	if err != nil {
+		log.Fatalf("Couldn't get hello running as a uuid pod: %s", err)
 	}
 }
 
@@ -126,12 +143,18 @@ func signManifest(manifestPath string, workdir string) (string, error) {
 
 func signBuild(artifactPath string) error {
 	sigLoc := fmt.Sprintf("%s.sig", artifactPath)
-	return exec.Command("gpg", "--no-default-keyring",
+	output, err := exec.Command("gpg", "--no-default-keyring",
 		"--keyring", util.From(runtime.Caller(0)).ExpandPath("pubring.gpg"),
 		"--secret-keyring", util.From(runtime.Caller(0)).ExpandPath("secring.gpg"),
 		"-u", "p2universe",
 		"--out", sigLoc,
-		"--detach-sign", artifactPath).Run()
+		"--detach-sign", artifactPath).CombinedOutput()
+	if err != nil {
+		fmt.Println(string(output))
+		return err
+	}
+
+	return nil
 }
 
 func generatePreparerPod(workdir string) (string, error) {
@@ -392,11 +415,15 @@ func scheduleRCTLServer(dir string) error {
 	return exec.Command("p2-schedule", signedPath).Run()
 }
 
-func createHelloReplicationController(dir string) (fields.ID, error) {
+// Writes a pod manifest for the hello pod at with the specified name in the
+// specified dir, configured to run on the specified port. Returns the path to
+// the signed manifest
+func writeHelloManifest(dir string, manifestName string, port int) (string, error) {
 	hello := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-hello_def456.tar.gz"))
 	builder := manifest.NewBuilder()
 	builder.SetID("hello")
 	builder.SetStatusPort(43770)
+	builder.SetStatusHTTP(true)
 	stanzas := map[launch.LaunchableID]launch.LaunchableStanza{
 		"hello": {
 			LaunchableId:   "hello",
@@ -406,28 +433,55 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 	}
 	builder.SetLaunchables(stanzas)
 	builder.SetConfig(map[interface{}]interface{}{
-		"port": 43770,
+		"port": port,
 	})
 	manifest := builder.GetManifest()
-	manifestPath := path.Join(dir, "hello.yaml")
 
+	manifestPath := filepath.Join(dir, manifestName)
 	f, err := os.OpenFile(manifestPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		return fields.ID(""), err
+		return "", err
 	}
 	defer f.Close()
 	err = manifest.Write(f)
 	if err != nil {
-		return fields.ID(""), err
+		return "", err
 	}
-	f.Close()
 
-	manifestPath, err = signManifest(manifestPath, dir)
+	return signManifest(manifestPath, dir)
+}
+
+func createHelloUUIDPod(dir string) (types.PodUniqueKey, error) {
+	signedManifestPath, err := writeHelloManifest(dir, "hello-uuid.yaml", 43771)
 	if err != nil {
-		return fields.ID(""), err
+		return types.PodUniqueKey{}, err
+	}
+	cmd := exec.Command("p2-schedule", "--uuid-pod", signedManifestPath)
+	stdout := bytes.Buffer{}
+	stderr := bytes.Buffer{}
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err = cmd.Run()
+	if err != nil {
+		fmt.Println(stderr.String())
+		return types.PodUniqueKey{}, err
 	}
 
-	cmd := exec.Command("p2-rctl", "--log-json", "create", "--manifest", manifestPath, "--node-selector", "test=yes")
+	var out schedule.Output
+	err = json.Unmarshal(stdout.Bytes(), &out)
+	if err != nil {
+		return types.PodUniqueKey{}, util.Errorf("Scheduled uuid pod but couldn't parse uuid from p2-schedule output: %s", err)
+	}
+
+	return out.PodUniqueKey, nil
+}
+
+func createHelloReplicationController(dir string) (fields.ID, error) {
+	signedManifestPath, err := writeHelloManifest(dir, "hello.yaml", 43770)
+	if err != nil {
+		return "", err
+	}
+
+	cmd := exec.Command("p2-rctl", "--log-json", "create", "--manifest", signedManifestPath, "--node-selector", "test=yes")
 	out := bytes.Buffer{}
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -444,7 +498,12 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 		return fields.ID(""), fmt.Errorf("Couldn't read RC ID out of p2-rctl invocation result: %v", err)
 	}
 
-	return fields.ID(rctlOut.ID), exec.Command("p2-rctl", "set-replicas", rctlOut.ID, "1").Run()
+	output, err := exec.Command("p2-rctl", "set-replicas", rctlOut.ID, "1").CombinedOutput()
+	if err != nil {
+		fmt.Println(string(output))
+		return "", err
+	}
+	return fields.ID(rctlOut.ID), nil
 }
 
 func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
@@ -522,6 +581,46 @@ func verifyHelloRunning() error {
 	}
 }
 
+func verifyHelloUUIDRunning(podUniqueKey types.PodUniqueKey) error {
+	helloUUIDAppeared := make(chan struct{})
+	quit := make(chan struct{})
+	defer close(quit)
+	go func() {
+		for {
+			time.Sleep(100 * time.Millisecond)
+			err := exec.Command("curl", "localhost:43771").Run()
+			if err == nil {
+				select {
+				case <-quit:
+					fmt.Println("got a valid curl after timeout")
+				case helloUUIDAppeared <- struct{}{}:
+				}
+				return
+			} else {
+				select {
+				case <-quit:
+					return
+				default:
+				}
+			}
+		}
+	}()
+	select {
+	case <-time.After(1 * time.Minute):
+		return fmt.Errorf("hello-%s didn't respond healthy on port 43771 after 60 seconds:\n\n %s", podUniqueKey, targetUUIDLogs(podUniqueKey))
+	case <-helloUUIDAppeared:
+		return nil
+	}
+}
+
+func targetUUIDLogs(podUniqueKey types.PodUniqueKey) string {
+	var helloUUIDTail bytes.Buffer
+	helloT := exec.Command("tail", fmt.Sprintf("/var/service/hello-%s__hello__launch/log/main/current", podUniqueKey.ID))
+	helloT.Stdout = &helloUUIDTail
+	helloT.Run()
+	return fmt.Sprintf("hello uuid tail: \n%s\n\n", helloUUIDTail.String())
+}
+
 func targetLogs() string {
 	var helloTail, preparerTail bytes.Buffer
 	helloT := exec.Command("tail", "/var/service/hello__hello__launch/log/main/current")
@@ -540,7 +639,7 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 	}
 	store := kp.NewConsulStore(client)
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(15 * time.Second)
 	// check consul for health information for each app
 	name, err := os.Hostname()
 	if err != nil {
