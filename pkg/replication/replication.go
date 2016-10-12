@@ -18,6 +18,7 @@ import (
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
+	"github.com/square/p2/pkg/util/param"
 
 	"github.com/Sirupsen/logrus"
 )
@@ -25,6 +26,11 @@ import (
 type Labeler interface {
 	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
 }
+
+var (
+	ensureRealityPeriodMillis = param.Int("ensure_in_reality_millis", 5000)
+	ensureHealthyPeriodMillis = param.Int("ensure_healthy_millis", 1000)
+)
 
 type nodeUpdated struct {
 	node types.NodeName
@@ -486,7 +492,7 @@ func (r *replication) ensureInReality(
 		case <-r.replicationCancelledCh:
 			r.logger.Infoln("Caught cancellation signal during ensureInReality")
 			return errCancelled
-		case <-time.After(5 * time.Second):
+		case <-time.After(time.Duration(*ensureRealityPeriodMillis) * time.Millisecond):
 			man, err := r.queryReality(node)
 			if err == pods.NoCurrentManifest {
 				// if the pod key doesn't exist yet, that's okay just wait longer
@@ -524,7 +530,7 @@ func (r *replication) ensureHealthy(
 		case <-r.replicationCancelledCh:
 			r.logger.Infoln("Caught cancellation signal during ensureHealthy")
 			return errCancelled
-		case <-time.After(1 * time.Second):
+		case <-time.After(time.Duration(*ensureHealthyPeriodMillis) * time.Millisecond):
 			res, ok := aggregateHealth.GetHealth(node)
 			if !ok {
 				nodeLogger.WithFields(logrus.Fields{
