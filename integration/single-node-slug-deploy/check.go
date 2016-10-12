@@ -353,8 +353,6 @@ func getConsulManifest(dir string) (string, error) {
 	builder.SetLaunchables(stanzas)
 	manifest := builder.GetManifest()
 
-	_ = signBuild(consulTar)
-
 	consulPath := path.Join(dir, "consul.yaml")
 	f, err := os.OpenFile(consulPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
