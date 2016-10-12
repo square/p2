@@ -1,6 +1,7 @@
 package preparer
 
 import (
+	"crypto/tls"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -236,6 +237,13 @@ func (c *PreparerConfig) getClient(
 		if err = http2.ConfigureTransport(transport); err != nil {
 			return nil, err
 		}
+	} else {
+		// Disable http2 - as the docs for http.Transport tell us,
+		// "If TLSNextProto is nil, HTTP/2 support is enabled automatically."
+		// as the Go 1.6 release notes tell us,
+		// "Programs that must disable HTTP/2 can do so by setting Transport.TLSNextProto
+		// to a non-nil, empty map."
+		transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
 	}
 	return &http.Client{Transport: transport}, nil
 }
