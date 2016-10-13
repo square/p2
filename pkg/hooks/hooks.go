@@ -28,6 +28,7 @@ const (
 	HOOKED_ENV_PATH_ENV_VAR        = "HOOKED_ENV_PATH"
 	HOOKED_CONFIG_DIR_PATH_ENV_VAR = "HOOKED_CONFIG_DIR_PATH"
 	HOOKED_SYSTEM_POD_ROOT_ENV_VAR = "HOOKED_SYSTEM_POD_ROOT"
+	HOOKED_POD_UNIQUE_KEY_ENV_VAR  = "HOOKED_POD_UNIQUE_KEY"
 
 	DefaultTimeout = 120 * time.Second
 )
@@ -37,6 +38,7 @@ type Pod interface {
 	EnvDir() string
 	Node() types.NodeName
 	Home() string
+	UniqueKey() types.PodUniqueKey
 }
 
 type HookDir struct {
@@ -227,6 +229,7 @@ func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest 
 		fmt.Sprintf("%s=%s", HOOKED_ENV_PATH_ENV_VAR, pod.EnvDir()),
 		fmt.Sprintf("%s=%s", HOOKED_CONFIG_DIR_PATH_ENV_VAR, pod.ConfigDir()),
 		fmt.Sprintf("%s=%s", HOOKED_SYSTEM_POD_ROOT_ENV_VAR, h.podRoot),
+		fmt.Sprintf("%s=%s", HOOKED_POD_UNIQUE_KEY_ENV_VAR, pod.UniqueKey()),
 	}
 
 	return runDirectory(dirpath, hookEnvironment, logger)
