@@ -86,7 +86,7 @@ func (h *HookEnv) Pod() (*pods.Pod, error) {
 	}
 
 	// TODO: pass the pod uuid to hooks when applicable.
-	return factory.NewPod(podID, nil), nil
+	return factory.NewLegacyPod(podID), nil
 }
 
 func (h *HookEnv) Config() (*config.Config, error) {

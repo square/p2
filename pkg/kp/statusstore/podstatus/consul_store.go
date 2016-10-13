@@ -27,11 +27,11 @@ func NewConsul(statusStore statusstore.Store, namespace statusstore.Namespace) S
 }
 
 func (c *consulStore) Get(key types.PodUniqueKey) (PodStatus, *api.QueryMeta, error) {
-	if key.ID == "" {
+	if key == "" {
 		return PodStatus{}, nil, util.Errorf("Cannot retrieve status for a pod with an empty uuid")
 	}
 
-	status, queryMeta, err := c.statusStore.GetStatus(statusstore.POD, statusstore.ResourceID(key.ID), c.namespace)
+	status, queryMeta, err := c.statusStore.GetStatus(statusstore.POD, statusstore.ResourceID(key), c.namespace)
 	if err != nil {
 		return PodStatus{}, queryMeta, err
 	}
@@ -49,7 +49,7 @@ func (c *consulStore) GetStatusFromIndex(index podstore.PodIndex) (PodStatus, *a
 }
 
 func (c *consulStore) Set(key types.PodUniqueKey, status PodStatus) error {
-	if key.ID == "" {
+	if key == "" {
 		return util.Errorf("Could not set status for pod with empty uuid")
 	}
 
@@ -58,11 +58,11 @@ func (c *consulStore) Set(key types.PodUniqueKey, status PodStatus) error {
 		return err
 	}
 
-	return c.statusStore.SetStatus(statusstore.POD, statusstore.ResourceID(key.ID), c.namespace, rawStatus)
+	return c.statusStore.SetStatus(statusstore.POD, statusstore.ResourceID(key), c.namespace, rawStatus)
 }
 
 func (c *consulStore) CAS(key types.PodUniqueKey, status PodStatus, modifyIndex uint64) error {
-	if key.ID == "" {
+	if key == "" {
 		return util.Errorf("Could not set status for pod with empty uuid")
 	}
 
@@ -71,7 +71,7 @@ func (c *consulStore) CAS(key types.PodUniqueKey, status PodStatus, modifyIndex 
 		return err
 	}
 
-	return c.statusStore.CASStatus(statusstore.POD, statusstore.ResourceID(key.ID), c.namespace, rawStatus, modifyIndex)
+	return c.statusStore.CASStatus(statusstore.POD, statusstore.ResourceID(key), c.namespace, rawStatus, modifyIndex)
 }
 
 // Convenience function for only mutating a part of the status structure.

@@ -23,8 +23,8 @@ func TestSchedule(t *testing.T) {
 
 	// Now reach into the consul impl to make sure it was stored with an index
 	// and a main pod
-	podPath := fmt.Sprintf("pods/%s", key.ID)
-	indexPath := fmt.Sprintf("intent/%s/%s", node, key.ID)
+	podPath := fmt.Sprintf("pods/%s", key)
+	indexPath := fmt.Sprintf("intent/%s/%s", node, key)
 
 	if kv.Entries[podPath] == nil {
 		t.Fatalf("Key '%s' wasn't set as expected", podPath)
@@ -64,8 +64,8 @@ func TestSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if index.PodKey.ID != key.ID {
-		t.Errorf("Index didn't have expected key, wanted '%s' was '%s'", key.ID, index.PodKey)
+	if index.PodKey != key {
+		t.Errorf("Index didn't have expected key, wanted '%s' was '%s'", key, index.PodKey)
 	}
 }
 
@@ -73,8 +73,8 @@ func TestUnschedule(t *testing.T) {
 	node := types.NodeName("some_node")
 	key := types.NewPodUUID()
 
-	podPath := fmt.Sprintf("pods/%s", key.ID)
-	indexPath := fmt.Sprintf("intent/%s/%s", node, key.ID)
+	podPath := fmt.Sprintf("pods/%s", key)
+	indexPath := fmt.Sprintf("intent/%s/%s", node, key)
 
 	// Initialize the store with entries at the pod path and index path
 	pods := map[string]Pod{
@@ -110,8 +110,8 @@ func TestReadPod(t *testing.T) {
 	node := types.NodeName("some_node")
 	key := types.NewPodUUID()
 
-	podPath := fmt.Sprintf("pods/%s", key.ID)
-	indexPath := fmt.Sprintf("intent/%s/%s", node, key.ID)
+	podPath := fmt.Sprintf("pods/%s", key)
+	indexPath := fmt.Sprintf("intent/%s/%s", node, key)
 
 	pod := Pod{
 		Manifest: testManifest(),
@@ -161,8 +161,8 @@ func TestReadPodFromIndex(t *testing.T) {
 	node := types.NodeName("some_node")
 	key := types.NewPodUUID()
 
-	podPath := fmt.Sprintf("pods/%s", key.ID)
-	indexPath := fmt.Sprintf("intent/%s/%s", node, key.ID)
+	podPath := fmt.Sprintf("pods/%s", key)
+	indexPath := fmt.Sprintf("intent/%s/%s", node, key)
 
 	pod := Pod{
 		Manifest: testManifest(),
@@ -212,7 +212,7 @@ func TestWriteRealityIndex(t *testing.T) {
 	node := types.NodeName("some_node")
 	key := types.NewPodUUID()
 
-	realityIndexPath := fmt.Sprintf("reality/%s/%s", node, key.ID)
+	realityIndexPath := fmt.Sprintf("reality/%s/%s", node, key)
 
 	store, fakeKV := storeWithFakeKV(t, make(map[string]Pod), make(map[string]PodIndex))
 
@@ -245,7 +245,7 @@ func TestDeleteRealityIndex(t *testing.T) {
 	node := types.NodeName("some_node")
 	key := types.NewPodUUID()
 
-	realityIndexPath := fmt.Sprintf("reality/%s/%s", node, key.ID)
+	realityIndexPath := fmt.Sprintf("reality/%s/%s", node, key)
 
 	index := PodIndex{
 		PodKey: key,

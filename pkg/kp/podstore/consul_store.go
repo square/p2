@@ -109,7 +109,7 @@ func NewConsul(consulKV KV) Store {
 func (c *consulStore) Schedule(manifest manifest.Manifest, node types.NodeName) (key types.PodUniqueKey, err error) {
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {
-		return types.PodUniqueKey{}, err
+		return "", err
 	}
 
 	podKey := types.NewPodUUID()
@@ -125,7 +125,7 @@ func (c *consulStore) Schedule(manifest manifest.Manifest, node types.NodeName) 
 
 	podBytes, err := json.Marshal(pod)
 	if err != nil {
-		return types.PodUniqueKey{}, err
+		return "", err
 	}
 
 	pair := &api.KVPair{
@@ -135,7 +135,7 @@ func (c *consulStore) Schedule(manifest manifest.Manifest, node types.NodeName) 
 
 	_, err = c.consulKV.Put(pair, nil)
 	if err != nil {
-		return types.PodUniqueKey{}, consulutil.NewKVError("put", podPath, err)
+		return "", consulutil.NewKVError("put", podPath, err)
 	}
 
 	// Now, write the secondary index to /intent/<node>/<key>
@@ -158,7 +158,7 @@ func (c *consulStore) Schedule(manifest manifest.Manifest, node types.NodeName) 
 
 	indexBytes, err := json.Marshal(index)
 	if err != nil {
-		return types.PodUniqueKey{}, util.Errorf("Could not marshal index as json: %s", err)
+		return "", util.Errorf("Could not marshal index as json: %s", err)
 	}
 
 	indexPair := &api.KVPair{
@@ -167,14 +167,14 @@ func (c *consulStore) Schedule(manifest manifest.Manifest, node types.NodeName) 
 	}
 	_, err = c.consulKV.Put(indexPair, nil)
 	if err != nil {
-		return types.PodUniqueKey{}, consulutil.NewKVError("put", intentIndexPath, err)
+		return "", consulutil.NewKVError("put", intentIndexPath, err)
 	}
 
 	return podKey, nil
 }
 
 func (c *consulStore) Unschedule(podKey types.PodUniqueKey) error {
-	if podKey.ID == "" {
+	if podKey == "" {
 		return util.Errorf("Pod store can only delete pods with uuid keys")
 	}
 
@@ -217,7 +217,7 @@ func (c *consulStore) Unschedule(podKey types.PodUniqueKey) error {
 // Writes a key to the /reality tree to signify that the pod specified by the UUID has been
 // launched on the given node.
 func (c *consulStore) WriteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error {
-	if podKey.ID == "" {
+	if podKey == "" {
 		return util.Errorf("Pod store can only write index for pods with uuid keys")
 	}
 
@@ -277,7 +277,7 @@ type NoPod struct {
 }
 
 func (n NoPod) Error() string {
-	return fmt.Sprintf("Pod '%s' does not exist", n.key.ID)
+	return fmt.Sprintf("Pod '%s' does not exist", n.key)
 }
 
 func NoPodError(key types.PodUniqueKey) NoPod {
@@ -292,7 +292,7 @@ func IsNoPod(err error) bool {
 }
 
 func (c *consulStore) ReadPod(podKey types.PodUniqueKey) (Pod, error) {
-	if podKey.ID == "" {
+	if podKey == "" {
 		return Pod{}, util.Errorf("Pod store can only read pods with uuid keys")
 	}
 
@@ -314,7 +314,7 @@ func (c *consulStore) ReadPod(podKey types.PodUniqueKey) (Pod, error) {
 	var pod Pod
 	err = json.Unmarshal(pair.Value, &pod)
 	if err != nil {
-		return Pod{}, util.Errorf("Could not unmarshal pod '%s' as json: %s", podKey.ID, err)
+		return Pod{}, util.Errorf("Could not unmarshal pod '%s' as json: %s", podKey, err)
 	}
 
 	c.addToCache(podKey, pod)
@@ -348,13 +348,13 @@ func (c *consulStore) fetchFromCache(key types.PodUniqueKey) (Pod, bool) {
 // Given a pod unique key and a node, compute the path to which the main pod
 // should be written as well as the secondary index
 func computePodPath(key types.PodUniqueKey) string {
-	return path.Join(PodTree, key.ID)
+	return path.Join(PodTree, key.String())
 }
 
 func computeIntentIndexPath(key types.PodUniqueKey, node types.NodeName) string {
-	return path.Join("intent", node.String(), key.ID)
+	return path.Join("intent", node.String(), key.String())
 }
 
 func computeRealityIndexPath(key types.PodUniqueKey, node types.NodeName) string {
-	return path.Join("reality", node.String(), key.ID)
+	return path.Join("reality", node.String(), key.String())
 }

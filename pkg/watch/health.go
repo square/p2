@@ -137,7 +137,7 @@ func updatePods(
 	for _, pod := range current {
 		inReality := false
 		for _, man := range reality {
-			if man.PodUniqueKey != nil {
+			if man.PodUniqueKey != "" {
 				// We don't health check uuid pods
 				continue
 			}
@@ -162,7 +162,7 @@ func updatePods(
 	// for pod in reality if pod not in current: create podwatch and
 	// append to current
 	for _, man := range reality {
-		if man.PodUniqueKey != nil {
+		if man.PodUniqueKey != "" {
 			// We don't health check uuid pods
 			continue
 		}

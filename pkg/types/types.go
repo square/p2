@@ -16,22 +16,18 @@ type NodeName string
 type PodID string
 
 // A unique identifier for each pod (instance) expressed as a UUID. Supporting
-// UUIDs is a new feature, meaning that this type will typically be used within
-// a pointer. A nil *PodUniqueKey signifies a legacy pod for which there is no
-// uuid.
+// UUIDs is a new feature, so typically it will be empty. An empty PodUniqueKey
+// signifies a legacy pod for which there is no uuid.
 //
 // P2 will begin using uuids instead of the previous format to better support
 // running multiple pods with the same pod id on the same node. Certain new
 // functionality will only be supported for pods with UUID unique keys, hence
-// the need for using pointers and checking for non-nil values.
-type PodUniqueKey struct {
-	ID string `json:"id"` // a uuid
-}
+// the need for checking for non-nil values.
+type PodUniqueKey string              // empty for legacy pods, uuid otherwise
+func (p PodUniqueKey) String() string { return string(p) }
 
 func NewPodUUID() PodUniqueKey {
-	return PodUniqueKey{
-		ID: uuid.New(),
-	}
+	return PodUniqueKey(uuid.New())
 }
 
 func (n NodeName) String() string {
