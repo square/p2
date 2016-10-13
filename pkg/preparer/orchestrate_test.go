@@ -89,6 +89,10 @@ func (t *TestPod) Home() string {
 	return os.TempDir()
 }
 
+func (t *TestPod) UniqueKey() types.PodUniqueKey {
+	return ""
+}
+
 type fakeHooks struct {
 	beforeInstallErr, beforeUninstallErr, afterInstallErr, afterLaunchErr, afterAuthFailErr, beforeLaunchErr error
 	ranBeforeInstall, ranBeforeUninstall, ranAfterLaunch, ranAfterInstall, ranAfterAuthFail, ranBeforeLaunch bool

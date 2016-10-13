@@ -46,10 +46,9 @@ type Pod struct {
 	Id   types.PodID
 	node types.NodeName
 
-	// A unique name for a pod instance, useful for avoiding filename
-	// conflicts. Typically <id>-<uuid> if the pod has a uuid, and simply
-	// <id> if it does not have a uuid
-	uniqueName string
+	// An (optional) unique identifier for the pod. May be empty for "legacy" pods, will be a uuid
+	// otherwise
+	uniqueKey types.PodUniqueKey
 
 	// The home directory for the pod. Typically some global root (e.g. /data/pods) followed by the
 	// podUniqueName (e.g. /data/pods/<pod_id> or /data/pods/<pod_id>-<uuid>
@@ -72,6 +71,17 @@ func (pod *Pod) Node() types.NodeName {
 
 func (pod *Pod) Home() string {
 	return pod.home
+}
+
+// A unique name for a pod instance, useful for avoiding filename
+// conflicts. Typically <id>-<uuid> if the pod has a uuid, and simply
+// <id> if it does not have a uuid
+func (pod *Pod) uniqueName() string {
+	return computeUniqueName(pod.Id, pod.uniqueKey)
+}
+
+func (pod *Pod) UniqueKey() types.PodUniqueKey {
+	return pod.uniqueKey
 }
 
 func (pod *Pod) CurrentManifest() (manifest.Manifest, error) {
@@ -231,7 +241,7 @@ func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest 
 			}
 		}
 	}
-	err := pod.ServiceBuilder.Activate(pod.uniqueName, sbTemplate, newManifest.GetRestartPolicy())
+	err := pod.ServiceBuilder.Activate(pod.uniqueName(), sbTemplate, newManifest.GetRestartPolicy())
 	if err != nil {
 		return err
 	}
@@ -345,7 +355,7 @@ func (pod *Pod) Uninstall() error {
 
 	// remove services for this pod, then prune the old
 	// service dirs away
-	err = os.Remove(filepath.Join(pod.ServiceBuilder.ConfigRoot, pod.uniqueName+".yaml"))
+	err = os.Remove(filepath.Join(pod.ServiceBuilder.ConfigRoot, pod.uniqueName()+".yaml"))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -644,7 +654,7 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 	launchableRootDir := filepath.Join(pod.home, launchableStanza.LaunchableId.String())
 	serviceId := strings.Join(
 		[]string{
-			pod.uniqueName,
+			pod.uniqueName(),
 			"__",
 			launchableStanza.LaunchableId.String(),
 		}, "")
@@ -675,7 +685,7 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 			cgroupName = filepath.Join(
 				"p2",
 				pod.node.String(),
-				pod.uniqueName,
+				pod.uniqueName(),
 				launchableStanza.LaunchableId.String(),
 			)
 		}
