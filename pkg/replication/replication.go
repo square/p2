@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/square/p2/pkg/health"
@@ -231,23 +232,42 @@ func (r *replication) Enact() {
 	sort.Sort(order)
 
 	nodeQueue := make(chan types.NodeName)
-	done := make(chan nodeUpdated)
 
 	aggregateHealth := AggregateHealth(r.manifest.ID(), r.health)
 	// this loop multiplexes the node queue across some goroutines
+
+	var updatePool sync.WaitGroup
+	var completedCount int32
 	for i := 0; i < r.active; i++ {
+		updatePool.Add(1)
 		go func() {
 			// nodeQueue is managed below to throttle these goroutines
+			defer updatePool.Done()
 			for node := range nodeQueue {
 				exitCh := make(chan struct{})
 				timeoutCh := make(chan struct{})
 
 				go func() {
 					defer close(exitCh)
-					err = r.updateOne(node, done, timeoutCh, aggregateHealth)
-					done <- nodeUpdated{
-						node: node,
-						err:  err,
+					err = r.updateOne(node, timeoutCh, aggregateHealth)
+					if err == nil {
+						r.logger.Infof("The host '%v' successfully replicated the pod '%v'", node, r.manifest.ID())
+						atomic.AddInt32(&completedCount, 1)
+						r.logger.Infof("Completed %d of %d", atomic.LoadInt32(&completedCount), len(r.nodes))
+						return
+					}
+
+					switch err {
+					case errTimeout:
+						r.timedOutReplicationsMutex.Lock()
+						r.timedOutReplications = append(r.timedOutReplications, node)
+						r.timedOutReplicationsMutex.Unlock()
+						r.logger.Errorf("The host '%v' timed out during replication for pod '%v'", node, r.manifest.ID())
+					case errCancelled:
+						r.logger.Errorf("The host '%v' was cancelled (probably due to an update) during replication for pod '%v'", node, r.manifest.ID())
+					case nil:
+					default:
+						r.logger.Errorf("An unexpected error has occurred: %v", err)
 					}
 				}()
 
@@ -258,7 +278,6 @@ func (r *replication) Enact() {
 						return
 					}
 				} else {
-					// Wait until either completion, timeout, or a quit
 					select {
 					case <-exitCh:
 					case <-time.After(r.timeout):
@@ -272,7 +291,7 @@ func (r *replication) Enact() {
 		}()
 	}
 
-	// this goroutine populates the node queue
+	// this goroutine populates the node queue with respect to the rate limiter
 	go func() {
 		defer close(nodeQueue)
 		for _, node := range r.nodes {
@@ -295,30 +314,8 @@ func (r *replication) Enact() {
 		}
 	}()
 
-	// the main blocking loop processes replies from workers
-	defer r.logger.Info("Replication is over")
-	for doneIndex := 0; doneIndex < len(r.nodes); {
-		select {
-		case status := <-done:
-			doneIndex++
-			switch status.err {
-			case errTimeout:
-				r.timedOutReplicationsMutex.Lock()
-				r.timedOutReplications = append(r.timedOutReplications, status.node)
-				r.timedOutReplicationsMutex.Unlock()
-				r.logger.Errorf("The host '%v' timed out during replication for pod '%v'", status.node, r.manifest.ID())
-			case errCancelled:
-				r.logger.Errorf("The host '%v' was cancelled (probably due to an update) during replication for pod '%v'", status.node, r.manifest.ID())
-			case nil:
-				r.logger.Infof("The host '%v' successfully replicated the pod '%v'", status.node, r.manifest.ID())
-			default:
-				r.logger.Errorf("An unexpected error has occurred: %v", status.err)
-			}
-			r.logger.Infof("%v nodes left", len(r.nodes)-doneIndex)
-		case <-r.quitCh:
-			return
-		}
-	}
+	updatePool.Wait()
+	r.logger.Info("Replication is over")
 }
 
 // Cancels all goroutines (e.g. replication and lock renewal)
@@ -406,7 +403,6 @@ func (r *replication) shouldScheduleForNode(node types.NodeName, logger logging.
 // note: logging should be delegated somehow
 func (r *replication) updateOne(
 	node types.NodeName,
-	done chan<- nodeUpdated,
 	timeoutCh <-chan struct{},
 	aggregateHealth *podHealth,
 ) error {
