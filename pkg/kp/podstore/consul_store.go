@@ -115,7 +115,7 @@ func (c *consulStore) Schedule(manifest manifest.Manifest, node types.NodeName) 
 	podKey := types.NewPodUUID()
 
 	podPath := computePodPath(podKey)
-	indexPath := computeIndexPath(podKey, node)
+	intentIndexPath := computeIntentIndexPath(podKey, node)
 
 	// Write the Pod to /pods/<key>
 	pod := RawPod{
@@ -162,12 +162,12 @@ func (c *consulStore) Schedule(manifest manifest.Manifest, node types.NodeName) 
 	}
 
 	indexPair := &api.KVPair{
-		Key:   indexPath,
+		Key:   intentIndexPath,
 		Value: indexBytes,
 	}
 	_, err = c.consulKV.Put(indexPair, nil)
 	if err != nil {
-		return types.PodUniqueKey{}, consulutil.NewKVError("put", indexPath, err)
+		return types.PodUniqueKey{}, consulutil.NewKVError("put", intentIndexPath, err)
 	}
 
 	return podKey, nil
@@ -185,7 +185,7 @@ func (c *consulStore) Unschedule(podKey types.PodUniqueKey) error {
 	}
 
 	podPath := computePodPath(podKey)
-	indexPath := computeIndexPath(podKey, pod.Node)
+	intentIndexPath := computeIntentIndexPath(podKey, pod.Node)
 
 	// Due to lack of transactionality in deleting both keys, the below code has the
 	// following steps:
@@ -203,14 +203,55 @@ func (c *consulStore) Unschedule(podKey types.PodUniqueKey) error {
 
 	c.deleteFromCache(podKey)
 
-	_, err = c.consulKV.Delete(indexPath, nil)
+	_, err = c.consulKV.Delete(intentIndexPath, nil)
 	if err != nil {
 		return IndexDeletionFailure{
-			path: indexPath,
-			err:  consulutil.NewKVError("delete", indexPath, err),
+			path: intentIndexPath,
+			err:  consulutil.NewKVError("delete", intentIndexPath, err),
 		}
 	}
 
+	return nil
+}
+
+// Writes a key to the /reality tree to signify that the pod specified by the UUID has been
+// launched on the given node.
+func (c *consulStore) WriteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error {
+	if podKey.ID == "" {
+		return util.Errorf("Pod store can only write index for pods with uuid keys")
+	}
+
+	realityIndexPath := computeRealityIndexPath(podKey, node)
+
+	// Now, write the secondary index to /intent/<node>/<key>
+	index := PodIndex{
+		PodKey: podKey,
+	}
+
+	indexBytes, err := json.Marshal(index)
+	if err != nil {
+		return util.Errorf("Could not marshal index as json: %s", err)
+	}
+
+	indexPair := &api.KVPair{
+		Key:   realityIndexPath,
+		Value: indexBytes,
+	}
+	_, err = c.consulKV.Put(indexPair, nil)
+	if err != nil {
+		return consulutil.NewKVError("put", realityIndexPath, err)
+	}
+
+	return nil
+}
+
+func (c *consulStore) DeleteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error {
+	realityIndexPath := computeRealityIndexPath(podKey, node)
+
+	_, err := c.consulKV.Delete(realityIndexPath, nil)
+	if err != nil {
+		return consulutil.NewKVError("delete", realityIndexPath, err)
+	}
 	return nil
 }
 
@@ -310,6 +351,10 @@ func computePodPath(key types.PodUniqueKey) string {
 	return path.Join(PodTree, key.ID)
 }
 
-func computeIndexPath(key types.PodUniqueKey, node types.NodeName) string {
+func computeIntentIndexPath(key types.PodUniqueKey, node types.NodeName) string {
 	return path.Join("intent", node.String(), key.ID)
+}
+
+func computeRealityIndexPath(key types.PodUniqueKey, node types.NodeName) string {
+	return path.Join("reality", node.String(), key.ID)
 }

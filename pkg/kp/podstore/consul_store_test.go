@@ -208,6 +208,79 @@ func TestReadPodFromIndex(t *testing.T) {
 	}
 }
 
+func TestWriteRealityIndex(t *testing.T) {
+	node := types.NodeName("some_node")
+	key := types.NewPodUUID()
+
+	realityIndexPath := fmt.Sprintf("reality/%s/%s", node, key.ID)
+
+	store, fakeKV := storeWithFakeKV(t, make(map[string]Pod), make(map[string]PodIndex))
+
+	// confirm that the reality index doesn't exist
+	pair, _, err := fakeKV.Get(realityIndexPath, nil)
+	if err != nil {
+		t.Fatalf("Initial conditions were not met: error fetching %s: %s", realityIndexPath, err)
+	}
+
+	if pair != nil {
+		t.Fatalf("Initial conditions were not met: expected key %s to not exist", realityIndexPath)
+	}
+
+	err = store.WriteRealityIndex(key, node)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pair, _, err = fakeKV.Get(realityIndexPath, nil)
+	if err != nil {
+		t.Fatalf("Unable to fetch the deleted key (%s): %s", realityIndexPath, err)
+	}
+
+	if pair == nil {
+		t.Fatalf("%s should have been written but it wasn't", realityIndexPath)
+	}
+}
+
+func TestDeleteRealityIndex(t *testing.T) {
+	node := types.NodeName("some_node")
+	key := types.NewPodUUID()
+
+	realityIndexPath := fmt.Sprintf("reality/%s/%s", node, key.ID)
+
+	index := PodIndex{
+		PodKey: key,
+	}
+
+	indices := map[string]PodIndex{
+		realityIndexPath: index,
+	}
+	store, fakeKV := storeWithFakeKV(t, make(map[string]Pod), indices)
+
+	// confirm that the reality index exists
+	pair, _, err := fakeKV.Get(realityIndexPath, nil)
+	if err != nil {
+		t.Fatalf("Initial conditions were not met: error fetching %s: %s", realityIndexPath, err)
+	}
+
+	if pair == nil {
+		t.Fatalf("Initial conditions were not met: expected key %s to exist", realityIndexPath)
+	}
+
+	err = store.DeleteRealityIndex(key, node)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pair, _, err = fakeKV.Get(realityIndexPath, nil)
+	if err != nil {
+		t.Fatalf("Unable to fetch the deleted key (%s): %s", realityIndexPath, err)
+	}
+
+	if pair != nil {
+		t.Fatalf("%s should have been deleted but it wasn't", realityIndexPath)
+	}
+}
+
 // Returns a store, as well as a reference to the underlying KV so that tests can reach a layer underneath to
 // verify store behavior.
 func storeWithFakeKV(t *testing.T, pods map[string]Pod, indices map[string]PodIndex) (Store, *consulutil.FakeKV) {

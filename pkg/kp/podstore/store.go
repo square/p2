@@ -21,8 +21,11 @@ import (
 )
 
 type Store interface {
-	Schedule(manifest manifest.Manifest, node types.NodeName) (types.PodUniqueKey, error)
-	Unschedule(key types.PodUniqueKey) error
 	ReadPod(key types.PodUniqueKey) (Pod, error)
 	ReadPodFromIndex(index PodIndex) (Pod, error)
+	Schedule(manifest manifest.Manifest, node types.NodeName) (types.PodUniqueKey, error)
+	Unschedule(key types.PodUniqueKey) error
+
+	DeleteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error
+	WriteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error
 }
