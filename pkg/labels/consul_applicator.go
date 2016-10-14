@@ -100,18 +100,11 @@ func (c *consulApplicator) GetMatches(selector labels.Selector, labelType Type, 
 			c.logger.Warnln("Cache was empty on query, falling back to direct Consul query")
 		}
 	}
-
+	var err error
 	if len(allLabeled) == 0 {
-		allMatches, _, err := c.kv.List(typePath(labelType)+"/", nil)
+		allLabeled, err = c.ListLabels(labelType)
 		if err != nil {
 			return nil, err
-		}
-		for _, kvp := range allMatches {
-			l, err := convertKVPToLabeled(kvp)
-			if err != nil {
-				return nil, err
-			}
-			allLabeled = append(allLabeled, l)
 		}
 	}
 
@@ -122,6 +115,22 @@ func (c *consulApplicator) GetMatches(selector labels.Selector, labelType Type, 
 		}
 	}
 	return res, nil
+}
+
+func (c *consulApplicator) ListLabels(labelType Type) ([]Labeled, error) {
+	allLabeled := []Labeled{}
+	allKV, _, err := c.kv.List(typePath(labelType)+"/", nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, kvp := range allKV {
+		l, err := convertKVPToLabeled(kvp)
+		if err != nil {
+			return nil, err
+		}
+		allLabeled = append(allLabeled, l)
+	}
+	return allLabeled, nil
 }
 
 // generalized label mutator function - pass nil value for any label to delete it

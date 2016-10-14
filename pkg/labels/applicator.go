@@ -78,6 +78,12 @@ type Applicator interface {
 	// Remove all labels from the identified object
 	RemoveAllLabels(labelType Type, id string) error
 
+	// Lists all labels on all objects associated with this type.
+	// mostly useful for secondary caching. Do not use directly
+	// if you just want to answer a simple query - use GetMatches
+	// instead.
+	ListLabels(labelType Type) ([]Labeled, error)
+
 	// Get all Labels assigned to the given object
 	GetLabels(labelType Type, id string) (Labeled, error)
 
