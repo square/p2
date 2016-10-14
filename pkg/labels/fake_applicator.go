@@ -70,6 +70,18 @@ func (app *fakeApplicator) RemoveLabel(labelType Type, id, name string) error {
 	return nil
 }
 
+func (app *fakeApplicator) ListLabels(labelType Type) ([]Labeled, error) {
+	res := []Labeled{}
+	for id, set := range app.data[labelType] {
+		res = append(res, Labeled{
+			ID:        id,
+			LabelType: labelType,
+			Labels:    copySet(set),
+		})
+	}
+	return res, nil
+}
+
 func (app *fakeApplicator) GetLabels(labelType Type, id string) (Labeled, error) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
