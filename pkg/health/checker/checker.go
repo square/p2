@@ -189,11 +189,11 @@ func (c consulHealthChecker) WatchService(
 		case <-quitCh:
 			return
 		case <-time.After(1 * time.Second):
-			results, queryMeta, err := c.client.KV().List(kp.HealthPath(serviceID, ""), &api.QueryOptions{
+			results, queryMeta, err := c.client.KV().List(kp.HealthPath(serviceID, "/"), &api.QueryOptions{
 				WaitIndex: curIndex,
 			})
 			if err != nil {
-				errCh <- consulutil.NewKVError("list", kp.HealthPath(serviceID, ""), err)
+				errCh <- consulutil.NewKVError("list", kp.HealthPath(serviceID, "/"), err)
 			} else {
 				curIndex = queryMeta.LastIndex
 				out := make(map[types.NodeName]health.Result)

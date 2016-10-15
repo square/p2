@@ -166,7 +166,7 @@ func (c consulStore) GetHealth(service string, node types.NodeName) (WatchResult
 
 func (c consulStore) GetServiceHealth(service string) (map[string]WatchResult, error) {
 	healthRes := make(map[string]WatchResult)
-	key := HealthPath(service, "")
+	key := HealthPath(service, "/")
 	res, _, err := c.client.KV().List(key, nil)
 	if err != nil {
 		return healthRes, consulutil.NewKVError("list", key, err)

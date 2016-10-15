@@ -41,6 +41,27 @@ func TestGetHealthWithEntry(t *testing.T) {
 		t.Fatalf("PutHealth failed: %v", err)
 	}
 
+	watch2 := WatchResult{
+		Id:      "id2",
+		Node:    "node2",
+		Service: "service",
+	}
+
+	_, _, err = f.Store.PutHealth(watch2)
+	if err != nil {
+		t.Fatalf("PutHealth failed: %v", err)
+	}
+
+	otherWatch := WatchResult{
+		Id:      "id3",
+		Node:    "node3",
+		Service: "servicewithsuffix",
+	}
+	_, _, err = f.Store.PutHealth(otherWatch)
+	if err != nil {
+		t.Fatalf("PutHealth failed: %v", err)
+	}
+
 	// Get should work
 	watchRes, err := f.Store.GetHealth(watch.Service, watch.Node)
 	if err != nil {
@@ -54,6 +75,15 @@ func TestGetHealthWithEntry(t *testing.T) {
 	}
 	if watchRes.Service != watch.Service {
 		t.Fatalf("watchRes and watch Service did not match. GetHealth failed: %#v", watchRes)
+	}
+
+	// List should work
+	results, err := f.Store.GetServiceHealth(watch.Service)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("Expected to have 2 results, got %v", len(results))
 	}
 }
 
