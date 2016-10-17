@@ -326,28 +326,18 @@ func TestStop(t *testing.T) {
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to stop runit services")
 }
 
-func TestHaltWithFailingDisable(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
-	defer CleanupFakeLaunchable(hl, sb)
-
-	sv := runit.FakeSV()
-	err := hl.Halt(sb, sv)
-	Assert(t).IsNotNil(err, "Expected error while halting")
+func TestDisableWithFailingDisable(t *testing.T) {
+	hl, _ := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
+	err := hl.Disable()
+	Assert(t).IsNotNil(err, "Expected error while disabling")
 	_, ok := err.(launch.DisableError)
 	Assert(t).IsTrue(ok, "Expected disable error to be returned")
-	_, ok = err.(launch.StopError)
-	Assert(t).IsFalse(ok, "Did not expect stop error to be returned")
 }
 
-func TestHaltWithPassingDisable(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
-	defer CleanupFakeLaunchable(hl, sb)
-
-	sv := runit.FakeSV()
-	err := hl.Halt(sb, sv)
-	Assert(t).IsNil(err, "Expected halt to succeed")
-
-	Assert(t).IsNil(os.Remove(hl.LastDir()), "expected halt to create last symlink")
+func TestDisableWithPassingDisable(t *testing.T) {
+	hl, _ := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	err := hl.Disable()
+	Assert(t).IsNil(err, "Expected disable to succeed")
 }
 
 func TestLaunchWithFailingEnable(t *testing.T) {
@@ -372,17 +362,15 @@ func TestLaunchWithPassingEnable(t *testing.T) {
 	Assert(t).IsNil(err, "Expected launch to succeed")
 }
 
-func TestHaltWithFailingStop(t *testing.T) {
+func TestStopWithFailure(t *testing.T) {
 	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	sv := runit.ErringSV()
-	err := hl.Halt(sb, sv)
+	err := hl.Stop(sb, sv)
 	Assert(t).IsNotNil(err, "Expected error while halting")
 	_, ok := err.(launch.StopError)
 	Assert(t).IsTrue(ok, "Expected stop error to be returned")
-	_, ok = err.(launch.DisableError)
-	Assert(t).IsFalse(ok, "Did not expect disable error to be returned")
 }
 
 func TestLaunchWithFailingStart(t *testing.T) {

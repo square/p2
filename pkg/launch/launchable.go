@@ -124,8 +124,10 @@ type Launchable interface {
 	PostActivate() (string, error)
 	// Launch begins execution.
 	Launch(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error
-	// Halt stops execution.
-	Halt(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error
+	// Disable allows a launchable to stop work and do cleanup prior to Stop
+	Disable() error
+	// Stop stops execution.
+	Stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error
 	// MakeCurrent adjusts a "current" symlink for this launchable name to point to this
 	// launchable's version.
 	MakeCurrent() error

@@ -16,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
+	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/runit"
@@ -401,6 +402,7 @@ func TestUninstall(t *testing.T) {
 		Id:             "testPod",
 		home:           testPodDir,
 		ServiceBuilder: serviceBuilder,
+		logger:         logging.DefaultLogger,
 	}
 	manifest := getTestPodManifest(t)
 	manifestContent, err := manifest.Marshal()

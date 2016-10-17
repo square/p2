@@ -81,21 +81,22 @@ func (pod *Pod) Halt(manifest manifest.Manifest) (bool, error) {
 
 	success := true
 	for _, launchable := range launchables {
-		err = launchable.Halt(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
-		switch err.(type) {
-		case nil:
-			// noop
-		case launch.DisableError:
+		err = launchable.Disable()
+		if err != nil {
 			// do not set success to false on a disable error
 			pod.logLaunchableWarning(launchable.ServiceID(), err, "Could not disable launchable")
-		default:
-			// this case intentionally includes launch.StopError
-			pod.logLaunchableError(launchable.ServiceID(), err, "Could not halt launchable")
-			success = false
 		}
 	}
+	for _, launchable := range launchables {
+		err = launchable.Stop(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
+		if err != nil {
+			pod.logLaunchableError(launchable.ServiceID(), err, "Could not stop launchable")
+		}
+		success = false
+	}
+
 	if success {
-		pod.logInfo("Successfully halted")
+		pod.logInfo("Successfully stopped")
 	} else {
 		pod.logInfo("Attempted halt, but one or more services did not stop successfully")
 	}
@@ -319,9 +320,17 @@ func (pod *Pod) Uninstall() error {
 
 	// halt launchables
 	for _, launchable := range launchables {
-		err = launchable.Halt(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
+		err = launchable.Disable()
 		if err != nil {
-			// log and continue
+			pod.logLaunchableWarning(launchable.ServiceID(), err, "Could not disable launchable during uninstallation")
+		}
+	}
+
+	// halt launchables
+	for _, launchable := range launchables {
+		err = launchable.Stop(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
+		if err != nil {
+			pod.logLaunchableWarning(launchable.ServiceID(), err, "Could not stop launchable during uninstallation")
 		}
 	}
 
