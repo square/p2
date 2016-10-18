@@ -154,6 +154,14 @@
 			"Rev": "299d728486342c894e7fafd68e3a4b89623bef1d"
 		},
 		{
+			"ImportPath": "github.com/gorilla/context",
+			"Rev": "1c83b3eabd45b6d76072b66b746c20815fb2872d"
+		},
+		{
+			"ImportPath": "github.com/gorilla/mux",
+			"Rev": "9c068cf16d982f8bd444b8c352acbeec34c4fe5b"
+		},
+		{
 			"ImportPath": "github.com/hashicorp/consul/acl",
 			"Comment": "v0.6.1",
 			"Rev": "68969ce5f4499cbe3a4f946917be2e580f1b1936"
