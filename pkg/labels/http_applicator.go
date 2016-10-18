@@ -25,8 +25,6 @@ type httpApplicator struct {
 	logger          logging.Logger
 }
 
-var _ Applicator = &httpApplicator{}
-
 func NewHTTPApplicator(client *http.Client, matchesEndpoint *url.URL) (*httpApplicator, error) {
 	// take only the base
 	base, err := url.Parse("/")
@@ -285,16 +283,4 @@ func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type, ca
 	}
 
 	return labeled, nil
-}
-
-func (h *httpApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh <-chan struct{}) chan []Labeled {
-	panic("Not implemented")
-}
-
-func (h *httpApplicator) WatchMatchDiff(
-	selector labels.Selector,
-	labelType Type,
-	quitCh <-chan struct{},
-) <-chan *LabeledChanges {
-	panic("Not implemented")
 }
