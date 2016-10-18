@@ -16,7 +16,8 @@ var (
 	cmdApply              = kingpin.Command(CmdApply, "Apply label changes to all objects matching a selector")
 	applyAutoConfirm      = cmdApply.Flag("yes", "Autoconfirm label applications. Use with caution!").Short('y').Bool()
 	applyLabelType        = cmdApply.Flag("labelType", "The type of label to adjust. Sometimes called the \"label tree\". Supported types can be found here:\n\thttps://godoc.org/github.com/square/p2/pkg/labels#pkg-constants").Short('t').Required().String()
-	applySubjectSelector  = cmdApply.Flag("selector", "The selector on which to modify labels.").Short('s').Required().String()
+	applySubjectSelector  = cmdApply.Flag("selector", "The selector on which to modify labels. Exclusive with ID").Short('s').String()
+	applySubjectID        = cmdApply.Flag("id", "The id of the entry to apply labels to. Exclusive with selector").String()
 	applyAddititiveLabels = cmdApply.Flag("add", `The label set to apply to the subject. Include multiple --add switches to include multiple labels. It's safe to mix --add with --delete though the results of this command are not transactional.
 
 Example:
@@ -65,6 +66,12 @@ func main() {
 		fmt.Printf("%s/%s: %s\n", labelType, *showID, labelsForEntity.Labels.String())
 		return
 	case CmdApply:
+		// if xnor(selector, id)
+		if (*applySubjectSelector == "") == (*applySubjectID == "") {
+			fmt.Fprint(os.Stderr, "Must pass either an ID or a selector for objects to apply the given label to")
+			exitCode = 1
+			break
+		}
 		autoConfirm = *applyAutoConfirm
 
 		labelType, err := labels.AsType(*applyLabelType)
@@ -74,21 +81,27 @@ func main() {
 			break
 		}
 
-		subject, err := klabels.Parse(*applySubjectSelector)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error while parsing subject label. Check the syntax.\n%v\n", err)
-			break
-		}
-
 		additiveLabels := *applyAddititiveLabels
 		destructiveKeys := *applyDestructiveLabels
 
-		cachedMatch := false
-		matches, err := applicator.GetMatches(subject, labelType, cachedMatch)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error while finding label matches. Check the syntax.\n%v\n", err)
-			exitCode = 1
-			break
+		var matches []labels.Labeled
+		if *applySubjectSelector != "" {
+			subject, err := klabels.Parse(*applySubjectSelector)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error while parsing subject label. Check the syntax.\n%v\n", err)
+				exitCode = 1
+				break
+			}
+
+			cachedMatch := false
+			matches, err = applicator.GetMatches(subject, labelType, cachedMatch)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error while finding label matches. Check the syntax.\n%v\n", err)
+				exitCode = 1
+				break
+			}
+		} else {
+			matches = []labels.Labeled{{ID: *applySubjectID}}
 		}
 
 		if len(additiveLabels) > 0 {
