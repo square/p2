@@ -69,6 +69,21 @@ type DaemonSet interface {
 	PublishToReplication() error
 }
 
+type Labeler interface {
+	SetLabel(labelType labels.Type, id, name, value string) error
+	RemoveLabel(labelType labels.Type, id, name string) error
+	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
+	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
+}
+
+type LabelWatcher interface {
+	WatchMatchDiff(
+		selector klabels.Selector,
+		labelType labels.Type,
+		quitCh <-chan struct{},
+	) <-chan *labels.LabeledChanges
+}
+
 type daemonSet struct {
 	fields.DaemonSet
 
@@ -77,7 +92,8 @@ type daemonSet struct {
 	kpStore       kp.Store
 	scheduler     scheduler.Scheduler
 	dsStore       dsstore.Store
-	applicator    labels.Applicator
+	applicator    Labeler
+	watcher       LabelWatcher
 	healthChecker *checker.ConsulHealthChecker
 
 	// This is the current replication enact go routine that is running
@@ -100,7 +116,8 @@ func New(
 	fields fields.DaemonSet,
 	dsStore dsstore.Store,
 	kpStore kp.Store,
-	applicator labels.Applicator,
+	applicator Labeler,
+	watcher LabelWatcher,
 	logger logging.Logger,
 	healthChecker *checker.ConsulHealthChecker,
 	rateLimitInterval time.Duration,
@@ -113,6 +130,7 @@ func New(
 		kpStore:            kpStore,
 		logger:             logger,
 		applicator:         applicator,
+		watcher:            watcher,
 		scheduler:          scheduler.NewApplicatorScheduler(applicator),
 		healthChecker:      healthChecker,
 		currentReplication: nil,
@@ -151,8 +169,7 @@ func (ds *daemonSet) WatchDesires(
 	deletedCh <-chan *fields.DaemonSet,
 ) <-chan error {
 	errCh := make(chan error)
-	nodesChangedCh := ds.applicator.WatchMatchDiff(ds.NodeSelector, labels.NODE, quitCh)
-
+	nodesChangedCh := ds.watcher.WatchMatchDiff(ds.NodeSelector, labels.NODE, quitCh)
 	// Do something whenever something is changed
 	go func() {
 		var err error

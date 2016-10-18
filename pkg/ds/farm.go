@@ -28,10 +28,11 @@ import (
 // Farm instatiates and deletes daemon sets as needed
 type Farm struct {
 	// constructor arguments
-	kpStore    kp.Store
-	dsStore    dsstore.Store
-	scheduler  scheduler.Scheduler
-	applicator labels.Applicator
+	kpStore   kp.Store
+	dsStore   dsstore.Store
+	scheduler scheduler.Scheduler
+	labeler   Labeler
+	watcher   LabelWatcher
 	// session stream for the daemon sets locked by this farm
 	sessions <-chan string
 	// The time to wait between node updates for each replication
@@ -61,7 +62,8 @@ type childDS struct {
 func NewFarm(
 	kpStore kp.Store,
 	dsStore dsstore.Store,
-	applicator labels.Applicator,
+	labeler Labeler,
+	watcher LabelWatcher,
 	sessions <-chan string,
 	logger logging.Logger,
 	alerter alerting.Alerter,
@@ -76,8 +78,9 @@ func NewFarm(
 	return &Farm{
 		kpStore:           kpStore,
 		dsStore:           dsStore,
-		scheduler:         scheduler.NewApplicatorScheduler(applicator),
-		applicator:        applicator,
+		scheduler:         scheduler.NewApplicatorScheduler(labeler),
+		labeler:           labeler,
+		watcher:           watcher,
 		sessions:          sessions,
 		children:          make(map[fields.ID]*childDS),
 		logger:            logger,
@@ -130,7 +133,7 @@ func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
 		dsIDLabelSelector := klabels.Everything().
 			Add(DSIDLabel, klabels.ExistsOperator, []string{})
 
-		allPods, err := dsf.applicator.GetMatches(dsIDLabelSelector, labels.POD, dsf.cachedPodMatch)
+		allPods, err := dsf.labeler.GetMatches(dsIDLabelSelector, labels.POD, dsf.cachedPodMatch)
 		if err != nil {
 			dsf.logger.Errorf("Unable to get matches for daemon sets in pod store: %v", err)
 			continue
@@ -162,7 +165,7 @@ func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
 			}
 
 			id := labels.MakePodLabelKey(nodeName, podID)
-			err = dsf.applicator.RemoveLabel(labels.POD, id, DSIDLabel)
+			err = dsf.labeler.RemoveLabel(labels.POD, id, DSIDLabel)
 			if err != nil {
 				dsf.logger.NoFields().Errorf("Error removing ds pod id label '%v': %v", id, err)
 			}
@@ -547,7 +550,8 @@ func (dsf *Farm) spawnDaemonSet(
 		*dsFields,
 		dsf.dsStore,
 		dsf.kpStore,
-		dsf.applicator,
+		dsf.labeler,
+		dsf.watcher,
 		dsLogger,
 		dsf.healthChecker,
 		dsf.rateLimitInterval,

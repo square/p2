@@ -55,7 +55,7 @@ func main() {
 		TTL:       "15s",
 	}, client, sessions, quitCh, logger)
 
-	dsf := ds_farm.NewFarm(kpStore, dsStore, applicator, sessions, logger, nil, &healthChecker, 1*time.Second, *useCachePodMatches)
+	dsf := ds_farm.NewFarm(kpStore, dsStore, applicator, applicator, sessions, logger, nil, &healthChecker, 1*time.Second, *useCachePodMatches)
 
 	go func() {
 		// clear lock immediately on ctrl-C

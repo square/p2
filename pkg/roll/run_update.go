@@ -13,7 +13,6 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/rcstore"
-	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc"
@@ -30,7 +29,7 @@ type update struct {
 	kps     kp.Store
 	rcs     rcstore.Store
 	hcheck  checker.ConsulHealthChecker
-	labeler labels.Applicator
+	labeler rc.Labeler
 	sched   scheduler.Scheduler
 
 	logger  logging.Logger
@@ -51,7 +50,7 @@ func NewUpdate(
 	kps kp.Store,
 	rcs rcstore.Store,
 	hcheck checker.ConsulHealthChecker,
-	labeler labels.Applicator,
+	labeler rc.Labeler,
 	sched scheduler.Scheduler,
 	logger logging.Logger,
 	session kp.Session,
