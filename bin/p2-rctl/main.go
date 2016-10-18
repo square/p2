@@ -120,7 +120,7 @@ func main() {
 				"url": *labelEndpoint,
 			}).Fatalln("Could not parse URL from label endpoint")
 		}
-		httpLabeler, err := labels.NewHttpApplicator(opts.Client, endpoint)
+		httpLabeler, err := labels.NewHTTPApplicator(opts.Client, endpoint)
 		if err != nil {
 			logging.DefaultLogger.WithError(err).Fatalln("Could not create label applicator from endpoint")
 		}
