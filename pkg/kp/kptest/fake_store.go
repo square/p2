@@ -29,8 +29,6 @@ type FakePodStore struct {
 	podLock sync.Mutex
 }
 
-var _ kp.Store = &FakePodStore{}
-
 func NewFakePodStore(podResults map[FakePodStoreKey]manifest.Manifest, healthResults map[string]kp.WatchResult) *FakePodStore {
 	if podResults == nil {
 		podResults = make(map[FakePodStoreKey]manifest.Manifest)

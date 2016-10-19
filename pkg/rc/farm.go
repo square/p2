@@ -13,9 +13,11 @@ import (
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/rcrowley/go-metrics"
@@ -41,7 +43,7 @@ type Labeler interface {
 // farms to cooperatively schedule work.
 type Farm struct {
 	// constructor arguments for rcs created by this farm
-	kpStore   kp.Store
+	store     store
 	rcStore   rcstore.Store
 	scheduler scheduler.Scheduler
 	labeler   Labeler
@@ -64,8 +66,15 @@ type childRC struct {
 	quit     chan<- struct{}
 }
 
+type store interface {
+	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
+	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	NewUnmanagedSession(session, name string) kp.Session
+}
+
 func NewFarm(
-	kpStore kp.Store,
+	store store,
 	rcs rcstore.Store,
 	scheduler scheduler.Scheduler,
 	labeler Labeler,
@@ -79,7 +88,7 @@ func NewFarm(
 	}
 
 	return &Farm{
-		kpStore:    kpStore,
+		store:      store,
 		rcStore:    rcs,
 		scheduler:  scheduler,
 		labeler:    labeler,
@@ -102,7 +111,7 @@ func NewFarm(
 func (rcf *Farm) Start(quit <-chan struct{}) {
 	consulutil.WithSession(quit, rcf.sessions, func(sessionQuit <-chan struct{}, sessionID string) {
 		rcf.logger.WithField("session", sessionID).Infoln("Acquired new session")
-		rcf.session = rcf.kpStore.NewUnmanagedSession(sessionID, "")
+		rcf.session = rcf.store.NewUnmanagedSession(sessionID, "")
 		rcf.mainLoop(sessionQuit)
 	})
 }
@@ -193,7 +202,7 @@ START_LOOP:
 
 				newChild := New(
 					rcField.RC,
-					rcf.kpStore,
+					rcf.store,
 					rcf.rcStore,
 					rcf.scheduler,
 					rcf.labeler,

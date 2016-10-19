@@ -28,7 +28,7 @@ import (
 // Farm instatiates and deletes daemon sets as needed
 type Farm struct {
 	// constructor arguments
-	kpStore   kp.Store
+	store     store
 	dsStore   dsstore.Store
 	scheduler scheduler.Scheduler
 	labeler   Labeler
@@ -60,7 +60,7 @@ type childDS struct {
 }
 
 func NewFarm(
-	kpStore kp.Store,
+	store store,
 	dsStore dsstore.Store,
 	labeler Labeler,
 	watcher LabelWatcher,
@@ -76,7 +76,7 @@ func NewFarm(
 	}
 
 	return &Farm{
-		kpStore:           kpStore,
+		store:             store,
 		dsStore:           dsStore,
 		scheduler:         scheduler.NewApplicatorScheduler(labeler),
 		labeler:           labeler,
@@ -94,7 +94,7 @@ func NewFarm(
 func (dsf *Farm) Start(quitCh <-chan struct{}) {
 	consulutil.WithSession(quitCh, dsf.sessions, func(sessionQuit <-chan struct{}, sessionID string) {
 		dsf.logger.WithField("session", sessionID).Infoln("Acquired new session for ds farm")
-		dsf.session = dsf.kpStore.NewUnmanagedSession(sessionID, "")
+		dsf.session = dsf.store.NewUnmanagedSession(sessionID, "")
 		go dsf.cleanupDaemonSetPods(sessionQuit)
 		dsf.mainLoop(sessionQuit)
 	})
@@ -158,7 +158,7 @@ func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
 			// We should find a nice way to couple them together
 			dsf.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with dangling daemon set uuid '%v'", podID, nodeName, dsID)
 
-			_, err = dsf.kpStore.DeletePod(kp.INTENT_TREE, nodeName, podID)
+			_, err = dsf.store.DeletePod(kp.INTENT_TREE, nodeName, podID)
 			if err != nil {
 				dsf.logger.NoFields().Errorf("Unable to delete pod id '%v' in node '%v', from intent tree: %v", podID, nodeName, err)
 				continue
@@ -549,7 +549,7 @@ func (dsf *Farm) spawnDaemonSet(
 	ds := New(
 		*dsFields,
 		dsf.dsStore,
-		dsf.kpStore,
+		dsf.store,
 		dsf.labeler,
 		dsf.watcher,
 		dsLogger,

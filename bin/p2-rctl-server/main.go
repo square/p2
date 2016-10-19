@@ -129,7 +129,7 @@ func main() {
 	).Start(nil)
 	roll.NewFarm(
 		roll.UpdateFactory{
-			KPStore:       kpStore,
+			Store:         kpStore,
 			RCStore:       rcStore,
 			HealthChecker: healthChecker,
 			Labeler:       labeler,

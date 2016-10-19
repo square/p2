@@ -156,13 +156,8 @@ func TestAllPods(t *testing.T) {
 	fakeConsulClient := consulutil.NewFakeClient()
 	store := NewConsulStore(fakeConsulClient)
 
-	consulStore, ok := store.(*consulStore)
-	if !ok {
-		t.Fatal("Type assertion to consulStore struct type failed")
-	}
-
 	// Add a new uuid pod (i.e. we expect an index rather than a manifest to be written to /intent)
-	uuidKey, err := consulStore.podStore.Schedule(testManifest("first_pod"), "node1")
+	uuidKey, err := store.podStore.Schedule(testManifest("first_pod"), "node1")
 	if err != nil {
 		t.Fatal(err)
 	}
