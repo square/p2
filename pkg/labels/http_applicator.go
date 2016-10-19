@@ -25,6 +25,8 @@ type httpApplicator struct {
 	logger          logging.Logger
 }
 
+var _ ApplicatorWithoutWatches = &httpApplicator{}
+
 func NewHTTPApplicator(client *http.Client, matchesEndpoint *url.URL) (*httpApplicator, error) {
 	if matchesEndpoint == nil {
 		return nil, util.Errorf("matches endpoint cannot be nil")
