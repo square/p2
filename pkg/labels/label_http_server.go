@@ -28,8 +28,7 @@ func NewHTTPLabelServer(applicator Applicator, batchTime time.Duration, logger l
 	return &labelHTTPServer{applicator, NewBatcher(applicator, batchTime), batchTime > 0, logger}
 }
 
-func (l *labelHTTPServer) Handler() *mux.Router {
-	r := mux.NewRouter()
+func (l *labelHTTPServer) AddRoutes(r *mux.Router) {
 	r.Methods("GET").Path("/select").HandlerFunc(l.Select)
 	r.Methods("GET").Path("/labels/{type}/{id}").HandlerFunc(l.GetLabels)
 	r.Methods("GET").Path("/labels/{type}").HandlerFunc(l.ListLabels)
@@ -37,6 +36,11 @@ func (l *labelHTTPServer) Handler() *mux.Router {
 	r.Methods("PUT").Path("/labels/{type}/{id}").HandlerFunc(l.SetLabels)
 	r.Methods("DELETE").Path("/labels/{type}/{id}/{name}").HandlerFunc(l.RemoveLabel)
 	r.Methods("DELETE").Path("/labels/{type}/{id}").HandlerFunc(l.RemoveLabels)
+}
+
+func (l *labelHTTPServer) Handler() *mux.Router {
+	r := mux.NewRouter()
+	l.AddRoutes(r)
 	return r
 }
 
