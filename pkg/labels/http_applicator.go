@@ -1,7 +1,9 @@
 package labels
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -13,18 +15,17 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
+// Makes remote calls to an API that can answer queries. See labelHTTPServer.
 type httpApplicator struct {
 	client *http.Client
-	// The endpoint that will be queried for matches.
-	// GetMatches will add to this endpoint a query parameter with key "selector" and value selector.String()
-	// WatchMatches will add the above "selector" as well as "watch=true"
+	// The endpoint that will be queried for matches. It should not have any paths, but if there are
+	// any they will be removed (this is for backwards compatibility for servers that added a path to
+	// the URL.)
 	matchesEndpoint *url.URL
 	logger          logging.Logger
 }
 
-var _ Applicator = &httpApplicator{}
-
-func NewHttpApplicator(client *http.Client, matchesEndpoint *url.URL) (*httpApplicator, error) {
+func NewHTTPApplicator(client *http.Client, matchesEndpoint *url.URL) (*httpApplicator, error) {
 	if matchesEndpoint == nil {
 		return nil, util.Errorf("matches endpoint cannot be nil")
 	}
@@ -41,30 +42,182 @@ func NewHttpApplicator(client *http.Client, matchesEndpoint *url.URL) (*httpAppl
 	}, nil
 }
 
+func (h *httpApplicator) toEntityURL(pathTail string, labelType Type, id string, params url.Values) *url.URL {
+	return h.toURL(fmt.Sprintf("/labels/%v/%v%v", labelType, url.QueryEscape(id), pathTail), params)
+}
+
+func (h *httpApplicator) toURL(path string, params url.Values) *url.URL {
+	// Make value copy of URL; don't want to mutate the URL in the struct.
+	urlToGet := *h.matchesEndpoint
+	urlToGet.Path = path
+	urlToGet.RawQuery = params.Encode()
+	return &urlToGet
+}
+
+type SetLabelRequest struct {
+	Value string `json:"value"`
+}
+
+type SetLabelsRequest struct {
+	Values map[string]string `json:"values"`
+}
+
+func convertHTTPRespToErr(resp *http.Response) error {
+	if resp.StatusCode > 299 {
+		respBody, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			respBody = []byte("<no body decoded>")
+		}
+		return util.Errorf("%v\n%v", resp.Status, string(respBody))
+	}
+	return nil
+}
+
+func (h *httpApplicator) getJSON(target *url.URL, toPopulate interface{}) error {
+	req, err := http.NewRequest("GET", target.String(), nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if err = convertHTTPRespToErr(resp); err != nil {
+		return err
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(body, toPopulate)
+	return err
+}
+
+func (h *httpApplicator) putJSON(target *url.URL, toMarshal interface{}) error {
+	body, err := json.Marshal(toMarshal)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("PUT", target.String(), bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Add("Content-Type", "application/json")
+
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if err = convertHTTPRespToErr(resp); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Sets one label value, only replacing that one label name if already set.
+//
+// POST /labels/:type/:id/:name
+// {
+// 	"value": "value_of_label"
+// }
+//
 func (h *httpApplicator) SetLabel(labelType Type, id, name, value string) error {
-	return util.Errorf("SetLabel not implemented for HttpApplicator (type %s, id %s, name %s, value %s)", labelType, id, name, value)
+	toMarshal := SetLabelRequest{
+		Value: value,
+	}
+	target := h.toEntityURL(fmt.Sprintf("/%v", url.QueryEscape(name)), labelType, id, url.Values{})
+	err := h.putJSON(target, toMarshal)
+	return err
 }
 
+// Replaces all labels on the entity with the new set
+//
+// POST /labels/:type/:id
+// {
+// 	"values": {
+//	 	"name1": "value1",
+// 		"name2": "value2"
+// 	}
+// }
 func (h *httpApplicator) SetLabels(labelType Type, id string, labels map[string]string) error {
-	return util.Errorf("SetLabels not implemented for HttpApplicator (type %s, id %s, labels %s)", labelType, id, labels)
+	toMarshal := SetLabelsRequest{
+		Values: labels,
+	}
+	target := h.toEntityURL("", labelType, id, url.Values{})
+	err := h.putJSON(target, toMarshal)
+	return err
 }
 
+// Removes all labels on the entity
+//
+// DELETE /labels/:type/:id/:name
+//
 func (h *httpApplicator) RemoveLabel(labelType Type, id, name string) error {
-	return util.Errorf("RemoveLabel not implemented for HttpApplicator (type %s, id %s, name %s)", labelType, id, name)
+	target := h.toEntityURL(fmt.Sprintf("/%v", url.QueryEscape(name)), labelType, id, url.Values{})
+	req, err := http.NewRequest("DELETE", target.String(), bytes.NewBufferString(""))
+	if err != nil {
+		return err
+	}
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return err
+	}
+	if err = convertHTTPRespToErr(resp); err != nil {
+		return err
+	}
+	return nil
 }
 
+// Removes all labels on the entity
+//
+// DELETE /labels/:type/:id
+//
 func (h *httpApplicator) RemoveAllLabels(labelType Type, id string) error {
-	return util.Errorf("RemoveAllLabels not implemented for HttpApplicator (type %s, id %s)", labelType, id)
+	target := h.toEntityURL("", labelType, id, url.Values{})
+	req, err := http.NewRequest("DELETE", target.String(), bytes.NewBufferString(""))
+	if err != nil {
+		return err
+	}
+
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return err
+	}
+	if err = convertHTTPRespToErr(resp); err != nil {
+		return err
+	}
+	return nil
 }
 
+// Finds all labels assigned to all entities under a type
+//
+// GET /:type
+//
 func (h *httpApplicator) ListLabels(labelType Type) ([]Labeled, error) {
-	return nil, util.Errorf("ListLabels not implemented for HttpApplicator")
+	target := h.toURL(fmt.Sprintf("/labels/%v", labelType), url.Values{})
+	var labeled []Labeled
+	err := h.getJSON(target, &labeled)
+	return labeled, err
 }
 
+// Finds all labels on the given type and ID.
+//
+// GET /labels/:type/:id
 func (h *httpApplicator) GetLabels(labelType Type, id string) (Labeled, error) {
-	return Labeled{}, util.Errorf("GetLabels not implemented for HttpApplicator (type %s, id %s)", labelType, id)
+	target := h.toEntityURL("", labelType, id, url.Values{})
+	var labeled Labeled
+	err := h.getJSON(target, &labeled)
+	return labeled, err
 }
 
+// Finds all matches for the given type and selector.
+//
+// GET /select?selector=:selector&type=:type&cachedMatch=:cachedMatch
 func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type, cachedMatch bool) ([]Labeled, error) {
 	params := url.Values{}
 	params.Add("selector", selector.String())
@@ -72,19 +225,19 @@ func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type, ca
 	params.Add("cachedMatch", strconv.FormatBool(cachedMatch))
 
 	// Make value copy of URL; don't want to mutate the URL in the struct.
-	urlToGet := *h.matchesEndpoint
-	urlToGet.RawQuery = params.Encode()
+	urlToGet := h.toURL("/select", params)
 
 	req, err := http.NewRequest("GET", urlToGet.String(), nil)
 	if err != nil {
-		return []Labeled{}, err
+		return nil, err
 	}
 	req.Header.Add("Accept", "application/json")
 
 	resp, err := h.client.Do(req)
 	if err != nil {
-		return []Labeled{}, err
+		return nil, err
 	}
+
 	defer resp.Body.Close()
 
 	bodyData, err := ioutil.ReadAll(resp.Body)
@@ -92,6 +245,15 @@ func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type, ca
 		return []Labeled{}, err
 	}
 
+	// try to unmarshal as a set of labeled objects.
+	var labeled []Labeled
+	err = json.Unmarshal(bodyData, &labeled)
+	if err == nil {
+		return labeled, nil
+	}
+	h.logger.Warnln(err)
+
+	// fallback to a list of IDs
 	matches := []string{}
 	err = json.Unmarshal(bodyData, &matches)
 	if err != nil {
@@ -108,7 +270,7 @@ func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type, ca
 		)
 	}
 
-	labeled := make([]Labeled, len(matches))
+	labeled = make([]Labeled, len(matches))
 
 	for i, s := range matches {
 		labeled[i] = Labeled{
@@ -119,16 +281,4 @@ func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type, ca
 	}
 
 	return labeled, nil
-}
-
-func (h *httpApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh <-chan struct{}) chan []Labeled {
-	panic("Not implemented")
-}
-
-func (h *httpApplicator) WatchMatchDiff(
-	selector labels.Selector,
-	labelType Type,
-	quitCh <-chan struct{},
-) <-chan *LabeledChanges {
-	panic("Not implemented")
 }

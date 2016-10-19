@@ -17,6 +17,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	p2metrics "github.com/square/p2/pkg/metrics"
+	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/rc/fields"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/scheduler"
@@ -33,7 +34,7 @@ type UpdateFactory struct {
 	KPStore       kp.Store
 	RCStore       rcstore.Store
 	HealthChecker checker.ConsulHealthChecker
-	Labeler       labels.Applicator
+	Labeler       rc.Labeler
 	Scheduler     scheduler.Scheduler
 }
 
@@ -72,7 +73,7 @@ type Farm struct {
 	logger  logging.Logger
 	alerter alerting.Alerter
 
-	labeler    labels.Applicator
+	labeler    rc.Labeler
 	rcSelector klabels.Selector
 }
 
@@ -89,7 +90,7 @@ func NewFarm(
 	rcs RCGetter,
 	sessions <-chan string,
 	logger logging.Logger,
-	labeler labels.Applicator,
+	labeler rc.Labeler,
 	rcSelector klabels.Selector,
 	alerter alerting.Alerter,
 ) *Farm {

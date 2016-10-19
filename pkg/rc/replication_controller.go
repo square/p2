@@ -71,7 +71,7 @@ type replicationController struct {
 	kpStore       kpStore
 	rcStore       rcstore.Store
 	scheduler     scheduler.Scheduler
-	podApplicator labels.Applicator
+	podApplicator Labeler
 	alerter       alerting.Alerter
 }
 
@@ -80,7 +80,7 @@ func New(
 	kpStore kpStore,
 	rcStore rcstore.Store,
 	scheduler scheduler.Scheduler,
-	podApplicator labels.Applicator,
+	podApplicator Labeler,
 	logger logging.Logger,
 	alerter alerting.Alerter,
 ) ReplicationController {

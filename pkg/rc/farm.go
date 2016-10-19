@@ -21,6 +21,14 @@ import (
 	"github.com/rcrowley/go-metrics"
 )
 
+// subset of labels.Applicator
+type Labeler interface {
+	SetLabel(labelType labels.Type, id, name, value string) error
+	RemoveLabel(labelType labels.Type, id, name string) error
+	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
+	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
+}
+
 // The Farm is responsible for spawning and reaping replication controllers
 // as they are added to and deleted from Consul. Multiple farms can exist
 // simultaneously, but each one must hold a different Consul session. This
@@ -36,7 +44,7 @@ type Farm struct {
 	kpStore   kp.Store
 	rcStore   rcstore.Store
 	scheduler scheduler.Scheduler
-	labeler   labels.Applicator
+	labeler   Labeler
 
 	// session stream for the rcs locked by this farm
 	sessions <-chan string
@@ -60,7 +68,7 @@ func NewFarm(
 	kpStore kp.Store,
 	rcs rcstore.Store,
 	scheduler scheduler.Scheduler,
-	labeler labels.Applicator,
+	labeler Labeler,
 	sessions <-chan string,
 	logger logging.Logger,
 	rcSelector klabels.Selector,

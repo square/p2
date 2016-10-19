@@ -22,6 +22,10 @@ import (
 	"github.com/Sirupsen/logrus"
 )
 
+type Labeler interface {
+	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
+}
+
 type nodeUpdated struct {
 	node types.NodeName
 	err  error
@@ -64,7 +68,7 @@ type replication struct {
 	active    int
 	nodes     []types.NodeName
 	store     kp.Store
-	labeler   labels.Applicator
+	labeler   Labeler
 	manifest  manifest.Manifest
 	health    checker.ConsulHealthChecker
 	threshold health.HealthState // minimum state to treat as "healthy"

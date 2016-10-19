@@ -48,9 +48,9 @@ func AsType(v string) (Type, error) {
 }
 
 type Labeled struct {
-	LabelType Type
-	ID        string
-	Labels    labels.Set
+	LabelType Type       `json:"type"`
+	ID        string     `json:"id"`
+	Labels    labels.Set `json:"labels"`
 }
 
 type LabeledChanges struct {
