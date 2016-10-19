@@ -29,13 +29,13 @@ func NewHTTPLabelServer(applicator Applicator, batchTime time.Duration, logger l
 }
 
 func (l *labelHTTPServer) AddRoutes(r *mux.Router) {
-	r.Methods("GET").Path("/select").HandlerFunc(l.Select)
-	r.Methods("GET").Path("/labels/{type}/{id}").HandlerFunc(l.GetLabels)
-	r.Methods("GET").Path("/labels/{type}").HandlerFunc(l.ListLabels)
-	r.Methods("PUT").Path("/labels/{type}/{id}/{name}").HandlerFunc(l.SetLabel)
-	r.Methods("PUT").Path("/labels/{type}/{id}").HandlerFunc(l.SetLabels)
-	r.Methods("DELETE").Path("/labels/{type}/{id}/{name}").HandlerFunc(l.RemoveLabel)
-	r.Methods("DELETE").Path("/labels/{type}/{id}").HandlerFunc(l.RemoveLabels)
+	r.Methods("GET").Path("/api/select").HandlerFunc(l.Select)
+	r.Methods("GET").Path("/api/labels/{type}/{id}").HandlerFunc(l.GetLabels)
+	r.Methods("GET").Path("/api/labels/{type}").HandlerFunc(l.ListLabels)
+	r.Methods("PUT").Path("/api/labels/{type}/{id}/{name}").HandlerFunc(l.SetLabel)
+	r.Methods("PUT").Path("/api/labels/{type}/{id}").HandlerFunc(l.SetLabels)
+	r.Methods("DELETE").Path("/api/labels/{type}/{id}/{name}").HandlerFunc(l.RemoveLabel)
+	r.Methods("DELETE").Path("/api/labels/{type}/{id}").HandlerFunc(l.RemoveLabels)
 }
 
 func (l *labelHTTPServer) Handler() *mux.Router {

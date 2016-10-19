@@ -14,7 +14,7 @@ import (
 	"k8s.io/kubernetes/pkg/labels"
 )
 
-const endpointSuffix = "/select"
+const endpointSuffix = "/api/select"
 
 func getMatches(t *testing.T, httpResponse string) ([]Labeled, error) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
