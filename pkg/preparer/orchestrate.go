@@ -17,7 +17,10 @@ import (
 
 // The Pod ID of the preparer.
 // Used because the preparer special-cases itself in a few places.
-const POD_ID = types.PodID("p2-preparer")
+const (
+	POD_ID             = types.PodID("p2-preparer")
+	minimumBackoffTime = 1 * time.Second
+)
 
 // slice literals are not const
 var svlogdExec = []string{"svlogd", "-tt", "./main"}
@@ -180,12 +183,13 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 	// failures, for example downloading of the launchable. An exponential
 	// backoff is important to avoid putting undue load on the artifact
 	// server, for example.
-	backoffTime := 1 * time.Second
+	backoffTime := minimumBackoffTime
 	for {
 		select {
 		case <-quit:
 			return
 		case nextLaunch = <-podChan:
+			backoffTime = minimumBackoffTime
 			var sha string
 			if nextLaunch.Intent != nil {
 				sha, _ = nextLaunch.Intent.SHA()
@@ -266,7 +270,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 					working = false
 
 					// Reset the backoff time
-					backoffTime = 1 * time.Second
+					backoffTime = minimumBackoffTime
 				} else {
 					// Double the backoff time with a maximum of 1 minute
 					backoffTime = backoffTime * 2
