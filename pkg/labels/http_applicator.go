@@ -43,7 +43,7 @@ func NewHTTPApplicator(client *http.Client, matchesEndpoint *url.URL) (*httpAppl
 }
 
 func (h *httpApplicator) toEntityURL(pathTail string, labelType Type, id string, params url.Values) *url.URL {
-	return h.toURL(fmt.Sprintf("/labels/%v/%v%v", labelType, url.QueryEscape(id), pathTail), params)
+	return h.toURL(fmt.Sprintf("/api/labels/%v/%v%v", labelType, url.QueryEscape(id), pathTail), params)
 }
 
 func (h *httpApplicator) toURL(path string, params url.Values) *url.URL {
@@ -121,7 +121,7 @@ func (h *httpApplicator) putJSON(target *url.URL, toMarshal interface{}) error {
 
 // Sets one label value, only replacing that one label name if already set.
 //
-// POST /labels/:type/:id/:name
+// POST /api/labels/:type/:id/:name
 // {
 // 	"value": "value_of_label"
 // }
@@ -137,7 +137,7 @@ func (h *httpApplicator) SetLabel(labelType Type, id, name, value string) error 
 
 // Replaces all labels on the entity with the new set
 //
-// POST /labels/:type/:id
+// POST /api/labels/:type/:id
 // {
 // 	"values": {
 //	 	"name1": "value1",
@@ -155,7 +155,7 @@ func (h *httpApplicator) SetLabels(labelType Type, id string, labels map[string]
 
 // Removes all labels on the entity
 //
-// DELETE /labels/:type/:id/:name
+// DELETE /api/labels/:type/:id/:name
 //
 func (h *httpApplicator) RemoveLabel(labelType Type, id, name string) error {
 	target := h.toEntityURL(fmt.Sprintf("/%v", url.QueryEscape(name)), labelType, id, url.Values{})
@@ -175,7 +175,7 @@ func (h *httpApplicator) RemoveLabel(labelType Type, id, name string) error {
 
 // Removes all labels on the entity
 //
-// DELETE /labels/:type/:id
+// DELETE /api/labels/:type/:id
 //
 func (h *httpApplicator) RemoveAllLabels(labelType Type, id string) error {
 	target := h.toEntityURL("", labelType, id, url.Values{})
@@ -196,10 +196,10 @@ func (h *httpApplicator) RemoveAllLabels(labelType Type, id string) error {
 
 // Finds all labels assigned to all entities under a type
 //
-// GET /:type
+// GET /api/labels/:type
 //
 func (h *httpApplicator) ListLabels(labelType Type) ([]Labeled, error) {
-	target := h.toURL(fmt.Sprintf("/labels/%v", labelType), url.Values{})
+	target := h.toURL(fmt.Sprintf("/api/labels/%v", labelType), url.Values{})
 	var labeled []Labeled
 	err := h.getJSON(target, &labeled)
 	return labeled, err
@@ -207,7 +207,7 @@ func (h *httpApplicator) ListLabels(labelType Type) ([]Labeled, error) {
 
 // Finds all labels on the given type and ID.
 //
-// GET /labels/:type/:id
+// GET /api/labels/:type/:id
 func (h *httpApplicator) GetLabels(labelType Type, id string) (Labeled, error) {
 	target := h.toEntityURL("", labelType, id, url.Values{})
 	var labeled Labeled
@@ -217,7 +217,7 @@ func (h *httpApplicator) GetLabels(labelType Type, id string) (Labeled, error) {
 
 // Finds all matches for the given type and selector.
 //
-// GET /select?selector=:selector&type=:type&cachedMatch=:cachedMatch
+// GET /api/select?selector=:selector&type=:type&cachedMatch=:cachedMatch
 func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type, cachedMatch bool) ([]Labeled, error) {
 	params := url.Values{}
 	params.Add("selector", selector.String())
@@ -225,7 +225,7 @@ func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type, ca
 	params.Add("cachedMatch", strconv.FormatBool(cachedMatch))
 
 	// Make value copy of URL; don't want to mutate the URL in the struct.
-	urlToGet := h.toURL("/select", params)
+	urlToGet := h.toURL("/api/select", params)
 
 	req, err := http.NewRequest("GET", urlToGet.String(), nil)
 	if err != nil {
