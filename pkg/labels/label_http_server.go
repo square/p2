@@ -33,8 +33,8 @@ func (l *labelHTTPServer) Handler() *mux.Router {
 	r.Methods("GET").Path("/select").HandlerFunc(l.Select)
 	r.Methods("GET").Path("/labels/{type}/{id}").HandlerFunc(l.GetLabels)
 	r.Methods("GET").Path("/labels/{type}").HandlerFunc(l.ListLabels)
-	r.Methods("POST").Path("/labels/{type}/{id}/{name}").HandlerFunc(l.SetLabel)
-	r.Methods("POST").Path("/labels/{type}/{id}").HandlerFunc(l.SetLabels)
+	r.Methods("PUT").Path("/labels/{type}/{id}/{name}").HandlerFunc(l.SetLabel)
+	r.Methods("PUT").Path("/labels/{type}/{id}").HandlerFunc(l.SetLabels)
 	r.Methods("DELETE").Path("/labels/{type}/{id}/{name}").HandlerFunc(l.RemoveLabel)
 	r.Methods("DELETE").Path("/labels/{type}/{id}").HandlerFunc(l.RemoveLabels)
 	return r

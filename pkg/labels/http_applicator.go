@@ -96,12 +96,19 @@ func (h *httpApplicator) getJSON(target *url.URL, toPopulate interface{}) error 
 	return err
 }
 
-func (h *httpApplicator) postJSON(target *url.URL, toMarshal interface{}) error {
+func (h *httpApplicator) putJSON(target *url.URL, toMarshal interface{}) error {
 	body, err := json.Marshal(toMarshal)
 	if err != nil {
 		return err
 	}
-	resp, err := h.client.Post(target.String(), "application/json", bytes.NewReader(body))
+	req, err := http.NewRequest("PUT", target.String(), bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Add("Content-Type", "application/json")
+
+	resp, err := h.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -124,7 +131,7 @@ func (h *httpApplicator) SetLabel(labelType Type, id, name, value string) error 
 		Value: value,
 	}
 	target := h.toEntityURL(fmt.Sprintf("/%v", url.QueryEscape(name)), labelType, id, url.Values{})
-	err := h.postJSON(target, toMarshal)
+	err := h.putJSON(target, toMarshal)
 	return err
 }
 
@@ -142,7 +149,7 @@ func (h *httpApplicator) SetLabels(labelType Type, id string, labels map[string]
 		Values: labels,
 	}
 	target := h.toEntityURL("", labelType, id, url.Values{})
-	err := h.postJSON(target, toMarshal)
+	err := h.putJSON(target, toMarshal)
 	return err
 }
 
