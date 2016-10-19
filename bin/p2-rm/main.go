@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/user"
 	"path"
+	"time"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
@@ -27,9 +28,14 @@ var (
 	deallocation = kingpin.Flag("deallocate", "Specifies that we are deallocating this pod on this node. Using this switch will mutate the desired_replicas value on a managing RC, if one exists.").Bool()
 )
 
+type store interface {
+	NewSession(name string, renewalCh <-chan time.Time) (kp.Session, chan error, error)
+	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+}
+
 // P2RM contains the state necessary to safely remove a pod from a node
 type P2RM struct {
-	Store   kp.Store
+	Store   store
 	RCStore rcstore.Store
 	Client  consulutil.ConsulClient
 	Labeler labels.ApplicatorWithoutWatches

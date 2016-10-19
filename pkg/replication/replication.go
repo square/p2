@@ -63,11 +63,19 @@ type Replication interface {
 	WaitForReplication()
 }
 
+type Store interface {
+	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
+	NewSession(name string, renewalCh <-chan time.Time) (kp.Session, chan error, error)
+	LockHolder(key string) (string, string, error)
+	DestroyLockHolder(id string) error
+}
+
 // A replication contains the information required to do a single replication (deploy).
 type replication struct {
 	active    int
 	nodes     []types.NodeName
-	store     kp.Store
+	store     Store
 	labeler   Labeler
 	manifest  manifest.Manifest
 	health    checker.ConsulHealthChecker

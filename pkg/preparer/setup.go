@@ -26,6 +26,7 @@ import (
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/runit"
@@ -70,6 +71,20 @@ type Preparer struct {
 	artifactRegistry       artifact.Registry
 }
 
+type store interface {
+	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
+	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	ListPods(podPrefix kp.PodPrefix, nodename types.NodeName) ([]kp.ManifestResult, time.Duration, error)
+	WatchPods(
+		podPrefix kp.PodPrefix,
+		hostname types.NodeName,
+		quit <-chan struct{},
+		errCh chan<- error,
+		manifests chan<- []kp.ManifestResult,
+	)
+}
+
 type PreparerConfig struct {
 	NodeName               types.NodeName         `yaml:"node_name"`
 	ConsulAddress          string                 `yaml:"consul_address"`
@@ -97,7 +112,7 @@ type PreparerConfig struct {
 	// source files.
 	Params param.Values `yaml:"params"`
 
-	// Use a single consul client so that all requests go through the same HTTP client.
+	// Use a single Store so that all requests go through the same HTTP client.
 	mux          sync.Mutex
 	consulClient consulutil.ConsulClient
 }
@@ -323,10 +338,11 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		return nil, err
 	}
 
-	store := kp.NewConsulStore(client)
 	statusStore := statusstore.NewConsul(client)
 	podStatusStore := podstatus.NewConsul(statusStore, kp.PreparerPodStatusNamespace)
 	podStore := podstore.NewConsul(client.KV())
+
+	store := kp.NewConsulStore(client)
 
 	maxLaunchableDiskUsage := launch.DefaultAllowableDiskUsage
 	if preparerConfig.MaxLaunchableDiskUsage != "" {
