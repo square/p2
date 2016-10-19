@@ -41,10 +41,6 @@ var (
 	// health status to "unknown" with an error message, and further updates will be
 	// throttled until enough tokens have been accumulated.
 	HealthResumeLimit = param.Int64("health_resume_limit", 4)
-
-	// HealthMaxStatusOutput sets the largest number of stored characters for a status check
-	// for a particular pod.
-	HealthMaxStatusOutput = param.Int("health_max_status_output", 200)
 )
 
 // consulHealthManager maintains a Consul session for all the local node's health checks,
@@ -336,7 +332,6 @@ func toThrottled(wr *WatchResult) *WatchResult {
 		Id:      wr.Id,
 		Service: wr.Service,
 		Status:  string(health.Unknown),
-		Output:  "service status is changing too rapidly to report health metrics",
 	}
 }
 
@@ -346,9 +341,6 @@ func healthToKV(wr WatchResult, session string) (*api.KVPair, error) {
 	wr.Time = now
 	// This health check only expires when the key is removed
 	wr.Expires = now.Add(100 * 365 * 24 * time.Hour)
-	if len(wr.Output) > *HealthMaxStatusOutput {
-		wr.Output = wr.Output[:*HealthMaxStatusOutput] // limit the size of data sent to Consul.
-	}
 	data, err := json.Marshal(wr)
 	if err != nil {
 		return nil, err
