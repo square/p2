@@ -248,7 +248,6 @@ func (sc *StatusChecker) Check() (health.Result, error) {
 			Node:    sc.Node,
 			Service: string(sc.ID),
 			Status:  health.Passing,
-			Output:  "(no health check defined)",
 		}, nil
 	}
 }
@@ -261,9 +260,6 @@ func (sc *StatusChecker) resultFromCheck(resp *http.Response, err error) (health
 	}
 	if err != nil || resp == nil {
 		res.Status = health.Critical
-		if err != nil {
-			res.Output = err.Error()
-		}
 		return res, nil
 	}
 
@@ -295,6 +291,5 @@ func resToKPRes(res health.Result) kp.WatchResult {
 		Node:    res.Node,
 		Id:      res.ID,
 		Status:  string(res.Status),
-		Output:  res.Output,
 	}
 }

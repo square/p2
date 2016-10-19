@@ -78,7 +78,6 @@ type WatchResult struct {
 	Node    types.NodeName
 	Service string
 	Status  string
-	Output  string
 	Time    time.Time
 	Expires time.Time `json:"Expires,omitempty"`
 }
@@ -89,8 +88,7 @@ func (r WatchResult) ValueEquiv(s WatchResult) bool {
 	return r.Id == s.Id &&
 		r.Node == s.Node &&
 		r.Service == s.Service &&
-		r.Status == s.Status &&
-		r.Output == s.Output
+		r.Status == s.Status
 }
 
 // IsStale returns true when the result is stale according to the local clock.

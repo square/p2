@@ -117,7 +117,6 @@ output`))), nil)
 
 	val, _ := sc.resultFromCheck(resp, nil)
 	Assert(t).AreEqual(health.Passing, val.Status, "200 should correspond to health.Passing")
-	Assert(t).AreEqual("", val.Output, "Expected no body to be present.")
 
 	resp.StatusCode = 282
 	val, _ = sc.resultFromCheck(resp, nil)

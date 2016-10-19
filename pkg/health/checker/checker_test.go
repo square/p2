@@ -30,7 +30,6 @@ func TestService(t *testing.T) {
 		Node:    "node1",
 		Service: "slug",
 		Status:  "passing",
-		Output:  "OK",
 	}
 	fakeStore := fakeConsulStore{
 		results: map[string]kp.WatchResult{"node1": result1},
@@ -47,7 +46,6 @@ func TestService(t *testing.T) {
 		Node:    "node1",
 		Service: "slug",
 		Status:  "passing",
-		Output:  "OK",
 	}
 	Assert(t).AreEqual(results["node1"], expected, "Unexpected results calling Service()")
 }
