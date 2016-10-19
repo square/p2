@@ -154,6 +154,10 @@
 			"Rev": "299d728486342c894e7fafd68e3a4b89623bef1d"
 		},
 		{
+			"ImportPath": "github.com/golang/protobuf/proto",
+			"Rev": "98fa357170587e470c5f27d3c3ea0947b71eb455"
+		},
+		{
 			"ImportPath": "github.com/gorilla/context",
 			"Rev": "1c83b3eabd45b6d76072b66b746c20815fb2872d"
 		},
@@ -439,12 +443,65 @@
 			"Rev": "d58ca6618b994150e624f6888d871f4709db51a0"
 		},
 		{
+			"ImportPath": "golang.org/x/net/internal/timeseries",
+			"Rev": "d58ca6618b994150e624f6888d871f4709db51a0"
+		},
+		{
+			"ImportPath": "golang.org/x/net/trace",
+			"Rev": "d58ca6618b994150e624f6888d871f4709db51a0"
+		},
+		{
 			"ImportPath": "golang.org/x/sys/unix",
 			"Rev": "a646d33e2ee3172a661fc09bca23bb4889a41bc8"
 		},
 		{
 			"ImportPath": "golang.org/x/time/rate",
 			"Rev": "a4bde12657593d5e90d0533a3e4fd95e635124cb"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc",
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc/codes",
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc/credentials",
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc/grpclog",
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc/internal",
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc/metadata",
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc/naming",
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc/peer",
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc/transport",
+			"Comment": "v1.0.3",
+			"Rev": "b7f1379d3cbbbeb2ca3405852012e237aa05459e"
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v2",
