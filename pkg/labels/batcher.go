@@ -9,16 +9,20 @@ import (
 	p2metrics "github.com/square/p2/pkg/metrics"
 )
 
+type labelLister interface {
+	ListLabels(labelType Type) ([]Labeled, error)
+}
+
 type Batcher struct {
 	createBatcherMux sync.Mutex
-	applicator       Applicator
+	lister           labelLister
 	holdTime         time.Duration
 	typeBatchers     map[Type]*TypeBatcher
 }
 
-func NewBatcher(applicator Applicator, holdTime time.Duration) Batcher {
+func NewBatcher(lister labelLister, holdTime time.Duration) Batcher {
 	return Batcher{
-		applicator:   applicator,
+		lister:       lister,
 		holdTime:     holdTime,
 		typeBatchers: make(map[Type]*TypeBatcher),
 	}
@@ -30,7 +34,7 @@ func (b *Batcher) ForType(labelType Type) *TypeBatcher {
 	batcher, ok := b.typeBatchers[labelType]
 	if !ok {
 		batcher = &TypeBatcher{
-			applicator:      b.applicator,
+			lister:          b.lister,
 			holdTime:        b.holdTime,
 			labelType:       labelType,
 			pending:         []chan batchResult{},
@@ -43,9 +47,9 @@ func (b *Batcher) ForType(labelType Type) *TypeBatcher {
 
 // Batches a single label type
 type TypeBatcher struct {
-	applicator Applicator
-	createMux  sync.Mutex
-	labelType  Type
+	lister    labelLister
+	createMux sync.Mutex
+	labelType Type
 
 	holdTime        time.Duration
 	pending         []chan batchResult
@@ -66,7 +70,7 @@ func (b *TypeBatcher) handleBatch() {
 	b.batchInProgress = false
 	b.createMux.Unlock()
 
-	allLabels, err := b.applicator.ListLabels(b.labelType)
+	allLabels, err := b.lister.ListLabels(b.labelType)
 	res := batchResult{allLabels, err}
 	b.queriesPerBatch.Update(int64(len(handle)))
 	for _, ch := range handle {

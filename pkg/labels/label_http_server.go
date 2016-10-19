@@ -13,10 +13,23 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
+// General purpose backing store for labels and assignment
+// to P2 objects. This is a subset of the labels.Applicator that
+// omits the Watch functions
+type ApplicatorWithoutWatches interface {
+	SetLabel(labelType Type, id, name, value string) error
+	SetLabels(labelType Type, id string, labels map[string]string) error
+	RemoveLabel(labelType Type, id, name string) error
+	RemoveAllLabels(labelType Type, id string) error
+	ListLabels(labelType Type) ([]Labeled, error)
+	GetLabels(labelType Type, id string) (Labeled, error)
+	GetMatches(selector klabels.Selector, labelType Type, cachedMatch bool) ([]Labeled, error)
+}
+
 // A simple http server that operates on a given applicator and terminates all
 // the endpoints expected by the httpApplicator.
 type labelHTTPServer struct {
-	applicator Applicator
+	applicator ApplicatorWithoutWatches
 	batcher    Batcher
 	useBatcher bool
 	logger     logging.Logger
@@ -24,7 +37,7 @@ type labelHTTPServer struct {
 
 // Construct a new HTTP Applicator server. If batchTime is non-zero, use batching for handling
 // requests that operate over an entire label type (select, list).
-func NewHTTPLabelServer(applicator Applicator, batchTime time.Duration, logger logging.Logger) *labelHTTPServer {
+func NewHTTPLabelServer(applicator ApplicatorWithoutWatches, batchTime time.Duration, logger logging.Logger) *labelHTTPServer {
 	return &labelHTTPServer{applicator, NewBatcher(applicator, batchTime), batchTime > 0, logger}
 }
 
