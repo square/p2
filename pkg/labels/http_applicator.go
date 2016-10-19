@@ -26,12 +26,6 @@ type httpApplicator struct {
 }
 
 func NewHTTPApplicator(client *http.Client, matchesEndpoint *url.URL) (*httpApplicator, error) {
-	// take only the base
-	base, err := url.Parse("/")
-	if err != nil {
-		return nil, err
-	}
-	matchesEndpoint = matchesEndpoint.ResolveReference(base)
 	if matchesEndpoint == nil {
 		return nil, util.Errorf("matches endpoint cannot be nil")
 	}
@@ -49,7 +43,7 @@ func NewHTTPApplicator(client *http.Client, matchesEndpoint *url.URL) (*httpAppl
 }
 
 func (h *httpApplicator) toEntityURL(pathTail string, labelType Type, id string, params url.Values) *url.URL {
-	return h.toURL(fmt.Sprintf("/labels/%v/%v%v", labelType, id, pathTail), params)
+	return h.toURL(fmt.Sprintf("/labels/%v/%v%v", labelType, url.QueryEscape(id), pathTail), params)
 }
 
 func (h *httpApplicator) toURL(path string, params url.Values) *url.URL {
@@ -129,7 +123,7 @@ func (h *httpApplicator) SetLabel(labelType Type, id, name, value string) error 
 	toMarshal := SetLabelRequest{
 		Value: value,
 	}
-	target := h.toEntityURL(fmt.Sprintf("/%v", name), labelType, id, url.Values{})
+	target := h.toEntityURL(fmt.Sprintf("/%v", url.QueryEscape(name)), labelType, id, url.Values{})
 	err := h.postJSON(target, toMarshal)
 	return err
 }
@@ -157,7 +151,7 @@ func (h *httpApplicator) SetLabels(labelType Type, id string, labels map[string]
 // DELETE /labels/:type/:id/:name
 //
 func (h *httpApplicator) RemoveLabel(labelType Type, id, name string) error {
-	target := h.toEntityURL(fmt.Sprintf("/%v", name), labelType, id, url.Values{})
+	target := h.toEntityURL(fmt.Sprintf("/%v", url.QueryEscape(name)), labelType, id, url.Values{})
 	req, err := http.NewRequest("DELETE", target.String(), bytes.NewBufferString(""))
 	if err != nil {
 		return err
@@ -237,9 +231,6 @@ func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type, ca
 		return nil, err
 	}
 
-	if err != nil {
-		return []Labeled{}, err
-	}
 	defer resp.Body.Close()
 
 	bodyData, err := ioutil.ReadAll(resp.Body)

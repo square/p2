@@ -151,45 +151,46 @@ func TestBatchRequests(t *testing.T) {
 func TestMutateAndSelect(t *testing.T) {
 	server, applicator := fakeServerAndApplicator(t, 0)
 	defer server.Close()
-	podID := "abc-123"
+	podID := "abc/123"
+	colorLabel := "p2/color"
 
 	// set a single label and assert its presence
-	Assert(t).IsNil(applicator.SetLabel(POD, podID, "color", "red"), "Should not have erred setting label")
+	Assert(t).IsNil(applicator.SetLabel(POD, podID, colorLabel, "red"), "Should not have erred setting label")
 	podLabels, err := applicator.GetLabels(POD, podID)
 	Assert(t).IsNil(err, "Should not have erred getting labels for the pod")
-	Assert(t).AreEqual("red", podLabels.Labels.Get("color"), "Should have seen red on the color label")
-	matches, err := applicator.GetMatches(labels.Everything().Add("color", labels.EqualsOperator, []string{"red"}), POD, false)
+	Assert(t).AreEqual("red", podLabels.Labels.Get(colorLabel), "Should have seen red on the color label")
+	matches, err := applicator.GetMatches(labels.Everything().Add(colorLabel, labels.EqualsOperator, []string{"red"}), POD, false)
 	Assert(t).IsNil(err, "There should not have been an error running a selector")
 	Assert(t).AreEqual(1, len(matches), "Should have gotten a match")
 	Assert(t).AreEqual(podID, matches[0].ID, "Wrong pod returned")
-	Assert(t).AreEqual("red", matches[0].Labels.Get("color"), "Wrong color returned")
+	Assert(t).AreEqual("red", matches[0].Labels.Get(colorLabel), "Wrong color returned")
 
 	// set all labels, expect all to change
-	Assert(t).IsNil(applicator.SetLabels(POD, podID, labels.Set{"color": "green", "state": "experimental"}), "Should not err setting labels")
+	Assert(t).IsNil(applicator.SetLabels(POD, podID, labels.Set{colorLabel: "green", "state": "experimental"}), "Should not err setting labels")
 	podLabels, err = applicator.GetLabels(POD, podID)
 	Assert(t).IsNil(err, "Should not have erred getting labels for the pod")
-	Assert(t).AreEqual("green", podLabels.Labels.Get("color"), "Should have seen green on the color label")
+	Assert(t).AreEqual("green", podLabels.Labels.Get(colorLabel), "Should have seen green on the color label")
 	Assert(t).AreEqual("experimental", podLabels.Labels.Get("state"), "Should have seen experimental on the state label")
 
 	// set a single label, expect only one of several labels to change
-	Assert(t).IsNil(applicator.SetLabel(POD, podID, "color", "orange"), "Should not have erred setting label")
+	Assert(t).IsNil(applicator.SetLabel(POD, podID, colorLabel, "orange"), "Should not have erred setting label")
 	podLabels, err = applicator.GetLabels(POD, podID)
 	Assert(t).IsNil(err, "Should not have erred getting labels for the pod")
-	Assert(t).AreEqual("orange", podLabels.Labels.Get("color"), "Should have seen orange on the color label")
+	Assert(t).AreEqual("orange", podLabels.Labels.Get(colorLabel), "Should have seen orange on the color label")
 	Assert(t).AreEqual("experimental", podLabels.Labels.Get("state"), "Should have seen experimental on the state label")
 
 	// set a label on a new pod, expect list to contain two pods
-	Assert(t).IsNil(applicator.SetLabel(POD, "def-456", "color", "blue"), "Should not have erred setting label")
+	Assert(t).IsNil(applicator.SetLabel(POD, "def-456", colorLabel, "blue"), "Should not have erred setting label")
 	allPodLabels, err := applicator.ListLabels(POD)
 	Assert(t).AreEqual(len(allPodLabels), 2, "All labeld pods should have been returned")
 	bluePod := allPodLabels[0]
 	if allPodLabels[0].ID == podID {
 		bluePod = allPodLabels[1]
 	}
-	Assert(t).AreEqual("blue", bluePod.Labels.Get("color"), "Should have returned label data")
+	Assert(t).AreEqual("blue", bluePod.Labels.Get(colorLabel), "Should have returned label data")
 
 	// remove a specific label, expect only one remains
-	Assert(t).IsNil(applicator.RemoveLabel(POD, podID, "color"), "Should not have erred removing label")
+	Assert(t).IsNil(applicator.RemoveLabel(POD, podID, colorLabel), "Should not have erred removing label")
 	podLabels, err = applicator.GetLabels(POD, podID)
 	Assert(t).IsNil(err, "Should not have erred getting labels for the pod")
 	Assert(t).AreEqual("experimental", podLabels.Labels.Get("state"), "Should have seen experimental on the state label")

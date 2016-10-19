@@ -33,7 +33,7 @@ func (b *Batcher) ForType(labelType Type) *TypeBatcher {
 			applicator:      b.applicator,
 			holdTime:        b.holdTime,
 			labelType:       labelType,
-			pending:         []chan []Labeled{},
+			pending:         []chan batchResult{},
 			queriesPerBatch: metrics.NewRegisteredHistogram(fmt.Sprintf("queries-per-%v-batch", labelType), p2metrics.Registry, metrics.NewUniformSample(1000)),
 		}
 		b.typeBatchers[labelType] = batcher
@@ -48,27 +48,31 @@ type TypeBatcher struct {
 	labelType  Type
 
 	holdTime        time.Duration
-	pending         []chan []Labeled
+	pending         []chan batchResult
 	batchInProgress bool
 	queriesPerBatch metrics.Histogram
 }
 
+type batchResult struct {
+	Matches []Labeled
+	Err     error
+}
+
 func (b *TypeBatcher) handleBatch() {
-	after := time.After(b.holdTime)
-	allLabels, err := b.applicator.ListLabels(b.labelType)
-	<-after
+	<-time.After(b.holdTime)
 	b.createMux.Lock()
-	defer b.createMux.Unlock()
-	b.queriesPerBatch.Update(int64(len(b.pending)))
-	for _, ch := range b.pending {
-		if err != nil {
-			close(ch)
-		} else {
-			ch <- allLabels
-		}
-	}
-	b.pending = []chan []Labeled{}
+	handle := b.pending
+	b.pending = []chan batchResult{}
 	b.batchInProgress = false
+	b.createMux.Unlock()
+
+	allLabels, err := b.applicator.ListLabels(b.labelType)
+	res := batchResult{allLabels, err}
+	b.queriesPerBatch.Update(int64(len(handle)))
+	for _, ch := range handle {
+		ch <- res
+		close(ch)
+	}
 }
 
 func (b *TypeBatcher) Retrieve() ([]Labeled, error) {
@@ -77,12 +81,12 @@ func (b *TypeBatcher) Retrieve() ([]Labeled, error) {
 		b.batchInProgress = true
 		go b.handleBatch()
 	}
-	respCh := make(chan []Labeled)
+	respCh := make(chan batchResult)
 	b.pending = append(b.pending, respCh)
 	b.createMux.Unlock()
 	res, ok := <-respCh
 	if !ok {
-		return nil, fmt.Errorf("Could not retrieve results")
+		return nil, fmt.Errorf("Could not retrieve results, channel closed unexpectedly")
 	}
-	return res, nil
+	return res.Matches, res.Err
 }

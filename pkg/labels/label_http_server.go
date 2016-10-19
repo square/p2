@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -47,9 +48,15 @@ func getMuxLabelType(req *http.Request) (Type, error) {
 func getMuxLabelTypeAndID(req *http.Request) (Type, string, error) {
 	vars := mux.Vars(req)
 	t, err := AsType(vars["type"])
-	id := vars["id"]
+	if err != nil {
+		return t, "", err
+	}
+	id, err := url.QueryUnescape(vars["id"])
+	if err != nil {
+		return t, "", err
+	}
 	if id == "" {
-		err = fmt.Errorf("ID was not passed")
+		return t, "", fmt.Errorf("ID was not passed")
 	}
 	return t, id, err
 }
@@ -57,13 +64,22 @@ func getMuxLabelTypeAndID(req *http.Request) (Type, string, error) {
 func getMuxLabelTypeIDAndName(req *http.Request) (Type, string, string, error) {
 	vars := mux.Vars(req)
 	t, err := AsType(vars["type"])
-	id := vars["id"]
-	if id == "" {
-		err = fmt.Errorf("ID was not passed")
+	if err != nil {
+		return t, "", "", err
 	}
-	name := vars["name"]
+	id, err := url.QueryUnescape(vars["id"])
+	if err != nil {
+		return t, "", "", err
+	}
+	if id == "" {
+		return t, "", "", fmt.Errorf("ID was not passed")
+	}
+	name, err := url.QueryUnescape(vars["name"])
+	if err != nil {
+		return t, "", "", err
+	}
 	if name == "" {
-		err = fmt.Errorf("Name was not passed")
+		return t, "", "", fmt.Errorf("Name was not passed")
 	}
 	return t, id, name, err
 }
