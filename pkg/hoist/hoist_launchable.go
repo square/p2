@@ -61,7 +61,7 @@ func (hl *Launchable) If() launch.Launchable {
 	return LaunchAdapter{Launchable: hl}
 }
 
-func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
+func (hl *Launchable) Disable() error {
 	// the error return from os/exec.Run is almost always meaningless
 	// ("exit status 1")
 	// since the output is more useful to the user, that's what we'll preserve
@@ -70,8 +70,12 @@ func (hl *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv runit.SV) er
 		return launch.DisableError{Inner: util.Errorf("%s", out)}
 	}
 
+	return nil
+}
+
+func (hl *Launchable) Stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
 	// probably want to do something with output at some point
-	err = hl.stop(serviceBuilder, sv)
+	err := hl.stop(serviceBuilder, sv)
 	if err != nil {
 		return launch.StopError{Inner: err}
 	}

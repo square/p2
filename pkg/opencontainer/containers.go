@@ -285,9 +285,13 @@ func (l *Launchable) stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) err
 	return nil
 }
 
-// Halt causes the launchable to halt execution if it is running.
-func (l *Launchable) Halt(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
+func (l *Launchable) Disable() error {
 	// "disable" script not supported for containers
+	return nil
+}
+
+// Halt causes the launchable to halt execution if it is running.
+func (l *Launchable) Stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
 	err := l.stop(serviceBuilder, sv)
 	if err != nil {
 		return launch.StopError{Inner: err}
