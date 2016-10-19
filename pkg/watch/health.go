@@ -55,6 +55,11 @@ type StatusChecker struct {
 	Client *http.Client
 }
 
+type store interface {
+	NewHealthManager(node types.NodeName, logger logging.Logger) kp.HealthManager
+	WatchPods(podPrefix kp.PodPrefix, nodename types.NodeName, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []kp.ManifestResult)
+}
+
 // MonitorPodHealth is meant to be a long running go routine.
 // MonitorPodHealth reads from a consul store to determine which
 // services should be running on the host. MonitorPodHealth
@@ -62,11 +67,12 @@ type StatusChecker struct {
 // service and kills routines for services that should no
 // longer be running.
 func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, shutdownCh chan struct{}) {
-	store, err := config.GetStore()
+	client, err := config.GetConsulClient()
 	if err != nil {
 		// A bad config should have already produced a nice, user-friendly error message.
-		logger.WithError(err).Fatalln("error creating health monitor KV store")
+		logger.WithError(err).Fatalln("error creating health monitor KV client")
 	}
+	store := kp.NewConsulStore(client)
 	healthManager := store.NewHealthManager(config.NodeName, *logger)
 
 	node := config.NodeName

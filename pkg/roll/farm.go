@@ -31,7 +31,7 @@ type Factory interface {
 }
 
 type UpdateFactory struct {
-	KPStore       kp.Store
+	Store         Store
 	RCStore       rcstore.Store
 	HealthChecker checker.ConsulHealthChecker
 	Labeler       rc.Labeler
@@ -43,7 +43,7 @@ func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session kp.Se
 		alerter = alerting.NewNop()
 	}
 
-	return NewUpdate(u, f.KPStore, f.RCStore, f.HealthChecker, f.Labeler, f.Scheduler, l, session, alerter)
+	return NewUpdate(u, f.Store, f.RCStore, f.HealthChecker, f.Labeler, f.Scheduler, l, session, alerter)
 }
 
 type RCGetter interface {
@@ -61,7 +61,7 @@ type RCGetter interface {
 // to cooperatively schedule work.
 type Farm struct {
 	factory  Factory
-	kps      kp.Store
+	store    Store
 	rls      rollstore.Store
 	rcs      RCGetter
 	sessions <-chan string
@@ -85,7 +85,7 @@ type childRU struct {
 
 func NewFarm(
 	factory Factory,
-	kps kp.Store,
+	store Store,
 	rls rollstore.Store,
 	rcs RCGetter,
 	sessions <-chan string,
@@ -99,7 +99,7 @@ func NewFarm(
 	}
 	return &Farm{
 		factory:    factory,
-		kps:        kps,
+		store:      store,
 		rls:        rls,
 		rcs:        rcs,
 		sessions:   sessions,
@@ -121,7 +121,7 @@ func NewFarm(
 func (rlf *Farm) Start(quit <-chan struct{}) {
 	consulutil.WithSession(quit, rlf.sessions, func(sessionQuit <-chan struct{}, session string) {
 		rlf.logger.WithField("session", session).Infoln("Acquired new session")
-		rlf.session = rlf.kps.NewUnmanagedSession(session, "")
+		rlf.session = rlf.store.NewUnmanagedSession(session, "")
 		rlf.mainLoop(sessionQuit)
 	})
 }

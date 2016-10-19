@@ -32,25 +32,6 @@ type ManifestResult struct {
 	PodUniqueKey *types.PodUniqueKey
 }
 
-type Store interface {
-	SetPod(podPrefix PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
-	Pod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
-	DeletePod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
-	PutHealth(res WatchResult) (time.Time, time.Duration, error)
-	GetHealth(service string, node types.NodeName) (WatchResult, error)
-	GetServiceHealth(service string) (map[string]WatchResult, error)
-	WatchPod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- ManifestResult)
-	WatchPods(podPrefix PodPrefix, nodename types.NodeName, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult)
-	WatchAllPods(podPrefix PodPrefix, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []ManifestResult, pauseTime time.Duration)
-	ListPods(podPrefix PodPrefix, nodename types.NodeName) ([]ManifestResult, time.Duration, error)
-	AllPods(podPrefix PodPrefix) ([]ManifestResult, time.Duration, error)
-	LockHolder(key string) (string, string, error)
-	DestroyLockHolder(id string) error
-	NewSession(name string, renewalCh <-chan time.Time) (Session, chan error, error)
-	NewUnmanagedSession(session, name string) Session
-	NewHealthManager(node types.NodeName, logger logging.Logger) HealthManager
-}
-
 // HealthManager manages a collection of health checks that share configuration and
 // resources.
 type HealthManager interface {
@@ -110,7 +91,7 @@ type consulStore struct {
 	podStore podstore.Store
 }
 
-func NewConsulStore(client consulutil.ConsulClient) Store {
+func NewConsulStore(client consulutil.ConsulClient) *consulStore {
 	return &consulStore{
 		client:   client,
 		podStore: podstore.NewConsul(client.KV()),

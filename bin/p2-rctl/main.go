@@ -171,6 +171,11 @@ func SessionName() string {
 	return fmt.Sprintf("p2-rctl:%s:%s", hostname, timeStr)
 }
 
+type Store interface {
+	// for passing into a roll farm
+	roll.Store
+}
+
 // rctl is a struct for the data structures shared between commands
 // each member function represents a single command that takes over from main
 // and terminates the program on failure
@@ -181,7 +186,7 @@ type rctlParams struct {
 	rls        rollstore.Store
 	sched      scheduler.Scheduler
 	labeler    labels.Applicator
-	kps        kp.Store
+	kps        Store
 	hcheck     checker.ConsulHealthChecker
 	logger     logging.Logger
 }

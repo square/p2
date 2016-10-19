@@ -11,7 +11,7 @@ import (
 
 type ConsulTestFixture struct {
 	consulutil.Fixture
-	Store Store
+	Store *consulStore
 }
 
 // Create a new test fixture that spins up a local Consul server.
