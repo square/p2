@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package kpstore;
+
+service KPStore {
+  // Gets the pod manifest that should be running for a particular node
+  rpc GetPod (GetPodRequest) returns (GetPodResponse) {}
+
+  // Sets a pod manifest to run on a particular node.
+  rpc SetPod (SetPodRequest) returns (SetPodResponse) {}
+}
+
+enum PodPrefix {
+  unknown = 0;
+  intent = 1;
+  reality = 2;
+  hooks = 3;
+}
+
+message SetPodRequest {
+  PodPrefix pod_prefix = 1;
+  string node_name = 2;
+  string manifest = 3;
+}
+
+message SetPodResponse {
+  int64 duration = 2;
+}
+
+message GetPodRequest {
+  PodPrefix pod_prefix = 1;
+  string node_name = 2;
+  string pod_id = 3;
+}
+
+message GetPodResponse {
+  string manifest = 1;
+  int64 duration = 2;
+}
