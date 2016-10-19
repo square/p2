@@ -38,7 +38,7 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	kp_protos.RegisterKPStoreServer(s, kp_store.NewServer(kpStore))
+	kp_protos.RegisterKPStoreServer(s, kpstore.NewServer(kpStore))
 	if err := s.Serve(lis); err != nil {
 		logger.Fatalf("failed to serve: %v", err)
 	}
