@@ -88,11 +88,10 @@ var (
 )
 
 func main() {
-	cmd, consulOpts := flags.ParseWithConsulOptions()
+	cmd, consulOpts, applicator := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(consulOpts)
 	logger := logging.NewLogger(logrus.Fields{})
 	dsstore := dsstore.NewConsul(client, 3, &logger)
-	applicator := labels.NewConsulApplicator(client, 3)
 
 	switch cmd {
 	case CmdCreate:
@@ -323,7 +322,7 @@ func main() {
 func parseNodeSelectorWithPrompt(
 	oldSelector klabels.Selector,
 	newSelectorString string,
-	applicator labels.Applicator,
+	applicator labels.ApplicatorWithoutWatches,
 ) (klabels.Selector, error) {
 	newSelector, err := parseNodeSelector(newSelectorString)
 	if err != nil {
@@ -356,7 +355,7 @@ func parseNodeSelectorWithPrompt(
 	return newSelector, nil
 }
 
-func confirmMinheathForSelector(minHealth int, selector klabels.Selector, applicator labels.Applicator) error {
+func confirmMinheathForSelector(minHealth int, selector klabels.Selector, applicator labels.ApplicatorWithoutWatches) error {
 	matches, err := applicator.GetMatches(selector, labels.NODE, false)
 	if err != nil {
 		return err

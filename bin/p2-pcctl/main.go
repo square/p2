@@ -13,11 +13,12 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/kp/pcstore"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pc/control"
 	"github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/types"
-	"k8s.io/kubernetes/pkg/labels"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 const (
@@ -58,11 +59,11 @@ var (
 )
 
 func main() {
-	cmd, consulOpts := flags.ParseWithConsulOptions()
+	cmd, consulOpts, labeler := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(consulOpts)
 	kv := kp.NewConsulStore(client)
 	logger := logging.NewLogger(logrus.Fields{})
-	pcstore := pcstore.NewConsul(client, 3, &logger)
+	pcstore := pcstore.NewConsul(client, labeler, labels.NewConsulApplicator(client, 0), &logger)
 	session, _, err := kv.NewSession(fmt.Sprintf("pcctl-%s", currentUserName()), nil)
 	if err != nil {
 		log.Fatalf("Could not create session: %s", err)
@@ -187,11 +188,11 @@ func main() {
 	}
 }
 
-func selectorFrom(az fields.AvailabilityZone, cn fields.ClusterName, podID types.PodID) labels.Selector {
-	return labels.Everything().
-		Add(fields.PodIDLabel, labels.EqualsOperator, []string{podID.String()}).
-		Add(fields.AvailabilityZoneLabel, labels.EqualsOperator, []string{az.String()}).
-		Add(fields.ClusterNameLabel, labels.EqualsOperator, []string{cn.String()})
+func selectorFrom(az fields.AvailabilityZone, cn fields.ClusterName, podID types.PodID) klabels.Selector {
+	return klabels.Everything().
+		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
+		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
+		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{cn.String()})
 }
 
 func currentUserName() string {

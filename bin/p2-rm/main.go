@@ -32,7 +32,7 @@ type P2RM struct {
 	Store   kp.Store
 	RCStore rcstore.Store
 	Client  consulutil.ConsulClient
-	Labeler labels.Applicator
+	Labeler labels.ApplicatorWithoutWatches
 
 	LabelID  string
 	NodeName types.NodeName
@@ -41,12 +41,12 @@ type P2RM struct {
 
 // NewP2RM is a constructor for the P2RM type. It will generate the necessary
 // storage types based on its api.Client argument
-func NewP2RM(client consulutil.ConsulClient, podName string, nodeName types.NodeName) *P2RM {
+func NewP2RM(client consulutil.ConsulClient, podName string, nodeName types.NodeName, labeler labels.ApplicatorWithoutWatches) *P2RM {
 	rm := &P2RM{}
 	rm.Client = client
 	rm.Store = kp.NewConsulStore(client)
-	rm.RCStore = rcstore.NewConsul(client, 5)
-	rm.Labeler = labels.NewConsulApplicator(client, 3)
+	rm.RCStore = rcstore.NewConsul(client, labeler, 5)
+	rm.Labeler = labeler
 	rm.LabelID = path.Join(nodeName.String(), podName)
 	rm.PodName = podName
 	rm.NodeName = nodeName
@@ -56,7 +56,7 @@ func NewP2RM(client consulutil.ConsulClient, podName string, nodeName types.Node
 
 func main() {
 	kingpin.Version(version.VERSION)
-	_, opts := flags.ParseWithConsulOptions()
+	_, opts, labeler := flags.ParseWithConsulOptions()
 
 	if *nodeName == "" {
 		hostname, err := os.Hostname()
@@ -67,7 +67,7 @@ func main() {
 		*nodeName = hostname
 	}
 
-	rm := NewP2RM(kp.NewConsulClient(opts), *podName, types.NodeName(*nodeName))
+	rm := NewP2RM(kp.NewConsulClient(opts), *podName, types.NodeName(*nodeName), labeler)
 
 	podIsManagedByRC, rcID, err := rm.checkForManagingReplicationController()
 	if err != nil {

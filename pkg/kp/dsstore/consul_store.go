@@ -14,7 +14,6 @@ import (
 	"github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
@@ -29,10 +28,9 @@ type consulKV interface {
 }
 
 type consulStore struct {
-	applicator labels.Applicator
-	kv         consulKV
-	logger     logging.Logger
-	retries    int
+	kv      consulKV
+	logger  logging.Logger
+	retries int
 }
 
 // TODO: combine with similar CASError type in pkg/labels
@@ -47,10 +45,9 @@ var _ Store = &consulStore{}
 
 func NewConsul(client consulutil.ConsulClient, retries int, logger *logging.Logger) Store {
 	return &consulStore{
-		retries:    retries,
-		applicator: labels.NewConsulApplicator(client, retries),
-		kv:         client.KV(),
-		logger:     *logger,
+		retries: retries,
+		kv:      client.KV(),
+		logger:  *logger,
 	}
 }
 

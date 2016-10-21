@@ -15,7 +15,6 @@ import (
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/flags"
-	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/replication"
@@ -48,10 +47,9 @@ func main() {
 `
 
 	kingpin.Version(version.VERSION)
-	_, opts := flags.ParseWithConsulOptions()
+	_, opts, labeler := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(opts)
 	store := kp.NewConsulStore(client)
-	labeler := labels.NewConsulApplicator(client, 3)
 	healthChecker := checker.NewConsulHealthChecker(client)
 
 	manifest, err := manifest.FromURI(*manifestURI)

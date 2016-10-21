@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -46,9 +45,8 @@ const (
 )
 
 var (
-	labelEndpoint = kingpin.Flag("labels", "An HTTP endpoint to use for labels, instead of using Consul.").String()
-	logLevel      = kingpin.Flag("log", "Logging level to display.").String()
-	logJSON       = kingpin.Flag("log-json", "Log messages will be JSON formatted").Bool()
+	logLevel = kingpin.Flag("log", "Logging level to display.").String()
+	logJSON  = kingpin.Flag("log-json", "Log messages will be JSON formatted").Bool()
 
 	cmdCreate       = kingpin.Command(cmdCreateText, "Create a new replication controller")
 	createManifest  = cmdCreate.Flag("manifest", "manifest file to use for this replication controller").Short('m').Required().String()
@@ -93,7 +91,7 @@ var (
 
 func main() {
 	kingpin.Version(version.VERSION)
-	cmd, opts := flags.ParseWithConsulOptions()
+	cmd, opts, labeler := flags.ParseWithConsulOptions()
 
 	logger := logging.NewLogger(logrus.Fields{})
 	if *logJSON {
@@ -111,26 +109,13 @@ func main() {
 
 	httpClient := cleanhttp.DefaultClient()
 	client := kp.NewConsulClient(opts)
-	labeler := labels.NewConsulApplicator(client, 3)
 	sched := scheduler.NewApplicatorScheduler(labeler)
-	if *labelEndpoint != "" {
-		endpoint, err := url.Parse(*labelEndpoint)
-		if err != nil {
-			logging.DefaultLogger.WithErrorAndFields(err, logrus.Fields{
-				"url": *labelEndpoint,
-			}).Fatalln("Could not parse URL from label endpoint")
-		}
-		httpLabeler, err := labels.NewHTTPApplicator(opts.Client, endpoint)
-		if err != nil {
-			logging.DefaultLogger.WithError(err).Fatalln("Could not create label applicator from endpoint")
-		}
-		sched = scheduler.NewApplicatorScheduler(httpLabeler)
-	}
+
 	rctl := rctlParams{
 		httpClient: httpClient,
 		baseClient: client,
-		rcs:        rcstore.NewConsul(client, 3),
-		rls:        rollstore.NewConsul(client, nil),
+		rcs:        rcstore.NewConsul(client, labeler, 3),
+		rls:        rollstore.NewConsul(client, labeler, nil),
 		kps:        kp.NewConsulStore(client),
 		labeler:    labeler,
 		sched:      sched,
@@ -180,7 +165,7 @@ type rctlParams struct {
 	rcs        rcstore.Store
 	rls        rollstore.Store
 	sched      scheduler.Scheduler
-	labeler    labels.Applicator
+	labeler    labels.ApplicatorWithoutWatches
 	kps        kp.Store
 	hcheck     checker.ConsulHealthChecker
 	logger     logging.Logger
