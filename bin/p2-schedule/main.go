@@ -20,7 +20,7 @@ var (
 
 func main() {
 	kingpin.Version(version.VERSION)
-	_, opts := flags.ParseWithConsulOptions()
+	_, opts, _ := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(opts)
 	store := kp.NewConsulStore(client)
 

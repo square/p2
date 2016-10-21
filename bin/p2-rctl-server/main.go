@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"time"
 
@@ -22,7 +21,6 @@ import (
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/kp/rollstore"
-	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/roll"
@@ -33,7 +31,6 @@ import (
 
 // Command arguments
 var (
-	labelEndpoint       = kingpin.Flag("labels", "An HTTP endpoint to use for labels, instead of using Consul").String()
 	logLevel            = kingpin.Flag("log", "Logging level to display").String()
 	pagerdutyServiceKey = kingpin.Flag("pagerduty-service-key", "Pagerduty Service Key to use for alerting if provided").String()
 )
@@ -56,7 +53,7 @@ func SessionName() string {
 func main() {
 	// Parse custom flags + standard Consul routing options
 	kingpin.Version(version.VERSION)
-	_, opts := flags.ParseWithConsulOptions()
+	_, opts, labeler := flags.ParseWithConsulOptions()
 
 	// Set up the logger
 	logger := logging.NewLogger(logrus.Fields{})
@@ -74,26 +71,10 @@ func main() {
 	httpClient := cleanhttp.DefaultClient()
 	client := kp.NewConsulClient(opts)
 	kpStore := kp.NewConsulStore(client)
-	rcStore := rcstore.NewConsul(client, RetryCount)
-	rollStore := rollstore.NewConsul(client, nil)
+	rcStore := rcstore.NewConsul(client, labeler, RetryCount)
+	rollStore := rollstore.NewConsul(client, labeler, nil)
 	healthChecker := checker.NewConsulHealthChecker(client)
-	labeler := labels.NewConsulApplicator(client, RetryCount)
-	var sched scheduler.Scheduler
-	if *labelEndpoint != "" {
-		endpoint, err := url.Parse(*labelEndpoint)
-		if err != nil {
-			logger.WithErrorAndFields(err, logrus.Fields{
-				"url": *labelEndpoint,
-			}).Fatalln("Could not parse URL from label endpoint")
-		}
-		httpLabeler, err := labels.NewHTTPApplicator(opts.Client, endpoint)
-		if err != nil {
-			logger.WithError(err).Fatalln("Could not create label applicator from endpoint")
-		}
-		sched = scheduler.NewApplicatorScheduler(httpLabeler)
-	} else {
-		sched = scheduler.NewApplicatorScheduler(labeler)
-	}
+	sched := scheduler.NewApplicatorScheduler(labeler)
 
 	// Start acquiring sessions
 	sessions := make(chan string)

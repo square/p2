@@ -40,6 +40,14 @@ type sessionStore interface {
 	NewSession(name string, renewalCh <-chan time.Time) (kp.Session, chan error, error)
 }
 
+type rollLabeler interface {
+	SetLabel(labelType labels.Type, id, name, value string) error
+	SetLabels(labelType labels.Type, id string, labels map[string]string) error
+	RemoveAllLabels(labelType labels.Type, id string) error
+	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
+	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
+}
+
 type consulStore struct {
 	kv KV
 
@@ -53,22 +61,22 @@ type consulStore struct {
 
 	// Used for the ability to specify RC for an RU to operate on using a
 	// label selector (see labelRCSpecifier)
-	labeler labels.Applicator
+	labeler rollLabeler
 
 	logger logging.Logger
 }
 
 var _ Store = consulStore{}
 
-func NewConsul(c consulutil.ConsulClient, logger *logging.Logger) Store {
+func NewConsul(c consulutil.ConsulClient, labeler rollLabeler, logger *logging.Logger) Store {
 	if logger == nil {
 		logger = &logging.DefaultLogger
 	}
 	return consulStore{
 		kv:      c.KV(),
-		rcstore: rcstore.NewConsul(c, 3),
+		rcstore: rcstore.NewConsul(c, labeler, 3),
 		logger:  *logger,
-		labeler: labels.NewConsulApplicator(c, 3),
+		labeler: labeler,
 		store:   kp.NewConsulStore(c),
 	}
 }

@@ -25,7 +25,7 @@ func main() {
 	// been manually altered in some way and need to be restored to
 	// a known state.
 	kingpin.Version(version.VERSION)
-	_, opts := flags.ParseWithConsulOptions()
+	_, opts, _ := flags.ParseWithConsulOptions()
 
 	client := kp.NewConsulClient(opts)
 	store := kp.NewConsulStore(client)

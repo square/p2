@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/labels"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -43,9 +42,7 @@ const (
 )
 
 func main() {
-	cmd, opts := flags.ParseWithConsulOptions()
-	client := kp.NewConsulClient(opts)
-	applicator := labels.NewConsulApplicator(client, 3)
+	cmd, _, applicator := flags.ParseWithConsulOptions()
 	exitCode := 0
 
 	switch cmd {
@@ -136,7 +133,7 @@ func main() {
 	os.Exit(exitCode)
 }
 
-func applyLabels(applicator labels.Applicator, entityID string, labelType labels.Type, additiveLabels map[string]string, destructiveKeys []string) error {
+func applyLabels(applicator labels.ApplicatorWithoutWatches, entityID string, labelType labels.Type, additiveLabels map[string]string, destructiveKeys []string) error {
 	var err error
 	if !confirm(fmt.Sprintf("mutate the labels for %s/%s", labelType, entityID)) {
 		return nil

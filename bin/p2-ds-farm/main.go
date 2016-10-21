@@ -39,12 +39,11 @@ func SessionName() string {
 func main() {
 	quitCh := make(chan struct{})
 
-	_, consulOpts := flags.ParseWithConsulOptions()
+	_, consulOpts, labeler := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(consulOpts)
 	logger := logging.NewLogger(logrus.Fields{})
 	dsStore := dsstore.NewConsul(client, 3, &logger)
 	kpStore := kp.NewConsulStore(client)
-	applicator := labels.NewConsulApplicator(client, 3)
 	healthChecker := checker.NewConsulHealthChecker(client)
 
 	sessions := make(chan string)
@@ -55,7 +54,7 @@ func main() {
 		TTL:       "15s",
 	}, client, sessions, quitCh, logger)
 
-	dsf := ds_farm.NewFarm(kpStore, dsStore, applicator, applicator, sessions, logger, nil, &healthChecker, 1*time.Second, *useCachePodMatches)
+	dsf := ds_farm.NewFarm(kpStore, dsStore, labeler, labels.NewConsulApplicator(client, 0), sessions, logger, nil, &healthChecker, 1*time.Second, *useCachePodMatches)
 
 	go func() {
 		// clear lock immediately on ctrl-C

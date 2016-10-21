@@ -25,7 +25,7 @@ const (
 )
 
 func TestNewConsul(t *testing.T) {
-	store := NewConsul(kp.NewConsulClient(kp.Options{}), nil)
+	store := NewConsul(kp.NewConsulClient(kp.Options{}), labels.NewFakeApplicator(), nil)
 	rollstore := store.(consulStore)
 	if rollstore.kv == nil {
 		t.Fatal("kv should not be nil for constructed rollstore")

@@ -29,24 +29,35 @@ type consulKV interface {
 }
 
 type consulStore struct {
-	kv         consulKV
-	applicator labels.Applicator
+	kv      consulKV
+	labeler pcLabeler
+	watcher pcWatcher
 
 	logger logging.Logger
 
 	metricsRegistry MetricsRegistry
 }
 
+type pcLabeler interface {
+	SetLabel(labelType labels.Type, id, name, value string) error
+	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
+	SetLabels(labelType labels.Type, id string, labels map[string]string) error
+	RemoveAllLabels(labelType labels.Type, id string) error
+	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
+}
+
+type pcWatcher interface {
+	WatchMatches(selector klabels.Selector, labelType labels.Type, quitCh <-chan struct{}) chan []labels.Labeled
+}
+
 var _ Store = &consulStore{}
 
-// NOTE: The "retries" concept is mimicking what is built in rcstore.
-// TODO: explore transactionality of operations and returning errors instead of
-// using retries
-func NewConsul(client consulutil.ConsulClient, retries int, logger *logging.Logger) Store {
+func NewConsul(client consulutil.ConsulClient, labeler pcLabeler, watcher pcWatcher, logger *logging.Logger) Store {
 	return &consulStore{
-		applicator: labels.NewConsulApplicator(client, retries),
-		kv:         client.KV(),
-		logger:     *logger,
+		kv:      client.KV(),
+		logger:  *logger,
+		labeler: labeler,
+		watcher: watcher,
 	}
 }
 
@@ -133,7 +144,7 @@ func (s *consulStore) setLabelsForPC(pc fields.PodCluster) error {
 	pcLabels[fields.AvailabilityZoneLabel] = pc.AvailabilityZone.String()
 	pcLabels[fields.ClusterNameLabel] = pc.Name.String()
 
-	return s.applicator.SetLabels(labels.PC, pc.ID.String(), pcLabels)
+	return s.labeler.SetLabels(labels.PC, pc.ID.String(), pcLabels)
 }
 
 func (s *consulStore) Get(id fields.ID) (fields.PodCluster, error) {
@@ -165,7 +176,7 @@ func (s *consulStore) Delete(id fields.ID) error {
 		return consulutil.NewKVError("delete", key, err)
 	}
 
-	return s.applicator.RemoveAllLabels(labels.PC, id.String())
+	return s.labeler.RemoveAllLabels(labels.PC, id.String())
 }
 
 func (s *consulStore) List() ([]fields.PodCluster, error) {
@@ -279,7 +290,7 @@ func (s *consulStore) FindWhereLabeled(podID types.PodID,
 		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{availabilityZone.String()}).
 		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
-	podClusters, err := s.applicator.GetMatches(sel, labels.PC, false)
+	podClusters, err := s.labeler.GetMatches(sel, labels.PC, false)
 	if err != nil {
 		return nil, err
 	}
@@ -586,7 +597,7 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 					"pc_id":    change.current.ID,
 					"selector": change.current.PodSelector.String(),
 				}).Debugf("Starting pod selector watch for %v", change.current.ID)
-				podWatch = s.applicator.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
+				podWatch = s.watcher.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
 				watching = true
 			} else if change.current == nil && change.previous != nil {
 				// if no current cluster exists, but there is a previous cluster,
@@ -608,7 +619,7 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 						"old_selector": change.previous.PodSelector.String(),
 						"new_selector": change.current.PodSelector.String(),
 					}).Debugf("Altering pod selector for %v", change.current.ID)
-					podWatch = s.applicator.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
+					podWatch = s.watcher.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
 				}
 			}
 		}

@@ -185,7 +185,7 @@ func TestLabelsOnCreate(t *testing.T) {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
 
-	matches, err := store.applicator.GetMatches(selector, labels.PC, false)
+	matches, err := store.labeler.GetMatches(selector, labels.PC, false)
 	if err != nil {
 		t.Fatalf("Unable to check for label match on new pod cluster: %s", err)
 	}
@@ -313,7 +313,7 @@ func TestDelete(t *testing.T) {
 		t.Errorf("The error should have been a pocstore.IsNotExist but was '%s'", err)
 	}
 
-	labels, err := store.applicator.GetLabels(labels.PC, pc.ID.String())
+	labels, err := store.labeler.GetLabels(labels.PC, pc.ID.String())
 	if err != nil {
 		t.Fatalf("Got error when trying to confirm label deletion: %s", err)
 	}
@@ -599,8 +599,8 @@ func TestConcreteSyncer(t *testing.T) {
 	store := consulStoreWithFakeKV()
 	store.logger.Logger.Level = logrus.DebugLevel
 
-	store.applicator.SetLabel(labels.POD, "1234-123-123-1234", "color", "red")
-	store.applicator.SetLabel(labels.POD, "abcd-abc-abc-abcd", "color", "blue")
+	store.labeler.SetLabel(labels.POD, "1234-123-123-1234", "color", "red")
+	store.labeler.SetLabel(labels.POD, "abcd-abc-abc-abcd", "color", "blue")
 
 	syncer := &fakeSyncer{
 		[]fields.ID{},
@@ -713,8 +713,8 @@ func TestConcreteSyncerWithPrevious(t *testing.T) {
 	store := consulStoreWithFakeKV()
 	store.logger.Logger.Level = logrus.DebugLevel
 
-	store.applicator.SetLabel(labels.POD, "1234-123-123-1234", "color", "red")
-	store.applicator.SetLabel(labels.POD, "abcd-abc-abc-abcd", "color", "blue")
+	store.labeler.SetLabel(labels.POD, "1234-123-123-1234", "color", "red")
+	store.labeler.SetLabel(labels.POD, "abcd-abc-abc-abcd", "color", "blue")
 
 	syncer := &fakeSyncer{
 		[]fields.ID{},
@@ -1016,10 +1016,12 @@ func TestWatchAndSync(t *testing.T) {
 }
 
 func consulStoreWithFakeKV() *consulStore {
+	applicator := labels.NewFakeApplicator()
 	return &consulStore{
-		kv:         consulutil.NewFakeClient().KV(),
-		applicator: labels.NewFakeApplicator(),
-		logger:     logging.DefaultLogger,
+		kv:      consulutil.NewFakeClient().KV(),
+		labeler: applicator,
+		watcher: applicator,
+		logger:  logging.DefaultLogger,
 	}
 }
 

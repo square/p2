@@ -30,7 +30,7 @@ var (
 
 func main() {
 	kingpin.Version(version.VERSION)
-	_, opts := flags.ParseWithConsulOptions()
+	_, opts, applicator := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(opts)
 	store := kp.NewConsulStore(client)
 
@@ -42,7 +42,7 @@ func main() {
 		*nodeName = hostname
 	}
 	if *podClusters {
-		watchPodClusters(client)
+		watchPodClusters(client, applicator)
 	} else {
 		podPrefix := kp.INTENT_TREE
 		if *watchReality {
@@ -104,11 +104,11 @@ func (p *printSyncer) Type() pcstore.ConcreteSyncerType {
 	return "print_syncer"
 }
 
-func watchPodClusters(client consulutil.ConsulClient) {
+func watchPodClusters(client consulutil.ConsulClient, applicator labels.ApplicatorWithoutWatches) {
 	logger := &logging.DefaultLogger
 	logger.Infoln("Beginning pod cluster watch")
 
-	pcStore := pcstore.NewConsul(client, 0, logger)
+	pcStore := pcstore.NewConsul(client, applicator, labels.NewConsulApplicator(client, 0), logger)
 	quitCh := make(chan struct{})
 	go func() {
 		signalCh := make(chan os.Signal, 2)

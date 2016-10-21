@@ -62,9 +62,9 @@ type consulKV interface {
 }
 
 type consulStore struct {
-	applicator labels.Applicator
-	kv         consulKV
-	retries    int
+	labeler rcLabeler
+	kv      consulKV
+	retries int
 }
 
 // TODO: combine with similar CASError type in pkg/labels
@@ -76,11 +76,16 @@ func (e CASError) Error() string {
 
 var _ Store = &consulStore{}
 
-func NewConsul(client consulutil.ConsulClient, retries int) *consulStore {
+type rcLabeler interface {
+	SetLabel(labelType labels.Type, id, name, value string) error
+	RemoveAllLabels(labelType labels.Type, id string) error
+}
+
+func NewConsul(client consulutil.ConsulClient, labeler rcLabeler, retries int) *consulStore {
 	return &consulStore{
-		retries:    retries,
-		applicator: labels.NewConsulApplicator(client, retries),
-		kv:         client.KV(),
+		retries: retries,
+		labeler: labeler,
+		kv:      client.KV(),
 	}
 }
 
@@ -99,9 +104,9 @@ func (s *consulStore) Create(manifest manifest.Manifest, nodeSelector klabels.Se
 		return fields.RC{}, err
 	}
 
-	// labels do not need to be retried, consul applicator does that itself
+	// labels do not need to be retried, consul labeler does that itself
 	err = s.forEachLabel(rc, func(id, k, v string) error {
-		return s.applicator.SetLabel(labels.RC, rc.ID.String(), k, v)
+		return s.labeler.SetLabel(labels.RC, rc.ID.String(), k, v)
 	})
 	if err != nil {
 		return fields.RC{}, err
@@ -533,7 +538,7 @@ func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC,
 		// the labels, and then we will retry, which will involve deleting them
 		// again
 		// really the only way to solve this is a transaction
-		err = s.applicator.RemoveAllLabels(labels.RC, id.String())
+		err = s.labeler.RemoveAllLabels(labels.RC, id.String())
 		if err != nil {
 			return err
 		}

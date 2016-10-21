@@ -9,12 +9,14 @@ import (
 	"net/http"
 
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/labels"
 	netutil "github.com/square/p2/pkg/util/net"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
-func ParseWithConsulOptions() (string, kp.Options) {
-	url := kingpin.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
+func ParseWithConsulOptions() (string, kp.Options, labels.ApplicatorWithoutWatches) {
+	consulURL := kingpin.Flag("consul", "The hostname and port of a consul agent in the p2 cluster. Defaults to 0.0.0.0:8500.").String()
+	httpApplicatorURL := kingpin.Flag("http-applicator-url", "The URL of an labels.httpApplicator target, including the protocol and port. For example, https://consul-server.io:9999").URL()
 	token := kingpin.Flag("token", "The consul ACL token to use. Empty by default.").String()
 	tokenFile := kingpin.Flag("token-file", "The file containing the Consul ACL token").ExistingFile()
 	headers := kingpin.Flag("header", "An HTTP header to add to requests, in KEY=VALUE form. Can be specified multiple times.").StringMap()
@@ -51,11 +53,25 @@ func ParseWithConsulOptions() (string, kp.Options) {
 	} else {
 		transport = http.DefaultTransport
 	}
-	return cmd, kp.Options{
-		Address:  *url,
+	httpClient := netutil.NewHeaderClient(*headers, transport)
+
+	kpOpts := kp.Options{
+		Address:  *consulURL,
 		Token:    *token,
-		Client:   netutil.NewHeaderClient(*headers, transport),
+		Client:   httpClient,
 		HTTPS:    *https,
 		WaitTime: *wait,
 	}
+
+	var applicator labels.ApplicatorWithoutWatches
+	var err error
+	if *httpApplicatorURL != nil {
+		applicator, err = labels.NewHTTPApplicator(httpClient, *httpApplicatorURL)
+		if err != nil {
+			log.Fatalln(err)
+		}
+	} else {
+		applicator = labels.NewConsulApplicator(kp.NewConsulClient(kpOpts), 0)
+	}
+	return cmd, kpOpts, applicator
 }
