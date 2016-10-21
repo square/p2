@@ -11,7 +11,7 @@ import (
 )
 
 type MatchWatcher interface {
-	WatchMatches(selector klabels.Selector, labelType labels.Type, quitCh <-chan struct{}) chan []labels.Labeled
+	WatchMatches(selector klabels.Selector, labelType labels.Type, quitCh <-chan struct{}) (chan []labels.Labeled, error)
 }
 
 type labelStore struct {
@@ -44,7 +44,11 @@ func (l labelStore) WatchMatches(req *label_protos.WatchMatchesRequest, stream l
 
 	quitCh := make(chan struct{})
 	defer close(quitCh)
-	matchCh := l.matchWatcher.WatchMatches(selector, labelType, quitCh)
+	matchCh, err := l.matchWatcher.WatchMatches(selector, labelType, quitCh)
+	if err != nil {
+		return err
+	}
+
 	for {
 		select {
 		case <-clientCancel:

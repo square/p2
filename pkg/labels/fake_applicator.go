@@ -116,7 +116,7 @@ func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type, 
 	return results, nil
 }
 
-func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh <-chan struct{}) chan []Labeled {
+func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh <-chan struct{}) (chan []Labeled, error) {
 	ch := make(chan []Labeled)
 	go func() {
 		for {
@@ -135,7 +135,7 @@ func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type
 			}
 		}
 	}()
-	return ch
+	return ch, nil
 }
 
 func (app *fakeApplicator) WatchMatchDiff(
@@ -143,7 +143,7 @@ func (app *fakeApplicator) WatchMatchDiff(
 	labelType Type,
 	quitCh <-chan struct{},
 ) <-chan *LabeledChanges {
-	inCh := app.WatchMatches(selector, labelType, quitCh)
+	inCh, _ := app.WatchMatches(selector, labelType, quitCh)
 	return watchDiffLabels(inCh, quitCh, logging.DefaultLogger)
 }
 

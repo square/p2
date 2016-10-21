@@ -47,7 +47,7 @@ type pcLabeler interface {
 }
 
 type pcWatcher interface {
-	WatchMatches(selector klabels.Selector, labelType labels.Type, quitCh <-chan struct{}) chan []labels.Labeled
+	WatchMatches(selector klabels.Selector, labelType labels.Type, quitCh <-chan struct{}) (chan []labels.Labeled, error)
 }
 
 var _ Store = &consulStore{}
@@ -597,14 +597,19 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 				return // we're closed for business
 			}
 
+			var err error
 			if !watching && change.current != nil {
 				// Start watching for changes of pod membership because we haven't yet
 				s.logger.WithFields(logrus.Fields{
 					"pc_id":    change.current.ID,
 					"selector": change.current.PodSelector.String(),
 				}).Debugf("Starting pod selector watch for %v", change.current.ID)
-				podWatch = s.watcher.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
-				watching = true
+				podWatch, err = s.watcher.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
+				if err != nil {
+					s.logger.WithError(err).Errorln("Unable to start pod selector watch for %v", change.current.ID)
+				} else {
+					watching = true
+				}
 			} else if change.current == nil && change.previous != nil {
 				// if no current cluster exists, but there is a previous cluster,
 				// it means we need to destroy this concrete cluster
@@ -625,7 +630,11 @@ func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 						"old_selector": change.previous.PodSelector.String(),
 						"new_selector": change.current.PodSelector.String(),
 					}).Debugf("Altering pod selector for %v", change.current.ID)
-					podWatch = s.watcher.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
+					podWatch, err = s.watcher.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
+					if err != nil {
+						// TODO: retry this. Today it's not an issue because the applicator we're using doesn't actually error
+						s.logger.WithError(err).Errorln("Unable to alter pod selector watch for %v", change.current.ID)
+					}
 				}
 			}
 		}
