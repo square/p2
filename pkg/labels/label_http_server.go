@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/rcrowley/go-metrics"
 	"github.com/square/p2/pkg/logging"
+	p2metrics "github.com/square/p2/pkg/metrics"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -49,6 +51,28 @@ func (l *labelHTTPServer) AddRoutes(r *mux.Router) {
 	r.Methods("PUT").Path("/api/labels/{type}/{id}").HandlerFunc(l.SetLabels)
 	r.Methods("DELETE").Path("/api/labels/{type}/{id}/{name}").HandlerFunc(l.RemoveLabel)
 	r.Methods("DELETE").Path("/api/labels/{type}/{id}").HandlerFunc(l.RemoveLabels)
+}
+
+func timeHandler(endpoint string, t Type, fn func(string)) {
+	endpoint = fmt.Sprintf("%v-%v", endpoint, t)
+	hist := metrics.GetOrRegisterHistogram(endpoint, p2metrics.Registry, metrics.NewUniformSample(1000))
+	start := time.Now()
+	defer func() {
+		hist.Update(int64(time.Now().Sub(start) / time.Millisecond))
+	}()
+	fn(endpoint)
+}
+
+func (l *labelHTTPServer) badRequest(resp http.ResponseWriter, endpoint string, err error) {
+	l.badRequest(resp, endpoint, err)
+	counter := metrics.GetOrRegisterCounter(fmt.Sprintf("%v-bad-requests", endpoint), p2metrics.Registry)
+	counter.Inc(1)
+}
+
+func (l *labelHTTPServer) unavailable(resp http.ResponseWriter, endpoint string, err error) {
+	l.badRequest(resp, endpoint, err)
+	counter := metrics.GetOrRegisterCounter(fmt.Sprintf("%v-unavailable", endpoint), p2metrics.Registry)
+	counter.Inc(1)
 }
 
 func (l *labelHTTPServer) Handler() *mux.Router {
@@ -101,10 +125,10 @@ func getMuxLabelTypeIDAndName(req *http.Request) (Type, string, string, error) {
 	return t, id, name, err
 }
 
-func (l *labelHTTPServer) respondWithJSON(out interface{}, resp http.ResponseWriter) {
+func (l *labelHTTPServer) respondWithJSON(out interface{}, endpoint string, resp http.ResponseWriter) {
 	result, err := json.Marshal(out)
 	if err != nil {
-		http.Error(resp, err.Error(), http.StatusServiceUnavailable)
+		l.unavailable(resp, endpoint, err)
 		return
 	}
 
@@ -116,151 +140,172 @@ func (l *labelHTTPServer) respondWithJSON(out interface{}, resp http.ResponseWri
 }
 
 func (l *labelHTTPServer) Select(resp http.ResponseWriter, req *http.Request) {
+	endpoint := "select"
 	labelType, err := AsType(req.URL.Query().Get("type"))
 	if err != nil {
-		http.Error(resp, err.Error(), http.StatusBadRequest)
+		l.badRequest(resp, endpoint, err)
 		return
 	}
-	selector, err := klabels.Parse(req.URL.Query().Get("selector"))
-	if err != nil {
-		http.Error(resp, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	matches := []Labeled{}
-
-	if l.useBatcher {
-		allLabels, err := l.batcher.ForType(labelType).Retrieve()
+	timeHandler(endpoint, labelType, func(endpoint string) {
+		selector, err := klabels.Parse(req.URL.Query().Get("selector"))
 		if err != nil {
-			http.Error(resp, err.Error(), http.StatusServiceUnavailable)
+			l.badRequest(resp, endpoint, err)
 			return
 		}
-		for _, candidate := range allLabels {
-			if selector.Matches(candidate.Labels) {
-				matches = append(matches, candidate)
+
+		matches := []Labeled{}
+
+		if l.useBatcher {
+			allLabels, err := l.batcher.ForType(labelType).Retrieve()
+			if err != nil {
+				l.unavailable(resp, endpoint, err)
+				return
+			}
+			for _, candidate := range allLabels {
+				if selector.Matches(candidate.Labels) {
+					matches = append(matches, candidate)
+				}
+			}
+		} else {
+			matches, err = l.applicator.GetMatches(selector, labelType, false)
+			if err != nil {
+				l.unavailable(resp, endpoint, err)
+				return
 			}
 		}
-	} else {
-		matches, err = l.applicator.GetMatches(selector, labelType, false)
-		if err != nil {
-			http.Error(resp, err.Error(), http.StatusServiceUnavailable)
-			return
-		}
-	}
 
-	l.respondWithJSON(matches, resp)
+		l.respondWithJSON(matches, endpoint, resp)
+	})
 }
 
 func (l *labelHTTPServer) GetLabels(resp http.ResponseWriter, req *http.Request) {
+	endpoint := "get-labels"
 	labelType, id, err := getMuxLabelTypeAndID(req)
 	if err != nil {
-		http.Error(resp, err.Error(), http.StatusBadRequest)
+		l.badRequest(resp, endpoint, err)
 		return
 	}
-	labeled, err := l.applicator.GetLabels(labelType, id)
-	if err != nil {
-		http.Error(resp, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	l.respondWithJSON(labeled, resp)
+	timeHandler(endpoint, labelType, func(endpoint string) {
+		labeled, err := l.applicator.GetLabels(labelType, id)
+		if err != nil {
+			l.unavailable(resp, endpoint, err)
+			return
+		}
+		l.respondWithJSON(labeled, endpoint, resp)
+	})
 }
 
 func (l *labelHTTPServer) ListLabels(resp http.ResponseWriter, req *http.Request) {
+	endpoint := "list-labels"
 	labelType, err := getMuxLabelType(req)
 	if err != nil {
-		http.Error(resp, err.Error(), http.StatusBadRequest)
+		l.badRequest(resp, endpoint, err)
 		return
 	}
-	var labeled []Labeled
-	if l.useBatcher {
-		labeled, err = l.batcher.ForType(labelType).Retrieve()
-	} else {
-		labeled, err = l.applicator.ListLabels(labelType)
-	}
+	timeHandler(endpoint, labelType, func(endpoint string) {
+		var labeled []Labeled
+		if l.useBatcher {
+			labeled, err = l.batcher.ForType(labelType).Retrieve()
+		} else {
+			labeled, err = l.applicator.ListLabels(labelType)
+		}
 
-	if err != nil {
-		http.Error(resp, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	l.respondWithJSON(labeled, resp)
+		if err != nil {
+			l.unavailable(resp, endpoint, err)
+			return
+		}
+		l.respondWithJSON(labeled, endpoint, resp)
+	})
 }
 
 func (l *labelHTTPServer) SetLabel(resp http.ResponseWriter, req *http.Request) {
+	endpoint := "set-label"
 	labelType, id, name, err := getMuxLabelTypeIDAndName(req)
 	if err != nil {
-		http.Error(resp, err.Error(), http.StatusBadRequest)
+		l.badRequest(resp, endpoint, err)
 		return
 	}
-	var setLabelRequest SetLabelRequest
-	defer req.Body.Close()
-	in, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		http.Error(resp, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	err = json.Unmarshal(in, &setLabelRequest)
-	if err != nil {
-		http.Error(resp, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	err = l.applicator.SetLabel(labelType, id, name, setLabelRequest.Value)
-	if err != nil {
-		http.Error(resp, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	resp.WriteHeader(http.StatusNoContent)
+	timeHandler(endpoint, labelType, func(endpoint string) {
+		var setLabelRequest SetLabelRequest
+		defer req.Body.Close()
+		in, err := ioutil.ReadAll(req.Body)
+		if err != nil {
+			l.unavailable(resp, endpoint, err)
+			return
+		}
+		err = json.Unmarshal(in, &setLabelRequest)
+		if err != nil {
+			l.unavailable(resp, endpoint, err)
+			return
+		}
+		err = l.applicator.SetLabel(labelType, id, name, setLabelRequest.Value)
+		if err != nil {
+			l.unavailable(resp, endpoint, err)
+			return
+		}
+		resp.WriteHeader(http.StatusNoContent)
+	})
 }
 
 func (l *labelHTTPServer) SetLabels(resp http.ResponseWriter, req *http.Request) {
+	endpoint := "set-labels"
 	labelType, id, err := getMuxLabelTypeAndID(req)
 	if err != nil {
-		http.Error(resp, err.Error(), http.StatusBadRequest)
+		l.badRequest(resp, endpoint, err)
 		return
 	}
-	var setLabelsRequest SetLabelsRequest
-	defer req.Body.Close()
-	in, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		http.Error(resp, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	err = json.Unmarshal(in, &setLabelsRequest)
-	if err != nil {
-		http.Error(resp, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	err = l.applicator.SetLabels(labelType, id, setLabelsRequest.Values)
-	if err != nil {
-		http.Error(resp, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	resp.WriteHeader(http.StatusNoContent)
+	timeHandler(endpoint, labelType, func(endpoint string) {
+		var setLabelsRequest SetLabelsRequest
+		defer req.Body.Close()
+		in, err := ioutil.ReadAll(req.Body)
+		if err != nil {
+			l.unavailable(resp, endpoint, err)
+			return
+		}
+		err = json.Unmarshal(in, &setLabelsRequest)
+		if err != nil {
+			l.unavailable(resp, endpoint, err)
+			return
+		}
+		err = l.applicator.SetLabels(labelType, id, setLabelsRequest.Values)
+		if err != nil {
+			l.unavailable(resp, endpoint, err)
+			return
+		}
+		resp.WriteHeader(http.StatusNoContent)
+	})
 }
 
 func (l *labelHTTPServer) RemoveLabel(resp http.ResponseWriter, req *http.Request) {
+	endpoint := "remove-label"
 	labelType, id, name, err := getMuxLabelTypeIDAndName(req)
 	if err != nil {
-		http.Error(resp, err.Error(), http.StatusBadRequest)
+		l.badRequest(resp, endpoint, err)
 		return
 	}
-	err = l.applicator.RemoveLabel(labelType, id, name)
-	if err != nil {
-		http.Error(resp, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	resp.WriteHeader(http.StatusNoContent)
+	timeHandler(endpoint, labelType, func(endpoint string) {
+		err = l.applicator.RemoveLabel(labelType, id, name)
+		if err != nil {
+			l.unavailable(resp, endpoint, err)
+			return
+		}
+		resp.WriteHeader(http.StatusNoContent)
+	})
 }
 
 func (l *labelHTTPServer) RemoveLabels(resp http.ResponseWriter, req *http.Request) {
+	endpoint := "remove-labels"
 	labelType, id, err := getMuxLabelTypeAndID(req)
 	if err != nil {
-		http.Error(resp, err.Error(), http.StatusBadRequest)
+		l.badRequest(resp, endpoint, err)
 		return
 	}
-	err = l.applicator.RemoveAllLabels(labelType, id)
-	if err != nil {
-		http.Error(resp, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	resp.WriteHeader(http.StatusNoContent)
+	timeHandler(endpoint, labelType, func(endpoint string) {
+		err = l.applicator.RemoveAllLabels(labelType, id)
+		if err != nil {
+			l.unavailable(resp, endpoint, err)
+			return
+		}
+		resp.WriteHeader(http.StatusNoContent)
+	})
 }
