@@ -1,16 +1,15 @@
 package artifact
 
 import (
-	"path"
 	"runtime"
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/square/p2/pkg/util"
 )
 
 func getTestArtifact(t *testing.T) *Artifact {
-	_, filename, _, _ := runtime.Caller(1)
-	artifactPath := path.Join(path.Dir(filename), "myapp_123.tar.gz")
+	artifactPath := util.From(runtime.Caller(0)).ExpandPath("testdata/myapp_123.tar.gz")
 	art, err := NewArtifact(artifactPath)
 	Assert(t).IsNil(err, "the test artifact wasn't present")
 	return art
