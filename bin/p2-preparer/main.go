@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
@@ -75,10 +76,19 @@ func main() {
 	// Launch health checking watch. This watch tracks health of
 	// all pods on this host and writes the information to consul
 	quitMonitorPodHealth := make(chan struct{})
-	go watch.MonitorPodHealth(preparerConfig, &logger, quitMonitorPodHealth)
-	quitChans = append(quitChans, quitMonitorPodHealth)
+	var wgHealth sync.WaitGroup
+	wgHealth.Add(1)
+	go func() {
+		defer wgHealth.Done()
+		watch.MonitorPodHealth(preparerConfig, &logger, quitMonitorPodHealth)
+	}()
 
 	waitForTermination(logger, quitMainUpdate, quitChans)
+
+	// The preparer should continue to report app health during a shutdown, so terminate
+	// the health monitor last.
+	close(quitMonitorPodHealth)
+	wgHealth.Wait()
 
 	logger.NoFields().Infoln("Terminating")
 }
