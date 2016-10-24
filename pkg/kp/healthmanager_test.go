@@ -62,6 +62,7 @@ func TestHealthUpdate(t *testing.T) {
 	manager := f.Store.NewHealthManager("node", logging.TestLogger())
 	defer manager.Close()
 	updater := manager.NewUpdater("svc", "svc")
+	defer updater.Close()
 	waiter := f.NewKeyWaiter(hKey)
 
 	// Count how many changes to the health value there are

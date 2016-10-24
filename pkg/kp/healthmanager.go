@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -47,10 +48,11 @@ var (
 // renews it periodically, and refreshes all health checks if it expires.
 type consulHealthManager struct {
 	sessionPub *stream.StringValuePublisher // Publishes the current session
-	done       chan struct{}                // Close this to stop reporting health
+	done       chan<- struct{}              // Close this to stop reporting health
 	client     consulutil.ConsulClient      // Connection to the Consul agent
 	node       types.NodeName
 	logger     logging.Logger // Logger for health events
+	wg         sync.WaitGroup
 }
 
 // NewHealthManager implements the Store interface. It creates a new HealthManager that
@@ -59,40 +61,46 @@ func (c consulStore) newSessionHealthManager(
 	node types.NodeName,
 	logger logging.Logger,
 ) HealthManager {
+	done := make(chan struct{})
+	m := &consulHealthManager{
+		done:   done,
+		client: c.client,
+		node:   node,
+		logger: logger,
+	}
+
 	// Create a stream of sessions
 	sessionChan := make(chan string)
-	done := make(chan struct{})
 	// Current time of "Jan 2, 15:04:05" turns into "0102-150405"
 	timeStr := time.Now().Format("0102-150405")
-	go consulutil.SessionManager(
-		api.SessionEntry{
-			Name:      fmt.Sprintf("health:%s:%d:%s", node, os.Getpid(), timeStr),
-			LockDelay: 1 * time.Millisecond,
-			Behavior:  api.SessionBehaviorDelete,
-			TTL:       fmt.Sprintf("%ds", *SessionTTLSec),
-		},
-		c.client,
-		sessionChan,
-		done,
-		logger,
-	)
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		consulutil.SessionManager(
+			api.SessionEntry{
+				Name:      fmt.Sprintf("health:%s:%d:%s", node, os.Getpid(), timeStr),
+				LockDelay: 1 * time.Millisecond,
+				Behavior:  api.SessionBehaviorDelete,
+				TTL:       fmt.Sprintf("%ds", *SessionTTLSec),
+			},
+			c.client,
+			sessionChan,
+			done,
+			logger,
+		)
+	}()
 
 	// Hook the session stream into a publisher
-	pub := stream.NewStringValuePublisher(sessionChan, "")
+	m.sessionPub = stream.NewStringValuePublisher(sessionChan, "")
 
-	return &consulHealthManager{
-		sessionPub: pub,
-		done:       done,
-		client:     c.client,
-		node:       node,
-		logger:     logger,
-	}
+	return m
 }
 
 // Close cleans up the HealthManager. New health reports will not be published, and
 // existing reports will be removed. Implements the HealthManager interface.
 func (m *consulHealthManager) Close() {
 	close(m.done)
+	m.wg.Wait()
 }
 
 // consulHealthUpdater holds the state needed for the update process to track the current
@@ -114,6 +122,9 @@ func (m *consulHealthManager) NewUpdater(pod types.PodID, service string) Health
 		service: service,
 		checker: checksStream,
 	}
+	// Don't increment m.wg for this goroutine: the returned HealthUpdater is closed
+	// separately from the HealthManager, and we don't want closing the HealthManager to
+	// be dependent on its updaters being closed first.
 	go func() {
 		sub := m.sessionPub.Subscribe()
 		defer sub.Unsubscribe()

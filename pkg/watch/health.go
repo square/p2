@@ -108,8 +108,8 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 			for _, pod := range pods {
 				pod.shutdownCh <- true
 			}
-			healthManager.Close()
 			close(watchQuitCh)
+			healthManager.Close()
 			return
 		}
 	}
