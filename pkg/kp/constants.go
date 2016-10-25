@@ -12,6 +12,8 @@ import (
 // be pods, e.g. "hooks", "intent", "reality"
 type PodPrefix string
 
+func (p PodPrefix) String() string { return string(p) }
+
 const (
 	INTENT_TREE  PodPrefix = "intent"
 	REALITY_TREE PodPrefix = "reality"

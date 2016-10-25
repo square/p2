@@ -1,7 +1,9 @@
 package pods
 
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/square/p2/pkg/logging"
@@ -12,6 +14,7 @@ import (
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/pborman/uuid"
 )
 
 const DefaultPath = "/data/pods"
@@ -27,7 +30,7 @@ func init() {
 var DefaultFinishExec = []string{"/bin/true"} // type must match preparerconfig
 
 type Factory interface {
-	NewPod(id types.PodID) *Pod
+	NewPod(id types.PodID, uniqueKey *types.PodUniqueKey) *Pod
 }
 
 type HookFactory interface {
@@ -66,24 +69,44 @@ func NewHookFactory(hookRoot string, node types.NodeName) HookFactory {
 	}
 }
 
-func (f *factory) NewPod(id types.PodID) *Pod {
-	home := filepath.Join(f.podRoot, id.String())
+func uniqueName(id types.PodID, uniqueKey *types.PodUniqueKey) string {
+	name := id.String()
+	if uniqueKey != nil {
+		// If the pod was scheduled with a UUID, we want to namespace its pod home
+		// with the same uuid. This enables multiple pods with the same pod ID to
+		// exist on the same filesystem
+		name = fmt.Sprintf("%s-%s", name, uniqueKey.ID)
+	}
 
-	return newPodWithHome(id, home, f.node)
+	return name
+}
+
+func (f *factory) NewPod(id types.PodID, uniqueKey *types.PodUniqueKey) *Pod {
+	home := filepath.Join(f.podRoot, uniqueName(id, uniqueKey))
+	return newPodWithHome(id, uniqueKey, home, f.node)
 }
 
 func (f *hookFactory) NewHookPod(id types.PodID) *Pod {
 	home := filepath.Join(f.hookRoot, id.String())
 
-	return newPodWithHome(id, home, f.node)
+	// Hooks can't have a UUID
+	return newPodWithHome(id, nil, home, f.node)
 }
 
-func newPodWithHome(id types.PodID, podHome string, node types.NodeName) *Pod {
+func newPodWithHome(id types.PodID, uniqueKey *types.PodUniqueKey, podHome string, node types.NodeName) *Pod {
+	var logger logging.Logger
+	if uniqueKey != nil {
+		logger = Log.SubLogger(logrus.Fields{"pod": id, "uuid": uniqueKey.ID})
+	} else {
+		logger = Log.SubLogger(logrus.Fields{"pod": id})
+	}
+
 	return &Pod{
 		Id:             id,
+		uniqueName:     uniqueName(id, uniqueKey),
 		home:           podHome,
 		node:           node,
-		logger:         Log.SubLogger(logrus.Fields{"pod": id}),
+		logger:         logger,
 		SV:             runit.DefaultSV,
 		ServiceBuilder: runit.DefaultBuilder,
 		P2Exec:         p2exec.DefaultP2Exec,
@@ -95,6 +118,19 @@ func newPodWithHome(id types.PodID, podHome string, node types.NodeName) *Pod {
 }
 
 func PodFromPodHome(node types.NodeName, home string) (*Pod, error) {
+	// Check if the pod home is namespaced by a UUID by splitting on a hyphen and
+	// checking the last part. If it parses as a UUID, pass it to newPodWithHome.
+	// Otherwise, pass a nil uniqueKey
+	homeParts := strings.Split(filepath.Base(home), "-")
+
+	var uniqueKey *types.PodUniqueKey
+	podUUID := uuid.Parse(homeParts[len(homeParts)-1])
+	if podUUID != nil {
+		uniqueKey = &types.PodUniqueKey{
+			ID: podUUID.String(),
+		}
+	}
+
 	temp := Pod{
 		home: home,
 		node: node,
@@ -106,5 +142,5 @@ func PodFromPodHome(node types.NodeName, home string) (*Pod, error) {
 		return nil, err
 	}
 
-	return newPodWithHome(manifest.ID(), home, node), nil
+	return newPodWithHome(manifest.ID(), uniqueKey, home, node), nil
 }

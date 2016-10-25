@@ -14,6 +14,8 @@ import (
 
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/podstore"
+	"github.com/square/p2/pkg/kp/statusstore"
+	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
@@ -22,7 +24,12 @@ import (
 )
 
 // Healthcheck TTL
-const TTL = 60 * time.Second
+const (
+	TTL = 60 * time.Second
+
+	// Don't change this, it affects where pod status keys are read and written from
+	PreparerPodStatusNamespace statusstore.Namespace = "preparer"
+)
 
 type ManifestResult struct {
 	Manifest    manifest.Manifest
@@ -108,12 +115,20 @@ type consulStore struct {
 	// tree will contain indices that refer to a pod there, and when we
 	// find one we'll have to ask the pod store for the full pod info
 	podStore podstore.Store
+
+	// The /reality tree can now contain pods that have UUID keys, which
+	// means the reality manifest must be fetched from the pod status store
+	podStatusStore podstatus.Store
 }
 
 func NewConsulStore(client consulutil.ConsulClient) Store {
+	statusStore := statusstore.NewConsul(client)
+	podStatusStore := podstatus.NewConsul(statusStore, PreparerPodStatusNamespace)
+	podStore := podstore.NewConsul(client.KV())
 	return &consulStore{
-		client:   client,
-		podStore: podstore.NewConsul(client.KV()),
+		client:         client,
+		podStore:       podStore,
+		podStatusStore: podStatusStore,
 	}
 }
 
@@ -426,7 +441,58 @@ func HealthPath(service string, node types.NodeName) string {
 func (c consulStore) NewHealthManager(node types.NodeName, logger logging.Logger) HealthManager {
 	return c.newSessionHealthManager(node, logger)
 }
+
+// Now both pod manifests and indexes may be present in the /intent and
+// /reality trees. When an index is present in the /intent tree, the pod store
+// must be consulted with the PodUniqueKey to get the manifest the pod was
+// scheduled with. In the /reality tree, the pod status store is instead
+// consulted.  This function wraps the logic to fetch from the correct place
+// based on the key namespace
+func (c consulStore) manifestAndNodeFromIndex(pair *api.KVPair) (manifest.Manifest, types.NodeName, error) {
+	var podIndex podstore.PodIndex
+	err := json.Unmarshal(pair.Value, &podIndex)
+	if err != nil {
+		return nil, "", util.Errorf("Could not parse '%s' as pod index", pair.Key)
+	}
+
+	switch {
+	case strings.HasPrefix(pair.Key, INTENT_TREE.String()):
+		// fetch from pod store
+		// TODO: add caching to pod store, since we're going to be doing a
+		// query per index now. Or wait til consul 0.7 and use batch fetch
+		pod, err := c.podStore.ReadPodFromIndex(podIndex)
+		if err != nil {
+			return nil, "", err
+		}
+
+		return pod.Manifest, pod.Node, nil
+	case strings.HasPrefix(pair.Key, REALITY_TREE.String()):
+		status, _, err := c.podStatusStore.GetStatusFromIndex(podIndex)
+		if err != nil {
+			return nil, "", err
+		}
+		manifest, err := manifest.FromBytes([]byte(status.Manifest))
+		if err != nil {
+			return nil, "", err
+		}
+
+		// We don't write the node into the pod status object, but we can
+		// infer it from the key anyway
+		node, err := extractNodeFromKey(pair.Key)
+		if err != nil {
+			return nil, "", err
+		}
+		return manifest, node, nil
+	default:
+		return nil, "", util.Errorf("Cannot determine key prefix for %s, expected %s or %s", pair.Key, INTENT_TREE, REALITY_TREE)
+	}
+}
+
 func (c consulStore) manifestResultFromPair(pair *api.KVPair) (ManifestResult, error) {
+	// As we transition from legacy pods to uuid pods, the /intent and
+	// /reality trees will contain both manifests (as they always have) and
+	// uuids which refer to consul objects elsewhere in KV tree. Therefore
+	// we have to be able to tell which it is based on the key path
 	podUniqueKey, err := PodUniqueKeyFromConsulPath(pair.Key)
 	if err != nil {
 		return ManifestResult{}, err
@@ -441,15 +507,10 @@ func (c consulStore) manifestResultFromPair(pair *api.KVPair) (ManifestResult, e
 			return ManifestResult{}, util.Errorf("Could not parse '%s' as pod index", pair.Key)
 		}
 
-		// TODO: add caching to pod store, since we're going to be doing a
-		// query per index now. Or wait til consul 0.7 and use batch fetch
-		pod, err := c.podStore.ReadPodFromIndex(podIndex)
+		podManifest, node, err = c.manifestAndNodeFromIndex(pair)
 		if err != nil {
 			return ManifestResult{}, err
 		}
-
-		podManifest = pod.Manifest
-		node = pod.Node
 	} else {
 		podManifest, err = manifest.FromBytes(pair.Value)
 		if err != nil {

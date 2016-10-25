@@ -62,11 +62,12 @@ type StatusChecker struct {
 // service and kills routines for services that should no
 // longer be running.
 func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, shutdownCh chan struct{}) {
-	store, err := config.GetStore()
+	client, err := config.GetConsulClient()
 	if err != nil {
 		// A bad config should have already produced a nice, user-friendly error message.
 		logger.WithError(err).Fatalln("error creating health monitor KV store")
 	}
+	store := kp.NewConsulStore(client)
 	healthManager := store.NewHealthManager(config.NodeName, *logger)
 
 	node := config.NodeName
@@ -131,6 +132,10 @@ func updatePods(
 	for _, pod := range current {
 		inReality := false
 		for _, man := range reality {
+			if man.PodUniqueKey != nil {
+				// We don't health check uuid pods
+				continue
+			}
 			if man.Manifest.ID() == pod.manifest.ID() &&
 				man.Manifest.GetStatusHTTP() == pod.manifest.GetStatusHTTP() &&
 				man.Manifest.GetStatusLocalhostOnly() == pod.manifest.GetStatusLocalhostOnly() &&
@@ -152,6 +157,11 @@ func updatePods(
 	// for pod in reality if pod not in current: create podwatch and
 	// append to current
 	for _, man := range reality {
+		if man.PodUniqueKey != nil {
+			// We don't health check uuid pods
+			continue
+		}
+
 		missing := true
 		for _, pod := range newCurrent {
 			if man.Manifest.ID() == pod.manifest.ID() {

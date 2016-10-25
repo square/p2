@@ -1,6 +1,7 @@
 package preparer
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -8,10 +9,13 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/statusstore"
+	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
 )
 
@@ -75,6 +79,25 @@ func (p *Preparer) SyncHooksOnce() error {
 	return p.hookListener.SyncOnce()
 }
 
+// Identifies a pod which will be serviced by a goroutine. This struct is used
+// in maps that store goroutine-specific resources such as channels for
+// interaction
+type podWorkerID struct {
+	// Expected to be "" for legacy pods
+	podUniqueKeyID string
+
+	podID types.PodID
+}
+
+// Useful in logging messages
+func (p podWorkerID) String() string {
+	if p.podUniqueKeyID == "" {
+		return p.podID.String()
+	}
+
+	return fmt.Sprintf("%s-%s", p.podID.String(), p.podUniqueKeyID)
+}
+
 func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	pods.Log = p.Logger
 
@@ -85,15 +108,8 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 
 	go p.store.WatchPods(kp.INTENT_TREE, p.node, quitChan, errChan, podChan)
 
-	// we will have one long running goroutine for each app installed on this
-	// host. We keep a map of podId => podChan so we can send the new manifests
-	// that come in to the appropriate goroutine
-	podChanMap := make(map[types.PodID]chan ManifestPair)
-	// we can't use a shared quit channel for all the goroutines - otherwise,
-	// we would exit the program before the goroutines actually accepted the
-	// quit signal. to be sure that each goroutine is done, we have to block and
-	// wait for it to receive the signal
-	quitChanMap := make(map[types.PodID]chan struct{})
+	podChanMap := make(map[podWorkerID]chan ManifestPair)
+	quitChanMap := make(map[podWorkerID]chan struct{})
 
 	for {
 		select {
@@ -101,22 +117,6 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 			p.Logger.WithError(err).
 				Errorln("there was an error reading the manifest")
 		case intentResults := <-podChan:
-			// There are two types of pods that can be present in
-			// intentResults now, "legacy" pods which have a nil
-			// PodUniqueKey (i.e. no uuid), and "uuid" pods, which have a
-			// non-nil PodUniqueKey and therefore a uuid. We do not
-			// expect uuid pods to have a corresponding /reality entry,
-			// they instead have /status entries. For now, we filter out
-			// pods with a non-nil PodUniqueKey to preserve old behavior,
-			// future work will handle these.
-
-			var legacyPods []kp.ManifestResult
-			for _, result := range intentResults {
-				if result.PodUniqueKey == nil {
-					legacyPods = append(legacyPods, result)
-				}
-			}
-
 			realityResults, _, err := p.store.ListPods(kp.REALITY_TREE, p.node)
 			if err != nil {
 				p.Logger.WithError(err).Errorln("Could not check reality")
@@ -126,29 +126,40 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 				if !checkResultsForID(intentResults, POD_ID) {
 					p.Logger.NoFields().Errorln("Intent results set did not contain p2-preparer pod ID, consul data may be corrupted")
 				} else {
-					resultPairs := ZipResultSets(legacyPods, realityResults)
-					for _, pair := range resultPairs {
-						if _, ok := podChanMap[pair.ID]; !ok {
+					pairs := p.ZipResultSets(intentResults, realityResults)
+
+					for _, pair := range pairs {
+						workerID := podWorkerID{
+							podID: pair.ID,
+						}
+						if pair.PodUniqueKey != nil {
+							workerID.podUniqueKeyID = pair.PodUniqueKey.ID
+						}
+						if _, ok := podChanMap[workerID]; !ok {
 							// spin goroutine for this pod
-							podChanMap[pair.ID] = make(chan ManifestPair)
-							quitChanMap[pair.ID] = make(chan struct{})
-							go p.handlePods(podChanMap[pair.ID], quitChanMap[pair.ID])
+							podChanMap[workerID] = make(chan ManifestPair)
+							quitChanMap[workerID] = make(chan struct{})
+							go p.handlePods(podChanMap[workerID], quitChanMap[workerID])
 						}
 						// It is possible for the goroutine responsible for performing the installation
 						// of a particular pod ID to be stalled or mid-deploy. This should not cause
 						// this loop to block. Intent results will be re-sent within the watch expiration
 						// loop time.
 						select {
-						case podChanMap[pair.ID] <- pair:
+						case podChanMap[workerID] <- pair:
 						case <-time.After(5 * time.Second):
 							p.Logger.WithField("pod", pair.ID).Warnln("Missed possible manifest update, will wait for next watch.")
 						}
 					}
+
 				}
 			}
 		case <-quitAndAck:
 			for podToQuit, quitCh := range quitChanMap {
-				p.Logger.WithField("pod", podToQuit).Infof("p2-preparer quitting, ceasing to watch for updates to %s", podToQuit)
+				p.Logger.WithFields(logrus.Fields{
+					"pod":        podToQuit.podID,
+					"unique_key": podToQuit.podUniqueKeyID,
+				}).Infof("p2-preparer quitting, ceasing to watch for updates to %s", podToQuit.String())
 				quitCh <- struct{}{}
 			}
 			close(quitChan)
@@ -191,6 +202,8 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 		case nextLaunch = <-podChan:
 			backoffTime = minimumBackoffTime
 			var sha string
+
+			// TODO: handle errors appropriately from SHA().
 			if nextLaunch.Intent != nil {
 				sha, _ = nextLaunch.Intent.SHA()
 			} else {
@@ -212,7 +225,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				if !working {
 					p.tryRunHooks(
 						hooks.AFTER_AUTH_FAIL,
-						p.podFactory.NewPod(nextLaunch.ID),
+						p.podFactory.NewPod(nextLaunch.ID, nextLaunch.PodUniqueKey),
 						nextLaunch.Intent,
 						manifestLogger,
 					)
@@ -220,7 +233,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 			}
 		case <-time.After(backoffTime):
 			if working {
-				pod := p.podFactory.NewPod(nextLaunch.ID)
+				pod := p.podFactory.NewPod(nextLaunch.ID, nextLaunch.PodUniqueKey)
 
 				// TODO better solution: force the preparer to have a 0s default timeout, prevent KILLs
 				if pod.Id == POD_ID {
@@ -247,6 +260,16 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				// leads to a bug where the preparer will appear to update a package
 				// and when that is finished, "update" it again.
 				//
+				// Example ordering of bad events:
+				// 1) update to /intent for pod A comes in, /reality is read and
+				// resolvePair() handles it
+				// 2) before resolvePair() finishes, another /intent update comes in,
+				// and /reality is read but hasn't been changed. This update cannot
+				// be processed until the previous resolvePair() call finishes, and
+				// updates /reality. Now the reality value used here is stale. We
+				// want to refresh our /reality read so we don't restart the pod if
+				// intent didn't change between updates.
+				//
 				// The correct solution probably involves watching reality and intent
 				// and feeding updated pairs to a control loop.
 				//
@@ -254,14 +277,34 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				// up-to-date. The de-bouncing logic in this method should ensure that the
 				// intent value is fresh (to the extent that Consul is timely). Fetching
 				// the reality value again ensures its freshness too.
-				reality, _, err := p.store.Pod(kp.REALITY_TREE, p.node, nextLaunch.ID)
-				if err == pods.NoCurrentManifest {
-					nextLaunch.Reality = nil
-				} else if err != nil {
-					manifestLogger.WithError(err).Errorln("Error getting reality manifest")
-					break
+				if nextLaunch.PodUniqueKey == nil {
+					// legacy pod, get reality manifest from reality tree
+					reality, _, err := p.store.Pod(kp.REALITY_TREE, p.node, nextLaunch.ID)
+					if err == pods.NoCurrentManifest {
+						nextLaunch.Reality = nil
+					} else if err != nil {
+						manifestLogger.WithError(err).Errorln("Error getting reality manifest")
+						break
+					} else {
+						nextLaunch.Reality = reality
+					}
 				} else {
-					nextLaunch.Reality = reality
+					// uuid pod, get reality manifest from pod status
+					status, _, err := p.podStatusStore.Get(*nextLaunch.PodUniqueKey)
+					switch {
+					case err != nil && !statusstore.IsNoStatus(err):
+						manifestLogger.WithError(err).Errorln("Error getting reality manifest from pod status")
+						break
+					case statusstore.IsNoStatus(err):
+						nextLaunch.Reality = nil
+					default:
+						manifest, err := manifest.FromBytes([]byte(status.Manifest))
+						if err != nil {
+							manifestLogger.WithError(err).Errorln("Error parsing reality manifest from pod status")
+							break
+						}
+						nextLaunch.Reality = manifest
+					}
 				}
 
 				ok := p.resolvePair(nextLaunch, pod, manifestLogger)
@@ -369,11 +412,36 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 		logger.WithError(err).
 			Errorln("Launch failed")
 	} else {
-		duration, err := p.store.SetPod(kp.REALITY_TREE, p.node, pair.Intent)
-		if err != nil {
-			logger.WithErrorAndFields(err, logrus.Fields{
-				"duration": duration}).
-				Errorln("Could not set pod in reality store")
+		if pair.PodUniqueKey == nil {
+			// legacy pod, write the manifest back to reality tree
+			duration, err := p.store.SetPod(kp.REALITY_TREE, p.node, pair.Intent)
+			if err != nil {
+				logger.WithErrorAndFields(err, logrus.Fields{
+					"duration": duration}).
+					Errorln("Could not set pod in reality store")
+			}
+		} else {
+			// TODO: do this in a transaction
+			err = p.podStore.WriteRealityIndex(*pair.PodUniqueKey, p.node)
+			if err != nil {
+				logger.WithError(err).
+					Errorln("Could not write uuid index to reality store")
+			}
+
+			// uuid pod, write the manifest to the pod status tree.
+			mutator := func(ps podstatus.PodStatus) (podstatus.PodStatus, error) {
+				manifestBytes, err := pair.Intent.Marshal()
+				if err != nil {
+					return ps, util.Errorf("Could not convert manifest to string to update pod status")
+				}
+
+				ps.Manifest = string(manifestBytes)
+				return ps, nil
+			}
+			err := p.podStatusStore.MutateStatus(*pair.PodUniqueKey, mutator)
+			if err != nil {
+				logger.WithError(err).Errorln("Could not update manifest in pod status")
+			}
 		}
 
 		p.tryRunHooks(hooks.AFTER_LAUNCH, pod, pair.Intent, logger)

@@ -42,8 +42,17 @@ var (
 )
 
 type Pod struct {
-	Id             types.PodID
-	node           types.NodeName
+	// ID of the pod, i.e. result of ID() called on the manifest defining the pod
+	Id   types.PodID
+	node types.NodeName
+
+	// A unique name for a pod instance, useful for avoiding filename
+	// conflicts. Typically <id>-<uuid> if the pod has a uuid, and simply
+	// <id> if it does not have a uuid
+	uniqueName string
+
+	// The home directory for the pod. Typically some global root (e.g. /data/pods) followed by the
+	// podUniqueName (e.g. /data/pods/<pod_id> or /data/pods/<pod_id>-<uuid>
 	home           string
 	logger         logging.Logger
 	SV             runit.SV
@@ -222,7 +231,7 @@ func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest 
 			}
 		}
 	}
-	err := pod.ServiceBuilder.Activate(string(pod.Id), sbTemplate, newManifest.GetRestartPolicy())
+	err := pod.ServiceBuilder.Activate(pod.uniqueName, sbTemplate, newManifest.GetRestartPolicy())
 	if err != nil {
 		return err
 	}
@@ -336,7 +345,7 @@ func (pod *Pod) Uninstall() error {
 
 	// remove services for this pod, then prune the old
 	// service dirs away
-	err = os.Remove(filepath.Join(pod.ServiceBuilder.ConfigRoot, string(pod.Id)+".yaml"))
+	err = os.Remove(filepath.Join(pod.ServiceBuilder.ConfigRoot, pod.uniqueName+".yaml"))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -635,7 +644,7 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 	launchableRootDir := filepath.Join(pod.home, launchableStanza.LaunchableId.String())
 	serviceId := strings.Join(
 		[]string{
-			pod.Id.String(),
+			pod.uniqueName,
 			"__",
 			launchableStanza.LaunchableId.String(),
 		}, "")
@@ -666,7 +675,7 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 			cgroupName = filepath.Join(
 				"p2",
 				pod.node.String(),
-				pod.Id.String(),
+				pod.uniqueName,
 				launchableStanza.LaunchableId.String(),
 			)
 		}
