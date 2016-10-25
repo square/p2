@@ -554,6 +554,10 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 	if err != nil {
 		return err
 	}
+	err = writeEnvFile(pod.EnvDir(), "POD_UNIQUE_KEY", pod.UniqueKey().String(), uid, gid)
+	if err != nil {
+		return err
+	}
 
 	for _, launchable := range launchables {
 		// we need to remove any unset env vars from a previous pod
