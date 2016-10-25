@@ -215,22 +215,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 			})
 			manifestLogger.NoFields().Debugln("New manifest received")
 
-			if nextLaunch.Intent == nil {
-				// if intent=nil then reality!=nil and we need to delete the pod
-				// therefore we must set working=true here
-				working = true
-			} else {
-				// non-nil intent manifests need to be authorized first
-				working = p.authorize(nextLaunch.Intent, manifestLogger)
-				if !working {
-					p.tryRunHooks(
-						hooks.AFTER_AUTH_FAIL,
-						p.podFactory.NewPod(nextLaunch.ID, nextLaunch.PodUniqueKey),
-						nextLaunch.Intent,
-						manifestLogger,
-					)
-				}
-			}
+			working = true
 		case <-time.After(backoffTime):
 			if working {
 				pod := p.podFactory.NewPod(nextLaunch.ID, nextLaunch.PodUniqueKey)
@@ -350,8 +335,19 @@ func (p *Preparer) resolvePair(pair ManifestPair, pod Pod, logger logging.Logger
 		newSHA, _ = pair.Intent.SHA()
 	}
 
-	if oldSHA == "" {
+	if oldSHA == "" && newSHA != "" {
 		logger.NoFields().Infoln("manifest is new, will update")
+		authorized := p.authorize(pair.Intent, logger)
+		if !authorized {
+			p.tryRunHooks(
+				hooks.AFTER_AUTH_FAIL,
+				p.podFactory.NewPod(pair.ID, pair.PodUniqueKey),
+				pair.Intent,
+				logger,
+			)
+			// prevent future unnecessary loops, we don't need to check again.
+			return true
+		}
 		return p.installAndLaunchPod(pair, pod, logger)
 	}
 
@@ -362,6 +358,18 @@ func (p *Preparer) resolvePair(pair ManifestPair, pod Pod, logger logging.Logger
 
 	if oldSHA == newSHA {
 		logger.NoFields().Debugln("manifest is unchanged, no action required")
+		return true
+	}
+
+	authorized := p.authorize(pair.Intent, logger)
+	if !authorized {
+		p.tryRunHooks(
+			hooks.AFTER_AUTH_FAIL,
+			p.podFactory.NewPod(pair.ID, pair.PodUniqueKey),
+			pair.Intent,
+			logger,
+		)
+		// prevent future unnecessary loops, we don't need to check again.
 		return true
 	}
 
