@@ -348,7 +348,7 @@ func TestInstall(t *testing.T) {
 	currentUser, err := user.Current()
 	Assert(t).IsNil(err, "test setup: couldn't get current user")
 
-	testLocation := testContext.ExpandPath("hoisted-hello_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz")
+	testLocation := testContext.ExpandPath("testdata/hoisted-hello_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz")
 
 	launchables := map[launch.LaunchableID]launch.LaunchableStanza{
 		"hello": {

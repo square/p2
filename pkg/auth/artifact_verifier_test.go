@@ -22,12 +22,14 @@ var (
 	testManifestSig testFile = "hello-server_3881c78ed47ae8be4a4080178f2d46cc174a5a95.tar.gz.manifest.sig"
 )
 
+const testdata = "testdata/test_artifact"
+
 func buildTestFileTree(t *testing.T, files []testFile) string {
 	tempDir, err := ioutil.TempDir("", "test-artifact-verifier")
 	if err != nil {
 		t.Fatalf("Could not make tempdir for verification: %v", err)
 	}
-	artifactDir := util.From(runtime.Caller(0)).ExpandPath("test_artifact")
+	artifactDir := util.From(runtime.Caller(0)).ExpandPath(testdata)
 	for _, file := range files {
 		err = os.Link(filepath.Join(artifactDir, string(file)), filepath.Join(tempDir, string(file)))
 		if err != nil {
@@ -101,7 +103,7 @@ func testNotVerifiedWithFiles(t *testing.T, files []testFile, verifier ArtifactV
 }
 
 func testKeyringPath() string {
-	artifactDir := util.From(runtime.Caller(0)).ExpandPath("test_artifact")
+	artifactDir := util.From(runtime.Caller(0)).ExpandPath(testdata)
 	return filepath.Join(artifactDir, "public.key")
 }
 

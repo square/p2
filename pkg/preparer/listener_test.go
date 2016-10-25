@@ -72,7 +72,7 @@ func testHookListener(t *testing.T) (HookListener, string, <-chan struct{}) {
 	builder.SetRunAsUser(current.Username)
 	builder.SetLaunchables(map[launch.LaunchableID]launch.LaunchableStanza{
 		"create": {
-			Location:       util.From(runtime.Caller(0)).ExpandPath("hoisted-hello_def456.tar.gz"),
+			Location:       util.From(runtime.Caller(0)).ExpandPath("testdata/hoisted-hello_def456.tar.gz"),
 			LaunchableType: "hoist",
 			LaunchableId:   "create",
 		},

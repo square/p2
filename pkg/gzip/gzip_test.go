@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/user"
+	"path"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -15,6 +16,7 @@ import (
 func testExtraction(t *testing.T, tarfile string,
 	check func(error, string),
 ) {
+	tarfile = path.Join("testdata", tarfile) // prefix with testdata so this is ignored by downstream dep management
 	tarPath := util.From(runtime.Caller(0)).ExpandPath(tarfile)
 	file, err := os.Open(tarPath)
 	Assert(t).IsNil(err, "expected no error opening file")
