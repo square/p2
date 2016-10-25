@@ -25,7 +25,7 @@ const (
 	testPreparerManifest = `id: p2-preparer`
 )
 
-func testReplicatorAndServer(t *testing.T) (Replicator, kp.Store, consulutil.Fixture) {
+func testReplicatorAndServer(t *testing.T) (Replicator, Store, consulutil.Fixture) {
 	active := 1
 	store, f := makeStore(t)
 
@@ -50,7 +50,7 @@ func testReplicatorAndServer(t *testing.T) (Replicator, kp.Store, consulutil.Fix
 	return replicator, store, f
 }
 
-func makeStore(t *testing.T) (kp.Store, consulutil.Fixture) {
+func makeStore(t *testing.T) (Store, consulutil.Fixture) {
 	f := consulutil.NewFixture(t)
 	store := kp.NewConsulStore(f.Client)
 	return store, f

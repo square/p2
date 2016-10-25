@@ -53,7 +53,7 @@ type replicator struct {
 	logger    logging.Logger
 	nodes     []types.NodeName
 	active    int // maximum number of nodes to update concurrently
-	store     kp.Store
+	store     Store
 	labeler   Labeler
 	health    checker.ConsulHealthChecker
 	threshold health.HealthState // minimum state to treat as "healthy"
@@ -69,7 +69,7 @@ func NewReplicator(
 	logger logging.Logger,
 	nodes []types.NodeName,
 	active int,
-	store kp.Store,
+	store Store,
 	labeler Labeler,
 	health checker.ConsulHealthChecker,
 	threshold health.HealthState,

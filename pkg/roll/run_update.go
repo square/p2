@@ -14,6 +14,7 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc"
 	rcf "github.com/square/p2/pkg/rc/fields"
@@ -23,10 +24,17 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
+type Store interface {
+	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
+	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	NewUnmanagedSession(session, name string) kp.Session
+}
+
 type update struct {
 	fields.Update
 
-	kps     kp.Store
+	kps     Store
 	rcs     rcstore.Store
 	hcheck  checker.ConsulHealthChecker
 	labeler rc.Labeler
@@ -47,7 +55,7 @@ type update struct {
 // responsibility of the caller.
 func NewUpdate(
 	f fields.Update,
-	kps kp.Store,
+	kps Store,
 	rcs rcstore.Store,
 	hcheck checker.ConsulHealthChecker,
 	labeler rc.Labeler,

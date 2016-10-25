@@ -6,20 +6,19 @@ import (
 	"os/user"
 	"time"
 
+	"github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/replication"
-	"github.com/square/p2/pkg/util"
-
-	klabels "k8s.io/kubernetes/pkg/labels"
-
-	"github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/dsstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/util"
+
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 const (
@@ -84,12 +83,20 @@ type LabelWatcher interface {
 	) <-chan *labels.LabeledChanges
 }
 
+type store interface {
+	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	NewUnmanagedSession(session, name string) kp.Session
+
+	// For passing to the replication package:
+	replication.Store
+}
+
 type daemonSet struct {
 	fields.DaemonSet
 
 	contention    dsContention
 	logger        logging.Logger
-	kpStore       kp.Store
+	store         store
 	scheduler     scheduler.Scheduler
 	dsStore       dsstore.Store
 	applicator    Labeler
@@ -115,7 +122,7 @@ type dsContention struct {
 func New(
 	fields fields.DaemonSet,
 	dsStore dsstore.Store,
-	kpStore kp.Store,
+	store store,
 	applicator Labeler,
 	watcher LabelWatcher,
 	logger logging.Logger,
@@ -127,7 +134,7 @@ func New(
 		DaemonSet: fields,
 
 		dsStore:            dsStore,
-		kpStore:            kpStore,
+		store:              store,
 		logger:             logger,
 		applicator:         applicator,
 		watcher:            watcher,
@@ -455,7 +462,7 @@ func (ds *daemonSet) unschedule(node types.NodeName) error {
 
 	// Will remove the following key:
 	// <kp.INTENT_TREE>/<node>/<ds.Manifest.ID()>
-	_, err := ds.kpStore.DeletePod(kp.INTENT_TREE, node, ds.Manifest.ID())
+	_, err := ds.store.DeletePod(kp.INTENT_TREE, node, ds.Manifest.ID())
 	if err != nil {
 		return util.Errorf("Unable to delete pod id '%v' in node '%v', from intent tree: %v", ds.Manifest.ID(), node, err)
 	}
@@ -500,7 +507,7 @@ func (ds *daemonSet) PublishToReplication() error {
 		ds.logger,
 		nodes,
 		len(nodes)-ds.DaemonSet.MinHealth,
-		ds.kpStore,
+		ds.store,
 		ds.applicator,
 		*ds.healthChecker,
 		health.HealthState(health.Passing),
