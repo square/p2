@@ -84,18 +84,18 @@ func (p *Preparer) SyncHooksOnce() error {
 // interaction
 type podWorkerID struct {
 	// Expected to be "" for legacy pods
-	podUniqueKeyID string
+	podUniqueKey types.PodUniqueKey
 
 	podID types.PodID
 }
 
 // Useful in logging messages
 func (p podWorkerID) String() string {
-	if p.podUniqueKeyID == "" {
+	if p.podUniqueKey == "" {
 		return p.podID.String()
 	}
 
-	return fmt.Sprintf("%s-%s", p.podID.String(), p.podUniqueKeyID)
+	return fmt.Sprintf("%s-%s", p.podID.String(), p.podUniqueKey)
 }
 
 func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
@@ -130,10 +130,8 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 
 					for _, pair := range pairs {
 						workerID := podWorkerID{
-							podID: pair.ID,
-						}
-						if pair.PodUniqueKey != nil {
-							workerID.podUniqueKeyID = pair.PodUniqueKey.ID
+							podID:        pair.ID,
+							podUniqueKey: pair.PodUniqueKey,
 						}
 						if _, ok := podChanMap[workerID]; !ok {
 							// spin goroutine for this pod
@@ -158,7 +156,7 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 			for podToQuit, quitCh := range quitChanMap {
 				p.Logger.WithFields(logrus.Fields{
 					"pod":        podToQuit.podID,
-					"unique_key": podToQuit.podUniqueKeyID,
+					"unique_key": podToQuit.podUniqueKey,
 				}).Infof("p2-preparer quitting, ceasing to watch for updates to %s", podToQuit.String())
 				quitCh <- struct{}{}
 			}
@@ -218,7 +216,17 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 			working = true
 		case <-time.After(backoffTime):
 			if working {
-				pod := p.podFactory.NewPod(nextLaunch.ID, nextLaunch.PodUniqueKey)
+				var pod *pods.Pod
+				var err error
+				if nextLaunch.PodUniqueKey == "" {
+					pod = p.podFactory.NewLegacyPod(nextLaunch.ID)
+				} else {
+					pod, err = p.podFactory.NewUUIDPod(nextLaunch.ID, nextLaunch.PodUniqueKey)
+					if err != nil {
+						manifestLogger.WithError(err).Errorln("Could not initialize pod")
+						break
+					}
+				}
 
 				// TODO better solution: force the preparer to have a 0s default timeout, prevent KILLs
 				if pod.Id == POD_ID {
@@ -262,7 +270,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				// up-to-date. The de-bouncing logic in this method should ensure that the
 				// intent value is fresh (to the extent that Consul is timely). Fetching
 				// the reality value again ensures its freshness too.
-				if nextLaunch.PodUniqueKey == nil {
+				if nextLaunch.PodUniqueKey == "" {
 					// legacy pod, get reality manifest from reality tree
 					reality, _, err := p.store.Pod(kp.REALITY_TREE, p.node, nextLaunch.ID)
 					if err == pods.NoCurrentManifest {
@@ -275,7 +283,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 					}
 				} else {
 					// uuid pod, get reality manifest from pod status
-					status, _, err := p.podStatusStore.Get(*nextLaunch.PodUniqueKey)
+					status, _, err := p.podStatusStore.Get(nextLaunch.PodUniqueKey)
 					switch {
 					case err != nil && !statusstore.IsNoStatus(err):
 						manifestLogger.WithError(err).Errorln("Error getting reality manifest from pod status")
@@ -341,7 +349,7 @@ func (p *Preparer) resolvePair(pair ManifestPair, pod Pod, logger logging.Logger
 		if !authorized {
 			p.tryRunHooks(
 				hooks.AFTER_AUTH_FAIL,
-				p.podFactory.NewPod(pair.ID, pair.PodUniqueKey),
+				pod,
 				pair.Intent,
 				logger,
 			)
@@ -365,7 +373,7 @@ func (p *Preparer) resolvePair(pair ManifestPair, pod Pod, logger logging.Logger
 	if !authorized {
 		p.tryRunHooks(
 			hooks.AFTER_AUTH_FAIL,
-			p.podFactory.NewPod(pair.ID, pair.PodUniqueKey),
+			pod,
 			pair.Intent,
 			logger,
 		)
@@ -420,7 +428,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 		logger.WithError(err).
 			Errorln("Launch failed")
 	} else {
-		if pair.PodUniqueKey == nil {
+		if pair.PodUniqueKey == "" {
 			// legacy pod, write the manifest back to reality tree
 			duration, err := p.store.SetPod(kp.REALITY_TREE, p.node, pair.Intent)
 			if err != nil {
@@ -430,7 +438,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 			}
 		} else {
 			// TODO: do this in a transaction
-			err = p.podStore.WriteRealityIndex(*pair.PodUniqueKey, p.node)
+			err = p.podStore.WriteRealityIndex(pair.PodUniqueKey, p.node)
 			if err != nil {
 				logger.WithError(err).
 					Errorln("Could not write uuid index to reality store")
@@ -446,7 +454,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 				ps.Manifest = string(manifestBytes)
 				return ps, nil
 			}
-			err := p.podStatusStore.MutateStatus(*pair.PodUniqueKey, mutator)
+			err := p.podStatusStore.MutateStatus(pair.PodUniqueKey, mutator)
 			if err != nil {
 				logger.WithError(err).Errorln("Could not update manifest in pod status")
 			}

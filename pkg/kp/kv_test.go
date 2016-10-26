@@ -8,8 +8,6 @@ import (
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
-
-	"github.com/pborman/uuid"
 )
 
 func TestGetHealthNoEntry(t *testing.T) {
@@ -92,21 +90,20 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 	type expectation struct {
 		path string
 		err  bool
-		uuid bool
-		str  string
+		uuid types.PodUniqueKey
 	}
 
-	uuid := uuid.New()
+	uuid := types.NewPodUUID()
 	expectations := []expectation{
 		{
 			path: "intent/example.com/mysql",
 			err:  false,
-			uuid: false,
+			uuid: "",
 		},
 		{
 			path: "reality/example.com/mysql",
 			err:  false,
-			uuid: false,
+			uuid: "",
 		},
 		{
 			path: "labels/example.com/mysql",
@@ -119,12 +116,11 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 		{
 			path: "hooks/all_hooks",
 			err:  false,
-			uuid: false,
+			uuid: "",
 		},
 		{
 			path: fmt.Sprintf("intent/example.com/%s", uuid),
-			uuid: true,
-			str:  uuid,
+			uuid: uuid,
 			err:  false,
 		},
 	}
@@ -143,12 +139,8 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 			continue
 		}
 
-		if (podUniqueKey != nil) != expectation.uuid {
-			t.Errorf("Expected (podUniqueKey != nil) to be %t, was %t", expectation.uuid, podUniqueKey != nil)
-		}
-
-		if expectation.uuid && podUniqueKey.ID != expectation.str {
-			t.Errorf("Expected key string to be %s, was %s", expectation.str, podUniqueKey.ID)
+		if podUniqueKey != expectation.uuid {
+			t.Errorf("Expected podUniqueKey to be %s, was %s", expectation.uuid, podUniqueKey)
 		}
 	}
 }
@@ -205,7 +197,7 @@ func TestAllPods(t *testing.T) {
 				t.Errorf("Legacy pod manifest should have had id '%s' but was '%s'", "second_pod", result.Manifest.ID())
 			}
 
-			if result.PodUniqueKey != nil {
+			if result.PodUniqueKey != "" {
 				t.Error("Legacy pod should not have a uuid")
 			}
 		}
@@ -223,12 +215,12 @@ func TestAllPods(t *testing.T) {
 				t.Errorf("UUID pod manifest should have had id '%s' but was '%s'", "first_pod", result.Manifest.ID())
 			}
 
-			if result.PodUniqueKey == nil {
+			if result.PodUniqueKey == "" {
 				t.Error("UUID pod should have a uuid")
 			}
 
-			if result.PodUniqueKey.ID != uuidKey.ID {
-				t.Errorf("Expected legacy pod to have PodUniqueKeyID '%s', was '%s'", "node2/second_pod", result.PodUniqueKey.ID)
+			if result.PodUniqueKey != uuidKey {
+				t.Errorf("Expected legacy pod to have PodUniqueKey '%s', was '%s'", "node2/second_pod", result.PodUniqueKey)
 			}
 		}
 	}
@@ -256,7 +248,7 @@ func TestAllPods(t *testing.T) {
 				t.Errorf("Legacy pod manifest should have had id '%s' but was '%s'", "second_pod", result.Manifest.ID())
 			}
 
-			if result.PodUniqueKey != nil {
+			if result.PodUniqueKey != "" {
 				t.Error("Legacy pod should not have a uuid")
 			}
 		}
@@ -274,12 +266,12 @@ func TestAllPods(t *testing.T) {
 				t.Errorf("UUID pod manifest should have had id '%s' but was '%s'", "first_pod", result.Manifest.ID())
 			}
 
-			if result.PodUniqueKey == nil {
+			if result.PodUniqueKey == "" {
 				t.Error("UUID pod should have a uuid")
 			}
 
-			if result.PodUniqueKey.ID != uuidKey.ID {
-				t.Errorf("Expected legacy pod to have PodUniqueKeyID '%s', was '%s'", "node2/second_pod", result.PodUniqueKey.ID)
+			if result.PodUniqueKey != uuidKey {
+				t.Errorf("Expected legacy pod to have PodUniqueKey '%s', was '%s'", "node2/second_pod", result.PodUniqueKey)
 			}
 		}
 	}

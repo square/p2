@@ -36,13 +36,13 @@ func testResultSetPreparer() *Preparer {
 func TestZipBasic(t *testing.T) {
 	intent := []kp.ManifestResult{
 		{Manifest: podWithID("foo")},
-		{PodUniqueKey: &types.PodUniqueKey{ID: "abc123"}, Manifest: podWithID("baz")},
-		{PodUniqueKey: &types.PodUniqueKey{ID: "def456"}, Manifest: podWithID("foo")},
+		{PodUniqueKey: "abc123", Manifest: podWithID("baz")},
+		{PodUniqueKey: "def456", Manifest: podWithID("foo")},
 		{Manifest: podWithID("bar")}}
 	reality := []kp.ManifestResult{
 		{Manifest: podWithID("baz")},
-		{PodUniqueKey: &types.PodUniqueKey{ID: "abc123"}, Manifest: podWithID("baz")},
-		{PodUniqueKey: &types.PodUniqueKey{ID: "deadbeef"}, Manifest: podWithID("bar")},
+		{PodUniqueKey: "abc123", Manifest: podWithID("baz")},
+		{PodUniqueKey: "deadbeef", Manifest: podWithID("bar")},
 		{Manifest: podWithID("bar")},
 	}
 
@@ -66,21 +66,12 @@ func ValidatePairList(t *testing.T, l []ManifestPair, intent, reality []kp.Manif
 		// source intent list, and vice versa
 		var intentFound bool
 		for _, m := range intent {
-			if pair.PodUniqueKey == nil {
-				if m.PodUniqueKey == nil && pair.ID == m.Manifest.ID() {
-					// cannot use Assert.IsNil against a pointer
-					if pair.Intent == nil {
-						t.Errorf("source intent list and pair contained matching id %s, but pair did not contain intent manifest", pair.ID)
-					}
-					intentFound = true
+			if pair.PodUniqueKey == m.PodUniqueKey && pair.ID == m.Manifest.ID() {
+				// cannot use Assert.IsNil against a pointer
+				if pair.Intent == nil {
+					t.Errorf("source intent list and pair contained matching id %s (unique key '%s'), but pair did not contain intent manifest", pair.ID, pair.PodUniqueKey)
 				}
-			} else {
-				if m.PodUniqueKey != nil && *pair.PodUniqueKey == *m.PodUniqueKey {
-					if pair.Intent == nil {
-						t.Errorf("source intent list and pair contained matching id %s-%s, but pair did not contain intent manifest", pair.ID, *pair.PodUniqueKey)
-					}
-					intentFound = true
-				}
+				intentFound = true
 			}
 		}
 		Assert(t).IsTrue(pair.Intent == nil || intentFound, "should have found at least one manifest in the source intent list")
@@ -88,21 +79,11 @@ func ValidatePairList(t *testing.T, l []ManifestPair, intent, reality []kp.Manif
 		// fuzz check #3: same as #2, but for reality
 		var realityFound bool
 		for _, m := range reality {
-			if pair.PodUniqueKey == nil {
-				if m.PodUniqueKey == nil && pair.ID == m.Manifest.ID() {
-					// cannot use Assert.IsNil against a pointer
-					if pair.Reality == nil {
-						t.Errorf("source reality list and pair contained matching id %s, but pair did not contain reality manifest", pair.ID)
-					}
-					realityFound = true
+			if pair.PodUniqueKey == m.PodUniqueKey && pair.ID == m.Manifest.ID() {
+				if pair.Reality == nil {
+					t.Errorf("source reality list and pair contained matching id %s (unique key '%s'), but pair did not contain reality manifest", pair.ID, pair.PodUniqueKey)
 				}
-			} else {
-				if m.PodUniqueKey != nil && *pair.PodUniqueKey == *m.PodUniqueKey {
-					if pair.Reality == nil {
-						t.Errorf("source reality list and pair contained matching id %s-%s, but pair did not contain reality manifest", pair.ID, *pair.PodUniqueKey)
-					}
-					realityFound = true
-				}
+				realityFound = true
 			}
 		}
 		Assert(t).IsTrue(pair.Reality == nil || realityFound, "should have found at least one manifest in the source reality list")
@@ -139,7 +120,7 @@ func generateRandomManifestList(baseLength int, podStore podstore.Store, t *test
 				t.Fatal(err)
 			}
 			ret[i] = kp.ManifestResult{
-				PodUniqueKey: &uuid,
+				PodUniqueKey: uuid,
 				Manifest:     manifest,
 			}
 		}

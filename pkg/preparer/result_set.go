@@ -16,7 +16,7 @@ type ManifestPair struct {
 	// Used to determine where reality came from (and should be written to). If nil,
 	// reality should be written to the /reality tree. If non-nil, status should be
 	// written to the pod status store
-	PodUniqueKey *types.PodUniqueKey
+	PodUniqueKey types.PodUniqueKey
 }
 
 // Uniquely represents a pod. There can exist no two intent results or two
@@ -27,13 +27,10 @@ type uniqueKey struct {
 }
 
 func getUniqueKey(result kp.ManifestResult) uniqueKey {
-	key := uniqueKey{
-		podID: result.Manifest.ID(),
+	return uniqueKey{
+		podID:        result.Manifest.ID(),
+		podUniqueKey: result.PodUniqueKey,
 	}
-	if result.PodUniqueKey != nil {
-		key.podUniqueKey = *result.PodUniqueKey
-	}
-	return key
 }
 
 // A ManifestResult may have either a non-nil Manifest OR a non-nil *PodUniqueKey. This function

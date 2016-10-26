@@ -452,7 +452,7 @@ func writeHelloManifest(dir string, manifestName string, port int) (string, erro
 func createHelloUUIDPod(dir string) (types.PodUniqueKey, error) {
 	signedManifestPath, err := writeHelloManifest(dir, "hello-uuid.yaml", 43771)
 	if err != nil {
-		return types.PodUniqueKey{}, err
+		return "", err
 	}
 	cmd := exec.Command("p2-schedule", "--uuid-pod", signedManifestPath)
 	stdout := bytes.Buffer{}
@@ -461,13 +461,13 @@ func createHelloUUIDPod(dir string) (types.PodUniqueKey, error) {
 	err = cmd.Run()
 	if err != nil {
 		fmt.Println(stderr.String())
-		return types.PodUniqueKey{}, err
+		return "", err
 	}
 
 	var out schedule.Output
 	err = json.Unmarshal(stdout.Bytes(), &out)
 	if err != nil {
-		return types.PodUniqueKey{}, util.Errorf("Scheduled uuid pod but couldn't parse uuid from p2-schedule output: %s", err)
+		return "", util.Errorf("Scheduled uuid pod but couldn't parse uuid from p2-schedule output: %s", err)
 	}
 
 	return out.PodUniqueKey, nil
@@ -613,7 +613,7 @@ func verifyHelloUUIDRunning(podUniqueKey types.PodUniqueKey) error {
 
 func targetUUIDLogs(podUniqueKey types.PodUniqueKey) string {
 	var helloUUIDTail bytes.Buffer
-	helloT := exec.Command("tail", fmt.Sprintf("/var/service/hello-%s__hello__launch/log/main/current", podUniqueKey.ID))
+	helloT := exec.Command("tail", fmt.Sprintf("/var/service/hello-%s__hello__launch/log/main/current", podUniqueKey))
 	helloT.Stdout = &helloUUIDTail
 	helloT.Run()
 	return fmt.Sprintf("hello uuid tail: \n%s\n\n", helloUUIDTail.String())

@@ -30,7 +30,8 @@ func init() {
 var DefaultFinishExec = []string{"/bin/true"} // type must match preparerconfig
 
 type Factory interface {
-	NewPod(id types.PodID, uniqueKey *types.PodUniqueKey) *Pod
+	NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod, error)
+	NewLegacyPod(id types.PodID) *Pod
 }
 
 type HookFactory interface {
@@ -69,37 +70,41 @@ func NewHookFactory(hookRoot string, node types.NodeName) HookFactory {
 	}
 }
 
-func uniqueName(id types.PodID, uniqueKey *types.PodUniqueKey) string {
+func uniqueName(id types.PodID, uniqueKey types.PodUniqueKey) string {
 	name := id.String()
-	if uniqueKey != nil {
+	if uniqueKey != "" {
 		// If the pod was scheduled with a UUID, we want to namespace its pod home
 		// with the same uuid. This enables multiple pods with the same pod ID to
 		// exist on the same filesystem
-		name = fmt.Sprintf("%s-%s", name, uniqueKey.ID)
+		name = fmt.Sprintf("%s-%s", name, uniqueKey)
 	}
 
 	return name
 }
 
-func (f *factory) NewPod(id types.PodID, uniqueKey *types.PodUniqueKey) *Pod {
+func (f *factory) NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod, error) {
+	if uniqueKey == "" {
+		return nil, util.Errorf("uniqueKey cannot be empty")
+	}
 	home := filepath.Join(f.podRoot, uniqueName(id, uniqueKey))
-	return newPodWithHome(id, uniqueKey, home, f.node)
+	return newPodWithHome(id, uniqueKey, home, f.node), nil
+}
+
+func (f *factory) NewLegacyPod(id types.PodID) *Pod {
+	home := filepath.Join(f.podRoot, id.String())
+	return newPodWithHome(id, "", home, f.node)
 }
 
 func (f *hookFactory) NewHookPod(id types.PodID) *Pod {
 	home := filepath.Join(f.hookRoot, id.String())
 
 	// Hooks can't have a UUID
-	return newPodWithHome(id, nil, home, f.node)
+	return newPodWithHome(id, "", home, f.node)
 }
 
-func newPodWithHome(id types.PodID, uniqueKey *types.PodUniqueKey, podHome string, node types.NodeName) *Pod {
+func newPodWithHome(id types.PodID, uniqueKey types.PodUniqueKey, podHome string, node types.NodeName) *Pod {
 	var logger logging.Logger
-	if uniqueKey != nil {
-		logger = Log.SubLogger(logrus.Fields{"pod": id, "uuid": uniqueKey.ID})
-	} else {
-		logger = Log.SubLogger(logrus.Fields{"pod": id})
-	}
+	logger = Log.SubLogger(logrus.Fields{"pod": id, "uuid": uniqueKey})
 
 	return &Pod{
 		Id:             id,
@@ -123,12 +128,10 @@ func PodFromPodHome(node types.NodeName, home string) (*Pod, error) {
 	// Otherwise, pass a nil uniqueKey
 	homeParts := strings.Split(filepath.Base(home), "-")
 
-	var uniqueKey *types.PodUniqueKey
+	var uniqueKey types.PodUniqueKey
 	podUUID := uuid.Parse(homeParts[len(homeParts)-1])
 	if podUUID != nil {
-		uniqueKey = &types.PodUniqueKey{
-			ID: podUUID.String(),
-		}
+		uniqueKey = types.PodUniqueKey(podUUID.String())
 	}
 
 	temp := Pod{

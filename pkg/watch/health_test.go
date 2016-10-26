@@ -52,8 +52,7 @@ func TestUpdatePods(t *testing.T) {
 		// Health checking is not supported for uuid pods, so ensure that even
 		// if /reality contains a uuid pod we don't actually watch its health
 		uuidKeyResult := newManifestResult("some_uuid_pod")
-		uuid := types.NewPodUUID()
-		uuidKeyResult.PodUniqueKey = &uuid
+		uuidKeyResult.PodUniqueKey = types.NewPodUUID()
 		reality = append(reality, uuidKeyResult)
 		reality = append(reality, newManifestResult(current[i].manifest.ID()))
 	}

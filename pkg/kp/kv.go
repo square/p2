@@ -36,7 +36,7 @@ type ManifestResult struct {
 	PodLocation types.PodLocation
 
 	// This is expected to be nil for "legacy" pods that do not have a uuid, and non-nil for uuid pods.
-	PodUniqueKey *types.PodUniqueKey
+	PodUniqueKey types.PodUniqueKey
 }
 
 // HealthManager manages a collection of health checks that share configuration and
@@ -481,7 +481,7 @@ func (c consulStore) manifestResultFromPair(pair *api.KVPair) (ManifestResult, e
 
 	var podManifest manifest.Manifest
 	var node types.NodeName
-	if podUniqueKey != nil {
+	if podUniqueKey != "" {
 		var podIndex podstore.PodIndex
 		err := json.Unmarshal(pair.Value, &podIndex)
 		if err != nil {
@@ -540,31 +540,29 @@ func extractNodeFromKey(key string) (types.NodeName, error) {
 // 'intent/<node>/<pod_uuid>' if the prefix is "intent" or "reality"
 //
 // /hooks is also a valid pod prefix and the key under it will not be a uuid.
-func PodUniqueKeyFromConsulPath(consulPath string) (*types.PodUniqueKey, error) {
+func PodUniqueKeyFromConsulPath(consulPath string) (types.PodUniqueKey, error) {
 	keyParts := strings.Split(consulPath, "/")
 	if len(keyParts) == 0 {
-		return nil, util.Errorf("Malformed key '%s'", consulPath)
+		return "", util.Errorf("Malformed key '%s'", consulPath)
 	}
 
 	if keyParts[0] == "hooks" {
-		return nil, nil
+		return "", nil
 	}
 
 	if len(keyParts) != 3 {
-		return nil, util.Errorf("Malformed key '%s'", consulPath)
+		return "", util.Errorf("Malformed key '%s'", consulPath)
 	}
 
 	// Unforunately we can't use kp.INTENT_TREE and kp.REALITY_TREE here because of an import cycle
 	if keyParts[0] != "intent" && keyParts[0] != "reality" {
-		return nil, util.Errorf("Unrecognized key tree '%s' (must be intent or reality)", keyParts[0])
+		return "", util.Errorf("Unrecognized key tree '%s' (must be intent or reality)", keyParts[0])
 	}
 
 	// Parse() returns nil if the input string does not match the uuid spec
 	if uuid.Parse(keyParts[2]) != nil {
-		return &types.PodUniqueKey{
-			ID: keyParts[2],
-		}, nil
+		return types.PodUniqueKey(keyParts[2]), nil
 	}
 
-	return nil, nil
+	return "", nil
 }
