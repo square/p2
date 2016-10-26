@@ -237,19 +237,11 @@ func (r *replication) Enact() {
 	// this loop multiplexes the node queue across some goroutines
 	for i := 0; i < r.active; i++ {
 		go func() {
+			// nodeQueue is managed below to throttle these goroutines
 			for node := range nodeQueue {
 				exitCh := make(chan struct{})
 				timeoutCh := make(chan struct{})
 
-				if r.rateLimiter != nil {
-					// Wait until we can read off the rate limit channel before
-					// updating the node
-					select {
-					case <-r.rateLimiter.C:
-					case <-r.quitCh:
-						return
-					}
-				}
 				go func() {
 					defer close(exitCh)
 					err = r.updateOne(node, done, timeoutCh, aggregateHealth)
@@ -284,11 +276,21 @@ func (r *replication) Enact() {
 	go func() {
 		defer close(nodeQueue)
 		for _, node := range r.nodes {
+			if r.rateLimiter != nil {
+				select {
+				case <-r.replicationCancelledCh:
+					return
+				case <-r.quitCh:
+					return
+				case <-r.rateLimiter.C:
+				}
+			}
 			select {
-			case nodeQueue <- node:
-				// a worker will consume it
+			case <-r.replicationCancelledCh:
+				return
 			case <-r.quitCh:
 				return
+			case nodeQueue <- node:
 			}
 		}
 	}()
