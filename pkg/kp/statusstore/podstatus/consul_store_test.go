@@ -10,14 +10,14 @@ import (
 func TestSetAndGetStatus(t *testing.T) {
 	store := newFixture()
 
-	serviceStatus := ServiceStatus{
-		Name:     "echo_service",
-		State:    Running,
-		LastExit: nil,
+	processStatus := ProcessStatus{
+		EntryPoint:   "echo_service",
+		LaunchableID: "some_launchable",
+		LastExit:     nil,
 	}
 	testStatus := PodStatus{
-		ServiceStatus: []ServiceStatus{
-			serviceStatus,
+		ProcessStatuses: []ProcessStatus{
+			processStatus,
 		},
 	}
 
@@ -32,12 +32,12 @@ func TestSetAndGetStatus(t *testing.T) {
 		t.Fatalf("Unexpected error getting status: %s", err)
 	}
 
-	if len(status.ServiceStatus) != 1 {
-		t.Fatalf("Expected one service status entry, but there were %d", len(status.ServiceStatus))
+	if len(status.ProcessStatuses) != 1 {
+		t.Fatalf("Expected one service status entry, but there were %d", len(status.ProcessStatuses))
 	}
 
-	if status.ServiceStatus[0] != serviceStatus {
-		t.Errorf("Status entry expected to be '%+v', was %+v", serviceStatus, status.ServiceStatus[0])
+	if status.ProcessStatuses[0] != processStatus {
+		t.Errorf("Status entry expected to be '%+v', was %+v", processStatus, status.ProcessStatuses[0])
 	}
 }
 
@@ -68,14 +68,14 @@ func TestMutateStatusExistingKey(t *testing.T) {
 	store := newFixture()
 
 	key := types.NewPodUUID()
-	serviceStatus := ServiceStatus{
-		Name:     "echo_service",
-		State:    Running,
-		LastExit: nil,
+	processStatus := ProcessStatus{
+		EntryPoint:   "echo_service",
+		LaunchableID: "some_launchable",
+		LastExit:     nil,
 	}
 	err := store.Set(key, PodStatus{
-		ServiceStatus: []ServiceStatus{
-			serviceStatus,
+		ProcessStatuses: []ProcessStatus{
+			processStatus,
 		},
 	})
 	if err != nil {
@@ -100,8 +100,8 @@ func TestMutateStatusExistingKey(t *testing.T) {
 		t.Errorf("Expected pod status to be set to '%s' but was '%s'", PodLaunched, status.PodStatus)
 	}
 
-	if len(status.ServiceStatus) != 1 {
-		t.Error("ServiceStatus field didn't go untouched when mutating PodStatus")
+	if len(status.ProcessStatuses) != 1 {
+		t.Error("ProcessStatus field didn't go untouched when mutating PodStatus")
 	}
 }
 
