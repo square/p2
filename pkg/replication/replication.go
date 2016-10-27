@@ -459,7 +459,7 @@ func (r *replication) queryReality(node types.NodeName) (manifest.Manifest, erro
 			man, _, err := r.store.Pod(kp.REALITY_TREE, node, r.manifest.ID())
 			<-r.concurrentRealityRequests
 			return man, err
-		case <-time.After(1 * time.Second):
+		case <-time.After(5 * time.Second):
 			r.logger.Infof("Waiting on concurrentRealityRequests for pod: %s/%s", node.String(), r.manifest.ID())
 		case <-time.After(1 * time.Minute):
 			err := util.Errorf("Timed out while waiting for reality query rate limit")
