@@ -265,7 +265,6 @@ func (r *replication) Enact() {
 						r.logger.Errorf("The host '%v' timed out during replication for pod '%v'", node, r.manifest.ID())
 					case errCancelled:
 						r.logger.Errorf("The host '%v' was cancelled (probably due to an update) during replication for pod '%v'", node, r.manifest.ID())
-					case nil:
 					default:
 						r.logger.Errorf("An unexpected error has occurred: %v", err)
 					}
@@ -424,12 +423,9 @@ func (r *replication) updateOne(
 	timer := time.NewTimer(exponentialBackoff)
 	for err != nil {
 		nodeLogger.WithError(err).Errorln("Could not write intent store")
-		select {
-		case r.errCh <- err:
-		default:
-		}
 
 		select {
+		case r.errCh <- err:
 		case <-r.quitCh:
 			r.logger.Infoln("Caught quit signal during updateOne")
 			return errQuit
