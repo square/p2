@@ -29,6 +29,7 @@ import (
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/preparer/podprocess"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
@@ -69,6 +70,10 @@ type Preparer struct {
 	logBridgeBlacklist     []string
 	artifactVerifier       auth.ArtifactVerifier
 	artifactRegistry       artifact.Registry
+
+	// Exported so it can be checked for nil (it only runs if configured)
+	// and quit channel conditially created
+	PodProcessReporter *podprocess.Reporter
 }
 
 type store interface {
@@ -107,6 +112,9 @@ type PreparerConfig struct {
 	LogExec                []string               `yaml:"log_exec,omitempty"`
 	LogBridgeBlacklist     []string               `yaml:"log_bridge_blacklist,omitempty"`
 	ArtifactRegistryURL    string                 `yaml:"artifact_registry_url,omitempty"`
+
+	// The socket to which process exit information will be reported.
+	ProcessResultReporterConfig podprocess.ReporterConfig `yaml:"process_result_reporter_config"`
 
 	// Params defines a collection of miscellaneous runtime parameters defined throughout the
 	// source files.
@@ -376,11 +384,14 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		logExec = runit.DefaultLogExec()
 	}
 
-	var finishExec []string
-	if len(preparerConfig.FinishExec) > 0 {
-		finishExec = preparerConfig.FinishExec
-	} else {
-		finishExec = pods.DefaultFinishExec
+	finishExec := pods.NopFinishExec
+	podProcessReporterLogger := logger.SubLogger(logrus.Fields{
+		"component": "PodProcessReporter",
+	})
+
+	podProcessReporter, ok := podprocess.New(preparerConfig.ProcessResultReporterConfig, podProcessReporterLogger, podStatusStore)
+	if ok {
+		finishExec = podProcessReporter.FinishExec()
 	}
 
 	return &Preparer{
@@ -399,6 +410,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		logBridgeBlacklist:     preparerConfig.LogBridgeBlacklist,
 		artifactVerifier:       artifactVerifier,
 		artifactRegistry:       artifactRegistry,
+		PodProcessReporter:     podProcessReporter,
 	}, nil
 }
 
