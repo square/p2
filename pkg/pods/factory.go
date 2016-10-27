@@ -27,7 +27,7 @@ func init() {
 	Log = logging.NewLogger(logrus.Fields{})
 }
 
-var DefaultFinishExec = []string{"/bin/true"} // type must match preparerconfig
+var NopFinishExec = []string{"/bin/true"} // type must match preparerconfig
 
 type Factory interface {
 	NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod, error)
@@ -117,7 +117,7 @@ func newPodWithHome(id types.PodID, uniqueKey types.PodUniqueKey, podHome string
 		P2Exec:         p2exec.DefaultP2Exec,
 		DefaultTimeout: 60 * time.Second,
 		LogExec:        runit.DefaultLogExec(),
-		FinishExec:     DefaultFinishExec,
+		FinishExec:     NopFinishExec,
 		Fetcher:        uri.DefaultFetcher,
 	}
 }

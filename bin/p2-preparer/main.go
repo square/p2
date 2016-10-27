@@ -73,6 +73,12 @@ func main() {
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
 	go prep.WatchForHooks(quitHookUpdate)
 
+	if prep.PodProcessReporter != nil {
+		quitPodProcessReporter := make(chan struct{})
+		quitChans = append(quitChans, quitPodProcessReporter)
+		go prep.PodProcessReporter.Run(quitPodProcessReporter)
+	}
+
 	// Launch health checking watch. This watch tracks health of
 	// all pods on this host and writes the information to consul
 	quitMonitorPodHealth := make(chan struct{})
