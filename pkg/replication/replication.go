@@ -399,7 +399,6 @@ func (r *replication) shouldScheduleForNode(node types.NodeName, logger logging.
 	return true
 }
 
-// note: logging should be delegated somehow
 func (r *replication) updateOne(
 	node types.NodeName,
 	timeoutCh <-chan struct{},
