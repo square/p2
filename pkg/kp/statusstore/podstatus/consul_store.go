@@ -3,6 +3,7 @@ package podstatus
 import (
 	"github.com/square/p2/pkg/kp/podstore"
 	"github.com/square/p2/pkg/kp/statusstore"
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -99,4 +100,28 @@ func (c *consulStore) MutateStatus(key types.PodUniqueKey, mutator func(PodStatu
 	}
 
 	return c.CAS(key, newStatus, lastIndex)
+}
+
+// A helper method for updating the LastExit field of one of the processes in a
+// pod. Searches through p.ProcessStatuses for a process matching the
+// launchable ID and launchableScriptName, and mutates its LastExit if found.
+// If not found, a new process is added.
+func (c consulStore) SetLastExit(podUniqueKey types.PodUniqueKey, launchableID launch.LaunchableID, launchScriptName string, exitStatus ExitStatus) error {
+	mutator := func(p PodStatus) (PodStatus, error) {
+		for _, processStatus := range p.ProcessStatuses {
+			if processStatus.LaunchableID == launchableID && processStatus.LaunchScriptName == launchScriptName {
+				processStatus.LastExit = &exitStatus
+				return p, nil
+			}
+		}
+
+		p.ProcessStatuses = append(p.ProcessStatuses, ProcessStatus{
+			LaunchableID:     launchableID,
+			LaunchScriptName: launchScriptName,
+			LastExit:         &exitStatus,
+		})
+		return p, nil
+	}
+
+	return c.MutateStatus(podUniqueKey, mutator)
 }
