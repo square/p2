@@ -9,6 +9,9 @@ import (
 	"github.com/square/p2/pkg/logging"
 )
 
+// StatusServer exposes a unix socket server that can be queried for the health
+// of the preparer. This is useful because the preparer typically runs as root
+// so it's preferable to expose a unix socket rather than a tcp port.
 type StatusServer struct {
 	listener net.Listener
 	server   *http.Server

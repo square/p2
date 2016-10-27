@@ -302,7 +302,7 @@ func TestBuildRunitServices(t *testing.T) {
 		home:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
 		LogExec:        runit.DefaultLogExec(),
-		FinishExec:     DefaultFinishExec,
+		FinishExec:     NopFinishExec,
 	}
 	hl, sb := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
 	defer hoist.CleanupFakeLaunchable(hl, sb)
