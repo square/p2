@@ -199,9 +199,9 @@ func (ds *daemonSet) WatchDesires(
 
 		for {
 			if err != nil {
+				ds.logger.Errorf("An error has occurred in the daemon set, retrying if no changes are made in %d. %v", retryInterval, err)
 				select {
 				case errCh <- err:
-					ds.logger.Warnf("An error has occurred in the daemon set, retrying if no changes are made in %v", retryInterval)
 					// Retry the replication in the RetryInterval's duration
 					timer.Reset(retryInterval)
 					// This is required in case the user disables the daemon set
@@ -371,8 +371,7 @@ func (ds *daemonSet) addPods() error {
 		}
 	}
 
-	ds.logger.Infof("Need to schedule %v nodes", len(currentNodes))
-	if len(currentNodes) > 0 {
+	if len(currentNodes) > 0 || len(toScheduleSorted) > 0 {
 		return ds.PublishToReplication()
 	}
 
@@ -533,7 +532,7 @@ func (ds *daemonSet) PublishToReplication() error {
 	// on an overlapped node from thrashing. Therefore, it makes sense for
 	// daemon sets to ignore this locking mechanism and always try to
 	// converge nodes to the specified manifest
-	replication, errCh, err := repl.InitializeDaemonSetReplication(
+	currentReplication, errCh, err := repl.InitializeDaemonSetReplication(
 		replication.DefaultConcurrentReality,
 		ds.rateLimitInterval,
 	)
@@ -552,9 +551,9 @@ func (ds *daemonSet) PublishToReplication() error {
 	}()
 
 	// Set a new replication
-	ds.currentReplication = replication
+	ds.currentReplication = currentReplication
 
-	go replication.Enact()
+	go currentReplication.Enact()
 
 	ds.logger.Info("Replication enacted")
 

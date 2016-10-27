@@ -198,7 +198,7 @@ func (dsf *Farm) mainLoop(quitCh <-chan struct{}) {
 			}
 		}
 
-		// This loop will check all the error channels of the children spawn by this
+		// This loop will check all the error channels of the children owned by this
 		// farm, if any child outputs an error, close the child.
 		// The quitCh here will also return if the caller to mainLoop closes it
 		for dsID, child := range dsf.children {

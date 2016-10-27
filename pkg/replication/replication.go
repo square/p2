@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/square/p2/pkg/health"
@@ -18,6 +19,7 @@ import (
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
+	"github.com/square/p2/pkg/util/param"
 
 	"github.com/Sirupsen/logrus"
 )
@@ -25,6 +27,11 @@ import (
 type Labeler interface {
 	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
 }
+
+var (
+	ensureRealityPeriodMillis = param.Int("ensure_in_reality_millis", 5000)
+	ensureHealthyPeriodMillis = param.Int("ensure_healthy_millis", 1000)
+)
 
 type nodeUpdated struct {
 	node types.NodeName
@@ -225,31 +232,41 @@ func (r *replication) Enact() {
 	sort.Sort(order)
 
 	nodeQueue := make(chan types.NodeName)
-	done := make(chan nodeUpdated)
 
 	aggregateHealth := AggregateHealth(r.manifest.ID(), r.health)
 	// this loop multiplexes the node queue across some goroutines
+
+	var updatePool sync.WaitGroup
+	var completedCount int32
 	for i := 0; i < r.active; i++ {
+		updatePool.Add(1)
 		go func() {
+			// nodeQueue is managed below to throttle these goroutines
+			defer updatePool.Done()
 			for node := range nodeQueue {
 				exitCh := make(chan struct{})
 				timeoutCh := make(chan struct{})
 
-				if r.rateLimiter != nil {
-					// Wait until we can read off the rate limit channel before
-					// updating the node
-					select {
-					case <-r.rateLimiter.C:
-					case <-r.quitCh:
-						return
-					}
-				}
 				go func() {
 					defer close(exitCh)
-					err = r.updateOne(node, done, timeoutCh, aggregateHealth)
-					done <- nodeUpdated{
-						node: node,
-						err:  err,
+					err = r.updateOne(node, timeoutCh, aggregateHealth)
+					if err == nil {
+						r.logger.Infof("The host '%v' successfully replicated the pod '%v'", node, r.manifest.ID())
+						atomic.AddInt32(&completedCount, 1)
+						r.logger.Infof("Completed %d of %d", atomic.LoadInt32(&completedCount), len(r.nodes))
+						return
+					}
+
+					switch err {
+					case errTimeout:
+						r.timedOutReplicationsMutex.Lock()
+						r.timedOutReplications = append(r.timedOutReplications, node)
+						r.timedOutReplicationsMutex.Unlock()
+						r.logger.Errorf("The host '%v' timed out during replication for pod '%v'", node, r.manifest.ID())
+					case errCancelled:
+						r.logger.Errorf("The host '%v' was cancelled (probably due to an update) during replication for pod '%v'", node, r.manifest.ID())
+					default:
+						r.logger.Errorf("An unexpected error has occurred: %v", err)
 					}
 				}()
 
@@ -260,7 +277,6 @@ func (r *replication) Enact() {
 						return
 					}
 				} else {
-					// Wait until either completion, timeout, or a quit
 					select {
 					case <-exitCh:
 					case <-time.After(r.timeout):
@@ -274,43 +290,31 @@ func (r *replication) Enact() {
 		}()
 	}
 
-	// this goroutine populates the node queue
+	// this goroutine populates the node queue with respect to the rate limiter
 	go func() {
 		defer close(nodeQueue)
 		for _, node := range r.nodes {
+			if r.rateLimiter != nil {
+				select {
+				case <-r.replicationCancelledCh:
+					return
+				case <-r.quitCh:
+					return
+				case <-r.rateLimiter.C:
+				}
+			}
 			select {
-			case nodeQueue <- node:
-				// a worker will consume it
+			case <-r.replicationCancelledCh:
+				return
 			case <-r.quitCh:
 				return
+			case nodeQueue <- node:
 			}
 		}
 	}()
 
-	// the main blocking loop processes replies from workers
-	defer r.logger.Info("Replication is over")
-	for doneIndex := 0; doneIndex < len(r.nodes); {
-		select {
-		case status := <-done:
-			doneIndex++
-			switch status.err {
-			case errTimeout:
-				r.timedOutReplicationsMutex.Lock()
-				r.timedOutReplications = append(r.timedOutReplications, status.node)
-				r.timedOutReplicationsMutex.Unlock()
-				r.logger.Errorf("The host '%v' timed out during replication for pod '%v'", status.node, r.manifest.ID())
-			case errCancelled:
-				r.logger.Errorf("The host '%v' was cancelled (probably due to an update) during replication for pod '%v'", status.node, r.manifest.ID())
-			case nil:
-				r.logger.Infof("The host '%v' successfully replicated the pod '%v'", status.node, r.manifest.ID())
-			default:
-				r.logger.Errorf("An unexpected error has occurred: %v", status.err)
-			}
-			r.logger.Infof("%v nodes left", len(r.nodes)-doneIndex)
-		case <-r.quitCh:
-			return
-		}
-	}
+	updatePool.Wait()
+	r.logger.Info("Replication is over")
 }
 
 // Cancels all goroutines (e.g. replication and lock renewal)
@@ -363,39 +367,52 @@ func (r *replication) handleReplicationEnd(session kp.Session, renewalErrCh chan
 	}
 }
 
-// note: logging should be delegated somehow
-func (r *replication) updateOne(
-	node types.NodeName,
-	done chan<- nodeUpdated,
-	timeoutCh <-chan struct{},
-	aggregateHealth *podHealth,
-) error {
-	targetSHA, _ := r.manifest.SHA()
-	nodeLogger := r.logger.SubLogger(logrus.Fields{"node": node})
-	nodeLogger.WithField("sha", targetSHA).Infoln("Updating node")
-
+func (r *replication) shouldScheduleForNode(node types.NodeName, logger logging.Logger) bool {
 	nodeReality, err := r.queryReality(node)
-	if err != nil || nodeReality == nil {
-		nodeLogger.WithError(err).Errorln("Could not read Reality for this node. Will proceed to schedule onto it.")
+	if err != nil {
+		logger.WithError(err).Errorln("Could not read Reality for this node. Will proceed to schedule onto it.")
+		return true
+	}
+	if err == pods.NoCurrentManifest {
+		logger.Infoln("Nothing installed on this node yet.")
+		return true
 	}
 
 	if nodeReality != nil {
 		nodeRealitySHA, err := nodeReality.SHA()
 		if err != nil {
-			nodeLogger.WithError(err).Errorln("Unable to compute manifest SHA for this node. Attempting to schedule anyway")
+			logger.WithError(err).Errorln("Unable to compute manifest SHA for this node. Attempting to schedule anyway")
+			return true
 		}
 		replicationRealitySHA, err := r.manifest.SHA()
 		if err != nil {
-			nodeLogger.WithError(err).Errorln("Unable to compute manifest SHA for this daemon set. Attempting to schedule anyway")
+			logger.WithError(err).Errorln("Unable to compute manifest SHA for this daemon set. Attempting to schedule anyway")
+			return true
 		}
 
 		if nodeRealitySHA == replicationRealitySHA {
-			nodeLogger.Info("Reality for this node matches this DS. No action required.")
-			return nil
+			logger.Info("Reality for this node matches this DS. No action required.")
+			return false
 		}
 	}
 
-	_, err = r.store.SetPod(
+	return true
+}
+
+func (r *replication) updateOne(
+	node types.NodeName,
+	timeoutCh <-chan struct{},
+	aggregateHealth *podHealth,
+) error {
+	nodeLogger := r.logger.SubLogger(logrus.Fields{"node": node})
+
+	if !r.shouldScheduleForNode(node, nodeLogger) {
+		return nil
+	}
+
+	targetSHA, _ := r.manifest.SHA()
+	nodeLogger.WithField("sha", targetSHA).Infoln("Updating node")
+	_, err := r.store.SetPod(
 		kp.INTENT_TREE,
 		node,
 		r.manifest,
@@ -405,14 +422,17 @@ func (r *replication) updateOne(
 	timer := time.NewTimer(exponentialBackoff)
 	for err != nil {
 		nodeLogger.WithError(err).Errorln("Could not write intent store")
-		r.errCh <- err
 
 		select {
+		case r.errCh <- err:
 		case <-r.quitCh:
+			r.logger.Infoln("Caught quit signal during updateOne")
 			return errQuit
 		case <-timeoutCh:
+			r.logger.Infoln("Caught timeout signal during updateOne")
 			return errTimeout
 		case <-r.replicationCancelledCh:
+			r.logger.Infoln("Caught cancellation signal during updateOne")
 			return errCancelled
 		case <-timer.C:
 			_, err = r.store.SetPod(
@@ -432,12 +452,20 @@ func (r *replication) updateOne(
 }
 
 func (r *replication) queryReality(node types.NodeName) (manifest.Manifest, error) {
-	r.concurrentRealityRequests <- struct{}{}
-	defer func() {
-		<-r.concurrentRealityRequests
-	}()
-	man, _, err := r.store.Pod(kp.REALITY_TREE, node, r.manifest.ID())
-	return man, err
+	for {
+		select {
+		case r.concurrentRealityRequests <- struct{}{}:
+			man, _, err := r.store.Pod(kp.REALITY_TREE, node, r.manifest.ID())
+			<-r.concurrentRealityRequests
+			return man, err
+		case <-time.After(5 * time.Second):
+			r.logger.Infof("Waiting on concurrentRealityRequests for pod: %s/%s", node.String(), r.manifest.ID())
+		case <-time.After(1 * time.Minute):
+			err := util.Errorf("Timed out while waiting for reality query rate limit")
+			r.logger.Error(err)
+			return nil, err
+		}
+	}
 }
 
 func (r *replication) ensureInReality(
@@ -449,12 +477,15 @@ func (r *replication) ensureInReality(
 	for {
 		select {
 		case <-r.quitCh:
+			r.logger.Infoln("Caught quit signal during ensureInReality")
 			return errQuit
 		case <-timeoutCh:
+			r.logger.Infoln("Caught timeout signal during ensureInReality")
 			return errTimeout
 		case <-r.replicationCancelledCh:
+			r.logger.Infoln("Caught cancellation signal during ensureInReality")
 			return errCancelled
-		case <-time.After(5 * time.Second):
+		case <-time.After(time.Duration(*ensureRealityPeriodMillis) * time.Millisecond):
 			man, err := r.queryReality(node)
 			if err == pods.NoCurrentManifest {
 				// if the pod key doesn't exist yet, that's okay just wait longer
@@ -484,12 +515,15 @@ func (r *replication) ensureHealthy(
 	for {
 		select {
 		case <-r.quitCh:
+			r.logger.Infoln("Caught quit signal during ensureHealthy")
 			return errQuit
 		case <-timeoutCh:
+			r.logger.Infoln("Caught node timeout signal during ensureHealthy")
 			return errTimeout
 		case <-r.replicationCancelledCh:
+			r.logger.Infoln("Caught cancellation signal during ensureHealthy")
 			return errCancelled
-		case <-time.After(1 * time.Second):
+		case <-time.After(time.Duration(*ensureHealthyPeriodMillis) * time.Millisecond):
 			res, ok := aggregateHealth.GetHealth(node)
 			if !ok {
 				nodeLogger.WithFields(logrus.Fields{
