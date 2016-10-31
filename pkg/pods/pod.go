@@ -114,7 +114,11 @@ func (pod *Pod) Halt(manifest manifest.Manifest) (bool, error) {
 
 	success := true
 	for _, launchable := range launchables {
-		err = launchable.Disable()
+		var err error
+		disableFunc := func() {
+			err = launchable.Disable()
+		}
+		pod.withTimeWarnings("disable", launchable.ServiceID(), disableFunc)
 		if err != nil {
 			// do not set success to false on a disable error
 			pod.logLaunchableWarning(launchable.ServiceID(), err, "Could not disable launchable")
@@ -160,7 +164,11 @@ func (pod *Pod) Launch(manifest manifest.Manifest) (bool, error) {
 			return false, err
 		}
 
-		out, err := launchable.PostActivate()
+		var out string
+		postActivateFunc := func() {
+			out, err = launchable.PostActivate()
+		}
+		pod.withTimeWarnings("post-activate", launchable.ServiceID(), postActivateFunc)
 		if err != nil {
 			// if a launchable's post-activate fails, we probably can't
 			// launch it, but this does not break the entire pod
@@ -353,7 +361,10 @@ func (pod *Pod) Uninstall() error {
 
 	// halt launchables
 	for _, launchable := range launchables {
-		err = launchable.Disable()
+		disableFunc := func() {
+			err = launchable.Disable()
+		}
+		pod.withTimeWarnings("disable", launchable.ServiceID(), disableFunc)
 		if err != nil {
 			pod.logLaunchableWarning(launchable.ServiceID(), err, "Could not disable launchable during uninstallation")
 		}
@@ -770,4 +781,43 @@ func (p *Pod) logLaunchableWarning(serviceID string, err error, message string) 
 
 func (p *Pod) logInfo(message string) {
 	p.logger.WithFields(logrus.Fields{}).Info(message)
+}
+
+// Runs function f and emits warnings if it hasn't completed within 1 minute, 2
+// minutes, 5 minutes, 10 minutes, and each 5 minute increment afterward. This
+// is useful for identifying the cause of a very long install time, for
+// instance a disable or post-activate script hanging forever.
+func (p *Pod) withTimeWarnings(scriptType string, serviceID string, f func()) {
+	doneCh := make(chan struct{})
+	defer close(doneCh)
+	go func() {
+		warningTimes := []time.Duration{
+			1 * time.Minute,
+			1 * time.Minute,
+			3 * time.Minute,
+			5 * time.Minute,
+		}
+		iteration := 0
+		totalTime := time.Duration(0)
+		var warnAfter time.Duration
+		for {
+			warnAfter = 5 * time.Minute
+			if iteration < len(warningTimes) {
+				warnAfter = warningTimes[iteration]
+			}
+
+			totalTime += warnAfter
+
+			select {
+			case <-doneCh:
+				return
+			case <-time.After(warnAfter):
+				p.logger.WithFields(logrus.Fields{
+					"launchable": serviceID,
+				}).Warnf("The %s script for %s has been running for %s, it may be hanging", scriptType, serviceID, totalTime)
+			}
+		}
+	}()
+
+	f()
 }
