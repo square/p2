@@ -41,6 +41,16 @@ var (
 	NestedCgroups = param.Bool("nested_cgroups", false)
 )
 
+const (
+	ConfigPathEnvVar         = "CONFIG_PATH"
+	LaunchableIDEnvVar       = "LAUNCHABLE_ID"
+	LaunchableRootEnvVar     = "LAUNCHABLE_ROOT"
+	PodIDEnvVar              = "POD_ID"
+	PodHomeEnvVar            = "POD_HOME"
+	PodUniqueKeyEnvVar       = "POD_UNIQUE_KEY"
+	PlatformConfigPathEnvVar = "PLATFORM_CONFIG_PATH"
+)
+
 type Pod struct {
 	// ID of the pod, i.e. result of ID() called on the manifest defining the pod
 	Id   types.PodID
@@ -546,15 +556,23 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 	if err != nil {
 		return util.Errorf("Could not create the environment dir for pod %s: %s", manifest.ID(), err)
 	}
-	err = writeEnvFile(pod.EnvDir(), "CONFIG_PATH", configPath, uid, gid)
+	err = writeEnvFile(pod.EnvDir(), ConfigPathEnvVar, configPath, uid, gid)
 	if err != nil {
 		return err
 	}
-	err = writeEnvFile(pod.EnvDir(), "PLATFORM_CONFIG_PATH", platConfigPath, uid, gid)
+	err = writeEnvFile(pod.EnvDir(), PlatformConfigPathEnvVar, platConfigPath, uid, gid)
 	if err != nil {
 		return err
 	}
-	err = writeEnvFile(pod.EnvDir(), "POD_HOME", pod.Home(), uid, gid)
+	err = writeEnvFile(pod.EnvDir(), PodHomeEnvVar, pod.Home(), uid, gid)
+	if err != nil {
+		return err
+	}
+	err = writeEnvFile(pod.EnvDir(), PodIDEnvVar, pod.Id.String(), uid, gid)
+	if err != nil {
+		return err
+	}
+	err = writeEnvFile(pod.EnvDir(), PodUniqueKeyEnvVar, pod.uniqueKey.String(), uid, gid)
 	if err != nil {
 		return err
 	}
@@ -570,7 +588,7 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 		if err != nil {
 			return util.Errorf("Could not create the environment dir for pod %s launchable %s: %s", manifest.ID(), launchable.ServiceID(), err)
 		}
-		err = writeEnvFile(launchable.EnvDir(), "LAUNCHABLE_ID", launchable.ID().String(), uid, gid)
+		err = writeEnvFile(launchable.EnvDir(), LaunchableIDEnvVar, launchable.ID().String(), uid, gid)
 		if err != nil {
 			return err
 		}
