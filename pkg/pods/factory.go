@@ -70,7 +70,7 @@ func NewHookFactory(hookRoot string, node types.NodeName) HookFactory {
 	}
 }
 
-func uniqueName(id types.PodID, uniqueKey types.PodUniqueKey) string {
+func computeUniqueName(id types.PodID, uniqueKey types.PodUniqueKey) string {
 	name := id.String()
 	if uniqueKey != "" {
 		// If the pod was scheduled with a UUID, we want to namespace its pod home
@@ -86,7 +86,7 @@ func (f *factory) NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod
 	if uniqueKey == "" {
 		return nil, util.Errorf("uniqueKey cannot be empty")
 	}
-	home := filepath.Join(f.podRoot, uniqueName(id, uniqueKey))
+	home := filepath.Join(f.podRoot, computeUniqueName(id, uniqueKey))
 	return newPodWithHome(id, uniqueKey, home, f.node), nil
 }
 
@@ -108,7 +108,7 @@ func newPodWithHome(id types.PodID, uniqueKey types.PodUniqueKey, podHome string
 
 	return &Pod{
 		Id:             id,
-		uniqueName:     uniqueName(id, uniqueKey),
+		uniqueKey:      uniqueKey,
 		home:           podHome,
 		node:           node,
 		logger:         logger,
