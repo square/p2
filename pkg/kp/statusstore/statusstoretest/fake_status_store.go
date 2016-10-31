@@ -31,7 +31,7 @@ type StatusIdentifier struct {
 }
 
 func (s StatusIdentifier) String() string {
-	return fmt.Sprintf("%s/%s/%s", s.resourceType, s.resourceID, s.namespace)
+	return fmt.Sprintf("status/%s/%s/%s", s.resourceType, s.resourceID, s.namespace)
 }
 
 func NewFake() *FakeStatusStore {
