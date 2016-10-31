@@ -31,7 +31,7 @@ type sqliteFinishService struct {
 func NewSQLiteFinishService(sqliteDBPath string, logger logging.Logger) (FinishService, error) {
 	db, err := sql.Open("sqlite3", sqliteDBPath)
 	if err != nil {
-		return nil, err
+		return nil, util.Errorf("Could not open database: %s", err)
 	}
 
 	return sqliteFinishService{
