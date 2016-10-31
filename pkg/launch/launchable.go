@@ -13,6 +13,8 @@ import (
 	"github.com/square/p2/pkg/util/size"
 )
 
+const EntryPointEnvVar = "ENTRY_POINT"
+
 type LaunchableID string
 
 func (l LaunchableID) String() string { return string(l) }
@@ -143,6 +145,7 @@ type Launchable interface {
 // Executable describes a command and its arguments that should be executed to start a
 // service running.
 type Executable struct {
+	ServiceName   string // e.g. "launch"
 	Service       runit.Service
 	LogAgent      runit.Service
 	Exec          []string

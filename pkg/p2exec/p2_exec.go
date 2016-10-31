@@ -1,5 +1,9 @@
 package p2exec
 
+import (
+	"fmt"
+)
+
 // DefaultP2Exec is the path to the default p2-exec binary. Specified as a var so you
 // can override at build time.
 var DefaultP2Exec = "/usr/local/bin/p2-exec"
@@ -9,6 +13,7 @@ var DefaultP2Exec = "/usr/local/bin/p2-exec"
 type P2ExecArgs struct {
 	User             string
 	EnvDirs          []string
+	ExtraEnv         map[string]string
 	NoLimits         bool
 	CgroupName       string
 	CgroupConfigName string
@@ -28,6 +33,10 @@ func (args P2ExecArgs) CommandLine() []string {
 
 	for _, envDir := range args.EnvDirs {
 		cmd = append(cmd, "-e", envDir)
+	}
+
+	for envVarKey, envVarValue := range args.ExtraEnv {
+		cmd = append(cmd, "--extra-env", fmt.Sprintf("%s=%s", envVarKey, envVarValue))
 	}
 
 	if args.CgroupConfigName != "" {

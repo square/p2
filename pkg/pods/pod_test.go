@@ -326,12 +326,12 @@ func TestBuildRunitServices(t *testing.T) {
 		executables[0].Service.Name: {
 			Run:    executables[0].Exec,
 			Log:    runit.DefaultLogExec(),
-			Finish: pod.FinishExecForLaunchable(testLaunchable),
+			Finish: pod.FinishExecForExecutable(testLaunchable, executables[0]),
 		},
 		executables[1].Service.Name: {
 			Run:    executables[1].Exec,
 			Log:    runit.DefaultLogExec(),
-			Finish: pod.FinishExecForLaunchable(testLaunchable),
+			Finish: pod.FinishExecForExecutable(testLaunchable, executables[1]),
 		},
 	}
 	expected, err := yaml.Marshal(expectedMap)

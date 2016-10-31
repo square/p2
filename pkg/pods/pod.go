@@ -251,7 +251,7 @@ func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest 
 			sbTemplate[executable.Service.Name] = runit.ServiceTemplate{
 				Log:    pod.LogExec,
 				Run:    executable.Exec,
-				Finish: pod.FinishExecForLaunchable(launchable),
+				Finish: pod.FinishExecForExecutable(launchable, executable),
 			}
 		}
 	}
@@ -652,11 +652,12 @@ func (pod *Pod) SetFinishExec(finishExec []string) {
 	pod.FinishExec = finishExec
 }
 
-func (pod *Pod) FinishExecForLaunchable(launchable launch.Launchable) runit.Exec {
+func (pod *Pod) FinishExecForExecutable(launchable launch.Launchable, executable launch.Executable) runit.Exec {
 	p2ExecArgs := p2exec.P2ExecArgs{
-		Command: pod.FinishExec,
-		User:    "nobody",
-		EnvDirs: []string{pod.EnvDir(), launchable.EnvDir()},
+		Command:  pod.FinishExec,
+		User:     "nobody",
+		EnvDirs:  []string{pod.EnvDir(), launchable.EnvDir()},
+		ExtraEnv: map[string]string{launch.EntryPointEnvVar: executable.ServiceName},
 	}
 
 	return append([]string{pod.P2Exec}, p2ExecArgs.CommandLine()...)
