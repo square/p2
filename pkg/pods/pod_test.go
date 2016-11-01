@@ -298,7 +298,6 @@ func TestBuildRunitServices(t *testing.T) {
 	pod := Pod{
 		P2Exec:         "/usr/bin/p2-exec",
 		Id:             "testPod",
-		uniqueName:     "testPod",
 		home:           "/data/pods/testPod",
 		ServiceBuilder: serviceBuilder,
 		LogExec:        runit.DefaultLogExec(),
@@ -403,7 +402,6 @@ func TestUninstall(t *testing.T) {
 	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
 	pod := Pod{
 		Id:             "testPod",
-		uniqueName:     "testPod",
 		home:           testPodDir,
 		ServiceBuilder: serviceBuilder,
 		logger:         logging.DefaultLogger,
