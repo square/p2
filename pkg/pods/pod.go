@@ -110,8 +110,8 @@ func (pod *Pod) Halt(manifest manifest.Manifest) (bool, error) {
 		err = launchable.Stop(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
 		if err != nil {
 			pod.logLaunchableError(launchable.ServiceID(), err, "Could not stop launchable")
+			success = false
 		}
-		success = false
 	}
 
 	if success {
