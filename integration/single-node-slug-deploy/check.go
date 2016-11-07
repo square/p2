@@ -98,35 +98,77 @@ func main() {
 		log.Fatalf("Could not schedule RCTL server: %s", err)
 	}
 
+	// Now we're going to test some conditions that each take non-negligible amount of time to verify.
+	// We'll spin up a goroutine for each "test" which either closes the error channel, or passes an error.
+	tests := make(map[string]chan error)
+
+	// Test that a "legacy" pod installed by an RC comes up correctly and has health reported
+	legacyTest := make(chan error)
+	go verifyLegacyPod(legacyTest, tempdir, config, services)
+	tests["legacy_test"] = legacyTest
+
+	// Test that a "uuid" pod installed by p2-schedule comes up correctly
+	uuidTest := make(chan error)
+	go verifyUUIDPod(uuidTest, tempdir)
+	tests["uuid_test"] = uuidTest
+
+	for testName, testErrCh := range tests {
+		select {
+		case err, ok := <-testErrCh:
+			if err != nil {
+				log.Fatal(err)
+			}
+			if ok {
+				log.Fatalf("The error channel for %s was not closed", testName)
+			}
+		case <-time.After(1 * time.Minute):
+			log.Fatalf("Timed out waiting for a result from %s", testName)
+		}
+	}
+}
+
+func verifyLegacyPod(errCh chan error, tempDir string, config *preparer.PreparerConfig, services []string) {
+	defer close(errCh)
 	// Schedule a "legacy" hello pod using a replication controller
-	rcID, err := createHelloReplicationController(tempdir)
+	rcID, err := createHelloReplicationController(tempDir)
 	if err != nil {
-		log.Fatalf("Could not create hello pod / rc: %s\n", err)
+		errCh <- fmt.Errorf("Could not create hello pod / rc: %s", err)
+		return
 	}
 	log.Printf("Created RC #%s for hello\n", rcID)
 
-	// Schedule a "uuid" hello pod on a different port
-	podUniqueKey, err := createHelloUUIDPod(tempdir)
-	if err != nil {
-		log.Fatalf("Could not schedule UUID hello pod: %s", err)
-	}
-	log.Printf("p2-schedule'd another hello instance as a uuid pod")
-
 	err = waitForPodLabeledWithRC(klabels.Everything().Add(rc.RCIDLabel, klabels.EqualsOperator, []string{rcID.String()}), rcID)
 	if err != nil {
-		log.Fatalf("Failed waiting for pods labeled with the given RC: %v", err)
+		errCh <- fmt.Errorf("Failed waiting for pods labeled with the given RC: %v", err)
+		return
 	}
 	err = verifyHelloRunning()
 	if err != nil {
-		log.Fatalf("Couldn't get hello running: %s", err)
+		errCh <- fmt.Errorf("Couldn't get hello running: %s", err)
+		return
 	}
 	err = verifyHealthChecks(config, services)
 	if err != nil {
-		log.Fatalf("Could not get health check info from consul: %s", err)
+		errCh <- fmt.Errorf("Could not get health check info from consul: %s", err)
+		return
 	}
+}
+
+func verifyUUIDPod(errCh chan error, tempDir string) {
+	defer close(errCh)
+
+	// Schedule a "uuid" hello pod on a different port
+	podUniqueKey, err := createHelloUUIDPod(tempDir)
+	if err != nil {
+		errCh <- fmt.Errorf("Could not schedule UUID hello pod: %s", err)
+		return
+	}
+	log.Printf("p2-schedule'd another hello instance as a uuid pod")
+
 	err = verifyHelloUUIDRunning(podUniqueKey)
 	if err != nil {
-		log.Fatalf("Couldn't get hello running as a uuid pod: %s", err)
+		errCh <- fmt.Errorf("Couldn't get hello running as a uuid pod: %s", err)
+		return
 	}
 }
 
