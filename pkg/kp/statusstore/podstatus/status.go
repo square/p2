@@ -5,53 +5,39 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/kp/statusstore"
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/util"
 )
 
-type FinishState string
-type ServiceState string
 type PodState string
 
 const (
-	// Indicates the state of a completion of a service
-	Successful FinishState = "successful"
-	Failed     FinishState = "failed"
-
-	// Indicates the state of a service irrespective of success. The reason for
-	// this separation is that a service in P2 might have an aggressive restart
-	// policy making "success" and "failure" not very useful states as they are
-	// momentary.
-	Pending  ServiceState = "pending"
-	Running  ServiceState = "running"
-	Finished ServiceState = "finished"
-
+	// Signifies that the pod has been launched
 	PodLaunched PodState = "launched"
-	PodPending  PodState = "pending"
-	PodRemoved  PodState = "removed"
+
+	// Signifies that the pod has been unscheduled and removed from the machine
+	PodRemoved PodState = "removed"
 )
 
-// Encapsulates information relating to the exit of a service.
+// Encapsulates information relating to the exit of a process.
 type ExitStatus struct {
-	ExitTime time.Time   `json:"time"`
-	Status   FinishState `json:"state"`
-	ExitCode int         `json:"exit_code"`
+	ExitTime   time.Time `json:"time"`
+	ExitCode   int       `json:"exit_code"`
+	ExitStatus int       `json:"exit_status"`
 }
 
-// Encapsulates information regarding the state of a service. This includes
-// information about a service that might still be running as well as its most
-// recent exit. This is because many services under P2 are always restarted
-// after exit by runit, and both the status of the most recent exit as well as
-// the current status of the service are useful to expose
-type ServiceStatus struct {
-	Name     string       `json:"name"`
-	State    ServiceState `json:"state"`
-	LastExit *ExitStatus  `json:"last_exit"`
+// Encapsulates information regarding the state of a process. Currently only
+// information about the last exit is exposed.
+type ProcessStatus struct {
+	LaunchableID launch.LaunchableID `json:"launchable_id"`
+	EntryPoint   string              `json:"entry_point"`
+	LastExit     *ExitStatus         `json:"last_exit"`
 }
 
-// Encapsulates the state of all services running in a pod.
+// Encapsulates the state of all processes running in a pod.
 type PodStatus struct {
-	ServiceStatus []ServiceStatus `json:"service_status"`
-	PodStatus     PodState        `json:"status"`
+	ProcessStatuses []ProcessStatus `json:"process_status"`
+	PodStatus       PodState        `json:"status"`
 
 	// String representing the pod manifest for the running pod. Will be
 	// empty if it hasn't yet been launched

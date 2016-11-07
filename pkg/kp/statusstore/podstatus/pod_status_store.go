@@ -2,6 +2,7 @@ package podstatus
 
 import (
 	"github.com/square/p2/pkg/kp/podstore"
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/types"
 
 	"github.com/hashicorp/consul/api"
@@ -17,4 +18,5 @@ type Store interface {
 	Set(types.PodUniqueKey, PodStatus) error
 	CAS(key types.PodUniqueKey, status PodStatus, modifyIndex uint64) error
 	MutateStatus(key types.PodUniqueKey, mutator func(PodStatus) (PodStatus, error)) error
+	SetLastExit(podUniqueKey types.PodUniqueKey, launchableID launch.LaunchableID, entryPoint string, exitStatus ExitStatus) error
 }
