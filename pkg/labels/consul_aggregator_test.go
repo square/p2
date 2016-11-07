@@ -1,6 +1,7 @@
 package labels
 
 import (
+	"path"
 	"testing"
 	"time"
 
@@ -17,9 +18,9 @@ func alterAggregationTime(dur time.Duration) {
 
 func fakeLabeledPods() map[string][]byte {
 	return map[string][]byte{
-		objectPath(POD, "maroono"):  []byte(`{"color": "red", "deployment": "production"}`),
-		objectPath(POD, "emeralda"): []byte(`{"color": "green", "deployment": "canary"}`),
-		objectPath(POD, "slashi"):   []byte(`{"color": "red", "deployment": "canary"}`),
+		path.Join(typePath(POD), "maroono"):  []byte(`{"color": "red", "deployment": "production"}`),
+		path.Join(typePath(POD), "emeralda"): []byte(`{"color": "green", "deployment": "canary"}`),
+		path.Join(typePath(POD), "slashi"):   []byte(`{"color": "red", "deployment": "canary"}`),
 	}
 }
 
