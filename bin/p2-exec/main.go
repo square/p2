@@ -27,6 +27,10 @@ var (
 	envDir   = kingpin.Flag("env",
 		"A directory of env files to add to the environment. May be specified more than once. In the case of conflicting variable names, the directory appearing last will win.",
 	).Short('e').Strings()
+	extraEnv = kingpin.Flag(
+		"extra-env",
+		"Specifies an extra environment KEY=VALUE pair to set for the process. May be used multiple times. Takes precedence over --env if there are conflicts",
+	).StringMap()
 	launchableName = kingpin.Flag("launchable", "The key in $PLATFORM_CONFIG_PATH containing the cgroup parameters.").Short('l').String()
 	cgroupName     = kingpin.Flag("cgroup", "The name of the cgroup that should be created.").Short('c').String()
 	nolim          = kingpin.Flag("nolimit", "Remove rlimits.").Short('n').Bool()
@@ -56,6 +60,13 @@ func main() {
 
 	for _, dir := range *envDir {
 		err := loadEnvDir(dir)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	for envKey, envValue := range *extraEnv {
+		err := os.Setenv(envKey, envValue)
 		if err != nil {
 			log.Fatal(err)
 		}

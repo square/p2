@@ -264,6 +264,7 @@ func (hl *Launchable) Executables(
 				Command:          []string{filepath.Join(serviceDir, service.Name())},
 				User:             hl.RunAs,
 				EnvDirs:          []string{hl.PodEnvDir, hl.EnvDir()},
+				ExtraEnv:         map[string]string{launch.EntryPointEnvVar: service.Name()},
 				NoLimits:         hl.ExecNoLimit,
 				CgroupConfigName: hl.CgroupConfigName,
 				CgroupName:       hl.CgroupName,
@@ -271,6 +272,7 @@ func (hl *Launchable) Executables(
 			execCmd := append([]string{hl.P2Exec}, p2ExecArgs.CommandLine()...)
 
 			executableMap[serviceName] = launch.Executable{
+				ServiceName: service.Name(),
 				Service: runit.Service{
 					Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
 					Name: serviceName,

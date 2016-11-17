@@ -28,7 +28,12 @@ const (
 )
 
 type ReporterConfig struct {
-	// Path to the sqlite database that should be polled for finish information
+	// Path to the sqlite database that should be polled for finish
+	// information.  NOTE: the written file AND THE DIRECTORY IT'S IN will
+	// be given file perms 0666, because sqlite works like that.  you can't
+	// write to a database unless you can also write to the directory it's
+	// in. As a result, the path here should include at least one level of
+	// directory to be created
 	SQLiteDatabasePath string `yaml:"sqlite_database_path"`
 
 	// Path to the executable that constructs finish information based on process environment
@@ -81,6 +86,11 @@ type Reporter struct {
 	pollInterval   time.Duration
 
 	timeoutPath string
+
+	// We need to keep this around only so we can chmod the file after we
+	// migrate, because sqlite doesn't actually write the file until
+	// something (e.g. table schema) is written
+	databasePath string
 }
 
 // Should only be called if config.FullyConfigured() returned true.
@@ -105,6 +115,27 @@ func New(config ReporterConfig, logger logging.Logger, podStatusStore podstatus.
 		pollInterval = DefaultPollInterval
 	}
 
+	// The directory the sqlite database is in needs to be world readable
+	// and writable if the database is to be. However, if the directory the
+	// database is in is executable we want to keep it that way.
+	databaseDirPath := filepath.Dir(config.SQLiteDatabasePath)
+	dirInfo, err := os.Stat(databaseDirPath)
+	switch {
+	case os.IsNotExist(err):
+		err = os.MkdirAll(databaseDirPath, 0777)
+		if err != nil {
+			return nil, util.Errorf("Could not create directory for sqlite database at '%s': %s", databaseDirPath, err)
+		}
+	case err == nil:
+		desiredPerms := dirInfo.Mode() | 0666
+		err = os.Chmod(databaseDirPath, desiredPerms)
+		if err != nil {
+			return nil, util.Errorf("Could not make database directory %s world readable and writable: %s", databaseDirPath, err)
+		}
+	case err != nil:
+		return nil, util.Errorf("Could not stat database directory %s: %s", databaseDirPath, err)
+	}
+
 	finishService, err := NewSQLiteFinishService(config.SQLiteDatabasePath, logger)
 	if err != nil {
 		return nil, err
@@ -118,6 +149,7 @@ func New(config ReporterConfig, logger logging.Logger, podStatusStore podstatus.
 		podStatusStore:           podStatusStore,
 		pollInterval:             pollInterval,
 		timeoutPath:              config.TimeoutPath,
+		databasePath:             config.SQLiteDatabasePath,
 	}, nil
 }
 
@@ -133,6 +165,12 @@ func (r *Reporter) Run(quitCh <-chan struct{}) error {
 	if err != nil {
 		_ = r.finishService.Close()
 		return err
+	}
+
+	// The finish process doesn't run as root, so we need to chmod the SQL database to 666
+	err = os.Chmod(r.databasePath, 0666)
+	if err != nil {
+		return util.Errorf("Could not chmod finish database %s to 0666 to allow finish to write to it: %s", r.databasePath, err)
 	}
 
 	go r.publishProcessExits(quitCh)
