@@ -15,7 +15,6 @@ import (
 	"path"
 
 	"github.com/square/p2/pkg/launch"
-	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
@@ -39,7 +38,6 @@ type Builder interface {
 	SetStatusPath(statusPath string)
 	SetStatusPort(port int)
 	SetLaunchables(launchableStanzas map[launch.LaunchableID]launch.LaunchableStanza)
-	SetRestartPolicy(runit.RestartPolicy)
 }
 
 var _ Builder = builder{}
@@ -75,7 +73,6 @@ type Manifest interface {
 	GetStatusLocalhostOnly() bool
 	Marshal() ([]byte, error)
 	SignatureData() (plaintext, signature []byte)
-	GetRestartPolicy() runit.RestartPolicy
 
 	GetBuilder() Builder
 }
@@ -91,7 +88,6 @@ type manifest struct {
 	StatusPort        int                                             `yaml:"status_port,omitempty"`
 	StatusHTTP        bool                                            `yaml:"status_http,omitempty"`
 	Status            StatusStanza                                    `yaml:"status,omitempty"`
-	RestartPolicy     runit.RestartPolicy                             `yaml:"restart_policy,omitempty"`
 
 	// Used to track the original bytes so that we don't reorder them when
 	// doing a yaml.Unmarshal and a yaml.Marshal in succession
@@ -127,10 +123,6 @@ func (manifest *manifest) GetLaunchableStanzas() map[launch.LaunchableID]launch.
 
 func (manifest *manifest) SetLaunchables(launchableStanzas map[launch.LaunchableID]launch.LaunchableStanza) {
 	manifest.LaunchableStanzas = launchableStanzas
-}
-
-func (manifest *manifest) SetRestartPolicy(restartPolicy runit.RestartPolicy) {
-	manifest.RestartPolicy = restartPolicy
 }
 
 func (manifest *manifest) GetConfig() map[interface{}]interface{} {
@@ -398,13 +390,6 @@ func (m manifest) SignatureData() (plaintext, signature []byte) {
 		return nil, nil
 	}
 	return m.plaintext, m.signature
-}
-
-func (m manifest) GetRestartPolicy() runit.RestartPolicy {
-	if m.RestartPolicy == "" {
-		return runit.DefaultRestartPolicy
-	}
-	return m.RestartPolicy
 }
 
 // ValidManifest checks the internal consistency of a manifest. Returns an error if the

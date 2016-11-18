@@ -44,7 +44,7 @@ type Launchable struct {
 	RootDir         string              // The root directory of the launchable, containing N:N>=1 installs.
 	P2Exec          string              // The path to p2-exec
 	RestartTimeout  time.Duration       // How long to wait when restarting the services in this launchable.
-	RestartPolicy   runit.RestartPolicy // Dictates whether the container should be automatically restarted upon exit.
+	RestartPolicy_  runit.RestartPolicy // Dictates whether the container should be automatically restarted upon exit.
 	CgroupConfig    cgroups.Config      // Cgroup parameters to use with p2-exec
 	SuppliedEnvVars map[string]string   // User-supplied env variables
 
@@ -247,7 +247,7 @@ func (l *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv runit.SV) er
 
 	for _, executable := range executables {
 		var err error
-		if l.RestartPolicy == runit.RestartPolicyAlways {
+		if l.RestartPolicy_ == runit.RestartPolicyAlways {
 			_, err = sv.Restart(&executable.Service, l.RestartTimeout)
 		} else {
 			_, err = sv.Once(&executable.Service)
@@ -307,4 +307,8 @@ func (l *Launchable) Stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) err
 func (l *Launchable) Prune(max size.ByteCount) error {
 	// No-op for now
 	return nil
+}
+
+func (l *Launchable) RestartPolicy() runit.RestartPolicy {
+	return l.RestartPolicy_
 }

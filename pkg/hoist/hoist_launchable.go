@@ -34,7 +34,7 @@ type Launchable struct {
 	CgroupConfigName string                     // The string in PLATFORM_CONFIG to pass to p2-exec
 	CgroupName       string                     // The name of the cgroup to run this launchable in
 	RestartTimeout   time.Duration              // How long to wait when restarting the services in this launchable.
-	RestartPolicy    runit.RestartPolicy        // Dictates whether the launchable should be automatically restarted upon exit.
+	RestartPolicy_   runit.RestartPolicy        // Dictates whether the launchable should be automatically restarted upon exit.
 	SuppliedEnvVars  map[string]string          // A map of user-supplied environment variables to be exported for this launchable
 	Location         *url.URL                   // URL to download the artifact from
 	VerificationData auth.VerificationData      // Paths to files used to verify the artifact
@@ -195,7 +195,7 @@ func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv runit.SV) e
 
 	for _, executable := range executables {
 		var err error
-		if hl.RestartPolicy == runit.RestartPolicyAlways {
+		if hl.RestartPolicy_ == runit.RestartPolicyAlways {
 			_, err = sv.Restart(&executable.Service, hl.RestartTimeout)
 		} else {
 			_, err = sv.Once(&executable.Service)
@@ -390,4 +390,8 @@ func (hl *Launchable) InstallDir() string {
 
 func (hl *Launchable) EnvVars() map[string]string {
 	return hl.SuppliedEnvVars
+}
+
+func (hl *Launchable) RestartPolicy() runit.RestartPolicy {
+	return hl.RestartPolicy_
 }

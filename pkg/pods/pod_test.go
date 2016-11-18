@@ -56,7 +56,7 @@ func TestGetLaunchable(t *testing.T) {
 	pod := getTestPod()
 	Assert(t).AreNotEqual(0, len(launchableStanzas), "Expected there to be at least one launchable stanza in the test manifest")
 	for _, stanza := range launchableStanzas {
-		l, _ := pod.getLaunchable(stanza, "foouser", runit.RestartPolicyAlways)
+		l, _ := pod.getLaunchable(stanza, "foouser")
 		launchable := l.(hoist.LaunchAdapter).Launchable
 		if launchable.Id != "app" {
 			t.Errorf("Launchable Id did not have expected value: wanted '%s' was '%s'", "app", launchable.Id)
@@ -69,7 +69,7 @@ func TestGetLaunchable(t *testing.T) {
 		Assert(t).AreEqual("hello__app", launchable.ServiceId, "Launchable ServiceId did not have expected value")
 		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
 		Assert(t).IsTrue(launchable.ExecNoLimit, "GetLaunchable() should always set ExecNoLimit to true for hoist launchables")
-		Assert(t).AreEqual(launchable.RestartPolicy, runit.RestartPolicyAlways, "Default RestartPolicy for a launchable should be 'always'")
+		Assert(t).AreEqual(launchable.RestartPolicy(), runit.RestartPolicyAlways, "Default RestartPolicy for a launchable should be 'always'")
 	}
 }
 
@@ -80,7 +80,7 @@ func TestGetLaunchableNoVersion(t *testing.T) {
 		LaunchableType: "hoist",
 	}
 	pod := getTestPod()
-	l, _ := pod.getLaunchable(launchableStanza, "foouser", runit.RestartPolicyAlways)
+	l, _ := pod.getLaunchable(launchableStanza, "foouser")
 	launchable := l.(hoist.LaunchAdapter).Launchable
 
 	if launchable.Id != "somelaunchable" {
@@ -93,7 +93,7 @@ func TestGetLaunchableNoVersion(t *testing.T) {
 	Assert(t).AreEqual("hello__somelaunchable", launchable.ServiceId, "Launchable ServiceId did not have expected value")
 	Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
 	Assert(t).IsTrue(launchable.ExecNoLimit, "GetLaunchable() should always set ExecNoLimit to true for hoist launchables")
-	Assert(t).AreEqual(launchable.RestartPolicy, runit.RestartPolicyAlways, "Default RestartPolicy for a launchable should be 'always'")
+	Assert(t).AreEqual(launchable.RestartPolicy(), runit.RestartPolicyAlways, "Default RestartPolicy for a launchable should be 'always'")
 }
 
 func TestPodCanWriteEnvFile(t *testing.T) {
@@ -148,7 +148,7 @@ config:
 
 	launchables := make([]launch.Launchable, 0)
 	for _, stanza := range manifest.GetLaunchableStanzas() {
-		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser(), manifest.GetRestartPolicy())
+		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser())
 		Assert(t).IsNil(err, "There shouldn't have been an error getting launchable")
 		launchables = append(launchables, launchable)
 	}
@@ -313,7 +313,6 @@ func TestBuildRunitServices(t *testing.T) {
 	outFilePath := filepath.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
 	testManifest := manifest.NewBuilder()
-	testManifest.SetRestartPolicy(runit.RestartPolicyAlways)
 	testLaunchable := hl.If()
 	pod.buildRunitServices([]launch.Launchable{testLaunchable}, testManifest.GetManifest())
 

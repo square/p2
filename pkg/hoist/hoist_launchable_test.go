@@ -392,7 +392,7 @@ func TestOnceIfRestartNever(t *testing.T) {
 
 	// If the launchable isn't intended to be restarted, the launchable
 	// should launch using 'sv once' instead of 'sv restart'
-	hl.RestartPolicy = runit.RestartPolicyNever
+	hl.RestartPolicy_ = runit.RestartPolicyNever
 
 	sv := runit.NewRecordingSV()
 	err := hl.Launch(sb, sv)
@@ -409,7 +409,7 @@ func TestRestartIfRestartAlways(t *testing.T) {
 
 	// If the launchable is intended to be restarted, the launchable
 	// should launch using 'sv restart'
-	hl.RestartPolicy = runit.RestartPolicyAlways
+	hl.RestartPolicy_ = runit.RestartPolicyAlways
 
 	sv := runit.NewRecordingSV()
 	err := hl.Launch(sb, sv)
@@ -422,7 +422,7 @@ func TestRestartServiceAndLogAgent(t *testing.T) {
 	defer CleanupFakeLaunchable(hl, sb)
 	sv := runit.NewRecordingSV()
 
-	hl.RestartPolicy = runit.RestartPolicyAlways
+	hl.RestartPolicy_ = runit.RestartPolicyAlways
 	hl.start(sb, sv)
 
 	commands := sv.(*runit.RecordingSV).Commands

@@ -13,11 +13,13 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var fakeTemplate map[string]ServiceTemplate = map[string]ServiceTemplate{
-	"foo": {
-		Run: []string{"foo", "one", "two"},
-		Log: []string{"log", "three", "four"},
+func fakeTemplate(restartPolicy RestartPolicy) map[string]ServiceTemplate {
+	return map[string]ServiceTemplate{"foo": {
+		Run:           []string{"foo", "one", "two"},
+		Log:           []string{"log", "three", "four"},
+		RestartPolicy: restartPolicy,
 	},
+	}
 }
 
 func TestWriteTemplate(t *testing.T) {
@@ -25,7 +27,7 @@ func TestWriteTemplate(t *testing.T) {
 	defer sb.Cleanup()
 
 	fakePath := filepath.Join(sb.ConfigRoot, "test.yaml")
-	err := sb.write(fakePath, fakeTemplate)
+	err := sb.write(fakePath, fakeTemplate(RestartPolicyAlways))
 	Assert(t).IsNil(err, "should have written templates")
 
 	fakeYaml, err := ioutil.ReadFile(fakePath)
@@ -35,7 +37,12 @@ func TestWriteTemplate(t *testing.T) {
 	err = yaml.Unmarshal(fakeYaml, test)
 	Assert(t).IsNil(err, "should have parsed templates")
 
-	Assert(t).IsTrue(reflect.DeepEqual(test, fakeTemplate), "should have been equal")
+	if !reflect.DeepEqual(test["foo"].Run, fakeTemplate(RestartPolicyAlways)["foo"].Run) {
+		t.Errorf("Expected run clause to be %s but was %s", fakeTemplate(RestartPolicyAlways)["foo"].Run, test["foo"].Run)
+	}
+	if !reflect.DeepEqual(test["foo"].Log, fakeTemplate(RestartPolicyAlways)["foo"].Log) {
+		t.Errorf("Expected log clause to be %s but was %s", fakeTemplate(RestartPolicyAlways)["foo"].Log, test["foo"].Log)
+	}
 
 	// write an empty template, the file should disappear
 	err = sb.write(fakePath, map[string]ServiceTemplate{})
@@ -56,7 +63,7 @@ func TestStagedContents(t *testing.T) {
 	sb := FakeServiceBuilder()
 	defer sb.Cleanup()
 
-	err := sb.stage(fakeTemplate, RestartPolicyAlways)
+	err := sb.stage(fakeTemplate(RestartPolicyAlways))
 	Assert(t).IsNil(err, "should have staged")
 
 	info, err := os.Stat(filepath.Join(sb.StagingRoot, "foo"))
@@ -95,7 +102,7 @@ func TestDownFile(t *testing.T) {
 	sb := FakeServiceBuilder()
 	defer sb.Cleanup()
 
-	err := sb.stage(fakeTemplate, RestartPolicyNever)
+	err := sb.stage(fakeTemplate(RestartPolicyNever))
 	Assert(t).IsNil(err, "should have staged")
 
 	// There should be a 'down' file if the restart policy is 'never' to
@@ -105,7 +112,7 @@ func TestDownFile(t *testing.T) {
 
 	// Now stage it again as RestartPolicyAlways and make sure 'down' file
 	// is removed
-	err = sb.stage(fakeTemplate, RestartPolicyAlways)
+	err = sb.stage(fakeTemplate(RestartPolicyAlways))
 	Assert(t).IsNil(err, "should have staged")
 
 	// There should be a 'down' file if the restart policy is 'never' to
@@ -131,7 +138,7 @@ func TestRuby18Yaml(t *testing.T) {
 	sb := FakeServiceBuilder()
 	defer sb.Cleanup()
 
-	err := sb.stage(fakeTemplate, RestartPolicyAlways)
+	err := sb.stage(fakeTemplate(RestartPolicyAlways))
 	Assert(t).IsNil(err, "should have staged")
 
 	verifyRuby18(t, filepath.Join(sb.StagingRoot, "foo", "run"), "run script")
@@ -142,14 +149,14 @@ func TestActivateSucceedsTwice(t *testing.T) {
 	sb := FakeServiceBuilder()
 	defer sb.Cleanup()
 
-	err := sb.activate(fakeTemplate)
+	err := sb.activate(fakeTemplate(RestartPolicyAlways))
 	Assert(t).IsNil(err, "should have activated service")
 	target, err := os.Readlink(filepath.Join(sb.RunitRoot, "foo"))
 	Assert(t).IsNil(err, "should have read link for activated service")
 	Assert(t).IsTrue(target == filepath.Join(sb.StagingRoot, "foo"), "should have symlinked to the staging dir")
 
 	// do it again to make sure repeated activations work fine
-	err = sb.activate(fakeTemplate)
+	err = sb.activate(fakeTemplate(RestartPolicyAlways))
 	Assert(t).IsNil(err, "should have activated service")
 	target, err = os.Readlink(filepath.Join(sb.RunitRoot, "foo"))
 	Assert(t).IsNil(err, "should have read link for activated service")
@@ -161,13 +168,13 @@ func TestPrune(t *testing.T) {
 	defer sb.Cleanup()
 
 	// first create the service
-	err := sb.Activate("foo", fakeTemplate, RestartPolicyAlways)
+	err := sb.Activate("foo", fakeTemplate(RestartPolicyAlways))
 	Assert(t).IsNil(err, "should have activated service")
 	_, err = os.Readlink(filepath.Join(sb.RunitRoot, "foo"))
 	Assert(t).IsNil(err, "should have created activation symlink")
 
 	// now remove the service's yaml file
-	err = sb.Activate("foo", map[string]ServiceTemplate{}, RestartPolicyAlways)
+	err = sb.Activate("foo", map[string]ServiceTemplate{})
 	Assert(t).IsNil(err, "should have activated service")
 	// symlink should still exist, haven't pruned yet
 	_, err = os.Readlink(filepath.Join(sb.RunitRoot, "foo"))
