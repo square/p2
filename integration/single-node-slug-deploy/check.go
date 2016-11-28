@@ -16,7 +16,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -37,6 +36,7 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
+	"github.com/Sirupsen/logrus"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -130,39 +130,68 @@ func main() {
 
 	// Now we're going to test some conditions that each take non-negligible amount of time to verify.
 	// We'll spin up a goroutine for each "test" which either closes the error channel, or passes an error.
-	tests := make(map[string]chan error)
+	type testCase struct {
+		testName string
+		errCh    chan error
+		logger   logging.Logger
+	}
+
+	var testCases []testCase
 
 	// Test that a "legacy" pod installed by an RC comes up correctly and has health reported
 	legacyTest := make(chan error)
-	go verifyLegacyPod(legacyTest, tempdir, config, services)
-	tests["legacy_test"] = legacyTest
+	verifyLegacyPodLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"test_case": "verifyLegacyPod",
+	})
+	go verifyLegacyPod(legacyTest, tempdir, config, services, verifyLegacyPodLogger)
+	testCases = append(testCases, testCase{
+		testName: "verifyLegacyPod",
+		errCh:    legacyTest,
+		logger:   verifyLegacyPodLogger,
+	})
 
 	// Test that a "uuid" pod installed by p2-schedule comes up correctly
 	uuidTest := make(chan error)
-	go verifyUUIDPod(uuidTest, tempdir)
-	tests["uuid_test"] = uuidTest
+	verifyUUIDPodLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"test_case": "verifyUUIDPod",
+	})
+	testCases = append(testCases, testCase{
+		testName: "verifyUUIDPod",
+		errCh:    uuidTest,
+		logger:   verifyUUIDPodLogger,
+	})
+	go verifyUUIDPod(uuidTest, tempdir, verifyUUIDPodLogger)
 
 	// Test that exit information for a process started by a pod is properly recorded in consul.
 	processExitTest := make(chan error)
-	go verifyProcessExit(processExitTest, tempdir)
-	tests["process_exit_test"] = processExitTest
+	verifyProcessExitLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"test_case": "verifyProcessExit",
+	})
+	go verifyProcessExit(processExitTest, tempdir, verifyProcessExitLogger)
+	testCases = append(testCases, testCase{
+		testName: "verifyProcessResult",
+		errCh:    processExitTest,
+		logger:   verifyProcessExitLogger,
+	})
 
-	for testName, testErrCh := range tests {
+	for _, t := range testCases {
 		select {
-		case err, ok := <-testErrCh:
+		case err, ok := <-t.errCh:
 			if err != nil {
-				log.Fatal(err)
+				t.logger.Fatal(err)
 			}
 			if ok {
-				log.Fatalf("The error channel for %s was not closed", testName)
+				t.logger.Fatal("Error channel not closed")
 			}
 		case <-time.After(1 * time.Minute):
-			log.Fatalf("Timed out waiting for a result from %s", testName)
+			t.logger.Fatal("Timed out waiting for a result")
 		}
+
+		t.logger.Infoln("Success!")
 	}
 }
 
-func verifyLegacyPod(errCh chan error, tempDir string, config *preparer.PreparerConfig, services []string) {
+func verifyLegacyPod(errCh chan error, tempDir string, config *preparer.PreparerConfig, services []string, logger logging.Logger) {
 	defer close(errCh)
 	// Schedule a "legacy" hello pod using a replication controller
 	rcID, err := createHelloReplicationController(tempDir)
@@ -170,14 +199,14 @@ func verifyLegacyPod(errCh chan error, tempDir string, config *preparer.Preparer
 		errCh <- fmt.Errorf("Could not create hello pod / rc: %s", err)
 		return
 	}
-	log.Printf("Created RC #%s for hello\n", rcID)
+	logger.Infof("Created RC #%s for hello\n", rcID)
 
 	err = waitForPodLabeledWithRC(klabels.Everything().Add(rc.RCIDLabel, klabels.EqualsOperator, []string{rcID.String()}), rcID)
 	if err != nil {
 		errCh <- fmt.Errorf("Failed waiting for pods labeled with the given RC: %v", err)
 		return
 	}
-	err = verifyHelloRunning("")
+	err = verifyHelloRunning("", logger)
 	if err != nil {
 		errCh <- fmt.Errorf("Couldn't get hello running: %s", err)
 		return
@@ -189,57 +218,49 @@ func verifyLegacyPod(errCh chan error, tempDir string, config *preparer.Preparer
 	}
 }
 
-func verifyUUIDPod(errCh chan error, tempDir string) {
+func verifyUUIDPod(errCh chan error, tempDir string, logger logging.Logger) {
 	defer close(errCh)
 
 	// Schedule a "uuid" hello pod on a different port
-	podUniqueKey, err := createHelloUUIDPod(tempDir, 43771)
+	podUniqueKey, err := createHelloUUIDPod(tempDir, 43771, logger)
 	if err != nil {
 		errCh <- fmt.Errorf("Could not schedule UUID hello pod: %s", err)
 		return
 	}
-	log.Println("p2-schedule'd another hello instance as a uuid pod")
+	logger.Infoln("p2-schedule'd another hello instance as a uuid pod running on port 43771")
 
-	err = verifyHelloRunning(podUniqueKey)
+	err = verifyHelloRunning(podUniqueKey, logger)
 	if err != nil {
 		errCh <- fmt.Errorf("Couldn't get hello running as a uuid pod: %s", err)
 		return
 	}
 }
 
-func verifyProcessExit(errCh chan error, tempDir string) {
+func verifyProcessExit(errCh chan error, tempDir string, logger logging.Logger) {
 	defer close(errCh)
 
 	// Schedule a uuid pod
-	podUniqueKey, err := createHelloUUIDPod(tempDir, 43772)
+	podUniqueKey, err := createHelloUUIDPod(tempDir, 43772, logger)
 	if err != nil {
 		errCh <- fmt.Errorf("Could not schedule UUID hello pod: %s", err)
 		return
 	}
 
-	err = verifyHelloRunning(podUniqueKey)
+	logger = logger.SubLogger(logrus.Fields{
+		"pod_unique_key": podUniqueKey,
+	})
+	logger.Infoln("Scheduled hello instance on port 43772")
+
+	err = verifyHelloRunning(podUniqueKey, logger)
 	if err != nil {
 		errCh <- fmt.Errorf("Couldn't get hello running as a uuid pod: %s", err)
 		return
 	}
+	logger.Infoln("Hello instance launched")
 
 	time.Sleep(3 * time.Second)
 
-	pidFileLocation := fmt.Sprintf("/var/service/hello-%s__hello__launch/supervise/pid", podUniqueKey)
-	pidBytes, err := ioutil.ReadFile(pidFileLocation)
-	if err != nil {
-		errCh <- fmt.Errorf("Could not read the pid from %s: %s", pidFileLocation, err)
-		return
-	}
-
-	// Confirm that the contents of the file are actually an integer
-	pidStr := strings.TrimSpace(string(pidBytes))
-	_, err = strconv.Atoi(pidStr)
-	if err != nil {
-		errCh <- fmt.Errorf("Couldn't convert pid file contents %s to integer: %s", string(pidBytes), err)
-		return
-	}
-
+	logger.Infoln("Waiting for hello instance to listen on 43772")
 	// now wait for the hello server to start running
 	timeout := time.After(30 * time.Second)
 	for {
@@ -260,6 +281,7 @@ func verifyProcessExit(errCh chan error, tempDir string) {
 	}
 
 	exitCode := rand.Intn(100) + 1
+	logger.Infof("Causing hello on 43772 to exit with status %d", exitCode)
 	// Make an http request to hello to make it exit with exitCode. We expect the http request to fail due
 	// to the server exiting, so don't check for http errors.
 	_, err = http.Get(fmt.Sprintf("http://localhost:43772/exit/%d", exitCode))
@@ -278,6 +300,7 @@ func verifyProcessExit(errCh chan error, tempDir string) {
 		return
 	}
 
+	logger.Infoln("Checking for exit code in SQL database")
 	finishService, err := podprocess.NewSQLiteFinishService(sqliteFinishDatabasePath, logging.DefaultLogger)
 	if err != nil {
 		errCh <- err
@@ -310,9 +333,10 @@ func verifyProcessExit(errCh chan error, tempDir string) {
 		return
 	}
 
+	logger.Infoln("Checking for exit code in consul")
 	timeout = time.After(30 * time.Second)
+	podStatusStore := podstatus.NewConsul(statusstore.NewConsul(kp.NewConsulClient(kp.Options{})), kp.PreparerPodStatusNamespace)
 	for {
-		podStatusStore := podstatus.NewConsul(statusstore.NewConsul(kp.NewConsulClient(kp.Options{})), kp.PreparerPodStatusNamespace)
 
 		podStatus, _, err := podStatusStore.Get(podUniqueKey)
 		if err != nil {
@@ -337,6 +361,7 @@ func verifyProcessExit(errCh chan error, tempDir string) {
 		}
 
 		if found {
+			logger.Infoln("Successful!")
 			break
 		}
 
@@ -678,8 +703,7 @@ func writeHelloManifest(dir string, manifestName string, port int) (string, erro
 	return signManifest(manifestPath, dir)
 }
 
-func createHelloUUIDPod(dir string, port int) (types.PodUniqueKey, error) {
-	logger := logging.DefaultLogger
+func createHelloUUIDPod(dir string, port int, logger logging.Logger) (types.PodUniqueKey, error) {
 	signedManifestPath, err := writeHelloManifest(dir, fmt.Sprintf("hello-uuid-%d.yaml", port), port)
 	if err != nil {
 		return "", err
@@ -780,7 +804,7 @@ func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
 	}
 }
 
-func verifyHelloRunning(podUniqueKey types.PodUniqueKey) error {
+func verifyHelloRunning(podUniqueKey types.PodUniqueKey, logger logging.Logger) error {
 	helloPidAppeared := make(chan struct{})
 	quit := make(chan struct{})
 	defer close(quit)
@@ -796,7 +820,7 @@ func verifyHelloRunning(podUniqueKey types.PodUniqueKey) error {
 			if res == nil {
 				select {
 				case <-quit:
-					fmt.Println("got a valid stat after timeout")
+					logger.Infoln("got a valid stat after timeout")
 				case helloPidAppeared <- struct{}{}:
 				}
 				return
