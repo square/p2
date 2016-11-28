@@ -317,7 +317,15 @@ func verifyProcessExit(errCh chan error, tempDir string, logger logging.Logger) 
 
 		select {
 		case <-timeout:
-			errCh <- err
+			// Try to manually run the finish script in order to make debugging the test failure easier
+			output, err := exec.Command("sudo", fmt.Sprintf("/var/service/hello-%s__hello__launch/finish", podUniqueKey), "1", "2").CombinedOutput()
+			if err != nil {
+				logger.WithError(err).Infoln("DEBUG: Debug attempt to run finish script failed")
+			}
+
+			logger.Infof("DEBUG: Output of direct execution of finish script: %s", string(output))
+
+			errCh <- fmt.Errorf("Did not find a finish row by the deadline: %s", err)
 			return
 		default:
 		}
