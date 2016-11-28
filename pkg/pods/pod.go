@@ -257,13 +257,14 @@ func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest 
 				return util.Errorf("Duplicate executable %q for launchable %q", executable.Service.Name, launchable.ServiceID())
 			}
 			sbTemplate[executable.Service.Name] = runit.ServiceTemplate{
-				Log:    pod.LogExec,
-				Run:    executable.Exec,
-				Finish: pod.FinishExecForExecutable(launchable, executable),
+				Log:           pod.LogExec,
+				Run:           executable.Exec,
+				Finish:        pod.FinishExecForExecutable(launchable, executable),
+				RestartPolicy: launchable.RestartPolicy(),
 			}
 		}
 	}
-	err := pod.ServiceBuilder.Activate(pod.UniqueName(), sbTemplate, newManifest.GetRestartPolicy())
+	err := pod.ServiceBuilder.Activate(pod.UniqueName(), sbTemplate)
 	if err != nil {
 		return err
 	}
@@ -416,7 +417,7 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 	downloader := artifact.NewLocationDownloader(pod.Fetcher, verifier)
 	for launchableID, stanza := range manifest.GetLaunchableStanzas() {
 		// TODO: investigate passing in necessary fields to InstallDir()
-		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser(), manifest.GetRestartPolicy())
+		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser())
 		if err != nil {
 			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
 			return err
@@ -465,7 +466,7 @@ func (pod *Pod) Verify(manifest manifest.Manifest, authPolicy auth.Policy) error
 		if stanza.DigestLocation == "" {
 			continue
 		}
-		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser(), manifest.GetRestartPolicy())
+		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser())
 		if err != nil {
 			return err
 		}
@@ -649,7 +650,7 @@ func (pod *Pod) Launchables(manifest manifest.Manifest) ([]launch.Launchable, er
 	launchables := make([]launch.Launchable, 0, len(launchableStanzas))
 
 	for _, launchableStanza := range launchableStanzas {
-		launchable, err := pod.getLaunchable(launchableStanza, manifest.RunAsUser(), manifest.GetRestartPolicy())
+		launchable, err := pod.getLaunchable(launchableStanza, manifest.RunAsUser())
 		if err != nil {
 			return nil, err
 		}
@@ -684,7 +685,7 @@ func (pod *Pod) SetLogBridgeExec(logExec []string) {
 	pod.LogExec = append([]string{pod.P2Exec}, p2ExecArgs.CommandLine()...)
 }
 
-func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUser string, restartPolicy runit.RestartPolicy) (launch.Launchable, error) {
+func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUser string) (launch.Launchable, error) {
 	launchableRootDir := filepath.Join(pod.home, launchableStanza.LaunchableId.String())
 	serviceId := strings.Join(
 		[]string{
@@ -734,7 +735,7 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 			P2Exec:           pod.P2Exec,
 			ExecNoLimit:      true,
 			RestartTimeout:   restartTimeout,
-			RestartPolicy:    restartPolicy,
+			RestartPolicy_:   launchableStanza.RestartPolicy(),
 			CgroupConfig:     launchableStanza.CgroupConfig,
 			CgroupConfigName: launchableStanza.LaunchableId.String(),
 			CgroupName:       cgroupName,
@@ -751,7 +752,7 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 			RootDir:         launchableRootDir,
 			P2Exec:          pod.P2Exec,
 			RestartTimeout:  restartTimeout,
-			RestartPolicy:   restartPolicy,
+			RestartPolicy_:  launchableStanza.RestartPolicy(),
 			CgroupConfig:    launchableStanza.CgroupConfig,
 			SuppliedEnvVars: launchableStanza.Env,
 		}

@@ -63,6 +63,14 @@ type ServiceTemplate struct {
 	Finish   []string `yaml:"finish,omitempty"`
 	Sleep    *int     `yaml:"sleep,omitempty"`
 	LogSleep *int     `yaml:"logsleep,omitempty"`
+
+	// Determines whether the service should be restarted by runit after it
+	// exits. This isn't actually written to the servicebuilder file but
+	// determines how the stage directory is written and the service
+	// invoked
+	// TODO: write this to the servicebuilder file and use it to determine
+	// how the service should be started
+	RestartPolicy RestartPolicy `yaml:"-"`
 }
 
 func (s ServiceTemplate) runScript() ([]byte, error) {
@@ -184,7 +192,7 @@ func (s *ServiceBuilder) write(path string, templates map[string]ServiceTemplate
 }
 
 // convert the servicebuilder yaml file into a runit service directory
-func (s *ServiceBuilder) stage(templates map[string]ServiceTemplate, restartPolicy RestartPolicy) error {
+func (s *ServiceBuilder) stage(templates map[string]ServiceTemplate) error {
 	nobody, err := user.Lookup("nobody")
 	if err != nil {
 		return err
@@ -249,7 +257,7 @@ func (s *ServiceBuilder) stage(templates map[string]ServiceTemplate, restartPoli
 		// whenever it finishes. Prevent that if the requested restart policy
 		// is not RestartAlways
 		downPath := filepath.Join(stageDir, DOWN_FILE_NAME)
-		if restartPolicy != RestartPolicyAlways {
+		if template.RestartPolicy != RestartPolicyAlways {
 			file, err := os.Create(downPath)
 			if err != nil {
 				return err
@@ -309,11 +317,11 @@ func (s *ServiceBuilder) activate(templates map[string]ServiceTemplate) error {
 }
 
 // public API to write, stage and activate a servicebuilder template
-func (s *ServiceBuilder) Activate(name string, templates map[string]ServiceTemplate, restartPolicy RestartPolicy) error {
+func (s *ServiceBuilder) Activate(name string, templates map[string]ServiceTemplate) error {
 	if err := s.write(filepath.Join(s.ConfigRoot, name+".yaml"), templates); err != nil {
 		return err
 	}
-	if err := s.stage(templates, restartPolicy); err != nil {
+	if err := s.stage(templates); err != nil {
 		return err
 	}
 

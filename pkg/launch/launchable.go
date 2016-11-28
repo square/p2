@@ -37,6 +37,11 @@ type LaunchableStanza struct {
 	CgroupConfig            cgroups.Config    `yaml:"cgroup,omitempty"`
 	Env                     map[string]string `yaml:"env,omitempty"`
 
+	// Indicates whether the processes started for the launchable should be
+	// restarted when they terminate.  When unspecified, the default is
+	// "always".
+	RestartPolicy_ runit.RestartPolicy `yaml:"restart_policy,omitempty"`
+
 	// Specifies which files or directories (relative to launchable root)
 	// should be launched under runit. Only launchables of type "hoist"
 	// make use of this field, and if empty, a default of ["bin/launch"]
@@ -59,6 +64,14 @@ func (l LaunchableStanza) LaunchableVersion() (LaunchableVersionID, error) {
 	}
 
 	return versionFromLocation(l.Location)
+}
+
+func (l LaunchableStanza) RestartPolicy() runit.RestartPolicy {
+	if l.RestartPolicy_ == "" {
+		return runit.DefaultRestartPolicy
+	}
+
+	return l.RestartPolicy_
 }
 
 // Uses the assumption that all locations have a Path component ending in
@@ -140,6 +153,8 @@ type Launchable interface {
 
 	// Env vars that will be exported to the launchable for its launch script and other hooks.
 	EnvVars() map[string]string
+
+	RestartPolicy() runit.RestartPolicy
 }
 
 // Executable describes a command and its arguments that should be executed to start a
