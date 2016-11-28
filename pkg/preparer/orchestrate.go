@@ -208,8 +208,9 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				sha, _ = nextLaunch.Reality.SHA()
 			}
 			manifestLogger = p.Logger.SubLogger(logrus.Fields{
-				"pod": nextLaunch.ID,
-				"sha": sha,
+				"pod":            nextLaunch.ID,
+				"sha":            sha,
+				"pod_unique_key": nextLaunch.PodUniqueKey,
 			})
 			manifestLogger.NoFields().Debugln("New manifest received")
 
@@ -451,6 +452,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 					return ps, util.Errorf("Could not convert manifest to string to update pod status")
 				}
 
+				ps.PodStatus = podstatus.PodLaunched
 				ps.Manifest = string(manifestBytes)
 				return ps, nil
 			}
@@ -484,10 +486,25 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 	}
 	logger.NoFields().Infoln("Successfully uninstalled")
 
-	dur, err := p.store.DeletePod(kp.REALITY_TREE, p.node, pair.ID)
-	if err != nil {
-		logger.WithErrorAndFields(err, logrus.Fields{"duration": dur}).
-			Errorln("Could not delete pod from reality store")
+	if pair.PodUniqueKey == "" {
+		dur, err := p.store.DeletePod(kp.REALITY_TREE, p.node, pair.ID)
+		if err != nil {
+			logger.WithErrorAndFields(err, logrus.Fields{"duration": dur}).
+				Errorln("Could not delete pod from reality store")
+		}
+	} else {
+		// We don't delete so that the exit status of the pod's
+		// processes can be viewed for some time after installation.
+		// It is the responsibility of external systems to delete pod
+		// status entries when they are no longer needed.
+		err := p.podStatusStore.MutateStatus(pair.PodUniqueKey, func(podStatus podstatus.PodStatus) (podstatus.PodStatus, error) {
+			podStatus.PodStatus = podstatus.PodRemoved
+			return podStatus, nil
+		})
+		if err != nil {
+			logger.WithError(err).
+				Errorln("Could not update pod status to reflect removal")
+		}
 	}
 	return true
 }
