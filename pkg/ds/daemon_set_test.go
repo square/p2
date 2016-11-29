@@ -441,6 +441,9 @@ func waitForSpecificPod(kpStore *kptest.FakePodStore, nodeName types.NodeName, p
 		if err != nil {
 			return util.Errorf("Unable to get all pods from pod store: %v", err)
 		}
+		if len(manifestResults) == 0 {
+			return util.Errorf("expected a manifest in the intent tree")
+		}
 		if manifestResults[0].PodLocation.Node != nodeName {
 			return util.Errorf("expected manifest scheduled on the right node")
 		}
