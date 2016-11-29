@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/types"
 )
@@ -57,7 +57,7 @@ func TestInitializeReplicationFailsIfNoPreparers(t *testing.T) {
 		t.Fatalf("Expected error due to preparer not existing in reality, but no error occurred")
 	}
 
-	matched, err := regexp.MatchString(fmt.Sprintf("verify %s state", preparer.POD_ID), testErr.Error())
+	matched, err := regexp.MatchString(fmt.Sprintf("verify %s state", constants.PreparerPodID), testErr.Error())
 	if err != nil {
 		t.Fatalf("Unable to compare error message to expected string")
 	}

@@ -4,12 +4,12 @@ import (
 	"errors"
 	"time"
 
+	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
-	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -202,9 +202,9 @@ func (r replicator) initializeReplicationWithCheck(
 // Checks that the preparer is running on every host being deployed to.
 func (r replicator) checkPreparers() error {
 	for _, host := range r.nodes {
-		_, _, err := r.store.Pod(kp.REALITY_TREE, host, preparer.POD_ID)
+		_, _, err := r.store.Pod(kp.REALITY_TREE, host, constants.PreparerPodID)
 		if err != nil {
-			return util.Errorf("Could not verify %v state on %q: %v", preparer.POD_ID, host, err)
+			return util.Errorf("Could not verify %v state on %q: %v", constants.PreparerPodID, host, err)
 		}
 	}
 	return nil

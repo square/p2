@@ -12,6 +12,7 @@ import (
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
+	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
@@ -289,7 +290,7 @@ func TestPreparerFailsIfInstallFails(t *testing.T) {
 
 func TestPreparerWillLaunchPreparerAsRoot(t *testing.T) {
 	builder := manifest.NewBuilder()
-	builder.SetID(POD_ID)
+	builder.SetID(constants.PreparerPodID)
 	builder.SetRunAsUser("root")
 	illegalManifest := builder.GetManifest()
 	newPair := ManifestPair{
@@ -389,7 +390,7 @@ func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 
 func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *testing.T) {
 	manifest, fakeSigner := testSignedManifest(t, func(b manifest.Builder, _ *openpgp.Entity) {
-		b.SetID(POD_ID)
+		b.SetID(constants.PreparerPodID)
 	})
 
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
@@ -405,7 +406,7 @@ func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *tes
 
 func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 	manifest, fakeSigner := testSignedManifest(t, func(b manifest.Builder, _ *openpgp.Entity) {
-		b.SetID(POD_ID)
+		b.SetID(constants.PreparerPodID)
 	})
 
 	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
@@ -413,7 +414,7 @@ func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{
 		Keyring:             openpgp.EntityList{fakeSigner},
-		AuthorizedDeployers: map[types.PodID][]string{POD_ID: {"nobodylol"}},
+		AuthorizedDeployers: map[types.PodID][]string{constants.PreparerPodID: {"nobodylol"}},
 	}
 
 	Assert(t).IsFalse(
@@ -425,7 +426,7 @@ func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 	sig := ""
 	manifest, fakeSigner := testSignedManifest(t, func(b manifest.Builder, e *openpgp.Entity) {
-		b.SetID(POD_ID)
+		b.SetID(constants.PreparerPodID)
 		sig = fmt.Sprintf("%X", e.PrimaryKey.Fingerprint)
 	})
 
@@ -434,7 +435,7 @@ func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{
 		Keyring:             openpgp.EntityList{fakeSigner},
-		AuthorizedDeployers: map[types.PodID][]string{POD_ID: {sig}},
+		AuthorizedDeployers: map[types.PodID][]string{constants.PreparerPodID: {sig}},
 	}
 
 	Assert(t).IsTrue(
