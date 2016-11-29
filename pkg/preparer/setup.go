@@ -108,7 +108,6 @@ type PreparerConfig struct {
 	ExtraLogDestinations   []LogDestination       `yaml:"extra_log_destinations,omitempty"`
 	LogLevel               string                 `yaml:"log_level,omitempty"`
 	MaxLaunchableDiskUsage string                 `yaml:"max_launchable_disk_usage"`
-	FinishExec             []string               `yaml:"finish_exec,omitempty"`
 	LogExec                []string               `yaml:"log_exec,omitempty"`
 	LogBridgeBlacklist     []string               `yaml:"log_bridge_blacklist,omitempty"`
 	ArtifactRegistryURL    string                 `yaml:"artifact_registry_url,omitempty"`
