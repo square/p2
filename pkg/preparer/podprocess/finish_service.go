@@ -21,6 +21,8 @@ type FinishService interface {
 	Migrate() error
 	// Reads all finish data after the given ID
 	GetLatestFinishes(lastID int64) ([]FinishOutput, error)
+	// Gets the last finish result for a given PodUniqueKey
+	LastFinishForPodUniqueKey(podUniqueKey types.PodUniqueKey) (FinishOutput, error)
 }
 
 type sqliteFinishService struct {
@@ -188,29 +190,53 @@ func (f sqliteFinishService) GetLatestFinishes(lastID int64) ([]FinishOutput, er
 	}
 	defer rows.Close()
 
-	var id int64
-	var date time.Time
-	var podID, podUniqueKey, launchableID, entryPoint string
-	var exitCode, exitStatus int
-
 	var finishes []FinishOutput
 	for rows.Next() {
-		err = rows.Scan(&id, &date, &podID, &podUniqueKey, &launchableID, &entryPoint, &exitCode, &exitStatus)
+		finishOutput, err := scanRow(rows)
 		if err != nil {
 			f.logger.WithError(err).Errorln("Could not scan row")
 			return nil, err
 		}
 
-		finishes = append(finishes, FinishOutput{
-			ID:           id,
-			PodID:        types.PodID(podID),
-			LaunchableID: launch.LaunchableID(launchableID),
-			EntryPoint:   entryPoint,
-			PodUniqueKey: types.PodUniqueKey(podUniqueKey),
-			ExitCode:     exitCode,
-			ExitStatus:   exitStatus,
-			ExitTime:     date,
-		})
+		finishes = append(finishes, finishOutput)
 	}
 	return finishes, nil
+}
+
+func (f sqliteFinishService) LastFinishForPodUniqueKey(podUniqueKey types.PodUniqueKey) (FinishOutput, error) {
+	row := f.db.QueryRow(`
+  SELECT id, date, pod_id, pod_unique_key, launchable_id, entry_point, exit_code, exit_status
+  FROM finishes
+  WHERE pod_unique_key = ?
+  `, podUniqueKey.String())
+	return scanRow(row)
+}
+
+// Implemented by both *sql.Row and *sql.Rows
+type Scanner interface {
+	Scan(...interface{}) error
+}
+
+// Runs Scan() once on the passed Scanner and converts the result to a FinishOutput
+func scanRow(scanner Scanner) (FinishOutput, error) {
+	var id int64
+	var date time.Time
+	var podID, podUniqueKey, launchableID, entryPoint string
+	var exitCode, exitStatus int
+
+	err := scanner.Scan(&id, &date, &podID, &podUniqueKey, &launchableID, &entryPoint, &exitCode, &exitStatus)
+	if err != nil {
+		return FinishOutput{}, err
+	}
+
+	return FinishOutput{
+		ID:           id,
+		PodID:        types.PodID(podID),
+		LaunchableID: launch.LaunchableID(launchableID),
+		EntryPoint:   entryPoint,
+		PodUniqueKey: types.PodUniqueKey(podUniqueKey),
+		ExitCode:     exitCode,
+		ExitStatus:   exitStatus,
+		ExitTime:     date,
+	}, nil
 }

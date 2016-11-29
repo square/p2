@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 )
@@ -14,6 +16,26 @@ import (
 func SayHello(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("%q %q", r.Method, r.URL.Path)
 	fmt.Fprintf(w, "Hello, %q", html.EscapeString(r.URL.Path))
+}
+
+// Expects a URL like /exit/5, which means that the process
+// should os.Exit(5)
+// This endpoint is useful for testing the preparer's ability to capture
+// the exit code of a process it starts. The integration test uses this
+// endpoint to make the hello pod exit with a random code.
+func Exit(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/")
+	exitCode, err := strconv.Atoi(parts[len(parts)-1])
+	if err != nil {
+		http.Error(
+			w,
+			fmt.Sprintf("Could not convert %s to an integer: %s", parts[len(parts)-1], err),
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	os.Exit(exitCode)
 }
 
 type HelloConfig struct {
@@ -44,6 +66,7 @@ func main() {
 	port := fmt.Sprintf(":%d", config.Port)
 	fmt.Printf("Hello is listening at %q", port)
 	http.HandleFunc("/", SayHello)
+	http.HandleFunc("/exit/", Exit)
 	s := &http.Server{
 		Addr: port,
 	}

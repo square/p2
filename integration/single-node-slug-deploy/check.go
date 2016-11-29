@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/user"
@@ -19,33 +21,44 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/kp/podstore"
+	"github.com/square/p2/pkg/kp/statusstore"
+	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/launch"
+	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/preparer"
+	"github.com/square/p2/pkg/preparer/podprocess"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/schedule"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
+	"github.com/Sirupsen/logrus"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
-const preparerStatusPort = 32170
-const certpath = "/var/tmp/certs"
+const (
+	preparerStatusPort       = 32170
+	certpath                 = "/var/tmp/certs"
+	sqliteFinishDatabasePath = "/data/pods/p2-preparer/finish_data/finish.db"
+)
 
 func main() {
 	// 1. Generate pod for preparer in this code version (`rake artifact:prepare`)
 	// 2. Locate manifests for preparer pod, premade consul pod
 	// 3. Execute bootstrap with premade consul pod and preparer pod
-	// 4. Deploy p2-rctl-server pod with p2-schedule
-	// 5. Schedule a hello pod manifest with a replication controller
-	// 6. Schedule a hello pod as a "uuid pod"
-	// 7. Verify that p2-rctl-server is running by checking health.
-	// 8. Verify that the RC-deployed hello is running by checking health.
+	// 4. Delete all pods from the pod store (uuid pods). This allows the same vagrant VM to be used
+	// between tests
+	// 5. Deploy p2-rctl-server pod with p2-schedule
+	// 6. Schedule a hello pod manifest with a replication controller
+	// 7. Schedule a hello pod as a "uuid pod"
+	// 8. Verify that p2-rctl-server is running by checking health.
+	// 9. Verify that the RC-deployed hello is running by checking health.
 	// Monitor using written pod label queries.
-	// 9. Verify that the uuid hello pod is running by curling its HTTP port.
+	// 10. Verify that the uuid hello pod is running by curling its HTTP port.
 	// Health is not checked for uuid pods so checking health cannot be used.
 
 	// list of services running on integration test host
@@ -80,7 +93,12 @@ func main() {
 	fmt.Println("Executing bootstrap")
 	err = executeBootstrap(signedPreparerManifest, signedConsulManifest)
 	if err != nil {
-		log.Fatalf("Could not execute bootstrap: %s", err)
+		log.Fatalf("Could not execute bootstrap: %s\n%s", err, targetLogs())
+	}
+
+	err = scheduleUserCreationHook(tempdir)
+	if err != nil {
+		log.Fatalf("Couldn't schedule the user creation hook: %s", err)
 	}
 
 	// Wait a bit for preparer's http server to be ready
@@ -89,44 +107,278 @@ func main() {
 		log.Fatalf("Couldn't check preparer status: %s", err)
 	}
 
-	err = scheduleUserCreationHook(tempdir)
+	consulClient := kp.NewConsulClient(kp.Options{})
+	// Get all the pod unique keys so we can unschedule them all
+	keys, _, err := consulClient.KV().Keys(podstore.PodTree+"/", "", nil)
 	if err != nil {
-		log.Fatalf("Couldn't schedule the user creation hook: %s", err)
+		log.Fatalf("Could not fetch pod keys to remove from store at beginning of test: %s", err)
 	}
+
+	podStore := podstore.NewConsul(consulClient.KV())
+	for _, key := range keys {
+		keyParts := strings.Split(key, "/")
+		err = podStore.Unschedule(types.PodUniqueKey(keyParts[len(keyParts)-1]))
+		if err != nil {
+			log.Fatalf("Could not unschedule pod %s from consul: %s", keyParts[len(keyParts)-1], err)
+		}
+	}
+
 	err = scheduleRCTLServer(tempdir)
 	if err != nil {
 		log.Fatalf("Could not schedule RCTL server: %s", err)
 	}
 
-	// Schedule a "legacy" hello pod using a replication controller
-	rcID, err := createHelloReplicationController(tempdir)
-	if err != nil {
-		log.Fatalf("Could not create hello pod / rc: %s\n", err)
+	// Now we're going to test some conditions that each take non-negligible amount of time to verify.
+	// We'll spin up a goroutine for each "test" which either closes the error channel, or passes an error.
+	type testCase struct {
+		testName string
+		errCh    chan error
+		logger   logging.Logger
 	}
-	log.Printf("Created RC #%s for hello\n", rcID)
 
-	// Schedule a "uuid" hello pod on a different port
-	podUniqueKey, err := createHelloUUIDPod(tempdir)
-	if err != nil {
-		log.Fatalf("Could not schedule UUID hello pod: %s", err)
+	var testCases []testCase
+
+	// Test that a "legacy" pod installed by an RC comes up correctly and has health reported
+	legacyTest := make(chan error)
+	verifyLegacyPodLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"test_case": "verifyLegacyPod",
+	})
+	go verifyLegacyPod(legacyTest, tempdir, config, services, verifyLegacyPodLogger)
+	testCases = append(testCases, testCase{
+		testName: "verifyLegacyPod",
+		errCh:    legacyTest,
+		logger:   verifyLegacyPodLogger,
+	})
+
+	// Test that a "uuid" pod installed by p2-schedule comes up correctly
+	uuidTest := make(chan error)
+	verifyUUIDPodLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"test_case": "verifyUUIDPod",
+	})
+	testCases = append(testCases, testCase{
+		testName: "verifyUUIDPod",
+		errCh:    uuidTest,
+		logger:   verifyUUIDPodLogger,
+	})
+	go verifyUUIDPod(uuidTest, tempdir, verifyUUIDPodLogger)
+
+	// Test that exit information for a process started by a pod is properly recorded in consul.
+	processExitTest := make(chan error)
+	verifyProcessExitLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"test_case": "verifyProcessExit",
+	})
+	go verifyProcessExit(processExitTest, tempdir, verifyProcessExitLogger)
+	testCases = append(testCases, testCase{
+		testName: "verifyProcessResult",
+		errCh:    processExitTest,
+		logger:   verifyProcessExitLogger,
+	})
+
+	for _, t := range testCases {
+		select {
+		case err, ok := <-t.errCh:
+			if err != nil {
+				t.logger.Fatal(err)
+			}
+			if ok {
+				t.logger.Fatal("Error channel not closed")
+			}
+		case <-time.After(1 * time.Minute):
+			t.logger.Fatal("Timed out waiting for a result")
+		}
+
+		t.logger.Infoln("Success!")
 	}
-	log.Printf("p2-schedule'd another hello instance as a uuid pod")
+}
+
+func verifyLegacyPod(errCh chan error, tempDir string, config *preparer.PreparerConfig, services []string, logger logging.Logger) {
+	defer close(errCh)
+	// Schedule a "legacy" hello pod using a replication controller
+	rcID, err := createHelloReplicationController(tempDir)
+	if err != nil {
+		errCh <- fmt.Errorf("Could not create hello pod / rc: %s", err)
+		return
+	}
+	logger.Infof("Created RC #%s for hello\n", rcID)
 
 	err = waitForPodLabeledWithRC(klabels.Everything().Add(rc.RCIDLabel, klabels.EqualsOperator, []string{rcID.String()}), rcID)
 	if err != nil {
-		log.Fatalf("Failed waiting for pods labeled with the given RC: %v", err)
+		errCh <- fmt.Errorf("Failed waiting for pods labeled with the given RC: %v", err)
+		return
 	}
-	err = verifyHelloRunning()
+	err = verifyHelloRunning("", logger)
 	if err != nil {
-		log.Fatalf("Couldn't get hello running: %s", err)
+		errCh <- fmt.Errorf("Couldn't get hello running: %s", err)
+		return
 	}
 	err = verifyHealthChecks(config, services)
 	if err != nil {
-		log.Fatalf("Could not get health check info from consul: %s", err)
+		errCh <- fmt.Errorf("Could not get health check info from consul: %s", err)
+		return
 	}
-	err = verifyHelloUUIDRunning(podUniqueKey)
+}
+
+func verifyUUIDPod(errCh chan error, tempDir string, logger logging.Logger) {
+	defer close(errCh)
+
+	// Schedule a "uuid" hello pod on a different port
+	podUniqueKey, err := createHelloUUIDPod(tempDir, 43771, logger)
 	if err != nil {
-		log.Fatalf("Couldn't get hello running as a uuid pod: %s", err)
+		errCh <- fmt.Errorf("Could not schedule UUID hello pod: %s", err)
+		return
+	}
+	logger.Infoln("p2-schedule'd another hello instance as a uuid pod running on port 43771")
+
+	err = verifyHelloRunning(podUniqueKey, logger)
+	if err != nil {
+		errCh <- fmt.Errorf("Couldn't get hello running as a uuid pod: %s", err)
+		return
+	}
+}
+
+func verifyProcessExit(errCh chan error, tempDir string, logger logging.Logger) {
+	defer close(errCh)
+
+	// Schedule a uuid pod
+	podUniqueKey, err := createHelloUUIDPod(tempDir, 43772, logger)
+	if err != nil {
+		errCh <- fmt.Errorf("Could not schedule UUID hello pod: %s", err)
+		return
+	}
+
+	logger = logger.SubLogger(logrus.Fields{
+		"pod_unique_key": podUniqueKey,
+	})
+	logger.Infoln("Scheduled hello instance on port 43772")
+
+	err = verifyHelloRunning(podUniqueKey, logger)
+	if err != nil {
+		errCh <- fmt.Errorf("Couldn't get hello running as a uuid pod: %s", err)
+		return
+	}
+	logger.Infoln("Hello instance launched")
+
+	time.Sleep(3 * time.Second)
+
+	logger.Infoln("Waiting for hello instance to listen on 43772")
+	// now wait for the hello server to start running
+	timeout := time.After(30 * time.Second)
+	for {
+		resp, err := http.Get("http://localhost:43772/")
+		if err == nil {
+			resp.Body.Close()
+			break
+		}
+
+		select {
+		case <-timeout:
+			errCh <- fmt.Errorf("Hello didn't come up listening on 43772: %s", err)
+			return
+		default:
+		}
+
+		time.Sleep(1 * time.Second)
+	}
+
+	exitCode := rand.Intn(100) + 1
+	logger.Infof("Causing hello on 43772 to exit with status %d", exitCode)
+	// Make an http request to hello to make it exit with exitCode. We expect the http request to fail due
+	// to the server exiting, so don't check for http errors.
+	_, err = http.Get(fmt.Sprintf("http://localhost:43772/exit/%d", exitCode))
+	if err == nil {
+		// This is bad, it means the hello server didn't die and kill our request
+		// in the middle
+		errCh <- util.Errorf("Couldn't kill hello server with http request")
+		return
+	}
+
+	urlError, ok := err.(*url.Error)
+	if ok && urlError.Err == io.EOF {
+		// This is good, it means the server died
+	} else {
+		errCh <- fmt.Errorf("Couldn't tell hello to die over http: %s", err)
+		return
+	}
+
+	logger.Infoln("Checking for exit code in SQL database")
+	finishService, err := podprocess.NewSQLiteFinishService(sqliteFinishDatabasePath, logging.DefaultLogger)
+	if err != nil {
+		errCh <- err
+		return
+	}
+
+	var finishResult podprocess.FinishOutput
+	timeout = time.After(30 * time.Second)
+	for {
+		finishResult, err = finishService.LastFinishForPodUniqueKey(podUniqueKey)
+		if err == nil {
+			break
+		}
+
+		select {
+		case <-timeout:
+			// Try to manually run the finish script in order to make debugging the test failure easier
+			output, err := exec.Command("sudo", fmt.Sprintf("/var/service/hello-%s__hello__launch/finish", podUniqueKey), "1", "2").CombinedOutput()
+			if err != nil {
+				logger.WithError(err).Infoln("DEBUG: Debug attempt to run finish script failed")
+			}
+
+			logger.Infof("DEBUG: Output of direct execution of finish script: %s", string(output))
+
+			errCh <- fmt.Errorf("Did not find a finish row by the deadline: %s", err)
+			return
+		default:
+		}
+	}
+
+	if finishResult.PodUniqueKey != podUniqueKey {
+		errCh <- fmt.Errorf("Expected finish result for '%s' but it was for '%s'", podUniqueKey, finishResult.PodUniqueKey)
+		return
+	}
+
+	if finishResult.ExitCode != exitCode {
+		errCh <- fmt.Errorf("Exit code for '%s' in the sqlite database was expected to be %d but was %d", podUniqueKey, exitCode, finishResult.ExitCode)
+		return
+	}
+
+	logger.Infoln("Checking for exit code in consul")
+	timeout = time.After(30 * time.Second)
+	podStatusStore := podstatus.NewConsul(statusstore.NewConsul(kp.NewConsulClient(kp.Options{})), kp.PreparerPodStatusNamespace)
+	for {
+
+		podStatus, _, err := podStatusStore.Get(podUniqueKey)
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		found := false
+		for _, processStatus := range podStatus.ProcessStatuses {
+			if processStatus.LaunchableID == "hello" && processStatus.EntryPoint == "launch" {
+				found = true
+				if processStatus.LastExit == nil {
+					errCh <- fmt.Errorf("Found no last exit in consul pod status for %s", podUniqueKey)
+					return
+				}
+
+				if processStatus.LastExit.ExitCode != exitCode {
+					errCh <- fmt.Errorf("Exit code for '%s' in consul was expected to be %d but was %d", podUniqueKey, exitCode, finishResult.ExitCode)
+					return
+				}
+			}
+		}
+
+		if found {
+			logger.Infoln("Successful!")
+			break
+		}
+
+		select {
+		case <-timeout:
+			errCh <- fmt.Errorf("There was no pod process for hello/launch for %s in consul", podUniqueKey)
+			return
+		default:
+		}
 	}
 }
 
@@ -159,9 +411,9 @@ func signBuild(artifactPath string) error {
 
 func generatePreparerPod(workdir string) (string, error) {
 	// build the artifact from HEAD
-	err := exec.Command("go", "build", "github.com/square/p2/bin/p2-preparer").Run()
+	output, err := exec.Command("go", "build", "github.com/square/p2/bin/p2-preparer").CombinedOutput()
 	if err != nil {
-		return "", util.Errorf("Couldn't build preparer: %s", err)
+		return "", util.Errorf("Couldn't build preparer: %s\nOutput:\n%s", err, string(output))
 	}
 	wd, _ := os.Getwd()
 	hostname, err := os.Hostname()
@@ -186,6 +438,11 @@ func generatePreparerPod(workdir string) (string, error) {
 	}
 	builder := manifest.GetBuilder()
 	builder.SetID("p2-preparer")
+
+	envExtractorPath, err := exec.Command("which", "p2-finish-env-extractor").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("Could not find p2-finish-env-extractor on PATH")
+	}
 	err = builder.SetConfig(map[interface{}]interface{}{
 		"preparer": map[interface{}]interface{}{
 			"auth": map[string]string{
@@ -200,6 +457,11 @@ func generatePreparerPod(workdir string) (string, error) {
 			"cert_file":   filepath.Join(certpath, "cert.pem"),
 			"key_file":    filepath.Join(certpath, "key.pem"),
 			"status_port": preparerStatusPort,
+			"process_result_reporter_config": map[string]string{
+				"sqlite_database_path":       sqliteFinishDatabasePath,
+				"environment_extractor_path": strings.TrimSpace(string(envExtractorPath)),
+				"workspace_dir_path":         "/data/pods/p2-preparer/tmp",
+			},
 		},
 	})
 	if err != nil {
@@ -253,7 +515,7 @@ func waitForStatus(statusPort int, pod string, waitTime time.Duration) error {
 	go func() {
 		for range time.Tick(1 * time.Second) {
 			err = checkStatus(statusPort, pod)
-			if err != nil {
+			if err == nil {
 				close(successCh)
 				break
 			}
@@ -420,7 +682,7 @@ func writeHelloManifest(dir string, manifestName string, port int) (string, erro
 	hello := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-hello_def456.tar.gz"))
 	builder := manifest.NewBuilder()
 	builder.SetID("hello")
-	builder.SetStatusPort(43770)
+	builder.SetStatusPort(port)
 	builder.SetStatusHTTP(true)
 	stanzas := map[launch.LaunchableID]launch.LaunchableStanza{
 		"hello": {
@@ -449,11 +711,13 @@ func writeHelloManifest(dir string, manifestName string, port int) (string, erro
 	return signManifest(manifestPath, dir)
 }
 
-func createHelloUUIDPod(dir string) (types.PodUniqueKey, error) {
-	signedManifestPath, err := writeHelloManifest(dir, "hello-uuid.yaml", 43771)
+func createHelloUUIDPod(dir string, port int, logger logging.Logger) (types.PodUniqueKey, error) {
+	signedManifestPath, err := writeHelloManifest(dir, fmt.Sprintf("hello-uuid-%d.yaml", port), port)
 	if err != nil {
 		return "", err
 	}
+
+	logger.Infoln("Scheduling uuid pod")
 	cmd := exec.Command("p2-schedule", "--uuid-pod", signedManifestPath)
 	stdout := bytes.Buffer{}
 	stderr := bytes.Buffer{}
@@ -470,6 +734,7 @@ func createHelloUUIDPod(dir string) (types.PodUniqueKey, error) {
 		return "", util.Errorf("Scheduled uuid pod but couldn't parse uuid from p2-schedule output: %s", err)
 	}
 
+	logger.Infof("Scheduled uuid pod %s", out.PodUniqueKey)
 	return out.PodUniqueKey, nil
 }
 
@@ -547,18 +812,23 @@ func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
 	}
 }
 
-func verifyHelloRunning() error {
+func verifyHelloRunning(podUniqueKey types.PodUniqueKey, logger logging.Logger) error {
 	helloPidAppeared := make(chan struct{})
 	quit := make(chan struct{})
 	defer close(quit)
+
+	serviceDir := "/var/service/hello__hello__launch"
+	if podUniqueKey != "" {
+		serviceDir = fmt.Sprintf("/var/service/hello-%s__hello__launch", podUniqueKey)
+	}
 	go func() {
 		for {
 			time.Sleep(100 * time.Millisecond)
-			res := exec.Command("sudo", "sv", "stat", "/var/service/hello__hello__launch").Run()
+			res := exec.Command("sudo", "sv", "stat", serviceDir).Run()
 			if res == nil {
 				select {
 				case <-quit:
-					fmt.Println("got a valid stat after timeout")
+					logger.Infoln("got a valid stat after timeout")
 				case helloPidAppeared <- struct{}{}:
 				}
 				return
@@ -572,8 +842,8 @@ func verifyHelloRunning() error {
 		}
 	}()
 	select {
-	case <-time.After(20 * time.Second):
-		return fmt.Errorf("Couldn't start hello after 15 seconds:\n\n %s", targetLogs())
+	case <-time.After(30 * time.Second):
+		return fmt.Errorf("Couldn't start hello after 30 seconds:\n\n %s", targetLogs())
 	case <-helloPidAppeared:
 		return nil
 	}
@@ -637,7 +907,7 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 	}
 	store := kp.NewConsulStore(client)
 
-	time.Sleep(15 * time.Second)
+	time.Sleep(30 * time.Second)
 	// check consul for health information for each app
 	name, err := os.Hostname()
 	if err != nil {

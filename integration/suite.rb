@@ -47,6 +47,7 @@ abort("You must have vagrant installed") unless system('which vagrant')
 path = File.dirname(__FILE__)
 Dir.glob(File.join(path, '*/')).each do |test_dir|
   next if /.*test-deps/.match(test_dir)
+  next if /^hello/.match(test_dir)
   test_name = File.basename(test_dir)
   Dir.chdir(test_dir) do
     succeeded = false
