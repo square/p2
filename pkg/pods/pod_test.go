@@ -55,8 +55,8 @@ func TestGetLaunchable(t *testing.T) {
 	launchableStanzas := getLaunchableStanzasFromTestManifest(t)
 	pod := getTestPod()
 	Assert(t).AreNotEqual(0, len(launchableStanzas), "Expected there to be at least one launchable stanza in the test manifest")
-	for _, stanza := range launchableStanzas {
-		l, _ := pod.getLaunchable(stanza, "foouser")
+	for launchableID, stanza := range launchableStanzas {
+		l, _ := pod.getLaunchable(launchableID, stanza, "foouser")
 		launchable := l.(hoist.LaunchAdapter).Launchable
 		if launchable.Id != "app" {
 			t.Errorf("Launchable Id did not have expected value: wanted '%s' was '%s'", "app", launchable.Id)
@@ -75,12 +75,11 @@ func TestGetLaunchable(t *testing.T) {
 
 func TestGetLaunchableNoVersion(t *testing.T) {
 	launchableStanza := launch.LaunchableStanza{
-		LaunchableId:   "somelaunchable",
 		Location:       "https://server.com/somelaunchable", // note this doesn't have a version identifier
 		LaunchableType: "hoist",
 	}
 	pod := getTestPod()
-	l, _ := pod.getLaunchable(launchableStanza, "foouser")
+	l, _ := pod.getLaunchable("somelaunchable", launchableStanza, "foouser")
 	launchable := l.(hoist.LaunchAdapter).Launchable
 
 	if launchable.Id != "somelaunchable" {
@@ -125,7 +124,6 @@ func TestPodSetupConfigWritesFiles(t *testing.T) {
 launchables:
   my-app:
     launchable_type: hoist
-    launchable_id: web
     location: https://localhost:4444/foo/bar/baz_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz
     cgroup:
       cpus: 4
@@ -147,8 +145,8 @@ config:
 	pod := podFactory.NewLegacyPod(manifest.ID())
 
 	launchables := make([]launch.Launchable, 0)
-	for _, stanza := range manifest.GetLaunchableStanzas() {
-		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser())
+	for launchableID, stanza := range manifest.GetLaunchableStanzas() {
+		launchable, err := pod.getLaunchable(launchableID, stanza, manifest.RunAsUser())
 		Assert(t).IsNil(err, "There shouldn't have been an error getting launchable")
 		launchables = append(launchables, launchable)
 	}
@@ -174,7 +172,7 @@ config:
 	platConfig, err := ioutil.ReadFile(platformConfigPath)
 	Assert(t).IsNil(err, "should not have erred reading the platform config")
 
-	expectedPlatConfig := `web:
+	expectedPlatConfig := `my-app:
   cgroup:
     cpus: 4
     memory: 4294967296
@@ -350,7 +348,6 @@ func TestInstall(t *testing.T) {
 
 	launchables := map[launch.LaunchableID]launch.LaunchableStanza{
 		"hello": {
-			LaunchableId:   "hello",
 			Location:       testLocation,
 			LaunchableType: "hoist",
 		},

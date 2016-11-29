@@ -80,7 +80,6 @@ func main() {
 	manifestBuilder.SetID(podID())
 
 	stanza := launch.LaunchableStanza{}
-	stanza.LaunchableId = launch.LaunchableID(podID())
 	stanza.LaunchableType = "hoist"
 
 	workingDir := activeDir()
