@@ -18,6 +18,7 @@ import (
 
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
+	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
@@ -436,7 +437,7 @@ func getDeployerAuth(preparerConfig *PreparerConfig) (auth.Policy, error) {
 		}
 		authPolicy, err = auth.NewFileKeyringPolicy(
 			authConfig.KeyringPath,
-			map[types.PodID][]string{POD_ID: authConfig.AuthorizedDeployers},
+			map[types.PodID][]string{constants.PreparerPodID: authConfig.AuthorizedDeployers},
 		)
 		if err != nil {
 			return nil, util.Errorf("error configuring keyring auth: %s", err)
@@ -456,8 +457,8 @@ func getDeployerAuth(preparerConfig *PreparerConfig) (auth.Policy, error) {
 		authPolicy, err = auth.NewUserPolicy(
 			userConfig.KeyringPath,
 			userConfig.DeployPolicyPath,
-			POD_ID,
-			string(POD_ID),
+			constants.PreparerPodID,
+			constants.PreparerPodID.String(),
 		)
 		if err != nil {
 			return nil, util.Errorf("error configuring user auth: %s", err)

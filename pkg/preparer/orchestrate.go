@@ -7,6 +7,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
+	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/statusstore"
@@ -22,7 +23,6 @@ import (
 // The Pod ID of the preparer.
 // Used because the preparer special-cases itself in a few places.
 const (
-	POD_ID             = types.PodID("p2-preparer")
 	minimumBackoffTime = 1 * time.Second
 )
 
@@ -123,7 +123,7 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 			} else {
 				// if the preparer's own ID is missing from the intent set, we
 				// assume it was damaged and discard it
-				if !checkResultsForID(intentResults, POD_ID) {
+				if !checkResultsForID(intentResults, constants.PreparerPodID) {
 					p.Logger.NoFields().Errorln("Intent results set did not contain p2-preparer pod ID, consul data may be corrupted")
 				} else {
 					pairs := p.ZipResultSets(intentResults, realityResults)
@@ -230,7 +230,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				}
 
 				// TODO better solution: force the preparer to have a 0s default timeout, prevent KILLs
-				if pod.Id == POD_ID {
+				if pod.Id == constants.PreparerPodID {
 					pod.DefaultTimeout = time.Duration(0)
 				}
 

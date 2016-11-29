@@ -6,11 +6,11 @@ import (
 
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
+	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
@@ -98,7 +98,7 @@ func authorize(manifest manifest.Manifest) error {
 		policy, err = auth.NewFileKeyringPolicy(
 			*keyring,
 			map[types.PodID][]string{
-				preparer.POD_ID: *allowedUsers,
+				constants.PreparerPodID: *allowedUsers,
 			},
 		)
 		if err != nil {
@@ -115,8 +115,8 @@ func authorize(manifest manifest.Manifest) error {
 		policy, err = auth.NewUserPolicy(
 			*keyring,
 			*deployPolicy,
-			preparer.POD_ID,
-			string(preparer.POD_ID),
+			constants.PreparerPodID,
+			constants.PreparerPodID.String(),
 		)
 		if err != nil {
 			return err
