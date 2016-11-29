@@ -65,12 +65,19 @@ func typePath(labelType Type) string {
 	return path.Join(labelRoot, labelType.String())
 }
 
-func objectPath(labelType Type, id string) string {
-	return path.Join(typePath(labelType), id)
+func objectPath(labelType Type, id string) (string, error) {
+	if id == "" {
+		return "", util.Errorf("Empty ID in label path ")
+	}
+	return path.Join(typePath(labelType), id), nil
 }
 
 func (c *consulApplicator) getLabels(labelType Type, id string) (Labeled, uint64, error) {
-	kvp, _, err := c.kv.Get(objectPath(labelType, id), nil)
+	path, err := objectPath(labelType, id)
+	if err != nil {
+		return Labeled{}, 0, err
+	}
+	kvp, _, err := c.kv.Get(path, nil)
 	if err != nil || kvp == nil {
 		return Labeled{
 			ID:        id,
@@ -219,7 +226,11 @@ func (c *consulApplicator) RemoveLabel(labelType Type, id, label string) error {
 }
 
 func (c *consulApplicator) RemoveAllLabels(labelType Type, id string) error {
-	_, err := c.kv.Delete(objectPath(labelType, id), nil)
+	path, err := objectPath(labelType, id)
+	if err != nil {
+		return err
+	}
+	_, err = c.kv.Delete(path, nil)
 	return err
 }
 
@@ -254,8 +265,12 @@ func convertLabeledToKVP(l Labeled) (*api.KVPair, error) {
 		return nil, err
 	}
 
+	path, err := objectPath(l.LabelType, l.ID)
+	if err != nil {
+		return nil, err
+	}
 	return &api.KVPair{
-		Key:   objectPath(l.LabelType, l.ID),
+		Key:   path,
 		Value: value,
 	}, nil
 }
