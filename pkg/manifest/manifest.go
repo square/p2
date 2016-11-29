@@ -331,8 +331,8 @@ func (manifest *manifest) WriteConfig(out io.Writer) error {
 
 func (manifest *manifest) WritePlatformConfig(out io.Writer) error {
 	platConf := make(map[launch.LaunchableID]interface{})
-	for _, stanza := range manifest.LaunchableStanzas {
-		platConf[stanza.LaunchableId] = map[launch.LaunchableID]interface{}{
+	for launchableID, stanza := range manifest.LaunchableStanzas {
+		platConf[launchableID] = map[launch.LaunchableID]interface{}{
 			"cgroup": stanza.CgroupConfig,
 		}
 	}
@@ -398,16 +398,14 @@ func ValidManifest(m Manifest) error {
 	if m.ID() == "" {
 		return fmt.Errorf("manifest must contain an 'id'")
 	}
-	for key, stanza := range m.GetLaunchableStanzas() {
+	for launchableID, stanza := range m.GetLaunchableStanzas() {
 		switch {
 		case stanza.LaunchableType == "":
-			return fmt.Errorf("'%s': launchable must contain a 'launchable_type'", key)
-		case stanza.LaunchableId == "":
-			return fmt.Errorf("'%s': launchable must contain a 'launchable_id'", key)
+			return fmt.Errorf("'%s': launchable must contain a 'launchable_type'", launchableID)
 		case stanza.Location == "" && stanza.Version.ID == "":
-			return fmt.Errorf("'%s': launchable must contain a 'location' or 'version'", key)
+			return fmt.Errorf("'%s': launchable must contain a 'location' or 'version'", launchableID)
 		case stanza.Location != "" && stanza.Version.ID != "":
-			return fmt.Errorf("'%s': launchable must not contain both 'location' and 'version'", key)
+			return fmt.Errorf("'%s': launchable must not contain both 'location' and 'version'", launchableID)
 		}
 	}
 	return nil

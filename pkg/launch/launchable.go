@@ -30,7 +30,6 @@ type LaunchableVersion struct {
 
 type LaunchableStanza struct {
 	LaunchableType          string            `yaml:"launchable_type"`
-	LaunchableId            LaunchableID      `yaml:"launchable_id"`
 	DigestLocation          string            `yaml:"digest_location,omitempty"`
 	DigestSignatureLocation string            `yaml:"digest_signature_location,omitempty"`
 	RestartTimeout          string            `yaml:"restart_timeout,omitempty"`

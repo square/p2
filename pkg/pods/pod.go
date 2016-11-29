@@ -417,7 +417,7 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 	downloader := artifact.NewLocationDownloader(pod.Fetcher, verifier)
 	for launchableID, stanza := range manifest.GetLaunchableStanzas() {
 		// TODO: investigate passing in necessary fields to InstallDir()
-		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser())
+		launchable, err := pod.getLaunchable(launchableID, stanza, manifest.RunAsUser())
 		if err != nil {
 			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
 			return err
@@ -462,11 +462,11 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 }
 
 func (pod *Pod) Verify(manifest manifest.Manifest, authPolicy auth.Policy) error {
-	for _, stanza := range manifest.GetLaunchableStanzas() {
+	for launchableID, stanza := range manifest.GetLaunchableStanzas() {
 		if stanza.DigestLocation == "" {
 			continue
 		}
-		launchable, err := pod.getLaunchable(stanza, manifest.RunAsUser())
+		launchable, err := pod.getLaunchable(launchableID, stanza, manifest.RunAsUser())
 		if err != nil {
 			return err
 		}
@@ -649,8 +649,8 @@ func (pod *Pod) Launchables(manifest manifest.Manifest) ([]launch.Launchable, er
 	launchableStanzas := manifest.GetLaunchableStanzas()
 	launchables := make([]launch.Launchable, 0, len(launchableStanzas))
 
-	for _, launchableStanza := range launchableStanzas {
-		launchable, err := pod.getLaunchable(launchableStanza, manifest.RunAsUser())
+	for launchableID, launchableStanza := range launchableStanzas {
+		launchable, err := pod.getLaunchable(launchableID, launchableStanza, manifest.RunAsUser())
 		if err != nil {
 			return nil, err
 		}
@@ -685,13 +685,13 @@ func (pod *Pod) SetLogBridgeExec(logExec []string) {
 	pod.LogExec = append([]string{pod.P2Exec}, p2ExecArgs.CommandLine()...)
 }
 
-func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUser string) (launch.Launchable, error) {
-	launchableRootDir := filepath.Join(pod.home, launchableStanza.LaunchableId.String())
+func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza launch.LaunchableStanza, runAsUser string) (launch.Launchable, error) {
+	launchableRootDir := filepath.Join(pod.home, launchableID.String())
 	serviceId := strings.Join(
 		[]string{
 			pod.UniqueName(),
 			"__",
-			launchableStanza.LaunchableId.String(),
+			launchableID.String(),
 		}, "")
 
 	restartTimeout := pod.DefaultTimeout
@@ -707,7 +707,7 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 
 	version, err := launchableStanza.LaunchableVersion()
 	if err != nil {
-		pod.logger.WithError(err).Warnf("Could not parse version from launchable %s.", launchableStanza.LaunchableId)
+		pod.logger.WithError(err).Warnf("Could not parse version from launchable %s.", launchableID)
 	}
 
 	if launchableStanza.LaunchableType == "hoist" {
@@ -721,13 +721,13 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 				"p2",
 				pod.node.String(),
 				pod.UniqueName(),
-				launchableStanza.LaunchableId.String(),
+				launchableID.String(),
 			)
 		}
 
 		ret := &hoist.Launchable{
 			Version:          version,
-			Id:               launchableStanza.LaunchableId,
+			Id:               launchableID,
 			ServiceId:        serviceId,
 			RunAs:            runAsUser,
 			PodEnvDir:        pod.EnvDir(),
@@ -737,7 +737,7 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 			RestartTimeout:   restartTimeout,
 			RestartPolicy_:   launchableStanza.RestartPolicy(),
 			CgroupConfig:     launchableStanza.CgroupConfig,
-			CgroupConfigName: launchableStanza.LaunchableId.String(),
+			CgroupConfigName: launchableID.String(),
 			CgroupName:       cgroupName,
 			SuppliedEnvVars:  launchableStanza.Env,
 			EntryPoints:      entryPoints,
@@ -746,7 +746,7 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 		return ret.If(), nil
 	} else if *ExperimentalOpencontainer && launchableStanza.LaunchableType == "opencontainer" {
 		ret := &opencontainer.Launchable{
-			ID_:             launchableStanza.LaunchableId,
+			ID_:             launchableID,
 			ServiceID_:      serviceId,
 			RunAs:           runAsUser,
 			RootDir:         launchableRootDir,
@@ -760,7 +760,7 @@ func (pod *Pod) getLaunchable(launchableStanza launch.LaunchableStanza, runAsUse
 		return ret, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported", launchableStanza.LaunchableType)
-		pod.logLaunchableError(launchableStanza.LaunchableId.String(), err, "Unknown launchable type")
+		pod.logLaunchableError(launchableID.String(), err, "Unknown launchable type")
 		return nil, err
 	}
 }

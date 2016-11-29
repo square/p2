@@ -607,7 +607,6 @@ func getConsulManifest(dir string) (string, error) {
 	builder.SetID("consul")
 	stanzas := map[launch.LaunchableID]launch.LaunchableStanza{
 		"consul": {
-			LaunchableId:   "consul",
 			LaunchableType: "hoist",
 			Location:       consulTar,
 		},
@@ -686,7 +685,6 @@ func writeHelloManifest(dir string, manifestName string, port int) (string, erro
 	builder.SetStatusHTTP(true)
 	stanzas := map[launch.LaunchableID]launch.LaunchableStanza{
 		"hello": {
-			LaunchableId:   "hello",
 			LaunchableType: "hoist",
 			Location:       hello,
 		},

@@ -25,10 +25,6 @@ func TestPodManifestCanBeRead(t *testing.T) {
 	Assert(t).AreEqual(manifest.GetLaunchableStanzas()["app"].Location, "hoisted-hello_def456.tar.gz", "Location read from manifest didn't have expected value")
 	Assert(t).AreEqual("hoist", manifest.GetLaunchableStanzas()["app"].LaunchableType, "LaunchableType read from manifest didn't have expected value")
 
-	if manifest.GetLaunchableStanzas()["app"].LaunchableId != "app" {
-		t.Errorf("Expected launchable id to be '%s', but was '%s'", "app", manifest.GetLaunchableStanzas()["app"].LaunchableId)
-	}
-
 	Assert(t).AreEqual("staging", manifest.GetConfig()["ENVIRONMENT"], "Should have read the ENVIRONMENT from the config stanza")
 	hoptoad := manifest.GetConfig()["hoptoad"].(map[interface{}]interface{})
 	Assert(t).IsTrue(len(hoptoad) == 3, "Should have read the hoptoad value from the config stanza")
@@ -42,7 +38,6 @@ func testPod() string {
 launchables:
   my-app:
     launchable_type: hoist
-    launchable_id: web
     cgroup:
       cpus: 4
       memory: 1073741824
@@ -59,7 +54,6 @@ func testPodOldStatus() string {
 launchables:
   my-app:
     launchable_type: hoist
-    launchable_id: web
     cgroup:
       cpus: 4
       memory: 1073741824
@@ -79,7 +73,6 @@ id: thepod
 launchables:
   my-app:
     launchable_type: hoist
-    launchable_id: web
     location: https://localhost:4444/foo/bar/baz.tar.gz
 status_port: 8000
 config:
@@ -103,7 +96,6 @@ func TestPodManifestCanBeWritten(t *testing.T) {
 	launchables := map[launch.LaunchableID]launch.LaunchableStanza{
 		"my-app": {
 			LaunchableType: "hoist",
-			LaunchableId:   "web",
 			Location:       "https://localhost:4444/foo/bar/baz.tar.gz",
 			CgroupConfig: cgroups.Config{
 				CPUs:   4,
@@ -145,11 +137,10 @@ func TestPodManifestCanReportItsSHA(t *testing.T) {
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 	val, err := manifest.SHA()
 	Assert(t).IsNil(err, "should not have erred when getting SHA")
-	Assert(t).AreEqual(
-		"92d47f397fbf6679bb7af7e68692df95de811b2993199c2626570984e5c5de3e",
-		val,
-		"SHA mismatched expectations - if this was expected, change the assertion value",
-	)
+	expected := "f7fdad6e2362c9345a83196701dafb989fa8229b8d671642976cb35b5166c6f0"
+	if val != expected {
+		t.Errorf("Expected manifest sha to be %s but was %s. If this was expected, change the assertion value", expected, val)
+	}
 }
 
 func TestPodManifestLaunchablesCGroups(t *testing.T) {
@@ -247,7 +238,6 @@ func TestByteOrderPreserved(t *testing.T) {
 launchables:
   my-app:
     launchable_type: hoist
-    launchable_id: web
     location: https://localhost:4444/foo/bar/baz.tar.gz
 status_port: 8000
 config:
@@ -289,7 +279,6 @@ func TestBuilderHasOriginalFields(t *testing.T) {
 launchables:
   my-app:
     launchable_type: hoist
-    launchable_id: web
     location: https://localhost:4444/foo/bar/baz.tar.gz
 status_port: 8000
 config:
