@@ -126,8 +126,15 @@ func New(config ReporterConfig, logger logging.Logger, podStatusStore podstatus.
 		if err != nil {
 			return nil, util.Errorf("Could not create directory for sqlite database at '%s': %s", databaseDirPath, err)
 		}
+
+		// Chmod it again in case our umask caused the directory perms
+		// to be different than 0777
+		err = os.Chmod(databaseDirPath, 0777)
+		if err != nil {
+			return nil, util.Errorf("Could not chmod 0777 '%s': %s", databaseDirPath, err)
+		}
 	case err == nil:
-		desiredPerms := dirInfo.Mode() | 0666
+		desiredPerms := dirInfo.Mode() | 0777
 		err = os.Chmod(databaseDirPath, desiredPerms)
 		if err != nil {
 			return nil, util.Errorf("Could not make database directory %s world readable and writable: %s", databaseDirPath, err)
