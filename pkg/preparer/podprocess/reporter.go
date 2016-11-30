@@ -47,6 +47,10 @@ type ReporterConfig struct {
 	// blocks restart of runit processes, so it's recommended to wrap the
 	// database insert in a timeout.
 	TimeoutPath string `yaml:"timeout_path"`
+
+	// Specifies the amount of time to wait between SQLite queries for the
+	// latest finish events
+	PollInterval time.Duration `yaml:"poll_interval"`
 }
 
 func (r ReporterConfig) FinishExec() []string {
@@ -95,7 +99,7 @@ type Reporter struct {
 
 // Should only be called if config.FullyConfigured() returned true.
 // Returns an error iff there is a configuration problem.
-func New(config ReporterConfig, logger logging.Logger, podStatusStore podstatus.Store, pollInterval time.Duration) (*Reporter, error) {
+func New(config ReporterConfig, logger logging.Logger, podStatusStore podstatus.Store) (*Reporter, error) {
 	if config.SQLiteDatabasePath == "" {
 		// If the caller uses config.FullyConfigured() properly, this shouldn't happen
 		return nil, util.Errorf("sqlite_database_path not configured, process exit status will not be captured")
@@ -111,6 +115,7 @@ func New(config ReporterConfig, logger logging.Logger, podStatusStore podstatus.
 		return nil, util.Errorf("%s is not executable: perms were %s", config.EnvironmentExtractorPath, info.Mode())
 	}
 
+	pollInterval := config.PollInterval
 	if pollInterval == 0 {
 		pollInterval = DefaultPollInterval
 	}
