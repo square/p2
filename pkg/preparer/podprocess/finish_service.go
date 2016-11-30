@@ -23,6 +23,8 @@ type FinishService interface {
 	GetLatestFinishes(lastID int64) ([]FinishOutput, error)
 	// Gets the last finish result for a given PodUniqueKey
 	LastFinishForPodUniqueKey(podUniqueKey types.PodUniqueKey) (FinishOutput, error)
+	// Deletes any rows with dates before the specified time
+	PruneRowsBefore(time.Time) error
 }
 
 type sqliteFinishService struct {
@@ -113,7 +115,7 @@ var (
 	    exit_code integer,
 	    exit_status integer
 	);`,
-
+		"create index finish_date on finishes(date);",
 		// FUTURE MIGRATIONS GO HERE
 	}
 )
@@ -171,6 +173,15 @@ func (s sqliteFinishService) Migrate() (err error) {
 		s.logger.WithError(err).Errorln("Could not update schema_version table")
 	}
 
+	return err
+}
+
+func (s sqliteFinishService) PruneRowsBefore(time time.Time) error {
+	_, err := s.db.Exec(`
+      DELETE
+      FROM finishes
+      WHERE date < ?
+      `, time)
 	return err
 }
 
