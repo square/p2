@@ -352,31 +352,17 @@ func (pod *Pod) EnvDir() string {
 
 func (pod *Pod) Uninstall() error {
 	currentManifest, err := pod.CurrentManifest()
-	if err != nil {
-		return err
-	}
-	launchables, err := pod.Launchables(currentManifest)
-	if err != nil {
-		return err
-	}
-
-	// halt launchables
-	for _, launchable := range launchables {
-		disableFunc := func() {
-			err = launchable.Disable()
-		}
-		pod.withTimeWarnings("disable", launchable.ServiceID(), disableFunc)
+	switch {
+	case err == nil:
+		// If we found the manifest, gracefully halt all the launchables.
+		err = pod.disableAndHaltLaunchables(currentManifest)
 		if err != nil {
-			pod.logLaunchableWarning(launchable.ServiceID(), err, "Could not disable launchable during uninstallation")
+			return err
 		}
-	}
-
-	// halt launchables
-	for _, launchable := range launchables {
-		err = launchable.Stop(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
-		if err != nil {
-			pod.logLaunchableWarning(launchable.ServiceID(), err, "Could not stop launchable during uninstallation")
-		}
+	case err == NoCurrentManifest:
+		// this is fine, we'll proceed with the uninstall
+	case err != nil:
+		return err
 	}
 
 	// remove services for this pod, then prune the old
@@ -391,7 +377,12 @@ func (pod *Pod) Uninstall() error {
 	}
 
 	// remove pod home dir
-	return os.RemoveAll(pod.home)
+	err = os.RemoveAll(pod.home)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	return nil
 }
 
 // Install will ensure that executables for all required services are present on the host
@@ -763,6 +754,34 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 		pod.logLaunchableError(launchableID.String(), err, "Unknown launchable type")
 		return nil, err
 	}
+}
+
+func (pod *Pod) disableAndHaltLaunchables(currentManifest manifest.Manifest) error {
+	launchables, err := pod.Launchables(currentManifest)
+	if err != nil {
+		return err
+	}
+
+	// halt launchables
+	for _, launchable := range launchables {
+		disableFunc := func() {
+			err = launchable.Disable()
+		}
+		pod.withTimeWarnings("disable", launchable.ServiceID(), disableFunc)
+		if err != nil {
+			pod.logLaunchableWarning(launchable.ServiceID(), err, "Could not disable launchable during uninstallation")
+		}
+	}
+
+	// halt launchables
+	for _, launchable := range launchables {
+		err = launchable.Stop(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
+		if err != nil {
+			pod.logLaunchableWarning(launchable.ServiceID(), err, "Could not stop launchable during uninstallation")
+		}
+	}
+
+	return nil
 }
 
 func (p *Pod) logError(err error, message string) {
