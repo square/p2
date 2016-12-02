@@ -505,6 +505,12 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 			logger.WithError(err).
 				Errorln("Could not update pod status to reflect removal")
 		}
+
+		err = p.podStore.DeleteRealityIndex(pair.PodUniqueKey, p.node)
+		if err != nil {
+			logger.WithError(err).
+				Errorln("Could not remove reality index for uninstalled pod")
+		}
 	}
 	return true
 }
