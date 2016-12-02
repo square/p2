@@ -354,7 +354,7 @@ func (r *Reporter) reportLatestExits() {
 			"finish_id":      finish.ID,
 			"exit_time":      finish.ExitTime,
 		})
-		subLogger.Infoln("Received process exit information")
+		subLogger.Debugln("Received process exit information")
 
 		if finish.PodUniqueKey == "" {
 			// Status is only written to consul for uuid pods
@@ -372,7 +372,7 @@ func (r *Reporter) reportLatestExits() {
 			return
 		}
 
-		subLogger.Infoln("Successfully recorded status")
+		subLogger.Debugln("Successfully recorded status")
 		lastID = finish.ID
 	}
 }
