@@ -391,7 +391,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 			"component": "PodProcessReporter",
 		})
 
-		podProcessReporter, err = podprocess.New(preparerConfig.PodProcessReporterConfig, podProcessReporterLogger, podStatusStore, podprocess.DefaultPollInterval)
+		podProcessReporter, err = podprocess.New(preparerConfig.PodProcessReporterConfig, podProcessReporterLogger, podStatusStore)
 		if err != nil {
 			return nil, err
 		}

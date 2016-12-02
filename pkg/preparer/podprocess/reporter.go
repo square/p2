@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
@@ -25,6 +26,14 @@ const (
 
 	// Specifies the amount of time to wait between SQLite queries for the latest finish events
 	DefaultPollInterval = 15 * time.Second
+
+	// Specifies the default amount of time to wait between pruning sqlite
+	// rows.
+	DefaultPruneInterval = 10 * time.Minute
+
+	// Specifies the default amount to allow a row to exist in the sqlite
+	// database before pruning it
+	DefaultPruneAfter = 24 * time.Hour
 )
 
 type ReporterConfig struct {
@@ -47,6 +56,17 @@ type ReporterConfig struct {
 	// blocks restart of runit processes, so it's recommended to wrap the
 	// database insert in a timeout.
 	TimeoutPath string `yaml:"timeout_path"`
+
+	// Specifies the amount of time to wait between SQLite queries for the
+	// latest finish events
+	PollInterval time.Duration `yaml:"poll_interval"`
+
+	// Length of time to leave rows in the sqlite database before deleting
+	// them.
+	PruneAfter time.Duration `yaml:"prune_after"`
+
+	// Specifies the amount of time to wait between pruning sqlite rows
+	PruneInterval time.Duration `yaml:"prune_interval"`
 }
 
 func (r ReporterConfig) FinishExec() []string {
@@ -84,6 +104,8 @@ type Reporter struct {
 	logger         logging.Logger
 	podStatusStore podstatus.Store
 	pollInterval   time.Duration
+	pruneAfter     time.Duration
+	pruneInterval  time.Duration
 
 	timeoutPath string
 
@@ -95,7 +117,7 @@ type Reporter struct {
 
 // Should only be called if config.FullyConfigured() returned true.
 // Returns an error iff there is a configuration problem.
-func New(config ReporterConfig, logger logging.Logger, podStatusStore podstatus.Store, pollInterval time.Duration) (*Reporter, error) {
+func New(config ReporterConfig, logger logging.Logger, podStatusStore podstatus.Store) (*Reporter, error) {
 	if config.SQLiteDatabasePath == "" {
 		// If the caller uses config.FullyConfigured() properly, this shouldn't happen
 		return nil, util.Errorf("sqlite_database_path not configured, process exit status will not be captured")
@@ -111,8 +133,19 @@ func New(config ReporterConfig, logger logging.Logger, podStatusStore podstatus.
 		return nil, util.Errorf("%s is not executable: perms were %s", config.EnvironmentExtractorPath, info.Mode())
 	}
 
+	pollInterval := config.PollInterval
 	if pollInterval == 0 {
 		pollInterval = DefaultPollInterval
+	}
+
+	pruneInterval := config.PruneInterval
+	if pruneInterval == 0 {
+		pruneInterval = DefaultPruneInterval
+	}
+
+	pruneAfter := config.PruneAfter
+	if pruneAfter == 0 {
+		pruneAfter = DefaultPruneAfter
 	}
 
 	// The directory the sqlite database is in needs to be world readable
@@ -155,6 +188,8 @@ func New(config ReporterConfig, logger logging.Logger, podStatusStore podstatus.
 		logger:                   logger,
 		podStatusStore:           podStatusStore,
 		pollInterval:             pollInterval,
+		pruneInterval:            pruneInterval,
+		pruneAfter:               pruneAfter,
 		timeoutPath:              config.TimeoutPath,
 		databasePath:             config.SQLiteDatabasePath,
 	}, nil
@@ -180,7 +215,7 @@ func (r *Reporter) Run(quitCh <-chan struct{}) error {
 		return util.Errorf("Could not chmod finish database %s to 0666 to allow finish to write to it: %s", r.databasePath, err)
 	}
 
-	go r.publishProcessExits(quitCh)
+	go r.mainLoop(quitCh)
 	return nil
 }
 
@@ -236,8 +271,46 @@ func (r *Reporter) initWorkspaceDir() error {
 	return nil
 }
 
-func (r *Reporter) publishProcessExits(quitCh <-chan struct{}) {
+func (r *Reporter) mainLoop(quitCh <-chan struct{}) {
 	defer r.finishService.Close()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		r.publishProcessExits(quitCh)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		r.pruneRows(quitCh)
+	}()
+
+	wg.Wait()
+}
+
+func (r *Reporter) pruneRows(quitCh <-chan struct{}) {
+	subLogger := r.logger.SubLogger(logrus.Fields{
+		"prune_interval": r.pruneInterval,
+		"prune_after":    r.pruneAfter,
+	})
+	timer := time.NewTimer(0)
+	for {
+		select {
+		case <-quitCh:
+			return
+		case <-timer.C:
+			err := r.finishService.PruneRowsBefore(time.Now().Add(-r.pruneAfter))
+			if err != nil {
+				subLogger.WithError(err).Errorln("Could not prune finish rows")
+			}
+			timer.Reset(r.pruneInterval)
+		}
+	}
+}
+
+func (r *Reporter) publishProcessExits(quitCh <-chan struct{}) {
 	timer := time.NewTimer(0)
 	for {
 		select {
