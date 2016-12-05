@@ -44,6 +44,10 @@ import (
 // TODO: IPv6
 const (
 	DefaultConsulAddress = "127.0.0.1:8500"
+
+	// Can be provided in place of the hook manifest in config to instruct
+	// the preparer to start without hooks.
+	NoHooksSentinelValue = "no_hooks"
 )
 
 type AppConfig struct {
@@ -61,7 +65,6 @@ type Preparer struct {
 	podStatusStore         podstatus.Store
 	podStore               podstore.Store
 	hooks                  Hooks
-	hookListener           HookListener
 	Logger                 logging.Logger
 	podFactory             pods.Factory
 	authPolicy             auth.Policy
@@ -75,6 +78,15 @@ type Preparer struct {
 	// Exported so it can be checked for nil (it only runs if configured)
 	// and quit channel conditially created
 	PodProcessReporter *podprocess.Reporter
+
+	// The pod manifest to use for hooks
+	hooksManifest manifest.Manifest
+
+	// The pod to use for hooks
+	hooksPod *pods.Pod
+
+	// The directory that will actually be executed by the HookDir
+	hooksExecDir string
 }
 
 type store interface {
@@ -112,6 +124,10 @@ type PreparerConfig struct {
 	LogExec                []string               `yaml:"log_exec,omitempty"`
 	LogBridgeBlacklist     []string               `yaml:"log_bridge_blacklist,omitempty"`
 	ArtifactRegistryURL    string                 `yaml:"artifact_registry_url,omitempty"`
+
+	// The pod manifest to use for hooks. If no hooks are desired, use the
+	// NoHooksSentinelValue constant to indicate that there aren't any
+	HooksManifest string `yaml:"hooks_manifest,omitempty"`
 
 	// Configures reporting the exit status of processes started by a pod to Consul
 	PodProcessReporterConfig podprocess.ReporterConfig `yaml:"process_result_reporter_config"`
@@ -360,18 +376,6 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		}
 	}
 
-	listener := HookListener{
-		Intent:           store,
-		HookPrefix:       kp.HOOK_TREE,
-		Node:             preparerConfig.NodeName,
-		HookFactory:      pods.NewHookFactory(filepath.Join(preparerConfig.PodRoot, "hooks"), preparerConfig.NodeName),
-		ExecDir:          preparerConfig.HooksDirectory,
-		Logger:           logger,
-		authPolicy:       authPolicy,
-		artifactVerifier: artifactVerifier,
-		artifactRegistry: artifactRegistry,
-	}
-
 	err = os.MkdirAll(preparerConfig.PodRoot, 0755)
 	if err != nil {
 		return nil, util.Errorf("Could not create preparer pod directory: %s", err)
@@ -399,13 +403,26 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		finishExec = preparerConfig.PodProcessReporterConfig.FinishExec()
 	}
 
+	var hooksManifest manifest.Manifest
+	var hooksPod *pods.Pod
+	if preparerConfig.HooksManifest != NoHooksSentinelValue {
+		if preparerConfig.HooksManifest == "" {
+			return nil, util.Errorf("Most provide a hooks_manifest or sentinel value %q to indicate that there are no hooks", NoHooksSentinelValue)
+		}
+
+		hooksManifest, err = manifest.FromBytes([]byte(preparerConfig.HooksManifest))
+		if err != nil {
+			return nil, util.Errorf("Could not parse configured hooks manifest: %s", err)
+		}
+		hooksPodFactory := pods.NewHookFactory(filepath.Join(preparerConfig.PodRoot, "hooks"), preparerConfig.NodeName)
+		hooksPod = hooksPodFactory.NewHookPod(hooksManifest.ID())
+	}
 	return &Preparer{
 		node:                   preparerConfig.NodeName,
 		store:                  store,
 		hooks:                  hooks.Hooks(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger),
 		podStatusStore:         podStatusStore,
 		podStore:               podStore,
-		hookListener:           listener,
 		Logger:                 logger,
 		podFactory:             pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName),
 		authPolicy:             authPolicy,
@@ -416,6 +433,9 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		artifactVerifier:       artifactVerifier,
 		artifactRegistry:       artifactRegistry,
 		PodProcessReporter:     podProcessReporter,
+		hooksManifest:          hooksManifest,
+		hooksPod:               hooksPod,
+		hooksExecDir:           preparerConfig.HooksDirectory,
 	}, nil
 }
 
@@ -513,4 +533,60 @@ func getArtifactRegistry(preparerConfig *PreparerConfig) (artifact.Registry, err
 	}
 
 	return artifact.NewRegistry(url, uri.DefaultFetcher, osversion.DefaultDetector), nil
+}
+
+func (p *Preparer) InstallHooks() error {
+	if p.hooksManifest == nil {
+		p.Logger.Infoln("No hooks configured, skipping hook installation")
+		return nil
+	}
+
+	sub := p.Logger.SubLogger(logrus.Fields{
+		"pod": p.hooksManifest.ID(),
+	})
+
+	// Figure out if we even need to install anything.
+	// Hooks aren't running services and so there isn't a need
+	// to write the current manifest to the reality store. Instead
+	// we just compare to the manifest on disk.
+	current, err := p.hooksPod.CurrentManifest()
+	if err != nil && err != pods.NoCurrentManifest {
+		p.Logger.WithError(err).Errorln("Could not check current manifest")
+		return err
+	}
+
+	var currentSHA string
+	if current != nil {
+		currentSHA, _ = current.SHA()
+	}
+	newSHA, _ := p.hooksManifest.SHA()
+
+	if err != pods.NoCurrentManifest && currentSHA == newSHA {
+		p.Logger.Infoln("Hooks up to date, nothing to do")
+		// we are up-to-date, continue
+		return nil
+	}
+
+	p.Logger.Infoln("Installing new hook manifest")
+	// The manifest is new, go ahead and install
+	err = p.hooksPod.Install(p.hooksManifest, p.artifactVerifier, p.artifactRegistry)
+	if err != nil {
+		sub.WithError(err).Errorln("Could not install hook")
+		return err
+	}
+
+	_, err = p.hooksPod.WriteCurrentManifest(p.hooksManifest)
+	if err != nil {
+		sub.WithError(err).Errorln("Could not write current manifest")
+		return err
+	}
+
+	// Now that the pod is installed, link it up to the exec dir.
+	err = hooks.InstallHookScripts(p.hooksExecDir, p.hooksPod, p.hooksManifest, sub)
+	if err != nil {
+		sub.WithError(err).Errorln("Could not write hook link")
+		return err
+	}
+	sub.NoFields().Infoln("Updated hook")
+	return nil
 }

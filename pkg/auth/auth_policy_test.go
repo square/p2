@@ -398,10 +398,6 @@ func TestDpolHooks(t *testing.T) {
 	if err != nil {
 		t.Error("expected authorized, got error: ", err)
 	}
-	err = policy.AuthorizeHook(TestSigned{"myhook", "myhook", msg, adminSig}, logger)
-	if err != nil {
-		t.Error("expected authorized, got error: ", err)
-	}
 
 	// Users should not be able to modify the preparer or run hooks
 	err = policy.AuthorizeApp(TestSigned{"preparer", "preparer", msg, userSig}, logger)
@@ -413,14 +409,6 @@ func TestDpolHooks(t *testing.T) {
 		t.Error("expected failure, got authorization")
 	}
 	err = policy.AuthorizeApp(TestSigned{"preparer", "someapp", msg, userSig}, logger)
-	if err == nil {
-		t.Error("expected failure, got authorization")
-	}
-	err = policy.AuthorizeHook(TestSigned{"myhook", "myhook", msg, userSig}, logger)
-	if err == nil {
-		t.Error("expected failure, got authorization")
-	}
-	err = policy.AuthorizeHook(TestSigned{"myhook", "preparer", msg, userSig}, logger)
 	if err == nil {
 		t.Error("expected failure, got authorization")
 	}

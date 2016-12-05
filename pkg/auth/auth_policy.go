@@ -36,12 +36,6 @@ type Policy interface {
 	// returned.
 	AuthorizeApp(manifest Manifest, logger logging.Logger) error
 
-	// Check if a hook is authorized to be used on this node. A hook
-	// is distributed as a pod, but they are extensions of P2 itself,
-	// so they are treated differently than user-deployed Apps. If the
-	// action is authorized, `nil` will be returned.
-	AuthorizeHook(manifest Manifest, logger logging.Logger) error
-
 	// Check if a file digest has a valid signature and that the
 	// signer is authorized to certify the digest. The caller must
 	// separately check that the actual files match the digest. If
@@ -90,10 +84,6 @@ func (e Error) Error() string {
 type NullPolicy struct{}
 
 func (p NullPolicy) AuthorizeApp(manifest Manifest, logger logging.Logger) error {
-	return nil
-}
-
-func (p NullPolicy) AuthorizeHook(manifest Manifest, logger logging.Logger) error {
 	return nil
 }
 
@@ -164,10 +154,6 @@ func (p FixedKeyringPolicy) AuthorizeApp(manifest Manifest, logger logging.Logge
 	}
 
 	return nil
-}
-
-func (p FixedKeyringPolicy) AuthorizeHook(manifest Manifest, logger logging.Logger) error {
-	return p.AuthorizeApp(manifest, logger)
 }
 
 func (p FixedKeyringPolicy) CheckDigest(digest Digest) error {
@@ -290,10 +276,6 @@ func (p FileKeyringPolicy) AuthorizeApp(manifest Manifest, logger logging.Logger
 		(<-p.keyringWatcher.GetAsync()).(openpgp.EntityList),
 		p.AuthorizedDeployers,
 	}.AuthorizeApp(manifest, logger)
-}
-
-func (p FileKeyringPolicy) AuthorizeHook(manifest Manifest, logger logging.Logger) error {
-	return p.AuthorizeApp(manifest, logger)
 }
 
 func (p FileKeyringPolicy) CheckDigest(digest Digest) error {
@@ -499,10 +481,6 @@ func (p UserPolicy) AuthorizeApp(manifest Manifest, logger logging.Logger) error
 		user = p.preparerUser
 	}
 	return p.AuthorizePod(user, manifest, logger)
-}
-
-func (p UserPolicy) AuthorizeHook(manifest Manifest, logger logging.Logger) error {
-	return p.AuthorizePod(p.preparerUser, manifest, logger)
 }
 
 func (p UserPolicy) CheckDigest(digest Digest) error {

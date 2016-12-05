@@ -57,28 +57,6 @@ type Store interface {
 	)
 }
 
-func (p *Preparer) WatchForHooks(quit chan struct{}) {
-	hookErrCh := make(chan error)
-	hookQuitCh := make(chan struct{})
-
-	go p.hookListener.Sync(hookQuitCh, hookErrCh)
-	for {
-		select {
-		case <-quit:
-			hookQuitCh <- struct{}{}
-			return
-		case err := <-hookErrCh:
-			p.Logger.WithError(err).Errorln("Error updating hooks")
-		}
-	}
-}
-
-// Sync the hooks just once. This is useful at preparer startup so that hooks
-// will be synced before normal pod management begins
-func (p *Preparer) SyncHooksOnce() error {
-	return p.hookListener.SyncOnce()
-}
-
 // Identifies a pod which will be serviced by a goroutine. This struct is used
 // in maps that store goroutine-specific resources such as channels for
 // interaction
@@ -518,7 +496,5 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 // Close() releases any resources held by a Preparer.
 func (p *Preparer) Close() {
 	p.authPolicy.Close()
-	// The same verifier is shared twice internally
-	p.hookListener.authPolicy = nil
 	p.authPolicy = nil
 }
