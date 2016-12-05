@@ -107,6 +107,7 @@ func main() {
 		logger,
 		klabels.Everything(),
 		alerter,
+		1*time.Second,
 	).Start(nil)
 	roll.NewFarm(
 		roll.UpdateFactory{

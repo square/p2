@@ -2,6 +2,7 @@ package rcstore
 
 import (
 	"errors"
+	"time"
 
 	"k8s.io/kubernetes/pkg/labels"
 
@@ -34,7 +35,7 @@ type Store interface {
 	// Like WatchNew, but returns structures that also indicate which locks
 	// are held at the time the update came in. This can be used to reduce
 	// lock acquisition work required e.g. in the RC farm.
-	WatchNewWithRCLockInfo(quit <-chan struct{}) (<-chan []RCLockResult, <-chan error)
+	WatchNewWithRCLockInfo(quit <-chan struct{}, pauseTime time.Duration) (<-chan []RCLockResult, <-chan error)
 
 	// Set the desired replica count for the given RC to the given integer.
 	SetDesiredReplicas(fields.ID, int) error
