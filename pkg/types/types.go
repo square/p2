@@ -4,6 +4,8 @@
 package types
 
 import (
+	"errors"
+
 	"github.com/pborman/uuid"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
@@ -28,6 +30,17 @@ func (p PodUniqueKey) String() string { return string(p) }
 
 func NewPodUUID() PodUniqueKey {
 	return PodUniqueKey(uuid.New())
+}
+
+var InvalidUUID = errors.New("does not parse as a uuid")
+
+// Turns a string into a PodUniqueKey iff the string properly parses as a UUID
+func ToPodUniqueKey(podUniqueKeyStr string) (PodUniqueKey, error) {
+	if uuid.Parse(podUniqueKeyStr) != nil {
+		return PodUniqueKey(podUniqueKeyStr), nil
+	}
+
+	return "", InvalidUUID
 }
 
 func (n NodeName) String() string {

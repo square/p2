@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/pborman/uuid"
 
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/podstore"
@@ -560,9 +559,14 @@ func PodUniqueKeyFromConsulPath(consulPath string) (types.PodUniqueKey, error) {
 	}
 
 	// Parse() returns nil if the input string does not match the uuid spec
-	if uuid.Parse(keyParts[2]) != nil {
-		return types.PodUniqueKey(keyParts[2]), nil
+	podUniqueKey, err := types.ToPodUniqueKey(keyParts[2])
+	switch {
+	case err == types.InvalidUUID:
+		// this is okay, it's just a legacy pod
+		podUniqueKey = ""
+	case err != nil:
+		return "", util.Errorf("Could not test whether %s is a valid pod unique key: %s", keyParts[2], err)
 	}
 
-	return "", nil
+	return podUniqueKey, nil
 }
