@@ -108,12 +108,22 @@ func (s *consulStore) CASStatus(t ResourceType, id ResourceID, namespace Namespa
 }
 
 func (s *consulStore) GetStatus(t ResourceType, id ResourceID, namespace Namespace) (Status, *api.QueryMeta, error) {
+	return s.getStatus(t, id, namespace, nil)
+}
+
+func (s *consulStore) WatchStatus(t ResourceType, id ResourceID, namespace Namespace, waitIndex uint64) (Status, *api.QueryMeta, error) {
+	return s.getStatus(t, id, namespace, &api.QueryOptions{
+		WaitIndex: waitIndex,
+	})
+}
+
+func (s *consulStore) getStatus(t ResourceType, id ResourceID, namespace Namespace, queryOptions *api.QueryOptions) (Status, *api.QueryMeta, error) {
 	key, err := namespacedResourcePath(t, id, namespace)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	pair, queryMeta, err := s.kv.Get(key, nil)
+	pair, queryMeta, err := s.kv.Get(key, queryOptions)
 	if err != nil {
 		return nil, nil, consulutil.NewKVError("get", key, err)
 	}

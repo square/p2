@@ -45,6 +45,24 @@ func (c *consulStore) Get(key types.PodUniqueKey) (PodStatus, *api.QueryMeta, er
 	return podStatus, queryMeta, nil
 }
 
+func (c *consulStore) WaitForStatus(key types.PodUniqueKey, waitIndex uint64) (PodStatus, *api.QueryMeta, error) {
+	if key == "" {
+		return PodStatus{}, nil, util.Errorf("Cannot retrieve status for a pod with an empty uuid")
+	}
+
+	status, queryMeta, err := c.statusStore.WatchStatus(statusstore.POD, statusstore.ResourceID(key), c.namespace, waitIndex)
+	if err != nil {
+		return PodStatus{}, queryMeta, err
+	}
+
+	podStatus, err := statusToPodStatus(status)
+	if err != nil {
+		return PodStatus{}, queryMeta, err
+	}
+
+	return podStatus, queryMeta, nil
+}
+
 func (c *consulStore) GetStatusFromIndex(index podstore.PodIndex) (PodStatus, *api.QueryMeta, error) {
 	return c.Get(index.PodKey)
 }
