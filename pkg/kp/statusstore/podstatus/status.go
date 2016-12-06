@@ -11,6 +11,8 @@ import (
 
 type PodState string
 
+func (p PodState) String() string { return string(p) }
+
 const (
 	// Signifies that the pod has been launched
 	PodLaunched PodState = "launched"

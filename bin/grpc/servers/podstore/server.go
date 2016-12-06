@@ -12,6 +12,8 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/flags"
 	kp_podstore "github.com/square/p2/pkg/kp/podstore"
+	"github.com/square/p2/pkg/kp/statusstore"
+	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v2"
@@ -29,6 +31,7 @@ func main() {
 
 	client := kp.NewConsulClient(opts)
 	podStore := kp_podstore.NewConsul(client.KV())
+	podStatusStore := podstatus.NewConsul(statusstore.NewConsul(client), kp.PreparerPodStatusNamespace)
 
 	logger := log.New(os.Stderr, "", 0)
 	port := getPort(logger)
@@ -39,7 +42,7 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	podstore_protos.RegisterP2PodStoreServer(s, podstore.NewServer(podStore))
+	podstore_protos.RegisterP2PodStoreServer(s, podstore.NewServer(podStore, podStatusStore))
 	if err := s.Serve(lis); err != nil {
 		logger.Fatalf("failed to serve: %v", err)
 	}
