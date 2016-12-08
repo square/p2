@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package podstore;
+
+// Namespaced with P2 so that grpc services defined here can be embedded as a
+// library
+service P2PodStore {
+  // Schedules a uuid pod on a host
+  rpc SchedulePod (SchedulePodRequest) returns (SchedulePodResponse) {}
+  rpc WatchPodStatus (WatchPodStatusRequest) returns (stream PodStatusResponse) {}
+}
+
+message SchedulePodRequest {
+  string manifest = 1;
+  string node_name = 2;
+}
+
+message SchedulePodResponse {
+  string pod_unique_key = 1;
+}
+
+message WatchPodStatusRequest {
+  string pod_unique_key = 1;
+  uint64 wait_index = 2; // the WaitIndex to pass to watch requests
+  string status_namespace = 3;
+}
+
+message PodStatusResponse {
+  string manifest = 1;
+  string pod_state = 2; // e.g. "launched" or "removed"
+  repeated ProcessStatus process_statuses = 3;
+  uint64 last_index = 4;
+}
+
+message ProcessStatus {
+  string launchable_id = 1;
+  string entry_point = 2;
+  ExitStatus last_exit = 3;
+}
+
+message ExitStatus {
+  int64 exit_time = 1;
+  int64 exit_code = 2;
+  int64 exit_status = 3;
+}

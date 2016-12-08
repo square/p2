@@ -53,6 +53,9 @@ type Store interface {
 	// namespaced by a Namespace string
 	GetStatus(t ResourceType, id ResourceID, namespace Namespace) (Status, *api.QueryMeta, error)
 
+	// Like GetStatus(), but doesn't return status until waitIndex has been surpassed in consul
+	WatchStatus(t ResourceType, id ResourceID, namespace Namespace, waitIndex uint64) (Status, *api.QueryMeta, error)
+
 	// Delete the status entry for a resource that has been deleted once the
 	// deletion has been processed
 	DeleteStatus(t ResourceType, id ResourceID, namespace Namespace) error

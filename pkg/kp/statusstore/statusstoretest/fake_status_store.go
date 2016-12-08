@@ -3,6 +3,7 @@ package statusstoretest
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/square/p2/pkg/kp/statusstore"
 
@@ -98,6 +99,23 @@ func (s *FakeStatusStore) GetStatus(
 	}
 
 	return status, &api.QueryMeta{LastIndex: s.LastIndex}, nil
+}
+
+func (s *FakeStatusStore) WatchStatus(
+	t statusstore.ResourceType,
+	id statusstore.ResourceID,
+	namespace statusstore.Namespace,
+	waitIndex uint64,
+) (statusstore.Status, *api.QueryMeta, error) {
+	// This should be used in tests that enforce timeouts, so don't worry about
+	// infinite looping here
+	for {
+		if waitIndex <= s.LastIndex {
+			return s.GetStatus(t, id, namespace)
+		}
+
+		time.Sleep(1 * time.Millisecond)
+	}
 }
 
 func (s *FakeStatusStore) DeleteStatus(
