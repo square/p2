@@ -62,8 +62,7 @@ func main() {
 	}).Infoln("Preparer started successfully")
 
 	quitMainUpdate := make(chan struct{})
-	quitHookUpdate := make(chan struct{})
-	quitChans := []chan struct{}{quitHookUpdate}
+	var quitChans []chan struct{}
 
 	// Install the latest hooks before any pods are processed
 	err = prep.InstallHooks()
