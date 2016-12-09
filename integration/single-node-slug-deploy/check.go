@@ -68,7 +68,13 @@ func main() {
 	if err != nil {
 		log.Fatalln("Could not create temp directory, bailing")
 	}
-	preparerManifest, err := generatePreparerPod(tempdir)
+
+	userHookManifest, err := userCreationHookManifest(tempdir)
+	if err != nil {
+		log.Fatalf("Couldn't schedule the user creation hook: %s", err)
+	}
+
+	preparerManifest, err := generatePreparerPod(tempdir, userHookManifest)
 	if err != nil {
 		log.Fatalf("Could not generate preparer pod: %s\n", err)
 	}
@@ -94,11 +100,6 @@ func main() {
 	err = executeBootstrap(signedPreparerManifest, signedConsulManifest)
 	if err != nil {
 		log.Fatalf("Could not execute bootstrap: %s\n%s", err, targetLogs())
-	}
-
-	err = scheduleUserCreationHook(tempdir)
-	if err != nil {
-		log.Fatalf("Couldn't schedule the user creation hook: %s", err)
 	}
 
 	// Wait a bit for preparer's http server to be ready
@@ -409,7 +410,7 @@ func signBuild(artifactPath string) error {
 	return nil
 }
 
-func generatePreparerPod(workdir string) (string, error) {
+func generatePreparerPod(workdir string, userHookManifest manifest.Manifest) (string, error) {
 	// build the artifact from HEAD
 	output, err := exec.Command("go", "build", "github.com/square/p2/bin/p2-preparer").CombinedOutput()
 	if err != nil {
@@ -443,6 +444,12 @@ func generatePreparerPod(workdir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("Could not find p2-finish-env-extractor on PATH")
 	}
+
+	userCreationHookBytes, err := userHookManifest.Marshal()
+	if err != nil {
+		return "", util.Errorf("Couldn't marshal user hook manifest: %s", err)
+	}
+
 	err = builder.SetConfig(map[interface{}]interface{}{
 		"preparer": map[interface{}]interface{}{
 			"auth": map[string]string{
@@ -462,6 +469,7 @@ func generatePreparerPod(workdir string) (string, error) {
 				"environment_extractor_path": strings.TrimSpace(string(envExtractorPath)),
 				"workspace_dir_path":         "/data/pods/p2-preparer/tmp",
 			},
+			"hooks_manifest": string(userCreationHookBytes),
 		},
 	})
 	if err != nil {
@@ -530,7 +538,7 @@ func waitForStatus(statusPort int, pod string, waitTime time.Duration) error {
 	}
 }
 
-func scheduleUserCreationHook(tmpdir string) error {
+func userCreationHookManifest(tmpdir string) (manifest.Manifest, error) {
 	createUserPath := path.Join(tmpdir, "create_user")
 	script := `#!/usr/bin/env bash
 set -e
@@ -539,41 +547,30 @@ mkdir -p $HOOKED_POD_HOME
 `
 	err := ioutil.WriteFile(createUserPath, []byte(script), 0744)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	cmd := exec.Command("p2-bin2pod", "--work-dir", tmpdir, createUserPath)
 	createUserBin2Pod, err := executeBin2Pod(cmd)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err = signBuild(createUserBin2Pod.TarPath); err != nil {
-		return err
+		return nil, err
 	}
 	manifestPath := createUserBin2Pod.ManifestPath
 
 	userHookManifest, err := manifest.FromPath(manifestPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	builder := userHookManifest.GetBuilder()
 
 	builder.SetRunAsUser("root")
 	userHookManifest = builder.GetManifest()
-	contents, err := userHookManifest.Marshal()
-	if err != nil {
-		return err
-	}
-
-	ioutil.WriteFile(manifestPath, contents, 0644)
-
-	manifestPath, err = signManifest(manifestPath, tmpdir)
-	if err != nil {
-		return err
-	}
-	return exec.Command("p2-schedule", "--hook", manifestPath).Run()
+	return userHookManifest, nil
 }
 
 type Bin2PodResult struct {
