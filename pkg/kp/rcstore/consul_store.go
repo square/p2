@@ -214,13 +214,13 @@ type RCLockResult struct {
 // possible that lock information will be out of date as the list is processed.
 // However, a subsequent update will get the correct view of the world so the
 // behavior should be correct
-func (s *consulStore) WatchNewWithRCLockInfo(quit <-chan struct{}) (<-chan []RCLockResult, <-chan error) {
+func (s *consulStore) WatchNewWithRCLockInfo(quit <-chan struct{}, pauseTime time.Duration) (<-chan []RCLockResult, <-chan error) {
 	inCh := make(chan api.KVPairs)
 	lockInfoErrCh := make(chan error)
 	combinedErrCh := make(chan error)
 
 	rcCh, rcErrCh := publishLatestRCs(inCh, quit)
-	go consulutil.WatchPrefix(rcTree+"/", s.kv, inCh, quit, rcErrCh, 1*time.Second)
+	go consulutil.WatchPrefix(rcTree+"/", s.kv, inCh, quit, rcErrCh, pauseTime)
 
 	// Process RC updates and augment them with lock information
 	outCh, lockInfoErrCh := s.publishLatestRCsWithLockInfo(rcCh, quit)

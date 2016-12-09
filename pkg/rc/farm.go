@@ -58,6 +58,12 @@ type Farm struct {
 	logger     logging.Logger
 	alerter    alerting.Alerter
 	rcSelector klabels.Selector
+
+	// The length of time to wait between a watch returning and initiating
+	// the next. This is useful for tuning QPS and bandwidth to the
+	// datastore. Higher values will result in delays in processing newly
+	// created RCs but lower bandwidth usage and QPS.
+	rcWatchPauseTime time.Duration
 }
 
 type childRC struct {
@@ -82,21 +88,23 @@ func NewFarm(
 	logger logging.Logger,
 	rcSelector klabels.Selector,
 	alerter alerting.Alerter,
+	rcWatchPauseTime time.Duration,
 ) *Farm {
 	if alerter == nil {
 		alerter = alerting.NewNop()
 	}
 
 	return &Farm{
-		store:      store,
-		rcStore:    rcs,
-		scheduler:  scheduler,
-		labeler:    labeler,
-		sessions:   sessions,
-		logger:     logger,
-		children:   make(map[fields.ID]childRC),
-		alerter:    alerter,
-		rcSelector: rcSelector,
+		store:            store,
+		rcStore:          rcs,
+		scheduler:        scheduler,
+		labeler:          labeler,
+		sessions:         sessions,
+		logger:           logger,
+		children:         make(map[fields.ID]childRC),
+		alerter:          alerter,
+		rcSelector:       rcSelector,
+		rcWatchPauseTime: rcWatchPauseTime,
 	}
 }
 
@@ -119,7 +127,7 @@ func (rcf *Farm) Start(quit <-chan struct{}) {
 func (rcf *Farm) mainLoop(quit <-chan struct{}) {
 	subQuit := make(chan struct{})
 	defer close(subQuit)
-	rcWatch, rcErr := rcf.rcStore.WatchNewWithRCLockInfo(subQuit)
+	rcWatch, rcErr := rcf.rcStore.WatchNewWithRCLockInfo(subQuit, rcf.rcWatchPauseTime)
 
 START_LOOP:
 	for {
