@@ -110,3 +110,14 @@ type Applicator interface {
 		quitCh <-chan struct{},
 	) <-chan *LabeledChanges
 }
+
+// Nothing returns a selector that cannot match any labels. It is different
+// from klabels.Nothing() in that it can be serialzed as a string and re-
+// parsed as a selector while being in the grammar for selectors.
+func Nothing() labels.Selector {
+	sel, err := labels.Parse("x=1,x=0")
+	if err != nil {
+		panic(err)
+	}
+	return sel
+}
