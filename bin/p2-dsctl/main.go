@@ -116,10 +116,10 @@ func main() {
 		if *createEverywhere {
 			selectorString = klabels.Everything().String()
 		} else if selectorString == "" {
-			selectorString = klabels.Nothing().String()
+			selectorString = labels.Nothing().String()
 			log.Fatal("Explicit everything selector not allowed, please use the --everwhere flag")
 		}
-		selector, err := parseNodeSelectorWithPrompt(klabels.Nothing(), selectorString, applicator)
+		selector, err := parseNodeSelectorWithPrompt(labels.Nothing(), selectorString, applicator)
 		if err != nil {
 			log.Fatalf("Error occurred: %v", err)
 		}
