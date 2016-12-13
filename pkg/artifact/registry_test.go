@@ -60,7 +60,7 @@ func locationDataRegistry() Registry {
 
 func TestLocationDataForLaunchableWithLocation(t *testing.T) {
 	registry := locationDataRegistry()
-	location, artifactData, err := registry.LocationDataForLaunchable("launchable_id", locationLaunchable())
+	location, artifactData, err := registry.LocationDataForLaunchable("pod_id", "launchable_id", locationLaunchable())
 	if err != nil {
 		t.Fatalf("Unexpected error getting location data: %s", err)
 	}
@@ -104,7 +104,7 @@ func TestLocationDataForLaunchableWithLocation(t *testing.T) {
 func TestNeitherVersionNorLocationInvalid(t *testing.T) {
 	launchable := launch.LaunchableStanza{}
 	registry := locationDataRegistry()
-	_, _, err := registry.LocationDataForLaunchable("launchable_id", launchable)
+	_, _, err := registry.LocationDataForLaunchable("pod_id", "launchable_id", launchable)
 	if err == nil {
 		t.Errorf("Expected an error when launchable has neither version nor location")
 	}
@@ -118,7 +118,7 @@ func TestBothVersionAndLocationInvalid(t *testing.T) {
 		Location: testLocation,
 	}
 	registry := locationDataRegistry()
-	_, _, err := registry.LocationDataForLaunchable("launchable_id", launchable)
+	_, _, err := registry.LocationDataForLaunchable("pod_id", "launchable_id", launchable)
 	if err == nil {
 		t.Errorf("Expected an error when launchable has both version and location")
 	}
@@ -171,7 +171,7 @@ func TestVersionScheme(t *testing.T) {
 
 	registryHost := "registryhost.com"
 	registry := NewRegistry(&url.URL{Scheme: "https", Host: registryHost}, fakeFetcher, detector)
-	artifactURL, verificationData, err := registry.LocationDataForLaunchable("launchable_id", launchable)
+	artifactURL, verificationData, err := registry.LocationDataForLaunchable("pod_id", "launchable_id", launchable)
 	if err != nil {
 		t.Fatalf("Unexpected error getting location data: %s", err)
 	}
@@ -241,5 +241,47 @@ func TestVersionScheme(t *testing.T) {
 
 	if query.Get("version") != launchable.Version.ID.String() {
 		t.Errorf("Version tag wasn't properly passed, wanted version=%s included in the request URL", launchable.Version.ID)
+	}
+}
+
+type fixedDetector struct{}
+
+func (f *fixedDetector) Version() (osversion.OS, osversion.OSVersion, error) {
+	return "a", "b", nil
+}
+
+func TestDiscoveryArtifactOverride(t *testing.T) {
+	fakeFetcher := &FakeFetcher{Data: []byte{}}
+	registryHost := "registryhost.com"
+	registry := NewRegistry(&url.URL{Scheme: "https", Host: registryHost}, fakeFetcher, &fixedDetector{})
+
+	testCases := []struct {
+		ver      launch.LaunchableVersion
+		expected launch.ArtifactName
+	}{
+		{
+			ver:      launch.LaunchableVersion{ID: "ver"},
+			expected: "launchable_id",
+		}, {
+			ver: launch.LaunchableVersion{
+				ID:               "ver",
+				ArtifactOverride: "overridden",
+			},
+			expected: "overridden",
+		},
+	}
+
+	for i, testCase := range testCases {
+		// Don't care about any return value, even the error.
+		// Just care about what URL was hit.
+		_, _, _ = registry.LocationDataForLaunchable("pod_id", "launchable_id", launch.LaunchableStanza{Version: testCase.ver})
+		expectedPath := discoverBasePath + "/pod_id"
+		if fakeFetcher.FetchedURL.Path != expectedPath {
+			t.Errorf("Case %d fetched %q instead of %q", i, fakeFetcher.FetchedURL.Path, expectedPath)
+		}
+		query := fakeFetcher.FetchedURL.Query()
+		if query.Get("artifact_name") != testCase.expected.String() {
+			t.Errorf("Case %d had artifact_name %q instead of %q", i, query.Get("artifact_name"), testCase.expected)
+		}
 	}
 }

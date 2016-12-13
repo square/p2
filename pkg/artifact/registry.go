@@ -9,12 +9,14 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/osversion"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 )
 
 const (
 	discoverBasePath = "/discover"
+	artifactNameTag  = "artifact_name"
 	osTag            = "os"
 	osVersionTag     = "os_version"
 	versionTag       = "version"
@@ -25,7 +27,7 @@ type Registry interface {
 	// Given a LaunchableStanza from a pod manifest, returns a URL from which the
 	// artifact can be fetched an a struct containing the locations of files that
 	// can be used to verify artifact integrity
-	LocationDataForLaunchable(launchableID launch.LaunchableID, stanza launch.LaunchableStanza) (*url.URL, auth.VerificationData, error)
+	LocationDataForLaunchable(podID types.PodID, launchableID launch.LaunchableID, stanza launch.LaunchableStanza) (*url.URL, auth.VerificationData, error)
 }
 
 type registry struct {
@@ -59,7 +61,7 @@ func NewRegistry(registryURL *url.URL, fetcher uri.Fetcher, osVersionDetector os
 // manifest: ".manifest"
 // manifest signature: ".manifest.sig"
 // build signature: ".sig"
-func (a registry) LocationDataForLaunchable(launchableID launch.LaunchableID, stanza launch.LaunchableStanza) (*url.URL, auth.VerificationData, error) {
+func (a registry) LocationDataForLaunchable(podID types.PodID, launchableID launch.LaunchableID, stanza launch.LaunchableStanza) (*url.URL, auth.VerificationData, error) {
 	if stanza.Location == "" && stanza.Version.ID == "" {
 		return nil, auth.VerificationData{}, util.Errorf("Launchable must provide either \"location\" or \"version\" fields")
 	}
@@ -83,7 +85,7 @@ func (a registry) LocationDataForLaunchable(launchableID launch.LaunchableID, st
 		return nil, auth.VerificationData{}, util.Errorf("No artifact registry configured and location field not present on launchable %s", launchableID)
 	}
 
-	return a.fetchRegistryData(launchableID, stanza.Version)
+	return a.fetchRegistryData(podID, launchableID, stanza.Version)
 }
 
 type RegistryResponse struct {
@@ -93,9 +95,9 @@ type RegistryResponse struct {
 	BuildSignatureLocation    string `json:"signature_location"`
 }
 
-func (a registry) fetchRegistryData(launchableID launch.LaunchableID, version launch.LaunchableVersion) (*url.URL, auth.VerificationData, error) {
+func (a registry) fetchRegistryData(podID types.PodID, launchableID launch.LaunchableID, version launch.LaunchableVersion) (*url.URL, auth.VerificationData, error) {
 	requestURL := &url.URL{
-		Path: fmt.Sprintf("%s/%s", discoverBasePath, launchableID),
+		Path: fmt.Sprintf("%s/%s", discoverBasePath, podID),
 	}
 	query := url.Values{}
 	for key, val := range version.Tags {
@@ -107,6 +109,11 @@ func (a registry) fetchRegistryData(launchableID launch.LaunchableID, version la
 		return nil, auth.VerificationData{}, err
 	}
 
+	if version.ArtifactOverride.String() != "" {
+		query.Add(artifactNameTag, version.ArtifactOverride.String())
+	} else {
+		query.Add(artifactNameTag, launchableID.String())
+	}
 	query.Add(osTag, os.String())
 	query.Add(osVersionTag, osVersion.String())
 	query.Add(versionTag, version.ID.String())
