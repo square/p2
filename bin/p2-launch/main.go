@@ -2,6 +2,8 @@ package main
 
 import (
 	"log"
+	"net"
+	"net/http"
 	"os"
 
 	"github.com/square/p2/pkg/artifact"
@@ -14,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
+	netutil "github.com/square/p2/pkg/util/net"
 	"github.com/square/p2/pkg/version"
 
 	"github.com/Sirupsen/logrus"
@@ -31,6 +34,7 @@ var (
 		"deploy-policy",
 		"the deploy policy specifying who may deploy each pod. Only used when --auth-type is 'user'",
 	).Short('d').ExistingFile()
+	caFile = kingpin.Flag("tls-ca-file", "File containing the x509 PEM-encoded CA ").ExistingFile()
 )
 
 func main() {
@@ -57,7 +61,33 @@ func main() {
 
 	podFactory := pods.NewFactory(*podRoot, types.NodeName(*nodeName))
 	pod := podFactory.NewLegacyPod(manifest.ID())
-	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector))
+
+	var transport http.RoundTripper
+	if *caFile != "" {
+		tlsConfig, err := netutil.GetTLSConfig("", "", *caFile)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		transport = &http.Transport{
+			TLSClientConfig: tlsConfig,
+			// same dialer as http.DefaultTransport
+			Dial: (&net.Dialer{
+				Timeout:   http.DefaultClient.Timeout,
+				KeepAlive: http.DefaultClient.Timeout,
+			}).Dial,
+		}
+	} else {
+		transport = http.DefaultTransport
+	}
+
+	httpClient := &http.Client{
+		Transport: transport,
+	}
+
+	fetcher := uri.BasicFetcher{Client: httpClient}
+	pod.Fetcher = fetcher
+	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(nil, fetcher, osversion.DefaultDetector))
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)
 	}
