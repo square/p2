@@ -15,6 +15,10 @@ import (
 
 const EntryPointEnvVar = "ENTRY_POINT"
 
+type ArtifactName string
+
+func (a ArtifactName) String() string { return string(a) }
+
 type LaunchableID string
 
 func (l LaunchableID) String() string { return string(l) }
@@ -24,8 +28,11 @@ type LaunchableVersionID string
 func (l LaunchableVersionID) String() string { return string(l) }
 
 type LaunchableVersion struct {
-	ID   LaunchableVersionID `yaml:"id"`
-	Tags map[string]string   `yaml:"tags,omitempty"`
+	// If present, overrides the artifact name to be used when discovering the artifact.
+	// If absent, the name used for discovery defaults to the launchable ID.
+	ArtifactOverride ArtifactName        `yaml:"artifact_name,omitempty"`
+	ID               LaunchableVersionID `yaml:"id"`
+	Tags             map[string]string   `yaml:"tags,omitempty"`
 }
 
 type LaunchableStanza struct {

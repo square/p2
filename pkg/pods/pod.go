@@ -418,7 +418,7 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 			continue
 		}
 
-		launchableURL, verificationData, err := artifactRegistry.LocationDataForLaunchable(launchableID, stanza)
+		launchableURL, verificationData, err := artifactRegistry.LocationDataForLaunchable(pod.Id, launchableID, stanza)
 		if err != nil {
 			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
 			return err
