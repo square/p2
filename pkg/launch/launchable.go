@@ -30,9 +30,9 @@ func (l LaunchableVersionID) String() string { return string(l) }
 type LaunchableVersion struct {
 	// If present, overrides the artifact name to be used when discovering the artifact.
 	// If absent, the name used for discovery defaults to the launchable ID.
-	ArtifactOverride ArtifactName        `yaml:"artifact_name,omitempty"`
-	ID               LaunchableVersionID `yaml:"id"`
-	Tags             map[string]string   `yaml:"tags,omitempty"`
+	ArtifactOverride ArtifactName        `json:"artifact_name,omitempty" yaml:"artifact_name,omitempty"`
+	ID               LaunchableVersionID `json:"id" yaml:"id"`
+	Tags             map[string]string   `json:"tags,omitempty" yaml:"tags,omitempty"`
 }
 
 type LaunchableStanza struct {
