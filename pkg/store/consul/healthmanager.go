@@ -306,7 +306,7 @@ func processHealthUpdater(
 					continue
 				}
 				if remoteHealth == nil {
-					go sendHealthUpdate(writeLogger, w, localHealth, doThrottle, func() error {
+					go sendHealthUpdate(writeLogger, w, writeHealth, doThrottle, func() error {
 						ok, _, err := client.KV().Acquire(kv, nil)
 						if err != nil {
 							return consulutil.NewKVError("acquire", kv.Key, err)
@@ -317,7 +317,7 @@ func processHealthUpdater(
 						return nil
 					})
 				} else {
-					go sendHealthUpdate(writeLogger, w, localHealth, doThrottle, func() error {
+					go sendHealthUpdate(writeLogger, w, writeHealth, doThrottle, func() error {
 						_, err := client.KV().Put(kv, nil)
 						if err != nil {
 							return consulutil.NewKVError("put", kv.Key, err)
@@ -375,8 +375,16 @@ func sendHealthUpdate(
 		logger.WithError(err).Error("error writing health")
 		// Try not to overwhelm Consul
 		time.Sleep(time.Duration(*HealthRetryTimeSec) * time.Second)
-		w <- writeResult{nil, false, doThrottle}
+		w <- writeResult{
+			Health:   nil,
+			OK:       false,
+			Throttle: doThrottle,
+		}
 	} else {
-		w <- writeResult{health, true, doThrottle}
+		w <- writeResult{
+			Health:   health,
+			OK:       true,
+			Throttle: doThrottle,
+		}
 	}
 }
