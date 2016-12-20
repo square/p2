@@ -6,7 +6,7 @@ import (
 
 	"github.com/square/p2/pkg/manifest"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
-	"github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/store"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
@@ -26,23 +26,23 @@ func IsAmbiguousRCSelector(err error) bool {
 // to the different locking needs of each scenario
 type Store interface {
 	// retrieve this Update
-	Get(fields.ID) (fields.Update, error)
+	Get(store.RollingUpdateID) (store.RollingUpdate, error)
 	// retrieve all updates
-	List() ([]fields.Update, error)
+	List() ([]store.RollingUpdate, error)
 	// DEPRECATED: creates a rollstore with no guarantees about atomic
 	// creation of RCs. It's easy to generate inconsistent data when using
 	// this
-	Put(u fields.Update) error
+	Put(u store.RollingUpdate) error
 	// Creates a rolling update from two existing RCs. Will check that the
 	// RCs actually exist before applying the update, and acquire locks on
 	// them in a deterministic order to guarantee that no two RUs will
 	// operate on the same RC and will avoid deadlock scenarios. Before
 	// the RU is created, newRCLabels will be applied to the new RC
 	CreateRollingUpdateFromExistingRCs(
-		update fields.Update,
+		update store.RollingUpdate,
 		newRCLabels klabels.Set,
 		rollLabels klabels.Set,
-	) (fields.Update, error)
+	) (store.RollingUpdate, error)
 	// Creates a rolling update using an existing RC with a known ID as the
 	// old replication controller, creates the new replication controller,
 	// and labels the new replication controller according to newRCLabels.
@@ -57,7 +57,7 @@ type Store interface {
 		newRCPodLabels klabels.Set,
 		newRCLabels klabels.Set,
 		rollLabels klabels.Set,
-	) (fields.Update, error)
+	) (store.RollingUpdate, error)
 	// Creates a rolling update using a label selector to identify the old
 	// replication controller to be used.  If one does not exist, one will
 	// be created to serve as a "dummy" old replication controller. The new
@@ -74,14 +74,14 @@ type Store interface {
 		newRCPodLabels klabels.Set,
 		newRCLabels klabels.Set,
 		rollLabels klabels.Set,
-	) (fields.Update, error)
+	) (store.RollingUpdate, error)
 	// delete this Update from the store
-	Delete(fields.ID) error
+	Delete(store.RollingUpdateID) error
 	// take a lock on this ID. Before taking ownership of an Update, its new RC
 	// ID, and old RC ID if any, should both be locked. If the error return is
 	// nil, then the boolean indicates whether the lock was successfully taken.
-	Lock(fields.ID, string) (bool, error)
+	Lock(store.RollingUpdateID, string) (bool, error)
 	// Watch for changes to the store and generate a list of Updates for each
 	// change. This function does not block.
-	Watch(<-chan struct{}) (<-chan []fields.Update, <-chan error)
+	Watch(<-chan struct{}) (<-chan []store.RollingUpdate, <-chan error)
 }

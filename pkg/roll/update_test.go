@@ -16,7 +16,7 @@ import (
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/rc"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
-	"github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -73,49 +73,49 @@ func TestRollAlgorithmIncreases(t *testing.T) {
 }
 
 func TestShouldContinue(t *testing.T) {
-	u := update{Update: fields.Update{DesiredReplicas: 3}}
+	u := update{RollingUpdate: store.RollingUpdate{DesiredReplicas: 3}}
 	oldNodes := rcNodeCounts{Desired: 3, Current: 3}
 	newNodes := rcNodeCounts{Desired: 0, Current: 0}
 	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldContinue, "RU should continue if there is work to be done")
 }
 
 func TestShouldContinue2(t *testing.T) {
-	u := update{Update: fields.Update{DesiredReplicas: 3}}
+	u := update{RollingUpdate: store.RollingUpdate{DesiredReplicas: 3}}
 	oldNodes := rcNodeCounts{Desired: 1, Current: 1}
 	newNodes := rcNodeCounts{Desired: 2, Current: 2}
 	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldContinue, "RU should continue if there is work to be done")
 }
 
 func TestShouldStopIfNodesCurrent(t *testing.T) {
-	u := update{Update: fields.Update{DesiredReplicas: 3}}
+	u := update{RollingUpdate: store.RollingUpdate{DesiredReplicas: 3}}
 	oldNodes := rcNodeCounts{Desired: 0, Current: 0}
 	newNodes := rcNodeCounts{Desired: 3, Current: 3}
 	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldTerminate, "RU should terminate if enough nodes are current")
 }
 
 func TestShouldBlockIfWaitingForCurrentNodes(t *testing.T) {
-	u := update{Update: fields.Update{DesiredReplicas: 3}}
+	u := update{RollingUpdate: store.RollingUpdate{DesiredReplicas: 3}}
 	oldNodes := rcNodeCounts{Desired: 0, Current: 0}
 	newNodes := rcNodeCounts{Desired: 3, Current: 2}
 	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldBlock, "RU should block if not enough nodes are current")
 }
 
 func TestShouldBlockIfWaitingForCurrentCanaryNodes(t *testing.T) {
-	u := update{Update: fields.Update{DesiredReplicas: 1}}
+	u := update{RollingUpdate: store.RollingUpdate{DesiredReplicas: 1}}
 	oldNodes := rcNodeCounts{Desired: 2, Current: 2}
 	newNodes := rcNodeCounts{Desired: 1, Current: 0}
 	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldBlock, "RU should block if canary node isn't yet current")
 }
 
 func TestShouldTerminateIfCanaryFinished(t *testing.T) {
-	u := update{Update: fields.Update{DesiredReplicas: 1}}
+	u := update{RollingUpdate: store.RollingUpdate{DesiredReplicas: 1}}
 	oldNodes := rcNodeCounts{Desired: 2, Current: 2}
 	newNodes := rcNodeCounts{Desired: 1, Current: 1}
 	Assert(t).AreEqual(u.shouldStop(oldNodes, newNodes), ruShouldTerminate, "RU should terminate if canary node is current")
 }
 
 func TestRollAlgorithmParams(t *testing.T) {
-	u := &update{Update: fields.Update{
+	u := &update{RollingUpdate: store.RollingUpdate{
 		MinimumReplicas: 4096,
 		DesiredReplicas: 8192,
 	}}
@@ -186,7 +186,7 @@ func TestLockRCs(t *testing.T) {
 	session, _, err := fakeStore.NewSession("fake rc lock session", nil)
 	Assert(t).IsNil(err, "Should not have erred getting fake session")
 
-	update := NewUpdate(fields.Update{
+	update := NewUpdate(store.RollingUpdate{
 		NewRC: rc_fields.ID("new_rc"),
 		OldRC: rc_fields.ID("old_rc"),
 	},
@@ -426,7 +426,7 @@ func updateWithHealth(t *testing.T,
 		hcheck:  checkertest.NewSingleService(podID, checks),
 		labeler: applicator,
 		logger:  logging.TestLogger(),
-		Update: fields.Update{
+		RollingUpdate: store.RollingUpdate{
 			OldRC: oldRC.ID,
 			NewRC: newRC.ID,
 		},

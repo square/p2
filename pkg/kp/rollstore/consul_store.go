@@ -18,7 +18,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
-	roll_fields "github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -81,30 +81,30 @@ func NewConsul(c consulutil.ConsulClient, labeler rollLabeler, logger *logging.L
 	}
 }
 
-func (s consulStore) Get(id roll_fields.ID) (roll_fields.Update, error) {
+func (s consulStore) Get(id store.RollingUpdateID) (store.RollingUpdate, error) {
 	key, err := RollPath(id)
 	if err != nil {
-		return roll_fields.Update{}, nil
+		return store.RollingUpdate{}, nil
 	}
 
 	kvp, _, err := s.kv.Get(key, nil)
 	if err != nil {
-		return roll_fields.Update{}, consulutil.NewKVError("get", key, err)
+		return store.RollingUpdate{}, consulutil.NewKVError("get", key, err)
 	}
 	if kvp == nil {
-		return roll_fields.Update{}, nil
+		return store.RollingUpdate{}, nil
 	}
 
 	return kvpToRU(kvp)
 }
 
-func (s consulStore) List() ([]roll_fields.Update, error) {
+func (s consulStore) List() ([]store.RollingUpdate, error) {
 	listed, _, err := s.kv.List(rollTree+"/", nil)
 	if err != nil {
 		return nil, err
 	}
 
-	ret := make([]roll_fields.Update, 0, len(listed))
+	ret := make([]store.RollingUpdate, 0, len(listed))
 	for _, kvp := range listed {
 		ru, err := kvpToRU(kvp)
 		if err != nil {
@@ -116,7 +116,7 @@ func (s consulStore) List() ([]roll_fields.Update, error) {
 }
 
 // DEPRECATED: use one of the Create* functions instead
-func (s consulStore) Put(u roll_fields.Update) error {
+func (s consulStore) Put(u store.RollingUpdate) error {
 	b, err := json.Marshal(u)
 	if err != nil {
 		return err
@@ -171,7 +171,7 @@ func (s consulStore) lockRCs(rcIDs rc_fields.IDs, session kp.Session) error {
 }
 
 type ConflictingRUError struct {
-	ConflictingID   roll_fields.ID
+	ConflictingID   store.RollingUpdateID
 	ConflictingRCID rc_fields.ID
 }
 
@@ -223,22 +223,22 @@ func (s consulStore) checkForConflictingUpdates(rcIDs rc_fields.IDs) error {
 //      labels on replication controllers referring back to the RUs that they
 //      refer to. Then a constant lookup can be done for those labels, and the
 //      operation can be aborted.
-func (s consulStore) CreateRollingUpdateFromExistingRCs(u roll_fields.Update, newRCLabels klabels.Set, rollLabels klabels.Set) (roll_fields.Update, error) {
+func (s consulStore) CreateRollingUpdateFromExistingRCs(u store.RollingUpdate, newRCLabels klabels.Set, rollLabels klabels.Set) (store.RollingUpdate, error) {
 	session, renewalErrCh, err := s.newRUCreationSession()
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 	defer session.Destroy()
 
 	rcIDs := rc_fields.IDs{u.NewRC, u.OldRC}
 	err = s.lockRCs(rcIDs, session)
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 
 	err = s.checkForConflictingUpdates(rcIDs)
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 
 	err = s.labeler.SetLabels(labels.RC, u.NewRC.String(), newRCLabels)
@@ -247,7 +247,7 @@ func (s consulStore) CreateRollingUpdateFromExistingRCs(u roll_fields.Update, ne
 		// before have been overwritten. However its unreasonable to
 		// expect that a rollback will succeed if the roll-forward
 		// didn't succeed, so just report the error
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 
 	return s.attemptRUCreation(u, rollLabels, renewalErrCh)
@@ -267,7 +267,7 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	newRCPodLabels klabels.Set,
 	newRCLabels klabels.Set,
 	rollLabels klabels.Set,
-) (u roll_fields.Update, err error) {
+) (u store.RollingUpdate, err error) {
 	// There are cases where this function will create the new RC and
 	// subsequently fail, in which case we need to do some cleanup.
 
@@ -285,30 +285,30 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	var renewalErrCh chan error
 	session, renewalErrCh, err = s.newRUCreationSession()
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 	defer session.Destroy()
 
 	rcIDs := rc_fields.IDs{oldRCID}
 	err = s.lockRCs(rcIDs, session)
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 
 	err = s.checkForConflictingUpdates(rcIDs)
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 
 	// Now create the new RC, first checking if our session is still valid
 	var newRCID rc_fields.ID
 	select {
 	case err = <-renewalErrCh:
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	default:
 		rc, err := s.rcstore.Create(newRCManifest, newRCNodeSelector, newRCPodLabels)
 		if err != nil {
-			return roll_fields.Update{}, err
+			return store.RollingUpdate{}, err
 		}
 
 		newRCCleanup = func() {
@@ -324,7 +324,7 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 		// update creations can use it
 		err = s.lockRCs(rc_fields.IDs{newRCID}, session)
 		if err != nil {
-			return roll_fields.Update{}, err
+			return store.RollingUpdate{}, err
 		}
 	}
 
@@ -333,15 +333,15 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	// RC between when we created it and locked it
 	err = s.checkForConflictingUpdates(rcIDs)
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 
 	err = s.labeler.SetLabels(labels.RC, newRCID.String(), newRCLabels)
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 
-	u = roll_fields.Update{
+	u = store.RollingUpdate{
 		OldRC:           oldRCID,
 		NewRC:           newRCID,
 		DesiredReplicas: desiredReplicas,
@@ -370,7 +370,7 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	newRCPodLabels klabels.Set,
 	newRCLabels klabels.Set,
 	rollLabels klabels.Set,
-) (u roll_fields.Update, err error) {
+) (u store.RollingUpdate, err error) {
 	// This function may or may not create old and new RCs and subsequently
 	// fail, so we defer a function that does any cleanup (if applicable)
 	var cleanupOldRC func()
@@ -390,24 +390,24 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 	session, renewalErrCh, err := s.newRUCreationSession()
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 	defer session.Destroy()
 
 	// Check if any RCs match the oldRCSelector
 	matches, err := s.labeler.GetMatches(oldRCSelector, labels.RC, false)
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 
 	var oldRCID rc_fields.ID
 	if len(matches) > 1 {
-		return roll_fields.Update{}, AmbiguousRCSelector
+		return store.RollingUpdate{}, AmbiguousRCSelector
 	} else if len(matches) == 1 {
 		oldRCID = rc_fields.ID(matches[0].ID)
 	} else {
 		if leaveOld {
-			return roll_fields.Update{}, util.Errorf(
+			return store.RollingUpdate{}, util.Errorf(
 				"Can't create an update with LeaveOld set if there is no old RC (sel=%s)",
 				oldRCSelector.String(),
 			)
@@ -417,7 +417,7 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		// removed when the update completes anyway
 		rc, err := s.rcstore.Create(newRCManifest, newRCNodeSelector, newRCPodLabels)
 		if err != nil {
-			return roll_fields.Update{}, err
+			return store.RollingUpdate{}, err
 		}
 
 		oldRCID = rc.ID
@@ -433,31 +433,31 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		// Copy the new RC labels to the old RC as well
 		err = s.labeler.SetLabels(labels.RC, oldRCID.String(), newRCLabels)
 		if err != nil {
-			return roll_fields.Update{}, err
+			return store.RollingUpdate{}, err
 		}
 	}
 
 	// Lock the old RC to guarantee that no new updates can use it
 	err = s.lockRCs(rc_fields.IDs{oldRCID}, session)
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 
 	// Check for updates that exist that operate on the old RC
 	err = s.checkForConflictingUpdates(rc_fields.IDs{oldRCID})
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 
 	// Create the new RC
 	var newRCID rc_fields.ID
 	select {
 	case err = <-renewalErrCh:
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	default:
 		rc, err := s.rcstore.Create(newRCManifest, newRCNodeSelector, newRCPodLabels)
 		if err != nil {
-			return roll_fields.Update{}, err
+			return store.RollingUpdate{}, err
 		}
 
 		newRCID = rc.ID
@@ -476,24 +476,24 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	// with another parallel update creation
 	err = s.lockRCs(rc_fields.IDs{newRCID}, session)
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 
 	// Check once again for conflicting updates in case a racing update
 	// creation grabbed the new RC we just created
 	err = s.checkForConflictingUpdates(rc_fields.IDs{newRCID})
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 
 	// Now that we know there are no RUs in progress, and we have the
 	// update creation locks, we can safely apply labels.
 	err = s.labeler.SetLabels(labels.RC, newRCID.String(), newRCLabels)
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 
-	u = roll_fields.Update{
+	u = store.RollingUpdate{
 		OldRC:           oldRCID,
 		NewRC:           newRCID,
 		DesiredReplicas: desiredReplicas,
@@ -504,7 +504,7 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	return s.attemptRUCreation(u, rollLabels, renewalErrCh)
 }
 
-func (s consulStore) Delete(id roll_fields.ID) error {
+func (s consulStore) Delete(id store.RollingUpdateID) error {
 	key, err := RollPath(id)
 	if err != nil {
 		return err
@@ -524,7 +524,7 @@ func (s consulStore) Delete(id roll_fields.ID) error {
 	return nil
 }
 
-func (s consulStore) Lock(id roll_fields.ID, session string) (bool, error) {
+func (s consulStore) Lock(id store.RollingUpdateID, session string) (bool, error) {
 	key, err := RollLockPath(id)
 	if err != nil {
 		return false, err
@@ -541,7 +541,7 @@ func (s consulStore) Lock(id roll_fields.ID, session string) (bool, error) {
 	return success, nil
 }
 
-func (s consulStore) Watch(quit <-chan struct{}) (<-chan []roll_fields.Update, <-chan error) {
+func (s consulStore) Watch(quit <-chan struct{}) (<-chan []store.RollingUpdate, <-chan error) {
 	inCh := make(chan api.KVPairs)
 
 	outCh, errCh := publishLatestRolls(inCh, quit)
@@ -550,8 +550,8 @@ func (s consulStore) Watch(quit <-chan struct{}) (<-chan []roll_fields.Update, <
 	return outCh, errCh
 }
 
-func publishLatestRolls(inCh <-chan api.KVPairs, quit <-chan struct{}) (<-chan []roll_fields.Update, chan error) {
-	outCh := make(chan []roll_fields.Update)
+func publishLatestRolls(inCh <-chan api.KVPairs, quit <-chan struct{}) (<-chan []store.RollingUpdate, chan error) {
+	outCh := make(chan []store.RollingUpdate)
 	errCh := make(chan error)
 
 	go func() {
@@ -587,9 +587,9 @@ func publishLatestRolls(inCh <-chan api.KVPairs, quit <-chan struct{}) (<-chan [
 				}
 			}
 
-			out := make([]roll_fields.Update, 0, len(listed))
+			out := make([]store.RollingUpdate, 0, len(listed))
 			for _, kvp := range listed {
-				var next roll_fields.Update
+				var next store.RollingUpdate
 				if err := json.Unmarshal(kvp.Value, &next); err != nil {
 					select {
 					case errCh <- err:
@@ -627,7 +627,7 @@ func publishLatestRolls(inCh <-chan api.KVPairs, quit <-chan struct{}) (<-chan [
 	return outCh, errCh
 }
 
-func RollPath(id roll_fields.ID) (string, error) {
+func RollPath(id store.RollingUpdateID) (string, error) {
 	if id == "" {
 		return "", util.Errorf("id not specified when computing roll path")
 	}
@@ -635,7 +635,7 @@ func RollPath(id roll_fields.ID) (string, error) {
 }
 
 // Roll paths are computed using the id of the new replication controller
-func RollLockPath(id roll_fields.ID) (string, error) {
+func RollLockPath(id store.RollingUpdateID) (string, error) {
 	subRollPath, err := RollPath(id)
 	if err != nil {
 		return "", err
@@ -644,8 +644,8 @@ func RollLockPath(id roll_fields.ID) (string, error) {
 	return path.Join(consulutil.LOCK_TREE, subRollPath), nil
 }
 
-func kvpToRU(kvp *api.KVPair) (roll_fields.Update, error) {
-	ru := roll_fields.Update{}
+func kvpToRU(kvp *api.KVPair) (store.RollingUpdate, error) {
+	ru := store.RollingUpdate{}
 	err := json.Unmarshal(kvp.Value, &ru)
 	if err != nil {
 		return ru, util.Errorf("Unable to unmarshal value as rolling update: %s", err)
@@ -656,7 +656,7 @@ func kvpToRU(kvp *api.KVPair) (roll_fields.Update, error) {
 // Attempts to create a rolling update. Checks sessionErrCh for session renewal
 // errors just before actually doing the creation to minimize the likelihood of
 // race conditions resulting in conflicting RUs
-func (s consulStore) attemptRUCreation(u roll_fields.Update, rollLabels klabels.Set, sessionErrCh chan error) (createdRU roll_fields.Update, err error) {
+func (s consulStore) attemptRUCreation(u store.RollingUpdate, rollLabels klabels.Set, sessionErrCh chan error) (createdRU store.RollingUpdate, err error) {
 	// If we create an RU, we also want to create its labels. If the second step
 	// fails, we want to best-effort remove the RU
 	var ruCleanup func()
@@ -671,7 +671,7 @@ func (s consulStore) attemptRUCreation(u roll_fields.Update, rollLabels klabels.
 		return u, err
 	}
 
-	key, err := RollPath(roll_fields.ID(u.NewRC))
+	key, err := RollPath(store.RollingUpdateID(u.NewRC))
 	if err != nil {
 		return u, err
 	}
@@ -709,7 +709,7 @@ func (s consulStore) attemptRUCreation(u roll_fields.Update, rollLabels klabels.
 
 	err = s.labeler.SetLabels(labels.RU, u.ID().String(), rollLabels)
 	if err != nil {
-		return roll_fields.Update{}, err
+		return store.RollingUpdate{}, err
 	}
 
 	return u, nil

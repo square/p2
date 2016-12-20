@@ -27,8 +27,8 @@ import (
 	"github.com/square/p2/pkg/manifest"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll"
-	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -316,7 +316,7 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int, pagerduty
 
 	result := make(chan bool, 1)
 	go func() {
-		result <- roll.NewUpdate(roll_fields.Update{
+		result <- roll.NewUpdate(store.RollingUpdate{
 			OldRC:           rc_fields.ID(oldID),
 			NewRC:           rc_fields.ID(newID),
 			DesiredReplicas: want,
@@ -352,7 +352,7 @@ LOOP:
 }
 
 func (r rctlParams) ScheduleUpdate(oldID, newID string, want, need int) {
-	_, err := r.rls.CreateRollingUpdateFromExistingRCs(roll_fields.Update{
+	_, err := r.rls.CreateRollingUpdateFromExistingRCs(store.RollingUpdate{
 		OldRC:           rc_fields.ID(oldID),
 		NewRC:           rc_fields.ID(newID),
 		DesiredReplicas: want,

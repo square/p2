@@ -18,8 +18,8 @@ import (
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc"
 	rcf "github.com/square/p2/pkg/rc/fields"
-	"github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -32,7 +32,7 @@ type Store interface {
 }
 
 type update struct {
-	fields.Update
+	store.RollingUpdate
 
 	kps     Store
 	rcs     rcstore.Store
@@ -54,7 +54,7 @@ type update struct {
 // session must be valid for the lifetime of the Update; maintaining this is the
 // responsibility of the caller.
 func NewUpdate(
-	f fields.Update,
+	f store.RollingUpdate,
 	kps Store,
 	rcs rcstore.Store,
 	hcheck checker.ConsulHealthChecker,
@@ -73,15 +73,15 @@ func NewUpdate(
 		"minimum_replicas": f.MinimumReplicas,
 	})
 	return &update{
-		Update:  f,
-		kps:     kps,
-		rcs:     rcs,
-		hcheck:  hcheck,
-		labeler: labeler,
-		sched:   sched,
-		logger:  logger,
-		session: session,
-		alerter: alerter,
+		RollingUpdate: f,
+		kps:           kps,
+		rcs:           rcs,
+		hcheck:        hcheck,
+		labeler:       labeler,
+		sched:         sched,
+		logger:        logger,
+		session:       session,
+		alerter:       alerter,
 	}
 }
 
