@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/logging"
 )
 
@@ -235,5 +236,90 @@ func TestHealthSessionDestroy(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if r, err := f.Store.GetHealth("svc", "node"); err != nil || !r.ValueEquiv(h1) {
 		t.Fatalf("unexpected health, got value %#v error %#v", r, err)
+	}
+}
+
+func TestThrottleChecks(t *testing.T) {
+	type throttleTest struct {
+		In            []health.HealthState
+		ExpectedOut   []health.HealthState
+		MaxBucketSize int64
+		TestName      string
+	}
+
+	tests := []throttleTest{
+		{ // Super high limit, no throttling expected
+			In:            []health.HealthState{health.Passing, health.Passing, health.Critical, health.Passing},
+			ExpectedOut:   []health.HealthState{health.Passing, health.Passing, health.Critical, health.Passing},
+			MaxBucketSize: 100000,
+			TestName:      "no throttle 1",
+		},
+		{ // Super high limit, no throttling expected
+			In:            []health.HealthState{health.Unknown, health.Warning},
+			ExpectedOut:   []health.HealthState{health.Unknown, health.Warning},
+			MaxBucketSize: 100000,
+			TestName:      "no throttle 2",
+		},
+		{ // Super low limit, throttling expected after 1 value
+			In:            []health.HealthState{health.Passing, health.Critical, health.Passing, health.Critical},
+			ExpectedOut:   []health.HealthState{health.Passing, health.Unknown, health.Unknown, health.Unknown},
+			MaxBucketSize: 2,
+			TestName:      "high throttle",
+		},
+		{ // throttling expected after 3 values
+			In:            []health.HealthState{health.Passing, health.Critical, health.Passing, health.Critical},
+			ExpectedOut:   []health.HealthState{health.Passing, health.Critical, health.Passing, health.Unknown},
+			MaxBucketSize: 4,
+			TestName:      "high throttle",
+		},
+	}
+
+	for _, test := range tests {
+		in := make(chan WatchResult)
+		out := throttleChecks(in, test.MaxBucketSize, logging.TestLogger())
+
+		bufferedOut := make(chan WatchResult, len(test.In))
+		go func() {
+			for val := range out {
+				bufferedOut <- val
+			}
+		}()
+
+		for i, val := range test.In {
+			select {
+			case in <- WatchResult{
+				Id:      "pod_id",
+				Service: "service_name",
+				Status:  string(val),
+			}:
+			case <-time.After(1 * time.Second):
+				t.Fatalf("timed out writing value %d to throttleChecks input channel in %s", i, test.TestName)
+			}
+		}
+
+		for i, val := range test.ExpectedOut {
+			select {
+			case outVal := <-bufferedOut:
+				if !healthEquiv(&WatchResult{
+					Id:      "pod_id",
+					Service: "service_name",
+					Status:  string(val),
+				}, &outVal) {
+					t.Errorf("%s failed: expected value %d to be %s but was %s", test.TestName, i, val, outVal.Status)
+				}
+			case <-time.After(1 * time.Second):
+				t.Fatalf("timed out reading from throttleChecks output channel in %s", test.TestName)
+			}
+		}
+		close(in)
+
+		select {
+		case _, ok := <-out:
+			if ok {
+				t.Fatalf("got an extra value in %s", test.TestName)
+			}
+		case <-time.After(1 * time.Second):
+			t.Fatalf("output channel wasnt closed in %s before timeout", test.TestName)
+		}
 	}
 }
