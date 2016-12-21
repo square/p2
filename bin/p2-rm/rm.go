@@ -11,17 +11,17 @@ import (
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/rc"
-	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 )
 
-type store interface {
+type Store interface {
 	NewSession(name string, renewalCh <-chan time.Time) (kp.Session, chan error, error)
 	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
 }
 
 type P2RM struct {
-	Store    store
+	Store    Store
 	RCStore  rcstore.Store
 	Client   consulutil.ConsulClient
 	Labeler  labels.ApplicatorWithoutWatches
@@ -65,20 +65,20 @@ func (rm *P2RM) configureStorage(client consulutil.ConsulClient, labeler labels.
 	rm.PodStore = podstore.NewConsul(client.KV())
 }
 
-func (rm *P2RM) checkForManagingReplicationController() (bool, fields.ID, error) {
+func (rm *P2RM) checkForManagingReplicationController() (bool, store.ReplicationControllerID, error) {
 	podLabels, err := rm.Labeler.GetLabels(labels.POD, rm.LabelID)
 	if err != nil {
 		return false, "", fmt.Errorf("unable to check node for labels: %v", err)
 	}
 
 	if podLabels.Labels.Has(rc.RCIDLabel) {
-		return true, fields.ID(podLabels.Labels.Get(rc.RCIDLabel)), nil
+		return true, store.ReplicationControllerID(podLabels.Labels.Get(rc.RCIDLabel)), nil
 	}
 
 	return false, "", nil
 }
 
-func (rm *P2RM) decrementDesiredCount(id fields.ID) error {
+func (rm *P2RM) decrementDesiredCount(id store.ReplicationControllerID) error {
 	session, _, err := rm.Store.NewSession(sessionName(id), nil)
 	if err != nil {
 		return fmt.Errorf("Unable to get consul session: %v", err)

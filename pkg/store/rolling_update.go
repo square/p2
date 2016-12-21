@@ -2,8 +2,6 @@ package store
 
 import (
 	"time"
-
-	"github.com/square/p2/pkg/rc/fields"
 )
 
 // ID represents a uuid corresponding to a rolling update
@@ -15,10 +13,10 @@ type RollingUpdateID string
 type RollingUpdate struct {
 	// The old replication controller that will be releasing control. At the end
 	// of the RollingUpdate, this RC will be deleted.
-	OldRC fields.ID
+	OldRC ReplicationControllerID
 	// Thew new replication controller that will be taking over.
 	// RollingUpdates can be uniquely identified by their new RC's ID.
-	NewRC fields.ID
+	NewRC ReplicationControllerID
 	// When the new RC's replica count equals this number, the
 	// RollingUpdate is considered to be complete.
 	DesiredReplicas int

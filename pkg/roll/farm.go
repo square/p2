@@ -18,7 +18,6 @@ import (
 	"github.com/square/p2/pkg/logging"
 	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/rc"
-	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
@@ -47,7 +46,7 @@ func (f UpdateFactory) New(u store.RollingUpdate, l logging.Logger, session kp.S
 }
 
 type RCGetter interface {
-	Get(id fields.ID) (fields.RC, error)
+	Get(id store.ReplicationControllerID) (store.ReplicationController, error)
 }
 
 // The Farm is responsible for spawning and reaping rolling updates as they are
@@ -279,7 +278,7 @@ func (rlf *Farm) releaseDeletedChildren(foundChildren map[store.RollingUpdateID]
 }
 
 // test if the farm should work on the given replication controller ID
-func (rlf *Farm) shouldWorkOn(rcID fields.ID) (bool, error) {
+func (rlf *Farm) shouldWorkOn(rcID store.ReplicationControllerID) (bool, error) {
 	if rlf.rcSelector.Empty() {
 		return true, nil
 	}

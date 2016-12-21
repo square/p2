@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/manifest"
-	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -47,7 +46,7 @@ type Store interface {
 	// old replication controller, creates the new replication controller,
 	// and labels the new replication controller according to newRCLabels.
 	CreateRollingUpdateFromOneExistingRCWithID(
-		oldRCID rc_fields.ID,
+		oldRCID store.ReplicationControllerID,
 		desiredReplicas int,
 		minimumReplicas int,
 		leaveOld bool,

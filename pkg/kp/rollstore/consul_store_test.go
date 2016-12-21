@@ -12,7 +12,6 @@ import (
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/manifest"
-	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store"
 
 	"github.com/hashicorp/consul/api"
@@ -20,8 +19,8 @@ import (
 )
 
 const (
-	testRCId  = rc_fields.ID("abcd-1234")
-	testRCId2 = rc_fields.ID("def-456")
+	testRCId  = store.ReplicationControllerID("abcd-1234")
+	testRCId2 = store.ReplicationControllerID("def-456")
 )
 
 func TestNewConsul(t *testing.T) {
@@ -166,8 +165,8 @@ func TestList(t *testing.T) {
 func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
 	rollstore := newRollStore(t, nil)
 
-	newRCID := rc_fields.ID("new_rc")
-	oldRCID := rc_fields.ID("old_rc")
+	newRCID := store.ReplicationControllerID("new_rc")
+	oldRCID := store.ReplicationControllerID("old_rc")
 
 	update := store.RollingUpdate{
 		NewRC: newRCID,
@@ -217,12 +216,12 @@ func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
 
 // Test that if a conflicting update exists, a new one will not be admitted
 func TestCreateExistingRCsMutualExclusion(t *testing.T) {
-	newRCID := rc_fields.ID("new_rc")
-	oldRCID := rc_fields.ID("old_rc")
+	newRCID := store.ReplicationControllerID("new_rc")
+	oldRCID := store.ReplicationControllerID("old_rc")
 
 	conflictingEntry := store.RollingUpdate{
 		OldRC: newRCID,
-		NewRC: rc_fields.ID("some_other_rc"),
+		NewRC: store.ReplicationControllerID("some_other_rc"),
 	}
 
 	rollstore := newRollStore(t, []store.RollingUpdate{conflictingEntry})
@@ -256,8 +255,8 @@ func TestCreateExistingRCsMutualExclusion(t *testing.T) {
 }
 
 func TestCreateFailsIfCantAcquireLock(t *testing.T) {
-	newRCID := rc_fields.ID("new_rc")
-	oldRCID := rc_fields.ID("old_rc")
+	newRCID := store.ReplicationControllerID("new_rc")
+	oldRCID := store.ReplicationControllerID("old_rc")
 
 	rollstore := newRollStore(t, nil)
 
@@ -291,7 +290,7 @@ func TestCreateFailsIfCantAcquireLock(t *testing.T) {
 }
 
 func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
-	oldRCID := rc_fields.ID("old_rc")
+	oldRCID := store.ReplicationControllerID("old_rc")
 
 	rollstore := newRollStore(t, nil)
 
@@ -426,7 +425,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 }
 
 func TestCreateRollingUpdateFromOneExistingRCWithIDFailsIfCantAcquireLock(t *testing.T) {
-	oldRCID := rc_fields.ID("old_rc")
+	oldRCID := store.ReplicationControllerID("old_rc")
 
 	rollstore := newRollStore(t, nil)
 
@@ -1059,7 +1058,7 @@ func rollsWithIDs(t *testing.T, id string, num int) api.KVPairs {
 	var pairs api.KVPairs
 	for i := 0; i < num; i++ {
 		ru := store.RollingUpdate{
-			NewRC: rc_fields.ID(id),
+			NewRC: store.ReplicationControllerID(id),
 		}
 
 		jsonRU, err := json.Marshal(ru)
@@ -1075,7 +1074,7 @@ func rollsWithIDs(t *testing.T, id string, num int) api.KVPairs {
 	return pairs
 }
 
-func testRollValue(id rc_fields.ID) store.RollingUpdate {
+func testRollValue(id store.ReplicationControllerID) store.RollingUpdate {
 	// not a full update, just enough for a smoke test
 	return store.RollingUpdate{
 		NewRC: id,

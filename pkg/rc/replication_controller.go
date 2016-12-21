@@ -14,8 +14,8 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -26,7 +26,7 @@ const (
 )
 
 type ReplicationController interface {
-	ID() fields.ID
+	ID() store.ReplicationControllerID
 
 	// WatchDesires causes the replication controller to watch for any changes to its desired state.
 	// It is expected that a replication controller is aware of a backing rcstore against which to perform this watch.
@@ -64,7 +64,7 @@ type kpStore interface {
 }
 
 type replicationController struct {
-	fields.RC
+	store.ReplicationController
 
 	logger logging.Logger
 
@@ -76,7 +76,7 @@ type replicationController struct {
 }
 
 func New(
-	fields fields.RC,
+	fields store.ReplicationController,
 	kpStore kpStore,
 	rcStore rcstore.Store,
 	scheduler scheduler.Scheduler,
@@ -89,7 +89,7 @@ func New(
 	}
 
 	return &replicationController{
-		RC: fields,
+		ReplicationController: fields,
 
 		logger:        logger,
 		kpStore:       kpStore,
@@ -100,12 +100,12 @@ func New(
 	}
 }
 
-func (rc *replicationController) ID() fields.ID {
-	return rc.RC.ID
+func (rc *replicationController) ID() store.ReplicationControllerID {
+	return rc.ReplicationController.ID
 }
 
 func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error {
-	desiresChanged, errInChannel := rc.rcStore.Watch(&rc.RC, quit)
+	desiresChanged, errInChannel := rc.rcStore.Watch(&rc.ReplicationController, quit)
 
 	errOutChannel := make(chan error)
 	channelsClosed := make(chan struct{})

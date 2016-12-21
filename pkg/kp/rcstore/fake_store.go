@@ -10,17 +10,17 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/manifest"
-	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 )
 
 type fakeStore struct {
-	rcs     map[fields.ID]*fakeEntry
+	rcs     map[store.ReplicationControllerID]*fakeEntry
 	creates int
 }
 
 type fakeEntry struct {
-	fields.RC
+	store.ReplicationController
 	watchers      map[int]chan struct{}
 	lastWatcherId int
 	lockedRead    string
@@ -31,19 +31,19 @@ var _ Store = &fakeStore{}
 
 func NewFake() *fakeStore {
 	return &fakeStore{
-		rcs:     make(map[fields.ID]*fakeEntry),
+		rcs:     make(map[store.ReplicationControllerID]*fakeEntry),
 		creates: 0,
 	}
 }
 
-func (s *fakeStore) Create(manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (fields.RC, error) {
+func (s *fakeStore) Create(manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (store.ReplicationController, error) {
 	// A real replication controller will use a UUID.
 	// We'll just use a monotonically increasing counter for expedience.
 	s.creates += 1
-	id := fields.ID(strconv.Itoa(s.creates))
+	id := store.ReplicationControllerID(strconv.Itoa(s.creates))
 
 	entry := fakeEntry{
-		RC: fields.RC{
+		ReplicationController: store.ReplicationController{
 			ID:              id,
 			Manifest:        manifest,
 			NodeSelector:    nodeSelector,
@@ -57,29 +57,29 @@ func (s *fakeStore) Create(manifest manifest.Manifest, nodeSelector labels.Selec
 
 	s.rcs[id] = &entry
 
-	return entry.RC, nil
+	return entry.ReplicationController, nil
 }
 
-func (s *fakeStore) Get(id fields.ID) (fields.RC, error) {
+func (s *fakeStore) Get(id store.ReplicationControllerID) (store.ReplicationController, error) {
 	entry, ok := s.rcs[id]
 	if !ok {
-		return fields.RC{}, NoReplicationController
+		return store.ReplicationController{}, NoReplicationController
 	}
 
-	return entry.RC, nil
+	return entry.ReplicationController, nil
 }
 
-func (s *fakeStore) List() ([]fields.RC, error) {
-	results := make([]fields.RC, len(s.rcs))
+func (s *fakeStore) List() ([]store.ReplicationController, error) {
+	results := make([]store.ReplicationController, len(s.rcs))
 	i := 0
 	for _, v := range s.rcs {
-		results[i] = v.RC
+		results[i] = v.ReplicationController
 		i += 1
 	}
 	return results, nil
 }
 
-func (s *fakeStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan error) {
+func (s *fakeStore) WatchNew(quit <-chan struct{}) (<-chan []store.ReplicationController, <-chan error) {
 	return nil, nil
 }
 
@@ -87,7 +87,7 @@ func (s *fakeStore) WatchNewWithRCLockInfo(quit <-chan struct{}, pauseTime time.
 	panic("not implemented")
 }
 
-func (s *fakeStore) Disable(id fields.ID) error {
+func (s *fakeStore) Disable(id store.ReplicationControllerID) error {
 	entry, ok := s.rcs[id]
 	if !ok {
 		return util.Errorf("Nonexistent RC")
@@ -100,7 +100,7 @@ func (s *fakeStore) Disable(id fields.ID) error {
 	return nil
 }
 
-func (s *fakeStore) Enable(id fields.ID) error {
+func (s *fakeStore) Enable(id store.ReplicationControllerID) error {
 	entry, ok := s.rcs[id]
 	if !ok {
 		return util.Errorf("Nonexistent RC")
@@ -113,7 +113,7 @@ func (s *fakeStore) Enable(id fields.ID) error {
 	return nil
 }
 
-func (s *fakeStore) SetDesiredReplicas(id fields.ID, n int) error {
+func (s *fakeStore) SetDesiredReplicas(id store.ReplicationControllerID, n int) error {
 	entry, ok := s.rcs[id]
 	if !ok {
 		return util.Errorf("Nonexistent RC")
@@ -126,7 +126,7 @@ func (s *fakeStore) SetDesiredReplicas(id fields.ID, n int) error {
 	return nil
 }
 
-func (s *fakeStore) AddDesiredReplicas(id fields.ID, n int) error {
+func (s *fakeStore) AddDesiredReplicas(id store.ReplicationControllerID, n int) error {
 	entry, ok := s.rcs[id]
 	if !ok {
 		return util.Errorf("Nonexistent RC")
@@ -142,7 +142,7 @@ func (s *fakeStore) AddDesiredReplicas(id fields.ID, n int) error {
 	return nil
 }
 
-func (s *fakeStore) CASDesiredReplicas(id fields.ID, expected int, n int) error {
+func (s *fakeStore) CASDesiredReplicas(id store.ReplicationControllerID, expected int, n int) error {
 	entry, ok := s.rcs[id]
 	if !ok {
 		return util.Errorf("Nonexistent RC")
@@ -159,7 +159,7 @@ func (s *fakeStore) CASDesiredReplicas(id fields.ID, expected int, n int) error 
 	return nil
 }
 
-func (s *fakeStore) Delete(id fields.ID, force bool) error {
+func (s *fakeStore) Delete(id store.ReplicationControllerID, force bool) error {
 	entry, ok := s.rcs[id]
 	if !ok {
 		return util.Errorf("Nonexistent RC")
@@ -178,7 +178,7 @@ func (s *fakeStore) Delete(id fields.ID, force bool) error {
 	return nil
 }
 
-func (s *fakeStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
+func (s *fakeStore) Watch(rc *store.ReplicationController, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
 	updatesOut := make(chan struct{})
 	entry, ok := s.rcs[rc.ID]
 	if !ok {
@@ -207,7 +207,7 @@ func (s *fakeStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{},
 
 	go func() {
 		for range updatesIn {
-			*rc = entry.RC
+			*rc = entry.ReplicationController
 			updatesOut <- struct{}{}
 		}
 		close(updatesOut)
@@ -217,17 +217,17 @@ func (s *fakeStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{},
 	return updatesOut, errors
 }
 
-func (s *fakeStore) LockForMutation(rcID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
+func (s *fakeStore) LockForMutation(rcID store.ReplicationControllerID, session kp.Session) (consulutil.Unlocker, error) {
 	key := fmt.Sprintf("%s/%s", rcID, "mutation_lock")
 	return session.Lock(key)
 }
 
-func (s *fakeStore) LockForOwnership(rcID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
+func (s *fakeStore) LockForOwnership(rcID store.ReplicationControllerID, session kp.Session) (consulutil.Unlocker, error) {
 	key := fmt.Sprintf("%s/%s", rcID, "ownership_lock")
 	return session.Lock(key)
 }
 
-func (s *fakeStore) LockForUpdateCreation(rcID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
+func (s *fakeStore) LockForUpdateCreation(rcID store.ReplicationControllerID, session kp.Session) (consulutil.Unlocker, error) {
 	key := fmt.Sprintf("%s/%s", rcID, "update_creation_lock")
 	return session.Lock(key)
 }

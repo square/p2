@@ -12,7 +12,7 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 )
@@ -84,7 +84,7 @@ func handlePodRemoval(consulClient consulutil.ConsulClient, labeler labels.Appli
 	return nil
 }
 
-func sessionName(rcID fields.ID) string {
+func sessionName(rcID store.ReplicationControllerID) string {
 	currentUser, err := user.Current()
 	username := "unknown"
 	if err == nil {

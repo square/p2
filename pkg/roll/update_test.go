@@ -15,7 +15,6 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/rc"
-	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 
@@ -162,21 +161,21 @@ func TestWouldWorkOn(t *testing.T) {
 		rcSelector: klabels.Everything().Add("color", klabels.EqualsOperator, []string{"red"}),
 	}
 
-	workOn, err := f.shouldWorkOn(rc_fields.ID("abc-123"))
+	workOn, err := f.shouldWorkOn(store.ReplicationControllerID("abc-123"))
 	Assert(t).IsNil(err, "should not have erred on abc-123")
 	Assert(t).IsTrue(workOn, "should have worked on abc-123, but didn't")
 
-	dontWorkOn, err := f.shouldWorkOn(rc_fields.ID("def-456"))
+	dontWorkOn, err := f.shouldWorkOn(store.ReplicationControllerID("def-456"))
 	Assert(t).IsNil(err, "should not have erred on def-456")
 	Assert(t).IsFalse(dontWorkOn, "should not have worked on def-456, but did")
 
-	dontWorkOn, err = f.shouldWorkOn(rc_fields.ID("987-cba"))
+	dontWorkOn, err = f.shouldWorkOn(store.ReplicationControllerID("987-cba"))
 	Assert(t).IsNil(err, "should not have erred on 987-cba")
 	Assert(t).IsFalse(dontWorkOn, "should not have worked on 987-cba, but did")
 
 	f.rcSelector = klabels.Everything()
 
-	workOn, err = f.shouldWorkOn(rc_fields.ID("def-456"))
+	workOn, err = f.shouldWorkOn(store.ReplicationControllerID("def-456"))
 	Assert(t).IsNil(err, "should not have erred on def-456")
 	Assert(t).IsTrue(workOn, "should have worked on def-456, but didn't")
 }
@@ -187,8 +186,8 @@ func TestLockRCs(t *testing.T) {
 	Assert(t).IsNil(err, "Should not have erred getting fake session")
 
 	update := NewUpdate(store.RollingUpdate{
-		NewRC: rc_fields.ID("new_rc"),
-		OldRC: rc_fields.ID("old_rc"),
+		NewRC: store.ReplicationControllerID("new_rc"),
+		OldRC: store.ReplicationControllerID("old_rc"),
 	},
 		nil,
 		rcstore.NewFake(),
@@ -379,17 +378,17 @@ func createRC(
 	manifest manifest.Manifest,
 	desired int,
 	nodes map[types.NodeName]bool,
-) (rc_fields.RC, error) {
+) (store.ReplicationController, error) {
 	created, err := rcs.Create(manifest, nil, nil)
 	if err != nil {
-		return rc_fields.RC{}, fmt.Errorf("Error creating RC: %s", err)
+		return store.ReplicationController{}, fmt.Errorf("Error creating RC: %s", err)
 	}
 
 	podID := string(manifest.ID())
 
 	for node := range nodes {
 		if err = applicator.SetLabel(labels.POD, node.String()+"/"+podID, rc.RCIDLabel, string(created.ID)); err != nil {
-			return rc_fields.RC{}, fmt.Errorf("Error applying RC ID label: %s", err)
+			return store.ReplicationController{}, fmt.Errorf("Error applying RC ID label: %s", err)
 		}
 	}
 
@@ -770,8 +769,8 @@ func TestShouldRollMidwayHealthyMigrationFromZeroWhenNewSatisfies(t *testing.T) 
 	Assert(t).AreEqual(add, 1, "expected to add one node")
 }
 
-func watchRCOrFail(t *testing.T, rcs rcstore.Store, id rc_fields.ID, desc string) (*rc_fields.RC, <-chan struct{}) {
-	rc := rc_fields.RC{ID: id}
+func watchRCOrFail(t *testing.T, rcs rcstore.Store, id store.ReplicationControllerID, desc string) (*store.ReplicationController, <-chan struct{}) {
+	rc := store.ReplicationController{ID: id}
 	updated, errors := rcs.Watch(&rc, nil)
 	go failOnError(t, desc, errors)
 	return &rc, updated
@@ -791,7 +790,7 @@ func transferNode(node types.NodeName, manifest manifest.Manifest, upd update) e
 	return upd.labeler.SetLabel(labels.POD, labels.MakePodLabelKey(node, manifest.ID()), rc.RCIDLabel, string(upd.NewRC))
 }
 
-func assertRCUpdates(t *testing.T, rc *rc_fields.RC, upd <-chan struct{}, expect int, desc string) {
+func assertRCUpdates(t *testing.T, rc *store.ReplicationController, upd <-chan struct{}, expect int, desc string) {
 	select {
 	case <-upd:
 	case <-time.After(1 * time.Second):
@@ -863,7 +862,7 @@ func TestRollLoopTypicalCase(t *testing.T) {
 	assertRollLoopResult(t, rollLoopResult, true)
 }
 
-func failIfRCDesireChanges(t *testing.T, rc *rc_fields.RC, expected int, updates <-chan struct{}) {
+func failIfRCDesireChanges(t *testing.T, rc *store.ReplicationController, expected int, updates <-chan struct{}) {
 	for range updates {
 		Assert(t).AreEqual(rc.ReplicasDesired, expected, "RC desire changed unexpectedly")
 	}

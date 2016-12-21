@@ -5,7 +5,7 @@ import (
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/kp/rcstore"
-	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/store"
 
 	. "github.com/anthonybishopric/gotcha"
 )
@@ -42,7 +42,7 @@ func TestRCsWithCountsWillBeFine(t *testing.T) {
 
 	rcs := []rcstore.RCLockResult{
 		{
-			RC: fields.RC{
+			ReplicationController: store.ReplicationController{
 				ReplicasDesired: 5,
 			},
 		},
@@ -65,7 +65,7 @@ func TestRCsWithZeroCountsWillTriggerIncident(t *testing.T) {
 
 	rcs := []rcstore.RCLockResult{
 		{
-			RC: fields.RC{
+			ReplicationController: store.ReplicationController{
 				ReplicasDesired: 0,
 			},
 		},

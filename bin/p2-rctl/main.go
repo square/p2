@@ -25,7 +25,6 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
-	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store"
@@ -204,7 +203,7 @@ func (r rctlParams) Create(manifestPath, nodeSelector string, podLabels map[stri
 }
 
 func (r rctlParams) Delete(id string, force bool) {
-	err := r.rcs.Delete(rc_fields.ID(id), force)
+	err := r.rcs.Delete(store.ReplicationControllerID(id), force)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not delete replication controller in Consul")
 	}
@@ -216,7 +215,7 @@ func (r rctlParams) SetReplicas(id string, replicas int) {
 		r.logger.NoFields().Fatalln("Cannot set negative replica count")
 	}
 
-	err := r.rcs.SetDesiredReplicas(rc_fields.ID(id), replicas)
+	err := r.rcs.SetDesiredReplicas(store.ReplicationControllerID(id), replicas)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not set desired replica count in Consul")
 	}
@@ -246,7 +245,7 @@ func (r rctlParams) List(asJSON bool) {
 }
 
 func (r rctlParams) Get(id string, manifest bool) {
-	getRC, err := r.rcs.Get(rc_fields.ID(id))
+	getRC, err := r.rcs.Get(store.ReplicationControllerID(id))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not get replication controller in Consul")
 	}
@@ -267,7 +266,7 @@ func (r rctlParams) Get(id string, manifest bool) {
 }
 
 func (r rctlParams) Enable(id string) {
-	err := r.rcs.Enable(rc_fields.ID(id))
+	err := r.rcs.Enable(store.ReplicationControllerID(id))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not enable replication controller in Consul")
 	}
@@ -275,7 +274,7 @@ func (r rctlParams) Enable(id string) {
 }
 
 func (r rctlParams) Disable(id string) {
-	err := r.rcs.Disable(rc_fields.ID(id))
+	err := r.rcs.Disable(store.ReplicationControllerID(id))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not disable replication controller in Consul")
 	}
@@ -317,8 +316,8 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int, pagerduty
 	result := make(chan bool, 1)
 	go func() {
 		result <- roll.NewUpdate(store.RollingUpdate{
-			OldRC:           rc_fields.ID(oldID),
-			NewRC:           rc_fields.ID(newID),
+			OldRC:           store.ReplicationControllerID(oldID),
+			NewRC:           store.ReplicationControllerID(newID),
 			DesiredReplicas: want,
 			MinimumReplicas: need,
 		}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, session, alerter).Run(quit)
@@ -353,8 +352,8 @@ LOOP:
 
 func (r rctlParams) ScheduleUpdate(oldID, newID string, want, need int) {
 	_, err := r.rls.CreateRollingUpdateFromExistingRCs(store.RollingUpdate{
-		OldRC:           rc_fields.ID(oldID),
-		NewRC:           rc_fields.ID(newID),
+		OldRC:           store.ReplicationControllerID(oldID),
+		NewRC:           store.ReplicationControllerID(newID),
 		DesiredReplicas: want,
 		MinimumReplicas: need,
 	}, nil, nil)

@@ -17,7 +17,6 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
-	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 )
@@ -158,7 +157,7 @@ func (s consulStore) newRUCreationSession() (kp.Session, chan error, error) {
 
 // Obtains a lock for each RC in the list, or errors. RCs are locked in
 // lexicographical order by RC id to avoid deadlocks.
-func (s consulStore) lockRCs(rcIDs rc_fields.IDs, session kp.Session) error {
+func (s consulStore) lockRCs(rcIDs store.ReplicationControllerIDs, session kp.Session) error {
 	sort.Sort(rcIDs)
 	for _, rcID := range rcIDs {
 		_, err := s.rcstore.LockForUpdateCreation(rcID, session)
@@ -172,14 +171,14 @@ func (s consulStore) lockRCs(rcIDs rc_fields.IDs, session kp.Session) error {
 
 type ConflictingRUError struct {
 	ConflictingID   store.RollingUpdateID
-	ConflictingRCID rc_fields.ID
+	ConflictingRCID store.ReplicationControllerID
 }
 
 func (c *ConflictingRUError) Error() string {
 	return fmt.Sprintf("A deploy is already in progress. (RU %s conflicts on RC %s)", c.ConflictingID, c.ConflictingRCID)
 }
 
-func (s consulStore) checkForConflictingUpdates(rcIDs rc_fields.IDs) error {
+func (s consulStore) checkForConflictingUpdates(rcIDs store.ReplicationControllerIDs) error {
 	// Now that locks are held, check every RU and confirm that none of
 	// them refer to the new or old RCs
 	// This is potentially a scaling bottleneck (see function comment)
@@ -230,7 +229,7 @@ func (s consulStore) CreateRollingUpdateFromExistingRCs(u store.RollingUpdate, n
 	}
 	defer session.Destroy()
 
-	rcIDs := rc_fields.IDs{u.NewRC, u.OldRC}
+	rcIDs := store.ReplicationControllerIDs{u.NewRC, u.OldRC}
 	err = s.lockRCs(rcIDs, session)
 	if err != nil {
 		return store.RollingUpdate{}, err
@@ -257,7 +256,7 @@ func (s consulStore) CreateRollingUpdateFromExistingRCs(u store.RollingUpdate, n
 // on passed parameters, using oldRCID for the old RC. The new RC and new RU
 // will be created transactionally (all or nothing)
 func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
-	oldRCID rc_fields.ID,
+	oldRCID store.ReplicationControllerID,
 	desiredReplicas int,
 	minimumReplicas int,
 	leaveOld bool,
@@ -289,7 +288,7 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	}
 	defer session.Destroy()
 
-	rcIDs := rc_fields.IDs{oldRCID}
+	rcIDs := store.ReplicationControllerIDs{oldRCID}
 	err = s.lockRCs(rcIDs, session)
 	if err != nil {
 		return store.RollingUpdate{}, err
@@ -301,7 +300,7 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	}
 
 	// Now create the new RC, first checking if our session is still valid
-	var newRCID rc_fields.ID
+	var newRCID store.ReplicationControllerID
 	select {
 	case err = <-renewalErrCh:
 		return store.RollingUpdate{}, err
@@ -322,7 +321,7 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 
 		// Get a lock on the new RC we just created so no parallel
 		// update creations can use it
-		err = s.lockRCs(rc_fields.IDs{newRCID}, session)
+		err = s.lockRCs(store.ReplicationControllerIDs{newRCID}, session)
 		if err != nil {
 			return store.RollingUpdate{}, err
 		}
@@ -400,11 +399,11 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		return store.RollingUpdate{}, err
 	}
 
-	var oldRCID rc_fields.ID
+	var oldRCID store.ReplicationControllerID
 	if len(matches) > 1 {
 		return store.RollingUpdate{}, AmbiguousRCSelector
 	} else if len(matches) == 1 {
-		oldRCID = rc_fields.ID(matches[0].ID)
+		oldRCID = store.ReplicationControllerID(matches[0].ID)
 	} else {
 		if leaveOld {
 			return store.RollingUpdate{}, util.Errorf(
@@ -438,19 +437,19 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	}
 
 	// Lock the old RC to guarantee that no new updates can use it
-	err = s.lockRCs(rc_fields.IDs{oldRCID}, session)
+	err = s.lockRCs(store.ReplicationControllerIDs{oldRCID}, session)
 	if err != nil {
 		return store.RollingUpdate{}, err
 	}
 
 	// Check for updates that exist that operate on the old RC
-	err = s.checkForConflictingUpdates(rc_fields.IDs{oldRCID})
+	err = s.checkForConflictingUpdates(store.ReplicationControllerIDs{oldRCID})
 	if err != nil {
 		return store.RollingUpdate{}, err
 	}
 
 	// Create the new RC
-	var newRCID rc_fields.ID
+	var newRCID store.ReplicationControllerID
 	select {
 	case err = <-renewalErrCh:
 		return store.RollingUpdate{}, err
@@ -474,14 +473,14 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 	// lock newly-created new rc so it's less likely to race on it
 	// with another parallel update creation
-	err = s.lockRCs(rc_fields.IDs{newRCID}, session)
+	err = s.lockRCs(store.ReplicationControllerIDs{newRCID}, session)
 	if err != nil {
 		return store.RollingUpdate{}, err
 	}
 
 	// Check once again for conflicting updates in case a racing update
 	// creation grabbed the new RC we just created
-	err = s.checkForConflictingUpdates(rc_fields.IDs{newRCID})
+	err = s.checkForConflictingUpdates(store.ReplicationControllerIDs{newRCID})
 	if err != nil {
 		return store.RollingUpdate{}, err
 	}

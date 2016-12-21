@@ -31,8 +31,8 @@ import (
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/preparer/podprocess"
 	"github.com/square/p2/pkg/rc"
-	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/schedule"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -733,7 +733,7 @@ func createHelloUUIDPod(dir string, port int, logger logging.Logger) (types.PodU
 	return out.PodUniqueKey, nil
 }
 
-func createHelloReplicationController(dir string) (fields.ID, error) {
+func createHelloReplicationController(dir string) (store.ReplicationControllerID, error) {
 	signedManifestPath, err := writeHelloManifest(dir, "hello.yaml", 43770)
 	if err != nil {
 		return "", err
@@ -745,7 +745,7 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 	cmd.Stderr = &out
 	err = cmd.Run()
 	if err != nil {
-		return fields.ID(""), fmt.Errorf("Couldn't create replication controller for hello: %s %s", out.String(), err)
+		return store.ReplicationControllerID(""), fmt.Errorf("Couldn't create replication controller for hello: %s %s", out.String(), err)
 	}
 	var rctlOut struct {
 		ID string `json:"id"`
@@ -753,7 +753,7 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 
 	err = json.Unmarshal(out.Bytes(), &rctlOut)
 	if err != nil {
-		return fields.ID(""), fmt.Errorf("Couldn't read RC ID out of p2-rctl invocation result: %v", err)
+		return store.ReplicationControllerID(""), fmt.Errorf("Couldn't read RC ID out of p2-rctl invocation result: %v", err)
 	}
 
 	output, err := exec.Command("p2-rctl", "set-replicas", rctlOut.ID, "1").CombinedOutput()
@@ -761,10 +761,10 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 		fmt.Println(string(output))
 		return "", err
 	}
-	return fields.ID(rctlOut.ID), nil
+	return store.ReplicationControllerID(rctlOut.ID), nil
 }
 
-func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
+func waitForPodLabeledWithRC(selector klabels.Selector, rcID store.ReplicationControllerID) error {
 	client := kp.NewConsulClient(kp.Options{})
 	applicator := labels.NewConsulApplicator(client, 1)
 

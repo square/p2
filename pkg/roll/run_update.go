@@ -17,7 +17,6 @@ import (
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc"
-	rcf "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
@@ -140,7 +139,7 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 	}
 
 	u.logger.NoFields().Debugln("Launching health watch")
-	var newFields rcf.RC
+	var newFields store.ReplicationController
 	var err error
 	if !RetryOrQuit(func() error {
 		newFields, err = u.rcs.Get(u.NewRC)
@@ -388,7 +387,7 @@ type rcNodeCounts struct {
 	Unknown   int // the number of real nodes that are of unknown health
 }
 
-func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result) (rcNodeCounts, error) {
+func (u *update) countHealthy(id store.ReplicationControllerID, checks map[types.NodeName]health.Result) (rcNodeCounts, error) {
 	ret := rcNodeCounts{}
 	rcFields, err := u.rcs.Get(id)
 	if rcstore.IsNotExist(err) {

@@ -8,7 +8,7 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/manifest"
-	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/store"
 
 	"github.com/hashicorp/consul/api"
 )
@@ -29,7 +29,7 @@ func TestPublishLatestRCs(t *testing.T) {
 		}
 	}()
 
-	var val []fields.RC
+	var val []store.ReplicationController
 	// Put some values on the inCh and read them from outCh transformed
 	// into RCs
 	inCh <- rcsWithIDs(t, "a", 3)
@@ -96,7 +96,7 @@ func TestPublishLatestRCsSkipsIfCorrupt(t *testing.T) {
 	outCh, errCh := publishLatestRCs(inCh, quitCh)
 
 	// push some legitimate RCs and read them out
-	var val []fields.RC
+	var val []store.ReplicationController
 	inCh <- rcsWithIDs(t, "a", 3)
 	select {
 	case val = <-outCh:
@@ -212,7 +212,7 @@ func TestPublishQuitsOnInChannelCloseAfterData(t *testing.T) {
 	outCh, errCh := publishLatestRCs(inCh, quitCh)
 
 	// Write some legitimate data and read it out
-	var val []fields.RC
+	var val []store.ReplicationController
 	// Put some values on the inCh and read them from outCh transformed
 	// into RCs
 	inCh <- rcsWithIDs(t, "a", 3)
@@ -254,19 +254,19 @@ func TestPublishQuitsOnInChannelCloseAfterData(t *testing.T) {
 }
 
 func TestLockTypeFromKey(t *testing.T) {
-	store := consulStore{}
-	expectedRCID := fields.ID("abcd-1234")
-	mutationLockPath, err := store.mutationLockPath(expectedRCID)
+	consulStore := consulStore{}
+	expectedRCID := store.ReplicationControllerID("abcd-1234")
+	mutationLockPath, err := consulStore.mutationLockPath(expectedRCID)
 	if err != nil {
 		t.Fatalf("Unable to compute lock path for rc")
 	}
 
-	updateCreationLockPath, err := store.updateCreationLockPath(expectedRCID)
+	updateCreationLockPath, err := consulStore.updateCreationLockPath(expectedRCID)
 	if err != nil {
 		t.Fatalf("Unable to compute lock path for rc")
 	}
 
-	ownershipLockPath, err := store.ownershipLockPath(expectedRCID)
+	ownershipLockPath, err := consulStore.ownershipLockPath(expectedRCID)
 	if err != nil {
 		t.Fatalf("Unable to compute lock path for rc")
 	}
@@ -287,7 +287,7 @@ func TestLockTypeFromKey(t *testing.T) {
 	}
 
 	for _, expectation := range expectations {
-		rcId, lockType, err := store.lockTypeFromKey(expectation.Key)
+		rcId, lockType, err := consulStore.lockTypeFromKey(expectation.Key)
 		if lockType != expectation.ExpectedType {
 			t.Errorf("Expected lock type for %s to be %s, was %s", expectation.Key, expectation.ExpectedType.String(), lockType.String())
 		}
@@ -309,7 +309,7 @@ func TestLockTypeFromKey(t *testing.T) {
 }
 
 type LockInfoTestCase struct {
-	InputRCs       []fields.RC
+	InputRCs       []store.ReplicationController
 	ExpectedOutput []RCLockResult
 }
 
@@ -317,7 +317,7 @@ func TestPublishLatestRCsWithLockInfoNoLocks(t *testing.T) {
 	client := consulutil.NewFakeClient()
 	rcstore := NewConsul(client, labels.NewFakeApplicator(), 1)
 
-	inCh := make(chan []fields.RC)
+	inCh := make(chan []store.ReplicationController)
 	defer close(inCh)
 	quitCh := make(chan struct{})
 	defer close(quitCh)
@@ -331,13 +331,13 @@ func TestPublishLatestRCsWithLockInfoNoLocks(t *testing.T) {
 
 	// Create a test case with 2 RCs with no locks
 	unlockedCase := LockInfoTestCase{
-		InputRCs: []fields.RC{{ID: "abc"}, {ID: "123"}},
+		InputRCs: []store.ReplicationController{{ID: "abc"}, {ID: "123"}},
 		ExpectedOutput: []RCLockResult{
 			{
-				RC: fields.RC{ID: "abc"},
+				ReplicationController: store.ReplicationController{ID: "abc"},
 			},
 			{
-				RC: fields.RC{ID: "123"},
+				ReplicationController: store.ReplicationController{ID: "123"},
 			},
 		},
 	}
@@ -354,20 +354,20 @@ func TestPublishLatestRCsWithLockInfoNoLocks(t *testing.T) {
 
 	// create a new case
 	unlockedCase2 := LockInfoTestCase{
-		InputRCs: []fields.RC{
+		InputRCs: []store.ReplicationController{
 			{ID: "abc"},
 			{ID: "123"},
 			{ID: "456"},
 		},
 		ExpectedOutput: []RCLockResult{
 			{
-				RC: fields.RC{ID: "abc"},
+				ReplicationController: store.ReplicationController{ID: "abc"},
 			},
 			{
-				RC: fields.RC{ID: "123"},
+				ReplicationController: store.ReplicationController{ID: "123"},
 			},
 			{
-				RC: fields.RC{ID: "456"},
+				ReplicationController: store.ReplicationController{ID: "456"},
 			},
 		},
 	}
@@ -380,7 +380,7 @@ func TestPublishLatestRCsWithLockInfoWithLocks(t *testing.T) {
 	fakeKV := client.KV()
 	rcstore := NewConsul(client, labels.NewFakeApplicator(), 1)
 
-	inCh := make(chan []fields.RC)
+	inCh := make(chan []store.ReplicationController)
 	defer close(inCh)
 	quitCh := make(chan struct{})
 	defer close(quitCh)
@@ -394,15 +394,15 @@ func TestPublishLatestRCsWithLockInfoWithLocks(t *testing.T) {
 
 	// Create a test case with 2 RCs with no locks
 	lockedCase := LockInfoTestCase{
-		InputRCs: []fields.RC{{ID: "abc"}, {ID: "123"}},
+		InputRCs: []store.ReplicationController{{ID: "abc"}, {ID: "123"}},
 		ExpectedOutput: []RCLockResult{
 			{
-				RC:                fields.RC{ID: "abc"},
-				LockedForMutation: true,
+				ReplicationController: store.ReplicationController{ID: "abc"},
+				LockedForMutation:     true,
 			},
 			{
-				RC:                 fields.RC{ID: "123"},
-				LockedForOwnership: true,
+				ReplicationController: store.ReplicationController{ID: "123"},
+				LockedForOwnership:    true,
 			},
 		},
 	}
@@ -433,14 +433,14 @@ func TestPublishLatestRCsWithLockInfoWithLocks(t *testing.T) {
 
 	// Add an update creation lock to the second one
 	lockedCase2 := LockInfoTestCase{
-		InputRCs: []fields.RC{{ID: "abc"}, {ID: "123"}},
+		InputRCs: []store.ReplicationController{{ID: "abc"}, {ID: "123"}},
 		ExpectedOutput: []RCLockResult{
 			{
-				RC:                fields.RC{ID: "abc"},
-				LockedForMutation: true,
+				ReplicationController: store.ReplicationController{ID: "abc"},
+				LockedForMutation:     true,
 			},
 			{
-				RC:                      fields.RC{ID: "123"},
+				ReplicationController:   store.ReplicationController{ID: "123"},
 				LockedForOwnership:      true,
 				LockedForUpdateCreation: true,
 			},
@@ -461,7 +461,7 @@ func TestPublishLatestRCsWithLockInfoWithLocks(t *testing.T) {
 	verifyLockInfoTestCase(t, lockedCase2, inCh, lockResultCh)
 }
 
-func verifyLockInfoTestCase(t *testing.T, lockInfoTestCase LockInfoTestCase, inCh chan []fields.RC, lockResultCh chan []RCLockResult) {
+func verifyLockInfoTestCase(t *testing.T, lockInfoTestCase LockInfoTestCase, inCh chan []store.ReplicationController, lockResultCh chan []RCLockResult) {
 	select {
 	case inCh <- lockInfoTestCase.InputRCs:
 	case <-time.After(1 * time.Second):
@@ -477,19 +477,19 @@ func verifyLockInfoTestCase(t *testing.T, lockInfoTestCase LockInfoTestCase, inC
 		for _, val := range lockInfoTestCase.ExpectedOutput {
 			matched := false
 			for _, result := range res {
-				if val.RC.ID != result.RC.ID {
+				if val.ReplicationController.ID != result.ReplicationController.ID {
 					continue
 				}
 				matched = true
 
 				if val.LockedForOwnership != result.LockedForOwnership {
-					t.Errorf("Expected LockedForOwnership to be %t for %s, was %t", val.LockedForOwnership, result.RC.ID, result.LockedForOwnership)
+					t.Errorf("Expected LockedForOwnership to be %t for %s, was %t", val.LockedForOwnership, result.ReplicationController.ID, result.LockedForOwnership)
 				}
 				if val.LockedForMutation != result.LockedForMutation {
-					t.Errorf("Expected LockedForMutation to be %t for %s, was %t", val.LockedForMutation, result.RC.ID, result.LockedForMutation)
+					t.Errorf("Expected LockedForMutation to be %t for %s, was %t", val.LockedForMutation, result.ReplicationController.ID, result.LockedForMutation)
 				}
 				if val.LockedForUpdateCreation != result.LockedForUpdateCreation {
-					t.Errorf("Expected LockedForUpdateCreation to be %t for %s, was %t", val.LockedForUpdateCreation, result.RC.ID, result.LockedForUpdateCreation)
+					t.Errorf("Expected LockedForUpdateCreation to be %t for %s, was %t", val.LockedForUpdateCreation, result.ReplicationController.ID, result.LockedForUpdateCreation)
 				}
 
 				if matched {
@@ -512,8 +512,8 @@ func rcsWithIDs(t *testing.T, id string, num int) api.KVPairs {
 	builder.SetID("slug")
 	manifest := builder.GetManifest()
 	for i := 0; i < num; i++ {
-		rc := fields.RC{
-			ID:       fields.ID(id),
+		rc := store.ReplicationController{
+			ID:       store.ReplicationControllerID(id),
 			Manifest: manifest,
 		}
 
