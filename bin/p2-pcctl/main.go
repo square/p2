@@ -16,7 +16,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pc/control"
-	"github.com/square/p2/pkg/pc/fields"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
@@ -71,8 +71,8 @@ func main() {
 
 	switch cmd {
 	case cmdCreateText:
-		az := fields.AvailabilityZone(*createAZ)
-		cn := fields.ClusterName(*createName)
+		az := store.AvailabilityZone(*createAZ)
+		cn := store.ClusterName(*createName)
 		podID := types.PodID(*createPodID)
 		selector := selectorFrom(az, cn, podID)
 		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, session)
@@ -88,10 +88,10 @@ func main() {
 			log.Fatalf("err: %v", err)
 		}
 	case cmdGetText:
-		az := fields.AvailabilityZone(*getAZ)
-		cn := fields.ClusterName(*getName)
+		az := store.AvailabilityZone(*getAZ)
+		cn := store.ClusterName(*getName)
 		podID := types.PodID(*getPodID)
-		pcID := fields.ID(*getID)
+		pcID := store.PodClusterID(*getID)
 
 		var pccontrol *control.PodCluster
 		if pcID != "" {
@@ -114,10 +114,10 @@ func main() {
 		}
 		fmt.Printf("%s", bytes)
 	case cmdDeleteText:
-		az := fields.AvailabilityZone(*deleteAZ)
-		cn := fields.ClusterName(*deleteName)
+		az := store.AvailabilityZone(*deleteAZ)
+		cn := store.ClusterName(*deleteName)
 		podID := types.PodID(*deletePodID)
-		pcID := fields.ID(*deleteID)
+		pcID := store.PodClusterID(*deleteID)
 
 		var pccontrol *control.PodCluster
 		if pcID != "" {
@@ -137,10 +137,10 @@ func main() {
 			os.Exit(1)
 		}
 	case cmdUpdateText:
-		az := fields.AvailabilityZone(*updateAZ)
-		cn := fields.ClusterName(*updateName)
+		az := store.AvailabilityZone(*updateAZ)
+		cn := store.ClusterName(*updateName)
 		podID := types.PodID(*updatePodID)
-		pcID := fields.ID(*updateID)
+		pcID := store.PodClusterID(*updateID)
 
 		var pccontrol *control.PodCluster
 		if pcID != "" {
@@ -152,7 +152,7 @@ func main() {
 			log.Fatalf("Expected one of: pcID or (pod,az,name)")
 		}
 
-		var annotations fields.Annotations
+		var annotations store.Annotations
 		err := json.Unmarshal([]byte(*updateAnnotations), &annotations)
 		if err != nil {
 			_, _ = os.Stderr.Write([]byte(fmt.Sprintf("Annotations are invalid JSON. Err follows:\n%v", err)))
@@ -188,11 +188,11 @@ func main() {
 	}
 }
 
-func selectorFrom(az fields.AvailabilityZone, cn fields.ClusterName, podID types.PodID) klabels.Selector {
+func selectorFrom(az store.AvailabilityZone, cn store.ClusterName, podID types.PodID) klabels.Selector {
 	return klabels.Everything().
-		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
-		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
-		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{cn.String()})
+		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
+		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{cn.String()})
 }
 
 func currentUserName() string {

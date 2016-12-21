@@ -1,17 +1,16 @@
-package fields
+package store
 
 import (
 	"encoding/json"
 	"reflect"
 
-	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/types"
 
 	"k8s.io/kubernetes/pkg/labels"
 )
 
 // Types stored in the actual pod cluster document
-type ID string
+type PodClusterID string
 type AvailabilityZone string
 type ClusterName string
 type Annotations map[string]interface{}
@@ -20,10 +19,10 @@ type Annotations map[string]interface{}
 const (
 	AvailabilityZoneLabel = "availability_zone"
 	ClusterNameLabel      = "cluster_name"
-	PodIDLabel            = rcstore.PodIDLabel // TODO: put this in a different place now that multiple packages use it
+	PodIDLabel            = "pod_id"
 )
 
-func (id ID) String() string {
+func (id PodClusterID) String() string {
 	return string(id)
 }
 
@@ -37,7 +36,7 @@ func (cn ClusterName) String() string {
 
 type PodCluster struct {
 	// GUID for this cluster
-	ID ID
+	ID PodClusterID
 
 	// The ID of the pods that the cluster contains
 	PodID types.PodID
@@ -86,7 +85,7 @@ func (pc *PodCluster) Equals(other *PodCluster) bool {
 // implement it ourselves. RawPodCluster mimics PodCluster but has a string
 // type for PodSelector instead of labels.Selector
 type RawPodCluster struct {
-	ID               ID               `json:"id"`
+	ID               PodClusterID     `json:"id"`
 	PodID            types.PodID      `json:"pod_id"`
 	AvailabilityZone AvailabilityZone `json:"availability_zone"`
 	Name             ClusterName      `json:"name"`

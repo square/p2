@@ -5,7 +5,7 @@ import (
 
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/pc/fields"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -24,12 +24,12 @@ type Session interface {
 
 // WatchedPodCluster is an Either type: it will have 1 one of pc xor err
 type WatchedPodCluster struct {
-	PodCluster *fields.PodCluster
+	PodCluster *store.PodCluster
 	Err        error
 }
 
 type WatchedPodClusters struct {
-	Clusters []*fields.PodCluster
+	Clusters []*store.PodCluster
 	Err      error
 }
 
@@ -42,35 +42,35 @@ type MetricsRegistry interface {
 type Store interface {
 	Create(
 		podID types.PodID,
-		availabilityZone fields.AvailabilityZone,
-		clusterName fields.ClusterName,
+		availabilityZone store.AvailabilityZone,
+		clusterName store.ClusterName,
 		podSelector klabels.Selector,
-		annotations fields.Annotations,
+		annotations store.Annotations,
 		session Session,
-	) (fields.PodCluster, error)
-	Get(id fields.ID) (fields.PodCluster, error)
-	List() ([]fields.PodCluster, error)
+	) (store.PodCluster, error)
+	Get(id store.PodClusterID) (store.PodCluster, error)
+	List() ([]store.PodCluster, error)
 	// Although pod clusters should always be unique for this 3-ple, this method
 	// will return a slice in cases where duplicates are discovered. It is up to
 	// clients to decide how to respond to such situations.
 	FindWhereLabeled(
 		podID types.PodID,
-		availabilityZone fields.AvailabilityZone,
-		clusterName fields.ClusterName,
-	) ([]fields.PodCluster, error)
-	Delete(id fields.ID) error
+		availabilityZone store.AvailabilityZone,
+		clusterName store.ClusterName,
+	) ([]store.PodCluster, error)
+	Delete(id store.PodClusterID) error
 	MutatePC(
-		id fields.ID,
-		mutator func(fields.PodCluster) (fields.PodCluster, error),
-	) (fields.PodCluster, error)
-	WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan WatchedPodCluster
+		id store.PodClusterID,
+		mutator func(store.PodCluster) (store.PodCluster, error),
+	) (store.PodCluster, error)
+	WatchPodCluster(id store.PodClusterID, quit <-chan struct{}) <-chan WatchedPodCluster
 	Watch(quit <-chan struct{}) <-chan WatchedPodClusters
 
 	// A convenience method that handles watching pod clusters as well as the
 	// labeled pods in each pod cluster. See the ConcreteSyncer interface for
 	// details on how to use this function
 	WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) error
-	LockForSync(id fields.ID, syncerType ConcreteSyncerType, session Session) (consulutil.Unlocker, error)
+	LockForSync(id store.PodClusterID, syncerType ConcreteSyncerType, session Session) (consulutil.Unlocker, error)
 
 	SetMetricsRegistry(reg MetricsRegistry)
 }
@@ -100,7 +100,7 @@ type ConcreteSyncer interface {
 	// period.
 	//
 	// ConcreteSyncers will be called concurrently and must operate safely.
-	SyncCluster(pc *fields.PodCluster, pods []labels.Labeled) error
+	SyncCluster(pc *store.PodCluster, pods []labels.Labeled) error
 
 	// DeleteCluster is called when a pod cluster is observed to have been removed
 	// from the store. DeleteCluster can be invoked in two circumstances: first,
@@ -112,13 +112,13 @@ type ConcreteSyncer interface {
 	// If the passed ID is used to retrieve the pod cluster via store.Get(), it will
 	// return ErrNoPodCluster. Clients should track any relevant metadata to the pod
 	// cluster ID in the status store or in vendor-specific code.
-	DeleteCluster(pc fields.ID) error
+	DeleteCluster(pc store.PodClusterID) error
 
 	// GetInitialClusters is called at the beginning of the WatchAndSync
 	// routine. See DeleteCluster() for an explanation of how its results are
 	// used. If the function results in an error, the WatchAndSync function will
 	// terminate immediately, forwarding the error.
-	GetInitialClusters() ([]fields.ID, error)
+	GetInitialClusters() ([]store.PodClusterID, error)
 
 	// Used to derive the syncer type from a syncer instance for things
 	// like namespacing of metrics

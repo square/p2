@@ -20,7 +20,7 @@ import (
 
 const (
 	// This label is applied to an RC, to identify the ID of its pod manifest.
-	PodIDLabel = "pod_id"
+	PodIDLabel = store.PodIDLabel
 	// This is called "update" for backwards compatibility reasons, it
 	// should probably be named "mutate"
 	mutationSuffix       = "update"

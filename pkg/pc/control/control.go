@@ -6,7 +6,7 @@ package control
 import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/pcstore"
-	"github.com/square/p2/pkg/pc/fields"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"k8s.io/kubernetes/pkg/labels"
@@ -16,17 +16,17 @@ type PodCluster struct {
 	pcStore pcstore.Store
 	session kp.Session
 
-	ID fields.ID
+	ID store.PodClusterID
 
-	az       fields.AvailabilityZone
-	cn       fields.ClusterName
+	az       store.AvailabilityZone
+	cn       store.ClusterName
 	podID    types.PodID
 	selector labels.Selector
 }
 
 func NewPodCluster(
-	az fields.AvailabilityZone,
-	cn fields.ClusterName,
+	az store.AvailabilityZone,
+	cn store.ClusterName,
 	podID types.PodID,
 	pcstore pcstore.Store,
 	selector labels.Selector,
@@ -45,7 +45,7 @@ func NewPodCluster(
 }
 
 func NewPodClusterFromID(
-	id fields.ID,
+	id store.PodClusterID,
 	session kp.Session,
 	pcStore pcstore.Store,
 ) *PodCluster {
@@ -56,13 +56,13 @@ func NewPodClusterFromID(
 	return pc
 }
 
-func (pccontrol *PodCluster) All() ([]fields.PodCluster, error) {
+func (pccontrol *PodCluster) All() ([]store.PodCluster, error) {
 	if pccontrol.ID != "" {
 		pc, err := pccontrol.pcStore.Get(pccontrol.ID)
 		if err != nil {
 			return nil, err
 		}
-		return []fields.PodCluster{pc}, nil
+		return []store.PodCluster{pc}, nil
 	}
 	return pccontrol.pcStore.FindWhereLabeled(pccontrol.podID, pccontrol.az, pccontrol.cn)
 }
@@ -83,25 +83,25 @@ func (pccontrol *PodCluster) Delete() (errors []error) {
 	return errors
 }
 
-func (pccontrol *PodCluster) Create(annotations fields.Annotations) (fields.PodCluster, error) {
+func (pccontrol *PodCluster) Create(annotations store.Annotations) (store.PodCluster, error) {
 	return pccontrol.pcStore.Create(pccontrol.podID, pccontrol.az, pccontrol.cn, pccontrol.selector, annotations, pccontrol.session)
 }
 
-func (pccontrol *PodCluster) Get() (fields.PodCluster, error) {
+func (pccontrol *PodCluster) Get() (store.PodCluster, error) {
 	pc, err := pccontrol.getExactlyOne()
 	if err != nil {
-		return fields.PodCluster{}, err
+		return store.PodCluster{}, err
 	}
 	return pccontrol.pcStore.Get(pc.ID)
 }
 
-func (pccontrol *PodCluster) Update(annotations fields.Annotations) (fields.PodCluster, error) {
+func (pccontrol *PodCluster) Update(annotations store.Annotations) (store.PodCluster, error) {
 	pc, err := pccontrol.getExactlyOne()
 	if err != nil {
-		return fields.PodCluster{}, err
+		return store.PodCluster{}, err
 	}
 
-	annotationsUpdater := func(pc fields.PodCluster) (fields.PodCluster, error) {
+	annotationsUpdater := func(pc store.PodCluster) (store.PodCluster, error) {
 		pc.Annotations = annotations
 		return pc, nil
 	}
@@ -109,16 +109,16 @@ func (pccontrol *PodCluster) Update(annotations fields.Annotations) (fields.PodC
 	return pccontrol.pcStore.MutatePC(pc.ID, annotationsUpdater)
 }
 
-func (pccontrol *PodCluster) getExactlyOne() (fields.PodCluster, error) {
+func (pccontrol *PodCluster) getExactlyOne() (store.PodCluster, error) {
 	labeledPCs, err := pccontrol.All()
 	if err != nil {
-		return fields.PodCluster{}, err
+		return store.PodCluster{}, err
 	}
 	if len(labeledPCs) > 1 {
-		return fields.PodCluster{}, util.Errorf("More than one PC matches this PodCluster %+v, please be more specific", pccontrol)
+		return store.PodCluster{}, util.Errorf("More than one PC matches this PodCluster %+v, please be more specific", pccontrol)
 	}
 	if len(labeledPCs) == 0 {
-		return fields.PodCluster{}, util.Errorf("Found no matching PodClusters, please check the labels: %+v", pccontrol)
+		return store.PodCluster{}, util.Errorf("Found no matching PodClusters, please check the labels: %+v", pccontrol)
 	}
 
 	return labeledPCs[0], nil

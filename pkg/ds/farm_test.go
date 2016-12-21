@@ -23,7 +23,6 @@ import (
 	. "github.com/anthonybishopric/gotcha"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	fake_checker "github.com/square/p2/pkg/health/checker/test"
-	pc_fields "github.com/square/p2/pkg/pc/fields"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -84,14 +83,14 @@ func TestContendNodes(t *testing.T) {
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
-	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
+	nodeSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
 	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 	err = waitForCreate(dsf, dsData.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
 	// Make a node and verify that it was scheduled
-	applicator.SetLabel(labels.NODE, "node1", pc_fields.AvailabilityZoneLabel, "az1")
+	applicator.SetLabel(labels.NODE, "node1", store.AvailabilityZoneLabel, "az1")
 
 	labeled, err := waitForPodLabel(applicator, true, "node1/testPod")
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
@@ -119,7 +118,7 @@ func TestContendNodes(t *testing.T) {
 	// Make a third daemon set and update its node selector to force a contend,
 	// then verify that it has been disabled and the node hasn't been overwritten
 	//
-	anotherSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"undefined"})
+	anotherSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"undefined"})
 	badDS, err := dsStore.Create(podManifest, minHealth, clusterName, anotherSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 	err = waitForCreate(dsf, badDS.ID)
@@ -216,7 +215,7 @@ func TestContendSelectors(t *testing.T) {
 
 	// Add another daemon set with different selector and verify it gets disabled
 	someSelector := klabels.Everything().
-		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"nowhere"})
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"nowhere"})
 	thirdDSData, err := dsStore.Create(podManifest, minHealth, clusterName, someSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 	err = waitForCreate(dsf, thirdDSData.ID)
@@ -270,7 +269,7 @@ func TestContendSelectors(t *testing.T) {
 	anotherPodManifest := manifestBuilder.GetManifest()
 
 	equalSelector := klabels.Everything().
-		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
 
 	fourthDSData, err := dsStore.Create(anotherPodManifest, minHealth, clusterName, equalSelector, anotherPodID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
@@ -344,21 +343,21 @@ func TestFarmSchedule(t *testing.T) {
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
-	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
+	nodeSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
 	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 	err = waitForCreate(dsf, dsData.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
 	// Second daemon set
-	anotherNodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
+	anotherNodeSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
 	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, anotherNodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 	err = waitForCreate(dsf, anotherDSData.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
 	// Make a node and verify that it was scheduled by the first daemon set
-	applicator.SetLabel(labels.NODE, "node1", pc_fields.AvailabilityZoneLabel, "az1")
+	applicator.SetLabel(labels.NODE, "node1", store.AvailabilityZoneLabel, "az1")
 
 	labeled, err := waitForPodLabel(applicator, true, "node1/testPod")
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
@@ -366,7 +365,7 @@ func TestFarmSchedule(t *testing.T) {
 	Assert(t).AreEqual(dsData.ID.String(), dsID, "Unexpected dsID labeled")
 
 	// Make a second node and verify that it was scheduled by the second daemon set
-	applicator.SetLabel(labels.NODE, "node2", pc_fields.AvailabilityZoneLabel, "az2")
+	applicator.SetLabel(labels.NODE, "node2", store.AvailabilityZoneLabel, "az2")
 
 	labeled, err = waitForPodLabel(applicator, true, "node2/testPod")
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
@@ -374,7 +373,7 @@ func TestFarmSchedule(t *testing.T) {
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
 	// Make a third unschedulable node and verify it doesn't get scheduled by anything
-	applicator.SetLabel(labels.NODE, "node3", pc_fields.AvailabilityZoneLabel, "undefined")
+	applicator.SetLabel(labels.NODE, "node3", store.AvailabilityZoneLabel, "undefined")
 
 	labeled, err = waitForPodLabel(applicator, false, "node3/testPod")
 	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
@@ -382,7 +381,7 @@ func TestFarmSchedule(t *testing.T) {
 	// Now add 10 new nodes and verify that they are scheduled by the first daemon set
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("good_node%v", i)
-		err := applicator.SetLabel(labels.NODE, nodeName, pc_fields.AvailabilityZoneLabel, "az1")
+		err := applicator.SetLabel(labels.NODE, nodeName, store.AvailabilityZoneLabel, "az1")
 		Assert(t).IsNil(err, "expected no error labeling node")
 	}
 	for i := 0; i < 10; i++ {
@@ -397,7 +396,7 @@ func TestFarmSchedule(t *testing.T) {
 	// Update a daemon set's node selector and expect a node to be unscheduled
 	//
 	mutator := func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
-		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
+		someSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
@@ -434,7 +433,7 @@ func TestFarmSchedule(t *testing.T) {
 	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
 		dsToUpdate.Disabled = true
 
-		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
+		someSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
@@ -644,17 +643,17 @@ func TestMultipleFarms(t *testing.T) {
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
-	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
+	nodeSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
 	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 
 	// Second daemon set
-	anotherNodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
+	anotherNodeSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
 	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, anotherNodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
 
 	// Make a node and verify that it was scheduled by the first daemon set
-	applicator.SetLabel(labels.NODE, "node1", pc_fields.AvailabilityZoneLabel, "az1")
+	applicator.SetLabel(labels.NODE, "node1", store.AvailabilityZoneLabel, "az1")
 
 	labeled, err := waitForPodLabel(applicator, true, "node1/testPod")
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
@@ -662,7 +661,7 @@ func TestMultipleFarms(t *testing.T) {
 	Assert(t).AreEqual(dsData.ID.String(), dsID, "Unexpected dsID labeled")
 
 	// Make a second node and verify that it was scheduled by the second daemon set
-	applicator.SetLabel(labels.NODE, "node2", pc_fields.AvailabilityZoneLabel, "az2")
+	applicator.SetLabel(labels.NODE, "node2", store.AvailabilityZoneLabel, "az2")
 
 	labeled, err = waitForPodLabel(applicator, true, "node2/testPod")
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
@@ -670,7 +669,7 @@ func TestMultipleFarms(t *testing.T) {
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
 	// Make a third unschedulable node and verify it doesn't get scheduled by anything
-	applicator.SetLabel(labels.NODE, "node3", pc_fields.AvailabilityZoneLabel, "undefined")
+	applicator.SetLabel(labels.NODE, "node3", store.AvailabilityZoneLabel, "undefined")
 
 	labeled, err = waitForPodLabel(applicator, false, "node3/testPod")
 	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
@@ -678,7 +677,7 @@ func TestMultipleFarms(t *testing.T) {
 	// Now add 10 new nodes and verify that they are scheduled by the first daemon set
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("good_node%v", i)
-		err := applicator.SetLabel(labels.NODE, nodeName, pc_fields.AvailabilityZoneLabel, "az1")
+		err := applicator.SetLabel(labels.NODE, nodeName, store.AvailabilityZoneLabel, "az1")
 		Assert(t).IsNil(err, "expected no error labeling node")
 	}
 	for i := 0; i < 10; i++ {
@@ -693,7 +692,7 @@ func TestMultipleFarms(t *testing.T) {
 	// Update a daemon set's node selector and expect a node to be unscheduled
 	//
 	mutator := func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
-		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
+		someSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
@@ -710,7 +709,7 @@ func TestMultipleFarms(t *testing.T) {
 	// Now update the node selector to schedule node2 again and verify
 	//
 	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
-		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
+		someSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
@@ -731,7 +730,7 @@ func TestMultipleFarms(t *testing.T) {
 	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
 		dsToUpdate.Disabled = true
 
-		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
+		someSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}

@@ -11,7 +11,6 @@ import (
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
-	pc_fields "github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 
@@ -27,9 +26,9 @@ func TestCreate(t *testing.T) {
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
-	azLabel := pc_fields.AvailabilityZone("some_zone")
+	azLabel := store.AvailabilityZone("some_zone")
 	selector := klabels.Everything().
-		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
 	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID("")
@@ -61,9 +60,9 @@ func createDaemonSet(consulStore *consulStore, t *testing.T) ds_fields.DaemonSet
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
-	azLabel := pc_fields.AvailabilityZone("some_zone")
+	azLabel := store.AvailabilityZone("some_zone")
 	selector := klabels.Everything().
-		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
 	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
@@ -90,7 +89,7 @@ func createDaemonSet(consulStore *consulStore, t *testing.T) ds_fields.DaemonSet
 	Assert(t).IsFalse(ds.Disabled, "Daemon set disabled field was not set correctly")
 
 	testLabels := klabels.Set{
-		pc_fields.AvailabilityZoneLabel: azLabel.String(),
+		store.AvailabilityZoneLabel: azLabel.String(),
 	}
 	if matches := ds.NodeSelector.Matches(testLabels); !matches {
 		t.Error("The daemon set has a bad node selector")
@@ -139,9 +138,9 @@ func TestGet(t *testing.T) {
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
-	azLabel := pc_fields.AvailabilityZone("some_zone")
+	azLabel := store.AvailabilityZone("some_zone")
 	selector := klabels.Everything().
-		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
 	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
@@ -175,7 +174,7 @@ func TestGet(t *testing.T) {
 	Assert(t).AreEqual(ds.Disabled, getDS.Disabled, "Daemon set should have same disabled fields")
 
 	testLabels := klabels.Set{
-		pc_fields.AvailabilityZoneLabel: azLabel.String(),
+		store.AvailabilityZoneLabel: azLabel.String(),
 	}
 	if matches := getDS.NodeSelector.Matches(testLabels); !matches {
 		t.Error("The daemon set has a bad node selector")
@@ -206,9 +205,9 @@ func TestList(t *testing.T) {
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
-	azLabel := pc_fields.AvailabilityZone("some_zone")
+	azLabel := store.AvailabilityZone("some_zone")
 	selector := klabels.Everything().
-		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
 	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(firstPodID)
@@ -261,9 +260,9 @@ func TestMutate(t *testing.T) {
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
-	azLabel := pc_fields.AvailabilityZone("some_zone")
+	azLabel := store.AvailabilityZone("some_zone")
 	selector := klabels.Everything().
-		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
 	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
@@ -315,9 +314,9 @@ func TestMutate(t *testing.T) {
 	manifestBuilder.SetID(someOtherPodID)
 	someOtherManifest := manifestBuilder.GetManifest()
 
-	someOtherAZLabel := pc_fields.AvailabilityZone("some_other_zone")
+	someOtherAZLabel := store.AvailabilityZone("some_other_zone")
 	someOtherSelector := klabels.Everything().
-		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{someOtherAZLabel.String()})
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{someOtherAZLabel.String()})
 
 	goodMutator := func(dsToMutate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
 		dsToMutate.Disabled = someOtherDisabled
@@ -340,7 +339,7 @@ func TestMutate(t *testing.T) {
 	Assert(t).AreEqual(someOtherDS.Disabled, someOtherDisabled, "Daemon sets should have same disabled fields")
 
 	someOtherLabels := klabels.Set{
-		pc_fields.AvailabilityZoneLabel: someOtherAZLabel.String(),
+		store.AvailabilityZoneLabel: someOtherAZLabel.String(),
 	}
 	if matches := someOtherDS.NodeSelector.Matches(someOtherLabels); !matches {
 		t.Error("The daemon set has a bad node selector")
@@ -370,7 +369,7 @@ func TestMutate(t *testing.T) {
 	Assert(t).AreEqual(getDS.Disabled, someOtherDisabled, "Daemon sets should have same disabled fields")
 
 	someOtherLabels = klabels.Set{
-		pc_fields.AvailabilityZoneLabel: someOtherAZLabel.String(),
+		store.AvailabilityZoneLabel: someOtherAZLabel.String(),
 	}
 	if matches := getDS.NodeSelector.Matches(someOtherLabels); !matches {
 		t.Error("The daemon set has a bad node selector")
@@ -396,9 +395,9 @@ func TestWatch(t *testing.T) {
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
-	azLabel := pc_fields.AvailabilityZone("some_zone")
+	azLabel := store.AvailabilityZone("some_zone")
 	selector := klabels.Everything().
-		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
 	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
@@ -515,9 +514,9 @@ func TestWatchAll(t *testing.T) {
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
-	azLabel := pc_fields.AvailabilityZone("some_zone")
+	azLabel := store.AvailabilityZone("some_zone")
 	selector := klabels.Everything().
-		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
 	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)

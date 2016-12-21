@@ -1,4 +1,4 @@
-package fields
+package store
 
 import (
 	"k8s.io/kubernetes/pkg/labels"

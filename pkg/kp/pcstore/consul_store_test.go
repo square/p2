@@ -9,7 +9,7 @@ import (
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/pc/fields"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 
 	"github.com/Sirupsen/logrus"
@@ -18,29 +18,29 @@ import (
 )
 
 func TestCreate(t *testing.T) {
-	store := consulStoreWithFakeKV()
-	createPodCluster(store, t)
+	consulStore := consulStoreWithFakeKV()
+	createPodCluster(consulStore, t)
 }
 
 func TestMutate(t *testing.T) {
-	store := consulStoreWithFakeKV()
-	oldPc := createPodCluster(store, t)
+	consulStore := consulStoreWithFakeKV()
+	oldPc := createPodCluster(consulStore, t)
 
 	// After creating the pod cluster, we now update it using a mutator function
 	newPodID := types.PodID("pod_id-diff")
-	newAz := fields.AvailabilityZone("us-west-diff")
-	newClusterName := fields.ClusterName("cluster_name_diff")
+	newAz := store.AvailabilityZone("us-west-diff")
+	newClusterName := store.ClusterName("cluster_name_diff")
 
 	newSelector := klabels.Everything().
-		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{newPodID.String()}).
-		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{newAz.String()}).
-		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{newClusterName.String()})
+		Add(store.PodIDLabel, klabels.EqualsOperator, []string{newPodID.String()}).
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{newAz.String()}).
+		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{newClusterName.String()})
 
-	newAnnotations := fields.Annotations(map[string]interface{}{
+	newAnnotations := store.Annotations(map[string]interface{}{
 		"bar": "foo",
 	})
 
-	intendedPC := fields.PodCluster{
+	intendedPC := store.PodCluster{
 		ID:               oldPc.ID,
 		PodID:            newPodID,
 		AvailabilityZone: newAz,
@@ -49,7 +49,7 @@ func TestMutate(t *testing.T) {
 		Annotations:      newAnnotations,
 	}
 
-	mutator := func(pc fields.PodCluster) (fields.PodCluster, error) {
+	mutator := func(pc store.PodCluster) (store.PodCluster, error) {
 		pc.PodID = intendedPC.PodID
 		pc.AvailabilityZone = intendedPC.AvailabilityZone
 		pc.Name = intendedPC.Name
@@ -58,12 +58,12 @@ func TestMutate(t *testing.T) {
 		return pc, nil
 	}
 
-	_, err := store.MutatePC(intendedPC.ID, mutator)
+	_, err := consulStore.MutatePC(intendedPC.ID, mutator)
 	if err != nil {
 		t.Fatalf("Unable to update pod cluster: %s", err)
 	}
 
-	newPC, err := store.Get(intendedPC.ID)
+	newPC, err := consulStore.Get(intendedPC.ID)
 	if err != nil {
 		t.Fatalf("Unable to find pod cluster: %s", err)
 	}
@@ -93,9 +93,9 @@ func TestMutate(t *testing.T) {
 	}
 
 	newTestLabels := klabels.Set{
-		fields.PodIDLabel:            newPodID.String(),
-		fields.AvailabilityZoneLabel: newAz.String(),
-		fields.ClusterNameLabel:      newClusterName.String(),
+		store.PodIDLabel:            newPodID.String(),
+		store.AvailabilityZoneLabel: newAz.String(),
+		store.ClusterNameLabel:      newClusterName.String(),
 	}
 
 	if matches := newPC.PodSelector.Matches(newTestLabels); !matches {
@@ -109,22 +109,22 @@ func TestMutate(t *testing.T) {
 	}
 }
 
-func createPodCluster(store *consulStore, t *testing.T) fields.PodCluster {
+func createPodCluster(consulStore *consulStore, t *testing.T) store.PodCluster {
 	podID := types.PodID("pod_id")
-	az := fields.AvailabilityZone("us-west")
-	clusterName := fields.ClusterName("cluster_name")
+	az := store.AvailabilityZone("us-west")
+	clusterName := store.ClusterName("cluster_name")
 
 	selector := klabels.Everything().
-		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
-		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
-		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
+		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
-	annotations := fields.Annotations(map[string]interface{}{
+	annotations := store.Annotations(map[string]interface{}{
 		"foo": "bar",
 	})
 
 	session := kptest.NewSession()
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, session)
+	pc, err := consulStore.Create(podID, az, clusterName, selector, annotations, session)
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -150,9 +150,9 @@ func createPodCluster(store *consulStore, t *testing.T) fields.PodCluster {
 	}
 
 	testLabels := klabels.Set{
-		fields.PodIDLabel:            podID.String(),
-		fields.AvailabilityZoneLabel: az.String(),
-		fields.ClusterNameLabel:      clusterName.String(),
+		store.PodIDLabel:            podID.String(),
+		store.AvailabilityZoneLabel: az.String(),
+		store.ClusterNameLabel:      clusterName.String(),
 	}
 
 	if matches := pc.PodSelector.Matches(testLabels); !matches {
@@ -166,26 +166,26 @@ func createPodCluster(store *consulStore, t *testing.T) fields.PodCluster {
 }
 
 func TestLabelsOnCreate(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	consulStore := consulStoreWithFakeKV()
 	podID := types.PodID("pod_id")
-	az := fields.AvailabilityZone("us-west")
-	clusterName := fields.ClusterName("cluster_name")
+	az := store.AvailabilityZone("us-west")
+	clusterName := store.ClusterName("cluster_name")
 
 	selector := klabels.Everything().
-		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
-		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
-		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
+		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
-	annotations := fields.Annotations(map[string]interface{}{
+	annotations := store.Annotations(map[string]interface{}{
 		"foo": "bar",
 	})
 
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
+	pc, err := consulStore.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
 
-	matches, err := store.labeler.GetMatches(selector, labels.PC, false)
+	matches, err := consulStore.labeler.GetMatches(selector, labels.PC, false)
 	if err != nil {
 		t.Fatalf("Unable to check for label match on new pod cluster: %s", err)
 	}
@@ -194,33 +194,33 @@ func TestLabelsOnCreate(t *testing.T) {
 		t.Errorf("Expected one pod cluster to match label selector")
 	}
 
-	if fields.ID(matches[0].ID) != pc.ID {
+	if store.PodClusterID(matches[0].ID) != pc.ID {
 		t.Errorf("The pod cluster selector didn't match the new pod cluster")
 	}
 }
 
 func TestGet(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	consulStore := consulStoreWithFakeKV()
 	podID := types.PodID("pod_id")
-	az := fields.AvailabilityZone("us-west")
-	clusterName := fields.ClusterName("cluster_name")
+	az := store.AvailabilityZone("us-west")
+	clusterName := store.ClusterName("cluster_name")
 
 	selector := klabels.Everything().
-		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
-		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
-		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
+		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
-	annotations := fields.Annotations(map[string]interface{}{
+	annotations := store.Annotations(map[string]interface{}{
 		"foo": "bar",
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
+	pc, err := consulStore.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
 
-	pc, err = store.Get(pc.ID)
+	pc, err = consulStore.Get(pc.ID)
 	if err != nil {
 		t.Fatalf("Unable to get pod cluster: %s", err)
 	}
@@ -246,9 +246,9 @@ func TestGet(t *testing.T) {
 	}
 
 	testLabels := klabels.Set{
-		fields.PodIDLabel:            podID.String(),
-		fields.AvailabilityZoneLabel: az.String(),
-		fields.ClusterNameLabel:      clusterName.String(),
+		store.PodIDLabel:            podID.String(),
+		store.AvailabilityZoneLabel: az.String(),
+		store.ClusterNameLabel:      clusterName.String(),
 	}
 
 	if matches := pc.PodSelector.Matches(testLabels); !matches {
@@ -259,7 +259,7 @@ func TestGet(t *testing.T) {
 		t.Errorf("Annotations didn't match expected")
 	}
 
-	found, err := store.FindWhereLabeled(podID, az, clusterName)
+	found, err := consulStore.FindWhereLabeled(podID, az, clusterName)
 	if err != nil {
 		t.Errorf("Could not retrieve labeled pods: %v", err)
 	}
@@ -274,37 +274,37 @@ func TestGet(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	consulStore := consulStoreWithFakeKV()
 	podID := types.PodID("pod_id")
-	az := fields.AvailabilityZone("us-west")
-	clusterName := fields.ClusterName("cluster_name")
+	az := store.AvailabilityZone("us-west")
+	clusterName := store.ClusterName("cluster_name")
 
 	selector := klabels.Everything().
-		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
-		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
-		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
+		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
-	annotations := fields.Annotations(map[string]interface{}{
+	annotations := store.Annotations(map[string]interface{}{
 		"foo": "bar",
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
+	pc, err := consulStore.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
 
-	pc, err = store.Get(pc.ID)
+	pc, err = consulStore.Get(pc.ID)
 	if err != nil {
 		t.Fatalf("Unable to get pod cluster: %s", err)
 	}
 
-	err = store.Delete(pc.ID)
+	err = consulStore.Delete(pc.ID)
 	if err != nil {
 		t.Fatalf("Unexpected error deleting pod cluster: %s", err)
 	}
 
-	_, err = store.Get(pc.ID)
+	_, err = consulStore.Get(pc.ID)
 	if err == nil {
 		t.Fatalf("Should have gotten an error fetching a deleted pod cluster")
 	}
@@ -313,7 +313,7 @@ func TestDelete(t *testing.T) {
 		t.Errorf("The error should have been a pocstore.IsNotExist but was '%s'", err)
 	}
 
-	labels, err := store.labeler.GetLabels(labels.PC, pc.ID.String())
+	labels, err := consulStore.labeler.GetLabels(labels.PC, pc.ID.String())
 	if err != nil {
 		t.Fatalf("Got error when trying to confirm label deletion: %s", err)
 	}
@@ -324,31 +324,31 @@ func TestDelete(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	consulStore := consulStoreWithFakeKV()
 	podID := types.PodID("pod_id")
-	az := fields.AvailabilityZone("us-west")
-	clusterName := fields.ClusterName("cluster_name")
+	az := store.AvailabilityZone("us-west")
+	clusterName := store.ClusterName("cluster_name")
 
 	selector := klabels.Everything()
 
-	annotations := fields.Annotations(map[string]interface{}{
+	annotations := store.Annotations(map[string]interface{}{
 		"foo": "bar",
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
+	pc, err := consulStore.Create(podID, az, clusterName, selector, annotations, kptest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
 
 	// Create another one
-	pc2, err := store.Create(podID+"2", az, clusterName, selector, annotations, kptest.NewSession())
+	pc2, err := consulStore.Create(podID+"2", az, clusterName, selector, annotations, kptest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
 
 	// Now test List() and make sure we get both back
-	pcs, err := store.List()
+	pcs, err := consulStore.List()
 	if err != nil {
 		t.Fatalf("Unable to list pod clusters: %s", err)
 	}
@@ -359,7 +359,7 @@ func TestList(t *testing.T) {
 
 	for _, foundPC := range pcs {
 		found := false
-		for _, expectedPC := range []fields.ID{pc.ID, pc2.ID} {
+		for _, expectedPC := range []store.PodClusterID{pc.ID, pc2.ID} {
 			if foundPC.ID == expectedPC {
 				found = true
 			}
@@ -372,35 +372,35 @@ func TestList(t *testing.T) {
 }
 
 func TestWatch(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	consulStore := consulStoreWithFakeKV()
 	podID := types.PodID("pod_id")
-	az := fields.AvailabilityZone("us-west")
-	clusterName := fields.ClusterName("cluster_name")
+	az := store.AvailabilityZone("us-west")
+	clusterName := store.ClusterName("cluster_name")
 
 	selector := klabels.Everything().
-		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
-		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
-		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
+		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
-	annotations := fields.Annotations(map[string]interface{}{
+	annotations := store.Annotations(map[string]interface{}{
 		"foo": "bar",
 	})
 
 	var watched WatchedPodClusters
 	session := kptest.NewSession()
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, session)
+	pc, err := consulStore.Create(podID, az, clusterName, selector, annotations, session)
 	if err != nil {
 		t.Fatalf("Unable to create first pod cluster: %s", err)
 	}
 
-	pc2, err := store.Create(podID, "us-east", clusterName, selector, annotations, session)
+	pc2, err := consulStore.Create(podID, "us-east", clusterName, selector, annotations, session)
 	if err != nil {
 		t.Fatalf("Unable to create second pod cluster: %s", err)
 	}
 
 	quit := make(chan struct{})
 	defer close(quit)
-	watch := store.Watch(quit)
+	watch := consulStore.Watch(quit)
 
 	select {
 	case watchedPC := <-watch:
@@ -413,7 +413,7 @@ func TestWatch(t *testing.T) {
 		t.Fatalf("Expected to get two watched PodClusters, but did not: got %v", len(watched.Clusters))
 	}
 
-	expectedIDs := []fields.ID{pc.ID, pc2.ID}
+	expectedIDs := []store.PodClusterID{pc.ID, pc2.ID}
 	for _, id := range expectedIDs {
 		found := false
 		for _, pc := range watched.Clusters {
@@ -429,29 +429,29 @@ func TestWatch(t *testing.T) {
 }
 
 func TestWatchPodCluster(t *testing.T) {
-	store := consulStoreWithFakeKV()
-	pod := fields.ID("pod_id")
+	consulStore := consulStoreWithFakeKV()
+	pod := store.PodClusterID("pod_id")
 	podID := types.PodID("pod_id")
-	az := fields.AvailabilityZone("us-west")
-	clusterName := fields.ClusterName("cluster_name")
+	az := store.AvailabilityZone("us-west")
+	clusterName := store.ClusterName("cluster_name")
 
 	selector := klabels.Everything().
-		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{pod.String()}).
-		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
-		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+		Add(store.PodIDLabel, klabels.EqualsOperator, []string{pod.String()}).
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
+		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
-	annotations := fields.Annotations(map[string]interface{}{
+	annotations := store.Annotations(map[string]interface{}{
 		"foo": "bar",
 	})
 
 	session := kptest.NewSession()
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, session)
+	pc, err := consulStore.Create(podID, az, clusterName, selector, annotations, session)
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
 
 	quit := make(chan struct{})
-	watch := store.WatchPodCluster(pc.ID, quit)
+	watch := consulStore.WatchPodCluster(pc.ID, quit)
 
 	var watched *WatchedPodCluster
 	select {
@@ -472,17 +472,17 @@ func TestWatchPodCluster(t *testing.T) {
 }
 
 func TestZipPodClusterResults(t *testing.T) {
-	store := consulStore{}
+	consulStore := consulStore{}
 
 	previous := WatchedPodClusters{
-		[]*fields.PodCluster{
+		[]*store.PodCluster{
 			{
-				ID:    fields.ID("abc123"),
+				ID:    store.PodClusterID("abc123"),
 				PodID: types.PodID("vvv"),
 				Name:  "old name 1",
 			},
 			{
-				ID:    fields.ID("def456"),
+				ID:    store.PodClusterID("def456"),
 				PodID: types.PodID("xxx"),
 				Name:  "old name 2",
 			},
@@ -491,15 +491,15 @@ func TestZipPodClusterResults(t *testing.T) {
 	}
 
 	current := WatchedPodClusters{
-		[]*fields.PodCluster{
+		[]*store.PodCluster{
 			{
-				ID:    fields.ID("abc123"),
+				ID:    store.PodClusterID("abc123"),
 				PodID: types.PodID("vvv"),
 				Name:  "new name 1",
 			},
 
 			{
-				ID:    fields.ID("987fed"),
+				ID:    store.PodClusterID("987fed"),
 				PodID: types.PodID("zzz"),
 				Name:  "new name 3",
 			},
@@ -507,13 +507,13 @@ func TestZipPodClusterResults(t *testing.T) {
 		nil,
 	}
 
-	zipped := store.zipResults(current, previous)
+	zipped := consulStore.zipResults(current, previous)
 
 	if len(zipped) != 3 {
 		t.Errorf("Unexpected number of clusters in zipped results: %v", len(zipped))
 	}
 
-	updated := zipped[fields.ID("abc123")]
+	updated := zipped[store.PodClusterID("abc123")]
 	if updated.previous == nil || updated.current == nil {
 		t.Fatalf("Either (%v) or (%v) is nil, but neither should be", updated.previous, updated.current)
 	}
@@ -526,7 +526,7 @@ func TestZipPodClusterResults(t *testing.T) {
 		t.Errorf("%v was not the right name for the previous cluster", updated.previous.Name)
 	}
 
-	onlyOld := zipped[fields.ID("def456")]
+	onlyOld := zipped[store.PodClusterID("def456")]
 	if onlyOld.current != nil {
 		t.Error("cluster onlyOld should not have had a current cluster")
 	}
@@ -539,7 +539,7 @@ func TestZipPodClusterResults(t *testing.T) {
 		t.Errorf("The old name %v was wrong for the cluster", onlyOld.previous.Name)
 	}
 
-	onlyNew := zipped[fields.ID("987fed")]
+	onlyNew := zipped[store.PodClusterID("987fed")]
 	if onlyNew.previous != nil {
 		t.Error("cluster onlyNew should not have had a previous cluster")
 	}
@@ -554,18 +554,18 @@ func TestZipPodClusterResults(t *testing.T) {
 }
 
 type fakeSync struct {
-	syncedCluster *fields.PodCluster
+	syncedCluster *store.PodCluster
 	syncedPods    []labels.Labeled
 }
 
 type fakeSyncer struct {
-	initial []fields.ID
+	initial []store.PodClusterID
 	synced  chan fakeSync
 	deleted chan fakeSync
 	ignore  bool
 }
 
-func (f *fakeSyncer) SyncCluster(cluster *fields.PodCluster, pods []labels.Labeled) error {
+func (f *fakeSyncer) SyncCluster(cluster *store.PodCluster, pods []labels.Labeled) error {
 	if f.ignore {
 		fmt.Printf("fake: Ignoring update for %v/%v\n", cluster, pods)
 		return nil
@@ -577,14 +577,14 @@ func (f *fakeSyncer) SyncCluster(cluster *fields.PodCluster, pods []labels.Label
 	return nil
 }
 
-func (f *fakeSyncer) DeleteCluster(id fields.ID) error {
+func (f *fakeSyncer) DeleteCluster(id store.PodClusterID) error {
 	f.deleted <- fakeSync{
-		syncedCluster: &fields.PodCluster{ID: id},
+		syncedCluster: &store.PodCluster{ID: id},
 	}
 	return nil
 }
 
-func (f *fakeSyncer) GetInitialClusters() ([]fields.ID, error) {
+func (f *fakeSyncer) GetInitialClusters() ([]store.PodClusterID, error) {
 	return f.initial, nil
 }
 
@@ -596,14 +596,14 @@ func (f *fakeSyncer) Type() ConcreteSyncerType {
 // the update step will change the pod selector and should result in a
 // different pod ID being returned.
 func TestConcreteSyncer(t *testing.T) {
-	store := consulStoreWithFakeKV()
-	store.logger.Logger.Level = logrus.DebugLevel
+	consulStore := consulStoreWithFakeKV()
+	consulStore.logger.Logger.Level = logrus.DebugLevel
 
-	store.labeler.SetLabel(labels.POD, "1234-123-123-1234", "color", "red")
-	store.labeler.SetLabel(labels.POD, "abcd-abc-abc-abcd", "color", "blue")
+	consulStore.labeler.SetLabel(labels.POD, "1234-123-123-1234", "color", "red")
+	consulStore.labeler.SetLabel(labels.POD, "abcd-abc-abc-abcd", "color", "blue")
 
 	syncer := &fakeSyncer{
-		[]fields.ID{},
+		[]store.PodClusterID{},
 		make(chan fakeSync),
 		make(chan fakeSync),
 		false,
@@ -611,17 +611,17 @@ func TestConcreteSyncer(t *testing.T) {
 
 	change := podClusterChange{
 		previous: nil,
-		current: &fields.PodCluster{
-			ID:               fields.ID("abc123"),
+		current: &store.PodCluster{
+			ID:               store.PodClusterID("abc123"),
 			PodID:            types.PodID("vvv"),
-			AvailabilityZone: fields.AvailabilityZone("west"),
+			AvailabilityZone: store.AvailabilityZone("west"),
 			Name:             "production",
 			PodSelector:      klabels.Everything().Add("color", klabels.EqualsOperator, []string{"red"}),
 		},
 	}
 
 	changes := make(chan podClusterChange)
-	go store.handlePCUpdates(syncer, changes, metrics.NewHistogram(metrics.NewExpDecaySample(1028, 0.015)))
+	go consulStore.handlePCUpdates(syncer, changes, metrics.NewHistogram(metrics.NewExpDecaySample(1028, 0.015)))
 
 	select {
 	case changes <- change:
@@ -651,10 +651,10 @@ func TestConcreteSyncer(t *testing.T) {
 	// (from 1234-123-123-1234 to abcd-abc-abc-abcd )
 	change = podClusterChange{
 		previous: change.current,
-		current: &fields.PodCluster{
-			ID:               fields.ID("abc123"),
+		current: &store.PodCluster{
+			ID:               store.PodClusterID("abc123"),
 			PodID:            types.PodID("vvv"),
-			AvailabilityZone: fields.AvailabilityZone("west"),
+			AvailabilityZone: store.AvailabilityZone("west"),
 			Name:             "production",
 			PodSelector:      klabels.Everything().Add("color", klabels.EqualsOperator, []string{"blue"}),
 		},
@@ -710,14 +710,14 @@ func TestConcreteSyncer(t *testing.T) {
 }
 
 func TestConcreteSyncerWithPrevious(t *testing.T) {
-	store := consulStoreWithFakeKV()
-	store.logger.Logger.Level = logrus.DebugLevel
+	consulStore := consulStoreWithFakeKV()
+	consulStore.logger.Logger.Level = logrus.DebugLevel
 
-	store.labeler.SetLabel(labels.POD, "1234-123-123-1234", "color", "red")
-	store.labeler.SetLabel(labels.POD, "abcd-abc-abc-abcd", "color", "blue")
+	consulStore.labeler.SetLabel(labels.POD, "1234-123-123-1234", "color", "red")
+	consulStore.labeler.SetLabel(labels.POD, "abcd-abc-abc-abcd", "color", "blue")
 
 	syncer := &fakeSyncer{
-		[]fields.ID{},
+		[]store.PodClusterID{},
 		make(chan fakeSync),
 		make(chan fakeSync),
 		false,
@@ -725,24 +725,24 @@ func TestConcreteSyncerWithPrevious(t *testing.T) {
 
 	// Previous == current, simulates a concrete syncer starting up
 	change := podClusterChange{
-		previous: &fields.PodCluster{
-			ID:               fields.ID("abc123"),
+		previous: &store.PodCluster{
+			ID:               store.PodClusterID("abc123"),
 			PodID:            types.PodID("vvv"),
-			AvailabilityZone: fields.AvailabilityZone("west"),
+			AvailabilityZone: store.AvailabilityZone("west"),
 			Name:             "production",
 			PodSelector:      klabels.Everything().Add("color", klabels.EqualsOperator, []string{"red"}),
 		},
-		current: &fields.PodCluster{
-			ID:               fields.ID("abc123"),
+		current: &store.PodCluster{
+			ID:               store.PodClusterID("abc123"),
 			PodID:            types.PodID("vvv"),
-			AvailabilityZone: fields.AvailabilityZone("west"),
+			AvailabilityZone: store.AvailabilityZone("west"),
 			Name:             "production",
 			PodSelector:      klabels.Everything().Add("color", klabels.EqualsOperator, []string{"red"}),
 		},
 	}
 
 	changes := make(chan podClusterChange)
-	go store.handlePCUpdates(syncer, changes, metrics.NewHistogram(metrics.NewExpDecaySample(1028, 0.015)))
+	go consulStore.handlePCUpdates(syncer, changes, metrics.NewHistogram(metrics.NewExpDecaySample(1028, 0.015)))
 
 	select {
 	case changes <- change:
@@ -772,10 +772,10 @@ func TestConcreteSyncerWithPrevious(t *testing.T) {
 	// (from 1234-123-123-1234 to abcd-abc-abc-abcd )
 	change = podClusterChange{
 		previous: change.current,
-		current: &fields.PodCluster{
-			ID:               fields.ID("abc123"),
+		current: &store.PodCluster{
+			ID:               store.PodClusterID("abc123"),
 			PodID:            types.PodID("vvv"),
-			AvailabilityZone: fields.AvailabilityZone("west"),
+			AvailabilityZone: store.AvailabilityZone("west"),
 			Name:             "production",
 			PodSelector:      klabels.Everything().Add("color", klabels.EqualsOperator, []string{"blue"}),
 		},
@@ -830,17 +830,16 @@ func TestConcreteSyncerWithPrevious(t *testing.T) {
 	close(changes)
 }
 func TestInitialClusters(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	consulStore := consulStoreWithFakeKV()
 
 	syncer := &fakeSyncer{
-		[]fields.ID{"abc-123"},
+		[]store.PodClusterID{"abc-123"},
 		make(chan fakeSync),
 		make(chan fakeSync),
 		false,
 	}
 
-	clusters, err := store.getInitialClusters(syncer)
-
+	clusters, err := consulStore.getInitialClusters(syncer)
 	if err != nil {
 		t.Fatalf("Did not expect error to occur getting clusters: %v", err)
 	}
@@ -849,23 +848,23 @@ func TestInitialClusters(t *testing.T) {
 		t.Fatalf("Got unexpected number of clusters (%v)", len(clusters.Clusters))
 	}
 
-	if clusters.Clusters[0].ID != fields.ID("abc-123") {
+	if clusters.Clusters[0].ID != store.PodClusterID("abc-123") {
 		t.Fatalf("Got unexpected initial cluster %v", clusters.Clusters[0].ID)
 	}
 }
 
 func TestLockForSync(t *testing.T) {
-	id := fields.ID("abc123")
-	store := consulStoreWithFakeKV()
+	id := store.PodClusterID("abc123")
+	consulStore := consulStoreWithFakeKV()
 	syncerType := ConcreteSyncerType("some_syncer")
 	session := kptest.NewSession()
 
-	unlocker, err := store.LockForSync(id, syncerType, session)
+	unlocker, err := consulStore.LockForSync(id, syncerType, session)
 	if err != nil {
 		t.Fatalf("Unexpected error locking pod cluster for sync: %s", err)
 	}
 
-	_, err = store.LockForSync(id, syncerType, session)
+	_, err = consulStore.LockForSync(id, syncerType, session)
 	if err == nil {
 		t.Fatal("Expected an error locking the same cluster for the same syncer type, but there wasn't one")
 	} else {
@@ -879,17 +878,17 @@ func TestLockForSync(t *testing.T) {
 		t.Errorf("Error unlocking the sync lock: %s", err)
 	}
 
-	_, err = store.LockForSync(id, syncerType, session)
+	_, err = consulStore.LockForSync(id, syncerType, session)
 	if err != nil {
 		t.Fatalf("Unexpected error re-locking pod cluster for sync: %s", err)
 	}
 }
 
 func TestClosedChangeChannelResultsInTermination(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	consulStore := consulStoreWithFakeKV()
 
 	syncer := &fakeSyncer{
-		[]fields.ID{"abc123"},
+		[]store.PodClusterID{"abc123"},
 		make(chan fakeSync),
 		make(chan fakeSync),
 		false,
@@ -901,7 +900,7 @@ func TestClosedChangeChannelResultsInTermination(t *testing.T) {
 	closed := make(chan struct{})
 
 	go func() {
-		store.handlePCUpdates(syncer, changes, metrics.NewHistogram(metrics.NewExpDecaySample(1028, 0.015)))
+		consulStore.handlePCUpdates(syncer, changes, metrics.NewHistogram(metrics.NewExpDecaySample(1028, 0.015)))
 		close(closed)
 	}()
 
@@ -913,21 +912,21 @@ func TestClosedChangeChannelResultsInTermination(t *testing.T) {
 }
 
 type RecordingSyncer struct {
-	InitialClusters []fields.ID
+	InitialClusters []store.PodClusterID
 
-	SyncClusterCalls   []fields.ID
-	DeleteClusterCalls []fields.ID
+	SyncClusterCalls   []store.PodClusterID
+	DeleteClusterCalls []store.PodClusterID
 
 	// Used to signal when SyncCluster is called so tests can have non-racey
 	// timeouts
 	SyncSignal chan<- struct{}
 }
 
-func (r *RecordingSyncer) GetInitialClusters() ([]fields.ID, error) {
+func (r *RecordingSyncer) GetInitialClusters() ([]store.PodClusterID, error) {
 	return r.InitialClusters, nil
 }
 
-func (r *RecordingSyncer) SyncCluster(pc *fields.PodCluster, labeledPods []labels.Labeled) error {
+func (r *RecordingSyncer) SyncCluster(pc *store.PodCluster, labeledPods []labels.Labeled) error {
 	r.SyncClusterCalls = append(r.SyncClusterCalls, pc.ID)
 	if r.SyncSignal != nil {
 		r.SyncSignal <- struct{}{}
@@ -935,7 +934,7 @@ func (r *RecordingSyncer) SyncCluster(pc *fields.PodCluster, labeledPods []label
 	return nil
 }
 
-func (r *RecordingSyncer) DeleteCluster(id fields.ID) error {
+func (r *RecordingSyncer) DeleteCluster(id store.PodClusterID) error {
 	r.DeleteClusterCalls = append(r.DeleteClusterCalls, id)
 	return nil
 }
@@ -945,14 +944,14 @@ func (r *RecordingSyncer) Type() ConcreteSyncerType {
 }
 
 func TestWatchAndSync(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	consulStore := consulStoreWithFakeKV()
 	quit := make(chan struct{})
 	defer close(quit)
 	syncSignal := make(chan struct{})
 	defer close(syncSignal)
 
 	example := examplePodCluster()
-	pc1, err := store.Create(
+	pc1, err := consulStore.Create(
 		example.PodID,
 		example.AvailabilityZone,
 		"name1",
@@ -964,7 +963,7 @@ func TestWatchAndSync(t *testing.T) {
 		t.Fatalf("Couldn't create test pod cluster: %s", err)
 	}
 
-	pc2, err := store.Create(
+	pc2, err := consulStore.Create(
 		example.PodID,
 		example.AvailabilityZone,
 		"name2",
@@ -978,12 +977,12 @@ func TestWatchAndSync(t *testing.T) {
 
 	// Include one of the 2 clusters as initial
 	syncer := &RecordingSyncer{
-		InitialClusters: []fields.ID{pc1.ID},
+		InitialClusters: []store.PodClusterID{pc1.ID},
 		SyncSignal:      syncSignal,
 	}
 
 	go func() {
-		err := store.WatchAndSync(syncer, quit)
+		err := consulStore.WatchAndSync(syncer, quit)
 		if err != nil {
 			t.Fatalf("Couldn't start WatchAndSync(): %s", err)
 		}
@@ -1000,7 +999,7 @@ func TestWatchAndSync(t *testing.T) {
 		}
 	}
 
-	for _, expectedID := range []fields.ID{pc1.ID, pc2.ID} {
+	for _, expectedID := range []store.PodClusterID{pc1.ID, pc2.ID} {
 		found := false
 		for _, id := range syncer.SyncClusterCalls {
 			if id == expectedID {
@@ -1025,16 +1024,16 @@ func consulStoreWithFakeKV() *consulStore {
 	}
 }
 
-func examplePodCluster() fields.PodCluster {
+func examplePodCluster() store.PodCluster {
 	podId := "slug"
 	availabilityZone := "us-west"
 	clusterName := "production"
 
-	return fields.PodCluster{
+	return store.PodCluster{
 		PodID:            types.PodID(podId),
-		AvailabilityZone: fields.AvailabilityZone(availabilityZone),
-		Name:             fields.ClusterName(clusterName),
+		AvailabilityZone: store.AvailabilityZone(availabilityZone),
+		Name:             store.ClusterName(clusterName),
 		PodSelector:      klabels.Everything(),
-		Annotations:      fields.Annotations{},
+		Annotations:      store.Annotations{},
 	}
 }
