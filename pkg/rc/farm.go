@@ -13,7 +13,6 @@ import (
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store"
@@ -73,8 +72,8 @@ type childRC struct {
 }
 
 type Storage interface {
-	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
+	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest store.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (store.Manifest, time.Duration, error)
 	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
 	NewUnmanagedSession(session, name string) kp.Session
 }

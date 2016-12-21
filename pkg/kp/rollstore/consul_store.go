@@ -16,7 +16,6 @@ import (
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 )
@@ -261,7 +260,7 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	minimumReplicas int,
 	leaveOld bool,
 	rollDelay time.Duration,
-	newRCManifest manifest.Manifest,
+	newRCManifest store.Manifest,
 	newRCNodeSelector klabels.Selector,
 	newRCPodLabels klabels.Set,
 	newRCLabels klabels.Set,
@@ -364,7 +363,7 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	minimumReplicas int,
 	leaveOld bool,
 	rollDelay time.Duration,
-	newRCManifest manifest.Manifest,
+	newRCManifest store.Manifest,
 	newRCNodeSelector klabels.Selector,
 	newRCPodLabels klabels.Set,
 	newRCLabels klabels.Set,

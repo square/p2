@@ -6,8 +6,8 @@ import (
 
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -46,9 +46,9 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	var podManifest manifest.Manifest
+	var podManifest store.Manifest
 	if *manifestPath != "" {
-		podManifest, err = manifest.FromPath(*manifestPath)
+		podManifest, err = store.FromPath(*manifestPath)
 		if err != nil {
 			log.Fatalln(err)
 		}

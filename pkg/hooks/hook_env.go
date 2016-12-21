@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/square/p2/pkg/config"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -19,12 +19,12 @@ func CurrentEnv() *HookEnv {
 // useful access to objects exported by the hooks package.
 type HookEnv struct{}
 
-func (h *HookEnv) Manifest() (manifest.Manifest, error) {
+func (h *HookEnv) Manifest() (store.Manifest, error) {
 	path := os.Getenv(HOOKED_POD_MANIFEST_ENV_VAR)
 	if path == "" {
 		return nil, util.Errorf("No manifest exported")
 	}
-	return manifest.FromPath(path)
+	return store.FromPath(path)
 }
 
 func (h *HookEnv) PodID() (types.PodID, error) {

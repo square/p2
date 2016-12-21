@@ -83,7 +83,7 @@ type LabelWatcher interface {
 	) <-chan *labels.LabeledChanges
 }
 
-type store interface {
+type consulStore interface {
 	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
 	NewUnmanagedSession(session, name string) kp.Session
 
@@ -96,7 +96,7 @@ type daemonSet struct {
 
 	contention    dsContention
 	logger        logging.Logger
-	store         store
+	store         consulStore
 	scheduler     scheduler.Scheduler
 	dsStore       dsstore.Store
 	applicator    Labeler
@@ -122,7 +122,7 @@ type dsContention struct {
 func New(
 	fields fields.DaemonSet,
 	dsStore dsstore.Store,
-	store store,
+	store consulStore,
 	applicator Labeler,
 	watcher LabelWatcher,
 	logger logging.Logger,

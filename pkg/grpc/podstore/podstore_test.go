@@ -203,18 +203,18 @@ func TestWatchPodStatus(t *testing.T) {
 	}
 }
 
-func setupServerWithFakePodStore() (podstore.Store, store) {
+func setupServerWithFakePodStore() (podstore.Store, podStore) {
 	fakePodStore := podstore.NewConsul(consulutil.NewFakeClient().KV_)
-	server := store{
+	server := podStore{
 		scheduler: fakePodStore,
 	}
 
 	return fakePodStore, server
 }
 
-func setupServerWithFakePodStatusStore() (podstatus.Store, store) {
+func setupServerWithFakePodStatusStore() (podstatus.Store, podStore) {
 	fakePodStatusStore := podstatus.NewConsul(statusstoretest.NewFake(), kp.PreparerPodStatusNamespace)
-	return fakePodStatusStore, store{
+	return fakePodStatusStore, podStore{
 		podStatusStore: fakePodStatusStore,
 	}
 }

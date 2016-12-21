@@ -28,7 +28,7 @@ import (
 // Farm instatiates and deletes daemon sets as needed
 type Farm struct {
 	// constructor arguments
-	store     store
+	store     consulStore
 	dsStore   dsstore.Store
 	scheduler scheduler.Scheduler
 	labeler   Labeler
@@ -60,7 +60,7 @@ type childDS struct {
 }
 
 func NewFarm(
-	store store,
+	store consulStore,
 	dsStore dsstore.Store,
 	labeler Labeler,
 	watcher LabelWatcher,

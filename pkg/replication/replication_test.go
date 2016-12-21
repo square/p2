@@ -11,7 +11,7 @@ import (
 	"github.com/square/p2/pkg/health/checker/test"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/kptest"
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -87,7 +87,7 @@ func TestEnactCancellation(t *testing.T) {
 // implement AllPods()
 func newTestReplication(errCh chan error) (*replication, *kptest.FakePodStore) {
 	podID := types.PodID("testPod")
-	mb := manifest.NewBuilder()
+	mb := store.NewBuilder()
 	mb.SetID(podID)
 	nodes := []types.NodeName{"abc123.example.com", "def456.example.com"}
 	podStore := kptest.NewFakePodStore(nil, nil)

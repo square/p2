@@ -14,9 +14,9 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 )
@@ -47,7 +47,7 @@ func TestInstallHooks(t *testing.T) {
 
 	current, err := user.Current()
 	Assert(t).IsNil(err, "test setup: could not get the current user")
-	builder := manifest.NewBuilder()
+	builder := store.NewBuilder()
 	builder.SetID("users")
 	builder.SetRunAsUser(current.Username)
 	builder.SetLaunchables(map[launch.LaunchableID]launch.LaunchableStanza{

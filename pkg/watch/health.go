@@ -9,8 +9,8 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/preparer"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util/param"
 )
@@ -35,7 +35,7 @@ var HEALTHCHECK_TIMEOUT = param.Int64("healthcheck_timeout", 5)
 // tree, and a bool that indicates whether or not the pod
 // has a running MonitorHealth go routine
 type PodWatch struct {
-	manifest      manifest.Manifest
+	manifest      store.Manifest
 	updater       kp.HealthUpdater
 	statusChecker StatusChecker
 
@@ -55,7 +55,7 @@ type StatusChecker struct {
 	Client *http.Client
 }
 
-type store interface {
+type consulStore interface {
 	NewHealthManager(node types.NodeName, logger logging.Logger) kp.HealthManager
 	WatchPods(podPrefix kp.PodPrefix, nodename types.NodeName, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []kp.ManifestResult)
 }
@@ -72,8 +72,8 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 		// A bad config should have already produced a nice, user-friendly error message.
 		logger.WithError(err).Fatalln("error creating health monitor KV client")
 	}
-	store := kp.NewConsulStore(client)
-	healthManager := store.NewHealthManager(config.NodeName, *logger)
+	consulStore := kp.NewConsulStore(client)
+	healthManager := consulStore.NewHealthManager(config.NodeName, *logger)
 
 	node := config.NodeName
 	pods := []PodWatch{}
@@ -81,7 +81,7 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 	watchQuitCh := make(chan struct{})
 	watchErrCh := make(chan error)
 	watchPodCh := make(chan []kp.ManifestResult)
-	go store.WatchPods(
+	go consulStore.WatchPods(
 		kp.REALITY_TREE,
 		node,
 		watchQuitCh,

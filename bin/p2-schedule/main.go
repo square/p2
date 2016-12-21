@@ -9,8 +9,8 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/kp/podstore"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/schedule"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 
@@ -28,7 +28,7 @@ func main() {
 	kingpin.Version(version.VERSION)
 	_, opts, _ := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(opts)
-	store := kp.NewConsulStore(client)
+	consulStore := kp.NewConsulStore(client)
 	podStore := podstore.NewConsul(client.KV())
 
 	if *nodeName == "" {
@@ -44,7 +44,7 @@ func main() {
 		log.Fatalln("No manifest given")
 	}
 
-	podManifest, err := manifest.FromPath(*manifestPath)
+	podManifest, err := store.FromPath(*manifestPath)
 	if err != nil {
 		log.Fatalf("Could not read manifest at %s: %s\n", *manifestPath, err)
 	}
@@ -64,7 +64,7 @@ func main() {
 		if *hookGlobal {
 			podPrefix = kp.HOOK_TREE
 		}
-		_, err := store.SetPod(podPrefix, types.NodeName(*nodeName), podManifest)
+		_, err := consulStore.SetPod(podPrefix, types.NodeName(*nodeName), podManifest)
 		if err != nil {
 			log.Fatalf("Could not write manifest %s to intent store: %s\n", podManifest.ID(), err)
 		}

@@ -17,7 +17,7 @@ import (
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -101,7 +101,7 @@ func main() {
 		}
 		name := ds_fields.ClusterName(*createName)
 
-		manifest, err := manifest.FromPath(*createManifest)
+		manifest, err := store.FromPath(*createManifest)
 		if err != nil {
 			log.Fatalf("%s", err)
 		}
@@ -237,7 +237,7 @@ func main() {
 				}
 			}
 			if *updateManifest != "" {
-				manifest, err := manifest.FromPath(*updateManifest)
+				manifest, err := store.FromPath(*updateManifest)
 				if err != nil {
 					return ds, util.Errorf("%s", err)
 				}

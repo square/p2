@@ -11,16 +11,16 @@ import (
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	pc_fields "github.com/square/p2/pkg/pc/fields"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 func TestCreate(t *testing.T) {
-	store := consulStoreWithFakeKV()
-	createDaemonSet(store, t)
+	consulStore := consulStoreWithFakeKV()
+	createDaemonSet(consulStore, t)
 
 	// Create a bad DaemonSet
 	podID := types.PodID("")
@@ -31,32 +31,32 @@ func TestCreate(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID("")
 
 	podManifest := manifestBuilder.GetManifest()
 
 	timeout := replication.NoTimeout
 
-	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
+	if _, err := consulStore.Create(podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
 		t.Error("Expected create to fail on bad pod id")
 	}
 
 	podID = types.PodID("pod_id")
-	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
+	if _, err := consulStore.Create(podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
 		t.Error("Expected create to fail on bad manifest pod id")
 	}
 
-	manifestBuilder = manifest.NewBuilder()
+	manifestBuilder = store.NewBuilder()
 	manifestBuilder.SetID("different_pod_id")
 
 	podManifest = manifestBuilder.GetManifest()
-	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
+	if _, err := consulStore.Create(podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
 		t.Error("Expected create to fail on pod id and manifest pod id mismatch")
 	}
 }
 
-func createDaemonSet(store *consulStore, t *testing.T) ds_fields.DaemonSet {
+func createDaemonSet(consulStore *consulStore, t *testing.T) ds_fields.DaemonSet {
 	podID := types.PodID("some_pod_id")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
@@ -65,14 +65,14 @@ func createDaemonSet(store *consulStore, t *testing.T) ds_fields.DaemonSet {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 
 	manifest := manifestBuilder.GetManifest()
 
 	timeout := replication.NoTimeout
 
-	ds, err := store.Create(manifest, minHealth, clusterName, selector, podID, timeout)
+	ds, err := consulStore.Create(manifest, minHealth, clusterName, selector, podID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -110,28 +110,28 @@ func createDaemonSet(store *consulStore, t *testing.T) ds_fields.DaemonSet {
 }
 
 func TestDelete(t *testing.T) {
-	store := consulStoreWithFakeKV()
-	ds := createDaemonSet(store, t)
+	consulStore := consulStoreWithFakeKV()
+	ds := createDaemonSet(consulStore, t)
 
-	if err := store.Delete("bad_id"); err != nil {
+	if err := consulStore.Delete("bad_id"); err != nil {
 		t.Error("Expected no errors while deleting a daemon set that does not exist")
 	}
 
-	if err := store.Delete(ds.ID); err != nil {
+	if err := consulStore.Delete(ds.ID); err != nil {
 		t.Errorf("Unable to delete existing daemon set: %s", err)
 	}
 
-	if _, _, err := store.Get(ds.ID); err == nil {
+	if _, _, err := consulStore.Get(ds.ID); err == nil {
 		t.Error("Expected to encounter an error while getting a deleted daemon set")
 	}
 
-	if err := store.Delete(ds.ID); err != nil {
+	if err := consulStore.Delete(ds.ID); err != nil {
 		t.Error("Expected no errors on while deleting a deleted daemon set")
 	}
 }
 
 func TestGet(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	consulStore := consulStoreWithFakeKV()
 	//
 	// Create DaemonSet
 	//
@@ -143,14 +143,14 @@ func TestGet(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 
 	manifest := manifestBuilder.GetManifest()
 
 	timeout := replication.NoTimeout
 
-	ds, err := store.Create(manifest, minHealth, clusterName, selector, podID, timeout)
+	ds, err := consulStore.Create(manifest, minHealth, clusterName, selector, podID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -160,7 +160,7 @@ func TestGet(t *testing.T) {
 	//
 	// Get DaemonSet and verify it is the same
 	//
-	getDS, _, err := store.Get(ds.ID)
+	getDS, _, err := consulStore.Get(ds.ID)
 	if err != nil {
 		t.Fatalf("Error retrieving created daemon set: %s", err)
 	}
@@ -192,14 +192,14 @@ func TestGet(t *testing.T) {
 	Assert(t).AreEqual(originalSHA, getSHA, "Daemon set shas were not equal")
 
 	// Invalid get opertaion
-	_, _, err = store.Get("bad_id")
+	_, _, err = consulStore.Get("bad_id")
 	if err == nil {
 		t.Error("Expected get operation to fail when getting a daemon set which does not exist")
 	}
 }
 
 func TestList(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	consulStore := consulStoreWithFakeKV()
 
 	// Create first DaemonSet
 	firstPodID := types.PodID("some_pod_id")
@@ -210,14 +210,14 @@ func TestList(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(firstPodID)
 
 	firstManifest := manifestBuilder.GetManifest()
 
 	timeout := replication.NoTimeout
 
-	firstDS, err := store.Create(firstManifest, minHealth, clusterName, selector, firstPodID, timeout)
+	firstDS, err := consulStore.Create(firstManifest, minHealth, clusterName, selector, firstPodID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -225,16 +225,16 @@ func TestList(t *testing.T) {
 	// Create second DaemonSet
 	secondPodID := types.PodID("different_pod_id")
 
-	manifestBuilder = manifest.NewBuilder()
+	manifestBuilder = store.NewBuilder()
 	manifestBuilder.SetID(secondPodID)
 
 	secondManifest := manifestBuilder.GetManifest()
-	secondDS, err := store.Create(secondManifest, minHealth, clusterName, selector, secondPodID, timeout)
+	secondDS, err := consulStore.Create(secondManifest, minHealth, clusterName, selector, secondPodID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
 
-	daemonSetList, err := store.List()
+	daemonSetList, err := consulStore.List()
 	if err != nil {
 		t.Fatalf("Error getting list of daemon sets: %s", err)
 	}
@@ -255,7 +255,7 @@ func TestList(t *testing.T) {
 }
 
 func TestMutate(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	consulStore := consulStoreWithFakeKV()
 
 	podID := types.PodID("some_pod_id")
 	minHealth := 0
@@ -265,13 +265,13 @@ func TestMutate(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
 	timeout := replication.NoTimeout
 
-	ds, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout)
+	ds, err := consulStore.Create(podManifest, minHealth, clusterName, selector, podID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -281,7 +281,7 @@ func TestMutate(t *testing.T) {
 	errorMutator := func(dsToMutate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
 		return dsToMutate, util.Errorf("This is an error")
 	}
-	_, err = store.MutateDS(ds.ID, errorMutator)
+	_, err = consulStore.MutateDS(ds.ID, errorMutator)
 	if err == nil {
 		t.Error("Expected error when mutator produces an error")
 	}
@@ -290,7 +290,7 @@ func TestMutate(t *testing.T) {
 		dsToMutate.ID = ""
 		return dsToMutate, nil
 	}
-	_, err = store.MutateDS(ds.ID, badIDMutator)
+	_, err = consulStore.MutateDS(ds.ID, badIDMutator)
 	if err == nil {
 		t.Error("Expected error when mutating daemon set ID")
 	}
@@ -299,7 +299,7 @@ func TestMutate(t *testing.T) {
 		dsToMutate.PodID = ""
 		return dsToMutate, nil
 	}
-	_, err = store.MutateDS(ds.ID, badPodIDMutator)
+	_, err = consulStore.MutateDS(ds.ID, badPodIDMutator)
 	if err == nil {
 		t.Error("Expected error when mutating daemon set PodID to mismatch manifest")
 	}
@@ -311,7 +311,7 @@ func TestMutate(t *testing.T) {
 	someOtherName := ds_fields.ClusterName("some_other_name")
 	someOtherPodID := types.PodID("some_other_pod_id")
 
-	manifestBuilder = manifest.NewBuilder()
+	manifestBuilder = store.NewBuilder()
 	manifestBuilder.SetID(someOtherPodID)
 	someOtherManifest := manifestBuilder.GetManifest()
 
@@ -328,7 +328,7 @@ func TestMutate(t *testing.T) {
 		dsToMutate.PodID = someOtherPodID
 		return dsToMutate, nil
 	}
-	someOtherDS, err := store.MutateDS(ds.ID, goodMutator)
+	someOtherDS, err := consulStore.MutateDS(ds.ID, goodMutator)
 	if err != nil {
 		t.Fatalf("Unable to mutate daemon set: %s", err)
 	}
@@ -359,7 +359,7 @@ func TestMutate(t *testing.T) {
 	//
 	// Validate daemon set from a get function
 	//
-	getDS, _, err := store.Get(ds.ID)
+	getDS, _, err := consulStore.Get(ds.ID)
 	if err != nil {
 		t.Fatalf("Unable to get daemon set: %s", err)
 	}
@@ -388,7 +388,7 @@ func TestMutate(t *testing.T) {
 }
 
 func TestWatch(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	consulStore := consulStoreWithFakeKV()
 	//
 	// Create a new daemon set
 	//
@@ -400,13 +400,13 @@ func TestWatch(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
 	timeout := replication.NoTimeout
 
-	ds, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout)
+	ds, err := consulStore.Create(podManifest, minHealth, clusterName, selector, podID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -415,11 +415,11 @@ func TestWatch(t *testing.T) {
 	//
 	someOtherPodID := types.PodID("some_other_pod_id")
 
-	manifestBuilder = manifest.NewBuilder()
+	manifestBuilder = store.NewBuilder()
 	manifestBuilder.SetID(someOtherPodID)
 	someOtherManifest := manifestBuilder.GetManifest()
 
-	someOtherDS, err := store.Create(someOtherManifest, minHealth, clusterName, selector, someOtherPodID, timeout)
+	someOtherDS, err := consulStore.Create(someOtherManifest, minHealth, clusterName, selector, someOtherPodID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -427,7 +427,7 @@ func TestWatch(t *testing.T) {
 	// Watch for changes
 	//
 	quitCh := make(chan struct{})
-	inCh := store.Watch(quitCh)
+	inCh := consulStore.Watch(quitCh)
 	defer close(quitCh)
 
 	var watched WatchedDaemonSets
@@ -457,7 +457,7 @@ func TestWatch(t *testing.T) {
 	//
 	// Make sure Watch does not output any daemon sets something gets deleted
 	//
-	err = store.Delete(someOtherDS.ID)
+	err = consulStore.Delete(someOtherDS.ID)
 	if err != nil {
 		t.Error("Unable to delete daemon set")
 	}
@@ -484,7 +484,7 @@ func TestWatch(t *testing.T) {
 		return dsToMutate, nil
 	}
 
-	ds, err = store.MutateDS(ds.ID, mutator)
+	ds, err = consulStore.MutateDS(ds.ID, mutator)
 	if err != nil {
 		t.Fatalf("Unable to mutate daemon set: %s", err)
 	}
@@ -507,7 +507,7 @@ func TestWatch(t *testing.T) {
 }
 
 func TestWatchAll(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	consulStore := consulStoreWithFakeKV()
 	//
 	// Create a new daemon set
 	//
@@ -519,13 +519,13 @@ func TestWatchAll(t *testing.T) {
 	selector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
 	timeout := replication.NoTimeout
 
-	ds, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout)
+	ds, err := consulStore.Create(podManifest, minHealth, clusterName, selector, podID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -534,11 +534,11 @@ func TestWatchAll(t *testing.T) {
 	//
 	someOtherPodID := types.PodID("some_other_pod_id")
 
-	manifestBuilder = manifest.NewBuilder()
+	manifestBuilder = store.NewBuilder()
 	manifestBuilder.SetID(someOtherPodID)
 	someOtherManifest := manifestBuilder.GetManifest()
 
-	someOtherDS, err := store.Create(someOtherManifest, minHealth, clusterName, selector, someOtherPodID, timeout)
+	someOtherDS, err := consulStore.Create(someOtherManifest, minHealth, clusterName, selector, someOtherPodID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -546,7 +546,7 @@ func TestWatchAll(t *testing.T) {
 	// Watch for create and verify
 	//
 	quitCh := make(chan struct{})
-	inCh := store.WatchAll(quitCh, 0)
+	inCh := consulStore.WatchAll(quitCh, 0)
 	defer close(quitCh)
 
 	var watched WatchedDaemonSetList
@@ -574,7 +574,7 @@ func TestWatchAll(t *testing.T) {
 	//
 	// Watch for delete and verify
 	//
-	err = store.Delete(someOtherDS.ID)
+	err = consulStore.Delete(someOtherDS.ID)
 	if err != nil {
 		t.Error("Unable to delete daemon set")
 	}
@@ -598,7 +598,7 @@ func TestWatchAll(t *testing.T) {
 		return dsToMutate, nil
 	}
 
-	ds, err = store.MutateDS(ds.ID, mutator)
+	ds, err = consulStore.MutateDS(ds.ID, mutator)
 	if err != nil {
 		t.Fatalf("Unable to mutate daemon set: %s", err)
 	}

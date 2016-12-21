@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/launch"
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/version"
@@ -76,7 +76,7 @@ func main() {
 	kingpin.MustParse(bin2pod.Parse(os.Args[1:]))
 
 	res := result{}
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID())
 
 	stanza := launch.LaunchableStanza{}
@@ -157,7 +157,7 @@ func makeTar(workingDir string) (string, error) {
 	return tarPath, nil
 }
 
-func addManifestConfig(manifestBuilder manifest.Builder) error {
+func addManifestConfig(manifestBuilder store.Builder) error {
 	podConfig := make(map[interface{}]interface{})
 	for _, pair := range *config {
 		res := strings.Split(pair, "=")
@@ -169,7 +169,7 @@ func addManifestConfig(manifestBuilder manifest.Builder) error {
 	return manifestBuilder.SetConfig(podConfig)
 }
 
-func writeManifest(workingDir string, manifest manifest.Manifest) (string, error) {
+func writeManifest(workingDir string, manifest store.Manifest) (string, error) {
 	file, err := os.OpenFile(
 		path.Join(workingDir, fmt.Sprintf("%s.yaml", podID())),
 		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,

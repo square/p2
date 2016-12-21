@@ -1,8 +1,4 @@
-// Package pods borrows heavily from the Kubernetes definition of pods to provide
-// p2 with a convenient way to colocate several related launchable artifacts, as well
-// as basic shared runtime configuration. Pod manifests are written as YAML files
-// that describe what to launch.
-package manifest
+package store
 
 import (
 	"crypto/sha256"

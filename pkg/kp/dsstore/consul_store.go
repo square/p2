@@ -15,7 +15,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -52,7 +52,7 @@ func NewConsul(client consulutil.ConsulClient, retries int, logger *logging.Logg
 }
 
 func (s *consulStore) Create(
-	manifest manifest.Manifest,
+	manifest store.Manifest,
 	minHealth int,
 	name fields.ClusterName,
 	nodeSelector klabels.Selector,
@@ -80,7 +80,7 @@ func (s *consulStore) Create(
 
 // these parts of Create may require a retry
 func (s *consulStore) innerCreate(
-	manifest manifest.Manifest,
+	manifest store.Manifest,
 	minHealth int,
 	name fields.ClusterName,
 	nodeSelector klabels.Selector,
@@ -378,7 +378,7 @@ func (s *consulStore) WatchAll(quitCh <-chan struct{}, pauseTime time.Duration) 
 	return outCh
 }
 
-func checkManifestPodID(dsPodID types.PodID, manifest manifest.Manifest) error {
+func checkManifestPodID(dsPodID types.PodID, manifest store.Manifest) error {
 	if dsPodID == "" {
 		return util.Errorf("Daemon set must have a pod id")
 	}

@@ -27,11 +27,11 @@ import (
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer/podprocess"
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
@@ -80,27 +80,13 @@ type Preparer struct {
 	PodProcessReporter *podprocess.Reporter
 
 	// The pod manifest to use for hooks
-	hooksManifest manifest.Manifest
+	hooksManifest store.Manifest
 
 	// The pod to use for hooks
 	hooksPod *pods.Pod
 
 	// The directory that will actually be executed by the HookDir
 	hooksExecDir string
-}
-
-type store interface {
-	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
-	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
-	ListPods(podPrefix kp.PodPrefix, nodename types.NodeName) ([]kp.ManifestResult, time.Duration, error)
-	WatchPods(
-		podPrefix kp.PodPrefix,
-		hostname types.NodeName,
-		quit <-chan struct{},
-		errCh chan<- error,
-		manifests chan<- []kp.ManifestResult,
-	)
 }
 
 type PreparerConfig struct {
@@ -366,7 +352,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	podStatusStore := podstatus.NewConsul(statusStore, kp.PreparerPodStatusNamespace)
 	podStore := podstore.NewConsul(client.KV())
 
-	store := kp.NewConsulStore(client)
+	consulStore := kp.NewConsulStore(client)
 
 	maxLaunchableDiskUsage := launch.DefaultAllowableDiskUsage
 	if preparerConfig.MaxLaunchableDiskUsage != "" {
@@ -403,14 +389,14 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		finishExec = preparerConfig.PodProcessReporterConfig.FinishExec()
 	}
 
-	var hooksManifest manifest.Manifest
+	var hooksManifest store.Manifest
 	var hooksPod *pods.Pod
 	if preparerConfig.HooksManifest != NoHooksSentinelValue {
 		if preparerConfig.HooksManifest == "" {
 			return nil, util.Errorf("Most provide a hooks_manifest or sentinel value %q to indicate that there are no hooks", NoHooksSentinelValue)
 		}
 
-		hooksManifest, err = manifest.FromBytes([]byte(preparerConfig.HooksManifest))
+		hooksManifest, err = store.FromBytes([]byte(preparerConfig.HooksManifest))
 		if err != nil {
 			return nil, util.Errorf("Could not parse configured hooks manifest: %s", err)
 		}
@@ -419,7 +405,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	}
 	return &Preparer{
 		node:                   preparerConfig.NodeName,
-		store:                  store,
+		store:                  consulStore,
 		hooks:                  hooks.Hooks(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger),
 		podStatusStore:         podStatusStore,
 		podStore:               podStore,

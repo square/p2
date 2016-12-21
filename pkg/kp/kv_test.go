@@ -6,7 +6,7 @@ import (
 
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -281,8 +281,8 @@ func TestAllPods(t *testing.T) {
 	}
 }
 
-func testManifest(id types.PodID) manifest.Manifest {
-	builder := manifest.NewBuilder()
+func testManifest(id types.PodID) store.Manifest {
+	builder := store.NewBuilder()
 	builder.SetID(id)
 	return builder.GetManifest()
 }

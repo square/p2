@@ -11,9 +11,9 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/version"
@@ -40,7 +40,7 @@ func main() {
 		*nodeName = hostname
 	}
 
-	manifest, err := manifest.FromURI(*manifestURI)
+	manifest, err := store.FromURI(*manifestURI)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}

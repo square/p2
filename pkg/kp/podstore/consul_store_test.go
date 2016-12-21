@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 
 	"github.com/hashicorp/consul/api"
@@ -317,8 +317,8 @@ func storeWithFakeKV(t *testing.T, pods map[string]Pod, indices map[string]PodIn
 	return NewConsul(kv), kv
 }
 
-func testManifest() manifest.Manifest {
-	builder := manifest.NewBuilder()
+func testManifest() store.Manifest {
+	builder := store.NewBuilder()
 
 	// bare minimum manifest, we don't care what's in it
 	builder.SetID("some_pod")

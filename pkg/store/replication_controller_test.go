@@ -5,11 +5,10 @@ import (
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
-	"github.com/square/p2/pkg/manifest"
 )
 
 func TestJSONMarshal(t *testing.T) {
-	mb := manifest.NewBuilder()
+	mb := NewBuilder()
 	mb.SetID("hello")
 	m := mb.GetManifest()
 

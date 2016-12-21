@@ -7,7 +7,6 @@ import (
 
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store"
 
 	"github.com/hashicorp/consul/api"
@@ -508,7 +507,7 @@ func verifyLockInfoTestCase(t *testing.T, lockInfoTestCase LockInfoTestCase, inC
 
 func rcsWithIDs(t *testing.T, id string, num int) api.KVPairs {
 	var pairs api.KVPairs
-	builder := manifest.NewBuilder()
+	builder := store.NewBuilder()
 	builder.SetID("slug")
 	manifest := builder.GetManifest()
 	for i := 0; i < num; i++ {

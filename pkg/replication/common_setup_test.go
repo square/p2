@@ -11,7 +11,7 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 
 	"github.com/Sirupsen/logrus"
@@ -145,8 +145,8 @@ func basicLogger() logging.Logger {
 	)
 }
 
-func basicManifest() manifest.Manifest {
-	builder := manifest.NewBuilder()
+func basicManifest() store.Manifest {
+	builder := store.NewBuilder()
 	builder.SetID(testPodId)
 	return builder.GetManifest()
 }

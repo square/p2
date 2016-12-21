@@ -11,7 +11,6 @@ import (
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store"
 
 	"github.com/hashicorp/consul/api"
@@ -1081,8 +1080,8 @@ func testRollValue(id store.ReplicationControllerID) store.RollingUpdate {
 	}
 }
 
-func testManifest() manifest.Manifest {
-	builder := manifest.NewBuilder()
+func testManifest() store.Manifest {
+	builder := store.NewBuilder()
 	builder.SetID("slug")
 	return builder.GetManifest()
 }

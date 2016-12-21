@@ -14,9 +14,9 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
@@ -71,8 +71,8 @@ type Replication interface {
 }
 
 type Store interface {
-	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
+	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest store.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (store.Manifest, time.Duration, error)
 	NewSession(name string, renewalCh <-chan time.Time) (kp.Session, chan error, error)
 	LockHolder(key string) (string, string, error)
 	DestroyLockHolder(id string) error
@@ -84,7 +84,7 @@ type replication struct {
 	nodes     []types.NodeName
 	store     Store
 	labeler   Labeler
-	manifest  manifest.Manifest
+	manifest  store.Manifest
 	health    checker.ConsulHealthChecker
 	threshold health.HealthState // minimum state to treat as "healthy"
 	logger    logging.Logger
@@ -451,7 +451,7 @@ func (r *replication) updateOne(
 	return r.ensureHealthy(node, timeoutCh, nodeLogger, aggregateHealth)
 }
 
-func (r *replication) queryReality(node types.NodeName) (manifest.Manifest, error) {
+func (r *replication) queryReality(node types.NodeName) (store.Manifest, error) {
 	for {
 		select {
 		case r.concurrentRealityRequests <- struct{}{}:

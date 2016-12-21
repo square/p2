@@ -15,9 +15,9 @@ import (
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -40,7 +40,7 @@ func TestContendNodes(t *testing.T) {
 	// Instantiate farm
 	//
 	dsStore := dsstoretest.NewFake()
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]store.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "contendNodes",
@@ -80,7 +80,7 @@ func TestContendNodes(t *testing.T) {
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
@@ -152,7 +152,7 @@ func TestContendSelectors(t *testing.T) {
 	// Instantiate farm
 	//
 	dsStore := dsstoretest.NewFake()
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]store.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "contendSelectors",
@@ -192,7 +192,7 @@ func TestContendSelectors(t *testing.T) {
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
@@ -265,7 +265,7 @@ func TestContendSelectors(t *testing.T) {
 	//
 	anotherPodID := types.PodID("anotherPodID")
 
-	anotherManifestBuilder := manifest.NewBuilder()
+	anotherManifestBuilder := store.NewBuilder()
 	anotherManifestBuilder.SetID(anotherPodID)
 	anotherPodManifest := manifestBuilder.GetManifest()
 
@@ -298,7 +298,7 @@ func TestFarmSchedule(t *testing.T) {
 	// Instantiate farm
 	//
 	dsStore := dsstoretest.NewFake()
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]store.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "farmSchedule",
@@ -340,7 +340,7 @@ func TestFarmSchedule(t *testing.T) {
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
@@ -477,7 +477,7 @@ func TestCleanupPods(t *testing.T) {
 	retryInterval = testFarmRetryInterval
 
 	dsStore := dsstoretest.NewFake()
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]store.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
 	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
@@ -486,7 +486,7 @@ func TestCleanupPods(t *testing.T) {
 
 	// Make some dangling pod labels and instantiate a farm and expect it clean it up
 	podID := types.PodID("testPod")
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
@@ -567,7 +567,7 @@ func TestMultipleFarms(t *testing.T) {
 	retryInterval = testFarmRetryInterval
 
 	dsStore := dsstoretest.NewFake()
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]store.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
 	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
@@ -640,7 +640,7 @@ func TestMultipleFarms(t *testing.T) {
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 

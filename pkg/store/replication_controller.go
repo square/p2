@@ -5,8 +5,6 @@ import (
 	"sort"
 
 	"k8s.io/kubernetes/pkg/labels"
-
-	"github.com/square/p2/pkg/manifest"
 )
 
 // ReplicationControllerID represents the uuid identifying a
@@ -25,7 +23,7 @@ type ReplicationController struct {
 	ID ReplicationControllerID
 
 	// The pod manifest that should be scheduled on nodes
-	Manifest manifest.Manifest
+	Manifest Manifest
 
 	// Defines the set of nodes on which the manifest can be scheduled
 	NodeSelector labels.Selector
@@ -55,11 +53,11 @@ type RawReplicationController struct {
 // MarshalJSON implements the json.Marshaler interface for serializing the ReplicationController to JSON
 // format.
 //
-// The ReplicationController struct contains interfaces (manifest.Manifest, labels.Selector), and
+// The ReplicationController struct contains interfaces (Manifest, labels.Selector), and
 // unmarshaling into a nil, non-empty interface is impossible (unless the value
 // is a JSON null), because the unmarshaler doesn't know what structure to
 // allocate there
-// we own manifest.Manifest, but we don't own labels.Selector, so we have to
+// we own Manifest, but we don't own labels.Selector, so we have to
 // implement the json marshaling here to wrap around the interface values
 func (rc ReplicationController) MarshalJSON() ([]byte, error) {
 	rawRC, err := rc.ToRaw()
@@ -106,10 +104,10 @@ func (rc *ReplicationController) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	var m manifest.Manifest
+	var m Manifest
 	if rawRC.Manifest != "" {
 		var err error
-		m, err = manifest.FromBytes([]byte(rawRC.Manifest))
+		m, err = FromBytes([]byte(rawRC.Manifest))
 		if err != nil {
 			return err
 		}

@@ -6,7 +6,7 @@ import (
 
 	"github.com/square/p2/pkg/grpc/podstore/client"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 
 	"golang.org/x/net/context"
@@ -62,7 +62,7 @@ func main() {
 }
 
 func schedule(client client.Client, logger logging.Logger) {
-	m, err := manifest.FromPath(*manifestFile)
+	m, err := store.FromPath(*manifestFile)
 	if err != nil {
 		logger.Fatalf("Could not read manifest: %s", err)
 	}

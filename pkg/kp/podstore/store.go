@@ -16,14 +16,14 @@
 package podstore
 
 import (
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 )
 
 type Store interface {
 	ReadPod(key types.PodUniqueKey) (Pod, error)
 	ReadPodFromIndex(index PodIndex) (Pod, error)
-	Schedule(manifest manifest.Manifest, node types.NodeName) (types.PodUniqueKey, error)
+	Schedule(manifest store.Manifest, node types.NodeName) (types.PodUniqueKey, error)
 	Unschedule(key types.PodUniqueKey) error
 
 	DeleteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error

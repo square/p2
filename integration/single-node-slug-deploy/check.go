@@ -27,7 +27,6 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/preparer/podprocess"
 	"github.com/square/p2/pkg/rc"
@@ -410,7 +409,7 @@ func signBuild(artifactPath string) error {
 	return nil
 }
 
-func generatePreparerPod(workdir string, userHookManifest manifest.Manifest) (string, error) {
+func generatePreparerPod(workdir string, userHookManifest store.Manifest) (string, error) {
 	// build the artifact from HEAD
 	output, err := exec.Command("go", "build", "github.com/square/p2/bin/p2-preparer").CombinedOutput()
 	if err != nil {
@@ -433,7 +432,7 @@ func generatePreparerPod(workdir string, userHookManifest manifest.Manifest) (st
 		return "", err
 	}
 
-	manifest, err := manifest.FromPath(prepBin2Pod.ManifestPath)
+	manifest, err := store.FromPath(prepBin2Pod.ManifestPath)
 	if err != nil {
 		return "", err
 	}
@@ -538,7 +537,7 @@ func waitForStatus(statusPort int, pod string, waitTime time.Duration) error {
 	}
 }
 
-func userCreationHookManifest(tmpdir string) (manifest.Manifest, error) {
+func userCreationHookManifest(tmpdir string) (store.Manifest, error) {
 	createUserPath := path.Join(tmpdir, "create_user")
 	script := `#!/usr/bin/env bash
 set -e
@@ -561,7 +560,7 @@ mkdir -p $HOOKED_POD_HOME
 	}
 	manifestPath := createUserBin2Pod.ManifestPath
 
-	userHookManifest, err := manifest.FromPath(manifestPath)
+	userHookManifest, err := store.FromPath(manifestPath)
 	if err != nil {
 		return nil, err
 	}
@@ -600,7 +599,7 @@ func getConsulManifest(dir string) (string, error) {
 		"file://%s",
 		util.From(runtime.Caller(0)).ExpandPath("../hoisted-consul_052.tar.gz"),
 	)
-	builder := manifest.NewBuilder()
+	builder := store.NewBuilder()
 	builder.SetID("consul")
 	stanzas := map[launch.LaunchableID]launch.LaunchableStanza{
 		"consul": {
@@ -676,7 +675,7 @@ func scheduleRCTLServer(dir string) error {
 // the signed manifest
 func writeHelloManifest(dir string, manifestName string, port int) (string, error) {
 	hello := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-hello_def456.tar.gz"))
-	builder := manifest.NewBuilder()
+	builder := store.NewBuilder()
 	builder.SetID("hello")
 	builder.SetStatusPort(port)
 	builder.SetStatusHTTP(true)

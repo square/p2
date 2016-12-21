@@ -16,8 +16,8 @@ import (
 	"github.com/square/p2/pkg/kp/statusstore"
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -31,7 +31,7 @@ const (
 )
 
 type ManifestResult struct {
-	Manifest    manifest.Manifest
+	Manifest    store.Manifest
 	PodLocation types.PodLocation
 
 	// This is expected to be nil for "legacy" pods that do not have a uuid, and non-nil for uuid pods.
@@ -180,7 +180,7 @@ func (c consulStore) GetServiceHealth(service string) (map[string]WatchResult, e
 }
 
 // SetPod writes a pod manifest into the consul key-value store.
-func (c consulStore) SetPod(podPrefix PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error) {
+func (c consulStore) SetPod(podPrefix PodPrefix, nodename types.NodeName, manifest store.Manifest) (time.Duration, error) {
 	buf := bytes.Buffer{}
 	err := manifest.Write(&buf)
 	if err != nil {
@@ -225,7 +225,7 @@ func (c consulStore) DeletePod(podPrefix PodPrefix, nodename types.NodeName, pod
 // Pod reads a pod manifest from the key-value store. If the given key does not
 // exist, a nil *PodManifest will be returned, along with a pods.NoCurrentManifest
 // error.
-func (c consulStore) Pod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error) {
+func (c consulStore) Pod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (store.Manifest, time.Duration, error) {
 	key, err := podPath(podPrefix, nodename, podId)
 	if err != nil {
 		return nil, 0, err
@@ -238,7 +238,7 @@ func (c consulStore) Pod(podPrefix PodPrefix, nodename types.NodeName, podId typ
 	if kvPair == nil {
 		return nil, writeMeta.RequestTime, pods.NoCurrentManifest
 	}
-	manifest, err := manifest.FromBytes(kvPair.Value)
+	manifest, err := store.FromBytes(kvPair.Value)
 	return manifest, writeMeta.RequestTime, err
 }
 
@@ -428,7 +428,7 @@ func (c consulStore) NewHealthManager(node types.NodeName, logger logging.Logger
 // scheduled with. In the /reality tree, the pod status store is instead
 // consulted.  This function wraps the logic to fetch from the correct place
 // based on the key namespace
-func (c consulStore) manifestAndNodeFromIndex(pair *api.KVPair) (manifest.Manifest, types.NodeName, error) {
+func (c consulStore) manifestAndNodeFromIndex(pair *api.KVPair) (store.Manifest, types.NodeName, error) {
 	var podIndex podstore.PodIndex
 	err := json.Unmarshal(pair.Value, &podIndex)
 	if err != nil {
@@ -451,7 +451,7 @@ func (c consulStore) manifestAndNodeFromIndex(pair *api.KVPair) (manifest.Manife
 		if err != nil {
 			return nil, "", err
 		}
-		manifest, err := manifest.FromBytes([]byte(status.Manifest))
+		manifest, err := store.FromBytes([]byte(status.Manifest))
 		if err != nil {
 			return nil, "", err
 		}
@@ -478,7 +478,7 @@ func (c consulStore) manifestResultFromPair(pair *api.KVPair) (ManifestResult, e
 		return ManifestResult{}, err
 	}
 
-	var podManifest manifest.Manifest
+	var podManifest store.Manifest
 	var node types.NodeName
 	if podUniqueKey != "" {
 		var podIndex podstore.PodIndex
@@ -492,7 +492,7 @@ func (c consulStore) manifestResultFromPair(pair *api.KVPair) (ManifestResult, e
 			return ManifestResult{}, err
 		}
 	} else {
-		podManifest, err = manifest.FromBytes(pair.Value)
+		podManifest, err = store.FromBytes(pair.Value)
 		if err != nil {
 			return ManifestResult{}, err
 		}

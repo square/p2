@@ -16,8 +16,8 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/replication"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 )
@@ -49,10 +49,10 @@ func main() {
 	kingpin.Version(version.VERSION)
 	_, opts, labeler := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(opts)
-	store := kp.NewConsulStore(client)
+	consulStore := kp.NewConsulStore(client)
 	healthChecker := checker.NewConsulHealthChecker(client)
 
-	manifest, err := manifest.FromURI(*manifestURI)
+	manifest, err := store.FromURI(*manifestURI)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
@@ -87,7 +87,7 @@ func main() {
 		logger,
 		nodes,
 		len(*hosts)-*minNodes,
-		store,
+		consulStore,
 		labeler,
 		healthChecker,
 		health.HealthState(*threshold),

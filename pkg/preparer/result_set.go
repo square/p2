@@ -2,7 +2,7 @@ package preparer
 
 import (
 	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -10,8 +10,8 @@ type ManifestPair struct {
 	// save the ID in a separate field, so that the user of this object doesn't
 	// have to check both manifests
 	ID      types.PodID
-	Intent  manifest.Manifest
-	Reality manifest.Manifest
+	Intent  store.Manifest
+	Reality store.Manifest
 
 	// Used to determine where reality came from (and should be written to). If nil,
 	// reality should be written to the /reality tree. If non-nil, status should be

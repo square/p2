@@ -4,7 +4,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -51,7 +50,7 @@ type Store interface {
 		minimumReplicas int,
 		leaveOld bool,
 		rollDelay time.Duration,
-		newRCManifest manifest.Manifest,
+		newRCManifest store.Manifest,
 		newRCNodeSelector klabels.Selector,
 		newRCPodLabels klabels.Set,
 		newRCLabels klabels.Set,
@@ -68,7 +67,7 @@ type Store interface {
 		minimumReplicas int,
 		leaveOld bool,
 		rollDelay time.Duration,
-		newRCManifest manifest.Manifest,
+		newRCManifest store.Manifest,
 		newRCNodeSelector klabels.Selector,
 		newRCPodLabels klabels.Set,
 		newRCLabels klabels.Set,

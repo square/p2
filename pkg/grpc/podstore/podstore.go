@@ -5,7 +5,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/statusstore"
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 
 	"github.com/hashicorp/consul/api"
@@ -14,29 +14,29 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-type store struct {
+type podStore struct {
 	scheduler      Scheduler
 	podStatusStore PodStatusStore
 }
 
-var _ podstore_protos.P2PodStoreServer = store{}
+var _ podstore_protos.P2PodStoreServer = podStore{}
 
 type Scheduler interface {
-	Schedule(manifest manifest.Manifest, node types.NodeName) (key types.PodUniqueKey, err error)
+	Schedule(manifest store.Manifest, node types.NodeName) (key types.PodUniqueKey, err error)
 }
 
 type PodStatusStore interface {
 	WaitForStatus(key types.PodUniqueKey, waitIndex uint64) (podstatus.PodStatus, *api.QueryMeta, error)
 }
 
-func NewServer(scheduler Scheduler, podStatusStore PodStatusStore) store {
-	return store{
+func NewServer(scheduler Scheduler, podStatusStore PodStatusStore) podStore {
+	return podStore{
 		scheduler:      scheduler,
 		podStatusStore: podStatusStore,
 	}
 }
 
-func (s store) SchedulePod(_ context.Context, req *podstore_protos.SchedulePodRequest) (*podstore_protos.SchedulePodResponse, error) {
+func (s podStore) SchedulePod(_ context.Context, req *podstore_protos.SchedulePodRequest) (*podstore_protos.SchedulePodResponse, error) {
 	if req.NodeName == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "node_name must be provided")
 	}
@@ -45,7 +45,7 @@ func (s store) SchedulePod(_ context.Context, req *podstore_protos.SchedulePodRe
 		return nil, grpc.Errorf(codes.InvalidArgument, "manifest must be provided")
 	}
 
-	manifest, err := manifest.FromBytes([]byte(req.Manifest))
+	manifest, err := store.FromBytes([]byte(req.Manifest))
 	if err != nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "could not parse passed manifest: %s", err)
 	}
@@ -70,7 +70,7 @@ type podStatusResult struct {
 	err       error
 }
 
-func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream podstore_protos.P2PodStore_WatchPodStatusServer) error {
+func (s podStore) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream podstore_protos.P2PodStore_WatchPodStatusServer) error {
 	if req.StatusNamespace != kp.PreparerPodStatusNamespace.String() {
 		// Today this is the only namespace so we just make sure it doesn't diverge from expected
 		return grpc.Errorf(codes.InvalidArgument, "%q is not an understood namespace, must be %q", req.StatusNamespace, kp.PreparerPodStatusNamespace)

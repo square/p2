@@ -24,7 +24,6 @@ import (
 	"github.com/square/p2/pkg/kp/rollstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/roll"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store"
@@ -176,7 +175,7 @@ type rctlParams struct {
 }
 
 func (r rctlParams) Create(manifestPath, nodeSelector string, podLabels map[string]string, rcLabels map[string]string) {
-	manifest, err := manifest.FromPath(manifestPath)
+	manifest, err := store.FromPath(manifestPath)
 	if err != nil {
 		r.logger.WithErrorAndFields(err, logrus.Fields{
 			"manifest": manifestPath,

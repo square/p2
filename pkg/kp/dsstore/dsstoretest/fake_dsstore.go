@@ -14,7 +14,7 @@ import (
 	"github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/dsstore"
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
@@ -45,7 +45,7 @@ func NewFake() *FakeDSStore {
 }
 
 func (s *FakeDSStore) Create(
-	manifest manifest.Manifest,
+	manifest store.Manifest,
 	minHealth int,
 	name fields.ClusterName,
 	nodeSelector klabels.Selector,

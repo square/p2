@@ -17,9 +17,9 @@ import (
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 	"gopkg.in/yaml.v2"
@@ -33,16 +33,16 @@ func getTestPod() *Pod {
 	return podFactory.NewLegacyPod("hello")
 }
 
-func getTestPodManifest(t *testing.T) manifest.Manifest {
+func getTestPodManifest(t *testing.T) store.Manifest {
 	testPath := util.From(runtime.Caller(0)).ExpandPath("test_manifest.yaml")
-	pod, err := manifest.FromPath(testPath)
+	pod, err := store.FromPath(testPath)
 	Assert(t).IsNil(err, "couldn't read test manifest")
 	return pod
 }
 
-func getUpdatedManifest(t *testing.T) manifest.Manifest {
+func getUpdatedManifest(t *testing.T) store.Manifest {
 	podPath := util.From(runtime.Caller(0)).ExpandPath("updated_manifest.yaml")
-	pod, err := manifest.FromPath(podPath)
+	pod, err := store.FromPath(podPath)
 	Assert(t).IsNil(err, "couldn't read test manifest")
 	return pod
 }
@@ -136,7 +136,7 @@ config:
 	currUser, err := user.Current()
 	Assert(t).IsNil(err, "Could not get the current user")
 	manifestStr += fmt.Sprintf("run_as: %s", currUser.Username)
-	manifest, err := manifest.FromBytes(bytes.NewBufferString(manifestStr).Bytes())
+	manifest, err := store.FromBytes(bytes.NewBufferString(manifestStr).Bytes())
 	Assert(t).IsNil(err, "should not have erred reading the manifest")
 
 	podTemp, _ := ioutil.TempDir("", "pod")
@@ -279,7 +279,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 	oldPath, err := pod.WriteCurrentManifest(updated.GetManifest())
 	Assert(t).IsNil(err, "should have written the current manifest and linked the old one")
 
-	writtenOld, err := manifest.FromPath(oldPath)
+	writtenOld, err := store.FromPath(oldPath)
 	Assert(t).IsNil(err, "should have written a manifest to the old path")
 	manifestMustEqual(existing.GetManifest(), writtenOld, t)
 
@@ -310,7 +310,7 @@ func TestBuildRunitServices(t *testing.T) {
 	}
 	outFilePath := filepath.Join(serviceBuilder.ConfigRoot, "testPod.yaml")
 
-	testManifest := manifest.NewBuilder()
+	testManifest := store.NewBuilder()
 	testLaunchable := hl.If()
 	pod.buildRunitServices([]launch.Launchable{testLaunchable}, testManifest.GetManifest())
 
@@ -353,7 +353,7 @@ func TestInstall(t *testing.T) {
 		},
 	}
 
-	builder := manifest.NewBuilder()
+	builder := store.NewBuilder()
 	builder.SetID("hello")
 	builder.SetLaunchables(launchables)
 	builder.SetRunAsUser(currentUser.Username)
@@ -420,7 +420,7 @@ func TestUninstall(t *testing.T) {
 	Assert(t).IsTrue(os.IsNotExist(err), "Expected file to not exist after uninstall")
 }
 
-func manifestMustEqual(expected, actual manifest.Manifest, t *testing.T) {
+func manifestMustEqual(expected, actual store.Manifest, t *testing.T) {
 	actualSha, err := actual.SHA()
 	Assert(t).IsNil(err, "should have gotten SHA from old manifest")
 	expectedSha, err := expected.SHA()

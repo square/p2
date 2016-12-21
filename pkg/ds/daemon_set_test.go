@@ -14,7 +14,7 @@ import (
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -138,7 +138,7 @@ func TestSchedule(t *testing.T) {
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
@@ -148,7 +148,7 @@ func TestSchedule(t *testing.T) {
 	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "expected no error creating request")
 
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]store.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
 	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
@@ -328,7 +328,7 @@ func TestPublishToReplication(t *testing.T) {
 	minHealth := 1
 	clusterName := ds_fields.ClusterName("some_name")
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
@@ -338,7 +338,7 @@ func TestPublishToReplication(t *testing.T) {
 	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "expected no error creating request")
 
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]store.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
 	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)

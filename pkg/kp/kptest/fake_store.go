@@ -8,15 +8,15 @@ import (
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 )
 
 // In memory kp store useful in tests. Currently does not implement the entire
 // kp.Store interface
 type FakePodStore struct {
-	podResults    map[FakePodStoreKey]manifest.Manifest
+	podResults    map[FakePodStoreKey]store.Manifest
 	healthResults map[string]kp.WatchResult
 
 	// represents locks that are held. Will be shared between any
@@ -29,9 +29,9 @@ type FakePodStore struct {
 	podLock sync.Mutex
 }
 
-func NewFakePodStore(podResults map[FakePodStoreKey]manifest.Manifest, healthResults map[string]kp.WatchResult) *FakePodStore {
+func NewFakePodStore(podResults map[FakePodStoreKey]store.Manifest, healthResults map[string]kp.WatchResult) *FakePodStore {
 	if podResults == nil {
-		podResults = make(map[FakePodStoreKey]manifest.Manifest)
+		podResults = make(map[FakePodStoreKey]store.Manifest)
 	}
 	if healthResults == nil {
 		healthResults = make(map[string]kp.WatchResult)
@@ -57,14 +57,14 @@ func FakePodStoreKeyFor(podPrefix kp.PodPrefix, hostname types.NodeName, podId t
 	}
 }
 
-func (f *FakePodStore) SetPod(podPrefix kp.PodPrefix, hostname types.NodeName, manifest manifest.Manifest) (time.Duration, error) {
+func (f *FakePodStore) SetPod(podPrefix kp.PodPrefix, hostname types.NodeName, manifest store.Manifest) (time.Duration, error) {
 	f.podLock.Lock()
 	defer f.podLock.Unlock()
 	f.podResults[FakePodStoreKeyFor(podPrefix, hostname, manifest.ID())] = manifest
 	return 0, nil
 }
 
-func (f *FakePodStore) Pod(podPrefix kp.PodPrefix, hostname types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error) {
+func (f *FakePodStore) Pod(podPrefix kp.PodPrefix, hostname types.NodeName, podId types.PodID) (store.Manifest, time.Duration, error) {
 	f.podLock.Lock()
 	defer f.podLock.Unlock()
 	if pod, ok := f.podResults[FakePodStoreKeyFor(podPrefix, hostname, podId)]; !ok {

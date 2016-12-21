@@ -13,7 +13,6 @@ import (
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
@@ -349,8 +348,8 @@ func SimulateRollingUpgrade(t *testing.T, full, nonew, strictRemove bool) {
 	}
 }
 
-func podWithIDAndPort(id string, port int) manifest.Manifest {
-	builder := manifest.NewBuilder()
+func podWithIDAndPort(id string, port int) store.Manifest {
+	builder := store.NewBuilder()
 	builder.SetID(types.PodID(id))
 	builder.SetStatusPort(port)
 	return builder.GetManifest()
@@ -359,8 +358,8 @@ func podWithIDAndPort(id string, port int) manifest.Manifest {
 func assignManifestsToNodes(
 	podID types.PodID,
 	nodes map[types.NodeName]bool,
-	pods map[kptest.FakePodStoreKey]manifest.Manifest,
-	ifCurrent, ifNotCurrent manifest.Manifest,
+	pods map[kptest.FakePodStoreKey]store.Manifest,
+	ifCurrent, ifNotCurrent store.Manifest,
 ) {
 	for node, current := range nodes {
 		key := kptest.FakePodStoreKeyFor(kp.REALITY_TREE, node, podID)
@@ -375,7 +374,7 @@ func assignManifestsToNodes(
 func createRC(
 	rcs rcstore.Store,
 	applicator labels.Applicator,
-	manifest manifest.Manifest,
+	manifest store.Manifest,
 	desired int,
 	nodes map[types.NodeName]bool,
 ) (store.ReplicationController, error) {
@@ -399,13 +398,13 @@ func updateWithHealth(t *testing.T,
 	desiredOld, desiredNew int,
 	oldNodes, newNodes map[types.NodeName]bool,
 	checks map[types.NodeName]health.Result,
-) (update, manifest.Manifest, manifest.Manifest) {
+) (update, store.Manifest, store.Manifest) {
 	podID := "mypod"
 
 	oldManifest := podWithIDAndPort(podID, 9001)
 	newManifest := podWithIDAndPort(podID, 9002)
 
-	podMap := map[kptest.FakePodStoreKey]manifest.Manifest{}
+	podMap := map[kptest.FakePodStoreKey]store.Manifest{}
 	assignManifestsToNodes(types.PodID(podID), oldNodes, podMap, oldManifest, newManifest)
 	assignManifestsToNodes(types.PodID(podID), newNodes, podMap, newManifest, oldManifest)
 	kps := kptest.NewFakePodStore(podMap, nil)
@@ -783,7 +782,7 @@ func failOnError(t *testing.T, desc string, errs <-chan error) {
 }
 
 // Transfers the named node from the old RC to the new RC
-func transferNode(node types.NodeName, manifest manifest.Manifest, upd update) error {
+func transferNode(node types.NodeName, manifest store.Manifest, upd update) error {
 	if _, err := upd.kps.SetPod(kp.REALITY_TREE, node, manifest); err != nil {
 		return err
 	}

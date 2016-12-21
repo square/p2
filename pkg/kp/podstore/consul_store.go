@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -18,7 +18,7 @@ const PodTree = "pods"
 
 // The structure of values written to the /pods tree.
 type Pod struct {
-	Manifest manifest.Manifest
+	Manifest store.Manifest
 	Node     types.NodeName
 }
 
@@ -56,7 +56,7 @@ func (p *Pod) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	m, err := manifest.FromBytes([]byte(rawPod.Manifest))
+	m, err := store.FromBytes([]byte(rawPod.Manifest))
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (p *Pod) UnmarshalJSON(b []byte) error {
 }
 
 // Defines the JSON structure written to the /pods tree. The Pod type
-// can't be used because manifest.Manifest doesn't marshal cleanly
+// can't be used because store.Manifest doesn't marshal cleanly
 type RawPod struct {
 	Manifest string         `json:"manifest"`
 	Node     types.NodeName `json:"node"`
@@ -106,7 +106,7 @@ func NewConsul(consulKV KV) Store {
 	}
 }
 
-func (c *consulStore) Schedule(manifest manifest.Manifest, node types.NodeName) (key types.PodUniqueKey, err error) {
+func (c *consulStore) Schedule(manifest store.Manifest, node types.NodeName) (key types.PodUniqueKey, err error) {
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {
 		return "", err

@@ -9,7 +9,6 @@ import (
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 )
@@ -36,7 +35,7 @@ func NewFake() *fakeStore {
 	}
 }
 
-func (s *fakeStore) Create(manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (store.ReplicationController, error) {
+func (s *fakeStore) Create(manifest store.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (store.ReplicationController, error) {
 	// A real replication controller will use a UUID.
 	// We'll just use a monotonically increasing counter for expedience.
 	s.creates += 1
