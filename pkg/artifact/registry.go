@@ -9,7 +9,7 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/osversion"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 )
@@ -27,7 +27,7 @@ type Registry interface {
 	// Given a LaunchableStanza from a pod manifest, returns a URL from which the
 	// artifact can be fetched an a struct containing the locations of files that
 	// can be used to verify artifact integrity
-	LocationDataForLaunchable(podID types.PodID, launchableID launch.LaunchableID, stanza launch.LaunchableStanza) (*url.URL, auth.VerificationData, error)
+	LocationDataForLaunchable(podID store.PodID, launchableID launch.LaunchableID, stanza launch.LaunchableStanza) (*url.URL, auth.VerificationData, error)
 }
 
 type registry struct {
@@ -61,7 +61,7 @@ func NewRegistry(registryURL *url.URL, fetcher uri.Fetcher, osVersionDetector os
 // manifest: ".manifest"
 // manifest signature: ".manifest.sig"
 // build signature: ".sig"
-func (a registry) LocationDataForLaunchable(podID types.PodID, launchableID launch.LaunchableID, stanza launch.LaunchableStanza) (*url.URL, auth.VerificationData, error) {
+func (a registry) LocationDataForLaunchable(podID store.PodID, launchableID launch.LaunchableID, stanza launch.LaunchableStanza) (*url.URL, auth.VerificationData, error) {
 	if stanza.Location == "" && stanza.Version.ID == "" {
 		return nil, auth.VerificationData{}, util.Errorf("Launchable must provide either \"location\" or \"version\" fields")
 	}
@@ -95,7 +95,7 @@ type RegistryResponse struct {
 	BuildSignatureLocation    string `json:"signature_location"`
 }
 
-func (a registry) fetchRegistryData(podID types.PodID, launchableID launch.LaunchableID, version launch.LaunchableVersion) (*url.URL, auth.VerificationData, error) {
+func (a registry) fetchRegistryData(podID store.PodID, launchableID launch.LaunchableID, version launch.LaunchableVersion) (*url.URL, auth.VerificationData, error) {
 	requestURL := &url.URL{
 		Path: fmt.Sprintf("%s/%s", discoverBasePath, podID),
 	}

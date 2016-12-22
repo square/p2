@@ -4,11 +4,11 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/kp/statusstore/statusstoretest"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 )
 
 func TestSetAndGetStatus(t *testing.T) {
-	store := newFixture()
+	consulStore := newFixture()
 
 	processStatus := ProcessStatus{
 		EntryPoint:   "echo_service",
@@ -21,13 +21,13 @@ func TestSetAndGetStatus(t *testing.T) {
 		},
 	}
 
-	podKey := types.NewPodUUID()
-	err := store.Set(podKey, testStatus)
+	podKey := store.NewPodUUID()
+	err := consulStore.Set(podKey, testStatus)
 	if err != nil {
 		t.Fatalf("Unexpected error setting status: %s", err)
 	}
 
-	status, _, err := store.Get(podKey)
+	status, _, err := consulStore.Get(podKey)
 	if err != nil {
 		t.Fatalf("Unexpected error getting status: %s", err)
 	}
@@ -42,10 +42,10 @@ func TestSetAndGetStatus(t *testing.T) {
 }
 
 func TestMutateStatusNewKey(t *testing.T) {
-	store := newFixture()
+	consulStore := newFixture()
 
-	key := types.NewPodUUID()
-	err := store.MutateStatus(key, func(p PodStatus) (PodStatus, error) {
+	key := store.NewPodUUID()
+	err := consulStore.MutateStatus(key, func(p PodStatus) (PodStatus, error) {
 		p.PodStatus = PodLaunched
 		return p, nil
 	})
@@ -54,7 +54,7 @@ func TestMutateStatusNewKey(t *testing.T) {
 	}
 
 	// Now try to get it and confirm the status was set
-	status, _, err := store.Get(key)
+	status, _, err := consulStore.Get(key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,15 +65,15 @@ func TestMutateStatusNewKey(t *testing.T) {
 }
 
 func TestMutateStatusExistingKey(t *testing.T) {
-	store := newFixture()
+	consulStore := newFixture()
 
-	key := types.NewPodUUID()
+	key := store.NewPodUUID()
 	processStatus := ProcessStatus{
 		EntryPoint:   "echo_service",
 		LaunchableID: "some_launchable",
 		LastExit:     nil,
 	}
-	err := store.Set(key, PodStatus{
+	err := consulStore.Set(key, PodStatus{
 		ProcessStatuses: []ProcessStatus{
 			processStatus,
 		},
@@ -82,7 +82,7 @@ func TestMutateStatusExistingKey(t *testing.T) {
 		t.Fatalf("Unable to set up test with an existing key: %s", err)
 	}
 
-	err = store.MutateStatus(key, func(p PodStatus) (PodStatus, error) {
+	err = consulStore.MutateStatus(key, func(p PodStatus) (PodStatus, error) {
 		p.PodStatus = PodLaunched
 		return p, nil
 	})
@@ -91,7 +91,7 @@ func TestMutateStatusExistingKey(t *testing.T) {
 	}
 
 	// Now try to get it and confirm the status was set
-	status, _, err := store.Get(key)
+	status, _, err := consulStore.Get(key)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,14 +8,13 @@ import (
 	"github.com/square/p2/pkg/kp/pcstore"
 	"github.com/square/p2/pkg/kp/pcstore/pcstoretest"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"k8s.io/kubernetes/pkg/labels"
 )
 
 func TestCreate(t *testing.T) {
 	testAZ := store.AvailabilityZone("west-coast")
 	testCN := store.ClusterName("test")
-	testPodID := types.PodID("pod")
+	testPodID := store.PodID("pod")
 	selector := labels.Everything().
 		Add(store.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
 		Add(store.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
@@ -76,7 +75,7 @@ func TestCreate(t *testing.T) {
 func TestUpdate(t *testing.T) {
 	testAZ := store.AvailabilityZone("west-coast")
 	testCN := store.ClusterName("test")
-	testPodID := types.PodID("pod")
+	testPodID := store.PodID("pod")
 	selector := labels.Everything().
 		Add(store.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
 		Add(store.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
@@ -142,7 +141,7 @@ func TestUpdate(t *testing.T) {
 func TestPodClusterFromID(t *testing.T) {
 	testAZ := store.AvailabilityZone("west-coast")
 	testCN := store.ClusterName("test")
-	testPodID := types.PodID("pod")
+	testPodID := store.PodID("pod")
 	selector := labels.Everything().
 		Add(store.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
 		Add(store.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).

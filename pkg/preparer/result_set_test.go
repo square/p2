@@ -12,12 +12,11 @@ import (
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/kp/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 )
 
 func podWithID(id string) store.Manifest {
 	builder := store.NewBuilder()
-	builder.SetID(types.PodID(id))
+	builder.SetID(store.PodID(id))
 	return builder.GetManifest()
 }
 

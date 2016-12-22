@@ -17,7 +17,6 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
 	"golang.org/x/crypto/openpgp"
@@ -82,7 +81,7 @@ func (t *TestPod) EnvDir() string {
 	return os.TempDir()
 }
 
-func (t *TestPod) Node() types.NodeName {
+func (t *TestPod) Node() store.NodeName {
 	return "hostname"
 }
 
@@ -90,7 +89,7 @@ func (t *TestPod) Home() string {
 	return os.TempDir()
 }
 
-func (t *TestPod) UniqueKey() types.PodUniqueKey {
+func (t *TestPod) UniqueKey() store.PodUniqueKey {
 	return ""
 }
 
@@ -170,7 +169,7 @@ type FakeStore struct {
 	currentManifestError error
 }
 
-func (f *FakeStore) ListPods(kp.PodPrefix, types.NodeName) ([]kp.ManifestResult, time.Duration, error) {
+func (f *FakeStore) ListPods(kp.PodPrefix, store.NodeName) ([]kp.ManifestResult, time.Duration, error) {
 	if f.currentManifest == nil {
 		return nil, 0, nil
 	}
@@ -182,19 +181,19 @@ func (f *FakeStore) ListPods(kp.PodPrefix, types.NodeName) ([]kp.ManifestResult,
 	}, 0, nil
 }
 
-func (f *FakeStore) SetPod(kp.PodPrefix, types.NodeName, store.Manifest) (time.Duration, error) {
+func (f *FakeStore) SetPod(kp.PodPrefix, store.NodeName, store.Manifest) (time.Duration, error) {
 	return 0, nil
 }
 
-func (f *FakeStore) Pod(kp.PodPrefix, types.NodeName, types.PodID) (store.Manifest, time.Duration, error) {
+func (f *FakeStore) Pod(kp.PodPrefix, store.NodeName, store.PodID) (store.Manifest, time.Duration, error) {
 	return nil, 0, fmt.Errorf("not implemented")
 }
 
-func (f *FakeStore) DeletePod(kp.PodPrefix, types.NodeName, types.PodID) (time.Duration, error) {
+func (f *FakeStore) DeletePod(kp.PodPrefix, store.NodeName, store.PodID) (time.Duration, error) {
 	return 0, nil
 }
 
-func (f *FakeStore) WatchPods(kp.PodPrefix, types.NodeName, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult) {
+func (f *FakeStore) WatchPods(kp.PodPrefix, store.NodeName, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult) {
 }
 
 func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks, string) {
@@ -415,7 +414,7 @@ func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{
 		Keyring:             openpgp.EntityList{fakeSigner},
-		AuthorizedDeployers: map[types.PodID][]string{constants.PreparerPodID: {"nobodylol"}},
+		AuthorizedDeployers: map[store.PodID][]string{constants.PreparerPodID: {"nobodylol"}},
 	}
 
 	Assert(t).IsFalse(
@@ -436,7 +435,7 @@ func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{
 		Keyring:             openpgp.EntityList{fakeSigner},
-		AuthorizedDeployers: map[types.PodID][]string{constants.PreparerPodID: {sig}},
+		AuthorizedDeployers: map[store.PodID][]string{constants.PreparerPodID: {sig}},
 	}
 
 	Assert(t).IsTrue(

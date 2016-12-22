@@ -5,7 +5,7 @@ import (
 
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/flags"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -28,15 +28,15 @@ func main() {
 	_, opts, _ := flags.ParseWithConsulOptions()
 
 	client := kp.NewConsulClient(opts)
-	store := kp.NewConsulStore(client)
+	storage := kp.NewConsulStore(client)
 
-	pods, _, err := store.ListPods(kp.REALITY_TREE, types.NodeName(*nodeName))
+	pods, _, err := storage.ListPods(kp.REALITY_TREE, store.NodeName(*nodeName))
 	if err != nil {
 		log.Fatalf("Could not list pods for node %v: %v", *nodeName, err)
 	}
 	for _, pod := range pods {
 		log.Printf("Deleting %v from reality\n", pod.Manifest.ID())
-		_, err := store.DeletePod(kp.REALITY_TREE, types.NodeName(*nodeName), pod.Manifest.ID())
+		_, err := storage.DeletePod(kp.REALITY_TREE, store.NodeName(*nodeName), pod.Manifest.ID())
 		if err != nil {
 			log.Fatalf("Could not remove %s/%s from pod reality tree: %v", *nodeName, pod.Manifest.ID(), err)
 		}

@@ -15,7 +15,6 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -350,14 +349,14 @@ func SimulateRollingUpgrade(t *testing.T, full, nonew, strictRemove bool) {
 
 func podWithIDAndPort(id string, port int) store.Manifest {
 	builder := store.NewBuilder()
-	builder.SetID(types.PodID(id))
+	builder.SetID(store.PodID(id))
 	builder.SetStatusPort(port)
 	return builder.GetManifest()
 }
 
 func assignManifestsToNodes(
-	podID types.PodID,
-	nodes map[types.NodeName]bool,
+	podID store.PodID,
+	nodes map[store.NodeName]bool,
 	pods map[kptest.FakePodStoreKey]store.Manifest,
 	ifCurrent, ifNotCurrent store.Manifest,
 ) {
@@ -376,7 +375,7 @@ func createRC(
 	applicator labels.Applicator,
 	manifest store.Manifest,
 	desired int,
-	nodes map[types.NodeName]bool,
+	nodes map[store.NodeName]bool,
 ) (store.ReplicationController, error) {
 	created, err := rcs.Create(manifest, nil, nil)
 	if err != nil {
@@ -396,8 +395,8 @@ func createRC(
 
 func updateWithHealth(t *testing.T,
 	desiredOld, desiredNew int,
-	oldNodes, newNodes map[types.NodeName]bool,
-	checks map[types.NodeName]health.Result,
+	oldNodes, newNodes map[store.NodeName]bool,
+	checks map[store.NodeName]health.Result,
 ) (update, store.Manifest, store.Manifest) {
 	podID := "mypod"
 
@@ -405,8 +404,8 @@ func updateWithHealth(t *testing.T,
 	newManifest := podWithIDAndPort(podID, 9002)
 
 	podMap := map[kptest.FakePodStoreKey]store.Manifest{}
-	assignManifestsToNodes(types.PodID(podID), oldNodes, podMap, oldManifest, newManifest)
-	assignManifestsToNodes(types.PodID(podID), newNodes, podMap, newManifest, oldManifest)
+	assignManifestsToNodes(store.PodID(podID), oldNodes, podMap, oldManifest, newManifest)
+	assignManifestsToNodes(store.PodID(podID), newNodes, podMap, newManifest, oldManifest)
 	kps := kptest.NewFakePodStore(podMap, nil)
 
 	rcs := rcstore.NewFake()
@@ -431,12 +430,12 @@ func updateWithHealth(t *testing.T,
 	}, oldManifest, newManifest
 }
 
-func updateWithUniformHealth(t *testing.T, numNodes int, status health.HealthState) (update, map[types.NodeName]health.Result) {
-	current := map[types.NodeName]bool{}
-	checks := map[types.NodeName]health.Result{}
+func updateWithUniformHealth(t *testing.T, numNodes int, status health.HealthState) (update, map[store.NodeName]health.Result) {
+	current := map[store.NodeName]bool{}
+	checks := map[store.NodeName]health.Result{}
 
 	for i := 0; i < numNodes; i++ {
-		node := types.NodeName(fmt.Sprintf("node%d", i))
+		node := store.NodeName(fmt.Sprintf("node%d", i))
 		current[node] = true
 		checks[node] = health.Result{Status: status}
 	}
@@ -498,8 +497,8 @@ func TestCountHealthAllImplicitUnknown(t *testing.T) {
 }
 
 func TestCountHealthNonReal(t *testing.T) {
-	upd, _, _ := updateWithHealth(t, 3, 0, map[types.NodeName]bool{"node1": true, "node2": true, "node3": false}, nil, nil)
-	checks := map[types.NodeName]health.Result{
+	upd, _, _ := updateWithHealth(t, 3, 0, map[store.NodeName]bool{"node1": true, "node2": true, "node3": false}, nil, nil)
+	checks := map[store.NodeName]health.Result{
 		"node1": {Status: health.Passing},
 		"node2": {Status: health.Passing},
 		"node3": {Status: health.Critical},
@@ -517,8 +516,8 @@ func TestCountHealthNonReal(t *testing.T) {
 }
 
 func TestCountHealthNonCurrent(t *testing.T) {
-	upd, _, _ := updateWithHealth(t, 3, 0, map[types.NodeName]bool{}, nil, nil)
-	checks := map[types.NodeName]health.Result{
+	upd, _, _ := updateWithHealth(t, 3, 0, map[store.NodeName]bool{}, nil, nil)
+	checks := map[store.NodeName]health.Result{
 		"node1": {Status: health.Critical},
 	}
 	counts, err := upd.countHealthy(upd.OldRC, checks)
@@ -530,19 +529,19 @@ func TestCountHealthNonCurrent(t *testing.T) {
 	Assert(t).AreEqual(counts, expected, "incorrect health counts")
 }
 
-func (u *update) uniformShouldRollAfterDelay(t *testing.T, podID types.PodID) (int, error) {
+func (u *update) uniformShouldRollAfterDelay(t *testing.T, podID store.PodID) (int, error) {
 	remove, add, err := u.shouldRollAfterDelay(podID)
 	Assert(t).AreEqual(remove, add, "expected nodes removed and nodes added to be equal")
 	return add, err
 }
 
 func TestShouldRollInitial(t *testing.T) {
-	checks := map[types.NodeName]health.Result{
+	checks := map[store.NodeName]health.Result{
 		"node1": {Status: health.Passing},
 		"node2": {Status: health.Passing},
 		"node3": {Status: health.Passing},
 	}
-	upd, _, manifest := updateWithHealth(t, 3, 0, map[types.NodeName]bool{
+	upd, _, manifest := updateWithHealth(t, 3, 0, map[store.NodeName]bool{
 		"node1": true,
 		"node2": true,
 		"node3": true,
@@ -576,15 +575,15 @@ func TestShouldRollInitialMigrationFromZero(t *testing.T) {
 }
 
 func TestShouldRollMidwayUnhealthy(t *testing.T) {
-	checks := map[types.NodeName]health.Result{
+	checks := map[store.NodeName]health.Result{
 		"node1": {Status: health.Passing},
 		"node2": {Status: health.Passing},
 		"node3": {Status: health.Critical},
 	}
-	upd, _, manifest := updateWithHealth(t, 2, 1, map[types.NodeName]bool{
+	upd, _, manifest := updateWithHealth(t, 2, 1, map[store.NodeName]bool{
 		"node1": true,
 		"node2": true,
-	}, map[types.NodeName]bool{
+	}, map[store.NodeName]bool{
 		"node3": true,
 	}, checks)
 	upd.DesiredReplicas = 3
@@ -595,10 +594,10 @@ func TestShouldRollMidwayUnhealthy(t *testing.T) {
 }
 
 func TestShouldRollMidwayUnhealthyMigration(t *testing.T) {
-	checks := map[types.NodeName]health.Result{
+	checks := map[store.NodeName]health.Result{
 		"node3": {Status: health.Critical},
 	}
-	upd, _, manifest := updateWithHealth(t, 2, 1, nil, map[types.NodeName]bool{
+	upd, _, manifest := updateWithHealth(t, 2, 1, nil, map[store.NodeName]bool{
 		"node3": true,
 	}, checks)
 	upd.DesiredReplicas = 3
@@ -609,10 +608,10 @@ func TestShouldRollMidwayUnhealthyMigration(t *testing.T) {
 }
 
 func TestShouldRollMidwayUnhealthyMigrationFromZero(t *testing.T) {
-	checks := map[types.NodeName]health.Result{
+	checks := map[store.NodeName]health.Result{
 		"node3": {Status: health.Critical},
 	}
-	upd, _, manifest := updateWithHealth(t, 0, 1, nil, map[types.NodeName]bool{
+	upd, _, manifest := updateWithHealth(t, 0, 1, nil, map[store.NodeName]bool{
 		"node3": true,
 	}, checks)
 	upd.DesiredReplicas = 3
@@ -624,15 +623,15 @@ func TestShouldRollMidwayUnhealthyMigrationFromZero(t *testing.T) {
 }
 
 func TestShouldRollMidwayHealthy(t *testing.T) {
-	checks := map[types.NodeName]health.Result{
+	checks := map[store.NodeName]health.Result{
 		"node1": {Status: health.Passing},
 		"node2": {Status: health.Passing},
 		"node3": {Status: health.Passing},
 	}
-	upd, _, manifest := updateWithHealth(t, 2, 1, map[types.NodeName]bool{
+	upd, _, manifest := updateWithHealth(t, 2, 1, map[store.NodeName]bool{
 		"node1": true,
 		"node2": true,
-	}, map[types.NodeName]bool{
+	}, map[store.NodeName]bool{
 		"node3": true,
 	}, checks)
 	upd.DesiredReplicas = 3
@@ -644,10 +643,10 @@ func TestShouldRollMidwayHealthy(t *testing.T) {
 }
 
 func TestShouldRollMidwayUnknkown(t *testing.T) {
-	checks := map[types.NodeName]health.Result{
+	checks := map[store.NodeName]health.Result{
 		"node3": {Status: health.Passing},
 	}
-	upd, _, manifest := updateWithHealth(t, 2, 1, nil, map[types.NodeName]bool{
+	upd, _, manifest := updateWithHealth(t, 2, 1, nil, map[store.NodeName]bool{
 		"node3": true,
 	}, checks)
 	upd.DesiredReplicas = 3
@@ -658,14 +657,14 @@ func TestShouldRollMidwayUnknkown(t *testing.T) {
 }
 
 func TestShouldRollMidwayDesireLessThanHealthy(t *testing.T) {
-	checks := map[types.NodeName]health.Result{
+	checks := map[store.NodeName]health.Result{
 		"node1": {Status: health.Passing},
 		"node2": {Status: health.Passing},
 		"node3": {Status: health.Passing},
 		"node4": {Status: health.Passing},
 		"node5": {Status: health.Passing},
 	}
-	upd, _, manifest := updateWithHealth(t, 3, 2, map[types.NodeName]bool{
+	upd, _, manifest := updateWithHealth(t, 3, 2, map[store.NodeName]bool{
 		// This is something that may happen in a rolling update:
 		// old RC only desires three nodes, but still has all five.
 		"node1": true,
@@ -673,7 +672,7 @@ func TestShouldRollMidwayDesireLessThanHealthy(t *testing.T) {
 		"node3": true,
 		"node4": true,
 		"node5": true,
-	}, map[types.NodeName]bool{}, checks)
+	}, map[store.NodeName]bool{}, checks)
 	upd.DesiredReplicas = 5
 	upd.MinimumReplicas = 3
 
@@ -685,21 +684,21 @@ func TestShouldRollMidwayDesireLessThanHealthyPartial(t *testing.T) {
 	// This test is like the above, but ensures that we are not too conservative.
 	// If we have a minimum health of 3, desire 3 on the old side,
 	// and have 1 healthy on the new side, we should have room to roll one node.
-	checks := map[types.NodeName]health.Result{
+	checks := map[store.NodeName]health.Result{
 		"node1": {Status: health.Passing},
 		"node2": {Status: health.Passing},
 		"node3": {Status: health.Passing},
 		"node4": {Status: health.Passing},
 		"node5": {Status: health.Passing},
 	}
-	upd, _, manifest := updateWithHealth(t, 3, 2, map[types.NodeName]bool{
+	upd, _, manifest := updateWithHealth(t, 3, 2, map[store.NodeName]bool{
 		// This is something that may happen in a rolling update:
 		// old RC only desires three nodes, but still has four of them.
 		"node1": true,
 		"node2": true,
 		"node3": true,
 		"node4": true,
-	}, map[types.NodeName]bool{
+	}, map[store.NodeName]bool{
 		"node5": true,
 	}, checks)
 	upd.DesiredReplicas = 5
@@ -715,14 +714,14 @@ func TestShouldRollWhenNewSatisfiesButNotAllDesiredHealthy(t *testing.T) {
 	// In this case, we schedule the remaining nodes.
 	// We want to ensure that remaining == targetDesired - newDesired
 	// instead of targetDesired - newHealthy
-	checks := map[types.NodeName]health.Result{
+	checks := map[store.NodeName]health.Result{
 		"node1": {Status: health.Passing},
 		"node2": {Status: health.Passing},
 		"node3": {Status: health.Critical},
 	}
-	upd, _, manifest := updateWithHealth(t, 1, 2, map[types.NodeName]bool{
+	upd, _, manifest := updateWithHealth(t, 1, 2, map[store.NodeName]bool{
 		"node1": true,
-	}, map[types.NodeName]bool{
+	}, map[store.NodeName]bool{
 		"node2": true,
 		"node3": true,
 	}, checks)
@@ -735,10 +734,10 @@ func TestShouldRollWhenNewSatisfiesButNotAllDesiredHealthy(t *testing.T) {
 }
 
 func TestShouldRollMidwayHealthyMigrationFromZero(t *testing.T) {
-	checks := map[types.NodeName]health.Result{
+	checks := map[store.NodeName]health.Result{
 		"node3": {Status: health.Passing},
 	}
-	upd, _, manifest := updateWithHealth(t, 0, 1, nil, map[types.NodeName]bool{
+	upd, _, manifest := updateWithHealth(t, 0, 1, nil, map[store.NodeName]bool{
 		"node3": true,
 	}, checks)
 	upd.DesiredReplicas = 3
@@ -751,11 +750,11 @@ func TestShouldRollMidwayHealthyMigrationFromZero(t *testing.T) {
 }
 
 func TestShouldRollMidwayHealthyMigrationFromZeroWhenNewSatisfies(t *testing.T) {
-	checks := map[types.NodeName]health.Result{
+	checks := map[store.NodeName]health.Result{
 		"node2": {Status: health.Passing},
 		"node3": {Status: health.Passing},
 	}
-	upd, _, manifest := updateWithHealth(t, 0, 2, nil, map[types.NodeName]bool{
+	upd, _, manifest := updateWithHealth(t, 0, 2, nil, map[store.NodeName]bool{
 		"node2": true,
 		"node3": true,
 	}, checks)
@@ -782,7 +781,7 @@ func failOnError(t *testing.T, desc string, errs <-chan error) {
 }
 
 // Transfers the named node from the old RC to the new RC
-func transferNode(node types.NodeName, manifest store.Manifest, upd update) error {
+func transferNode(node store.NodeName, manifest store.Manifest, upd update) error {
 	if _, err := upd.kps.SetPod(kp.REALITY_TREE, node, manifest); err != nil {
 		return err
 	}
@@ -812,7 +811,7 @@ func assertRollLoopResult(t *testing.T, channel <-chan bool, expect bool) {
 }
 
 func TestRollLoopTypicalCase(t *testing.T) {
-	upd, _, manifest := updateWithHealth(t, 3, 0, map[types.NodeName]bool{
+	upd, _, manifest := updateWithHealth(t, 3, 0, map[store.NodeName]bool{
 		"node1": true,
 		"node2": true,
 		"node3": true,
@@ -820,7 +819,7 @@ func TestRollLoopTypicalCase(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	healths := make(chan map[types.NodeName]health.Result)
+	healths := make(chan map[store.NodeName]health.Result)
 
 	oldRC, oldRCUpdated := watchRCOrFail(t, upd.rcs, upd.OldRC, "old RC")
 	newRC, newRCUpdated := watchRCOrFail(t, upd.rcs, upd.NewRC, "new RC")
@@ -832,7 +831,7 @@ func TestRollLoopTypicalCase(t *testing.T) {
 		close(rollLoopResult)
 	}()
 
-	checks := map[types.NodeName]health.Result{
+	checks := map[store.NodeName]health.Result{
 		"node1": {Status: health.Passing},
 		"node2": {Status: health.Passing},
 		"node3": {Status: health.Passing},
@@ -872,7 +871,7 @@ func TestRollLoopMigrateFromZero(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	healths := make(chan map[types.NodeName]health.Result)
+	healths := make(chan map[store.NodeName]health.Result)
 
 	oldRC, oldRCUpdated := watchRCOrFail(t, upd.rcs, upd.OldRC, "old RC")
 	newRC, newRCUpdated := watchRCOrFail(t, upd.rcs, upd.NewRC, "new RC")
@@ -885,7 +884,7 @@ func TestRollLoopMigrateFromZero(t *testing.T) {
 		close(rollLoopResult)
 	}()
 
-	checks := map[types.NodeName]health.Result{}
+	checks := map[store.NodeName]health.Result{}
 	healths <- checks
 
 	assertRCUpdates(t, newRC, newRCUpdated, 1, "new RC")
@@ -910,7 +909,7 @@ func TestRollLoopMigrateFromZero(t *testing.T) {
 }
 
 func TestRollLoopStallsIfUnhealthy(t *testing.T) {
-	upd, _, manifest := updateWithHealth(t, 3, 0, map[types.NodeName]bool{
+	upd, _, manifest := updateWithHealth(t, 3, 0, map[store.NodeName]bool{
 		"node1": true,
 		"node2": true,
 		"node3": true,
@@ -918,7 +917,7 @@ func TestRollLoopStallsIfUnhealthy(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	healths := make(chan map[types.NodeName]health.Result)
+	healths := make(chan map[store.NodeName]health.Result)
 
 	oldRC, oldRCUpdated := watchRCOrFail(t, upd.rcs, upd.OldRC, "old RC")
 	newRC, newRCUpdated := watchRCOrFail(t, upd.rcs, upd.NewRC, "new RC")
@@ -931,7 +930,7 @@ func TestRollLoopStallsIfUnhealthy(t *testing.T) {
 		close(rollLoopResult)
 	}()
 
-	checks := map[types.NodeName]health.Result{
+	checks := map[store.NodeName]health.Result{
 		"node1": {Status: health.Passing},
 		"node2": {Status: health.Passing},
 		"node3": {Status: health.Passing},

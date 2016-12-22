@@ -11,7 +11,6 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util/param"
 )
 
@@ -49,15 +48,15 @@ type PodWatch struct {
 // StatusChecker holds all the data required to perform
 // a status check on a particular service
 type StatusChecker struct {
-	ID     types.PodID
-	Node   types.NodeName
+	ID     store.PodID
+	Node   store.NodeName
 	URI    string
 	Client *http.Client
 }
 
 type consulStore interface {
-	NewHealthManager(node types.NodeName, logger logging.Logger) kp.HealthManager
-	WatchPods(podPrefix kp.PodPrefix, nodename types.NodeName, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []kp.ManifestResult)
+	NewHealthManager(node store.NodeName, logger logging.Logger) kp.HealthManager
+	WatchPods(podPrefix kp.PodPrefix, nodename store.NodeName, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []kp.ManifestResult)
 }
 
 // MonitorPodHealth is meant to be a long running go routine.
@@ -129,7 +128,7 @@ func updatePods(
 	insecureClient *http.Client,
 	current []PodWatch,
 	reality []kp.ManifestResult,
-	node types.NodeName,
+	node store.NodeName,
 	logger *logging.Logger,
 ) []PodWatch {
 	newCurrent := []PodWatch{}
@@ -176,7 +175,7 @@ func updatePods(
 		}
 
 		var client *http.Client
-		var statusHost types.NodeName
+		var statusHost store.NodeName
 		if man.Manifest.GetStatusLocalhostOnly() {
 			statusHost = "localhost"
 			client = insecureClient

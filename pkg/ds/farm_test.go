@@ -18,7 +18,6 @@ import (
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
@@ -48,7 +47,7 @@ func TestContendNodes(t *testing.T) {
 	preparer.Enable()
 	defer preparer.Disable()
 
-	var allNodes []types.NodeName
+	var allNodes []store.NodeName
 	allNodes = append(allNodes, "node1")
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
@@ -75,7 +74,7 @@ func TestContendNodes(t *testing.T) {
 	// Check for contention between two daemon sets among their nodes
 	//
 	// Make a daemon set
-	podID := types.PodID("testPod")
+	podID := store.PodID("testPod")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
@@ -160,7 +159,7 @@ func TestContendSelectors(t *testing.T) {
 	preparer.Enable()
 	defer preparer.Disable()
 
-	var allNodes []types.NodeName
+	var allNodes []store.NodeName
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
 	dsf := &Farm{
@@ -187,7 +186,7 @@ func TestContendSelectors(t *testing.T) {
 	// contend and that only the second daemon set gets disabled
 	//
 	// Make a daemon set
-	podID := types.PodID("testPod")
+	podID := store.PodID("testPod")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
@@ -262,7 +261,7 @@ func TestContendSelectors(t *testing.T) {
 	//
 	// Test equivalent selectors, fifth ds should contend with fourth
 	//
-	anotherPodID := types.PodID("anotherPodID")
+	anotherPodID := store.PodID("anotherPodID")
 
 	anotherManifestBuilder := store.NewBuilder()
 	anotherManifestBuilder.SetID(anotherPodID)
@@ -306,11 +305,11 @@ func TestFarmSchedule(t *testing.T) {
 	preparer.Enable()
 	defer preparer.Disable()
 
-	var allNodes []types.NodeName
+	var allNodes []store.NodeName
 	allNodes = append(allNodes, "node1", "node2", "node3")
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("good_node%v", i)
-		allNodes = append(allNodes, types.NodeName(nodeName))
+		allNodes = append(allNodes, store.NodeName(nodeName))
 	}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
@@ -335,7 +334,7 @@ func TestFarmSchedule(t *testing.T) {
 
 	// Make two daemon sets with difference node selectors
 	// First daemon set
-	podID := types.PodID("testPod")
+	podID := store.PodID("testPod")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
@@ -484,38 +483,38 @@ func TestCleanupPods(t *testing.T) {
 	defer preparer.Disable()
 
 	// Make some dangling pod labels and instantiate a farm and expect it clean it up
-	podID := types.PodID("testPod")
+	podID := store.PodID("testPod")
 	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
-	var allNodes []types.NodeName
+	var allNodes []store.NodeName
 	allNodes = append(allNodes)
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("node%v", i)
-		allNodes = append(allNodes, types.NodeName(nodeName))
+		allNodes = append(allNodes, store.NodeName(nodeName))
 	}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("node%v", i)
-		id := labels.MakePodLabelKey(types.NodeName(nodeName), podID)
+		id := labels.MakePodLabelKey(store.NodeName(nodeName), podID)
 		err := applicator.SetLabel(labels.POD, id, DSIDLabel, "impossible_id")
 		Assert(t).IsNil(err, "Expected no error labeling node")
 
-		_, err = kpStore.SetPod(kp.INTENT_TREE, types.NodeName(nodeName), podManifest)
+		_, err = kpStore.SetPod(kp.INTENT_TREE, store.NodeName(nodeName), podManifest)
 		Assert(t).IsNil(err, "Expected no error added pod to intent tree")
 	}
 
 	// Assert that precondition is true
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("node%v", i)
-		id := labels.MakePodLabelKey(types.NodeName(nodeName), podID)
+		id := labels.MakePodLabelKey(store.NodeName(nodeName), podID)
 		labeled, err := applicator.GetLabels(labels.POD, id)
 		Assert(t).IsNil(err, "Expected no error getting labels")
 		Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Precondition failed: Pod must have a dsID label")
 
-		_, _, err = kpStore.Pod(kp.INTENT_TREE, types.NodeName(nodeName), podID)
+		_, _, err = kpStore.Pod(kp.INTENT_TREE, store.NodeName(nodeName), podID)
 		Assert(t).IsNil(err, "Expected no error getting pod from intent store")
 		Assert(t).AreNotEqual(err, pods.NoCurrentManifest, "Precondition failed: Pod was not in intent store")
 	}
@@ -546,12 +545,12 @@ func TestCleanupPods(t *testing.T) {
 	// Make there are no nodes left
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("node%v", i)
-		id := labels.MakePodLabelKey(types.NodeName(nodeName), podID)
+		id := labels.MakePodLabelKey(store.NodeName(nodeName), podID)
 		_, err := waitForPodLabel(applicator, false, id)
 		Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 
 		condition := func() error {
-			_, _, err = kpStore.Pod(kp.INTENT_TREE, types.NodeName(nodeName), podID)
+			_, _, err = kpStore.Pod(kp.INTENT_TREE, store.NodeName(nodeName), podID)
 			if err != pods.NoCurrentManifest {
 				return util.Errorf("Expected pod to be deleted in intent store")
 			}
@@ -578,11 +577,11 @@ func TestMultipleFarms(t *testing.T) {
 		"farm": "firstMultiple",
 	})
 
-	var allNodes []types.NodeName
+	var allNodes []store.NodeName
 	allNodes = append(allNodes, "node1", "node2", "node3")
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("good_node%v", i)
-		allNodes = append(allNodes, types.NodeName(nodeName))
+		allNodes = append(allNodes, store.NodeName(nodeName))
 	}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
@@ -635,7 +634,7 @@ func TestMultipleFarms(t *testing.T) {
 
 	// Make two daemon sets with difference node selectors
 	// First daemon set
-	podID := types.PodID("testPod")
+	podID := store.PodID("testPod")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 

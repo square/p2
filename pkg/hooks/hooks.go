@@ -12,7 +12,6 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 )
 
 var DEFAULT_PATH = "/usr/local/p2hooks.d"
@@ -36,9 +35,9 @@ const (
 type Pod interface {
 	ConfigDir() string
 	EnvDir() string
-	Node() types.NodeName
+	Node() store.NodeName
 	Home() string
-	UniqueKey() types.PodUniqueKey
+	UniqueKey() store.PodUniqueKey
 }
 
 type HookDir struct {

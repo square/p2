@@ -14,7 +14,6 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 )
 
 type MockHealthManager struct {
@@ -25,7 +24,7 @@ func (m *MockHealthManager) Reset() {
 	*m = MockHealthManager{}
 }
 
-func (m *MockHealthManager) NewUpdater(pod types.PodID, service string) kp.HealthUpdater {
+func (m *MockHealthManager) NewUpdater(pod store.PodID, service string) kp.HealthUpdater {
 	m.UpdaterCreated += 1
 	return m
 }
@@ -45,14 +44,14 @@ func TestUpdatePods(t *testing.T) {
 	var reality []kp.ManifestResult
 	// ids for current: 0, 1, 2, 3
 	for i := 0; i < 4; i++ {
-		current = append(current, *newWatch(types.PodID(strconv.Itoa(i))))
+		current = append(current, *newWatch(store.PodID(strconv.Itoa(i))))
 	}
 	// ids for reality: 1, 2, test
 	for i := 1; i < 3; i++ {
 		// Health checking is not supported for uuid pods, so ensure that even
 		// if /reality contains a uuid pod we don't actually watch its health
 		uuidKeyResult := newManifestResult("some_uuid_pod")
-		uuidKeyResult.PodUniqueKey = types.NewPodUUID()
+		uuidKeyResult.PodUniqueKey = store.NewPodUUID()
 		reality = append(reality, uuidKeyResult)
 		reality = append(reality, newManifestResult(current[i].manifest.ID()))
 	}
@@ -138,7 +137,7 @@ output`))), nil)
 	Assert(t).AreEqual(health.Critical, val.Status, "err != nil should correspond to health.Critical")
 }
 
-func newWatch(id types.PodID) *PodWatch {
+func newWatch(id store.PodID) *PodWatch {
 	ch := make(chan bool, 1)
 	return &PodWatch{
 		manifest:   newManifestResult(id).Manifest,
@@ -146,7 +145,7 @@ func newWatch(id types.PodID) *PodWatch {
 	}
 }
 
-func newManifestResult(id types.PodID) kp.ManifestResult {
+func newManifestResult(id store.PodID) kp.ManifestResult {
 	builder := store.NewBuilder()
 	builder.SetID(id)
 	builder.SetStatusPort(1) // StatusPort must != 0 for updatePods to use it

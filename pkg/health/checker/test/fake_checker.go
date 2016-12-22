@@ -5,29 +5,29 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 )
 
 // TODO: replication/common_setup_test.go has some things that could be moved here
 
 type singleServiceChecker struct {
 	service string
-	health  map[types.NodeName]health.Result
+	health  map[store.NodeName]health.Result
 }
 
 // NewSingleService reports a fixed health result for a single service only
-func NewSingleService(service string, health map[types.NodeName]health.Result) checker.ConsulHealthChecker {
+func NewSingleService(service string, health map[store.NodeName]health.Result) checker.ConsulHealthChecker {
 	return &singleServiceChecker{
 		service: service,
 		health:  health,
 	}
 }
 
-func (s singleServiceChecker) WatchNodeService(nodename types.NodeName, serviceID string, resultCh chan<- health.Result, errCh chan<- error, quitCh <-chan struct{}) {
+func (s singleServiceChecker) WatchNodeService(nodename store.NodeName, serviceID string, resultCh chan<- health.Result, errCh chan<- error, quitCh <-chan struct{}) {
 	panic("WatchNodeService not implemented")
 }
 
-func (s singleServiceChecker) WatchService(serviceID string, resultCh chan<- map[types.NodeName]health.Result, errCh chan<- error, quitCh <-chan struct{}) {
+func (s singleServiceChecker) WatchService(serviceID string, resultCh chan<- map[store.NodeName]health.Result, errCh chan<- error, quitCh <-chan struct{}) {
 	panic("WatchService not implemented")
 
 }
@@ -36,7 +36,7 @@ func (s singleServiceChecker) WatchHealth(_ chan []*health.Result, errCh chan<- 
 	panic("WatchHealth not implemented")
 }
 
-func (s singleServiceChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
+func (s singleServiceChecker) Service(serviceID string) (map[store.NodeName]health.Result, error) {
 	if serviceID != s.service {
 		return nil, fmt.Errorf("Wrong service %s given, I only have health for %s", serviceID, s.service)
 	}
@@ -44,24 +44,24 @@ func (s singleServiceChecker) Service(serviceID string) (map[types.NodeName]heal
 }
 
 type AlwaysHappyHealthChecker struct {
-	allNodes []types.NodeName
+	allNodes []store.NodeName
 }
 
 // creates an implementation of checker.ConsulHealthChecker that always reports
 // satisfied health checks for testing purposes
-func HappyHealthChecker(nodes []types.NodeName) checker.ConsulHealthChecker {
+func HappyHealthChecker(nodes []store.NodeName) checker.ConsulHealthChecker {
 	return AlwaysHappyHealthChecker{nodes}
 }
 
 func (h AlwaysHappyHealthChecker) WatchNodeService(
-	nodeName types.NodeName,
+	nodeName store.NodeName,
 	serviceID string,
 	resultCh chan<- health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{},
 ) {
 	happyResult := health.Result{
-		ID:     types.PodID(serviceID),
+		ID:     store.PodID(serviceID),
 		Status: health.Passing,
 	}
 	for {
@@ -73,11 +73,11 @@ func (h AlwaysHappyHealthChecker) WatchNodeService(
 	}
 }
 
-func (h AlwaysHappyHealthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
-	results := make(map[types.NodeName]health.Result)
+func (h AlwaysHappyHealthChecker) Service(serviceID string) (map[store.NodeName]health.Result, error) {
+	results := make(map[store.NodeName]health.Result)
 	for _, node := range h.allNodes {
 		results[node] = health.Result{
-			ID:     types.PodID(serviceID),
+			ID:     store.PodID(serviceID),
 			Status: health.Passing,
 		}
 	}
@@ -86,14 +86,14 @@ func (h AlwaysHappyHealthChecker) Service(serviceID string) (map[types.NodeName]
 
 func (h AlwaysHappyHealthChecker) WatchService(
 	serviceID string,
-	resultCh chan<- map[types.NodeName]health.Result,
+	resultCh chan<- map[store.NodeName]health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{},
 ) {
-	allHappy := make(map[types.NodeName]health.Result)
+	allHappy := make(map[store.NodeName]health.Result)
 	for _, node := range h.allNodes {
 		allHappy[node] = health.Result{
-			ID:     types.PodID(serviceID),
+			ID:     store.PodID(serviceID),
 			Status: health.Passing,
 		}
 	}

@@ -17,7 +17,6 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pc/control"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -73,7 +72,7 @@ func main() {
 	case cmdCreateText:
 		az := store.AvailabilityZone(*createAZ)
 		cn := store.ClusterName(*createName)
-		podID := types.PodID(*createPodID)
+		podID := store.PodID(*createPodID)
 		selector := selectorFrom(az, cn, podID)
 		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, session)
 
@@ -90,7 +89,7 @@ func main() {
 	case cmdGetText:
 		az := store.AvailabilityZone(*getAZ)
 		cn := store.ClusterName(*getName)
-		podID := types.PodID(*getPodID)
+		podID := store.PodID(*getPodID)
 		pcID := store.PodClusterID(*getID)
 
 		var pccontrol *control.PodCluster
@@ -116,7 +115,7 @@ func main() {
 	case cmdDeleteText:
 		az := store.AvailabilityZone(*deleteAZ)
 		cn := store.ClusterName(*deleteName)
-		podID := types.PodID(*deletePodID)
+		podID := store.PodID(*deletePodID)
 		pcID := store.PodClusterID(*deleteID)
 
 		var pccontrol *control.PodCluster
@@ -139,7 +138,7 @@ func main() {
 	case cmdUpdateText:
 		az := store.AvailabilityZone(*updateAZ)
 		cn := store.ClusterName(*updateName)
-		podID := types.PodID(*updatePodID)
+		podID := store.PodID(*updatePodID)
 		pcID := store.PodClusterID(*updateID)
 
 		var pccontrol *control.PodCluster
@@ -188,7 +187,7 @@ func main() {
 	}
 }
 
-func selectorFrom(az store.AvailabilityZone, cn store.ClusterName, podID types.PodID) klabels.Selector {
+func selectorFrom(az store.AvailabilityZone, cn store.ClusterName, podID store.PodID) klabels.Selector {
 	return klabels.Everything().
 		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
 		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).

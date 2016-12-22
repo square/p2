@@ -6,7 +6,6 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
@@ -41,7 +40,7 @@ type MetricsRegistry interface {
 
 type Store interface {
 	Create(
-		podID types.PodID,
+		podID store.PodID,
 		availabilityZone store.AvailabilityZone,
 		clusterName store.ClusterName,
 		podSelector klabels.Selector,
@@ -54,7 +53,7 @@ type Store interface {
 	// will return a slice in cases where duplicates are discovered. It is up to
 	// clients to decide how to respond to such situations.
 	FindWhereLabeled(
-		podID types.PodID,
+		podID store.PodID,
 		availabilityZone store.AvailabilityZone,
 		clusterName store.ClusterName,
 	) ([]store.PodCluster, error)

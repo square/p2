@@ -7,16 +7,15 @@ import (
 
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 
 	"github.com/hashicorp/consul/api"
 )
 
 func TestSchedule(t *testing.T) {
-	store, kv := storeWithFakeKV(t, nil, nil)
+	consulStore, kv := storeWithFakeKV(t, nil, nil)
 
-	node := types.NodeName("some_node")
-	key, err := store.Schedule(testManifest(), node)
+	node := store.NodeName("some_node")
+	key, err := consulStore.Schedule(testManifest(), node)
 	if err != nil {
 		t.Fatalf("Unexpected error scheduling pod: %s", err)
 	}
@@ -70,8 +69,8 @@ func TestSchedule(t *testing.T) {
 }
 
 func TestUnschedule(t *testing.T) {
-	node := types.NodeName("some_node")
-	key := types.NewPodUUID()
+	node := store.NodeName("some_node")
+	key := store.NewPodUUID()
 
 	podPath := fmt.Sprintf("pods/%s", key)
 	indexPath := fmt.Sprintf("intent/%s/%s", node, key)
@@ -107,8 +106,8 @@ func TestUnschedule(t *testing.T) {
 }
 
 func TestReadPod(t *testing.T) {
-	node := types.NodeName("some_node")
-	key := types.NewPodUUID()
+	node := store.NodeName("some_node")
+	key := store.NewPodUUID()
 
 	podPath := fmt.Sprintf("pods/%s", key)
 	indexPath := fmt.Sprintf("intent/%s/%s", node, key)
@@ -158,8 +157,8 @@ func TestReadPod(t *testing.T) {
 }
 
 func TestReadPodFromIndex(t *testing.T) {
-	node := types.NodeName("some_node")
-	key := types.NewPodUUID()
+	node := store.NodeName("some_node")
+	key := store.NewPodUUID()
 
 	podPath := fmt.Sprintf("pods/%s", key)
 	indexPath := fmt.Sprintf("intent/%s/%s", node, key)
@@ -209,8 +208,8 @@ func TestReadPodFromIndex(t *testing.T) {
 }
 
 func TestWriteRealityIndex(t *testing.T) {
-	node := types.NodeName("some_node")
-	key := types.NewPodUUID()
+	node := store.NodeName("some_node")
+	key := store.NewPodUUID()
 
 	realityIndexPath := fmt.Sprintf("reality/%s/%s", node, key)
 
@@ -242,8 +241,8 @@ func TestWriteRealityIndex(t *testing.T) {
 }
 
 func TestDeleteRealityIndex(t *testing.T) {
-	node := types.NodeName("some_node")
-	key := types.NewPodUUID()
+	node := store.NodeName("some_node")
+	key := store.NewPodUUID()
 
 	realityIndexPath := fmt.Sprintf("reality/%s/%s", node, key)
 

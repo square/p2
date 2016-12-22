@@ -11,7 +11,6 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 )
 
 const dsTree string = "daemon_sets"
@@ -41,7 +40,7 @@ type Store interface {
 		minHealth int,
 		name fields.ClusterName,
 		nodeSelector labels.Selector,
-		podID types.PodID,
+		podID store.PodID,
 		timeout time.Duration,
 	) (fields.DaemonSet, error)
 

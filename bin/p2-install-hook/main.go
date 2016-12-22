@@ -14,7 +14,6 @@ import (
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/version"
 )
@@ -45,7 +44,7 @@ func main() {
 		log.Fatalf("%s", err)
 	}
 
-	hookFactory := pods.NewHookFactory(filepath.Join(*podRoot, "hooks", *hookType), types.NodeName(*nodeName))
+	hookFactory := pods.NewHookFactory(filepath.Join(*podRoot, "hooks", *hookType), store.NodeName(*nodeName))
 
 	// /data/pods/hooks/<event>/<id>
 	// if the event is the empty string (global hook), then that path segment

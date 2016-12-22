@@ -6,7 +6,6 @@ import (
 	"github.com/square/p2/pkg/kp/statusstore"
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 
 	"github.com/hashicorp/consul/api"
 	"golang.org/x/net/context"
@@ -22,11 +21,11 @@ type podStore struct {
 var _ podstore_protos.P2PodStoreServer = podStore{}
 
 type Scheduler interface {
-	Schedule(manifest store.Manifest, node types.NodeName) (key types.PodUniqueKey, err error)
+	Schedule(manifest store.Manifest, node store.NodeName) (key store.PodUniqueKey, err error)
 }
 
 type PodStatusStore interface {
-	WaitForStatus(key types.PodUniqueKey, waitIndex uint64) (podstatus.PodStatus, *api.QueryMeta, error)
+	WaitForStatus(key store.PodUniqueKey, waitIndex uint64) (podstatus.PodStatus, *api.QueryMeta, error)
 }
 
 func NewServer(scheduler Scheduler, podStatusStore PodStatusStore) podStore {
@@ -50,7 +49,7 @@ func (s podStore) SchedulePod(_ context.Context, req *podstore_protos.SchedulePo
 		return nil, grpc.Errorf(codes.InvalidArgument, "could not parse passed manifest: %s", err)
 	}
 
-	podUniqueKey, err := s.scheduler.Schedule(manifest, types.NodeName(req.NodeName))
+	podUniqueKey, err := s.scheduler.Schedule(manifest, store.NodeName(req.NodeName))
 	if err != nil {
 		return nil, grpc.Errorf(codes.Unavailable, "could not schedule pod: %s", err)
 	}
@@ -76,8 +75,8 @@ func (s podStore) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, str
 		return grpc.Errorf(codes.InvalidArgument, "%q is not an understood namespace, must be %q", req.StatusNamespace, kp.PreparerPodStatusNamespace)
 	}
 
-	podUniqueKey, err := types.ToPodUniqueKey(req.PodUniqueKey)
-	if err == types.InvalidUUID {
+	podUniqueKey, err := store.ToPodUniqueKey(req.PodUniqueKey)
+	if err == store.InvalidUUID {
 		return grpc.Errorf(codes.InvalidArgument, "%q does not parse as pod unique key (uuid)", req.PodUniqueKey)
 	} else if err != nil {
 		return grpc.Errorf(codes.Unavailable, err.Error())

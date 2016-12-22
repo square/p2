@@ -7,7 +7,6 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/pcstore"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"k8s.io/kubernetes/pkg/labels"
 )
@@ -20,14 +19,14 @@ type PodCluster struct {
 
 	az       store.AvailabilityZone
 	cn       store.ClusterName
-	podID    types.PodID
+	podID    store.PodID
 	selector labels.Selector
 }
 
 func NewPodCluster(
 	az store.AvailabilityZone,
 	cn store.ClusterName,
-	podID types.PodID,
+	podID store.PodID,
 	pcstore pcstore.Store,
 	selector labels.Selector,
 	session kp.Session,

@@ -16,7 +16,6 @@ import (
 	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/rcrowley/go-metrics"
@@ -72,9 +71,9 @@ type childRC struct {
 }
 
 type Storage interface {
-	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest store.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (store.Manifest, time.Duration, error)
-	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	SetPod(podPrefix kp.PodPrefix, nodename store.NodeName, manifest store.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodename store.NodeName, podId store.PodID) (store.Manifest, time.Duration, error)
+	DeletePod(podPrefix kp.PodPrefix, nodename store.NodeName, podId store.PodID) (time.Duration, error)
 	NewUnmanagedSession(session, name string) kp.Session
 }
 

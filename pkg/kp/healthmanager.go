@@ -13,7 +13,7 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util/limit"
 	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/util/stream"
@@ -50,7 +50,7 @@ type consulHealthManager struct {
 	sessionPub *stream.StringValuePublisher // Publishes the current session
 	done       chan<- struct{}              // Close this to stop reporting health
 	client     consulutil.ConsulClient      // Connection to the Consul agent
-	node       types.NodeName
+	node       store.NodeName
 	logger     logging.Logger // Logger for health events
 	wg         sync.WaitGroup
 }
@@ -58,7 +58,7 @@ type consulHealthManager struct {
 // NewHealthManager implements the Store interface. It creates a new HealthManager that
 // uses the Consul Key-Value store to hold app health statues.
 func (c consulStore) newSessionHealthManager(
-	node types.NodeName,
+	node store.NodeName,
 	logger logging.Logger,
 ) HealthManager {
 	done := make(chan struct{})
@@ -106,15 +106,15 @@ func (m *consulHealthManager) Close() {
 // consulHealthUpdater holds the state needed for the update process to track the current
 // service health and which health it has published.
 type consulHealthUpdater struct {
-	node    types.NodeName   // The node this updater is bound to
-	pod     types.PodID      // The pod ID this updater is bound to
+	node    store.NodeName   // The node this updater is bound to
+	pod     store.PodID      // The pod ID this updater is bound to
 	service string           // The service this updater is bound to
 	checker chan WatchResult // Stream of health updates from a checker
 }
 
 // NewUpdater creates a new HealthUpdater that can be used to update an app's health status
 // on this node.
-func (m *consulHealthManager) NewUpdater(pod types.PodID, service string) HealthUpdater {
+func (m *consulHealthManager) NewUpdater(pod store.PodID, service string) HealthUpdater {
 	checksStream := make(chan WatchResult)
 	u := &consulHealthUpdater{
 		node:    m.node,

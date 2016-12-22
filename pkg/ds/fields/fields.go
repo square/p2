@@ -7,7 +7,6 @@ import (
 	"k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 )
 
 // ID is a named type alias for DaemonSet IDs
@@ -41,7 +40,7 @@ type DaemonSet struct {
 	NodeSelector labels.Selector
 
 	// PodID to deploy
-	PodID types.PodID
+	PodID store.PodID
 
 	Timeout time.Duration
 }
@@ -54,7 +53,7 @@ type RawDaemonSet struct {
 	MinHealth    int           `json:"min_health"`
 	Name         ClusterName   `json:"cluster_name"`
 	NodeSelector string        `json:"node_selector"`
-	PodID        types.PodID   `json:"pod_id"`
+	PodID        store.PodID   `json:"pod_id"`
 	Timeout      time.Duration `json:"timeout"`
 }
 

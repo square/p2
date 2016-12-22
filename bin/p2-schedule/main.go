@@ -11,7 +11,6 @@ import (
 	"github.com/square/p2/pkg/kp/podstore"
 	"github.com/square/p2/pkg/schedule"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -53,7 +52,7 @@ func main() {
 		PodID: podManifest.ID(),
 	}
 	if *uuidPod {
-		out.PodUniqueKey, err = podStore.Schedule(podManifest, types.NodeName(*nodeName))
+		out.PodUniqueKey, err = podStore.Schedule(podManifest, store.NodeName(*nodeName))
 		if err != nil {
 			log.Fatalf("Could not schedule pod: %s", err)
 		}
@@ -64,7 +63,7 @@ func main() {
 		if *hookGlobal {
 			podPrefix = kp.HOOK_TREE
 		}
-		_, err := consulStore.SetPod(podPrefix, types.NodeName(*nodeName), podManifest)
+		_, err := consulStore.SetPod(podPrefix, store.NodeName(*nodeName), podManifest)
 		if err != nil {
 			log.Fatalf("Could not write manifest %s to intent store: %s\n", podManifest.ID(), err)
 		}

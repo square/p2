@@ -17,7 +17,6 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -66,7 +65,7 @@ func (s *consulStore) SetMetricsRegistry(reg MetricsRegistry) {
 }
 
 func (s *consulStore) Create(
-	podID types.PodID,
+	podID store.PodID,
 	availabilityZone store.AvailabilityZone,
 	clusterName store.ClusterName,
 	podSelector klabels.Selector,
@@ -264,14 +263,14 @@ func pcPath(pcID store.PodClusterID) (string, error) {
 	return path.Join(podClusterTree, pcID.String()), nil
 }
 
-func (s *consulStore) lockForCreation(podID types.PodID,
+func (s *consulStore) lockForCreation(podID store.PodID,
 	availabilityZone store.AvailabilityZone,
 	clusterName store.ClusterName,
 	session Session) (consulutil.Unlocker, error) {
 	return session.Lock(pcCreateLockPath(podID, availabilityZone, clusterName))
 }
 
-func pcCreateLockPath(podID types.PodID,
+func pcCreateLockPath(podID store.PodID,
 	availabilityZone store.AvailabilityZone,
 	clusterName store.ClusterName) string {
 	return path.Join(consulutil.LOCK_TREE, podID.String(), availabilityZone.String(), clusterName.String())
@@ -281,7 +280,7 @@ func pcSyncLockPath(id store.PodClusterID, syncerType ConcreteSyncerType) string
 	return path.Join(consulutil.LOCK_TREE, podClusterTree, id.String(), syncerType.String())
 }
 
-func (s *consulStore) FindWhereLabeled(podID types.PodID,
+func (s *consulStore) FindWhereLabeled(podID store.PodID,
 	availabilityZone store.AvailabilityZone,
 	clusterName store.ClusterName) ([]store.PodCluster, error) {
 

@@ -4,7 +4,7 @@ import (
 	"github.com/square/p2/pkg/kp/podstore"
 	"github.com/square/p2/pkg/kp/statusstore"
 	"github.com/square/p2/pkg/launch"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/hashicorp/consul/api"
@@ -27,7 +27,7 @@ func NewConsul(statusStore statusstore.Store, namespace statusstore.Namespace) S
 	}
 }
 
-func (c *consulStore) Get(key types.PodUniqueKey) (PodStatus, *api.QueryMeta, error) {
+func (c *consulStore) Get(key store.PodUniqueKey) (PodStatus, *api.QueryMeta, error) {
 	if key == "" {
 		return PodStatus{}, nil, util.Errorf("Cannot retrieve status for a pod with an empty uuid")
 	}
@@ -45,7 +45,7 @@ func (c *consulStore) Get(key types.PodUniqueKey) (PodStatus, *api.QueryMeta, er
 	return podStatus, queryMeta, nil
 }
 
-func (c *consulStore) WaitForStatus(key types.PodUniqueKey, waitIndex uint64) (PodStatus, *api.QueryMeta, error) {
+func (c *consulStore) WaitForStatus(key store.PodUniqueKey, waitIndex uint64) (PodStatus, *api.QueryMeta, error) {
 	if key == "" {
 		return PodStatus{}, nil, util.Errorf("Cannot retrieve status for a pod with an empty uuid")
 	}
@@ -67,7 +67,7 @@ func (c *consulStore) GetStatusFromIndex(index podstore.PodIndex) (PodStatus, *a
 	return c.Get(index.PodKey)
 }
 
-func (c *consulStore) Set(key types.PodUniqueKey, status PodStatus) error {
+func (c *consulStore) Set(key store.PodUniqueKey, status PodStatus) error {
 	if key == "" {
 		return util.Errorf("Could not set status for pod with empty uuid")
 	}
@@ -80,7 +80,7 @@ func (c *consulStore) Set(key types.PodUniqueKey, status PodStatus) error {
 	return c.statusStore.SetStatus(statusstore.POD, statusstore.ResourceID(key), c.namespace, rawStatus)
 }
 
-func (c *consulStore) CAS(key types.PodUniqueKey, status PodStatus, modifyIndex uint64) error {
+func (c *consulStore) CAS(key store.PodUniqueKey, status PodStatus, modifyIndex uint64) error {
 	if key == "" {
 		return util.Errorf("Could not set status for pod with empty uuid")
 	}
@@ -98,7 +98,7 @@ func (c *consulStore) CAS(key types.PodUniqueKey, status PodStatus, modifyIndex 
 // status is then passed to a mutator function, and then the new status is
 // written back to consul using a CAS operation, guaranteeing that nothing else
 // about the status changed.
-func (c *consulStore) MutateStatus(key types.PodUniqueKey, mutator func(PodStatus) (PodStatus, error)) error {
+func (c *consulStore) MutateStatus(key store.PodUniqueKey, mutator func(PodStatus) (PodStatus, error)) error {
 	var lastIndex uint64
 	status, queryMeta, err := c.Get(key)
 	switch {
@@ -124,7 +124,7 @@ func (c *consulStore) MutateStatus(key types.PodUniqueKey, mutator func(PodStatu
 // pod. Searches through p.ProcessStatuses for a process matching the
 // launchable ID and launchableScriptName, and mutates its LastExit if found.
 // If not found, a new process is added.
-func (c consulStore) SetLastExit(podUniqueKey types.PodUniqueKey, launchableID launch.LaunchableID, entryPoint string, exitStatus ExitStatus) error {
+func (c consulStore) SetLastExit(podUniqueKey store.PodUniqueKey, launchableID launch.LaunchableID, entryPoint string, exitStatus ExitStatus) error {
 	mutator := func(p PodStatus) (PodStatus, error) {
 		for _, processStatus := range p.ProcessStatuses {
 			if processStatus.LaunchableID == launchableID && processStatus.EntryPoint == entryPoint {

@@ -6,7 +6,7 @@ import (
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
@@ -57,10 +57,10 @@ func (e EnvironmentExtractor) constructFinishFromEnvironment(exitCode int, exitS
 	podUniqueKey := os.Getenv(pods.PodUniqueKeyEnvVar)
 
 	return FinishOutput{
-		PodID:        types.PodID(podID),
+		PodID:        store.PodID(podID),
 		LaunchableID: launch.LaunchableID(launchableID),
 		EntryPoint:   entryPoint,
-		PodUniqueKey: types.PodUniqueKey(podUniqueKey),
+		PodUniqueKey: store.PodUniqueKey(podUniqueKey),
 		ExitCode:     exitCode,
 		ExitStatus:   exitStatus,
 	}, nil

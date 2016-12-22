@@ -18,7 +18,6 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
@@ -152,7 +151,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("err: %v", err)
 		}
-		podID := types.PodID(*listPod)
+		podID := store.PodID(*listPod)
 		for _, ds := range dsList {
 			if *listPod == "" || podID == ds.PodID {
 				fmt.Printf("%s/%s:%s\n", ds.PodID, ds.Name, ds.ID)
@@ -378,20 +377,20 @@ func parseNodeSelector(selectorString string) (klabels.Selector, error) {
 }
 
 // Returns nodes to be removed and nodes to be added
-func makeNodeChanges(oldNodeLabels []labels.Labeled, newNodeLabels []labels.Labeled) ([]types.NodeName, []types.NodeName) {
-	var oldNodeNames []types.NodeName
-	var newNodeNames []types.NodeName
+func makeNodeChanges(oldNodeLabels []labels.Labeled, newNodeLabels []labels.Labeled) ([]store.NodeName, []store.NodeName) {
+	var oldNodeNames []store.NodeName
+	var newNodeNames []store.NodeName
 
 	for _, node := range oldNodeLabels {
-		oldNodeNames = append(oldNodeNames, types.NodeName(node.ID))
+		oldNodeNames = append(oldNodeNames, store.NodeName(node.ID))
 	}
 
 	for _, node := range newNodeLabels {
-		newNodeNames = append(newNodeNames, types.NodeName(node.ID))
+		newNodeNames = append(newNodeNames, store.NodeName(node.ID))
 	}
 
-	toRemove := types.NewNodeSet(oldNodeNames...).Difference(types.NewNodeSet(newNodeNames...)).ListNodes()
-	toAdd := types.NewNodeSet(newNodeNames...).Difference(types.NewNodeSet(oldNodeNames...)).ListNodes()
+	toRemove := store.NewNodeSet(oldNodeNames...).Difference(store.NewNodeSet(newNodeNames...)).ListNodes()
+	toAdd := store.NewNodeSet(newNodeNames...).Difference(store.NewNodeSet(oldNodeNames...)).ListNodes()
 
 	return toRemove, toAdd
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/version"
@@ -32,7 +31,7 @@ func main() {
 	kingpin.Version(version.VERSION)
 	_, opts, applicator := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(opts)
-	store := kp.NewConsulStore(client)
+	consulStore := kp.NewConsulStore(client)
 
 	if *nodeName == "" {
 		hostname, err := os.Hostname()
@@ -55,7 +54,7 @@ func main() {
 		quit := make(chan struct{})
 		errChan := make(chan error)
 		podCh := make(chan []kp.ManifestResult)
-		go store.WatchPods(podPrefix, types.NodeName(*nodeName), quit, errChan, podCh)
+		go consulStore.WatchPods(podPrefix, store.NodeName(*nodeName), quit, errChan, podCh)
 		for {
 			select {
 			case results := <-podCh:

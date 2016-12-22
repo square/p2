@@ -32,7 +32,6 @@ import (
 	"github.com/square/p2/pkg/preparer/podprocess"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 	netutil "github.com/square/p2/pkg/util/net"
@@ -60,7 +59,7 @@ type LogDestination struct {
 }
 
 type Preparer struct {
-	node                   types.NodeName
+	node                   store.NodeName
 	store                  Store
 	podStatusStore         podstatus.Store
 	podStore               podstore.Store
@@ -90,7 +89,7 @@ type Preparer struct {
 }
 
 type PreparerConfig struct {
-	NodeName               types.NodeName         `yaml:"node_name"`
+	NodeName               store.NodeName         `yaml:"node_name"`
 	ConsulAddress          string                 `yaml:"consul_address"`
 	ConsulHttps            bool                   `yaml:"consul_https,omitempty"`
 	ConsulTokenPath        string                 `yaml:"consul_token_path,omitempty"`
@@ -183,7 +182,7 @@ func UnmarshalConfig(config []byte) (*PreparerConfig, error) {
 			return nil, util.Errorf("Couldn't determine hostname: %s", err)
 		}
 
-		preparerConfig.NodeName = types.NodeName(hostname)
+		preparerConfig.NodeName = store.NodeName(hostname)
 	}
 	if preparerConfig.ConsulAddress == "" {
 		preparerConfig.ConsulAddress = DefaultConsulAddress
@@ -443,7 +442,7 @@ func getDeployerAuth(preparerConfig *PreparerConfig) (auth.Policy, error) {
 		}
 		authPolicy, err = auth.NewFileKeyringPolicy(
 			authConfig.KeyringPath,
-			map[types.PodID][]string{constants.PreparerPodID: authConfig.AuthorizedDeployers},
+			map[store.PodID][]string{constants.PreparerPodID: authConfig.AuthorizedDeployers},
 		)
 		if err != nil {
 			return nil, util.Errorf("error configuring keyring auth: %s", err)

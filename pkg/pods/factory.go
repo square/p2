@@ -9,7 +9,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 
@@ -30,25 +30,25 @@ func init() {
 var NopFinishExec = []string{"/bin/true"} // type must match preparerconfig
 
 type Factory interface {
-	NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod, error)
-	NewLegacyPod(id types.PodID) *Pod
+	NewUUIDPod(id store.PodID, uniqueKey store.PodUniqueKey) (*Pod, error)
+	NewLegacyPod(id store.PodID) *Pod
 }
 
 type HookFactory interface {
-	NewHookPod(id types.PodID) *Pod
+	NewHookPod(id store.PodID) *Pod
 }
 
 type factory struct {
 	podRoot string
-	node    types.NodeName
+	node    store.NodeName
 }
 
 type hookFactory struct {
 	hookRoot string
-	node     types.NodeName
+	node     store.NodeName
 }
 
-func NewFactory(podRoot string, node types.NodeName) Factory {
+func NewFactory(podRoot string, node store.NodeName) Factory {
 	if podRoot == "" {
 		podRoot = DefaultPath
 	}
@@ -59,7 +59,7 @@ func NewFactory(podRoot string, node types.NodeName) Factory {
 	}
 }
 
-func NewHookFactory(hookRoot string, node types.NodeName) HookFactory {
+func NewHookFactory(hookRoot string, node store.NodeName) HookFactory {
 	if hookRoot == "" {
 		hookRoot = filepath.Join(DefaultPath, "hooks")
 	}
@@ -70,7 +70,7 @@ func NewHookFactory(hookRoot string, node types.NodeName) HookFactory {
 	}
 }
 
-func computeUniqueName(id types.PodID, uniqueKey types.PodUniqueKey) string {
+func computeUniqueName(id store.PodID, uniqueKey store.PodUniqueKey) string {
 	name := id.String()
 	if uniqueKey != "" {
 		// If the pod was scheduled with a UUID, we want to namespace its pod home
@@ -82,7 +82,7 @@ func computeUniqueName(id types.PodID, uniqueKey types.PodUniqueKey) string {
 	return name
 }
 
-func (f *factory) NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod, error) {
+func (f *factory) NewUUIDPod(id store.PodID, uniqueKey store.PodUniqueKey) (*Pod, error) {
 	if uniqueKey == "" {
 		return nil, util.Errorf("uniqueKey cannot be empty")
 	}
@@ -90,19 +90,19 @@ func (f *factory) NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod
 	return newPodWithHome(id, uniqueKey, home, f.node), nil
 }
 
-func (f *factory) NewLegacyPod(id types.PodID) *Pod {
+func (f *factory) NewLegacyPod(id store.PodID) *Pod {
 	home := filepath.Join(f.podRoot, id.String())
 	return newPodWithHome(id, "", home, f.node)
 }
 
-func (f *hookFactory) NewHookPod(id types.PodID) *Pod {
+func (f *hookFactory) NewHookPod(id store.PodID) *Pod {
 	home := filepath.Join(f.hookRoot, id.String())
 
 	// Hooks can't have a UUID
 	return newPodWithHome(id, "", home, f.node)
 }
 
-func newPodWithHome(id types.PodID, uniqueKey types.PodUniqueKey, podHome string, node types.NodeName) *Pod {
+func newPodWithHome(id store.PodID, uniqueKey store.PodUniqueKey, podHome string, node store.NodeName) *Pod {
 	var logger logging.Logger
 	logger = Log.SubLogger(logrus.Fields{"pod": id, "uuid": uniqueKey})
 
@@ -122,16 +122,16 @@ func newPodWithHome(id types.PodID, uniqueKey types.PodUniqueKey, podHome string
 	}
 }
 
-func PodFromPodHome(node types.NodeName, home string) (*Pod, error) {
+func PodFromPodHome(node store.NodeName, home string) (*Pod, error) {
 	// Check if the pod home is namespaced by a UUID by splitting on a hyphen and
 	// checking the last part. If it parses as a UUID, pass it to newPodWithHome.
 	// Otherwise, pass a nil uniqueKey
 	homeParts := strings.Split(filepath.Base(home), "-")
 
-	var uniqueKey types.PodUniqueKey
+	var uniqueKey store.PodUniqueKey
 	podUUID := uuid.Parse(homeParts[len(homeParts)-1])
 	if podUUID != nil {
-		uniqueKey = types.PodUniqueKey(podUUID.String())
+		uniqueKey = store.PodUniqueKey(podUUID.String())
 	}
 
 	temp := Pod{

@@ -21,7 +21,6 @@ import (
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
@@ -53,12 +52,12 @@ const (
 
 type Pod struct {
 	// ID of the pod, i.e. result of ID() called on the manifest defining the pod
-	Id   types.PodID
-	node types.NodeName
+	Id   store.PodID
+	node store.NodeName
 
 	// An (optional) unique identifier for the pod. May be empty for "legacy" pods, will be a uuid
 	// otherwise
-	uniqueKey types.PodUniqueKey
+	uniqueKey store.PodUniqueKey
 
 	// The home directory for the pod. Typically some global root (e.g.
 	// /data/pods) followed by the pod's UniqueName() (e.g.
@@ -76,7 +75,7 @@ type Pod struct {
 
 var NoCurrentManifest error = fmt.Errorf("No current manifest for this pod")
 
-func (pod *Pod) Node() types.NodeName {
+func (pod *Pod) Node() store.NodeName {
 	return pod.node
 }
 
@@ -94,7 +93,7 @@ func (pod *Pod) UniqueName() string {
 	return computeUniqueName(pod.Id, pod.uniqueKey)
 }
 
-func (pod *Pod) UniqueKey() types.PodUniqueKey {
+func (pod *Pod) UniqueKey() store.PodUniqueKey {
 	return pod.uniqueKey
 }
 

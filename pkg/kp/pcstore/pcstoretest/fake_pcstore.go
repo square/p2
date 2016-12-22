@@ -7,7 +7,6 @@ import (
 	"github.com/square/p2/pkg/kp/pcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 
 	"github.com/pborman/uuid"
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -29,7 +28,7 @@ func NewFake() *FakePCStore {
 }
 
 func (p *FakePCStore) Create(
-	podID types.PodID,
+	podID store.PodID,
 	availabilityZone store.AvailabilityZone,
 	clusterName store.ClusterName,
 	podSelector klabels.Selector,
@@ -103,7 +102,7 @@ func (p *FakePCStore) MutatePC(
 }
 
 func (p *FakePCStore) FindWhereLabeled(
-	podID types.PodID,
+	podID store.PodID,
 	availabilityZone store.AvailabilityZone,
 	clusterName store.ClusterName,
 ) ([]store.PodCluster, error) {

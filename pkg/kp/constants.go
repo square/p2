@@ -4,7 +4,7 @@ import (
 	"path"
 
 	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -20,7 +20,7 @@ const (
 	HOOK_TREE    PodPrefix = "hooks"
 )
 
-func nodePath(podPrefix PodPrefix, nodeName types.NodeName) (string, error) {
+func nodePath(podPrefix PodPrefix, nodeName store.NodeName) (string, error) {
 	// hook tree is an exception to the rule because they are not scheduled
 	// by host, and it is valid to want to watch for them agnostic to pod
 	// id. There are plans to deploy hooks by host at which time this
@@ -36,7 +36,7 @@ func nodePath(podPrefix PodPrefix, nodeName types.NodeName) (string, error) {
 	return path.Join(string(podPrefix), nodeName.String()), nil
 }
 
-func podPath(podPrefix PodPrefix, nodeName types.NodeName, podId types.PodID) (string, error) {
+func podPath(podPrefix PodPrefix, nodeName store.NodeName, podId store.PodID) (string, error) {
 	nodePath, err := nodePath(podPrefix, nodeName)
 	if err != nil {
 		return "", err
@@ -51,7 +51,7 @@ func podPath(podPrefix PodPrefix, nodeName types.NodeName, podId types.PodID) (s
 
 // Returns the consul path to use when intending to lock a pod, e.g.
 // lock/intent/some_host/some_pod
-func PodLockPath(podPrefix PodPrefix, nodeName types.NodeName, podId types.PodID) (string, error) {
+func PodLockPath(podPrefix PodPrefix, nodeName store.NodeName, podId store.PodID) (string, error) {
 	subPodPath, err := podPath(podPrefix, nodeName, podId)
 	if err != nil {
 		return "", err
@@ -62,6 +62,6 @@ func PodLockPath(podPrefix PodPrefix, nodeName types.NodeName, podId types.PodID
 
 // Returns the consul path to use when locking out any other pkg/replication-based deploys
 // for a given pod ID
-func ReplicationLockPath(podId types.PodID) string {
+func ReplicationLockPath(podId store.PodID) string {
 	return path.Join(consulutil.LOCK_TREE, "replication", podId.String())
 }

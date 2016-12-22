@@ -1,9 +1,9 @@
 package constants
 
 import (
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 )
 
 const (
-	PreparerPodID = types.PodID("p2-preparer")
+	PreparerPodID = store.PodID("p2-preparer")
 )

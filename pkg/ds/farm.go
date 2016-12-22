@@ -19,7 +19,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/scheduler"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -481,7 +481,7 @@ func (dsf *Farm) dsContends(dsFields *ds_fields.DaemonSet) (ds_fields.ID, bool, 
 			if err != nil {
 				return "", false, util.Errorf("Error getting scheduled nodes: %v", err)
 			}
-			intersectedNodes := types.NewNodeSet(eligibleNodes...).Intersection(types.NewNodeSet(scheduledNodes...))
+			intersectedNodes := store.NewNodeSet(eligibleNodes...).Intersection(store.NewNodeSet(scheduledNodes...))
 			if intersectedNodes.Len() > 0 {
 				dsf.raiseContentionAlert(child.ds, *dsFields)
 				return child.ds.ID(), true, nil
@@ -512,14 +512,14 @@ func (dsf *Farm) raiseContentionAlert(oldDS DaemonSet, newDS ds_fields.DaemonSet
 			OldID           ds_fields.ID          `json:"old_id"`
 			OldName         ds_fields.ClusterName `json:"old_cluster_name"`
 			OldNodeSelector string                `json:"old_node_selector"`
-			OldPodID        types.PodID           `json:"old_pod_id"`
+			OldPodID        store.PodID           `json:"old_pod_id"`
 			OldDisabled     bool                  `json:"old_disabled"`
 			OldCurrentNodes []string              `json:"old_current_nodes"`
 
 			NewID           ds_fields.ID          `json:"new_id"`
 			NewName         ds_fields.ClusterName `json:"new_cluster_name"`
 			NewNodeSelector string                `json:"new_node_selector"`
-			NewdPodID       types.PodID           `json:"new_pod_id"`
+			NewdPodID       store.PodID           `json:"new_pod_id"`
 			NewDisabled     bool                  `json:"new_disabled"`
 		}{
 			OldID:           oldDS.ID(),

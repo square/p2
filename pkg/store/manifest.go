@@ -11,7 +11,6 @@ import (
 	"path"
 
 	"github.com/square/p2/pkg/launch"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 	"golang.org/x/crypto/openpgp/clearsign"
@@ -27,7 +26,7 @@ type StatusStanza struct {
 
 type Builder interface {
 	GetManifest() Manifest
-	SetID(types.PodID)
+	SetID(PodID)
 	SetConfig(config map[interface{}]interface{}) error
 	SetRunAsUser(user string)
 	SetStatusHTTP(statusHTTP bool)
@@ -53,7 +52,7 @@ type builder struct {
 // Read-only immutable interface for manifests. To programmatically build a
 // manifest, use Builder
 type Manifest interface {
-	ID() types.PodID
+	ID() PodID
 	RunAsUser() string
 	Write(out io.Writer) error
 	ConfigFileName() (string, error)
@@ -77,7 +76,7 @@ type Manifest interface {
 var _ Manifest = &manifest{}
 
 type manifest struct {
-	Id                types.PodID                                     `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
+	Id                PodID                                           `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
 	RunAs             string                                          `yaml:"run_as,omitempty"`
 	LaunchableStanzas map[launch.LaunchableID]launch.LaunchableStanza `yaml:"launchables"`
 	Config            map[interface{}]interface{}                     `yaml:"config"`
@@ -105,11 +104,11 @@ func (m *manifest) GetBuilder() Builder {
 	return builder
 }
 
-func (manifest *manifest) ID() types.PodID {
+func (manifest *manifest) ID() PodID {
 	return manifest.Id
 }
 
-func (m builder) SetID(id types.PodID) {
+func (m builder) SetID(id PodID) {
 	m.manifest.Id = id
 }
 

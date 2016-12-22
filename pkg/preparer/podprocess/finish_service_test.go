@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -51,7 +51,7 @@ func TestMigrate(t *testing.T) {
 	// now check that we can insert a finish to confirm finishes table was created
 	err := finishService.Insert(FinishOutput{
 		PodID:        "some_pod",
-		PodUniqueKey: types.NewPodUUID(),
+		PodUniqueKey: store.NewPodUUID(),
 		LaunchableID: "some_launchable",
 		EntryPoint:   "launch",
 		ExitCode:     4,
@@ -92,7 +92,7 @@ func TestPruneRowsBefore(t *testing.T) {
 		// now check that we can insert a finish to confirm finishes table was created
 		err := finishService.Insert(FinishOutput{
 			PodID:        "some_pod",
-			PodUniqueKey: types.NewPodUUID(),
+			PodUniqueKey: store.NewPodUUID(),
 			LaunchableID: "some_launchable",
 			EntryPoint:   "launch",
 			ExitCode:     4,

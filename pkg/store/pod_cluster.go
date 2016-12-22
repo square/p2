@@ -4,12 +4,10 @@ import (
 	"encoding/json"
 	"reflect"
 
-	"github.com/square/p2/pkg/types"
-
 	"k8s.io/kubernetes/pkg/labels"
 )
 
-// Types stored in the actual pod cluster document
+// store stored in the actual pod cluster document
 type PodClusterID string
 type AvailabilityZone string
 type ClusterName string
@@ -39,7 +37,7 @@ type PodCluster struct {
 	ID PodClusterID
 
 	// The ID of the pods that the cluster contains
-	PodID types.PodID
+	PodID PodID
 
 	// Represents a region the pod cluster inhabits. P2 doesn't use this
 	// value but it is useful for implementations that care about
@@ -86,7 +84,7 @@ func (pc *PodCluster) Equals(other *PodCluster) bool {
 // type for PodSelector instead of labels.Selector
 type RawPodCluster struct {
 	ID               PodClusterID     `json:"id"`
-	PodID            types.PodID      `json:"pod_id"`
+	PodID            PodID            `json:"pod_id"`
 	AvailabilityZone AvailabilityZone `json:"availability_zone"`
 	Name             ClusterName      `json:"name"`
 	PodSelector      string           `json:"pod_selector"`

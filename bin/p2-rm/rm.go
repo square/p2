@@ -12,12 +12,11 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 )
 
 type Store interface {
 	NewSession(name string, renewalCh <-chan time.Time) (kp.Session, chan error, error)
-	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	DeletePod(podPrefix kp.PodPrefix, nodename store.NodeName, podId store.PodID) (time.Duration, error)
 }
 
 type P2RM struct {
@@ -28,15 +27,15 @@ type P2RM struct {
 	PodStore podstore.Store
 
 	LabelID      string
-	NodeName     types.NodeName
-	PodID        types.PodID
-	PodUniqueKey types.PodUniqueKey
+	NodeName     store.NodeName
+	PodID        store.PodID
+	PodUniqueKey store.PodUniqueKey
 }
 
 // NewLegacyP2RM is a constructor for the P2RM type which configures it to
-// remove a "legacy" pod. It will generate the storage types based on its
+// remove a "legacy" pod. It will generate the storage store based on its
 // api.Client argument
-func NewLegacyP2RM(client consulutil.ConsulClient, podName types.PodID, nodeName types.NodeName, labeler labels.ApplicatorWithoutWatches) *P2RM {
+func NewLegacyP2RM(client consulutil.ConsulClient, podName store.PodID, nodeName store.NodeName, labeler labels.ApplicatorWithoutWatches) *P2RM {
 	rm := &P2RM{}
 	rm.LabelID = path.Join(nodeName.String(), podName.String())
 	rm.PodID = podName
@@ -47,7 +46,7 @@ func NewLegacyP2RM(client consulutil.ConsulClient, podName types.PodID, nodeName
 }
 
 // Constructs a *P2RM configured to remove a pod identified by a PodUniqueKey (uuid)
-func NewUUIDP2RM(client consulutil.ConsulClient, podUniqueKey types.PodUniqueKey, podID types.PodID, labeler labels.ApplicatorWithoutWatches) *P2RM {
+func NewUUIDP2RM(client consulutil.ConsulClient, podUniqueKey store.PodUniqueKey, podID store.PodID, labeler labels.ApplicatorWithoutWatches) *P2RM {
 	rm := &P2RM{}
 	rm.LabelID = podUniqueKey.String()
 	rm.PodID = podID
@@ -134,7 +133,7 @@ func (rm *P2RM) deletePod() error {
 }
 
 func (rm *P2RM) deleteLegacyPod() error {
-	_, err := rm.Store.DeletePod(kp.INTENT_TREE, rm.NodeName, types.PodID(rm.PodID))
+	_, err := rm.Store.DeletePod(kp.INTENT_TREE, rm.NodeName, store.PodID(rm.PodID))
 	if err != nil {
 		return fmt.Errorf("unable to remove pod: %v", err)
 	}

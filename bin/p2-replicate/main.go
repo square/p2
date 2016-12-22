@@ -18,7 +18,6 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -76,9 +75,9 @@ func main() {
 		log.Fatalf("Could not retrieve user: %s", err)
 	}
 
-	nodes := make([]types.NodeName, len(*hosts))
+	nodes := make([]store.NodeName, len(*hosts))
 	for i, host := range *hosts {
-		nodes[i] = types.NodeName(host)
+		nodes[i] = store.NodeName(host)
 	}
 
 	lockMessage := fmt.Sprintf("%q from %q at %q", thisUser.Username, thisHost, time.Now())

@@ -15,7 +15,6 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
@@ -134,7 +133,7 @@ func TestSchedule(t *testing.T) {
 	//
 	dsStore := dsstoretest.NewFake()
 
-	podID := types.PodID("testPod")
+	podID := store.PodID("testPod")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
@@ -155,15 +154,15 @@ func TestSchedule(t *testing.T) {
 	preparer.Enable()
 	defer preparer.Disable()
 
-	var allNodes []types.NodeName
+	var allNodes []store.NodeName
 	allNodes = append(allNodes, "node1", "node2", "nodeOk")
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("good_node%v", i)
-		allNodes = append(allNodes, types.NodeName(nodeName))
+		allNodes = append(allNodes, store.NodeName(nodeName))
 	}
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("bad_node%v", i)
-		allNodes = append(allNodes, types.NodeName(nodeName))
+		allNodes = append(allNodes, store.NodeName(nodeName))
 	}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
@@ -214,7 +213,7 @@ func TestSchedule(t *testing.T) {
 	Assert(t).AreEqual(scheduled[0].ID, "node2/testPod", "expected node labeled with the daemon set's id")
 
 	// Verify that the scheduled pod is correct
-	err = waitForSpecificPod(kpStore, "node2", types.PodID("testPod"))
+	err = waitForSpecificPod(kpStore, "node2", store.PodID("testPod"))
 	Assert(t).IsNil(err, "Unexpected pod scheduled")
 
 	//
@@ -265,7 +264,7 @@ func TestSchedule(t *testing.T) {
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
 
 	// Verify that the scheduled pod is correct
-	err = waitForSpecificPod(kpStore, "nodeOk", types.PodID("testPod"))
+	err = waitForSpecificPod(kpStore, "nodeOk", store.PodID("testPod"))
 	Assert(t).IsNil(err, "Unexpected pod scheduled")
 
 	//
@@ -324,7 +323,7 @@ func TestPublishToReplication(t *testing.T) {
 	//
 	dsStore := dsstoretest.NewFake()
 
-	podID := types.PodID("testPod")
+	podID := store.PodID("testPod")
 	minHealth := 1
 	clusterName := ds_fields.ClusterName("some_name")
 
@@ -345,11 +344,11 @@ func TestPublishToReplication(t *testing.T) {
 	preparer.Enable()
 	defer preparer.Disable()
 
-	var allNodes []types.NodeName
+	var allNodes []store.NodeName
 	allNodes = append(allNodes, "node1", "node2")
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("good_node%v", i)
-		allNodes = append(allNodes, types.NodeName(nodeName))
+		allNodes = append(allNodes, store.NodeName(nodeName))
 	}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
@@ -435,7 +434,7 @@ func waitForPodsInIntent(kpStore *kptest.FakePodStore, numPodsExpected int) erro
 }
 
 // Polls for the store to have a pod with the same pod id and node name
-func waitForSpecificPod(kpStore *kptest.FakePodStore, nodeName types.NodeName, podID types.PodID) error {
+func waitForSpecificPod(kpStore *kptest.FakePodStore, nodeName store.NodeName, podID store.PodID) error {
 	condition := func() error {
 		manifestResults, _, err := kpStore.AllPods(kp.INTENT_TREE)
 		if err != nil {

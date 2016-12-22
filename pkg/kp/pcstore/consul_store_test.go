@@ -10,7 +10,6 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/rcrowley/go-metrics"
@@ -27,7 +26,7 @@ func TestMutate(t *testing.T) {
 	oldPc := createPodCluster(consulStore, t)
 
 	// After creating the pod cluster, we now update it using a mutator function
-	newPodID := types.PodID("pod_id-diff")
+	newPodID := store.PodID("pod_id-diff")
 	newAz := store.AvailabilityZone("us-west-diff")
 	newClusterName := store.ClusterName("cluster_name_diff")
 
@@ -110,7 +109,7 @@ func TestMutate(t *testing.T) {
 }
 
 func createPodCluster(consulStore *consulStore, t *testing.T) store.PodCluster {
-	podID := types.PodID("pod_id")
+	podID := store.PodID("pod_id")
 	az := store.AvailabilityZone("us-west")
 	clusterName := store.ClusterName("cluster_name")
 
@@ -167,7 +166,7 @@ func createPodCluster(consulStore *consulStore, t *testing.T) store.PodCluster {
 
 func TestLabelsOnCreate(t *testing.T) {
 	consulStore := consulStoreWithFakeKV()
-	podID := types.PodID("pod_id")
+	podID := store.PodID("pod_id")
 	az := store.AvailabilityZone("us-west")
 	clusterName := store.ClusterName("cluster_name")
 
@@ -201,7 +200,7 @@ func TestLabelsOnCreate(t *testing.T) {
 
 func TestGet(t *testing.T) {
 	consulStore := consulStoreWithFakeKV()
-	podID := types.PodID("pod_id")
+	podID := store.PodID("pod_id")
 	az := store.AvailabilityZone("us-west")
 	clusterName := store.ClusterName("cluster_name")
 
@@ -275,7 +274,7 @@ func TestGet(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	consulStore := consulStoreWithFakeKV()
-	podID := types.PodID("pod_id")
+	podID := store.PodID("pod_id")
 	az := store.AvailabilityZone("us-west")
 	clusterName := store.ClusterName("cluster_name")
 
@@ -325,7 +324,7 @@ func TestDelete(t *testing.T) {
 
 func TestList(t *testing.T) {
 	consulStore := consulStoreWithFakeKV()
-	podID := types.PodID("pod_id")
+	podID := store.PodID("pod_id")
 	az := store.AvailabilityZone("us-west")
 	clusterName := store.ClusterName("cluster_name")
 
@@ -373,7 +372,7 @@ func TestList(t *testing.T) {
 
 func TestWatch(t *testing.T) {
 	consulStore := consulStoreWithFakeKV()
-	podID := types.PodID("pod_id")
+	podID := store.PodID("pod_id")
 	az := store.AvailabilityZone("us-west")
 	clusterName := store.ClusterName("cluster_name")
 
@@ -431,7 +430,7 @@ func TestWatch(t *testing.T) {
 func TestWatchPodCluster(t *testing.T) {
 	consulStore := consulStoreWithFakeKV()
 	pod := store.PodClusterID("pod_id")
-	podID := types.PodID("pod_id")
+	podID := store.PodID("pod_id")
 	az := store.AvailabilityZone("us-west")
 	clusterName := store.ClusterName("cluster_name")
 
@@ -478,12 +477,12 @@ func TestZipPodClusterResults(t *testing.T) {
 		[]*store.PodCluster{
 			{
 				ID:    store.PodClusterID("abc123"),
-				PodID: types.PodID("vvv"),
+				PodID: store.PodID("vvv"),
 				Name:  "old name 1",
 			},
 			{
 				ID:    store.PodClusterID("def456"),
-				PodID: types.PodID("xxx"),
+				PodID: store.PodID("xxx"),
 				Name:  "old name 2",
 			},
 		},
@@ -494,13 +493,13 @@ func TestZipPodClusterResults(t *testing.T) {
 		[]*store.PodCluster{
 			{
 				ID:    store.PodClusterID("abc123"),
-				PodID: types.PodID("vvv"),
+				PodID: store.PodID("vvv"),
 				Name:  "new name 1",
 			},
 
 			{
 				ID:    store.PodClusterID("987fed"),
-				PodID: types.PodID("zzz"),
+				PodID: store.PodID("zzz"),
 				Name:  "new name 3",
 			},
 		},
@@ -613,7 +612,7 @@ func TestConcreteSyncer(t *testing.T) {
 		previous: nil,
 		current: &store.PodCluster{
 			ID:               store.PodClusterID("abc123"),
-			PodID:            types.PodID("vvv"),
+			PodID:            store.PodID("vvv"),
 			AvailabilityZone: store.AvailabilityZone("west"),
 			Name:             "production",
 			PodSelector:      klabels.Everything().Add("color", klabels.EqualsOperator, []string{"red"}),
@@ -653,7 +652,7 @@ func TestConcreteSyncer(t *testing.T) {
 		previous: change.current,
 		current: &store.PodCluster{
 			ID:               store.PodClusterID("abc123"),
-			PodID:            types.PodID("vvv"),
+			PodID:            store.PodID("vvv"),
 			AvailabilityZone: store.AvailabilityZone("west"),
 			Name:             "production",
 			PodSelector:      klabels.Everything().Add("color", klabels.EqualsOperator, []string{"blue"}),
@@ -727,14 +726,14 @@ func TestConcreteSyncerWithPrevious(t *testing.T) {
 	change := podClusterChange{
 		previous: &store.PodCluster{
 			ID:               store.PodClusterID("abc123"),
-			PodID:            types.PodID("vvv"),
+			PodID:            store.PodID("vvv"),
 			AvailabilityZone: store.AvailabilityZone("west"),
 			Name:             "production",
 			PodSelector:      klabels.Everything().Add("color", klabels.EqualsOperator, []string{"red"}),
 		},
 		current: &store.PodCluster{
 			ID:               store.PodClusterID("abc123"),
-			PodID:            types.PodID("vvv"),
+			PodID:            store.PodID("vvv"),
 			AvailabilityZone: store.AvailabilityZone("west"),
 			Name:             "production",
 			PodSelector:      klabels.Everything().Add("color", klabels.EqualsOperator, []string{"red"}),
@@ -774,7 +773,7 @@ func TestConcreteSyncerWithPrevious(t *testing.T) {
 		previous: change.current,
 		current: &store.PodCluster{
 			ID:               store.PodClusterID("abc123"),
-			PodID:            types.PodID("vvv"),
+			PodID:            store.PodID("vvv"),
 			AvailabilityZone: store.AvailabilityZone("west"),
 			Name:             "production",
 			PodSelector:      klabels.Everything().Add("color", klabels.EqualsOperator, []string{"blue"}),
@@ -1030,7 +1029,7 @@ func examplePodCluster() store.PodCluster {
 	clusterName := "production"
 
 	return store.PodCluster{
-		PodID:            types.PodID(podId),
+		PodID:            store.PodID(podId),
 		AvailabilityZone: store.AvailabilityZone(availabilityZone),
 		Name:             store.ClusterName(clusterName),
 		PodSelector:      klabels.Everything(),

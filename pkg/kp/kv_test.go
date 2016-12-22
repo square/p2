@@ -7,7 +7,6 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 )
 
 func TestGetHealthNoEntry(t *testing.T) {
@@ -90,10 +89,10 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 	type expectation struct {
 		path string
 		err  bool
-		uuid types.PodUniqueKey
+		uuid store.PodUniqueKey
 	}
 
-	uuid := types.NewPodUUID()
+	uuid := store.NewPodUUID()
 	expectations := []expectation{
 		{
 			path: "intent/example.com/mysql",
@@ -281,7 +280,7 @@ func TestAllPods(t *testing.T) {
 	}
 }
 
-func testManifest(id types.PodID) store.Manifest {
+func testManifest(id store.PodID) store.Manifest {
 	builder := store.NewBuilder()
 	builder.SetID(id)
 	return builder.GetManifest()

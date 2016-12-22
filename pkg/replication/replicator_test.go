@@ -11,7 +11,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/rc"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 )
 
 func TestInitializeReplication(t *testing.T) {
@@ -149,7 +149,7 @@ func TestInitializeReplicationReleasesLocks(t *testing.T) {
 	}
 }
 
-func testLockPath(testPodId types.PodID) (string, error) {
+func testLockPath(testPodId store.PodID) (string, error) {
 	return kp.ReplicationLockPath(testPodId), nil
 }
 

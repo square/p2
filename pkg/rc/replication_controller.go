@@ -15,7 +15,6 @@ import (
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -38,7 +37,7 @@ type ReplicationController interface {
 	WatchDesires(quit <-chan struct{}) <-chan error
 
 	// CurrentPods() returns all pods managed by this replication controller.
-	CurrentPods() (types.PodLocations, error)
+	CurrentPods() (store.PodLocations, error)
 }
 
 // These methods are the same as the methods of the same name in kp.Store.
@@ -46,19 +45,19 @@ type ReplicationController interface {
 type kpStore interface {
 	SetPod(
 		podPrefix kp.PodPrefix,
-		nodeName types.NodeName,
+		nodeName store.NodeName,
 		manifest store.Manifest,
 	) (time.Duration, error)
 
 	Pod(
 		podPrefix kp.PodPrefix,
-		nodeName types.NodeName,
-		podId types.PodID,
+		nodeName store.NodeName,
+		podId store.PodID,
 	) (store.Manifest, time.Duration, error)
 
 	DeletePod(podPrefix kp.PodPrefix,
-		nodeName types.NodeName,
-		manifestID types.PodID,
+		nodeName store.NodeName,
+		manifestID store.PodID,
 	) (time.Duration, error)
 }
 
@@ -187,7 +186,7 @@ func (rc *replicationController) meetDesires() error {
 	return rc.ensureConsistency(current)
 }
 
-func (rc *replicationController) addPods(current types.PodLocations) error {
+func (rc *replicationController) addPods(current store.PodLocations) error {
 	currentNodes := current.Nodes()
 	eligible, err := rc.eligibleNodes()
 	if err != nil {
@@ -196,7 +195,7 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 
 	// TODO: With Docker or runc we would not be constrained to running only once per node.
 	// So it may be the case that we need to make the Scheduler interface smarter and use it here.
-	possible := types.NewNodeSet(eligible...).Difference(types.NewNodeSet(currentNodes...))
+	possible := store.NewNodeSet(eligible...).Difference(store.NewNodeSet(currentNodes...))
 
 	// Users want deterministic ordering of nodes being populated to a new
 	// RC. Move nodes in sorted order by hostname to achieve this
@@ -250,7 +249,7 @@ func (rc *replicationController) alertInfo(msg string) alerting.AlertInfo {
 	}
 }
 
-func (rc *replicationController) removePods(current types.PodLocations) error {
+func (rc *replicationController) removePods(current store.PodLocations) error {
 	currentNodes := current.Nodes()
 	eligible, err := rc.eligibleNodes()
 	if err != nil {
@@ -259,8 +258,8 @@ func (rc *replicationController) removePods(current types.PodLocations) error {
 
 	// If we need to downsize the number of nodes, prefer any in current that are not eligible anymore.
 	// TODO: evaluate changes to 'eligible' more frequently
-	preferred := types.NewNodeSet(currentNodes...).Difference(types.NewNodeSet(eligible...))
-	rest := types.NewNodeSet(currentNodes...).Difference(preferred)
+	preferred := store.NewNodeSet(currentNodes...).Difference(store.NewNodeSet(eligible...))
+	rest := store.NewNodeSet(currentNodes...).Difference(preferred)
 	toUnschedule := len(current) - rc.ReplicasDesired
 	rc.logger.NoFields().Infof("Need to unschedule %d nodes out of %s", toUnschedule, current)
 
@@ -285,13 +284,13 @@ func (rc *replicationController) removePods(current types.PodLocations) error {
 	return nil
 }
 
-func (rc *replicationController) ensureConsistency(current types.PodLocations) error {
+func (rc *replicationController) ensureConsistency(current store.PodLocations) error {
 	manifestSHA, err := rc.Manifest.SHA()
 	if err != nil {
 		return err
 	}
 	for _, pod := range current {
-		intent, _, err := rc.kpStore.Pod(kp.INTENT_TREE, pod.Node, types.PodID(pod.PodID))
+		intent, _, err := rc.kpStore.Pod(kp.INTENT_TREE, pod.Node, store.PodID(pod.PodID))
 		if err != nil && err != pods.NoCurrentManifest {
 			return err
 		}
@@ -315,11 +314,11 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 	return nil
 }
 
-func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {
+func (rc *replicationController) eligibleNodes() ([]store.NodeName, error) {
 	return rc.scheduler.EligibleNodes(rc.Manifest, rc.NodeSelector)
 }
 
-func (rc *replicationController) CurrentPods() (types.PodLocations, error) {
+func (rc *replicationController) CurrentPods() (store.PodLocations, error) {
 	selector := klabels.Everything().Add(RCIDLabel, klabels.EqualsOperator, []string{rc.ID().String()})
 
 	// replication controllers can only pass cachedMatch = false because their operations for matching
@@ -329,7 +328,7 @@ func (rc *replicationController) CurrentPods() (types.PodLocations, error) {
 		return nil, err
 	}
 
-	result := make(types.PodLocations, len(podMatches))
+	result := make(store.PodLocations, len(podMatches))
 	for i, podMatch := range podMatches {
 		// ID will be something like <nodename>/<podid>.
 		node, podID, err := labels.NodeAndPodIDFromPodLabel(podMatch)
@@ -346,7 +345,7 @@ func (rc *replicationController) CurrentPods() (types.PodLocations, error) {
 // and the reserved labels.
 // If forEachLabel encounters any error applying the function, it returns that error immediately.
 // The function is not further applied to subsequent labels on an error.
-func (rc *replicationController) forEachLabel(node types.NodeName, f func(id, k, v string) error) error {
+func (rc *replicationController) forEachLabel(node store.NodeName, f func(id, k, v string) error) error {
 	id := labels.MakePodLabelKey(node, rc.Manifest.ID())
 
 	// user-requested labels.
@@ -364,7 +363,7 @@ func (rc *replicationController) forEachLabel(node types.NodeName, f func(id, k,
 	return f(id, RCIDLabel, rc.ID().String())
 }
 
-func (rc *replicationController) schedule(node types.NodeName) error {
+func (rc *replicationController) schedule(node store.NodeName) error {
 	rc.logger.NoFields().Infof("Scheduling on %s", node)
 	err := rc.forEachLabel(node, func(podID, k, v string) error {
 		return rc.podApplicator.SetLabel(labels.POD, podID, k, v)
@@ -377,7 +376,7 @@ func (rc *replicationController) schedule(node types.NodeName) error {
 	return err
 }
 
-func (rc *replicationController) unschedule(node types.NodeName) error {
+func (rc *replicationController) unschedule(node store.NodeName) error {
 	rc.logger.NoFields().Infof("Unscheduling from %s", node)
 	_, err := rc.kpStore.DeletePod(kp.INTENT_TREE, node, rc.Manifest.ID())
 	if err != nil {

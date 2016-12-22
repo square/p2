@@ -32,7 +32,6 @@ import (
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/schedule"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
@@ -117,7 +116,7 @@ func main() {
 	podStore := podstore.NewConsul(consulClient.KV())
 	for _, key := range keys {
 		keyParts := strings.Split(key, "/")
-		err = podStore.Unschedule(types.PodUniqueKey(keyParts[len(keyParts)-1]))
+		err = podStore.Unschedule(store.PodUniqueKey(keyParts[len(keyParts)-1]))
 		if err != nil {
 			log.Fatalf("Could not unschedule pod %s from consul: %s", keyParts[len(keyParts)-1], err)
 		}
@@ -705,7 +704,7 @@ func writeHelloManifest(dir string, manifestName string, port int) (string, erro
 	return signManifest(manifestPath, dir)
 }
 
-func createHelloUUIDPod(dir string, port int, logger logging.Logger) (types.PodUniqueKey, error) {
+func createHelloUUIDPod(dir string, port int, logger logging.Logger) (store.PodUniqueKey, error) {
 	signedManifestPath, err := writeHelloManifest(dir, fmt.Sprintf("hello-uuid-%d.yaml", port), port)
 	if err != nil {
 		return "", err
@@ -806,7 +805,7 @@ func waitForPodLabeledWithRC(selector klabels.Selector, rcID store.ReplicationCo
 	}
 }
 
-func verifyHelloRunning(podUniqueKey types.PodUniqueKey, logger logging.Logger) error {
+func verifyHelloRunning(podUniqueKey store.PodUniqueKey, logger logging.Logger) error {
 	helloPidAppeared := make(chan struct{})
 	quit := make(chan struct{})
 	defer close(quit)
@@ -843,7 +842,7 @@ func verifyHelloRunning(podUniqueKey types.PodUniqueKey, logger logging.Logger) 
 	}
 }
 
-func verifyHelloUUIDRunning(podUniqueKey types.PodUniqueKey) error {
+func verifyHelloUUIDRunning(podUniqueKey store.PodUniqueKey) error {
 	helloUUIDAppeared := make(chan struct{})
 	quit := make(chan struct{})
 	defer close(quit)
@@ -875,7 +874,7 @@ func verifyHelloUUIDRunning(podUniqueKey types.PodUniqueKey) error {
 	}
 }
 
-func targetUUIDLogs(podUniqueKey types.PodUniqueKey) string {
+func targetUUIDLogs(podUniqueKey store.PodUniqueKey) string {
 	var helloUUIDTail bytes.Buffer
 	helloT := exec.Command("tail", fmt.Sprintf("/var/service/hello-%s__hello__launch/log/main/current", podUniqueKey))
 	helloT.Stdout = &helloUUIDTail
@@ -899,7 +898,7 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 	if err != nil {
 		return err
 	}
-	store := kp.NewConsulStore(client)
+	consulStore := kp.NewConsulStore(client)
 
 	time.Sleep(30 * time.Second)
 	// check consul for health information for each app
@@ -908,9 +907,9 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 		return err
 	}
 
-	node := types.NodeName(name)
+	node := store.NodeName(name)
 	for _, sv := range services {
-		res, err := store.GetHealth(sv, node)
+		res, err := consulStore.GetHealth(sv, node)
 		if err != nil {
 			return err
 		} else if (res == kp.WatchResult{}) {
@@ -923,8 +922,8 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 	}
 
 	for _, sv := range services {
-		res, err := store.GetServiceHealth(sv)
-		getres, _ := store.GetHealth(sv, node)
+		res, err := consulStore.GetServiceHealth(sv)
+		getres, _ := consulStore.GetHealth(sv, node)
 		if err != nil {
 			return err
 		}

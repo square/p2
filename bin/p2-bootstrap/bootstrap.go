@@ -16,7 +16,6 @@ import (
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/version"
@@ -40,7 +39,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("error getting node name: %v", err)
 	}
-	nodeName := types.NodeName(hostname)
+	nodeName := store.NodeName(hostname)
 	agentManifest, err := store.FromPath(*agentManifestPath)
 	if err != nil {
 		log.Fatalln("Could not get agent manifest: %s", err)
@@ -122,7 +121,7 @@ func installConsul(consulPod *pods.Pod, consulManifest store.Manifest, registryU
 // If the return is non-nil, this typically indicates that either Consul is
 // unreachable (eg the agent is not listening on the target port) or has not
 // found a leader (in which case Consul returns a 500 to all endpoints, except
-// the status types).
+// the status store).
 //
 // If a cluster is starting for the first time, it may report a leader just
 // before beginning raft replication, thus rejecting requests made at that
@@ -172,10 +171,10 @@ func verifyConsulUp(timeout string) error {
 	}
 }
 
-func verifyReality(waitTime time.Duration, consulID types.PodID, agentID types.PodID) error {
+func verifyReality(waitTime time.Duration, consulID store.PodID, agentID store.PodID) error {
 	quit := make(chan struct{})
 	defer close(quit)
-	store := kp.NewConsulStore(kp.NewConsulClient(kp.Options{
+	consulStore := kp.NewConsulStore(kp.NewConsulClient(kp.Options{
 		Token: *consulToken,
 	}))
 	hostname, err := os.Hostname()
@@ -192,7 +191,7 @@ func verifyReality(waitTime time.Duration, consulID types.PodID, agentID types.P
 				"Consul and/or Preparer weren't in the reality store within %s (consul=%t, preparer=%t)",
 				waitTime, hasConsul, hasPreparer)
 		case <-time.After(100 * time.Millisecond):
-			results, _, err := store.ListPods(kp.REALITY_TREE, types.NodeName(hostname))
+			results, _, err := consulStore.ListPods(kp.REALITY_TREE, store.NodeName(hostname))
 			if err != nil {
 				log.Printf("Error looking for pods: %s\n", err)
 				continue
@@ -212,20 +211,20 @@ func verifyReality(waitTime time.Duration, consulID types.PodID, agentID types.P
 }
 
 func scheduleForThisHost(manifest store.Manifest, alsoReality bool) error {
-	store := kp.NewConsulStore(kp.NewConsulClient(kp.Options{
+	consulStore := kp.NewConsulStore(kp.NewConsulClient(kp.Options{
 		Token: *consulToken,
 	}))
 	hostname, err := os.Hostname()
 	if err != nil {
 		return err
 	}
-	_, err = store.SetPod(kp.INTENT_TREE, types.NodeName(hostname), manifest)
+	_, err = consulStore.SetPod(kp.INTENT_TREE, store.NodeName(hostname), manifest)
 	if err != nil {
 		return err
 	}
 
 	if alsoReality {
-		_, err = store.SetPod(kp.REALITY_TREE, types.NodeName(hostname), manifest)
+		_, err = consulStore.SetPod(kp.REALITY_TREE, store.NodeName(hostname), manifest)
 		return err
 	}
 	return nil

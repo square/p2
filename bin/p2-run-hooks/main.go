@@ -8,14 +8,13 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
 	podDir       = kingpin.Arg("pod", "A path to a pod that exists on disk already.").Required().String()
-	hookType     = kingpin.Arg("hook-type", "Execute one of the given hook types").Required().String()
+	hookType     = kingpin.Arg("hook-type", "Execute one of the given hook store").Required().String()
 	hookDir      = kingpin.Flag("hook-dir", "The root of the hooks").Default(hooks.DEFAULT_PATH).String()
 	manifestPath = kingpin.Flag("manifest", "The manifest to use (this is useful when we are in the before_install phase)").ExistingFile()
 	nodeName     = kingpin.Flag("node-name", "The name of this node (default: hostname)").String()
@@ -41,7 +40,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	pod, err := pods.PodFromPodHome(types.NodeName(*nodeName), *podDir)
+	pod, err := pods.PodFromPodHome(store.NodeName(*nodeName), *podDir)
 	if err != nil {
 		log.Fatalln(err)
 	}

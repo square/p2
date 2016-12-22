@@ -2,7 +2,7 @@ package kptest
 
 import (
 	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 
 	"testing"
 )
@@ -10,7 +10,7 @@ import (
 func TestFakeServiceHealth(t *testing.T) {
 	fake := FakePodStore{}
 	targetService := "paladin"
-	targetHost := types.NodeName("aaa2.dfw.square")
+	targetHost := store.NodeName("aaa2.dfw.square")
 	targetStatus := "healthy"
 
 	fake.healthResults = map[string]kp.WatchResult{

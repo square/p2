@@ -8,7 +8,6 @@ import (
 
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/hashicorp/consul/api"
@@ -19,7 +18,7 @@ const PodTree = "pods"
 // The structure of values written to the /pods tree.
 type Pod struct {
 	Manifest store.Manifest
-	Node     types.NodeName
+	Node     store.NodeName
 }
 
 var _ json.Marshaler = Pod{}
@@ -70,7 +69,7 @@ func (p *Pod) UnmarshalJSON(b []byte) error {
 // can't be used because store.Manifest doesn't marshal cleanly
 type RawPod struct {
 	Manifest string         `json:"manifest"`
-	Node     types.NodeName `json:"node"`
+	Node     store.NodeName `json:"node"`
 }
 
 // The structure of index values written to the /intent
@@ -78,7 +77,7 @@ type RawPod struct {
 type PodIndex struct {
 	// The uuid of the pod. This can be used to retrieve the full pod from
 	// the /pods tree
-	PodKey types.PodUniqueKey `json:"pod_key"`
+	PodKey store.PodUniqueKey `json:"pod_key"`
 }
 
 // Subset of api.KV{} functionality so we can mock it out for tests.
@@ -95,24 +94,24 @@ type consulStore struct {
 
 	// A pod entry is immutable, therefore once we fetch it once we can
 	// add it to a cache and never fetch it again
-	podCache   map[types.PodUniqueKey]Pod
+	podCache   map[store.PodUniqueKey]Pod
 	podCacheMu sync.Mutex
 }
 
 func NewConsul(consulKV KV) Store {
 	return &consulStore{
 		consulKV: consulKV,
-		podCache: make(map[types.PodUniqueKey]Pod),
+		podCache: make(map[store.PodUniqueKey]Pod),
 	}
 }
 
-func (c *consulStore) Schedule(manifest store.Manifest, node types.NodeName) (key types.PodUniqueKey, err error) {
+func (c *consulStore) Schedule(manifest store.Manifest, node store.NodeName) (key store.PodUniqueKey, err error) {
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {
 		return "", err
 	}
 
-	podKey := types.NewPodUUID()
+	podKey := store.NewPodUUID()
 
 	podPath := computePodPath(podKey)
 	intentIndexPath := computeIntentIndexPath(podKey, node)
@@ -173,7 +172,7 @@ func (c *consulStore) Schedule(manifest store.Manifest, node types.NodeName) (ke
 	return podKey, nil
 }
 
-func (c *consulStore) Unschedule(podKey types.PodUniqueKey) error {
+func (c *consulStore) Unschedule(podKey store.PodUniqueKey) error {
 	if podKey == "" {
 		return util.Errorf("Pod store can only delete pods with uuid keys")
 	}
@@ -216,7 +215,7 @@ func (c *consulStore) Unschedule(podKey types.PodUniqueKey) error {
 
 // Writes a key to the /reality tree to signify that the pod specified by the UUID has been
 // launched on the given node.
-func (c *consulStore) WriteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error {
+func (c *consulStore) WriteRealityIndex(podKey store.PodUniqueKey, node store.NodeName) error {
 	if podKey == "" {
 		return util.Errorf("Pod store can only write index for pods with uuid keys")
 	}
@@ -245,7 +244,7 @@ func (c *consulStore) WriteRealityIndex(podKey types.PodUniqueKey, node types.No
 	return nil
 }
 
-func (c *consulStore) DeleteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error {
+func (c *consulStore) DeleteRealityIndex(podKey store.PodUniqueKey, node store.NodeName) error {
 	realityIndexPath := computeRealityIndexPath(podKey, node)
 
 	_, err := c.consulKV.Delete(realityIndexPath, nil)
@@ -273,14 +272,14 @@ func IsIndexDeletionFailure(err error) bool {
 }
 
 type NoPod struct {
-	key types.PodUniqueKey
+	key store.PodUniqueKey
 }
 
 func (n NoPod) Error() string {
 	return fmt.Sprintf("Pod '%s' does not exist", n.key)
 }
 
-func NoPodError(key types.PodUniqueKey) NoPod {
+func NoPodError(key store.PodUniqueKey) NoPod {
 	return NoPod{
 		key: key,
 	}
@@ -291,7 +290,7 @@ func IsNoPod(err error) bool {
 	return ok
 }
 
-func (c *consulStore) ReadPod(podKey types.PodUniqueKey) (Pod, error) {
+func (c *consulStore) ReadPod(podKey store.PodUniqueKey) (Pod, error) {
 	if podKey == "" {
 		return Pod{}, util.Errorf("Pod store can only read pods with uuid keys")
 	}
@@ -326,19 +325,19 @@ func (c *consulStore) ReadPodFromIndex(index PodIndex) (Pod, error) {
 	return c.ReadPod(index.PodKey)
 }
 
-func (c *consulStore) deleteFromCache(key types.PodUniqueKey) {
+func (c *consulStore) deleteFromCache(key store.PodUniqueKey) {
 	c.podCacheMu.Lock()
 	defer c.podCacheMu.Unlock()
 	delete(c.podCache, key)
 }
 
-func (c *consulStore) addToCache(key types.PodUniqueKey, pod Pod) {
+func (c *consulStore) addToCache(key store.PodUniqueKey, pod Pod) {
 	c.podCacheMu.Lock()
 	defer c.podCacheMu.Unlock()
 	c.podCache[key] = pod
 }
 
-func (c *consulStore) fetchFromCache(key types.PodUniqueKey) (Pod, bool) {
+func (c *consulStore) fetchFromCache(key store.PodUniqueKey) (Pod, bool) {
 	c.podCacheMu.Lock()
 	defer c.podCacheMu.Unlock()
 	pod, ok := c.podCache[key]
@@ -347,14 +346,14 @@ func (c *consulStore) fetchFromCache(key types.PodUniqueKey) (Pod, bool) {
 
 // Given a pod unique key and a node, compute the path to which the main pod
 // should be written as well as the secondary index
-func computePodPath(key types.PodUniqueKey) string {
+func computePodPath(key store.PodUniqueKey) string {
 	return path.Join(PodTree, key.String())
 }
 
-func computeIntentIndexPath(key types.PodUniqueKey, node types.NodeName) string {
+func computeIntentIndexPath(key store.PodUniqueKey, node store.NodeName) string {
 	return path.Join("intent", node.String(), key.String())
 }
 
-func computeRealityIndexPath(key types.PodUniqueKey, node types.NodeName) string {
+func computeRealityIndexPath(key store.PodUniqueKey, node store.NodeName) string {
 	return path.Join("reality", node.String(), key.String())
 }

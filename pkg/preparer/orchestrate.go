@@ -15,7 +15,6 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
 )
@@ -44,13 +43,13 @@ type Hooks interface {
 }
 
 type Store interface {
-	ListPods(podPrefix kp.PodPrefix, nodeName types.NodeName) ([]kp.ManifestResult, time.Duration, error)
-	SetPod(podPrefix kp.PodPrefix, nodeName types.NodeName, podManifest store.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodeName types.NodeName, podId types.PodID) (store.Manifest, time.Duration, error)
-	DeletePod(podPrefix kp.PodPrefix, nodeName types.NodeName, podId types.PodID) (time.Duration, error)
+	ListPods(podPrefix kp.PodPrefix, nodeName store.NodeName) ([]kp.ManifestResult, time.Duration, error)
+	SetPod(podPrefix kp.PodPrefix, nodeName store.NodeName, podManifest store.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodeName store.NodeName, podId store.PodID) (store.Manifest, time.Duration, error)
+	DeletePod(podPrefix kp.PodPrefix, nodeName store.NodeName, podId store.PodID) (time.Duration, error)
 	WatchPods(
 		podPrefix kp.PodPrefix,
-		nodeName types.NodeName,
+		nodeName store.NodeName,
 		quitChan <-chan struct{},
 		errorChan chan<- error,
 		podChan chan<- []kp.ManifestResult,
@@ -62,9 +61,9 @@ type Store interface {
 // interaction
 type podWorkerID struct {
 	// Expected to be "" for legacy pods
-	podUniqueKey types.PodUniqueKey
+	podUniqueKey store.PodUniqueKey
 
-	podID types.PodID
+	podID store.PodID
 }
 
 // Useful in logging messages

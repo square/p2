@@ -9,16 +9,16 @@ import (
 
 func TestSetAndGetStatus(t *testing.T) {
 	status := Status([]byte("some_status"))
-	store := storeWithFakeKV()
+	consulStore := storeWithFakeKV()
 
 	// Set a status
-	err := store.SetStatus(PC, "some_id", "some_namespace", status)
+	err := consulStore.SetStatus(PC, "some_id", "some_namespace", status)
 	if err != nil {
 		t.Fatalf("Unable to set status: %s", err)
 	}
 
 	// Confirm that we get the same thing back when we Get() it
-	returnedStatus, _, err := store.GetStatus(PC, "some_id", "some_namespace")
+	returnedStatus, _, err := consulStore.GetStatus(PC, "some_id", "some_namespace")
 	if err != nil {
 		t.Fatalf("Unable to get status: %s", err)
 	}
@@ -30,22 +30,22 @@ func TestSetAndGetStatus(t *testing.T) {
 
 func TestEmptyStringNotAllowed(t *testing.T) {
 	status := Status([]byte("some_status"))
-	store := storeWithFakeKV()
+	consulStore := storeWithFakeKV()
 
 	// Attempt to set status with empty resource type
-	err := store.SetStatus("", "some_id", "some_namespace", status)
+	err := consulStore.SetStatus("", "some_id", "some_namespace", status)
 	if err == nil {
 		t.Error("Should have gotten an error using an empty resource type")
 	}
 
 	// Attempt to set status with empty id type
-	err = store.SetStatus(PC, "", "some_namespace", status)
+	err = consulStore.SetStatus(PC, "", "some_namespace", status)
 	if err == nil {
 		t.Error("Should have gotten an error using an empty resource ID")
 	}
 
 	// Attempt to set status with empty namespace
-	err = store.SetStatus(PC, "some_id", "", status)
+	err = consulStore.SetStatus(PC, "some_id", "", status)
 	if err == nil {
 		t.Error("Should have gotten an error using an empty namespace")
 	}
@@ -53,16 +53,16 @@ func TestEmptyStringNotAllowed(t *testing.T) {
 
 func TestDeleteStatus(t *testing.T) {
 	status := Status([]byte("some_status"))
-	store := storeWithFakeKV()
+	consulStore := storeWithFakeKV()
 
 	// Set a status
-	err := store.SetStatus(PC, "some_id", "some_namespace", status)
+	err := consulStore.SetStatus(PC, "some_id", "some_namespace", status)
 	if err != nil {
 		t.Fatalf("Unable to set status: %s", err)
 	}
 
 	// Confirm that the status was successfully set
-	returnedStatus, _, err := store.GetStatus(PC, "some_id", "some_namespace")
+	returnedStatus, _, err := consulStore.GetStatus(PC, "some_id", "some_namespace")
 	if err != nil {
 		t.Fatalf("Unable to get status: %s", err)
 	}
@@ -72,13 +72,13 @@ func TestDeleteStatus(t *testing.T) {
 	}
 
 	// Now delete it
-	err = store.DeleteStatus(PC, "some_id", "some_namespace")
+	err = consulStore.DeleteStatus(PC, "some_id", "some_namespace")
 	if err != nil {
 		t.Fatalf("Unable to delete status: %s", err)
 	}
 
 	// Now try to get it and confirm we get the correct error type
-	returnedStatus, _, err = store.GetStatus(PC, "some_id", "some_namespace")
+	returnedStatus, _, err = consulStore.GetStatus(PC, "some_id", "some_namespace")
 	if err == nil {
 		t.Fatal("Expected an error getting a deleted status")
 	}
@@ -91,16 +91,16 @@ func TestDeleteStatus(t *testing.T) {
 func TestGetAllStatusForResource(t *testing.T) {
 	status := Status([]byte("some_status"))
 	otherStatus := Status([]byte("some_other_status"))
-	store := storeWithFakeKV()
+	consulStore := storeWithFakeKV()
 
 	// Set a status for one namespace
-	err := store.SetStatus(PC, "some_id", "some_namespace", status)
+	err := consulStore.SetStatus(PC, "some_id", "some_namespace", status)
 	if err != nil {
 		t.Fatalf("Unable to set status: %s", err)
 	}
 
 	// Confirm that the status was successfully set
-	returnedStatus, _, err := store.GetStatus(PC, "some_id", "some_namespace")
+	returnedStatus, _, err := consulStore.GetStatus(PC, "some_id", "some_namespace")
 	if err != nil {
 		t.Fatalf("Unable to get status: %s", err)
 	}
@@ -110,13 +110,13 @@ func TestGetAllStatusForResource(t *testing.T) {
 	}
 
 	// Set a status for another namespace
-	err = store.SetStatus(PC, "some_id", "some_other_namespace", otherStatus)
+	err = consulStore.SetStatus(PC, "some_id", "some_other_namespace", otherStatus)
 	if err != nil {
 		t.Fatalf("Unable to set status: %s", err)
 	}
 
 	// Confirm that the status was successfully set
-	returnedOtherStatus, _, err := store.GetStatus(PC, "some_id", "some_other_namespace")
+	returnedOtherStatus, _, err := consulStore.GetStatus(PC, "some_id", "some_other_namespace")
 	if err != nil {
 		t.Fatalf("Unable to get status: %s", err)
 	}
@@ -126,7 +126,7 @@ func TestGetAllStatusForResource(t *testing.T) {
 	}
 
 	// Now fetch all statuses for that resource
-	statusMap, err := store.GetAllStatusForResource(PC, "some_id")
+	statusMap, err := consulStore.GetAllStatusForResource(PC, "some_id")
 	if err != nil {
 		t.Fatalf("Unable to fetch all status for resource: %s", err)
 	}
@@ -146,16 +146,16 @@ func TestGetAllStatusForResourceType(t *testing.T) {
 	status := Status([]byte("some_status"))
 	otherStatus := Status([]byte("some_other_status"))
 	otherPCStatus := Status([]byte("some_other_pc_status"))
-	store := storeWithFakeKV()
+	consulStore := storeWithFakeKV()
 
 	// Set a status for one namespace
-	err := store.SetStatus(PC, "some_id", "some_namespace", status)
+	err := consulStore.SetStatus(PC, "some_id", "some_namespace", status)
 	if err != nil {
 		t.Fatalf("Unable to set status: %s", err)
 	}
 
 	// Confirm that the status was successfully set
-	returnedStatus, _, err := store.GetStatus(PC, "some_id", "some_namespace")
+	returnedStatus, _, err := consulStore.GetStatus(PC, "some_id", "some_namespace")
 	if err != nil {
 		t.Fatalf("Unable to get status: %s", err)
 	}
@@ -165,12 +165,12 @@ func TestGetAllStatusForResourceType(t *testing.T) {
 	}
 
 	// Set a status for another namespace
-	err = store.SetStatus(PC, "some_id", "some_other_namespace", otherStatus)
+	err = consulStore.SetStatus(PC, "some_id", "some_other_namespace", otherStatus)
 	if err != nil {
 		t.Fatalf("Unable to set status: %s", err)
 	}
 
-	returnedOtherStatus, _, err := store.GetStatus(PC, "some_id", "some_other_namespace")
+	returnedOtherStatus, _, err := consulStore.GetStatus(PC, "some_id", "some_other_namespace")
 	if err != nil {
 		t.Fatalf("Unable to get status: %s", err)
 	}
@@ -180,13 +180,13 @@ func TestGetAllStatusForResourceType(t *testing.T) {
 	}
 
 	// Set a status for another PC
-	err = store.SetStatus(PC, "some_other_id", "some_namespace", otherPCStatus)
+	err = consulStore.SetStatus(PC, "some_other_id", "some_namespace", otherPCStatus)
 	if err != nil {
 		t.Fatalf("Unable to set status: %s", err)
 	}
 
 	// Confirm that the status was successfully set
-	returnedOtherPCStatus, _, err := store.GetStatus(PC, "some_other_id", "some_namespace")
+	returnedOtherPCStatus, _, err := consulStore.GetStatus(PC, "some_other_id", "some_namespace")
 	if err != nil {
 		t.Fatalf("Unable to get status: %s", err)
 	}
@@ -196,7 +196,7 @@ func TestGetAllStatusForResourceType(t *testing.T) {
 	}
 
 	// Now fetch all status for the PC resource type and make sure we get our 3 statuses back
-	allStatusForPC, err := store.GetAllStatusForResourceType(PC)
+	allStatusForPC, err := consulStore.GetAllStatusForResourceType(PC)
 	if err != nil {
 		t.Fatalf("Unable to fetch all status for PC type: %s", err)
 	}

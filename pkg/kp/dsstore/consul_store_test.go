@@ -12,7 +12,6 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
@@ -22,7 +21,7 @@ func TestCreate(t *testing.T) {
 	createDaemonSet(consulStore, t)
 
 	// Create a bad DaemonSet
-	podID := types.PodID("")
+	podID := store.PodID("")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
@@ -41,7 +40,7 @@ func TestCreate(t *testing.T) {
 		t.Error("Expected create to fail on bad pod id")
 	}
 
-	podID = types.PodID("pod_id")
+	podID = store.PodID("pod_id")
 	if _, err := consulStore.Create(podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
 		t.Error("Expected create to fail on bad manifest pod id")
 	}
@@ -56,7 +55,7 @@ func TestCreate(t *testing.T) {
 }
 
 func createDaemonSet(consulStore *consulStore, t *testing.T) ds_fields.DaemonSet {
-	podID := types.PodID("some_pod_id")
+	podID := store.PodID("some_pod_id")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
@@ -134,7 +133,7 @@ func TestGet(t *testing.T) {
 	//
 	// Create DaemonSet
 	//
-	podID := types.PodID("some_pod_id")
+	podID := store.PodID("some_pod_id")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
@@ -201,7 +200,7 @@ func TestList(t *testing.T) {
 	consulStore := consulStoreWithFakeKV()
 
 	// Create first DaemonSet
-	firstPodID := types.PodID("some_pod_id")
+	firstPodID := store.PodID("some_pod_id")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
@@ -222,7 +221,7 @@ func TestList(t *testing.T) {
 	}
 
 	// Create second DaemonSet
-	secondPodID := types.PodID("different_pod_id")
+	secondPodID := store.PodID("different_pod_id")
 
 	manifestBuilder = store.NewBuilder()
 	manifestBuilder.SetID(secondPodID)
@@ -256,7 +255,7 @@ func TestList(t *testing.T) {
 func TestMutate(t *testing.T) {
 	consulStore := consulStoreWithFakeKV()
 
-	podID := types.PodID("some_pod_id")
+	podID := store.PodID("some_pod_id")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
@@ -308,7 +307,7 @@ func TestMutate(t *testing.T) {
 	someOtherDisabled := !ds.Disabled
 	someOtherMinHealth := 42
 	someOtherName := ds_fields.ClusterName("some_other_name")
-	someOtherPodID := types.PodID("some_other_pod_id")
+	someOtherPodID := store.PodID("some_other_pod_id")
 
 	manifestBuilder = store.NewBuilder()
 	manifestBuilder.SetID(someOtherPodID)
@@ -391,7 +390,7 @@ func TestWatch(t *testing.T) {
 	//
 	// Create a new daemon set
 	//
-	podID := types.PodID("some_pod_id")
+	podID := store.PodID("some_pod_id")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
@@ -412,7 +411,7 @@ func TestWatch(t *testing.T) {
 	//
 	// Create another new daemon set
 	//
-	someOtherPodID := types.PodID("some_other_pod_id")
+	someOtherPodID := store.PodID("some_other_pod_id")
 
 	manifestBuilder = store.NewBuilder()
 	manifestBuilder.SetID(someOtherPodID)
@@ -510,7 +509,7 @@ func TestWatchAll(t *testing.T) {
 	//
 	// Create a new daemon set
 	//
-	podID := types.PodID("some_pod_id")
+	podID := store.PodID("some_pod_id")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
 
@@ -531,7 +530,7 @@ func TestWatchAll(t *testing.T) {
 	//
 	// Create another new daemon set
 	//
-	someOtherPodID := types.PodID("some_other_pod_id")
+	someOtherPodID := store.PodID("some_other_pod_id")
 
 	manifestBuilder = store.NewBuilder()
 	manifestBuilder.SetID(someOtherPodID)

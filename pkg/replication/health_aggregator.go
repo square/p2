@@ -5,19 +5,19 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 )
 
 type podHealth struct {
-	podId   types.PodID
+	podId   store.PodID
 	checker checker.ConsulHealthChecker
 	quit    chan struct{}
 
 	cond      *sync.Cond // guards curHealth
-	curHealth map[types.NodeName]health.Result
+	curHealth map[store.NodeName]health.Result
 }
 
-func AggregateHealth(id types.PodID, checker checker.ConsulHealthChecker) *podHealth {
+func AggregateHealth(id store.PodID, checker checker.ConsulHealthChecker) *podHealth {
 	p := &podHealth{
 		podId:   id,
 		checker: checker,
@@ -43,7 +43,7 @@ func (p *podHealth) beginWatch() {
 		}
 	}()
 
-	resultCh := make(chan map[types.NodeName]health.Result)
+	resultCh := make(chan map[store.NodeName]health.Result)
 	go p.checker.WatchService(p.podId.String(), resultCh, errCh, p.quit)
 
 	// Always unblock AggregateHealth()
@@ -51,7 +51,7 @@ func (p *podHealth) beginWatch() {
 		p.cond.L.Lock()
 		defer p.cond.L.Unlock()
 		if p.curHealth == nil {
-			p.curHealth = make(map[types.NodeName]health.Result)
+			p.curHealth = make(map[store.NodeName]health.Result)
 			p.cond.Broadcast()
 		}
 	}()
@@ -72,7 +72,7 @@ func (p *podHealth) beginWatch() {
 	}
 }
 
-func (p *podHealth) GetHealth(host types.NodeName) (health.Result, bool) {
+func (p *podHealth) GetHealth(host store.NodeName) (health.Result, bool) {
 	p.cond.L.Lock()
 	defer p.cond.L.Unlock()
 	h, ok := p.curHealth[host]

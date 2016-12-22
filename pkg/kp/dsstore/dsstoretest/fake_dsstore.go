@@ -15,7 +15,6 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/dsstore"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -49,7 +48,7 @@ func (s *FakeDSStore) Create(
 	minHealth int,
 	name fields.ClusterName,
 	nodeSelector klabels.Selector,
-	podID types.PodID,
+	podID store.PodID,
 	timeout time.Duration,
 ) (fields.DaemonSet, error) {
 	id := fields.ID(uuid.New())

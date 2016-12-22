@@ -13,7 +13,6 @@ import (
 
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/store"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -53,11 +52,11 @@ type result struct {
 	FinalLocation string `json:"final_location"`
 }
 
-func podID() types.PodID {
+func podID() store.PodID {
 	if *id != "" {
-		return types.PodID(*id)
+		return store.PodID(*id)
 	}
-	return types.PodID(path.Base((*executable).Path))
+	return store.PodID(path.Base((*executable).Path))
 }
 
 func activeDir() string {
