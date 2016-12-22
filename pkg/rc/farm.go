@@ -1,6 +1,7 @@
 package rc
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -229,9 +230,15 @@ START_LOOP:
 					defer func() {
 						if r := recover(); r != nil {
 							err := util.Errorf("Caught panic in rc farm: %s", r)
+
+							stackErr, ok := err.(util.StackError)
+							msg := "Caught panic in rc farm"
+							if ok {
+								msg = fmt.Sprintf("%s:\n%s", msg, stackErr.Stack())
+							}
 							rcLogger.WithError(err).
 								WithField("rc_id", id).
-								Errorln("Caught panic in rc farm")
+								Errorln(msg)
 						}
 					}()
 					// disabled-ness is handled in watchdesires

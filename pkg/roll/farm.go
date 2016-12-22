@@ -238,9 +238,16 @@ START_LOOP:
 					defer func() {
 						if r := recover(); r != nil {
 							err := util.Errorf("Caught panic in roll farm: %s", r)
+
+							stackErr, ok := err.(util.StackError)
+							msg := "Caught panic in roll farm"
+							if ok {
+								msg = fmt.Sprintf("%s:\n%s", msg, stackErr.Stack())
+							}
+
 							rlLogger.WithError(err).
 								WithField("new_rc", newRC).
-								Errorln("Caught panic in roll farm")
+								Errorln(msg)
 
 							// Release the child so that another farm can reattempt
 							rlf.childMu.Lock()
