@@ -67,7 +67,7 @@ func (s *consulStore) SetMetricsRegistry(reg MetricsRegistry) {
 func (s *consulStore) Create(
 	podID store.PodID,
 	availabilityZone store.AvailabilityZone,
-	clusterName store.ClusterName,
+	clusterName store.PodClusterName,
 	podSelector klabels.Selector,
 	annotations store.Annotations,
 	session Session,
@@ -141,7 +141,7 @@ func (s *consulStore) setLabelsForPC(pc store.PodCluster) error {
 	pcLabels := klabels.Set{}
 	pcLabels[store.PodIDLabel] = pc.PodID.String()
 	pcLabels[store.AvailabilityZoneLabel] = pc.AvailabilityZone.String()
-	pcLabels[store.ClusterNameLabel] = pc.Name.String()
+	pcLabels[store.PodClusterNameLabel] = pc.Name.String()
 
 	return s.labeler.SetLabels(labels.PC, pc.ID.String(), pcLabels)
 }
@@ -265,14 +265,14 @@ func pcPath(pcID store.PodClusterID) (string, error) {
 
 func (s *consulStore) lockForCreation(podID store.PodID,
 	availabilityZone store.AvailabilityZone,
-	clusterName store.ClusterName,
+	clusterName store.PodClusterName,
 	session Session) (consulutil.Unlocker, error) {
 	return session.Lock(pcCreateLockPath(podID, availabilityZone, clusterName))
 }
 
 func pcCreateLockPath(podID store.PodID,
 	availabilityZone store.AvailabilityZone,
-	clusterName store.ClusterName) string {
+	clusterName store.PodClusterName) string {
 	return path.Join(consulutil.LOCK_TREE, podID.String(), availabilityZone.String(), clusterName.String())
 }
 
@@ -282,12 +282,12 @@ func pcSyncLockPath(id store.PodClusterID, syncerType ConcreteSyncerType) string
 
 func (s *consulStore) FindWhereLabeled(podID store.PodID,
 	availabilityZone store.AvailabilityZone,
-	clusterName store.ClusterName) ([]store.PodCluster, error) {
+	clusterName store.PodClusterName) ([]store.PodCluster, error) {
 
 	sel := klabels.Everything().
 		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
 		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{availabilityZone.String()}).
-		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+		Add(store.PodClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
 	podClusters, err := s.labeler.GetMatches(sel, labels.PC, false)
 	if err != nil {

@@ -71,7 +71,7 @@ func main() {
 	switch cmd {
 	case cmdCreateText:
 		az := store.AvailabilityZone(*createAZ)
-		cn := store.ClusterName(*createName)
+		cn := store.PodClusterName(*createName)
 		podID := store.PodID(*createPodID)
 		selector := selectorFrom(az, cn, podID)
 		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, session)
@@ -88,7 +88,7 @@ func main() {
 		}
 	case cmdGetText:
 		az := store.AvailabilityZone(*getAZ)
-		cn := store.ClusterName(*getName)
+		cn := store.PodClusterName(*getName)
 		podID := store.PodID(*getPodID)
 		pcID := store.PodClusterID(*getID)
 
@@ -114,7 +114,7 @@ func main() {
 		fmt.Printf("%s", bytes)
 	case cmdDeleteText:
 		az := store.AvailabilityZone(*deleteAZ)
-		cn := store.ClusterName(*deleteName)
+		cn := store.PodClusterName(*deleteName)
 		podID := store.PodID(*deletePodID)
 		pcID := store.PodClusterID(*deleteID)
 
@@ -137,7 +137,7 @@ func main() {
 		}
 	case cmdUpdateText:
 		az := store.AvailabilityZone(*updateAZ)
-		cn := store.ClusterName(*updateName)
+		cn := store.PodClusterName(*updateName)
 		podID := store.PodID(*updatePodID)
 		pcID := store.PodClusterID(*updateID)
 
@@ -187,11 +187,11 @@ func main() {
 	}
 }
 
-func selectorFrom(az store.AvailabilityZone, cn store.ClusterName, podID store.PodID) klabels.Selector {
+func selectorFrom(az store.AvailabilityZone, cn store.PodClusterName, podID store.PodID) klabels.Selector {
 	return klabels.Everything().
 		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
 		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
-		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{cn.String()})
+		Add(store.PodClusterNameLabel, klabels.EqualsOperator, []string{cn.String()})
 }
 
 func currentUserName() string {

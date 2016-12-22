@@ -10,13 +10,13 @@ import (
 // store stored in the actual pod cluster document
 type PodClusterID string
 type AvailabilityZone string
-type ClusterName string
+type PodClusterName string
 type Annotations map[string]interface{}
 
 // label keys used by pod selector
 const (
 	AvailabilityZoneLabel = "availability_zone"
-	ClusterNameLabel      = "cluster_name"
+	PodClusterNameLabel   = "cluster_name"
 	PodIDLabel            = "pod_id"
 )
 
@@ -28,7 +28,7 @@ func (az AvailabilityZone) String() string {
 	return string(az)
 }
 
-func (cn ClusterName) String() string {
+func (cn PodClusterName) String() string {
 	return string(cn)
 }
 
@@ -46,7 +46,7 @@ type PodCluster struct {
 
 	// Human-readable name for the pod cluster. Must be unique within a
 	// (PodID, AvailabilityZone) space
-	Name ClusterName
+	Name PodClusterName
 
 	// Selector to identify the pods that are members of this pod cluster
 	PodSelector labels.Selector
@@ -86,7 +86,7 @@ type RawPodCluster struct {
 	ID               PodClusterID     `json:"id"`
 	PodID            PodID            `json:"pod_id"`
 	AvailabilityZone AvailabilityZone `json:"availability_zone"`
-	Name             ClusterName      `json:"name"`
+	Name             PodClusterName   `json:"name"`
 	PodSelector      string           `json:"pod_selector"`
 	Annotations      Annotations      `json:"annotations"`
 }

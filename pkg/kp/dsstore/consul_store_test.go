@@ -8,7 +8,6 @@ import (
 	"github.com/square/p2/pkg/util"
 
 	. "github.com/anthonybishopric/gotcha"
-	ds_fields "github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store"
@@ -23,7 +22,7 @@ func TestCreate(t *testing.T) {
 	// Create a bad DaemonSet
 	podID := store.PodID("")
 	minHealth := 0
-	clusterName := ds_fields.ClusterName("some_name")
+	clusterName := store.DaemonSetName("some_name")
 
 	azLabel := store.AvailabilityZone("some_zone")
 	selector := klabels.Everything().
@@ -54,10 +53,10 @@ func TestCreate(t *testing.T) {
 	}
 }
 
-func createDaemonSet(consulStore *consulStore, t *testing.T) ds_fields.DaemonSet {
+func createDaemonSet(consulStore *consulStore, t *testing.T) store.DaemonSet {
 	podID := store.PodID("some_pod_id")
 	minHealth := 0
-	clusterName := ds_fields.ClusterName("some_name")
+	clusterName := store.DaemonSetName("some_name")
 
 	azLabel := store.AvailabilityZone("some_zone")
 	selector := klabels.Everything().
@@ -135,7 +134,7 @@ func TestGet(t *testing.T) {
 	//
 	podID := store.PodID("some_pod_id")
 	minHealth := 0
-	clusterName := ds_fields.ClusterName("some_name")
+	clusterName := store.DaemonSetName("some_name")
 
 	azLabel := store.AvailabilityZone("some_zone")
 	selector := klabels.Everything().
@@ -202,7 +201,7 @@ func TestList(t *testing.T) {
 	// Create first DaemonSet
 	firstPodID := store.PodID("some_pod_id")
 	minHealth := 0
-	clusterName := ds_fields.ClusterName("some_name")
+	clusterName := store.DaemonSetName("some_name")
 
 	azLabel := store.AvailabilityZone("some_zone")
 	selector := klabels.Everything().
@@ -257,7 +256,7 @@ func TestMutate(t *testing.T) {
 
 	podID := store.PodID("some_pod_id")
 	minHealth := 0
-	clusterName := ds_fields.ClusterName("some_name")
+	clusterName := store.DaemonSetName("some_name")
 
 	azLabel := store.AvailabilityZone("some_zone")
 	selector := klabels.Everything().
@@ -276,7 +275,7 @@ func TestMutate(t *testing.T) {
 	//
 	// Invalid mutates
 	//
-	errorMutator := func(dsToMutate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	errorMutator := func(dsToMutate store.DaemonSet) (store.DaemonSet, error) {
 		return dsToMutate, util.Errorf("This is an error")
 	}
 	_, err = consulStore.MutateDS(ds.ID, errorMutator)
@@ -284,7 +283,7 @@ func TestMutate(t *testing.T) {
 		t.Error("Expected error when mutator produces an error")
 	}
 
-	badIDMutator := func(dsToMutate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	badIDMutator := func(dsToMutate store.DaemonSet) (store.DaemonSet, error) {
 		dsToMutate.ID = ""
 		return dsToMutate, nil
 	}
@@ -293,7 +292,7 @@ func TestMutate(t *testing.T) {
 		t.Error("Expected error when mutating daemon set ID")
 	}
 
-	badPodIDMutator := func(dsToMutate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	badPodIDMutator := func(dsToMutate store.DaemonSet) (store.DaemonSet, error) {
 		dsToMutate.PodID = ""
 		return dsToMutate, nil
 	}
@@ -306,7 +305,7 @@ func TestMutate(t *testing.T) {
 	//
 	someOtherDisabled := !ds.Disabled
 	someOtherMinHealth := 42
-	someOtherName := ds_fields.ClusterName("some_other_name")
+	someOtherName := store.DaemonSetName("some_other_name")
 	someOtherPodID := store.PodID("some_other_pod_id")
 
 	manifestBuilder = store.NewBuilder()
@@ -317,7 +316,7 @@ func TestMutate(t *testing.T) {
 	someOtherSelector := klabels.Everything().
 		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{someOtherAZLabel.String()})
 
-	goodMutator := func(dsToMutate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	goodMutator := func(dsToMutate store.DaemonSet) (store.DaemonSet, error) {
 		dsToMutate.Disabled = someOtherDisabled
 		dsToMutate.Manifest = someOtherManifest
 		dsToMutate.MinHealth = someOtherMinHealth
@@ -392,7 +391,7 @@ func TestWatch(t *testing.T) {
 	//
 	podID := store.PodID("some_pod_id")
 	minHealth := 0
-	clusterName := ds_fields.ClusterName("some_name")
+	clusterName := store.DaemonSetName("some_name")
 
 	azLabel := store.AvailabilityZone("some_zone")
 	selector := klabels.Everything().
@@ -477,7 +476,7 @@ func TestWatch(t *testing.T) {
 	//
 	// Make sure Watch outputs only 1 daemon set when something gets updated
 	//
-	mutator := func(dsToMutate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator := func(dsToMutate store.DaemonSet) (store.DaemonSet, error) {
 		dsToMutate.Disabled = !dsToMutate.Disabled
 		return dsToMutate, nil
 	}
@@ -511,7 +510,7 @@ func TestWatchAll(t *testing.T) {
 	//
 	podID := store.PodID("some_pod_id")
 	minHealth := 0
-	clusterName := ds_fields.ClusterName("some_name")
+	clusterName := store.DaemonSetName("some_name")
 
 	azLabel := store.AvailabilityZone("some_zone")
 	selector := klabels.Everything().
@@ -591,7 +590,7 @@ func TestWatchAll(t *testing.T) {
 	//
 	// Watch for update and verify
 	//
-	mutator := func(dsToMutate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator := func(dsToMutate store.DaemonSet) (store.DaemonSet, error) {
 		dsToMutate.Disabled = !dsToMutate.Disabled
 		return dsToMutate, nil
 	}

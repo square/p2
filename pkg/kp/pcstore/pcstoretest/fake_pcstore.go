@@ -30,7 +30,7 @@ func NewFake() *FakePCStore {
 func (p *FakePCStore) Create(
 	podID store.PodID,
 	availabilityZone store.AvailabilityZone,
-	clusterName store.ClusterName,
+	clusterName store.PodClusterName,
 	podSelector klabels.Selector,
 	annotations store.Annotations,
 	_ pcstore.Session,
@@ -104,7 +104,7 @@ func (p *FakePCStore) MutatePC(
 func (p *FakePCStore) FindWhereLabeled(
 	podID store.PodID,
 	availabilityZone store.AvailabilityZone,
-	clusterName store.ClusterName,
+	clusterName store.PodClusterName,
 ) ([]store.PodCluster, error) {
 	ret := []store.PodCluster{}
 	for _, pc := range p.podClusters {

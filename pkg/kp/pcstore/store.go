@@ -42,7 +42,7 @@ type Store interface {
 	Create(
 		podID store.PodID,
 		availabilityZone store.AvailabilityZone,
-		clusterName store.ClusterName,
+		clusterName store.PodClusterName,
 		podSelector klabels.Selector,
 		annotations store.Annotations,
 		session Session,
@@ -55,7 +55,7 @@ type Store interface {
 	FindWhereLabeled(
 		podID store.PodID,
 		availabilityZone store.AvailabilityZone,
-		clusterName store.ClusterName,
+		clusterName store.PodClusterName,
 	) ([]store.PodCluster, error)
 	Delete(id store.PodClusterID) error
 	MutatePC(

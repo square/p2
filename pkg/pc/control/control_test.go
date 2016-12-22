@@ -13,12 +13,12 @@ import (
 
 func TestCreate(t *testing.T) {
 	testAZ := store.AvailabilityZone("west-coast")
-	testCN := store.ClusterName("test")
+	testCN := store.PodClusterName("test")
 	testPodID := store.PodID("pod")
 	selector := labels.Everything().
 		Add(store.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
 		Add(store.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
-		Add(store.ClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
+		Add(store.PodClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
 	session := kptest.NewSession()
 	pcstore := pcstoretest.NewFake()
 
@@ -74,12 +74,12 @@ func TestCreate(t *testing.T) {
 
 func TestUpdate(t *testing.T) {
 	testAZ := store.AvailabilityZone("west-coast")
-	testCN := store.ClusterName("test")
+	testCN := store.PodClusterName("test")
 	testPodID := store.PodID("pod")
 	selector := labels.Everything().
 		Add(store.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
 		Add(store.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
-		Add(store.ClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
+		Add(store.PodClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
 	session := kptest.NewSession()
 	pcstore := pcstoretest.NewFake()
 
@@ -140,12 +140,12 @@ func TestUpdate(t *testing.T) {
 
 func TestPodClusterFromID(t *testing.T) {
 	testAZ := store.AvailabilityZone("west-coast")
-	testCN := store.ClusterName("test")
+	testCN := store.PodClusterName("test")
 	testPodID := store.PodID("pod")
 	selector := labels.Everything().
 		Add(store.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
 		Add(store.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
-		Add(store.ClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
+		Add(store.PodClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
 	session := kptest.NewSession()
 	fakePCStore := pcstoretest.NewFake()
 

@@ -7,7 +7,6 @@ import (
 	"k8s.io/kubernetes/pkg/labels"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/store"
@@ -18,14 +17,14 @@ const dsTree string = "daemon_sets"
 var NoDaemonSet error = errors.New("No daemon set found")
 
 type WatchedDaemonSets struct {
-	Created []*fields.DaemonSet
-	Updated []*fields.DaemonSet
-	Deleted []*fields.DaemonSet
+	Created []*store.DaemonSet
+	Updated []*store.DaemonSet
+	Deleted []*store.DaemonSet
 	Err     error
 }
 
 type WatchedDaemonSetList struct {
-	DaemonSets []fields.DaemonSet
+	DaemonSets []store.DaemonSet
 	Err        error
 }
 
@@ -38,26 +37,26 @@ type Store interface {
 	Create(
 		manifest store.Manifest,
 		minHealth int,
-		name fields.ClusterName,
+		name store.DaemonSetName,
 		nodeSelector labels.Selector,
 		podID store.PodID,
 		timeout time.Duration,
-	) (fields.DaemonSet, error)
+	) (store.DaemonSet, error)
 
 	// Gets a daemon set by ID, if it does not exist, it will produce an error
-	Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error)
-	List() ([]fields.DaemonSet, error)
+	Get(id store.DaemonSetID) (store.DaemonSet, *api.QueryMeta, error)
+	List() ([]store.DaemonSet, error)
 
 	// Deletes a daemon set by ID, deleting something that does not exist
 	// should not produce an error
-	Delete(fields.ID) error
+	Delete(store.DaemonSetID) error
 
 	// Mutates a daemon set by ID, ID cannot be mutated,
 	// PodID of the daemon set and its manifest must also match
 	MutateDS(
-		id fields.ID,
-		mutator func(fields.DaemonSet) (fields.DaemonSet, error),
-	) (fields.DaemonSet, error)
+		id store.DaemonSetID,
+		mutator func(store.DaemonSet) (store.DaemonSet, error),
+	) (store.DaemonSet, error)
 
 	Watch(quit <-chan struct{}) <-chan WatchedDaemonSets
 
@@ -66,10 +65,10 @@ type Store interface {
 
 	// Disables daemon set and produces logging, if there are problems disabling,
 	// disable the daemon set, and if there are still problems, return a fatal error
-	Disable(id fields.ID) (fields.DaemonSet, error)
+	Disable(id store.DaemonSetID) (store.DaemonSet, error)
 
 	// Locks an daemon set for ownership,
-	LockForOwnership(rcID fields.ID, session kp.Session) (consulutil.Unlocker, error)
+	LockForOwnership(rcID store.DaemonSetID, session kp.Session) (consulutil.Unlocker, error)
 }
 
 func IsNotExist(err error) bool {

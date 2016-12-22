@@ -18,14 +18,14 @@ type PodCluster struct {
 	ID store.PodClusterID
 
 	az       store.AvailabilityZone
-	cn       store.ClusterName
+	cn       store.PodClusterName
 	podID    store.PodID
 	selector labels.Selector
 }
 
 func NewPodCluster(
 	az store.AvailabilityZone,
-	cn store.ClusterName,
+	cn store.PodClusterName,
 	podID store.PodID,
 	pcstore pcstore.Store,
 	selector labels.Selector,

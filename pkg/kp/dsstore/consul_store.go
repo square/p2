@@ -11,7 +11,6 @@ import (
 	"github.com/pborman/uuid"
 	klabels "k8s.io/kubernetes/pkg/labels"
 
-	"github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
@@ -53,13 +52,13 @@ func NewConsul(client consulutil.ConsulClient, retries int, logger *logging.Logg
 func (s *consulStore) Create(
 	manifest store.Manifest,
 	minHealth int,
-	name fields.ClusterName,
+	name store.DaemonSetName,
 	nodeSelector klabels.Selector,
 	podID store.PodID,
 	timeout time.Duration,
-) (fields.DaemonSet, error) {
+) (store.DaemonSet, error) {
 	if err := checkManifestPodID(podID, manifest); err != nil {
-		return fields.DaemonSet{}, util.Errorf("Error verifying manifest pod id: %v", err)
+		return store.DaemonSet{}, util.Errorf("Error verifying manifest pod id: %v", err)
 	}
 
 	ds, err := s.innerCreate(manifest, minHealth, name, nodeSelector, podID, timeout)
@@ -72,7 +71,7 @@ func (s *consulStore) Create(
 		}
 	}
 	if err != nil {
-		return fields.DaemonSet{}, util.Errorf("Error creating daemon set: %v", err)
+		return store.DaemonSet{}, util.Errorf("Error creating daemon set: %v", err)
 	}
 	return ds, nil
 }
@@ -81,17 +80,17 @@ func (s *consulStore) Create(
 func (s *consulStore) innerCreate(
 	manifest store.Manifest,
 	minHealth int,
-	name fields.ClusterName,
+	name store.DaemonSetName,
 	nodeSelector klabels.Selector,
 	podID store.PodID,
 	timeout time.Duration,
-) (fields.DaemonSet, error) {
-	id := fields.ID(uuid.New())
+) (store.DaemonSet, error) {
+	id := store.DaemonSetID(uuid.New())
 	dsPath, err := s.dsPath(id)
 	if err != nil {
-		return fields.DaemonSet{}, util.Errorf("Error getting daemon set path: %v", err)
+		return store.DaemonSet{}, util.Errorf("Error getting daemon set path: %v", err)
 	}
-	ds := fields.DaemonSet{
+	ds := store.DaemonSet{
 		ID:           id,
 		Disabled:     false,
 		Manifest:     manifest,
@@ -104,7 +103,7 @@ func (s *consulStore) innerCreate(
 	// Marshals ds into []bytes using overloaded MarshalJSON
 	rawDS, err := json.Marshal(ds)
 	if err != nil {
-		return fields.DaemonSet{}, util.Errorf("Could not marshal DS as json: %s", err)
+		return store.DaemonSet{}, util.Errorf("Could not marshal DS as json: %s", err)
 	}
 
 	success, _, err := s.kv.CAS(&api.KVPair{
@@ -113,15 +112,15 @@ func (s *consulStore) innerCreate(
 		ModifyIndex: 0,
 	}, nil)
 	if err != nil {
-		return fields.DaemonSet{}, consulutil.NewKVError("cas", dsPath, err)
+		return store.DaemonSet{}, consulutil.NewKVError("cas", dsPath, err)
 	}
 	if !success {
-		return fields.DaemonSet{}, CASError(dsPath)
+		return store.DaemonSet{}, CASError(dsPath)
 	}
 	return ds, nil
 }
 
-func (s *consulStore) Delete(id fields.ID) error {
+func (s *consulStore) Delete(id store.DaemonSetID) error {
 	dsPath, err := s.dsPath(id)
 	if err != nil {
 		return util.Errorf("Error getting daemon set path: %v", err)
@@ -134,34 +133,34 @@ func (s *consulStore) Delete(id fields.ID) error {
 	return nil
 }
 
-func (s *consulStore) Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error) {
+func (s *consulStore) Get(id store.DaemonSetID) (store.DaemonSet, *api.QueryMeta, error) {
 	var metadata *api.QueryMeta
 	dsPath, err := s.dsPath(id)
 	if err != nil {
-		return fields.DaemonSet{}, metadata, util.Errorf("Error getting daemon set path: %v", err)
+		return store.DaemonSet{}, metadata, util.Errorf("Error getting daemon set path: %v", err)
 	}
 
 	kvp, metadata, err := s.kv.Get(dsPath, nil)
 	if err != nil {
-		return fields.DaemonSet{}, metadata, consulutil.NewKVError("get", dsPath, err)
+		return store.DaemonSet{}, metadata, consulutil.NewKVError("get", dsPath, err)
 	}
 	if metadata == nil {
 		// no metadata returned
-		return fields.DaemonSet{}, metadata, errors.New("No metadata found")
+		return store.DaemonSet{}, metadata, errors.New("No metadata found")
 	}
 	if kvp == nil {
 		// ID didn't exist
-		return fields.DaemonSet{}, metadata, NoDaemonSet
+		return store.DaemonSet{}, metadata, NoDaemonSet
 	}
 
 	ds, err := kvpToDS(kvp)
 	if err != nil {
-		return fields.DaemonSet{}, metadata, util.Errorf("Error translating kvp to daemon set: %v", err)
+		return store.DaemonSet{}, metadata, util.Errorf("Error translating kvp to daemon set: %v", err)
 	}
 	return ds, metadata, nil
 }
 
-func (s *consulStore) List() ([]fields.DaemonSet, error) {
+func (s *consulStore) List() ([]store.DaemonSet, error) {
 	listed, _, err := s.kv.List(dsTree+"/", nil)
 	if err != nil {
 		return nil, consulutil.NewKVError("list", dsTree+"/", err)
@@ -170,35 +169,35 @@ func (s *consulStore) List() ([]fields.DaemonSet, error) {
 }
 
 func (s *consulStore) MutateDS(
-	id fields.ID,
-	mutator func(fields.DaemonSet) (fields.DaemonSet, error),
-) (fields.DaemonSet, error) {
+	id store.DaemonSetID,
+	mutator func(store.DaemonSet) (store.DaemonSet, error),
+) (store.DaemonSet, error) {
 	ds, metadata, err := s.Get(id)
 	if err != nil {
-		return fields.DaemonSet{}, util.Errorf("Error getting daemon set: %v", err)
+		return store.DaemonSet{}, util.Errorf("Error getting daemon set: %v", err)
 	}
 
 	ds, err = mutator(ds)
 	if err != nil {
-		return fields.DaemonSet{}, util.Errorf("Error mutating daemon set: %v", err)
+		return store.DaemonSet{}, util.Errorf("Error mutating daemon set: %v", err)
 	}
 	if ds.ID != id {
 		// If the user wants a new uuid, they should delete it and create it
-		return fields.DaemonSet{},
+		return store.DaemonSet{},
 			util.Errorf("Explicitly changing daemon set ID is not permitted: Wanted '%s' got '%s'", id, ds.ID)
 	}
 	if err := checkManifestPodID(ds.PodID, ds.Manifest); err != nil {
-		return fields.DaemonSet{}, util.Errorf("Error verifying manifest pod id: %v", err)
+		return store.DaemonSet{}, util.Errorf("Error verifying manifest pod id: %v", err)
 	}
 
 	rawDS, err := json.Marshal(ds)
 	if err != nil {
-		return fields.DaemonSet{}, util.Errorf("Could not marshal DS as json: %s", err)
+		return store.DaemonSet{}, util.Errorf("Could not marshal DS as json: %s", err)
 	}
 
 	dsPath, err := s.dsPath(id)
 	if err != nil {
-		return fields.DaemonSet{}, util.Errorf("Error getting daemon set path: %v", err)
+		return store.DaemonSet{}, util.Errorf("Error getting daemon set path: %v", err)
 	}
 
 	success, _, err := s.kv.CAS(&api.KVPair{
@@ -207,18 +206,18 @@ func (s *consulStore) MutateDS(
 		ModifyIndex: metadata.LastIndex,
 	}, nil)
 	if err != nil {
-		return fields.DaemonSet{}, consulutil.NewKVError("cas", dsPath, err)
+		return store.DaemonSet{}, consulutil.NewKVError("cas", dsPath, err)
 	}
 	if !success {
-		return fields.DaemonSet{}, CASError(dsPath)
+		return store.DaemonSet{}, CASError(dsPath)
 	}
 	return ds, nil
 }
 
-func (s *consulStore) Disable(id fields.ID) (fields.DaemonSet, error) {
+func (s *consulStore) Disable(id store.DaemonSetID) (store.DaemonSet, error) {
 	s.logger.Infof("Attempting to disable '%s' in store now", id)
 
-	mutator := func(dsToUpdate fields.DaemonSet) (fields.DaemonSet, error) {
+	mutator := func(dsToUpdate store.DaemonSet) (store.DaemonSet, error) {
 		dsToUpdate.Disabled = true
 		return dsToUpdate, nil
 	}
@@ -226,7 +225,7 @@ func (s *consulStore) Disable(id fields.ID) (fields.DaemonSet, error) {
 
 	if err != nil {
 		s.logger.Errorf("Error occured when trying to disable daemon set in store")
-		return fields.DaemonSet{}, err
+		return store.DaemonSet{}, err
 	}
 
 	s.logger.Infof("Daemon set '%s' was successfully disabled in store", id)
@@ -390,14 +389,14 @@ func checkManifestPodID(dsPodID store.PodID, manifest store.Manifest) error {
 	return nil
 }
 
-func (s *consulStore) dsPath(dsID fields.ID) (string, error) {
+func (s *consulStore) dsPath(dsID store.DaemonSetID) (string, error) {
 	if dsID == "" {
 		return "", util.Errorf("Path requested for empty DS id")
 	}
 	return path.Join(dsTree, dsID.String()), nil
 }
 
-func (s *consulStore) dsLockPath(dsID fields.ID) (string, error) {
+func (s *consulStore) dsLockPath(dsID store.DaemonSetID) (string, error) {
 	dsPath, err := s.dsPath(dsID)
 	if err != nil {
 		return "", err
@@ -407,7 +406,7 @@ func (s *consulStore) dsLockPath(dsID fields.ID) (string, error) {
 
 // Acquires a lock on the DS that should be used by DS farm goroutines, whose
 // job it is to carry out the intent of the DS
-func (s *consulStore) LockForOwnership(dsID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
+func (s *consulStore) LockForOwnership(dsID store.DaemonSetID, session kp.Session) (consulutil.Unlocker, error) {
 	lockPath, err := s.dsLockPath(dsID)
 	if err != nil {
 		return nil, err
@@ -415,8 +414,8 @@ func (s *consulStore) LockForOwnership(dsID fields.ID, session kp.Session) (cons
 	return session.Lock(lockPath)
 }
 
-func kvpToDS(kvp *api.KVPair) (fields.DaemonSet, error) {
-	ds := fields.DaemonSet{}
+func kvpToDS(kvp *api.KVPair) (store.DaemonSet, error) {
+	ds := store.DaemonSet{}
 	// Unmarshals kvp.Value into ds using overloaded UnmarshalJSON
 	err := json.Unmarshal(kvp.Value, &ds)
 	if err != nil {
@@ -429,8 +428,8 @@ func kvpToDS(kvp *api.KVPair) (fields.DaemonSet, error) {
 	return ds, nil
 }
 
-func kvpsToDSs(l api.KVPairs) ([]fields.DaemonSet, error) {
-	ret := make([]fields.DaemonSet, 0, len(l))
+func kvpsToDSs(l api.KVPairs) ([]store.DaemonSet, error) {
+	ret := make([]store.DaemonSet, 0, len(l))
 	for _, kvp := range l {
 		ds, err := kvpToDS(kvp)
 		if err != nil {

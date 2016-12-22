@@ -28,7 +28,7 @@ func TestJSONMarshal(t *testing.T) {
 	Assert(t).AreEqual(rc1.Manifest.ID(), rc2.Manifest.ID(), "Manifest ID changed when serialized")
 }
 
-func TestZeroUnmarshal(t *testing.T) {
+func TestZeroUnmarshalRC(t *testing.T) {
 	var rc ReplicationController
 	err := json.Unmarshal([]byte(`{}`), &rc)
 	Assert(t).IsNil(err, "error unmarshaling")

@@ -6,7 +6,6 @@ import (
 	"os/user"
 	"time"
 
-	"github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
@@ -31,14 +30,14 @@ var (
 )
 
 type DaemonSet interface {
-	ID() fields.ID
+	ID() store.DaemonSetID
 
 	IsDisabled() bool
 
 	// Returns the daemon set's pod id
 	PodID() store.PodID
 
-	ClusterName() fields.ClusterName
+	DaemonSetName() store.DaemonSetName
 
 	GetNodeSelector() klabels.Selector
 
@@ -56,8 +55,8 @@ type DaemonSet interface {
 	// The caller is responsible for sending signals when something has been changed
 	WatchDesires(
 		quitCh <-chan struct{},
-		updatedCh <-chan *fields.DaemonSet,
-		deletedCh <-chan *fields.DaemonSet,
+		updatedCh <-chan *store.DaemonSet,
+		deletedCh <-chan *store.DaemonSet,
 	) <-chan error
 
 	// CurrentPods() returns all nodes that are scheduled by this daemon set
@@ -92,7 +91,7 @@ type consulStore interface {
 }
 
 type daemonSet struct {
-	fields.DaemonSet
+	store.DaemonSet
 
 	contention    dsContention
 	logger        logging.Logger
@@ -115,12 +114,12 @@ type daemonSet struct {
 }
 
 type dsContention struct {
-	contendedWith fields.ID
+	contendedWith store.DaemonSetID
 	isContended   bool
 }
 
 func New(
-	fields fields.DaemonSet,
+	ds store.DaemonSet,
 	dsStore dsstore.Store,
 	store consulStore,
 	applicator Labeler,
@@ -131,7 +130,7 @@ func New(
 	cachedPodMatch bool,
 ) DaemonSet {
 	return &daemonSet{
-		DaemonSet: fields,
+		DaemonSet: ds,
 
 		dsStore:            dsStore,
 		store:              store,
@@ -146,7 +145,7 @@ func New(
 	}
 }
 
-func (ds *daemonSet) ID() fields.ID {
+func (ds *daemonSet) ID() store.DaemonSetID {
 	return ds.DaemonSet.ID
 }
 
@@ -158,7 +157,7 @@ func (ds *daemonSet) PodID() store.PodID {
 	return ds.DaemonSet.PodID
 }
 
-func (ds *daemonSet) ClusterName() fields.ClusterName {
+func (ds *daemonSet) DaemonSetName() store.DaemonSetName {
 	return ds.DaemonSet.Name
 }
 
@@ -172,8 +171,8 @@ func (ds *daemonSet) EligibleNodes() ([]store.NodeName, error) {
 
 func (ds *daemonSet) WatchDesires(
 	quitCh <-chan struct{},
-	updatedCh <-chan *fields.DaemonSet,
-	deletedCh <-chan *fields.DaemonSet,
+	updatedCh <-chan *store.DaemonSet,
+	deletedCh <-chan *store.DaemonSet,
 ) <-chan error {
 	errCh := make(chan error)
 	nodesChangedCh := ds.watcher.WatchMatchDiff(ds.NodeSelector, labels.NODE, quitCh)

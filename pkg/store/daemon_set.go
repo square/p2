@@ -1,59 +1,58 @@
-package fields
+package store
 
 import (
 	"encoding/json"
 	"time"
 
 	"k8s.io/kubernetes/pkg/labels"
-
-	"github.com/square/p2/pkg/store"
 )
 
-// ID is a named type alias for DaemonSet IDs
-type ID string
+// DaemonSetID is a named type alias for DaemonSet IDs
+type DaemonSetID string
 
-func (id ID) String() string {
+func (id DaemonSetID) String() string {
 	return string(id)
 }
 
-// Cluster name is where the DaemonSet lives on
-type ClusterName string
+// DaemonSetName provides a way to differentiate daemon sets that have the same
+// PodID
+type DaemonSetName string
 
 // DaemonSet holds the runtime state of a Daemon Set as saved in Consul.
 type DaemonSet struct {
 	// UUID for this DaemonSet
-	ID ID
+	ID DaemonSetID
 
 	// When disabled, this DaemonSet will not make any scheduling changes
 	Disabled bool
 
 	// The pod manifest that should be scheduled on nodes
-	Manifest store.Manifest
+	Manifest Manifest
 
 	// Minimum health for nodes when scheduling
 	MinHealth int
 
 	// DaemonSet's environment name
-	Name ClusterName
+	Name DaemonSetName
 
 	// Defines the set of nodes on which the manifest can be scheduled
 	NodeSelector labels.Selector
 
 	// PodID to deploy
-	PodID store.PodID
+	PodID PodID
 
 	Timeout time.Duration
 }
 
 // RawDaemonSet defines the JSON format used to store data into Consul
 type RawDaemonSet struct {
-	ID           ID            `json:"id"`
+	ID           DaemonSetID   `json:"id"`
 	Disabled     bool          `json:"disabled"`
 	Manifest     string        `json:"manifest"`
 	MinHealth    int           `json:"min_health"`
-	Name         ClusterName   `json:"cluster_name"`
+	Name         DaemonSetName `json:"cluster_name"`
 	NodeSelector string        `json:"node_selector"`
-	PodID        store.PodID   `json:"pod_id"`
+	PodID        PodID         `json:"pod_id"`
 	Timeout      time.Duration `json:"timeout"`
 }
 
@@ -108,10 +107,10 @@ func (ds *DaemonSet) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	var podManifest store.Manifest
+	var podManifest Manifest
 	if rawDS.Manifest != "" {
 		var err error
-		podManifest, err = store.FromBytes([]byte(rawDS.Manifest))
+		podManifest, err = FromBytes([]byte(rawDS.Manifest))
 		if err != nil {
 			return err
 		}

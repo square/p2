@@ -28,12 +28,12 @@ func TestMutate(t *testing.T) {
 	// After creating the pod cluster, we now update it using a mutator function
 	newPodID := store.PodID("pod_id-diff")
 	newAz := store.AvailabilityZone("us-west-diff")
-	newClusterName := store.ClusterName("cluster_name_diff")
+	newPodClusterName := store.PodClusterName("cluster_name_diff")
 
 	newSelector := klabels.Everything().
 		Add(store.PodIDLabel, klabels.EqualsOperator, []string{newPodID.String()}).
 		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{newAz.String()}).
-		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{newClusterName.String()})
+		Add(store.PodClusterNameLabel, klabels.EqualsOperator, []string{newPodClusterName.String()})
 
 	newAnnotations := store.Annotations(map[string]interface{}{
 		"bar": "foo",
@@ -43,7 +43,7 @@ func TestMutate(t *testing.T) {
 		ID:               oldPc.ID,
 		PodID:            newPodID,
 		AvailabilityZone: newAz,
-		Name:             newClusterName,
+		Name:             newPodClusterName,
 		PodSelector:      newSelector,
 		Annotations:      newAnnotations,
 	}
@@ -87,14 +87,14 @@ func TestMutate(t *testing.T) {
 		t.Errorf("availability zone wasn't properly updated. Wanted '%s' got '%s'", newAz, newPC.AvailabilityZone)
 	}
 
-	if newPC.Name != newClusterName {
-		t.Errorf("cluster name wasn't properly updated. Wanted '%s' got '%s'", newClusterName, newPC.Name)
+	if newPC.Name != newPodClusterName {
+		t.Errorf("cluster name wasn't properly updated. Wanted '%s' got '%s'", newPodClusterName, newPC.Name)
 	}
 
 	newTestLabels := klabels.Set{
 		store.PodIDLabel:            newPodID.String(),
 		store.AvailabilityZoneLabel: newAz.String(),
-		store.ClusterNameLabel:      newClusterName.String(),
+		store.PodClusterNameLabel:   newPodClusterName.String(),
 	}
 
 	if matches := newPC.PodSelector.Matches(newTestLabels); !matches {
@@ -111,12 +111,12 @@ func TestMutate(t *testing.T) {
 func createPodCluster(consulStore *consulStore, t *testing.T) store.PodCluster {
 	podID := store.PodID("pod_id")
 	az := store.AvailabilityZone("us-west")
-	clusterName := store.ClusterName("cluster_name")
+	clusterName := store.PodClusterName("cluster_name")
 
 	selector := klabels.Everything().
 		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
 		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
-		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+		Add(store.PodClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
 	annotations := store.Annotations(map[string]interface{}{
 		"foo": "bar",
@@ -151,7 +151,7 @@ func createPodCluster(consulStore *consulStore, t *testing.T) store.PodCluster {
 	testLabels := klabels.Set{
 		store.PodIDLabel:            podID.String(),
 		store.AvailabilityZoneLabel: az.String(),
-		store.ClusterNameLabel:      clusterName.String(),
+		store.PodClusterNameLabel:   clusterName.String(),
 	}
 
 	if matches := pc.PodSelector.Matches(testLabels); !matches {
@@ -168,12 +168,12 @@ func TestLabelsOnCreate(t *testing.T) {
 	consulStore := consulStoreWithFakeKV()
 	podID := store.PodID("pod_id")
 	az := store.AvailabilityZone("us-west")
-	clusterName := store.ClusterName("cluster_name")
+	clusterName := store.PodClusterName("cluster_name")
 
 	selector := klabels.Everything().
 		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
 		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
-		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+		Add(store.PodClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
 	annotations := store.Annotations(map[string]interface{}{
 		"foo": "bar",
@@ -202,12 +202,12 @@ func TestGet(t *testing.T) {
 	consulStore := consulStoreWithFakeKV()
 	podID := store.PodID("pod_id")
 	az := store.AvailabilityZone("us-west")
-	clusterName := store.ClusterName("cluster_name")
+	clusterName := store.PodClusterName("cluster_name")
 
 	selector := klabels.Everything().
 		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
 		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
-		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+		Add(store.PodClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
 	annotations := store.Annotations(map[string]interface{}{
 		"foo": "bar",
@@ -247,7 +247,7 @@ func TestGet(t *testing.T) {
 	testLabels := klabels.Set{
 		store.PodIDLabel:            podID.String(),
 		store.AvailabilityZoneLabel: az.String(),
-		store.ClusterNameLabel:      clusterName.String(),
+		store.PodClusterNameLabel:   clusterName.String(),
 	}
 
 	if matches := pc.PodSelector.Matches(testLabels); !matches {
@@ -276,12 +276,12 @@ func TestDelete(t *testing.T) {
 	consulStore := consulStoreWithFakeKV()
 	podID := store.PodID("pod_id")
 	az := store.AvailabilityZone("us-west")
-	clusterName := store.ClusterName("cluster_name")
+	clusterName := store.PodClusterName("cluster_name")
 
 	selector := klabels.Everything().
 		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
 		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
-		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+		Add(store.PodClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
 	annotations := store.Annotations(map[string]interface{}{
 		"foo": "bar",
@@ -326,7 +326,7 @@ func TestList(t *testing.T) {
 	consulStore := consulStoreWithFakeKV()
 	podID := store.PodID("pod_id")
 	az := store.AvailabilityZone("us-west")
-	clusterName := store.ClusterName("cluster_name")
+	clusterName := store.PodClusterName("cluster_name")
 
 	selector := klabels.Everything()
 
@@ -374,12 +374,12 @@ func TestWatch(t *testing.T) {
 	consulStore := consulStoreWithFakeKV()
 	podID := store.PodID("pod_id")
 	az := store.AvailabilityZone("us-west")
-	clusterName := store.ClusterName("cluster_name")
+	clusterName := store.PodClusterName("cluster_name")
 
 	selector := klabels.Everything().
 		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
 		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
-		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+		Add(store.PodClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
 	annotations := store.Annotations(map[string]interface{}{
 		"foo": "bar",
@@ -432,12 +432,12 @@ func TestWatchPodCluster(t *testing.T) {
 	pod := store.PodClusterID("pod_id")
 	podID := store.PodID("pod_id")
 	az := store.AvailabilityZone("us-west")
-	clusterName := store.ClusterName("cluster_name")
+	clusterName := store.PodClusterName("cluster_name")
 
 	selector := klabels.Everything().
 		Add(store.PodIDLabel, klabels.EqualsOperator, []string{pod.String()}).
 		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
-		Add(store.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+		Add(store.PodClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
 	annotations := store.Annotations(map[string]interface{}{
 		"foo": "bar",
@@ -1031,7 +1031,7 @@ func examplePodCluster() store.PodCluster {
 	return store.PodCluster{
 		PodID:            store.PodID(podId),
 		AvailabilityZone: store.AvailabilityZone(availabilityZone),
-		Name:             store.ClusterName(clusterName),
+		Name:             store.PodClusterName(clusterName),
 		PodSelector:      klabels.Everything(),
 		Annotations:      store.Annotations{},
 	}

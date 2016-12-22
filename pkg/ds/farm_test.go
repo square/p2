@@ -20,7 +20,6 @@ import (
 	"github.com/square/p2/pkg/store"
 
 	. "github.com/anthonybishopric/gotcha"
-	ds_fields "github.com/square/p2/pkg/ds/fields"
 	fake_checker "github.com/square/p2/pkg/health/checker/test"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
@@ -53,11 +52,11 @@ func TestContendNodes(t *testing.T) {
 
 	dsf := &Farm{
 		dsStore:       dsStore,
-		store:         kpStore,
+		consulStore:   kpStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
 		watcher:       applicator,
-		children:      make(map[ds_fields.ID]*childDS),
+		children:      make(map[store.DaemonSetID]*childDS),
 		session:       kptest.NewSession(),
 		logger:        logger,
 		alerter:       alerting.NewNop(),
@@ -76,7 +75,7 @@ func TestContendNodes(t *testing.T) {
 	// Make a daemon set
 	podID := store.PodID("testPod")
 	minHealth := 0
-	clusterName := ds_fields.ClusterName("some_name")
+	clusterName := store.DaemonSetName("some_name")
 
 	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
@@ -123,7 +122,7 @@ func TestContendNodes(t *testing.T) {
 	err = waitForCreate(dsf, badDS.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
-	mutator := func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator := func(dsToUpdate store.DaemonSet) (store.DaemonSet, error) {
 		dsToUpdate.NodeSelector = nodeSelector
 		return dsToUpdate, nil
 	}
@@ -164,11 +163,11 @@ func TestContendSelectors(t *testing.T) {
 
 	dsf := &Farm{
 		dsStore:       dsStore,
-		store:         kpStore,
+		consulStore:   kpStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
 		watcher:       applicator,
-		children:      make(map[ds_fields.ID]*childDS),
+		children:      make(map[store.DaemonSetID]*childDS),
 		session:       kptest.NewSession(),
 		logger:        logger,
 		alerter:       alerting.NewNop(),
@@ -188,7 +187,7 @@ func TestContendSelectors(t *testing.T) {
 	// Make a daemon set
 	podID := store.PodID("testPod")
 	minHealth := 0
-	clusterName := ds_fields.ClusterName("some_name")
+	clusterName := store.DaemonSetName("some_name")
 
 	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
@@ -227,12 +226,12 @@ func TestContendSelectors(t *testing.T) {
 	// Disable first daemon set, then enable second and third daemon sets in that order
 	// and then there should be a contend on the third daemon set
 	//
-	disableMutator := func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	disableMutator := func(dsToUpdate store.DaemonSet) (store.DaemonSet, error) {
 		dsToUpdate.Disabled = true
 		return dsToUpdate, nil
 	}
 
-	enableMutator := func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	enableMutator := func(dsToUpdate store.DaemonSet) (store.DaemonSet, error) {
 		dsToUpdate.Disabled = false
 		return dsToUpdate, nil
 	}
@@ -315,11 +314,11 @@ func TestFarmSchedule(t *testing.T) {
 
 	dsf := &Farm{
 		dsStore:       dsStore,
-		store:         kpStore,
+		consulStore:   kpStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
 		watcher:       applicator,
-		children:      make(map[ds_fields.ID]*childDS),
+		children:      make(map[store.DaemonSetID]*childDS),
 		session:       kptest.NewSession(),
 		logger:        logger,
 		alerter:       alerting.NewNop(),
@@ -336,7 +335,7 @@ func TestFarmSchedule(t *testing.T) {
 	// First daemon set
 	podID := store.PodID("testPod")
 	minHealth := 0
-	clusterName := ds_fields.ClusterName("some_name")
+	clusterName := store.DaemonSetName("some_name")
 
 	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
@@ -394,7 +393,7 @@ func TestFarmSchedule(t *testing.T) {
 	//
 	// Update a daemon set's node selector and expect a node to be unscheduled
 	//
-	mutator := func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator := func(dsToUpdate store.DaemonSet) (store.DaemonSet, error) {
 		someSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
@@ -411,7 +410,7 @@ func TestFarmSchedule(t *testing.T) {
 	//
 	// Now update the node selector to schedule node2 again and verify
 	//
-	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator = func(dsToUpdate store.DaemonSet) (store.DaemonSet, error) {
 		dsToUpdate.NodeSelector = anotherNodeSelector
 		return dsToUpdate, nil
 	}
@@ -429,7 +428,7 @@ func TestFarmSchedule(t *testing.T) {
 	//
 	// Disabling a daemon set should not unschedule any nodes
 	//
-	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator = func(dsToUpdate store.DaemonSet) (store.DaemonSet, error) {
 		dsToUpdate.Disabled = true
 
 		someSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
@@ -455,7 +454,7 @@ func TestFarmSchedule(t *testing.T) {
 	//
 	// Enable a daemon set should make the dameon set resume its regular activities
 	//
-	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator = func(dsToUpdate store.DaemonSet) (store.DaemonSet, error) {
 		dsToUpdate.Disabled = false
 		return dsToUpdate, nil
 	}
@@ -525,11 +524,11 @@ func TestCleanupPods(t *testing.T) {
 	})
 	dsf := &Farm{
 		dsStore:       dsStore,
-		store:         kpStore,
+		consulStore:   kpStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
 		watcher:       applicator,
-		children:      make(map[ds_fields.ID]*childDS),
+		children:      make(map[store.DaemonSetID]*childDS),
 		session:       kptest.NewSession(),
 		logger:        logger,
 		alerter:       alerting.NewNop(),
@@ -590,11 +589,11 @@ func TestMultipleFarms(t *testing.T) {
 	//
 	firstFarm := &Farm{
 		dsStore:       dsStore,
-		store:         kpStore,
+		consulStore:   kpStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
 		watcher:       applicator,
-		children:      make(map[ds_fields.ID]*childDS),
+		children:      make(map[store.DaemonSetID]*childDS),
 		session:       session,
 		logger:        firstLogger,
 		alerter:       alerting.NewNop(),
@@ -615,11 +614,11 @@ func TestMultipleFarms(t *testing.T) {
 	})
 	secondFarm := &Farm{
 		dsStore:       dsStore,
-		store:         kpStore,
+		consulStore:   kpStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
 		watcher:       applicator,
-		children:      make(map[ds_fields.ID]*childDS),
+		children:      make(map[store.DaemonSetID]*childDS),
 		session:       session,
 		logger:        secondLogger,
 		alerter:       alerting.NewNop(),
@@ -636,7 +635,7 @@ func TestMultipleFarms(t *testing.T) {
 	// First daemon set
 	podID := store.PodID("testPod")
 	minHealth := 0
-	clusterName := ds_fields.ClusterName("some_name")
+	clusterName := store.DaemonSetName("some_name")
 
 	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
@@ -690,7 +689,7 @@ func TestMultipleFarms(t *testing.T) {
 	//
 	// Update a daemon set's node selector and expect a node to be unscheduled
 	//
-	mutator := func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator := func(dsToUpdate store.DaemonSet) (store.DaemonSet, error) {
 		someSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
@@ -707,7 +706,7 @@ func TestMultipleFarms(t *testing.T) {
 	//
 	// Now update the node selector to schedule node2 again and verify
 	//
-	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator = func(dsToUpdate store.DaemonSet) (store.DaemonSet, error) {
 		someSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
@@ -726,7 +725,7 @@ func TestMultipleFarms(t *testing.T) {
 	//
 	// Disabling a daemon set should not unschedule any nodes
 	//
-	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator = func(dsToUpdate store.DaemonSet) (store.DaemonSet, error) {
 		dsToUpdate.Disabled = true
 
 		someSelector := klabels.Everything().Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
@@ -779,7 +778,7 @@ func TestMultipleFarms(t *testing.T) {
 	//
 	// Enable a daemon set should make the dameon set resume its regular activities
 	//
-	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator = func(dsToUpdate store.DaemonSet) (store.DaemonSet, error) {
 		dsToUpdate.Disabled = false
 		return dsToUpdate, nil
 	}
@@ -846,10 +845,10 @@ func waitForPodLabel(applicator labels.Applicator, hasDSIDLabel bool, podPath st
 func waitForDisabled(
 	dsf *Farm,
 	dsStore *dsstoretest.FakeDSStore,
-	dsID ds_fields.ID,
+	dsID store.DaemonSetID,
 	isDisabled bool,
 ) error {
-	var newDS ds_fields.DaemonSet
+	var newDS store.DaemonSet
 	var err error
 
 	condition := func() error {
@@ -878,7 +877,7 @@ func waitForDisabled(
 }
 
 // Polls for the farm to get be populated by a daemon set with the same id
-func waitForCreate(dsf *Farm, dsID ds_fields.ID) error {
+func waitForCreate(dsf *Farm, dsID store.DaemonSetID) error {
 	condition := func() error {
 		if _, ok := dsf.children[dsID]; ok {
 			return nil
@@ -890,7 +889,7 @@ func waitForCreate(dsf *Farm, dsID ds_fields.ID) error {
 
 // Polls for the farm to be populated by a daemon set with the same
 // id, disabled value, and node selector as the daemon set in the argument
-func waitForMutateSelector(dsf *Farm, ds ds_fields.DaemonSet) error {
+func waitForMutateSelector(dsf *Farm, ds store.DaemonSet) error {
 	condition := func() error {
 		if anotherDS, ok := dsf.children[ds.ID]; ok {
 			if ds.ID != anotherDS.ds.ID() ||
@@ -912,7 +911,7 @@ func waitForMutateSelector(dsf *Farm, ds ds_fields.DaemonSet) error {
 
 // Polls for either farm to get be populated by a daemon set with the same
 // node selector as the daemon set in the argument
-func waitForMutateSelectorFarms(firstFarm *Farm, secondFarm *Farm, ds ds_fields.DaemonSet) error {
+func waitForMutateSelectorFarms(firstFarm *Farm, secondFarm *Farm, ds store.DaemonSet) error {
 	condition := func() error {
 		if anotherDS, ok := firstFarm.children[ds.ID]; ok {
 			if ds.ID != anotherDS.ds.ID() ||

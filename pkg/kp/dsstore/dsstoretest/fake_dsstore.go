@@ -11,7 +11,6 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"github.com/pborman/uuid"
-	"github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/dsstore"
 	"github.com/square/p2/pkg/store"
@@ -21,14 +20,14 @@ import (
 const dsTree string = "daemon_sets"
 
 type FakeWatchedDaemonSet struct {
-	DaemonSet *fields.DaemonSet
+	DaemonSet *store.DaemonSet
 	Operation string
 	Err       error
 }
 
 // Used for unit testing
 type FakeDSStore struct {
-	daemonSets map[fields.ID]fields.DaemonSet
+	daemonSets map[store.DaemonSetID]store.DaemonSet
 	writeLock  sync.Locker
 	logger     logging.Logger
 }
@@ -37,7 +36,7 @@ var _ dsstore.Store = &FakeDSStore{}
 
 func NewFake() *FakeDSStore {
 	return &FakeDSStore{
-		daemonSets: make(map[fields.ID]fields.DaemonSet),
+		daemonSets: make(map[store.DaemonSetID]store.DaemonSet),
 		writeLock:  &sync.Mutex{},
 		logger:     logging.DefaultLogger,
 	}
@@ -46,13 +45,13 @@ func NewFake() *FakeDSStore {
 func (s *FakeDSStore) Create(
 	manifest store.Manifest,
 	minHealth int,
-	name fields.ClusterName,
+	name store.DaemonSetName,
 	nodeSelector klabels.Selector,
 	podID store.PodID,
 	timeout time.Duration,
-) (fields.DaemonSet, error) {
-	id := fields.ID(uuid.New())
-	ds := fields.DaemonSet{
+) (store.DaemonSet, error) {
+	id := store.DaemonSetID(uuid.New())
+	ds := store.DaemonSet{
 		ID:           id,
 		Disabled:     false,
 		Manifest:     manifest,
@@ -74,7 +73,7 @@ func (s *FakeDSStore) Create(
 	return ds, nil
 }
 
-func (s *FakeDSStore) Delete(id fields.ID) error {
+func (s *FakeDSStore) Delete(id store.DaemonSetID) error {
 	s.writeLock.Lock()
 	defer s.writeLock.Unlock()
 
@@ -85,7 +84,7 @@ func (s *FakeDSStore) Delete(id fields.ID) error {
 	return dsstore.NoDaemonSet
 }
 
-func (s *FakeDSStore) Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error) {
+func (s *FakeDSStore) Get(id store.DaemonSetID) (store.DaemonSet, *api.QueryMeta, error) {
 	//TODO: Check if there is a use for this in the fake dsstore
 	queryMeta := &api.QueryMeta{
 		KnownLeader: false,
@@ -96,11 +95,11 @@ func (s *FakeDSStore) Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error
 	if ds, ok := s.daemonSets[id]; ok {
 		return ds, queryMeta, nil
 	}
-	return fields.DaemonSet{}, queryMeta, dsstore.NoDaemonSet
+	return store.DaemonSet{}, queryMeta, dsstore.NoDaemonSet
 }
 
-func (s *FakeDSStore) List() ([]fields.DaemonSet, error) {
-	var ret []fields.DaemonSet
+func (s *FakeDSStore) List() ([]store.DaemonSet, error) {
+	var ret []store.DaemonSet
 	for _, ds := range s.daemonSets {
 		ret = append(ret, ds)
 	}
@@ -108,20 +107,20 @@ func (s *FakeDSStore) List() ([]fields.DaemonSet, error) {
 }
 
 func (s *FakeDSStore) MutateDS(
-	id fields.ID,
-	mutator func(fields.DaemonSet) (fields.DaemonSet, error),
-) (fields.DaemonSet, error) {
+	id store.DaemonSetID,
+	mutator func(store.DaemonSet) (store.DaemonSet, error),
+) (store.DaemonSet, error) {
 	s.writeLock.Lock()
 	defer s.writeLock.Unlock()
 
 	ds, _, err := s.Get(id)
 	if err != nil {
-		return fields.DaemonSet{}, err
+		return store.DaemonSet{}, err
 	}
 
 	ds, err = mutator(ds)
 	if err != nil {
-		return fields.DaemonSet{}, err
+		return store.DaemonSet{}, err
 	}
 
 	s.daemonSets[id] = ds
@@ -129,10 +128,10 @@ func (s *FakeDSStore) MutateDS(
 	return ds, nil
 }
 
-func (s *FakeDSStore) Disable(id fields.ID) (fields.DaemonSet, error) {
+func (s *FakeDSStore) Disable(id store.DaemonSetID) (store.DaemonSet, error) {
 	s.logger.Infof("Attempting to disable '%s' in store now", id)
 
-	mutator := func(dsToUpdate fields.DaemonSet) (fields.DaemonSet, error) {
+	mutator := func(dsToUpdate store.DaemonSet) (store.DaemonSet, error) {
 		dsToUpdate.Disabled = true
 		return dsToUpdate, nil
 	}
@@ -147,8 +146,8 @@ func (s *FakeDSStore) Disable(id fields.ID) (fields.DaemonSet, error) {
 	return newDS, nil
 }
 
-func (s *FakeDSStore) WatchList(quitCh <-chan struct{}) <-chan []fields.DaemonSet {
-	outCh := make(chan []fields.DaemonSet)
+func (s *FakeDSStore) WatchList(quitCh <-chan struct{}) <-chan []store.DaemonSet {
+	outCh := make(chan []store.DaemonSet)
 
 	go func() {
 		for {
@@ -213,15 +212,15 @@ func (s *FakeDSStore) WatchAll(quitCh <-chan struct{}, _ time.Duration) <-chan d
 	return outCh
 }
 
-func (s *FakeDSStore) watchDiffDaemonSets(inCh <-chan []fields.DaemonSet, quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets {
+func (s *FakeDSStore) watchDiffDaemonSets(inCh <-chan []store.DaemonSet, quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets {
 	outCh := make(chan dsstore.WatchedDaemonSets)
 
 	go func() {
 		defer close(outCh)
-		oldDSs := make(map[fields.ID]fields.DaemonSet)
+		oldDSs := make(map[store.DaemonSetID]store.DaemonSet)
 
 		for {
-			var results []fields.DaemonSet
+			var results []store.DaemonSet
 			select {
 			case <-quitCh:
 				return
@@ -233,7 +232,7 @@ func (s *FakeDSStore) watchDiffDaemonSets(inCh <-chan []fields.DaemonSet, quitCh
 				results = val
 			}
 
-			newDSs := make(map[fields.ID]fields.DaemonSet)
+			newDSs := make(map[store.DaemonSetID]store.DaemonSet)
 			for _, ds := range results {
 				newDSs[ds.ID] = ds
 			}
@@ -274,7 +273,7 @@ func (s *FakeDSStore) watchDiffDaemonSets(inCh <-chan []fields.DaemonSet, quitCh
 	return outCh
 }
 
-func dsEquals(firstDS fields.DaemonSet, secondDS fields.DaemonSet) bool {
+func dsEquals(firstDS store.DaemonSet, secondDS store.DaemonSet) bool {
 	if (firstDS.ID != secondDS.ID) ||
 		(firstDS.Disabled != secondDS.Disabled) ||
 		(firstDS.MinHealth != secondDS.MinHealth) ||
@@ -298,14 +297,14 @@ func dsEquals(firstDS fields.DaemonSet, secondDS fields.DaemonSet) bool {
 	return firstSHA == secondSHA
 }
 
-func (s *FakeDSStore) dsPath(dsID fields.ID) (string, error) {
+func (s *FakeDSStore) dsPath(dsID store.DaemonSetID) (string, error) {
 	if dsID == "" {
 		return "", util.Errorf("Path requested for empty DS id")
 	}
 	return path.Join(dsTree, dsID.String()), nil
 }
 
-func (s *FakeDSStore) dsLockPath(dsID fields.ID) (string, error) {
+func (s *FakeDSStore) dsLockPath(dsID store.DaemonSetID) (string, error) {
 	dsPath, err := s.dsPath(dsID)
 	if err != nil {
 		return "", err
@@ -313,7 +312,7 @@ func (s *FakeDSStore) dsLockPath(dsID fields.ID) (string, error) {
 	return path.Join(consulutil.LOCK_TREE, dsPath), nil
 }
 
-func (s *FakeDSStore) LockForOwnership(dsID fields.ID, session kp.Session) (consulutil.Unlocker, error) {
+func (s *FakeDSStore) LockForOwnership(dsID store.DaemonSetID, session kp.Session) (consulutil.Unlocker, error) {
 	lockPath, err := s.dsLockPath(dsID)
 	if err != nil {
 		return nil, err

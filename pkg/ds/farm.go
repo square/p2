@@ -9,8 +9,6 @@ import (
 	"github.com/rcrowley/go-metrics"
 
 	"github.com/square/p2/pkg/alerting"
-	"github.com/square/p2/pkg/ds/fields"
-	ds_fields "github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
@@ -28,17 +26,17 @@ import (
 // Farm instatiates and deletes daemon sets as needed
 type Farm struct {
 	// constructor arguments
-	store     consulStore
-	dsStore   dsstore.Store
-	scheduler scheduler.Scheduler
-	labeler   Labeler
-	watcher   LabelWatcher
+	consulStore consulStore
+	dsStore     dsstore.Store
+	scheduler   scheduler.Scheduler
+	labeler     Labeler
+	watcher     LabelWatcher
 	// session stream for the daemon sets locked by this farm
 	sessions <-chan string
 	// The time to wait between node updates for each replication
 	rateLimitInterval time.Duration
 
-	children map[fields.ID]*childDS
+	children map[store.DaemonSetID]*childDS
 	childMu  sync.Mutex
 	session  kp.Session
 
@@ -53,14 +51,14 @@ type Farm struct {
 type childDS struct {
 	ds        DaemonSet
 	quitCh    chan<- struct{}
-	updatedCh chan<- *ds_fields.DaemonSet
-	deletedCh chan<- *ds_fields.DaemonSet
+	updatedCh chan<- *store.DaemonSet
+	deletedCh chan<- *store.DaemonSet
 	errCh     <-chan error
 	unlocker  consulutil.Unlocker
 }
 
 func NewFarm(
-	store consulStore,
+	consulStore consulStore,
 	dsStore dsstore.Store,
 	labeler Labeler,
 	watcher LabelWatcher,
@@ -76,13 +74,13 @@ func NewFarm(
 	}
 
 	return &Farm{
-		store:             store,
+		consulStore:       consulStore,
 		dsStore:           dsStore,
 		scheduler:         scheduler.NewApplicatorScheduler(labeler),
 		labeler:           labeler,
 		watcher:           watcher,
 		sessions:          sessions,
-		children:          make(map[fields.ID]*childDS),
+		children:          make(map[store.DaemonSetID]*childDS),
 		logger:            logger,
 		alerter:           alerter,
 		healthChecker:     healthChecker,
@@ -94,7 +92,7 @@ func NewFarm(
 func (dsf *Farm) Start(quitCh <-chan struct{}) {
 	consulutil.WithSession(quitCh, dsf.sessions, func(sessionQuit <-chan struct{}, sessionID string) {
 		dsf.logger.WithField("session", sessionID).Infoln("Acquired new session for ds farm")
-		dsf.session = dsf.store.NewUnmanagedSession(sessionID, "")
+		dsf.session = dsf.consulStore.NewUnmanagedSession(sessionID, "")
 		go dsf.cleanupDaemonSetPods(sessionQuit)
 		dsf.mainLoop(sessionQuit)
 	})
@@ -125,7 +123,7 @@ func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
 		countHistogram := metrics.GetOrRegisterHistogram("ds_count", p2metrics.Registry, metrics.NewExpDecaySample(1028, 0.015))
 		countHistogram.Update(int64(len(allDaemonSets)))
 
-		dsIDMap := make(map[fields.ID]ds_fields.DaemonSet)
+		dsIDMap := make(map[store.DaemonSetID]store.DaemonSet)
 		for _, dsFields := range allDaemonSets {
 			dsIDMap[dsFields.ID] = dsFields
 		}
@@ -144,7 +142,7 @@ func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
 			dsID := podLabels.Labels.Get(DSIDLabel)
 
 			// Check if the daemon set exists, if it doesn't unschedule the pod
-			if _, ok := dsIDMap[fields.ID(dsID)]; ok {
+			if _, ok := dsIDMap[store.DaemonSetID(dsID)]; ok {
 				continue
 			}
 
@@ -158,7 +156,7 @@ func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
 			// We should find a nice way to couple them together
 			dsf.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with dangling daemon set uuid '%v'", podID, nodeName, dsID)
 
-			_, err = dsf.store.DeletePod(kp.INTENT_TREE, nodeName, podID)
+			_, err = dsf.consulStore.DeletePod(kp.INTENT_TREE, nodeName, podID)
 			if err != nil {
 				dsf.logger.NoFields().Errorf("Unable to delete pod id '%v' in node '%v', from intent tree: %v", podID, nodeName, err)
 				continue
@@ -229,7 +227,7 @@ func (dsf *Farm) closeAllChildren() {
 	}
 }
 
-func (dsf *Farm) closeChild(dsID fields.ID) {
+func (dsf *Farm) closeChild(dsID store.DaemonSetID) {
 	if child, ok := dsf.children[dsID]; ok {
 		dsf.logger.WithField("ds", dsID).Infoln("Releasing daemon set")
 		close(child.quitCh)
@@ -397,13 +395,13 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 	}
 }
 
-func (dsf *Farm) makeDSLogger(dsFields ds_fields.DaemonSet) logging.Logger {
+func (dsf *Farm) makeDSLogger(dsFields store.DaemonSet) logging.Logger {
 	return dsf.logger.SubLogger(logrus.Fields{
 		"ds":  dsFields.ID,
 		"pod": dsFields.Manifest.ID(),
 	})
 }
-func (dsf *Farm) handleSessionExpiry(dsFields ds_fields.DaemonSet, dsLogger logging.Logger, err error) {
+func (dsf *Farm) handleSessionExpiry(dsFields store.DaemonSet, dsLogger logging.Logger, err error) {
 	dsLogger.WithFields(logrus.Fields{
 		"ID":           dsFields.ID,
 		"Name":         dsFields.Name,
@@ -430,7 +428,7 @@ func (dsf *Farm) releaseLock(unlocker consulutil.Unlocker) {
 // if two label selectors are labels.Everything()
 //
 // Returns [ daemon set contended, contention exists, error ]
-func (dsf *Farm) dsContends(dsFields *ds_fields.DaemonSet) (ds_fields.ID, bool, error) {
+func (dsf *Farm) dsContends(dsFields *store.DaemonSet) (store.DaemonSetID, bool, error) {
 	// This daemon set does not contend if it is disabled
 	if dsFields.Disabled {
 		return "", false, nil
@@ -492,7 +490,7 @@ func (dsf *Farm) dsContends(dsFields *ds_fields.DaemonSet) (ds_fields.ID, bool, 
 	return "", false, nil
 }
 
-func (dsf *Farm) raiseContentionAlert(oldDS DaemonSet, newDS ds_fields.DaemonSet) {
+func (dsf *Farm) raiseContentionAlert(oldDS DaemonSet, newDS store.DaemonSet) {
 	var oldCurrentNodes []string
 
 	podLocations, err := oldDS.CurrentPods()
@@ -509,21 +507,21 @@ func (dsf *Farm) raiseContentionAlert(oldDS DaemonSet, newDS ds_fields.DaemonSet
 		Description: fmt.Sprintf("New ds '%v', contends with '%v'", oldDS.ID(), newDS.ID),
 		IncidentKey: "preemptive_ds_contention",
 		Details: struct {
-			OldID           ds_fields.ID          `json:"old_id"`
-			OldName         ds_fields.ClusterName `json:"old_cluster_name"`
-			OldNodeSelector string                `json:"old_node_selector"`
-			OldPodID        store.PodID           `json:"old_pod_id"`
-			OldDisabled     bool                  `json:"old_disabled"`
-			OldCurrentNodes []string              `json:"old_current_nodes"`
+			OldID           store.DaemonSetID   `json:"old_id"`
+			OldName         store.DaemonSetName `json:"old_cluster_name"`
+			OldNodeSelector string              `json:"old_node_selector"`
+			OldPodID        store.PodID         `json:"old_pod_id"`
+			OldDisabled     bool                `json:"old_disabled"`
+			OldCurrentNodes []string            `json:"old_current_nodes"`
 
-			NewID           ds_fields.ID          `json:"new_id"`
-			NewName         ds_fields.ClusterName `json:"new_cluster_name"`
-			NewNodeSelector string                `json:"new_node_selector"`
-			NewdPodID       store.PodID           `json:"new_pod_id"`
-			NewDisabled     bool                  `json:"new_disabled"`
+			NewID           store.DaemonSetID   `json:"new_id"`
+			NewName         store.DaemonSetName `json:"new_cluster_name"`
+			NewNodeSelector string              `json:"new_node_selector"`
+			NewdPodID       store.PodID         `json:"new_pod_id"`
+			NewDisabled     bool                `json:"new_disabled"`
 		}{
 			OldID:           oldDS.ID(),
-			OldName:         oldDS.ClusterName(),
+			OldName:         oldDS.DaemonSetName(),
 			OldNodeSelector: oldDS.GetNodeSelector().String(),
 			OldPodID:        oldDS.PodID(),
 			OldDisabled:     oldDS.IsDisabled(),
@@ -542,14 +540,14 @@ func (dsf *Farm) raiseContentionAlert(oldDS DaemonSet, newDS ds_fields.DaemonSet
 
 // Creates a functioning daemon set that will watch and write to the pod tree
 func (dsf *Farm) spawnDaemonSet(
-	dsFields *ds_fields.DaemonSet,
+	dsFields *store.DaemonSet,
 	dsUnlocker consulutil.Unlocker,
 	dsLogger logging.Logger,
 ) *childDS {
 	ds := New(
 		*dsFields,
 		dsf.dsStore,
-		dsf.store,
+		dsf.consulStore,
 		dsf.labeler,
 		dsf.watcher,
 		dsLogger,
@@ -559,8 +557,8 @@ func (dsf *Farm) spawnDaemonSet(
 	)
 
 	quitSpawnCh := make(chan struct{})
-	updatedCh := make(chan *ds_fields.DaemonSet)
-	deletedCh := make(chan *ds_fields.DaemonSet)
+	updatedCh := make(chan *store.DaemonSet)
+	deletedCh := make(chan *store.DaemonSet)
 
 	desiresCh := ds.WatchDesires(quitSpawnCh, updatedCh, deletedCh)
 
