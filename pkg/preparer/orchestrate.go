@@ -9,12 +9,12 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/hooks"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/statusstore"
-	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
@@ -44,16 +44,16 @@ type Hooks interface {
 }
 
 type Store interface {
-	ListPods(podPrefix kp.PodPrefix, nodeName types.NodeName) ([]kp.ManifestResult, time.Duration, error)
-	SetPod(podPrefix kp.PodPrefix, nodeName types.NodeName, podManifest manifest.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodeName types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
-	DeletePod(podPrefix kp.PodPrefix, nodeName types.NodeName, podId types.PodID) (time.Duration, error)
+	ListPods(podPrefix consul.PodPrefix, nodeName types.NodeName) ([]consul.ManifestResult, time.Duration, error)
+	SetPod(podPrefix consul.PodPrefix, nodeName types.NodeName, podManifest manifest.Manifest) (time.Duration, error)
+	Pod(podPrefix consul.PodPrefix, nodeName types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
+	DeletePod(podPrefix consul.PodPrefix, nodeName types.NodeName, podId types.PodID) (time.Duration, error)
 	WatchPods(
-		podPrefix kp.PodPrefix,
+		podPrefix consul.PodPrefix,
 		nodeName types.NodeName,
 		quitChan <-chan struct{},
 		errorChan chan<- error,
-		podChan chan<- []kp.ManifestResult,
+		podChan chan<- []consul.ManifestResult,
 	)
 }
 
@@ -82,9 +82,9 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	// This allows us to signal the goroutine watching consul to quit
 	quitChan := make(chan struct{})
 	errChan := make(chan error)
-	podChan := make(chan []kp.ManifestResult)
+	podChan := make(chan []consul.ManifestResult)
 
-	go p.store.WatchPods(kp.INTENT_TREE, p.node, quitChan, errChan, podChan)
+	go p.store.WatchPods(consul.INTENT_TREE, p.node, quitChan, errChan, podChan)
 
 	podChanMap := make(map[podWorkerID]chan ManifestPair)
 	quitChanMap := make(map[podWorkerID]chan struct{})
@@ -95,7 +95,7 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 			p.Logger.WithError(err).
 				Errorln("there was an error reading the manifest")
 		case intentResults := <-podChan:
-			realityResults, _, err := p.store.ListPods(kp.REALITY_TREE, p.node)
+			realityResults, _, err := p.store.ListPods(consul.REALITY_TREE, p.node)
 			if err != nil {
 				p.Logger.WithError(err).Errorln("Could not check reality")
 			} else {
@@ -225,7 +225,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 
 				pod.SetFinishExec(p.finishExec)
 
-				// podChan is being fed values gathered from a kp.Watch() in
+				// podChan is being fed values gathered from a consul.Watch() in
 				// WatchForPodManifestsForNode(). If the watch returns a new pair of
 				// intent/reality values before the previous change has finished
 				// processing in resolvePair(), the reality value will be stale. This
@@ -251,7 +251,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 				// the reality value again ensures its freshness too.
 				if nextLaunch.PodUniqueKey == "" {
 					// legacy pod, get reality manifest from reality tree
-					reality, _, err := p.store.Pod(kp.REALITY_TREE, p.node, nextLaunch.ID)
+					reality, _, err := p.store.Pod(consul.REALITY_TREE, p.node, nextLaunch.ID)
 					if err == pods.NoCurrentManifest {
 						nextLaunch.Reality = nil
 					} else if err != nil {
@@ -409,7 +409,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 	} else {
 		if pair.PodUniqueKey == "" {
 			// legacy pod, write the manifest back to reality tree
-			duration, err := p.store.SetPod(kp.REALITY_TREE, p.node, pair.Intent)
+			duration, err := p.store.SetPod(consul.REALITY_TREE, p.node, pair.Intent)
 			if err != nil {
 				logger.WithErrorAndFields(err, logrus.Fields{
 					"duration": duration}).
@@ -465,7 +465,7 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 	logger.NoFields().Infoln("Successfully uninstalled")
 
 	if pair.PodUniqueKey == "" {
-		dur, err := p.store.DeletePod(kp.REALITY_TREE, p.node, pair.ID)
+		dur, err := p.store.DeletePod(consul.REALITY_TREE, p.node, pair.ID)
 		if err != nil {
 			logger.WithErrorAndFields(err, logrus.Fields{"duration": dur}).
 				Errorln("Could not delete pod from reality store")

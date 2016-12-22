@@ -5,16 +5,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/replication"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/util"
 
-	"github.com/square/p2/pkg/kp/dsstore"
-	"github.com/square/p2/pkg/kp/dsstore/dsstoretest"
-	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store/consul/consultest"
+	"github.com/square/p2/pkg/store/consul/dsstore"
+	"github.com/square/p2/pkg/store/consul/dsstore/dsstoretest"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -148,10 +148,10 @@ func TestSchedule(t *testing.T) {
 	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "expected no error creating request")
 
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
-	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()
 	defer preparer.Disable()
 
@@ -170,7 +170,7 @@ func TestSchedule(t *testing.T) {
 	ds := New(
 		dsData,
 		dsStore,
-		kpStore,
+		consulStore,
 		applicator,
 		applicator,
 		logging.DefaultLogger,
@@ -182,7 +182,7 @@ func TestSchedule(t *testing.T) {
 	scheduled := scheduledPods(t, ds)
 	Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
 
-	err = waitForPodsInIntent(kpStore, 0)
+	err = waitForPodsInIntent(consulStore, 0)
 	Assert(t).IsNil(err, "Unexpected number of pods scheduled")
 
 	err = applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
@@ -214,7 +214,7 @@ func TestSchedule(t *testing.T) {
 	Assert(t).AreEqual(scheduled[0].ID, "node2/testPod", "expected node labeled with the daemon set's id")
 
 	// Verify that the scheduled pod is correct
-	err = waitForSpecificPod(kpStore, "node2", types.PodID("testPod"))
+	err = waitForSpecificPod(consulStore, "node2", types.PodID("testPod"))
 	Assert(t).IsNil(err, "Unexpected pod scheduled")
 
 	//
@@ -265,7 +265,7 @@ func TestSchedule(t *testing.T) {
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
 
 	// Verify that the scheduled pod is correct
-	err = waitForSpecificPod(kpStore, "nodeOk", types.PodID("testPod"))
+	err = waitForSpecificPod(consulStore, "nodeOk", types.PodID("testPod"))
 	Assert(t).IsNil(err, "Unexpected pod scheduled")
 
 	//
@@ -312,7 +312,7 @@ func TestSchedule(t *testing.T) {
 	scheduled = scheduledPods(t, ds)
 	Assert(t).AreEqual(len(scheduled), 0, "expected all nodes to have been unlabeled")
 
-	err = waitForPodsInIntent(kpStore, 0)
+	err = waitForPodsInIntent(consulStore, 0)
 	Assert(t).IsNil(err, "Unexpected number of pods scheduled")
 }
 
@@ -338,10 +338,10 @@ func TestPublishToReplication(t *testing.T) {
 	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "expected no error creating request")
 
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
-	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()
 	defer preparer.Disable()
 
@@ -356,7 +356,7 @@ func TestPublishToReplication(t *testing.T) {
 	ds := New(
 		dsData,
 		dsStore,
-		kpStore,
+		consulStore,
 		applicator,
 		applicator,
 		logging.DefaultLogger,
@@ -367,7 +367,7 @@ func TestPublishToReplication(t *testing.T) {
 
 	scheduled := scheduledPods(t, ds)
 	Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
-	err = waitForPodsInIntent(kpStore, 0)
+	err = waitForPodsInIntent(consulStore, 0)
 	Assert(t).IsNil(err, "Unexpected number of pods scheduled")
 
 	err = applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
@@ -416,9 +416,9 @@ func TestPublishToReplication(t *testing.T) {
 }
 
 // Polls for the store to have the same number of pods as the argument
-func waitForPodsInIntent(kpStore *kptest.FakePodStore, numPodsExpected int) error {
+func waitForPodsInIntent(consulStore *consultest.FakePodStore, numPodsExpected int) error {
 	condition := func() error {
-		manifestResults, _, err := kpStore.AllPods(kp.INTENT_TREE)
+		manifestResults, _, err := consulStore.AllPods(consul.INTENT_TREE)
 		if err != nil {
 			return util.Errorf("Unable to get all pods from pod store: %v", err)
 		}
@@ -435,9 +435,9 @@ func waitForPodsInIntent(kpStore *kptest.FakePodStore, numPodsExpected int) erro
 }
 
 // Polls for the store to have a pod with the same pod id and node name
-func waitForSpecificPod(kpStore *kptest.FakePodStore, nodeName types.NodeName, podID types.PodID) error {
+func waitForSpecificPod(consulStore *consultest.FakePodStore, nodeName types.NodeName, podID types.PodID) error {
 	condition := func() error {
-		manifestResults, _, err := kpStore.AllPods(kp.INTENT_TREE)
+		manifestResults, _, err := consulStore.AllPods(consul.INTENT_TREE)
 		if err != nil {
 			return util.Errorf("Unable to get all pods from pod store: %v", err)
 		}

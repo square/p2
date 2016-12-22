@@ -5,19 +5,19 @@ import (
 	"path"
 	"time"
 
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/kp/podstore"
-	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/podstore"
+	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/types"
 )
 
 type store interface {
-	NewSession(name string, renewalCh <-chan time.Time) (kp.Session, chan error, error)
-	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	NewSession(name string, renewalCh <-chan time.Time) (consul.Session, chan error, error)
+	DeletePod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
 }
 
 type P2RM struct {
@@ -59,7 +59,7 @@ func NewUUIDP2RM(client consulutil.ConsulClient, podUniqueKey types.PodUniqueKey
 
 func (rm *P2RM) configureStorage(client consulutil.ConsulClient, labeler labels.ApplicatorWithoutWatches) {
 	rm.Client = client
-	rm.Store = kp.NewConsulStore(client)
+	rm.Store = consul.NewConsulStore(client)
 	rm.RCStore = rcstore.NewConsul(client, labeler, 5)
 	rm.Labeler = labeler
 	rm.PodStore = podstore.NewConsul(client.KV())
@@ -134,7 +134,7 @@ func (rm *P2RM) deletePod() error {
 }
 
 func (rm *P2RM) deleteLegacyPod() error {
-	_, err := rm.Store.DeletePod(kp.INTENT_TREE, rm.NodeName, types.PodID(rm.PodID))
+	_, err := rm.Store.DeletePod(consul.INTENT_TREE, rm.NodeName, types.PodID(rm.PodID))
 	if err != nil {
 		return fmt.Errorf("unable to remove pod: %v", err)
 	}

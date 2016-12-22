@@ -20,11 +20,6 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/hooks"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/kp/podstore"
-	"github.com/square/p2/pkg/kp/statusstore"
-	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -32,6 +27,11 @@ import (
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/preparer/podprocess"
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/podstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
@@ -90,16 +90,16 @@ type Preparer struct {
 }
 
 type store interface {
-	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
-	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
-	ListPods(podPrefix kp.PodPrefix, nodename types.NodeName) ([]kp.ManifestResult, time.Duration, error)
+	SetPod(podPrefix consul.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
+	Pod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
+	DeletePod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	ListPods(podPrefix consul.PodPrefix, nodename types.NodeName) ([]consul.ManifestResult, time.Duration, error)
 	WatchPods(
-		podPrefix kp.PodPrefix,
+		podPrefix consul.PodPrefix,
 		hostname types.NodeName,
 		quit <-chan struct{},
 		errCh chan<- error,
-		manifests chan<- []kp.ManifestResult,
+		manifests chan<- []consul.ManifestResult,
 	)
 }
 
@@ -235,26 +235,26 @@ func (c *PreparerConfig) GetConsulClient() (consulutil.ConsulClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := kp.NewConsulClient(opts)
+	client := consul.NewConsulClient(opts)
 	c.consulClient = client
 	return client, nil
 }
 
-func (c *PreparerConfig) getOpts() (kp.Options, error) {
+func (c *PreparerConfig) getOpts() (consul.Options, error) {
 	client := http.DefaultClient
 	token, err := loadToken(c.ConsulTokenPath)
 	if err != nil {
-		return kp.Options{}, err
+		return consul.Options{}, err
 	}
 
 	if c.ConsulHttps {
 		client, err = c.GetClient(30 * time.Second) // 30 seconds is the net/http default
 		if err != nil {
-			return kp.Options{}, err
+			return consul.Options{}, err
 		}
 	}
 
-	return kp.Options{
+	return consul.Options{
 		Address: c.ConsulAddress,
 		HTTPS:   c.ConsulHttps,
 		Token:   token,
@@ -363,10 +363,10 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	}
 
 	statusStore := statusstore.NewConsul(client)
-	podStatusStore := podstatus.NewConsul(statusStore, kp.PreparerPodStatusNamespace)
+	podStatusStore := podstatus.NewConsul(statusStore, consul.PreparerPodStatusNamespace)
 	podStore := podstore.NewConsul(client.KV())
 
-	store := kp.NewConsulStore(client)
+	store := consul.NewConsulStore(client)
 
 	maxLaunchableDiskUsage := launch.DefaultAllowableDiskUsage
 	if preparerConfig.MaxLaunchableDiskUsage != "" {

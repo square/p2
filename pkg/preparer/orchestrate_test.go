@@ -14,9 +14,9 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/hooks"
-	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
@@ -170,31 +170,31 @@ type FakeStore struct {
 	currentManifestError error
 }
 
-func (f *FakeStore) ListPods(kp.PodPrefix, types.NodeName) ([]kp.ManifestResult, time.Duration, error) {
+func (f *FakeStore) ListPods(consul.PodPrefix, types.NodeName) ([]consul.ManifestResult, time.Duration, error) {
 	if f.currentManifest == nil {
 		return nil, 0, nil
 	}
 	if f.currentManifestError != nil {
 		return nil, 0, f.currentManifestError
 	}
-	return []kp.ManifestResult{
+	return []consul.ManifestResult{
 		{Manifest: f.currentManifest},
 	}, 0, nil
 }
 
-func (f *FakeStore) SetPod(kp.PodPrefix, types.NodeName, manifest.Manifest) (time.Duration, error) {
+func (f *FakeStore) SetPod(consul.PodPrefix, types.NodeName, manifest.Manifest) (time.Duration, error) {
 	return 0, nil
 }
 
-func (f *FakeStore) Pod(kp.PodPrefix, types.NodeName, types.PodID) (manifest.Manifest, time.Duration, error) {
+func (f *FakeStore) Pod(consul.PodPrefix, types.NodeName, types.PodID) (manifest.Manifest, time.Duration, error) {
 	return nil, 0, fmt.Errorf("not implemented")
 }
 
-func (f *FakeStore) DeletePod(kp.PodPrefix, types.NodeName, types.PodID) (time.Duration, error) {
+func (f *FakeStore) DeletePod(consul.PodPrefix, types.NodeName, types.PodID) (time.Duration, error) {
 	return 0, nil
 }
 
-func (f *FakeStore) WatchPods(kp.PodPrefix, types.NodeName, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult) {
+func (f *FakeStore) WatchPods(consul.PodPrefix, types.NodeName, <-chan struct{}, chan<- error, chan<- []consul.ManifestResult) {
 }
 
 func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks, string) {

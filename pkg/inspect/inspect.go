@@ -5,7 +5,7 @@ import (
 	"sort"
 
 	"github.com/square/p2/pkg/health"
-	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -24,7 +24,7 @@ type NodePodStatus struct {
 	Health             health.HealthState `json:"health,omitempty"`
 }
 
-func AddKVPToMap(result kp.ManifestResult, source int, filterNode types.NodeName, filterPod types.PodID, statuses map[types.PodID]map[types.NodeName]NodePodStatus) error {
+func AddKVPToMap(result consul.ManifestResult, source int, filterNode types.NodeName, filterPod types.PodID, statuses map[types.PodID]map[types.NodeName]NodePodStatus) error {
 	nodeName := result.PodLocation.Node
 	podId := result.Manifest.ID()
 

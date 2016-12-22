@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/statusstore/podstatus"
-	"github.com/square/p2/pkg/kp/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
+	"github.com/square/p2/pkg/store/consul/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -45,7 +45,7 @@ func TestFullyConfigured(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
-	reporter, err := New(ReporterConfig{}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), kp.PreparerPodStatusNamespace))
+	reporter, err := New(ReporterConfig{}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace))
 	if reporter != nil || err == nil {
 		t.Errorf("Should have gotten a nil reporter and an error with empty config")
 	}
@@ -53,7 +53,7 @@ func TestNew(t *testing.T) {
 	reporter, err = New(ReporterConfig{
 		SQLiteDatabasePath:       "bar",
 		EnvironmentExtractorPath: "/some/nonexistent/path",
-	}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), kp.PreparerPodStatusNamespace))
+	}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace))
 	if reporter != nil || err == nil {
 		t.Errorf("Should have gotten a nil reporter when EnvironmentExtractorPath doesn't exist")
 	}
@@ -73,7 +73,7 @@ func TestNew(t *testing.T) {
 	reporter, err = New(ReporterConfig{
 		SQLiteDatabasePath:       "foo",
 		EnvironmentExtractorPath: nonExecutableExtractor.Name(),
-	}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), kp.PreparerPodStatusNamespace))
+	}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace))
 	if reporter != nil || err == nil {
 		t.Errorf("Should have gotten a nil reporter with non-executable environemnt_extractor_path")
 	}
@@ -88,7 +88,7 @@ func TestNew(t *testing.T) {
 	reporter, err = New(ReporterConfig{
 		SQLiteDatabasePath:       "foo",
 		EnvironmentExtractorPath: executableExtractor.Name(),
-	}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), kp.PreparerPodStatusNamespace))
+	}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace))
 	if err != nil {
 		t.Errorf("Unexpected error calling New(): %s", err)
 	}
@@ -214,7 +214,7 @@ func startReporter(t *testing.T, tempDir string) (string, chan struct{}, podstat
 		PollInterval:             1 * time.Millisecond,
 	}
 
-	store := podstatus.NewConsul(statusstoretest.NewFake(), kp.PreparerPodStatusNamespace)
+	store := podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace)
 	reporter, err := New(config, logging.DefaultLogger, store)
 	if err != nil {
 		t.Fatalf("Error creating reporter: %s", err)

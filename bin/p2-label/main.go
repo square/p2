@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/labels"
+	"github.com/square/p2/pkg/store/consul/flags"
 	"gopkg.in/alecthomas/kingpin.v2"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )

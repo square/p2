@@ -9,9 +9,9 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker/test"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consultest"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -24,7 +24,7 @@ func TestEnactHappyPath(t *testing.T) {
 	r, podStore := newTestReplication(errCh)
 	r.Enact()
 
-	intent, _, err := podStore.AllPods(kp.INTENT_TREE)
+	intent, _, err := podStore.AllPods(consul.INTENT_TREE)
 	if err != nil {
 		t.Fatalf("Encountered error while fetching intent: %v\n", err)
 	}
@@ -32,7 +32,7 @@ func TestEnactHappyPath(t *testing.T) {
 	if len(intent) != 2 {
 		t.Errorf("Expected to have 2 intent records scheduled but got %d.\n%v", len(intent), intent)
 	}
-	reality, _, err := podStore.AllPods(kp.REALITY_TREE)
+	reality, _, err := podStore.AllPods(consul.REALITY_TREE)
 	if err != nil {
 		t.Fatalf("Encountered error while fetching reality: %v\n", err)
 	}
@@ -62,7 +62,7 @@ func TestEnactCancellation(t *testing.T) {
 		t.Fatal("Timed out waiting for replication to halt")
 	}
 
-	intent, _, err := podStore.AllPods(kp.INTENT_TREE)
+	intent, _, err := podStore.AllPods(consul.INTENT_TREE)
 	if err != nil {
 		t.Fatalf("Encountered error while fetching intent: %v\n", err)
 	}
@@ -70,7 +70,7 @@ func TestEnactCancellation(t *testing.T) {
 	if len(intent) == 2 {
 		t.Errorf("Expected Cancel to halt replication promptly but all pods were installed")
 	}
-	reality, _, err := podStore.AllPods(kp.REALITY_TREE)
+	reality, _, err := podStore.AllPods(consul.REALITY_TREE)
 	if err != nil {
 		t.Fatalf("Encountered error while fetching reality: %v\n", err)
 	}
@@ -85,15 +85,15 @@ func TestEnactCancellation(t *testing.T) {
 // podStore is passed via secondary returv value so it can be used to read
 // intent,reality. An alternative is to expand the replication.Store type to
 // implement AllPods()
-func newTestReplication(errCh chan error) (*replication, *kptest.FakePodStore) {
+func newTestReplication(errCh chan error) (*replication, *consultest.FakePodStore) {
 	podID := types.PodID("testPod")
 	mb := manifest.NewBuilder()
 	mb.SetID(podID)
 	nodes := []types.NodeName{"abc123.example.com", "def456.example.com"}
-	podStore := kptest.NewFakePodStore(nil, nil)
+	podStore := consultest.NewFakePodStore(nil, nil)
 
 	logger := logging.TestLogger()
-	preparer := kptest.NewFakePreparer(podStore, logger)
+	preparer := consultest.NewFakePreparer(podStore, logger)
 	preparer.Enable()
 
 	replicationErrChan := make(chan error)

@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/hashicorp/consul/api"

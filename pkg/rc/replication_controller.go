@@ -8,14 +8,14 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -42,22 +42,22 @@ type ReplicationController interface {
 	CurrentPods() (types.PodLocations, error)
 }
 
-// These methods are the same as the methods of the same name in kp.Store.
+// These methods are the same as the methods of the same name in consul.Store.
 // Replication controllers have no need of any methods other than these.
-type kpStore interface {
+type consulStore interface {
 	SetPod(
-		podPrefix kp.PodPrefix,
+		podPrefix consul.PodPrefix,
 		nodeName types.NodeName,
 		manifest manifest.Manifest,
 	) (time.Duration, error)
 
 	Pod(
-		podPrefix kp.PodPrefix,
+		podPrefix consul.PodPrefix,
 		nodeName types.NodeName,
 		podId types.PodID,
 	) (manifest.Manifest, time.Duration, error)
 
-	DeletePod(podPrefix kp.PodPrefix,
+	DeletePod(podPrefix consul.PodPrefix,
 		nodeName types.NodeName,
 		manifestID types.PodID,
 	) (time.Duration, error)
@@ -68,7 +68,7 @@ type replicationController struct {
 
 	logger logging.Logger
 
-	kpStore       kpStore
+	consulStore   consulStore
 	rcStore       rcstore.Store
 	scheduler     scheduler.Scheduler
 	podApplicator Labeler
@@ -77,7 +77,7 @@ type replicationController struct {
 
 func New(
 	fields fields.RC,
-	kpStore kpStore,
+	consulStore consulStore,
 	rcStore rcstore.Store,
 	scheduler scheduler.Scheduler,
 	podApplicator Labeler,
@@ -92,7 +92,7 @@ func New(
 		RC: fields,
 
 		logger:        logger,
-		kpStore:       kpStore,
+		consulStore:   consulStore,
 		rcStore:       rcStore,
 		scheduler:     scheduler,
 		podApplicator: podApplicator,
@@ -292,7 +292,7 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 		return err
 	}
 	for _, pod := range current {
-		intent, _, err := rc.kpStore.Pod(kp.INTENT_TREE, pod.Node, types.PodID(pod.PodID))
+		intent, _, err := rc.consulStore.Pod(consul.INTENT_TREE, pod.Node, types.PodID(pod.PodID))
 		if err != nil && err != pods.NoCurrentManifest {
 			return err
 		}
@@ -374,13 +374,13 @@ func (rc *replicationController) schedule(node types.NodeName) error {
 		return err
 	}
 
-	_, err = rc.kpStore.SetPod(kp.INTENT_TREE, node, rc.Manifest)
+	_, err = rc.consulStore.SetPod(consul.INTENT_TREE, node, rc.Manifest)
 	return err
 }
 
 func (rc *replicationController) unschedule(node types.NodeName) error {
 	rc.logger.NoFields().Infof("Unscheduling from %s", node)
-	_, err := rc.kpStore.DeletePod(kp.INTENT_TREE, node, rc.Manifest.ID())
+	_, err := rc.consulStore.DeletePod(consul.INTENT_TREE, node, rc.Manifest.ID())
 	if err != nil {
 		return err
 	}

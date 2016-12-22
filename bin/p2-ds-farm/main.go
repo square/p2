@@ -9,12 +9,12 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/kp/dsstore"
-	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/dsstore"
+	"github.com/square/p2/pkg/store/consul/flags"
 
 	ds_farm "github.com/square/p2/pkg/ds"
 
@@ -40,10 +40,10 @@ func main() {
 	quitCh := make(chan struct{})
 
 	_, consulOpts, labeler := flags.ParseWithConsulOptions()
-	client := kp.NewConsulClient(consulOpts)
+	client := consul.NewConsulClient(consulOpts)
 	logger := logging.NewLogger(logrus.Fields{})
 	dsStore := dsstore.NewConsul(client, 3, &logger)
-	kpStore := kp.NewConsulStore(client)
+	consulStore := consul.NewConsulStore(client)
 	healthChecker := checker.NewConsulHealthChecker(client)
 
 	sessions := make(chan string)
@@ -54,7 +54,7 @@ func main() {
 		TTL:       "15s",
 	}, client, sessions, quitCh, logger)
 
-	dsf := ds_farm.NewFarm(kpStore, dsStore, labeler, labels.NewConsulApplicator(client, 0), sessions, logger, nil, &healthChecker, 1*time.Second, *useCachePodMatches)
+	dsf := ds_farm.NewFarm(consulStore, dsStore, labeler, labels.NewConsulApplicator(client, 0), sessions, logger, nil, &healthChecker, 1*time.Second, *useCachePodMatches)
 
 	go func() {
 		// clear lock immediately on ctrl-C

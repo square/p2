@@ -11,8 +11,8 @@ import (
 	"github.com/rcrowley/go-metrics"
 	"k8s.io/kubernetes/pkg/labels"
 
-	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )

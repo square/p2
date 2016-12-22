@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/constants"
-	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/rc"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -150,7 +150,7 @@ func TestInitializeReplicationReleasesLocks(t *testing.T) {
 }
 
 func testLockPath(testPodId types.PodID) (string, error) {
-	return kp.ReplicationLockPath(testPodId), nil
+	return consul.ReplicationLockPath(testPodId), nil
 }
 
 func TestInitializeReplicationCanOverrideLocks(t *testing.T) {

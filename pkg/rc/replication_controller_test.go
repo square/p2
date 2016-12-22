@@ -7,36 +7,36 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/alerting/alertingtest"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
-type fakeKpStore struct {
+type fakeconsulStore struct {
 	manifests map[string]manifest.Manifest
 }
 
-func (s *fakeKpStore) SetPod(podPrefix kp.PodPrefix, nodeName types.NodeName, manifest manifest.Manifest) (time.Duration, error) {
+func (s *fakeconsulStore) SetPod(podPrefix consul.PodPrefix, nodeName types.NodeName, manifest manifest.Manifest) (time.Duration, error) {
 	key := path.Join(string(podPrefix), nodeName.String(), string(manifest.ID()))
 	s.manifests[key] = manifest
 	return 0, nil
 }
 
-func (s *fakeKpStore) DeletePod(podPrefix kp.PodPrefix, nodeName types.NodeName, podID types.PodID) (time.Duration, error) {
+func (s *fakeconsulStore) DeletePod(podPrefix consul.PodPrefix, nodeName types.NodeName, podID types.PodID) (time.Duration, error) {
 	key := path.Join(string(podPrefix), nodeName.String(), podID.String())
 	delete(s.manifests, key)
 	return 0, nil
 }
 
-func (s *fakeKpStore) Pod(podPrefix kp.PodPrefix, nodeName types.NodeName, podID types.PodID) (
+func (s *fakeconsulStore) Pod(podPrefix consul.PodPrefix, nodeName types.NodeName, podID types.PodID) (
 	manifest.Manifest, time.Duration, error) {
 	key := path.Join(string(podPrefix), nodeName.String(), podID.String())
 	if manifest, ok := s.manifests[key]; ok {
@@ -47,7 +47,7 @@ func (s *fakeKpStore) Pod(podPrefix kp.PodPrefix, nodeName types.NodeName, podID
 
 func setup(t *testing.T) (
 	rcStore rcstore.Store,
-	kpStore fakeKpStore,
+	consulStore fakeconsulStore,
 	applicator labels.Applicator,
 	rc *replicationController,
 	alerter *alertingtest.AlertRecorder,
@@ -65,13 +65,13 @@ func setup(t *testing.T) (
 	rcData, err := rcStore.Create(podManifest, nodeSelector, podLabels)
 	Assert(t).IsNil(err, "expected no error creating request")
 
-	kpStore = fakeKpStore{manifests: make(map[string]manifest.Manifest)}
+	consulStore = fakeconsulStore{manifests: make(map[string]manifest.Manifest)}
 	applicator = labels.NewFakeApplicator()
 	alerter = alertingtest.NewRecorder()
 
 	rc = New(
 		rcData,
-		&kpStore,
+		&consulStore,
 		rcStore,
 		scheduler.NewApplicatorScheduler(applicator),
 		applicator,
@@ -111,19 +111,19 @@ func waitForNodes(t *testing.T, rc ReplicationController, desired int) int {
 }
 
 func TestDoNothing(t *testing.T) {
-	_, kp, applicator, rc, alerter := setup(t)
+	_, consul, applicator, rc, alerter := setup(t)
 
 	err := rc.meetDesires()
 	Assert(t).IsNil(err, "expected no error meeting")
 
 	scheduled := scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
-	Assert(t).AreEqual(len(kp.manifests), 0, "expected no manifests to have been scheduled")
+	Assert(t).AreEqual(len(consul.manifests), 0, "expected no manifests to have been scheduled")
 	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to have occurred")
 }
 
 func TestCantSchedule(t *testing.T) {
-	rcStore, kp, applicator, rc, alerter := setup(t)
+	rcStore, consul, applicator, rc, alerter := setup(t)
 
 	quit := make(chan struct{})
 	errors := rc.WatchDesires(quit)
@@ -134,7 +134,7 @@ func TestCantSchedule(t *testing.T) {
 	case <-errors:
 		scheduled := scheduledPods(t, applicator)
 		Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
-		Assert(t).AreEqual(len(kp.manifests), 0, "expected no manifests to have been scheduled")
+		Assert(t).AreEqual(len(consul.manifests), 0, "expected no manifests to have been scheduled")
 
 		if len(alerter.Alerts) < 1 {
 			t.Fatalf("Expected an alert to fire due to not enough nodes being scheduled")
@@ -145,7 +145,7 @@ func TestCantSchedule(t *testing.T) {
 }
 
 func TestSchedule(t *testing.T) {
-	rcStore, kp, applicator, rc, alerter := setup(t)
+	rcStore, consul, applicator, rc, alerter := setup(t)
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -164,7 +164,7 @@ func TestSchedule(t *testing.T) {
 	Assert(t).AreEqual(len(scheduled), 1, "expected a pod to have been labeled")
 	Assert(t).AreEqual(scheduled[0].ID, "node2/testPod", "expected pod labeled on the right node")
 
-	for k, v := range kp.manifests {
+	for k, v := range consul.manifests {
 		Assert(t).AreEqual(k, "intent/node2/testPod", "expected manifest scheduled on the right node")
 		Assert(t).AreEqual(string(v.ID()), "testPod", "expected manifest with correct ID")
 	}
@@ -173,7 +173,7 @@ func TestSchedule(t *testing.T) {
 }
 
 func TestSchedulePartial(t *testing.T) {
-	rcStore, kp, applicator, rc, alerter := setup(t)
+	rcStore, consul, applicator, rc, alerter := setup(t)
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -191,7 +191,7 @@ func TestSchedulePartial(t *testing.T) {
 	Assert(t).AreEqual(len(scheduled), 1, "expected a pod to have been labeled")
 	Assert(t).AreEqual(scheduled[0].ID, "node2/testPod", "expected pod labeled on the right node")
 
-	for k, v := range kp.manifests {
+	for k, v := range consul.manifests {
 		Assert(t).AreEqual(k, "intent/node2/testPod", "expected manifest scheduled on the right node")
 		Assert(t).AreEqual(string(v.ID()), "testPod", "expected manifest with correct ID")
 	}
@@ -207,7 +207,7 @@ func TestSchedulePartial(t *testing.T) {
 }
 
 func TestScheduleTwice(t *testing.T) {
-	rcStore, kp, applicator, rc, alerter := setup(t)
+	rcStore, consul, applicator, rc, alerter := setup(t)
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -234,8 +234,8 @@ func TestScheduleTwice(t *testing.T) {
 		Assert(t).Fail("expected manifests to have been scheduled on both nodes")
 	}
 
-	Assert(t).AreEqual(len(kp.manifests), 2, "expected two manifests to have been scheduled")
-	for k, v := range kp.manifests {
+	Assert(t).AreEqual(len(consul.manifests), 2, "expected two manifests to have been scheduled")
+	for k, v := range consul.manifests {
 		if k != "intent/node1/testPod" && k != "intent/node2/testPod" {
 			Assert(t).Fail("expected manifest scheduled on the right node")
 		}
@@ -245,7 +245,7 @@ func TestScheduleTwice(t *testing.T) {
 }
 
 func TestUnschedule(t *testing.T) {
-	rcStore, kp, applicator, rc, alerter := setup(t)
+	rcStore, consul, applicator, rc, alerter := setup(t)
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -262,7 +262,7 @@ func TestUnschedule(t *testing.T) {
 
 	scheduled := scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 1, "expected a pod to have been labeled")
-	Assert(t).AreEqual(len(kp.manifests), 1, "expected a manifest to have been scheduled")
+	Assert(t).AreEqual(len(consul.manifests), 1, "expected a manifest to have been scheduled")
 
 	rcStore.SetDesiredReplicas(rc.ID(), 0)
 	numNodes = waitForNodes(t, rc, 0)
@@ -270,12 +270,12 @@ func TestUnschedule(t *testing.T) {
 
 	scheduled = scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 0, "expected a pod to have been unlabeled")
-	Assert(t).AreEqual(len(kp.manifests), 0, "expected manifest to have been unscheduled")
+	Assert(t).AreEqual(len(consul.manifests), 0, "expected manifest to have been unscheduled")
 	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to fire")
 }
 
 func TestPreferUnscheduleIneligible(t *testing.T) {
-	rcStore, kp, applicator, rc, alerter := setup(t)
+	rcStore, consul, applicator, rc, alerter := setup(t)
 	for i := 0; i < 1000; i++ {
 		nodeName := fmt.Sprintf("node%d", i)
 		err := applicator.SetLabel(labels.NODE, nodeName, "nodeQuality", "good")
@@ -292,7 +292,7 @@ func TestPreferUnscheduleIneligible(t *testing.T) {
 
 	scheduled := scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 1000, "expected 1000 pods to have been labeled")
-	Assert(t).AreEqual(len(kp.manifests), 1000, "expected a manifest to have been scheduled on 1000 nodes")
+	Assert(t).AreEqual(len(consul.manifests), 1000, "expected a manifest to have been scheduled on 1000 nodes")
 
 	// Make node503 ineligible, so that it will be preferred for unscheduling
 	// when we decrease ReplicasDesired
@@ -325,7 +325,7 @@ func TestConsistencyNoChange(t *testing.T) {
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
 
 	// Verify that the node is consistent
-	manifest, _, err := kvStore.Pod(kp.INTENT_TREE, "node1", "testPod")
+	manifest, _, err := kvStore.Pod(consul.INTENT_TREE, "node1", "testPod")
 	Assert(t).IsNil(err, "could not fetch intent")
 	sha, _ := manifest.SHA()
 	Assert(t).AreEqual(rcSHA, sha, "controller did not set intent initially")
@@ -335,7 +335,7 @@ func TestConsistencyNoChange(t *testing.T) {
 	// The controller shouldn't alter the node
 	err = rc.meetDesires()
 	Assert(t).IsNil(err, "unexpected error scheduling nodes")
-	manifest, _, err = kvStore.Pod(kp.INTENT_TREE, "node1", "testPod")
+	manifest, _, err = kvStore.Pod(consul.INTENT_TREE, "node1", "testPod")
 	Assert(t).IsNil(err, "could not fetch intent")
 	sha, _ = manifest.SHA()
 	Assert(t).AreEqual(rcSHA, sha, "controller modified the node's intent")
@@ -359,12 +359,12 @@ func TestConsistencyModify(t *testing.T) {
 	manifest2 := b.GetManifest()
 	sha2, _ := manifest2.SHA()
 	Assert(t).AreNotEqual(rcSHA, sha2, "failed to set different intent manifest")
-	kvStore.SetPod(kp.INTENT_TREE, "node1", manifest2)
+	kvStore.SetPod(consul.INTENT_TREE, "node1", manifest2)
 
 	// Controller should force the node back to the canonical manifest
 	err = rc.meetDesires()
 	Assert(t).IsNil(err, "unexpected error scheduling nodes")
-	manifest, _, err := kvStore.Pod(kp.INTENT_TREE, "node1", "testPod")
+	manifest, _, err := kvStore.Pod(consul.INTENT_TREE, "node1", "testPod")
 	Assert(t).IsNil(err, "could not fetch intent")
 	sha, _ := manifest.SHA()
 	Assert(t).AreEqual(rcSHA, sha, "controller did not reset intent")
@@ -383,15 +383,15 @@ func TestConsistencyDelete(t *testing.T) {
 	Assert(t).IsNil(err, "unexpected error scheduling nodes")
 
 	// Delete the intent manifest
-	_, err = kvStore.DeletePod(kp.INTENT_TREE, "node1", "testPod")
+	_, err = kvStore.DeletePod(consul.INTENT_TREE, "node1", "testPod")
 	Assert(t).IsNil(err, "unexpected error deleting intent manifest")
-	_, _, err = kvStore.Pod(kp.INTENT_TREE, "node1", "testPod")
+	_, _, err = kvStore.Pod(consul.INTENT_TREE, "node1", "testPod")
 	Assert(t).AreEqual(pods.NoCurrentManifest, err, "unexpected pod result")
 
 	// Controller should force the node back to the canonical manifest
 	err = rc.meetDesires()
 	Assert(t).IsNil(err, "unexpected error scheduling nodes")
-	manifest, _, err := kvStore.Pod(kp.INTENT_TREE, "node1", "testPod")
+	manifest, _, err := kvStore.Pod(consul.INTENT_TREE, "node1", "testPod")
 	Assert(t).IsNil(err, "could not fetch intent")
 	sha, _ := manifest.SHA()
 	Assert(t).AreEqual(rcSHA, sha, "controller did not reset intent")

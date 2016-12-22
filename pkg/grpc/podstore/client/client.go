@@ -4,9 +4,9 @@ import (
 	"time"
 
 	podstore_protos "github.com/square/p2/pkg/grpc/podstore/protos"
-	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -70,7 +70,7 @@ type PodStatusResult struct {
 func (c Client) WatchStatus(ctx context.Context, podUniqueKey types.PodUniqueKey, waitIndex uint64) (<-chan PodStatusResult, error) {
 	stream, err := c.client.WatchPodStatus(ctx, &podstore_protos.WatchPodStatusRequest{
 		PodUniqueKey:    podUniqueKey.String(),
-		StatusNamespace: kp.PreparerPodStatusNamespace.String(),
+		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
 		WaitIndex:       waitIndex,
 	})
 	if err != nil {

@@ -7,11 +7,11 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	fake_checker "github.com/square/p2/pkg/health/checker/test"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/types"
 
 	"github.com/Sirupsen/logrus"
@@ -52,7 +52,7 @@ func testReplicatorAndServer(t *testing.T) (Replicator, Store, consulutil.Fixtur
 
 func makeStore(t *testing.T) (Store, consulutil.Fixture) {
 	f := consulutil.NewFixture(t)
-	store := kp.NewConsulStore(f.Client)
+	store := consul.NewConsulStore(f.Client)
 	return store, f
 }
 

@@ -16,15 +16,15 @@ import (
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/kp/flags"
-	"github.com/square/p2/pkg/kp/rcstore"
-	"github.com/square/p2/pkg/kp/rollstore"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/roll"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/flags"
+	"github.com/square/p2/pkg/store/consul/rcstore"
+	"github.com/square/p2/pkg/store/consul/rollstore"
 	"github.com/square/p2/pkg/util/stream"
 	"github.com/square/p2/pkg/version"
 )
@@ -69,8 +69,8 @@ func main() {
 
 	// Initialize the myriad of different storage components
 	httpClient := cleanhttp.DefaultClient()
-	client := kp.NewConsulClient(opts)
-	kpStore := kp.NewConsulStore(client)
+	client := consul.NewConsulClient(opts)
+	consulStore := consul.NewConsulStore(client)
 	rcStore := rcstore.NewConsul(client, labeler, RetryCount)
 	rollStore := rollstore.NewConsul(client, labeler, nil)
 	healthChecker := checker.NewConsulHealthChecker(client)
@@ -99,7 +99,7 @@ func main() {
 
 	// Run the farms!
 	go rc.NewFarm(
-		kpStore,
+		consulStore,
 		rcStore,
 		sched,
 		labeler,
@@ -111,13 +111,13 @@ func main() {
 	).Start(nil)
 	roll.NewFarm(
 		roll.UpdateFactory{
-			Store:         kpStore,
+			Store:         consulStore,
 			RCStore:       rcStore,
 			HealthChecker: healthChecker,
 			Labeler:       labeler,
 			Scheduler:     sched,
 		},
-		kpStore,
+		consulStore,
 		rollStore,
 		rcStore,
 		pub.Subscribe().Chan(),

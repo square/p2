@@ -8,11 +8,11 @@ import (
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/flags"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 )
@@ -29,7 +29,7 @@ func main() {
 	kingpin.Version(version.VERSION)
 	_, opts, labeler := flags.ParseWithConsulOptions()
 
-	consulClient := kp.NewConsulClient(opts)
+	consulClient := consul.NewConsulClient(opts)
 
 	err := handlePodRemoval(consulClient, labeler)
 	if err != nil {

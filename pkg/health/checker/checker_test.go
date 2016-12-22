@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/health"
-	"github.com/square/p2/pkg/kp"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -14,25 +14,25 @@ import (
 )
 
 type fakeConsulStore struct {
-	results map[string]kp.WatchResult
+	results map[string]consul.WatchResult
 }
 
-func (f fakeConsulStore) GetHealth(service string, node types.NodeName) (kp.WatchResult, error) {
+func (f fakeConsulStore) GetHealth(service string, node types.NodeName) (consul.WatchResult, error) {
 	return f.results[node.String()], nil
 }
-func (f fakeConsulStore) GetServiceHealth(service string) (map[string]kp.WatchResult, error) {
+func (f fakeConsulStore) GetServiceHealth(service string) (map[string]consul.WatchResult, error) {
 	return f.results, nil
 }
 
 func TestService(t *testing.T) {
-	result1 := kp.WatchResult{
+	result1 := consul.WatchResult{
 		Id:      "abc123",
 		Node:    "node1",
 		Service: "slug",
 		Status:  "passing",
 	}
 	fakeStore := fakeConsulStore{
-		results: map[string]kp.WatchResult{"node1": result1},
+		results: map[string]consul.WatchResult{"node1": result1},
 	}
 	consulHC := consulHealthChecker{
 		consulStore: fakeStore,

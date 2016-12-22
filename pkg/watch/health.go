@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/health"
-	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/preparer"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util/param"
 )
@@ -36,7 +36,7 @@ var HEALTHCHECK_TIMEOUT = param.Int64("healthcheck_timeout", 5)
 // has a running MonitorHealth go routine
 type PodWatch struct {
 	manifest      manifest.Manifest
-	updater       kp.HealthUpdater
+	updater       consul.HealthUpdater
 	statusChecker StatusChecker
 
 	// For tracking/controlling the go routine that performs health checks
@@ -56,8 +56,8 @@ type StatusChecker struct {
 }
 
 type store interface {
-	NewHealthManager(node types.NodeName, logger logging.Logger) kp.HealthManager
-	WatchPods(podPrefix kp.PodPrefix, nodename types.NodeName, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []kp.ManifestResult)
+	NewHealthManager(node types.NodeName, logger logging.Logger) consul.HealthManager
+	WatchPods(podPrefix consul.PodPrefix, nodename types.NodeName, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []consul.ManifestResult)
 }
 
 // MonitorPodHealth is meant to be a long running go routine.
@@ -72,7 +72,7 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 		// A bad config should have already produced a nice, user-friendly error message.
 		logger.WithError(err).Fatalln("error creating health monitor KV client")
 	}
-	store := kp.NewConsulStore(client)
+	store := consul.NewConsulStore(client)
 	healthManager := store.NewHealthManager(config.NodeName, *logger)
 
 	node := config.NodeName
@@ -80,9 +80,9 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 
 	watchQuitCh := make(chan struct{})
 	watchErrCh := make(chan error)
-	watchPodCh := make(chan []kp.ManifestResult)
+	watchPodCh := make(chan []consul.ManifestResult)
 	go store.WatchPods(
-		kp.REALITY_TREE,
+		consul.REALITY_TREE,
 		node,
 		watchQuitCh,
 		watchErrCh,
@@ -124,11 +124,11 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 // compares services being monitored with services that
 // need to be monitored.
 func updatePods(
-	healthManager kp.HealthManager,
+	healthManager consul.HealthManager,
 	secureClient *http.Client,
 	insecureClient *http.Client,
 	current []PodWatch,
-	reality []kp.ManifestResult,
+	reality []consul.ManifestResult,
 	node types.NodeName,
 	logger *logging.Logger,
 ) []PodWatch {
@@ -239,7 +239,7 @@ func (p *PodWatch) checkHealth() {
 		return
 	}
 
-	if err = p.updater.PutHealth(resToKPRes(health)); err != nil {
+	if err = p.updater.PutHealth(resToConsulRes(health)); err != nil {
 		p.logger.WithError(err).Warningln("failed to write health")
 	}
 }
@@ -300,8 +300,8 @@ func getBody(resp *http.Response) (string, error) {
 	return string(body), nil
 }
 
-func resToKPRes(res health.Result) kp.WatchResult {
-	return kp.WatchResult{
+func resToConsulRes(res health.Result) consul.WatchResult {
+	return consul.WatchResult{
 		Service: res.Service,
 		Node:    res.Node,
 		Id:      res.ID,

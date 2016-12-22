@@ -4,9 +4,9 @@ Package control wraps a pcstore with convenience functions suitable for operatio
 package control
 
 import (
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/pcstore"
 	"github.com/square/p2/pkg/pc/fields"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/pcstore"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"k8s.io/kubernetes/pkg/labels"
@@ -14,7 +14,7 @@ import (
 
 type PodCluster struct {
 	pcStore pcstore.Store
-	session kp.Session
+	session consul.Session
 
 	ID fields.ID
 
@@ -30,7 +30,7 @@ func NewPodCluster(
 	podID types.PodID,
 	pcstore pcstore.Store,
 	selector labels.Selector,
-	session kp.Session,
+	session consul.Session,
 ) *PodCluster {
 
 	pc := &PodCluster{}
@@ -46,7 +46,7 @@ func NewPodCluster(
 
 func NewPodClusterFromID(
 	id fields.ID,
-	session kp.Session,
+	session consul.Session,
 	pcStore pcstore.Store,
 ) *PodCluster {
 	pc := &PodCluster{}
