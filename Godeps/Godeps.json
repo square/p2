@@ -387,51 +387,51 @@
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/curve25519",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ed25519",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ed25519/internal/edwards25519",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/armor",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/clearsign",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/elgamal",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/errors",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/packet",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/s2k",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ssh",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
