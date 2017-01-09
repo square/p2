@@ -483,7 +483,7 @@
 		},
 		{
 			"ImportPath": "golang.org/x/time/rate",
-			"Rev": "a4bde12657593d5e90d0533a3e4fd95e635124cb"
+			"Rev": "f51c12702a4d776e4c1fa9b0fabab841babae631"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc",
