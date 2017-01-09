@@ -379,11 +379,11 @@
 		},
 		{
 			"ImportPath": "github.com/rcrowley/go-metrics",
-			"Rev": "bdb33529eca3e55eac7328e07c57012a797af602"
+			"Rev": "1f30fe9094a513ce4c700b9a54458bbb0c96996c"
 		},
 		{
 			"ImportPath": "github.com/rcrowley/go-metrics/exp",
-			"Rev": "bdb33529eca3e55eac7328e07c57012a797af602"
+			"Rev": "1f30fe9094a513ce4c700b9a54458bbb0c96996c"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
