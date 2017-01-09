@@ -1,6 +1,6 @@
-// +build amd64,linux
+// +build sparc64,linux
 // Created by cgo -godefs - DO NOT EDIT
-// cgo -godefs types_linux.go
+// cgo -godefs types_linux.go | go run mkpost.go
 
 package unix
 
@@ -26,8 +26,9 @@ type Timespec struct {
 }
 
 type Timeval struct {
-	Sec  int64
-	Usec int64
+	Sec       int64
+	Usec      int32
+	Pad_cgo_0 [4]byte
 }
 
 type Timex struct {
@@ -98,21 +99,25 @@ type Rlimit struct {
 type _Gid_t uint32
 
 type Stat_t struct {
-	Dev       uint64
-	Ino       uint64
-	Nlink     uint64
-	Mode      uint32
-	Uid       uint32
-	Gid       uint32
-	X__pad0   int32
-	Rdev      uint64
-	Size      int64
-	Blksize   int64
-	Blocks    int64
-	Atim      Timespec
-	Mtim      Timespec
-	Ctim      Timespec
-	X__unused [3]int64
+	Dev                uint64
+	X__pad1            uint16
+	Pad_cgo_0          [6]byte
+	Ino                uint64
+	Mode               uint32
+	Nlink              uint32
+	Uid                uint32
+	Gid                uint32
+	Rdev               uint64
+	X__pad2            uint16
+	Pad_cgo_1          [6]byte
+	Size               int64
+	Blksize            int64
+	Blocks             int64
+	Atim               Timespec
+	Mtim               Timespec
+	Ctim               Timespec
+	X__glibc_reserved4 uint64
+	X__glibc_reserved5 uint64
 }
 
 type Statfs_t struct {
@@ -144,13 +149,14 @@ type Fsid struct {
 }
 
 type Flock_t struct {
-	Type      int16
-	Whence    int16
-	Pad_cgo_0 [4]byte
-	Start     int64
-	Len       int64
-	Pid       int32
-	Pad_cgo_1 [4]byte
+	Type              int16
+	Whence            int16
+	Pad_cgo_0         [4]byte
+	Start             int64
+	Len               int64
+	Pid               int32
+	X__glibc_reserved int16
+	Pad_cgo_1         [2]byte
 }
 
 const (
@@ -263,10 +269,9 @@ type Msghdr struct {
 }
 
 type Cmsghdr struct {
-	Len          uint64
-	Level        int32
-	Type         int32
-	X__cmsg_data [0]uint8
+	Len   uint64
+	Level int32
+	Type  int32
 }
 
 type Inet4Pktinfo struct {
@@ -382,7 +387,7 @@ const (
 	IFLA_LINKINFO       = 0x12
 	IFLA_NET_NS_PID     = 0x13
 	IFLA_IFALIAS        = 0x14
-	IFLA_MAX            = 0x1d
+	IFLA_MAX            = 0x2a
 	RT_SCOPE_UNIVERSE   = 0x0
 	RT_SCOPE_SITE       = 0xc8
 	RT_SCOPE_LINK       = 0xfd
@@ -532,39 +537,26 @@ type InotifyEvent struct {
 	Mask   uint32
 	Cookie uint32
 	Len    uint32
-	Name   [0]int8
 }
 
 const SizeofInotifyEvent = 0x10
 
 type PtraceRegs struct {
-	R15      uint64
-	R14      uint64
-	R13      uint64
-	R12      uint64
-	Rbp      uint64
-	Rbx      uint64
-	R11      uint64
-	R10      uint64
-	R9       uint64
-	R8       uint64
-	Rax      uint64
-	Rcx      uint64
-	Rdx      uint64
-	Rsi      uint64
-	Rdi      uint64
-	Orig_rax uint64
-	Rip      uint64
-	Cs       uint64
-	Eflags   uint64
-	Rsp      uint64
-	Ss       uint64
-	Fs_base  uint64
-	Gs_base  uint64
-	Ds       uint64
-	Es       uint64
-	Fs       uint64
-	Gs       uint64
+	Regs   [16]uint64
+	Tstate uint64
+	Tpc    uint64
+	Tnpc   uint64
+	Y      uint32
+	Magic  uint32
+}
+
+type ptracePsw struct {
+}
+
+type ptraceFpregs struct {
+}
+
+type ptracePer struct {
 }
 
 type FdSet struct {
@@ -609,9 +601,10 @@ type Ustat_t struct {
 }
 
 type EpollEvent struct {
-	Events uint32
-	Fd     int32
-	Pad    int32
+	Events  uint32
+	X_padFd int32
+	Fd      int32
+	Pad     int32
 }
 
 const (
@@ -631,7 +624,7 @@ const (
 	POLLIN    = 0x1
 	POLLPRI   = 0x2
 	POLLOUT   = 0x4
-	POLLRDHUP = 0x2000
+	POLLRDHUP = 0x800
 	POLLERR   = 0x8
 	POLLHUP   = 0x10
 	POLLNVAL  = 0x20
@@ -640,6 +633,8 @@ const (
 type Sigset_t struct {
 	X__val [16]uint64
 }
+
+const _SC_PAGESIZE = 0x1e
 
 type Termios struct {
 	Iflag  uint32
