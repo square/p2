@@ -6,8 +6,9 @@
 set -ex
 
 # Install and setup Go
-curl https://storage.googleapis.com/golang/go1.6.2.linux-amd64.tar.gz > go1.6.2-linux-amd64.tar.gz
-sudo tar -C /usr/local -xvf go1.6.2-linux-amd64.tar.gz
+VERSION=1.7.4
+curl -LO https://storage.googleapis.com/golang/go$VERSION.linux-amd64.tar.gz
+sudo tar -C /usr/local -xvf go$VERSION.linux-amd64.tar.gz
 sudo mkdir -p /usr/local/share/go
 sudo chown vagrant:vagrant /usr/local/share/go
 sudo sh -c 'echo "GOPATH=/usr/local/share/go" >> /etc/environment'
