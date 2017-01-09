@@ -456,8 +456,32 @@ func (s *consulStore) SetDesiredReplicas(id fields.ID, n int) error {
 }
 
 func (s *consulStore) AddDesiredReplicas(id fields.ID, n int) error {
+	rcp, err := s.rcPath(id)
+	if err != nil {
+		return err
+	}
+
+	kvp, _, err := s.kv.Get(rcp, nil)
+	if err != nil {
+		return consulutil.NewKVError("get", rcp, err)
+	}
+
+	if kvp == nil {
+		return NoReplicationController
+	}
+
+	rc, err := kvpToRC(kvp)
+	if err != nil {
+		return err
+	}
+
+	oldValue := rc.ReplicasDesired
+
 	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
-		rc.ReplicasDesired += n
+		if rc.ReplicasDesired != oldValue {
+			return rc, fmt.Errorf("I've been pre-empted because value was %d instead of %d", rc.ReplicasDesired, oldValue)
+		}
+		rc.ReplicasDesired = oldValue + n
 		if rc.ReplicasDesired < 0 {
 			rc.ReplicasDesired = 0
 		}
