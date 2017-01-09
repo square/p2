@@ -466,6 +466,22 @@
 			"Rev": "a646d33e2ee3172a661fc09bca23bb4889a41bc8"
 		},
 		{
+			"ImportPath": "golang.org/x/text/secure/bidirule",
+			"Rev": "44f4f658a783b0cee41fe0a23b8fc91d9c120558"
+		},
+		{
+			"ImportPath": "golang.org/x/text/transform",
+			"Rev": "44f4f658a783b0cee41fe0a23b8fc91d9c120558"
+		},
+		{
+			"ImportPath": "golang.org/x/text/unicode/bidi",
+			"Rev": "44f4f658a783b0cee41fe0a23b8fc91d9c120558"
+		},
+		{
+			"ImportPath": "golang.org/x/text/unicode/norm",
+			"Rev": "44f4f658a783b0cee41fe0a23b8fc91d9c120558"
+		},
+		{
 			"ImportPath": "golang.org/x/time/rate",
 			"Rev": "a4bde12657593d5e90d0533a3e4fd95e635124cb"
 		},
