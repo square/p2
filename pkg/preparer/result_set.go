@@ -1,8 +1,8 @@
 package preparer
 
 import (
-	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -26,7 +26,7 @@ type uniqueKey struct {
 	podUniqueKey types.PodUniqueKey
 }
 
-func getUniqueKey(result kp.ManifestResult) uniqueKey {
+func getUniqueKey(result consul.ManifestResult) uniqueKey {
 	return uniqueKey{
 		podID:        result.Manifest.ID(),
 		podUniqueKey: result.PodUniqueKey,
@@ -36,7 +36,7 @@ func getUniqueKey(result kp.ManifestResult) uniqueKey {
 // A ManifestResult may have either a non-nil Manifest OR a non-nil *PodUniqueKey. This function
 // assumes that there will not be duplicate PodIDs (i.e. Manifest.ID()) or PodUniqueKeys in
 // the same slice, and the behavior is undefined if this were to occur.
-func (p *Preparer) ZipResultSets(intent []kp.ManifestResult, reality []kp.ManifestResult) []ManifestPair {
+func (p *Preparer) ZipResultSets(intent []consul.ManifestResult, reality []consul.ManifestResult) []ManifestPair {
 	keyToPair := make(map[uniqueKey]*ManifestPair)
 
 	for _, intentResult := range intent {
@@ -71,7 +71,7 @@ func (p *Preparer) ZipResultSets(intent []kp.ManifestResult, reality []kp.Manife
 	return ret
 }
 
-func checkResultsForID(intent []kp.ManifestResult, id types.PodID) bool {
+func checkResultsForID(intent []consul.ManifestResult, id types.PodID) bool {
 	for _, result := range intent {
 		if result.Manifest.ID() == id {
 			return true

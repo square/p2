@@ -9,12 +9,12 @@ import (
 	"github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/dsstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/dsstore"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -84,8 +84,8 @@ type LabelWatcher interface {
 }
 
 type store interface {
-	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
-	NewUnmanagedSession(session, name string) kp.Session
+	DeletePod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	NewUnmanagedSession(session, name string) consul.Session
 
 	// For passing to the replication package:
 	replication.Store
@@ -460,8 +460,8 @@ func (ds *daemonSet) unschedule(node types.NodeName) error {
 	ds.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest.ID(), node, ds.ID())
 
 	// Will remove the following key:
-	// <kp.INTENT_TREE>/<node>/<ds.Manifest.ID()>
-	_, err := ds.store.DeletePod(kp.INTENT_TREE, node, ds.Manifest.ID())
+	// <consul.INTENT_TREE>/<node>/<ds.Manifest.ID()>
+	_, err := ds.store.DeletePod(consul.INTENT_TREE, node, ds.Manifest.ID())
 	if err != nil {
 		return util.Errorf("Unable to delete pod id '%v' in node '%v', from intent tree: %v", ds.Manifest.ID(), node, err)
 	}

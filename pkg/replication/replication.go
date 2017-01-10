@@ -10,13 +10,13 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
@@ -71,9 +71,9 @@ type Replication interface {
 }
 
 type Store interface {
-	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
-	NewSession(name string, renewalCh <-chan time.Time) (kp.Session, chan error, error)
+	SetPod(podPrefix consul.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
+	Pod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
+	NewSession(name string, renewalCh <-chan time.Time) (consul.Session, chan error, error)
 	LockHolder(key string) (string, string, error)
 	DestroyLockHolder(id string) error
 }
@@ -123,13 +123,13 @@ type replication struct {
 // operations for this pod ID will not be able to take place.
 // if overrideLock is true, will destroy any session holding any of the keys we
 // wish to lock
-func (r *replication) lockHosts(overrideLock bool, lockMessage string) (kp.Session, chan error, error) {
+func (r *replication) lockHosts(overrideLock bool, lockMessage string) (consul.Session, chan error, error) {
 	session, renewalErrCh, err := r.store.NewSession(lockMessage, nil)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	lockPath := kp.ReplicationLockPath(r.manifest.ID())
+	lockPath := consul.ReplicationLockPath(r.manifest.ID())
 
 	// We don't keep a reference to the consulutil.Unlocker, because we just destroy
 	// the session at the end of the replication anyway
@@ -144,7 +144,7 @@ func (r *replication) lockHosts(overrideLock bool, lockMessage string) (kp.Sessi
 
 // Attempts to claim a lock. If the overrideLock is set, any existing lock holder
 // will be destroyed and one more attempt will be made to acquire the lock
-func (r *replication) lock(session kp.Session, lockPath string, overrideLock bool) (consulutil.Unlocker, error) {
+func (r *replication) lock(session consul.Session, lockPath string, overrideLock bool) (consulutil.Unlocker, error) {
 	unlocker, err := session.Lock(lockPath)
 
 	if _, ok := err.(consulutil.AlreadyLockedError); ok {
@@ -340,7 +340,7 @@ func (r *replication) WaitForReplication() {
 // * Stopping the replication (if it has not already)
 // * Destroying its session (passed in to this function.
 //   Passing nil is legal, in which case it is not destroyed)
-func (r *replication) handleReplicationEnd(session kp.Session, renewalErrCh chan error) {
+func (r *replication) handleReplicationEnd(session consul.Session, renewalErrCh chan error) {
 	defer func() {
 		close(r.quitCh)
 		close(r.errCh)
@@ -413,7 +413,7 @@ func (r *replication) updateOne(
 	targetSHA, _ := r.manifest.SHA()
 	nodeLogger.WithField("sha", targetSHA).Infoln("Updating node")
 	_, err := r.store.SetPod(
-		kp.INTENT_TREE,
+		consul.INTENT_TREE,
 		node,
 		r.manifest,
 	)
@@ -436,7 +436,7 @@ func (r *replication) updateOne(
 			return errCancelled
 		case <-timer.C:
 			_, err = r.store.SetPod(
-				kp.INTENT_TREE,
+				consul.INTENT_TREE,
 				node,
 				r.manifest,
 			)
@@ -455,7 +455,7 @@ func (r *replication) queryReality(node types.NodeName) (manifest.Manifest, erro
 	for {
 		select {
 		case r.concurrentRealityRequests <- struct{}{}:
-			man, _, err := r.store.Pod(kp.REALITY_TREE, node, r.manifest.ID())
+			man, _, err := r.store.Pod(consul.REALITY_TREE, node, r.manifest.ID())
 			<-r.concurrentRealityRequests
 			return man, err
 		case <-time.After(5 * time.Second):

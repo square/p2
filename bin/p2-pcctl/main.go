@@ -10,13 +10,13 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/flags"
-	"github.com/square/p2/pkg/kp/pcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pc/control"
 	"github.com/square/p2/pkg/pc/fields"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/flags"
+	"github.com/square/p2/pkg/store/consul/pcstore"
 	"github.com/square/p2/pkg/types"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
@@ -60,8 +60,8 @@ var (
 
 func main() {
 	cmd, consulOpts, labeler := flags.ParseWithConsulOptions()
-	client := kp.NewConsulClient(consulOpts)
-	kv := kp.NewConsulStore(client)
+	client := consul.NewConsulClient(consulOpts)
+	kv := consul.NewConsulStore(client)
 	logger := logging.NewLogger(logrus.Fields{})
 	pcstore := pcstore.NewConsul(client, labeler, labels.NewConsulApplicator(client, 0), &logger)
 	session, _, err := kv.NewSession(fmt.Sprintf("pcctl-%s", currentUserName()), nil)

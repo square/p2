@@ -10,9 +10,6 @@ import (
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
@@ -20,21 +17,24 @@ import (
 	rcf "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
 
 type Store interface {
-	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
-	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
-	NewUnmanagedSession(session, name string) kp.Session
+	SetPod(podPrefix consul.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
+	Pod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
+	DeletePod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	NewUnmanagedSession(session, name string) consul.Session
 }
 
 type update struct {
 	fields.Update
 
-	kps     Store
+	consuls Store
 	rcs     rcstore.Store
 	hcheck  checker.ConsulHealthChecker
 	labeler rc.Labeler
@@ -43,25 +43,25 @@ type update struct {
 	logger  logging.Logger
 	alerter alerting.Alerter
 
-	session kp.Session
+	session consul.Session
 
 	oldRCUnlocker consulutil.Unlocker
 	newRCUnlocker consulutil.Unlocker
 }
 
-// Create a new Update. The kp.Store, rcstore.Store, labels.Applicator and
+// Create a new Update. The consul.Store, rcstore.Store, labels.Applicator and
 // scheduler.Scheduler arguments should be the same as those of the RCs themselves. The
 // session must be valid for the lifetime of the Update; maintaining this is the
 // responsibility of the caller.
 func NewUpdate(
 	f fields.Update,
-	kps Store,
+	consuls Store,
 	rcs rcstore.Store,
 	hcheck checker.ConsulHealthChecker,
 	labeler rc.Labeler,
 	sched scheduler.Scheduler,
 	logger logging.Logger,
-	session kp.Session,
+	session consul.Session,
 	alerter alerting.Alerter,
 ) Update {
 	if alerter == nil {
@@ -74,7 +74,7 @@ func NewUpdate(
 	})
 	return &update{
 		Update:  f,
-		kps:     kps,
+		consuls: consuls,
 		rcs:     rcs,
 		hcheck:  hcheck,
 		labeler: labeler,
@@ -400,7 +400,7 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 
 	ret.Desired = rcFields.ReplicasDesired
 
-	currentPods, err := rc.New(rcFields, u.kps, u.rcs, u.sched, u.labeler, u.logger, u.alerter).CurrentPods()
+	currentPods, err := rc.New(rcFields, u.consuls, u.rcs, u.sched, u.labeler, u.logger, u.alerter).CurrentPods()
 	if err != nil {
 		return ret, err
 	}
@@ -416,7 +416,7 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 	for _, pod := range currentPods {
 		node := pod.Node
 		// TODO: is reality checking an rc-layer concern?
-		realManifest, _, err := u.kps.Pod(kp.REALITY_TREE, node, rcFields.Manifest.ID())
+		realManifest, _, err := u.consuls.Pod(consul.REALITY_TREE, node, rcFields.Manifest.ID())
 		if err != nil && err != pods.NoCurrentManifest {
 			return ret, err
 		}

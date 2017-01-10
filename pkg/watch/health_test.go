@@ -11,9 +11,9 @@ import (
 	"github.com/Sirupsen/logrus"
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/health"
-	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -25,12 +25,12 @@ func (m *MockHealthManager) Reset() {
 	*m = MockHealthManager{}
 }
 
-func (m *MockHealthManager) NewUpdater(pod types.PodID, service string) kp.HealthUpdater {
+func (m *MockHealthManager) NewUpdater(pod types.PodID, service string) consul.HealthUpdater {
 	m.UpdaterCreated += 1
 	return m
 }
 
-func (m *MockHealthManager) PutHealth(health kp.WatchResult) error {
+func (m *MockHealthManager) PutHealth(health consul.WatchResult) error {
 	return fmt.Errorf("PutHealth() not implemented")
 }
 
@@ -42,7 +42,7 @@ func (*MockHealthManager) Close() {}
 // pods and creates PodWatch structs for new pods.
 func TestUpdatePods(t *testing.T) {
 	var current []PodWatch
-	var reality []kp.ManifestResult
+	var reality []consul.ManifestResult
 	// ids for current: 0, 1, 2, 3
 	for i := 0; i < 4; i++ {
 		current = append(current, *newWatch(types.PodID(strconv.Itoa(i))))
@@ -74,7 +74,7 @@ func TestUpdateStatus(t *testing.T) {
 	logger := logging.TestLogger()
 	healthManager := &MockHealthManager{}
 
-	reality := []kp.ManifestResult{newManifestResult("foo"), newManifestResult("bar")}
+	reality := []consul.ManifestResult{newManifestResult("foo"), newManifestResult("bar")}
 	pods1 := updatePods(healthManager, nil, nil, []PodWatch{}, reality, "", &logger)
 	Assert(t).AreEqual(2, len(pods1), "new pods were not added")
 	Assert(t).AreEqual(2, healthManager.UpdaterCreated, "new pods did not create an updaters")
@@ -93,7 +93,7 @@ func TestUpdatePath(t *testing.T) {
 	logger := logging.TestLogger()
 	healthManager := &MockHealthManager{}
 
-	reality := []kp.ManifestResult{newManifestResult("foo"), newManifestResult("bar")}
+	reality := []consul.ManifestResult{newManifestResult("foo"), newManifestResult("bar")}
 	pods1 := updatePods(healthManager, nil, nil, []PodWatch{}, reality, "bobnode", &logger)
 	Assert(t).AreEqual(2, len(pods1), "new pods were not added")
 	Assert(t).AreEqual(2, healthManager.UpdaterCreated, "new pods did not create an updaters")
@@ -146,11 +146,11 @@ func newWatch(id types.PodID) *PodWatch {
 	}
 }
 
-func newManifestResult(id types.PodID) kp.ManifestResult {
+func newManifestResult(id types.PodID) consul.ManifestResult {
 	builder := manifest.NewBuilder()
 	builder.SetID(id)
 	builder.SetStatusPort(1) // StatusPort must != 0 for updatePods to use it
-	return kp.ManifestResult{
+	return consul.ManifestResult{
 		Manifest: builder.GetManifest(),
 	}
 }

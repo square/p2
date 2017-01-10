@@ -7,13 +7,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/kp/flags"
-	"github.com/square/p2/pkg/kp/pcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pc/fields"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/flags"
+	"github.com/square/p2/pkg/store/consul/pcstore"
 	"github.com/square/p2/pkg/types"
 
 	"github.com/Sirupsen/logrus"
@@ -31,8 +31,8 @@ var (
 func main() {
 	kingpin.Version(version.VERSION)
 	_, opts, applicator := flags.ParseWithConsulOptions()
-	client := kp.NewConsulClient(opts)
-	store := kp.NewConsulStore(client)
+	client := consul.NewConsulClient(opts)
+	store := consul.NewConsulStore(client)
 
 	if *nodeName == "" {
 		hostname, err := os.Hostname()
@@ -44,17 +44,17 @@ func main() {
 	if *podClusters {
 		watchPodClusters(client, applicator)
 	} else {
-		podPrefix := kp.INTENT_TREE
+		podPrefix := consul.INTENT_TREE
 		if *watchReality {
-			podPrefix = kp.REALITY_TREE
+			podPrefix = consul.REALITY_TREE
 		} else if *hooks {
-			podPrefix = kp.HOOK_TREE
+			podPrefix = consul.HOOK_TREE
 		}
 		log.Printf("Watching manifests at %s/%s/\n", podPrefix, *nodeName)
 
 		quit := make(chan struct{})
 		errChan := make(chan error)
-		podCh := make(chan []kp.ManifestResult)
+		podCh := make(chan []consul.ManifestResult)
 		go store.WatchPods(podPrefix, types.NodeName(*nodeName), quit, errChan, podCh)
 		for {
 			select {

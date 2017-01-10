@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/health"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -33,10 +33,10 @@ type ConsulHealthChecker interface {
 	Service(serviceID string) (map[types.NodeName]health.Result, error)
 }
 
-// Subset of kp.Store
+// Subset of consul.Store
 type healthStore interface {
-	GetHealth(service string, node types.NodeName) (kp.WatchResult, error)
-	GetServiceHealth(service string) (map[string]kp.WatchResult, error)
+	GetHealth(service string, node types.NodeName) (consul.WatchResult, error)
+	GetServiceHealth(service string) (map[string]consul.WatchResult, error)
 }
 
 type healthKV interface {
@@ -56,7 +56,7 @@ func NewConsulHealthChecker(client consulutil.ConsulClient) ConsulHealthChecker 
 	return consulHealthChecker{
 		client:      client,
 		kv:          client.KV(),
-		consulStore: kp.NewConsulStore(client),
+		consulStore: consul.NewConsulStore(client),
 	}
 }
 
@@ -189,16 +189,16 @@ func (c consulHealthChecker) WatchService(
 		case <-quitCh:
 			return
 		case <-time.After(1 * time.Second):
-			results, queryMeta, err := c.client.KV().List(kp.HealthPath(serviceID, "/"), &api.QueryOptions{
+			results, queryMeta, err := c.client.KV().List(consul.HealthPath(serviceID, "/"), &api.QueryOptions{
 				WaitIndex: curIndex,
 			})
 			if err != nil {
-				errCh <- consulutil.NewKVError("list", kp.HealthPath(serviceID, "/"), err)
+				errCh <- consulutil.NewKVError("list", consul.HealthPath(serviceID, "/"), err)
 			} else {
 				curIndex = queryMeta.LastIndex
 				out := make(map[types.NodeName]health.Result)
 				for _, result := range results {
-					var next kp.WatchResult
+					var next consul.WatchResult
 					err = json.Unmarshal(result.Value, &next)
 					if err != nil {
 						errCh <- err
@@ -214,7 +214,7 @@ func (c consulHealthChecker) WatchService(
 
 // Service returns a map where values are individual results (keys are nodes)
 func (c consulHealthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
-	// return map[nodenames (string)] to kp.WatchResult
+	// return map[nodenames (string)] to consul.WatchResult
 	// get health of all instances of a service with 1 query
 	kvEntries, err := c.consulStore.GetServiceHealth(serviceID)
 	if err != nil {
@@ -228,7 +228,7 @@ func (c consulHealthChecker) Service(serviceID string) (map[types.NodeName]healt
 	return ret, nil
 }
 
-func consulWatchToResult(w kp.WatchResult) health.Result {
+func consulWatchToResult(w consul.WatchResult) health.Result {
 	return health.Result{
 		ID:      w.Id,
 		Node:    w.Node,

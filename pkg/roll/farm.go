@@ -10,10 +10,6 @@ import (
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/kp/rcstore"
-	"github.com/square/p2/pkg/kp/rollstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	p2metrics "github.com/square/p2/pkg/metrics"
@@ -21,13 +17,17 @@ import (
 	"github.com/square/p2/pkg/rc/fields"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/rcstore"
+	"github.com/square/p2/pkg/store/consul/rollstore"
 	"github.com/square/p2/pkg/util"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 type Factory interface {
-	New(roll_fields.Update, logging.Logger, kp.Session, alerting.Alerter) Update
+	New(roll_fields.Update, logging.Logger, consul.Session, alerting.Alerter) Update
 }
 
 type UpdateFactory struct {
@@ -38,7 +38,7 @@ type UpdateFactory struct {
 	Scheduler     scheduler.Scheduler
 }
 
-func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session kp.Session, alerter alerting.Alerter) Update {
+func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consul.Session, alerter alerting.Alerter) Update {
 	if alerter == nil {
 		alerter = alerting.NewNop()
 	}
@@ -68,7 +68,7 @@ type Farm struct {
 
 	children map[roll_fields.ID]childRU
 	childMu  sync.Mutex
-	session  kp.Session
+	session  consul.Session
 
 	logger  logging.Logger
 	alerter alerting.Alerter

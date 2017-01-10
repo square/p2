@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
@@ -234,7 +234,7 @@ func (r *Reporter) initWorkspaceDir() error {
 		return util.Errorf("Could not stat workspace directory: %s", err)
 	} else {
 		if !dirInfo.IsDir() {
-			return util.Errorf("Configured worskpace directory %s already exists but is not a directory", r.workspaceDirPath)
+			return util.Errorf("Configured workspace directory %s already exists but is not a directory", r.workspaceDirPath)
 		}
 	}
 

@@ -12,12 +12,12 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/dsstore"
-	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/dsstore"
+	"github.com/square/p2/pkg/store/consul/flags"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -89,7 +89,7 @@ var (
 
 func main() {
 	cmd, consulOpts, applicator := flags.ParseWithConsulOptions()
-	client := kp.NewConsulClient(consulOpts)
+	client := consul.NewConsulClient(consulOpts)
 	logger := logging.NewLogger(logrus.Fields{})
 	dsstore := dsstore.NewConsul(client, 3, &logger)
 

@@ -8,15 +8,15 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	checkertest "github.com/square/p2/pkg/health/checker/test"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/kptest"
-	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/rc"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consultest"
+	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -182,7 +182,7 @@ func TestWouldWorkOn(t *testing.T) {
 }
 
 func TestLockRCs(t *testing.T) {
-	fakeStore := kptest.NewFakePodStore(nil, nil)
+	fakeStore := consultest.NewFakePodStore(nil, nil)
 	session, _, err := fakeStore.NewSession("fake rc lock session", nil)
 	Assert(t).IsNil(err, "Should not have erred getting fake session")
 
@@ -360,11 +360,11 @@ func podWithIDAndPort(id string, port int) manifest.Manifest {
 func assignManifestsToNodes(
 	podID types.PodID,
 	nodes map[types.NodeName]bool,
-	pods map[kptest.FakePodStoreKey]manifest.Manifest,
+	pods map[consultest.FakePodStoreKey]manifest.Manifest,
 	ifCurrent, ifNotCurrent manifest.Manifest,
 ) {
 	for node, current := range nodes {
-		key := kptest.FakePodStoreKeyFor(kp.REALITY_TREE, node, podID)
+		key := consultest.FakePodStoreKeyFor(consul.REALITY_TREE, node, podID)
 		if current {
 			pods[key] = ifCurrent
 		} else {
@@ -406,10 +406,10 @@ func updateWithHealth(t *testing.T,
 	oldManifest := podWithIDAndPort(podID, 9001)
 	newManifest := podWithIDAndPort(podID, 9002)
 
-	podMap := map[kptest.FakePodStoreKey]manifest.Manifest{}
+	podMap := map[consultest.FakePodStoreKey]manifest.Manifest{}
 	assignManifestsToNodes(types.PodID(podID), oldNodes, podMap, oldManifest, newManifest)
 	assignManifestsToNodes(types.PodID(podID), newNodes, podMap, newManifest, oldManifest)
-	kps := kptest.NewFakePodStore(podMap, nil)
+	consuls := consultest.NewFakePodStore(podMap, nil)
 
 	rcs := rcstore.NewFake()
 	applicator := labels.NewFakeApplicator()
@@ -421,7 +421,7 @@ func updateWithHealth(t *testing.T,
 	Assert(t).IsNil(err, "expected no error setting up new RC")
 
 	return update{
-		kps:     kps,
+		consuls: consuls,
 		rcs:     rcs,
 		hcheck:  checkertest.NewSingleService(podID, checks),
 		labeler: applicator,
@@ -785,7 +785,7 @@ func failOnError(t *testing.T, desc string, errs <-chan error) {
 
 // Transfers the named node from the old RC to the new RC
 func transferNode(node types.NodeName, manifest manifest.Manifest, upd update) error {
-	if _, err := upd.kps.SetPod(kp.REALITY_TREE, node, manifest); err != nil {
+	if _, err := upd.consuls.SetPod(consul.REALITY_TREE, node, manifest); err != nil {
 		return err
 	}
 	return upd.labeler.SetLabel(labels.POD, labels.MakePodLabelKey(node, manifest.ID()), rc.RCIDLabel, string(upd.NewRC))

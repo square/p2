@@ -20,10 +20,6 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/health"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/podstore"
-	"github.com/square/p2/pkg/kp/statusstore"
-	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
@@ -33,6 +29,10 @@ import (
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/schedule"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/podstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -108,7 +108,7 @@ func main() {
 		log.Fatalf("Couldn't check preparer status: %s", err)
 	}
 
-	consulClient := kp.NewConsulClient(kp.Options{})
+	consulClient := consul.NewConsulClient(consul.Options{})
 	// Get all the pod unique keys so we can unschedule them all
 	keys, _, err := consulClient.KV().Keys(podstore.PodTree+"/", "", nil)
 	if err != nil {
@@ -344,7 +344,7 @@ func verifyProcessExit(errCh chan error, tempDir string, logger logging.Logger) 
 
 	logger.Infoln("Checking for exit code in consul")
 	timeout = time.After(30 * time.Second)
-	podStatusStore := podstatus.NewConsul(statusstore.NewConsul(kp.NewConsulClient(kp.Options{})), kp.PreparerPodStatusNamespace)
+	podStatusStore := podstatus.NewConsul(statusstore.NewConsul(consul.NewConsulClient(consul.Options{})), consul.PreparerPodStatusNamespace)
 	for {
 
 		podStatus, _, err := podStatusStore.Get(podUniqueKey)
@@ -765,7 +765,7 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 }
 
 func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
-	client := kp.NewConsulClient(kp.Options{})
+	client := consul.NewConsulClient(consul.Options{})
 	applicator := labels.NewConsulApplicator(client, 1)
 
 	// we have to label this hostname as being allowed to run tests
@@ -900,7 +900,7 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 	if err != nil {
 		return err
 	}
-	store := kp.NewConsulStore(client)
+	store := consul.NewConsulStore(client)
 
 	time.Sleep(30 * time.Second)
 	// check consul for health information for each app
@@ -914,7 +914,7 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 		res, err := store.GetHealth(sv, node)
 		if err != nil {
 			return err
-		} else if (res == kp.WatchResult{}) {
+		} else if (res == consul.WatchResult{}) {
 			return fmt.Errorf("No results for %s: \n\n %s", sv, targetLogs())
 		} else if res.Status != string(health.Passing) {
 			return fmt.Errorf("%s did not pass health check: \n\n %s", sv, targetLogs())
@@ -929,7 +929,7 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 		if err != nil {
 			return err
 		}
-		val := res[kp.HealthPath(sv, node)]
+		val := res[consul.HealthPath(sv, node)]
 		if getres.Id != val.Id || getres.Service != val.Service || getres.Status != val.Status {
 			return fmt.Errorf("GetServiceHealth failed %+v: \n\n%s", res, targetLogs())
 		}

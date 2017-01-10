@@ -17,11 +17,6 @@ import (
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/kp/flags"
-	"github.com/square/p2/pkg/kp/rcstore"
-	"github.com/square/p2/pkg/kp/rollstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -29,6 +24,11 @@ import (
 	"github.com/square/p2/pkg/roll"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/flags"
+	"github.com/square/p2/pkg/store/consul/rcstore"
+	"github.com/square/p2/pkg/store/consul/rollstore"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -108,7 +108,7 @@ func main() {
 	}
 
 	httpClient := cleanhttp.DefaultClient()
-	client := kp.NewConsulClient(opts)
+	client := consul.NewConsulClient(opts)
 	sched := scheduler.NewApplicatorScheduler(labeler)
 
 	rctl := rctlParams{
@@ -116,7 +116,7 @@ func main() {
 		baseClient: client,
 		rcs:        rcstore.NewConsul(client, labeler, 3),
 		rls:        rollstore.NewConsul(client, labeler, nil),
-		kps:        kp.NewConsulStore(client),
+		consuls:    consul.NewConsulStore(client),
 		labeler:    labeler,
 		sched:      sched,
 		hcheck:     checker.NewConsulHealthChecker(client),
@@ -171,7 +171,7 @@ type rctlParams struct {
 	rls        rollstore.Store
 	sched      scheduler.Scheduler
 	labeler    labels.ApplicatorWithoutWatches
-	kps        Store
+	consuls    Store
 	hcheck     checker.ConsulHealthChecker
 	logger     logging.Logger
 }
@@ -303,7 +303,7 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int, pagerduty
 	if sessionID == "" {
 		r.logger.NoFields().Fatalln("Could not acquire session")
 	}
-	session := r.kps.NewUnmanagedSession(sessionID, "")
+	session := r.consuls.NewUnmanagedSession(sessionID, "")
 
 	alerter := alerting.NewNop()
 	if pagerdutyServiceKey != "" {
@@ -321,7 +321,7 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int, pagerduty
 			NewRC:           rc_fields.ID(newID),
 			DesiredReplicas: want,
 			MinimumReplicas: need,
-		}, r.kps, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, session, alerter).Run(quit)
+		}, r.consuls, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, session, alerter).Run(quit)
 		close(result)
 	}()
 

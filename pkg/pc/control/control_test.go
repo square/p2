@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/square/p2/pkg/kp/kptest"
-	"github.com/square/p2/pkg/kp/pcstore"
-	"github.com/square/p2/pkg/kp/pcstore/pcstoretest"
 	"github.com/square/p2/pkg/pc/fields"
+	"github.com/square/p2/pkg/store/consul/consultest"
+	"github.com/square/p2/pkg/store/consul/pcstore"
+	"github.com/square/p2/pkg/store/consul/pcstore/pcstoretest"
 	"github.com/square/p2/pkg/types"
 	"k8s.io/kubernetes/pkg/labels"
 )
@@ -20,7 +20,7 @@ func TestCreate(t *testing.T) {
 		Add(fields.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
 		Add(fields.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
 		Add(fields.ClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
-	session := kptest.NewSession()
+	session := consultest.NewSession()
 	pcstore := pcstoretest.NewFake()
 
 	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector, session)
@@ -81,7 +81,7 @@ func TestUpdate(t *testing.T) {
 		Add(fields.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
 		Add(fields.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
 		Add(fields.ClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
-	session := kptest.NewSession()
+	session := consultest.NewSession()
 	pcstore := pcstoretest.NewFake()
 
 	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector, session)
@@ -147,7 +147,7 @@ func TestPodClusterFromID(t *testing.T) {
 		Add(fields.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
 		Add(fields.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
 		Add(fields.ClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
-	session := kptest.NewSession()
+	session := consultest.NewSession()
 	fakePCStore := pcstoretest.NewFake()
 
 	pcControllerFromLabels := NewPodCluster(testAZ, testCN, testPodID, fakePCStore, selector, session)

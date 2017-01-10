@@ -9,15 +9,15 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -54,7 +54,7 @@ type Farm struct {
 
 	children map[fields.ID]childRC
 	childMu  sync.Mutex
-	session  kp.Session
+	session  consul.Session
 
 	logger     logging.Logger
 	alerter    alerting.Alerter
@@ -74,10 +74,10 @@ type childRC struct {
 }
 
 type store interface {
-	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
-	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
-	NewUnmanagedSession(session, name string) kp.Session
+	SetPod(podPrefix consul.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
+	Pod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
+	DeletePod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	NewUnmanagedSession(session, name string) consul.Session
 }
 
 func NewFarm(

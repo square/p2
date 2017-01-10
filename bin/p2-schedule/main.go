@@ -6,11 +6,11 @@ import (
 	"log"
 	"os"
 
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/flags"
-	"github.com/square/p2/pkg/kp/podstore"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/schedule"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/flags"
+	"github.com/square/p2/pkg/store/consul/podstore"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/version"
 
@@ -27,8 +27,8 @@ var (
 func main() {
 	kingpin.Version(version.VERSION)
 	_, opts, _ := flags.ParseWithConsulOptions()
-	client := kp.NewConsulClient(opts)
-	store := kp.NewConsulStore(client)
+	client := consul.NewConsulClient(opts)
+	store := consul.NewConsulStore(client)
 	podStore := podstore.NewConsul(client.KV())
 
 	if *nodeName == "" {
@@ -60,9 +60,9 @@ func main() {
 	} else {
 
 		// Legacy pod
-		podPrefix := kp.INTENT_TREE
+		podPrefix := consul.INTENT_TREE
 		if *hookGlobal {
-			podPrefix = kp.HOOK_TREE
+			podPrefix = consul.HOOK_TREE
 		}
 		_, err := store.SetPod(podPrefix, types.NodeName(*nodeName), podManifest)
 		if err != nil {

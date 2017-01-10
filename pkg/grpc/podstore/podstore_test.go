@@ -6,12 +6,12 @@ import (
 
 	podstore_protos "github.com/square/p2/pkg/grpc/podstore/protos"
 	"github.com/square/p2/pkg/grpc/testutil"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/kp/podstore"
-	"github.com/square/p2/pkg/kp/statusstore/podstatus"
-	"github.com/square/p2/pkg/kp/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/launch"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/podstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
+	"github.com/square/p2/pkg/store/consul/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/types"
 
 	"golang.org/x/net/context"
@@ -109,7 +109,7 @@ func TestWatchPodStatus(t *testing.T) {
 
 	podUniqueKey := types.NewPodUUID()
 	req := &podstore_protos.WatchPodStatusRequest{
-		StatusNamespace: kp.PreparerPodStatusNamespace.String(),
+		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
 		PodUniqueKey:    podUniqueKey.String(),
 		// Set it 1 above last index so we wait for the key to exist. (The test status
 		// store starts at 1234 for some reason)
@@ -213,7 +213,7 @@ func setupServerWithFakePodStore() (podstore.Store, store) {
 }
 
 func setupServerWithFakePodStatusStore() (podstatus.Store, store) {
-	fakePodStatusStore := podstatus.NewConsul(statusstoretest.NewFake(), kp.PreparerPodStatusNamespace)
+	fakePodStatusStore := podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace)
 	return fakePodStatusStore, store{
 		podStatusStore: fakePodStatusStore,
 	}

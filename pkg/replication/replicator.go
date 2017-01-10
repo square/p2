@@ -7,9 +7,9 @@ import (
 	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -178,7 +178,7 @@ func (r replicator) initializeReplicationWithCheck(
 	// To make a closed channel
 	close(replication.enactedCh)
 
-	var session kp.Session
+	var session consul.Session
 	var renewalErrCh chan error
 	if !skipLocking {
 		session, renewalErrCh, err = replication.lockHosts(overrideLock, r.lockMessage)
@@ -202,7 +202,7 @@ func (r replicator) initializeReplicationWithCheck(
 // Checks that the preparer is running on every host being deployed to.
 func (r replicator) checkPreparers() error {
 	for _, host := range r.nodes {
-		_, _, err := r.store.Pod(kp.REALITY_TREE, host, constants.PreparerPodID)
+		_, _, err := r.store.Pod(consul.REALITY_TREE, host, constants.PreparerPodID)
 		if err != nil {
 			return util.Errorf("Could not verify %v state on %q: %v", constants.PreparerPodID, host, err)
 		}

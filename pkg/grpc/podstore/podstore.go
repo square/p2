@@ -2,10 +2,10 @@ package podstore
 
 import (
 	podstore_protos "github.com/square/p2/pkg/grpc/podstore/protos"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/statusstore"
-	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/types"
 
 	"github.com/hashicorp/consul/api"
@@ -71,9 +71,9 @@ type podStatusResult struct {
 }
 
 func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream podstore_protos.P2PodStore_WatchPodStatusServer) error {
-	if req.StatusNamespace != kp.PreparerPodStatusNamespace.String() {
+	if req.StatusNamespace != consul.PreparerPodStatusNamespace.String() {
 		// Today this is the only namespace so we just make sure it doesn't diverge from expected
-		return grpc.Errorf(codes.InvalidArgument, "%q is not an understood namespace, must be %q", req.StatusNamespace, kp.PreparerPodStatusNamespace)
+		return grpc.Errorf(codes.InvalidArgument, "%q is not an understood namespace, must be %q", req.StatusNamespace, consul.PreparerPodStatusNamespace)
 	}
 
 	podUniqueKey, err := types.ToPodUniqueKey(req.PodUniqueKey)

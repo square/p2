@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/alerting"
-	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/store/consul/rcstore"
 
 	. "github.com/anthonybishopric/gotcha"
 )

@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/kp/podstore"
-	"github.com/square/p2/pkg/kp/statusstore/podstatus"
-	"github.com/square/p2/pkg/kp/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/podstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
+	"github.com/square/p2/pkg/store/consul/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -28,18 +28,18 @@ func podWithID(id string) manifest.Manifest {
 func testResultSetPreparer() *Preparer {
 	fakeStatusStore := statusstoretest.NewFake()
 	return &Preparer{
-		podStatusStore: podstatus.NewConsul(fakeStatusStore, kp.PreparerPodStatusNamespace),
+		podStatusStore: podstatus.NewConsul(fakeStatusStore, consul.PreparerPodStatusNamespace),
 		podStore:       podstore.NewConsul(consulutil.NewFakeClient().KV()),
 	}
 }
 
 func TestZipBasic(t *testing.T) {
-	intent := []kp.ManifestResult{
+	intent := []consul.ManifestResult{
 		{Manifest: podWithID("foo")},
 		{PodUniqueKey: "abc123", Manifest: podWithID("baz")},
 		{PodUniqueKey: "def456", Manifest: podWithID("foo")},
 		{Manifest: podWithID("bar")}}
-	reality := []kp.ManifestResult{
+	reality := []consul.ManifestResult{
 		{Manifest: podWithID("baz")},
 		{PodUniqueKey: "abc123", Manifest: podWithID("baz")},
 		{PodUniqueKey: "deadbeef", Manifest: podWithID("bar")},
@@ -52,7 +52,7 @@ func TestZipBasic(t *testing.T) {
 	ValidatePairList(t, pairs, intent, reality)
 }
 
-func ValidatePairList(t *testing.T, l []ManifestPair, intent, reality []kp.ManifestResult) {
+func ValidatePairList(t *testing.T, l []ManifestPair, intent, reality []consul.ManifestResult) {
 	for _, pair := range l {
 		// fuzz check #1: all three fields of the Pair should have the same ID
 		if pair.Intent != nil {
@@ -102,16 +102,16 @@ func TestZipFuzz(t *testing.T) {
 // generates a list of manifests that is baseLength in length, then randomly
 // discards up to half the elements. Each entry that remains has a 50% chance
 // of being a uuid pod and thus having its manifest put into the pod store.
-func generateRandomManifestList(baseLength int, podStore podstore.Store, t *testing.T) []kp.ManifestResult {
+func generateRandomManifestList(baseLength int, podStore podstore.Store, t *testing.T) []consul.ManifestResult {
 	indices := rand.Perm(baseLength)
 	discard := rand.Intn(baseLength / 2)
 
-	ret := make([]kp.ManifestResult, baseLength-discard)
+	ret := make([]consul.ManifestResult, baseLength-discard)
 	for i := range ret {
 		uuidPod := rand.Intn(2)
 		manifest := podWithID(strconv.Itoa(indices[i]))
 		if uuidPod == 0 {
-			ret[i] = kp.ManifestResult{
+			ret[i] = consul.ManifestResult{
 				Manifest: manifest,
 			}
 		} else {
@@ -119,7 +119,7 @@ func generateRandomManifestList(baseLength int, podStore podstore.Store, t *test
 			if err != nil {
 				t.Fatal(err)
 			}
-			ret[i] = kp.ManifestResult{
+			ret[i] = consul.ManifestResult{
 				PodUniqueKey: uuid,
 				Manifest:     manifest,
 			}

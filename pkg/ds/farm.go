@@ -12,13 +12,13 @@ import (
 	"github.com/square/p2/pkg/ds/fields"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/consulutil"
-	"github.com/square/p2/pkg/kp/dsstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/dsstore"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -40,7 +40,7 @@ type Farm struct {
 
 	children map[fields.ID]*childDS
 	childMu  sync.Mutex
-	session  kp.Session
+	session  consul.Session
 
 	logger  logging.Logger
 	alerter alerting.Alerter
@@ -158,7 +158,7 @@ func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
 			// We should find a nice way to couple them together
 			dsf.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with dangling daemon set uuid '%v'", podID, nodeName, dsID)
 
-			_, err = dsf.store.DeletePod(kp.INTENT_TREE, nodeName, podID)
+			_, err = dsf.store.DeletePod(consul.INTENT_TREE, nodeName, podID)
 			if err != nil {
 				dsf.logger.NoFields().Errorf("Unable to delete pod id '%v' in node '%v', from intent tree: %v", podID, nodeName, err)
 				continue

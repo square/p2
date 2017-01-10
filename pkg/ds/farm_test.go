@@ -10,14 +10,14 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/alerting"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/dsstore/dsstoretest"
-	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consultest"
+	"github.com/square/p2/pkg/store/consul/dsstore/dsstoretest"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -40,12 +40,12 @@ func TestContendNodes(t *testing.T) {
 	// Instantiate farm
 	//
 	dsStore := dsstoretest.NewFake()
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "contendNodes",
 	})
-	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()
 	defer preparer.Disable()
 
@@ -55,12 +55,12 @@ func TestContendNodes(t *testing.T) {
 
 	dsf := &Farm{
 		dsStore:       dsStore,
-		store:         kpStore,
+		store:         consulStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
 		watcher:       applicator,
 		children:      make(map[ds_fields.ID]*childDS),
-		session:       kptest.NewSession(),
+		session:       consultest.NewSession(),
 		logger:        logger,
 		alerter:       alerting.NewNop(),
 		healthChecker: &happyHealthChecker,
@@ -152,12 +152,12 @@ func TestContendSelectors(t *testing.T) {
 	// Instantiate farm
 	//
 	dsStore := dsstoretest.NewFake()
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "contendSelectors",
 	})
-	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()
 	defer preparer.Disable()
 
@@ -166,12 +166,12 @@ func TestContendSelectors(t *testing.T) {
 
 	dsf := &Farm{
 		dsStore:       dsStore,
-		store:         kpStore,
+		store:         consulStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
 		watcher:       applicator,
 		children:      make(map[ds_fields.ID]*childDS),
-		session:       kptest.NewSession(),
+		session:       consultest.NewSession(),
 		logger:        logger,
 		alerter:       alerting.NewNop(),
 		healthChecker: &happyHealthChecker,
@@ -298,12 +298,12 @@ func TestFarmSchedule(t *testing.T) {
 	// Instantiate farm
 	//
 	dsStore := dsstoretest.NewFake()
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "farmSchedule",
 	})
-	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()
 	defer preparer.Disable()
 
@@ -317,12 +317,12 @@ func TestFarmSchedule(t *testing.T) {
 
 	dsf := &Farm{
 		dsStore:       dsStore,
-		store:         kpStore,
+		store:         consulStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
 		watcher:       applicator,
 		children:      make(map[ds_fields.ID]*childDS),
-		session:       kptest.NewSession(),
+		session:       consultest.NewSession(),
 		logger:        logger,
 		alerter:       alerting.NewNop(),
 		healthChecker: &happyHealthChecker,
@@ -477,10 +477,10 @@ func TestCleanupPods(t *testing.T) {
 	retryInterval = testFarmRetryInterval
 
 	dsStore := dsstoretest.NewFake()
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
-	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()
 	defer preparer.Disable()
 
@@ -504,7 +504,7 @@ func TestCleanupPods(t *testing.T) {
 		err := applicator.SetLabel(labels.POD, id, DSIDLabel, "impossible_id")
 		Assert(t).IsNil(err, "Expected no error labeling node")
 
-		_, err = kpStore.SetPod(kp.INTENT_TREE, types.NodeName(nodeName), podManifest)
+		_, err = consulStore.SetPod(consul.INTENT_TREE, types.NodeName(nodeName), podManifest)
 		Assert(t).IsNil(err, "Expected no error added pod to intent tree")
 	}
 
@@ -516,7 +516,7 @@ func TestCleanupPods(t *testing.T) {
 		Assert(t).IsNil(err, "Expected no error getting labels")
 		Assert(t).IsTrue(labeled.Labels.Has(DSIDLabel), "Precondition failed: Pod must have a dsID label")
 
-		_, _, err = kpStore.Pod(kp.INTENT_TREE, types.NodeName(nodeName), podID)
+		_, _, err = consulStore.Pod(consul.INTENT_TREE, types.NodeName(nodeName), podID)
 		Assert(t).IsNil(err, "Expected no error getting pod from intent store")
 		Assert(t).AreNotEqual(err, pods.NoCurrentManifest, "Precondition failed: Pod was not in intent store")
 	}
@@ -527,12 +527,12 @@ func TestCleanupPods(t *testing.T) {
 	})
 	dsf := &Farm{
 		dsStore:       dsStore,
-		store:         kpStore,
+		store:         consulStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
 		watcher:       applicator,
 		children:      make(map[ds_fields.ID]*childDS),
-		session:       kptest.NewSession(),
+		session:       consultest.NewSession(),
 		logger:        logger,
 		alerter:       alerting.NewNop(),
 		healthChecker: &happyHealthChecker,
@@ -552,7 +552,7 @@ func TestCleanupPods(t *testing.T) {
 		Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 
 		condition := func() error {
-			_, _, err = kpStore.Pod(kp.INTENT_TREE, types.NodeName(nodeName), podID)
+			_, _, err = consulStore.Pod(consul.INTENT_TREE, types.NodeName(nodeName), podID)
 			if err != pods.NoCurrentManifest {
 				return util.Errorf("Expected pod to be deleted in intent store")
 			}
@@ -567,14 +567,14 @@ func TestMultipleFarms(t *testing.T) {
 	retryInterval = testFarmRetryInterval
 
 	dsStore := dsstoretest.NewFake()
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
-	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
+	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()
 	defer preparer.Disable()
 
-	session := kptest.NewSession()
+	session := consultest.NewSession()
 	firstLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "firstMultiple",
 	})
@@ -592,7 +592,7 @@ func TestMultipleFarms(t *testing.T) {
 	//
 	firstFarm := &Farm{
 		dsStore:       dsStore,
-		store:         kpStore,
+		store:         consulStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
 		watcher:       applicator,
@@ -617,7 +617,7 @@ func TestMultipleFarms(t *testing.T) {
 	})
 	secondFarm := &Farm{
 		dsStore:       dsStore,
-		store:         kpStore,
+		store:         consulStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
 		watcher:       applicator,

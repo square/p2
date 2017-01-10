@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"reflect"
 
-	"github.com/square/p2/pkg/kp/rcstore"
+	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/types"
 
 	"k8s.io/kubernetes/pkg/labels"

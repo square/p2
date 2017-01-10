@@ -9,11 +9,11 @@ import (
 
 	"github.com/square/p2/pkg/grpc/podstore"
 	podstore_protos "github.com/square/p2/pkg/grpc/podstore/protos"
-	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/kp/flags"
-	kp_podstore "github.com/square/p2/pkg/kp/podstore"
-	"github.com/square/p2/pkg/kp/statusstore"
-	"github.com/square/p2/pkg/kp/statusstore/podstatus"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/flags"
+	consul_podstore "github.com/square/p2/pkg/store/consul/podstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v2"
@@ -29,9 +29,9 @@ func main() {
 	// Parse custom flags + standard Consul routing options
 	_, opts, _ := flags.ParseWithConsulOptions()
 
-	client := kp.NewConsulClient(opts)
-	podStore := kp_podstore.NewConsul(client.KV())
-	podStatusStore := podstatus.NewConsul(statusstore.NewConsul(client), kp.PreparerPodStatusNamespace)
+	client := consul.NewConsulClient(opts)
+	podStore := consul_podstore.NewConsul(client.KV())
+	podStatusStore := podstatus.NewConsul(statusstore.NewConsul(client), consul.PreparerPodStatusNamespace)
 
 	logger := log.New(os.Stderr, "", 0)
 	port := getPort(logger)
