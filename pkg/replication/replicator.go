@@ -9,8 +9,7 @@ import (
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -49,9 +48,9 @@ type Replicator interface {
 
 // Replicator creates replications
 type replicator struct {
-	manifest  manifest.Manifest // the manifest to replicate
+	manifest  store.Manifest // the manifest to replicate
 	logger    logging.Logger
-	nodes     []types.NodeName
+	nodes     []store.NodeName
 	active    int // maximum number of nodes to update concurrently
 	store     Store
 	labeler   Labeler
@@ -65,9 +64,9 @@ type replicator struct {
 }
 
 func NewReplicator(
-	manifest manifest.Manifest,
+	manifest store.Manifest,
 	logger logging.Logger,
-	nodes []types.NodeName,
+	nodes []store.NodeName,
 	active int,
 	store Store,
 	labeler Labeler,

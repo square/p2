@@ -1,20 +1,18 @@
-package fields_test
+package store
 
 import (
 	"encoding/json"
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
-	"github.com/square/p2/pkg/manifest"
-	"github.com/square/p2/pkg/rc/fields"
 )
 
 func TestJSONMarshal(t *testing.T) {
-	mb := manifest.NewBuilder()
+	mb := NewBuilder()
 	mb.SetID("hello")
 	m := mb.GetManifest()
 
-	rc1 := fields.RC{
+	rc1 := ReplicationController{
 		ID:       "hello",
 		Manifest: m,
 	}
@@ -23,15 +21,15 @@ func TestJSONMarshal(t *testing.T) {
 	Assert(t).IsNil(err, "should have marshaled")
 	t.Log("serialized format:", string(b))
 
-	var rc2 fields.RC
+	var rc2 ReplicationController
 	err = json.Unmarshal(b, &rc2)
 	Assert(t).IsNil(err, "should have unmarshaled")
 	Assert(t).AreEqual(rc1.ID, rc2.ID, "RC ID changed when serialized")
 	Assert(t).AreEqual(rc1.Manifest.ID(), rc2.Manifest.ID(), "Manifest ID changed when serialized")
 }
 
-func TestZeroUnmarshal(t *testing.T) {
-	var rc fields.RC
+func TestZeroUnmarshalRC(t *testing.T) {
+	var rc ReplicationController
 	err := json.Unmarshal([]byte(`{}`), &rc)
 	Assert(t).IsNil(err, "error unmarshaling")
 }

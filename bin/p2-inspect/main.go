@@ -13,7 +13,7 @@ import (
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/flags"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -27,18 +27,18 @@ func main() {
 	kingpin.Version(version.VERSION)
 	_, opts, _ := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(opts)
-	store := kp.NewConsulStore(client)
+	consulStore := kp.NewConsulStore(client)
 
 	var intents []kp.ManifestResult
 	var realities []kp.ManifestResult
 	var err error
-	filterNodeName := types.NodeName(*nodeArg)
-	filterPodID := types.PodID(*podArg)
+	filterNodeName := store.NodeName(*nodeArg)
+	filterPodID := store.PodID(*podArg)
 
 	if filterNodeName != "" {
-		intents, _, err = store.ListPods(kp.INTENT_TREE, filterNodeName)
+		intents, _, err = consulStore.ListPods(kp.INTENT_TREE, filterNodeName)
 	} else {
-		intents, _, err = store.AllPods(kp.INTENT_TREE)
+		intents, _, err = consulStore.AllPods(kp.INTENT_TREE)
 	}
 	if err != nil {
 		message := "Could not list intent kvpairs: %s"
@@ -50,9 +50,9 @@ func main() {
 	}
 
 	if filterNodeName != "" {
-		realities, _, err = store.ListPods(kp.REALITY_TREE, filterNodeName)
+		realities, _, err = consulStore.ListPods(kp.REALITY_TREE, filterNodeName)
 	} else {
-		realities, _, err = store.AllPods(kp.REALITY_TREE)
+		realities, _, err = consulStore.AllPods(kp.REALITY_TREE)
 	}
 
 	if err != nil {
@@ -64,7 +64,7 @@ func main() {
 		}
 	}
 
-	statusMap := make(map[types.PodID]map[types.NodeName]inspect.NodePodStatus)
+	statusMap := make(map[store.PodID]map[store.NodeName]inspect.NodePodStatus)
 
 	for _, kvp := range intents {
 		if err = inspect.AddKVPToMap(kvp, inspect.INTENT_SOURCE, filterNodeName, filterPodID, statusMap); err != nil {

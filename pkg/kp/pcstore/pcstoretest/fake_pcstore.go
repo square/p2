@@ -6,8 +6,7 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/pcstore"
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/pc/fields"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 
 	"github.com/pborman/uuid"
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -16,28 +15,28 @@ import (
 // Implementation of the pcstore.Store interface that can be used for unit
 // testing
 type FakePCStore struct {
-	podClusters map[fields.ID]fields.PodCluster
-	watchers    map[fields.ID]chan pcstore.WatchedPodCluster
+	podClusters map[store.PodClusterID]store.PodCluster
+	watchers    map[store.PodClusterID]chan pcstore.WatchedPodCluster
 }
 
 var _ pcstore.Store = &FakePCStore{}
 
 func NewFake() *FakePCStore {
 	return &FakePCStore{
-		podClusters: make(map[fields.ID]fields.PodCluster),
+		podClusters: make(map[store.PodClusterID]store.PodCluster),
 	}
 }
 
 func (p *FakePCStore) Create(
-	podID types.PodID,
-	availabilityZone fields.AvailabilityZone,
-	clusterName fields.ClusterName,
+	podID store.PodID,
+	availabilityZone store.AvailabilityZone,
+	clusterName store.PodClusterName,
 	podSelector klabels.Selector,
-	annotations fields.Annotations,
+	annotations store.Annotations,
 	_ pcstore.Session,
-) (fields.PodCluster, error) {
-	id := fields.ID(uuid.New())
-	pc := fields.PodCluster{
+) (store.PodCluster, error) {
+	id := store.PodClusterID(uuid.New())
+	pc := store.PodCluster{
 		ID:               id,
 		PodID:            podID,
 		AvailabilityZone: availabilityZone,
@@ -53,21 +52,21 @@ func (p *FakePCStore) Create(
 	return pc, nil
 }
 
-func (p *FakePCStore) Get(id fields.ID) (fields.PodCluster, error) {
+func (p *FakePCStore) Get(id store.PodClusterID) (store.PodCluster, error) {
 	if pc, ok := p.podClusters[id]; ok {
 		return pc, nil
 	}
 
-	return fields.PodCluster{}, pcstore.NoPodCluster
+	return store.PodCluster{}, pcstore.NoPodCluster
 }
 
-func (p *FakePCStore) Delete(id fields.ID) error {
+func (p *FakePCStore) Delete(id store.PodClusterID) error {
 	delete(p.podClusters, id)
 	return nil
 }
 
-func (p *FakePCStore) List() ([]fields.PodCluster, error) {
-	var ret []fields.PodCluster
+func (p *FakePCStore) List() ([]store.PodCluster, error) {
+	var ret []store.PodCluster
 	for _, pc := range p.podClusters {
 		ret = append(ret, pc)
 	}
@@ -75,17 +74,17 @@ func (p *FakePCStore) List() ([]fields.PodCluster, error) {
 }
 
 func (p *FakePCStore) MutatePC(
-	id fields.ID,
-	mutator func(fields.PodCluster) (fields.PodCluster, error),
-) (fields.PodCluster, error) {
+	id store.PodClusterID,
+	mutator func(store.PodCluster) (store.PodCluster, error),
+) (store.PodCluster, error) {
 	pc, err := p.Get(id)
 	if err != nil {
-		return fields.PodCluster{}, err
+		return store.PodCluster{}, err
 	}
 
 	pc, err = mutator(pc)
 	if err != nil {
-		return fields.PodCluster{}, err
+		return store.PodCluster{}, err
 	}
 
 	p.podClusters[id] = pc
@@ -103,11 +102,11 @@ func (p *FakePCStore) MutatePC(
 }
 
 func (p *FakePCStore) FindWhereLabeled(
-	podID types.PodID,
-	availabilityZone fields.AvailabilityZone,
-	clusterName fields.ClusterName,
-) ([]fields.PodCluster, error) {
-	ret := []fields.PodCluster{}
+	podID store.PodID,
+	availabilityZone store.AvailabilityZone,
+	clusterName store.PodClusterName,
+) ([]store.PodCluster, error) {
+	ret := []store.PodCluster{}
 	for _, pc := range p.podClusters {
 		if availabilityZone == pc.AvailabilityZone &&
 			clusterName == pc.Name &&
@@ -164,11 +163,11 @@ func (p *FakePCStore) WatchAndSync(concrete pcstore.ConcreteSyncer, quit <-chan 
 	}
 }
 
-func (p *FakePCStore) WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan pcstore.WatchedPodCluster {
+func (p *FakePCStore) WatchPodCluster(id store.PodClusterID, quit <-chan struct{}) <-chan pcstore.WatchedPodCluster {
 	return p.watchers[id]
 }
 
-func (p *FakePCStore) LockForSync(id fields.ID, syncerType pcstore.ConcreteSyncerType, session pcstore.Session) (consulutil.Unlocker, error) {
+func (p *FakePCStore) LockForSync(id store.PodClusterID, syncerType pcstore.ConcreteSyncerType, session pcstore.Session) (consulutil.Unlocker, error) {
 	key := fmt.Sprintf("%s/%s", id, syncerType)
 	return session.Lock(key)
 }

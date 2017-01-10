@@ -8,7 +8,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/runit"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -59,7 +59,7 @@ func main() {
 		path = *podDir
 	}
 
-	pod, err := pods.PodFromPodHome(types.NodeName(*nodeName), path)
+	pod, err := pods.PodFromPodHome(store.NodeName(*nodeName), path)
 	if err != nil {
 		logger.NoFields().Fatalln(err)
 	}

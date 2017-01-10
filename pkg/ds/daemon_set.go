@@ -6,7 +6,6 @@ import (
 	"os/user"
 	"time"
 
-	"github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/kp"
@@ -15,7 +14,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/scheduler"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -31,19 +30,19 @@ var (
 )
 
 type DaemonSet interface {
-	ID() fields.ID
+	ID() store.DaemonSetID
 
 	IsDisabled() bool
 
 	// Returns the daemon set's pod id
-	PodID() types.PodID
+	PodID() store.PodID
 
-	ClusterName() fields.ClusterName
+	DaemonSetName() store.DaemonSetName
 
 	GetNodeSelector() klabels.Selector
 
 	// Returns a list of all nodes that are selected by this daemon set's selector
-	EligibleNodes() ([]types.NodeName, error)
+	EligibleNodes() ([]store.NodeName, error)
 
 	// WatchDesires watches for changes to its daemon set, then schedule/unschedule
 	// pods to to the nodes that it is responsible for
@@ -56,12 +55,12 @@ type DaemonSet interface {
 	// The caller is responsible for sending signals when something has been changed
 	WatchDesires(
 		quitCh <-chan struct{},
-		updatedCh <-chan *fields.DaemonSet,
-		deletedCh <-chan *fields.DaemonSet,
+		updatedCh <-chan *store.DaemonSet,
+		deletedCh <-chan *store.DaemonSet,
 	) <-chan error
 
 	// CurrentPods() returns all nodes that are scheduled by this daemon set
-	CurrentPods() (types.PodLocations, error)
+	CurrentPods() (store.PodLocations, error)
 
 	// Schedules pods by using replication, this will automatically
 	// cancel any current replications and re-enact
@@ -83,8 +82,8 @@ type LabelWatcher interface {
 	) <-chan *labels.LabeledChanges
 }
 
-type store interface {
-	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+type consulStore interface {
+	DeletePod(podPrefix kp.PodPrefix, nodename store.NodeName, podId store.PodID) (time.Duration, error)
 	NewUnmanagedSession(session, name string) kp.Session
 
 	// For passing to the replication package:
@@ -92,11 +91,11 @@ type store interface {
 }
 
 type daemonSet struct {
-	fields.DaemonSet
+	store.DaemonSet
 
 	contention    dsContention
 	logger        logging.Logger
-	store         store
+	store         consulStore
 	scheduler     scheduler.Scheduler
 	dsStore       dsstore.Store
 	applicator    Labeler
@@ -115,14 +114,14 @@ type daemonSet struct {
 }
 
 type dsContention struct {
-	contendedWith fields.ID
+	contendedWith store.DaemonSetID
 	isContended   bool
 }
 
 func New(
-	fields fields.DaemonSet,
+	ds store.DaemonSet,
 	dsStore dsstore.Store,
-	store store,
+	store consulStore,
 	applicator Labeler,
 	watcher LabelWatcher,
 	logger logging.Logger,
@@ -131,7 +130,7 @@ func New(
 	cachedPodMatch bool,
 ) DaemonSet {
 	return &daemonSet{
-		DaemonSet: fields,
+		DaemonSet: ds,
 
 		dsStore:            dsStore,
 		store:              store,
@@ -146,7 +145,7 @@ func New(
 	}
 }
 
-func (ds *daemonSet) ID() fields.ID {
+func (ds *daemonSet) ID() store.DaemonSetID {
 	return ds.DaemonSet.ID
 }
 
@@ -154,11 +153,11 @@ func (ds *daemonSet) IsDisabled() bool {
 	return ds.DaemonSet.Disabled
 }
 
-func (ds *daemonSet) PodID() types.PodID {
+func (ds *daemonSet) PodID() store.PodID {
 	return ds.DaemonSet.PodID
 }
 
-func (ds *daemonSet) ClusterName() fields.ClusterName {
+func (ds *daemonSet) DaemonSetName() store.DaemonSetName {
 	return ds.DaemonSet.Name
 }
 
@@ -166,14 +165,14 @@ func (ds *daemonSet) GetNodeSelector() klabels.Selector {
 	return ds.DaemonSet.NodeSelector
 }
 
-func (ds *daemonSet) EligibleNodes() ([]types.NodeName, error) {
+func (ds *daemonSet) EligibleNodes() ([]store.NodeName, error) {
 	return ds.scheduler.EligibleNodes(ds.Manifest, ds.NodeSelector)
 }
 
 func (ds *daemonSet) WatchDesires(
 	quitCh <-chan struct{},
-	updatedCh <-chan *fields.DaemonSet,
-	deletedCh <-chan *fields.DaemonSet,
+	updatedCh <-chan *store.DaemonSet,
+	deletedCh <-chan *store.DaemonSet,
 ) <-chan error {
 	errCh := make(chan error)
 	nodesChangedCh := ds.watcher.WatchMatchDiff(ds.NodeSelector, labels.NODE, quitCh)
@@ -361,7 +360,7 @@ func (ds *daemonSet) addPods() error {
 
 	// Get the difference in nodes that we need to schedule on and then sort them
 	// for deterministic ordering
-	toScheduleSorted := types.NewNodeSet(eligible...).Difference(types.NewNodeSet(currentNodes...)).ListNodes()
+	toScheduleSorted := store.NewNodeSet(eligible...).Difference(store.NewNodeSet(currentNodes...)).ListNodes()
 	ds.logger.NoFields().Infof("Need to label %d nodes", len(toScheduleSorted))
 
 	for _, node := range toScheduleSorted {
@@ -394,7 +393,7 @@ func (ds *daemonSet) removePods() error {
 
 	// Get the difference in nodes that we need to unschedule on and then sort them
 	// for deterministic ordering
-	toUnscheduleSorted := types.NewNodeSet(currentNodes...).Difference(types.NewNodeSet(eligible...)).ListNodes()
+	toUnscheduleSorted := store.NewNodeSet(currentNodes...).Difference(store.NewNodeSet(eligible...)).ListNodes()
 	ds.logger.NoFields().Infof("Need to unschedule %d nodes", len(toUnscheduleSorted))
 
 	ds.cancelReplication()
@@ -426,7 +425,7 @@ func (ds *daemonSet) clearPods() error {
 
 	// Get the difference in nodes that we need to unschedule on and then sort them
 	// for deterministic ordering
-	toUnscheduleSorted := types.NewNodeSet(currentNodes...).ListNodes()
+	toUnscheduleSorted := store.NewNodeSet(currentNodes...).ListNodes()
 	ds.logger.NoFields().Infof("Need to unschedule %d nodes", len(toUnscheduleSorted))
 
 	ds.cancelReplication()
@@ -441,7 +440,7 @@ func (ds *daemonSet) clearPods() error {
 	return nil
 }
 
-func (ds *daemonSet) labelPod(node types.NodeName) error {
+func (ds *daemonSet) labelPod(node store.NodeName) error {
 	ds.logger.NoFields().Infof("Labelling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest.ID(), node, ds.ID())
 
 	// Will apply the following label on the key <labels.POD>/<node>/<ds.Manifest.ID()>:
@@ -456,7 +455,7 @@ func (ds *daemonSet) labelPod(node types.NodeName) error {
 	return nil
 }
 
-func (ds *daemonSet) unschedule(node types.NodeName) error {
+func (ds *daemonSet) unschedule(node store.NodeName) error {
 	ds.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest.ID(), node, ds.ID())
 
 	// Will remove the following key:
@@ -571,7 +570,7 @@ func (ds *daemonSet) cancelReplication() {
 	}
 }
 
-func (ds *daemonSet) CurrentPods() (types.PodLocations, error) {
+func (ds *daemonSet) CurrentPods() (store.PodLocations, error) {
 	// Changing DaemonSet.ID is not permitted, so as long as there is no uuid
 	// collision, this will always get the current pod path that this daemon set
 	// had scheduled on
@@ -582,7 +581,7 @@ func (ds *daemonSet) CurrentPods() (types.PodLocations, error) {
 		return nil, util.Errorf("Unable to get matches on pod tree: %v", err)
 	}
 
-	result := make(types.PodLocations, len(podMatches))
+	result := make(store.PodLocations, len(podMatches))
 	for i, podMatch := range podMatches {
 		// ID will be something like <node>/<PodID>
 		node, podID, err := labels.NodeAndPodIDFromPodLabel(podMatch)

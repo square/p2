@@ -6,10 +6,10 @@ import (
 
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/kptest"
-	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/store"
 )
 
-const testRCId = fields.ID("abcd-1234")
+const testRCId = store.ReplicationControllerID("abcd-1234")
 
 func TestLockForOwnership(t *testing.T) {
 	kpStore := kptest.NewFakePodStore(nil, nil)

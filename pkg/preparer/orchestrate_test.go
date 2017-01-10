@@ -16,8 +16,7 @@ import (
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
 	"golang.org/x/crypto/openpgp"
@@ -26,13 +25,13 @@ import (
 )
 
 type TestPod struct {
-	currentManifest                                                      manifest.Manifest
+	currentManifest                                                      store.Manifest
 	installed, uninstalled, launched, launchSuccess, halted, haltSuccess bool
 	installErr, uninstallErr, launchErr, haltError, currentManifestError error
 	configDir, envDir                                                    string
 }
 
-func (t *TestPod) Prune(_ size.ByteCount, _ manifest.Manifest) {
+func (t *TestPod) Prune(_ size.ByteCount, _ store.Manifest) {
 	return
 }
 
@@ -40,7 +39,7 @@ func (t *TestPod) ManifestSHA() (string, error) {
 	return "abc123", nil
 }
 
-func (t *TestPod) Launch(manifest manifest.Manifest) (bool, error) {
+func (t *TestPod) Launch(manifest store.Manifest) (bool, error) {
 	t.currentManifest = manifest
 	t.launched = true
 	if t.launchErr != nil {
@@ -49,7 +48,7 @@ func (t *TestPod) Launch(manifest manifest.Manifest) (bool, error) {
 	return t.launchSuccess, nil
 }
 
-func (t *TestPod) Install(manifest manifest.Manifest, _ auth.ArtifactVerifier, _ artifact.Registry) error {
+func (t *TestPod) Install(manifest store.Manifest, _ auth.ArtifactVerifier, _ artifact.Registry) error {
 	t.installed = true
 	return t.installErr
 }
@@ -59,11 +58,11 @@ func (t *TestPod) Uninstall() error {
 	return t.uninstallErr
 }
 
-func (t *TestPod) Verify(manifest manifest.Manifest, authPolicy auth.Policy) error {
+func (t *TestPod) Verify(manifest store.Manifest, authPolicy auth.Policy) error {
 	return nil
 }
 
-func (t *TestPod) Halt(manifest manifest.Manifest) (bool, error) {
+func (t *TestPod) Halt(manifest store.Manifest) (bool, error) {
 	t.halted = true
 	return t.haltSuccess, t.haltError
 }
@@ -82,7 +81,7 @@ func (t *TestPod) EnvDir() string {
 	return os.TempDir()
 }
 
-func (t *TestPod) Node() types.NodeName {
+func (t *TestPod) Node() store.NodeName {
 	return "hostname"
 }
 
@@ -90,7 +89,7 @@ func (t *TestPod) Home() string {
 	return os.TempDir()
 }
 
-func (t *TestPod) UniqueKey() types.PodUniqueKey {
+func (t *TestPod) UniqueKey() store.PodUniqueKey {
 	return ""
 }
 
@@ -99,7 +98,7 @@ type fakeHooks struct {
 	ranBeforeInstall, ranBeforeUninstall, ranAfterLaunch, ranAfterInstall, ranAfterAuthFail, ranBeforeLaunch bool
 }
 
-func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest manifest.Manifest) error {
+func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest store.Manifest) error {
 	switch hookType {
 	case hooks.BEFORE_INSTALL:
 		f.ranBeforeInstall = true
@@ -123,9 +122,9 @@ func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest
 	return util.Errorf("Invalid hook type configured in test: %s", hookType)
 }
 
-func testManifest(t *testing.T) manifest.Manifest {
+func testManifest(t *testing.T) store.Manifest {
 	manifestPath := util.From(runtime.Caller(0)).ExpandPath("test_manifest.yaml")
-	manifest, err := manifest.FromPath(manifestPath)
+	manifest, err := store.FromPath(manifestPath)
 	if err != nil {
 		t.Fatal("No test manifest found, failing\n")
 	}
@@ -134,7 +133,7 @@ func testManifest(t *testing.T) manifest.Manifest {
 
 var fakeSigner *openpgp.Entity
 
-func testSignedManifest(t *testing.T, modify func(manifest.Builder, *openpgp.Entity)) (manifest.Manifest, *openpgp.Entity) {
+func testSignedManifest(t *testing.T, modify func(store.Builder, *openpgp.Entity)) (store.Manifest, *openpgp.Entity) {
 	testManifest := testManifest(t)
 
 	if fakeSigner == nil {
@@ -159,18 +158,18 @@ func testSignedManifest(t *testing.T, modify func(manifest.Builder, *openpgp.Ent
 	sigWriter.Write(manifestBytes)
 	sigWriter.Close()
 
-	manifest, err := manifest.FromBytes(buf.Bytes())
+	manifest, err := store.FromBytes(buf.Bytes())
 	Assert(t).IsNil(err, "should have generated manifest from signed bytes")
 
 	return manifest, fakeSigner
 }
 
 type FakeStore struct {
-	currentManifest      manifest.Manifest
+	currentManifest      store.Manifest
 	currentManifestError error
 }
 
-func (f *FakeStore) ListPods(kp.PodPrefix, types.NodeName) ([]kp.ManifestResult, time.Duration, error) {
+func (f *FakeStore) ListPods(kp.PodPrefix, store.NodeName) ([]kp.ManifestResult, time.Duration, error) {
 	if f.currentManifest == nil {
 		return nil, 0, nil
 	}
@@ -182,19 +181,19 @@ func (f *FakeStore) ListPods(kp.PodPrefix, types.NodeName) ([]kp.ManifestResult,
 	}, 0, nil
 }
 
-func (f *FakeStore) SetPod(kp.PodPrefix, types.NodeName, manifest.Manifest) (time.Duration, error) {
+func (f *FakeStore) SetPod(kp.PodPrefix, store.NodeName, store.Manifest) (time.Duration, error) {
 	return 0, nil
 }
 
-func (f *FakeStore) Pod(kp.PodPrefix, types.NodeName, types.PodID) (manifest.Manifest, time.Duration, error) {
+func (f *FakeStore) Pod(kp.PodPrefix, store.NodeName, store.PodID) (store.Manifest, time.Duration, error) {
 	return nil, 0, fmt.Errorf("not implemented")
 }
 
-func (f *FakeStore) DeletePod(kp.PodPrefix, types.NodeName, types.PodID) (time.Duration, error) {
+func (f *FakeStore) DeletePod(kp.PodPrefix, store.NodeName, store.PodID) (time.Duration, error) {
 	return 0, nil
 }
 
-func (f *FakeStore) WatchPods(kp.PodPrefix, types.NodeName, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult) {
+func (f *FakeStore) WatchPods(kp.PodPrefix, store.NodeName, <-chan struct{}, chan<- error, chan<- []kp.ManifestResult) {
 }
 
 func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks, string) {
@@ -238,7 +237,7 @@ func TestPreparerLaunchesNewPodsThatArentInstalledYet(t *testing.T) {
 }
 
 func TestPreparerLaunchesPodsThatHaveDifferentSHAs(t *testing.T) {
-	builder := manifest.NewBuilder()
+	builder := store.NewBuilder()
 	builder.SetID("hello")
 	existing := builder.GetManifest()
 
@@ -290,7 +289,7 @@ func TestPreparerFailsIfInstallFails(t *testing.T) {
 }
 
 func TestPreparerWillLaunchPreparerAsRoot(t *testing.T) {
-	builder := manifest.NewBuilder()
+	builder := store.NewBuilder()
 	builder.SetID(constants.PreparerPodID)
 	builder.SetRunAsUser("root")
 	illegalManifest := builder.GetManifest()
@@ -390,7 +389,7 @@ func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 }
 
 func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *testing.T) {
-	manifest, fakeSigner := testSignedManifest(t, func(b manifest.Builder, _ *openpgp.Entity) {
+	manifest, fakeSigner := testSignedManifest(t, func(b store.Builder, _ *openpgp.Entity) {
 		b.SetID(constants.PreparerPodID)
 	})
 
@@ -406,7 +405,7 @@ func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *tes
 }
 
 func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
-	manifest, fakeSigner := testSignedManifest(t, func(b manifest.Builder, _ *openpgp.Entity) {
+	manifest, fakeSigner := testSignedManifest(t, func(b store.Builder, _ *openpgp.Entity) {
 		b.SetID(constants.PreparerPodID)
 	})
 
@@ -415,7 +414,7 @@ func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{
 		Keyring:             openpgp.EntityList{fakeSigner},
-		AuthorizedDeployers: map[types.PodID][]string{constants.PreparerPodID: {"nobodylol"}},
+		AuthorizedDeployers: map[store.PodID][]string{constants.PreparerPodID: {"nobodylol"}},
 	}
 
 	Assert(t).IsFalse(
@@ -426,7 +425,7 @@ func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 
 func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 	sig := ""
-	manifest, fakeSigner := testSignedManifest(t, func(b manifest.Builder, e *openpgp.Entity) {
+	manifest, fakeSigner := testSignedManifest(t, func(b store.Builder, e *openpgp.Entity) {
 		b.SetID(constants.PreparerPodID)
 		sig = fmt.Sprintf("%X", e.PrimaryKey.Fingerprint)
 	})
@@ -436,7 +435,7 @@ func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{
 		Keyring:             openpgp.EntityList{fakeSigner},
-		AuthorizedDeployers: map[types.PodID][]string{constants.PreparerPodID: {sig}},
+		AuthorizedDeployers: map[store.PodID][]string{constants.PreparerPodID: {sig}},
 	}
 
 	Assert(t).IsTrue(

@@ -14,10 +14,9 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
 
@@ -34,7 +33,7 @@ var (
 )
 
 type nodeUpdated struct {
-	node types.NodeName
+	node store.NodeName
 	err  error
 }
 
@@ -71,8 +70,8 @@ type Replication interface {
 }
 
 type Store interface {
-	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
+	SetPod(podPrefix kp.PodPrefix, nodename store.NodeName, manifest store.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodename store.NodeName, podId store.PodID) (store.Manifest, time.Duration, error)
 	NewSession(name string, renewalCh <-chan time.Time) (kp.Session, chan error, error)
 	LockHolder(key string) (string, string, error)
 	DestroyLockHolder(id string) error
@@ -81,10 +80,10 @@ type Store interface {
 // A replication contains the information required to do a single replication (deploy).
 type replication struct {
 	active    int
-	nodes     []types.NodeName
+	nodes     []store.NodeName
 	store     Store
 	labeler   Labeler
-	manifest  manifest.Manifest
+	manifest  store.Manifest
 	health    checker.ConsulHealthChecker
 	threshold health.HealthState // minimum state to treat as "healthy"
 	logger    logging.Logger
@@ -115,7 +114,7 @@ type replication struct {
 	timeout time.Duration
 
 	// Used to log replications that have timed out
-	timedOutReplications      []types.NodeName
+	timedOutReplications      []store.NodeName
 	timedOutReplicationsMutex sync.Mutex
 }
 
@@ -231,7 +230,7 @@ func (r *replication) Enact() {
 	}
 	sort.Sort(order)
 
-	nodeQueue := make(chan types.NodeName)
+	nodeQueue := make(chan store.NodeName)
 
 	aggregateHealth := AggregateHealth(r.manifest.ID(), r.health)
 	// this loop multiplexes the node queue across some goroutines
@@ -367,7 +366,7 @@ func (r *replication) handleReplicationEnd(session kp.Session, renewalErrCh chan
 	}
 }
 
-func (r *replication) shouldScheduleForNode(node types.NodeName, logger logging.Logger) bool {
+func (r *replication) shouldScheduleForNode(node store.NodeName, logger logging.Logger) bool {
 	nodeReality, err := r.queryReality(node)
 	if err != nil {
 		logger.WithError(err).Errorln("Could not read Reality for this node. Will proceed to schedule onto it.")
@@ -400,7 +399,7 @@ func (r *replication) shouldScheduleForNode(node types.NodeName, logger logging.
 }
 
 func (r *replication) updateOne(
-	node types.NodeName,
+	node store.NodeName,
 	timeoutCh <-chan struct{},
 	aggregateHealth *podHealth,
 ) error {
@@ -451,7 +450,7 @@ func (r *replication) updateOne(
 	return r.ensureHealthy(node, timeoutCh, nodeLogger, aggregateHealth)
 }
 
-func (r *replication) queryReality(node types.NodeName) (manifest.Manifest, error) {
+func (r *replication) queryReality(node store.NodeName) (store.Manifest, error) {
 	for {
 		select {
 		case r.concurrentRealityRequests <- struct{}{}:
@@ -469,7 +468,7 @@ func (r *replication) queryReality(node types.NodeName) (manifest.Manifest, erro
 }
 
 func (r *replication) ensureInReality(
-	node types.NodeName,
+	node store.NodeName,
 	timeoutCh <-chan struct{},
 	nodeLogger logging.Logger,
 	targetSHA string,
@@ -507,7 +506,7 @@ func (r *replication) ensureInReality(
 }
 
 func (r *replication) ensureHealthy(
-	node types.NodeName,
+	node store.NodeName,
 	timeoutCh <-chan struct{},
 	nodeLogger logging.Logger,
 	aggregateHealth *podHealth,

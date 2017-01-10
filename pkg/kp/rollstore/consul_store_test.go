@@ -11,17 +11,15 @@ import (
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/manifest"
-	rc_fields "github.com/square/p2/pkg/rc/fields"
-	"github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/store"
 
 	"github.com/hashicorp/consul/api"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 const (
-	testRCId  = rc_fields.ID("abcd-1234")
-	testRCId2 = rc_fields.ID("def-456")
+	testRCId  = store.ReplicationControllerID("abcd-1234")
+	testRCId2 = store.ReplicationControllerID("def-456")
 )
 
 func TestNewConsul(t *testing.T) {
@@ -45,7 +43,7 @@ func TestNewConsul(t *testing.T) {
 }
 
 func TestRollPath(t *testing.T) {
-	rollPath, err := RollPath(fields.ID(testRCId))
+	rollPath, err := RollPath(store.RollingUpdateID(testRCId))
 	if err != nil {
 		t.Fatalf("Unable to compute roll path: %s", err)
 	}
@@ -67,7 +65,7 @@ func TestRollPathErrorNoID(t *testing.T) {
 }
 
 func TestRollLockPath(t *testing.T) {
-	rollLockPath, err := RollLockPath(fields.ID(testRCId))
+	rollLockPath, err := RollLockPath(store.RollingUpdateID(testRCId))
 	if err != nil {
 		t.Fatalf("Unable to compute roll lock path: %s", err)
 	}
@@ -88,10 +86,10 @@ func TestRollLockPathErrorNoID(t *testing.T) {
 	}
 }
 
-func newRollStore(t *testing.T, entries []fields.Update) consulStore {
+func newRollStore(t *testing.T, entries []store.RollingUpdate) consulStore {
 	storeFields := make(map[string]*api.KVPair)
 	for _, u := range entries {
-		path, err := RollPath(fields.ID(u.NewRC))
+		path, err := RollPath(store.RollingUpdateID(u.NewRC))
 		if err != nil {
 			t.Fatalf("Unable to create roll store for test: %s", err)
 		}
@@ -115,9 +113,9 @@ func newRollStore(t *testing.T, entries []fields.Update) consulStore {
 }
 
 func TestGet(t *testing.T) {
-	rollstore := newRollStore(t, []fields.Update{testRollValue(testRCId)})
+	rollstore := newRollStore(t, []store.RollingUpdate{testRollValue(testRCId)})
 
-	entry, err := rollstore.Get(fields.ID(testRCId))
+	entry, err := rollstore.Get(store.RollingUpdateID(testRCId))
 	if err != nil {
 		t.Fatalf("Unexpected error retrieving roll from roll store: %s", err)
 	}
@@ -128,7 +126,7 @@ func TestGet(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	entries := []fields.Update{testRollValue(testRCId), testRollValue(testRCId2)}
+	entries := []store.RollingUpdate{testRollValue(testRCId), testRollValue(testRCId2)}
 	rollstore := newRollStore(t, entries)
 
 	rolls, err := rollstore.List()
@@ -166,10 +164,10 @@ func TestList(t *testing.T) {
 func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
 	rollstore := newRollStore(t, nil)
 
-	newRCID := rc_fields.ID("new_rc")
-	oldRCID := rc_fields.ID("old_rc")
+	newRCID := store.ReplicationControllerID("new_rc")
+	oldRCID := store.ReplicationControllerID("old_rc")
 
-	update := fields.Update{
+	update := store.RollingUpdate{
 		NewRC: newRCID,
 		OldRC: oldRCID,
 	}
@@ -217,17 +215,17 @@ func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
 
 // Test that if a conflicting update exists, a new one will not be admitted
 func TestCreateExistingRCsMutualExclusion(t *testing.T) {
-	newRCID := rc_fields.ID("new_rc")
-	oldRCID := rc_fields.ID("old_rc")
+	newRCID := store.ReplicationControllerID("new_rc")
+	oldRCID := store.ReplicationControllerID("old_rc")
 
-	conflictingEntry := fields.Update{
+	conflictingEntry := store.RollingUpdate{
 		OldRC: newRCID,
-		NewRC: rc_fields.ID("some_other_rc"),
+		NewRC: store.ReplicationControllerID("some_other_rc"),
 	}
 
-	rollstore := newRollStore(t, []fields.Update{conflictingEntry})
+	rollstore := newRollStore(t, []store.RollingUpdate{conflictingEntry})
 
-	update := fields.Update{
+	update := store.RollingUpdate{
 		NewRC: newRCID,
 		OldRC: oldRCID,
 	}
@@ -249,19 +247,19 @@ func TestCreateExistingRCsMutualExclusion(t *testing.T) {
 		}
 	}
 
-	ru, _ := rollstore.Get(fields.ID(update.NewRC))
+	ru, _ := rollstore.Get(store.RollingUpdateID(update.NewRC))
 	if ru.NewRC != "" || ru.OldRC != "" {
 		t.Fatal("New ru shouldn't have been created but it was")
 	}
 }
 
 func TestCreateFailsIfCantAcquireLock(t *testing.T) {
-	newRCID := rc_fields.ID("new_rc")
-	oldRCID := rc_fields.ID("old_rc")
+	newRCID := store.ReplicationControllerID("new_rc")
+	oldRCID := store.ReplicationControllerID("old_rc")
 
 	rollstore := newRollStore(t, nil)
 
-	update := fields.Update{
+	update := store.RollingUpdate{
 		NewRC: newRCID,
 		OldRC: oldRCID,
 	}
@@ -284,14 +282,14 @@ func TestCreateFailsIfCantAcquireLock(t *testing.T) {
 		t.Fatal("Expected update creation to fail due to lock conflict")
 	}
 
-	ru, _ := rollstore.Get(fields.ID(newRCID))
+	ru, _ := rollstore.Get(store.RollingUpdateID(newRCID))
 	if ru.NewRC != "" || ru.OldRC != "" {
 		t.Fatal("New ru shouldn't have been created but it was")
 	}
 }
 
 func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
-	oldRCID := rc_fields.ID("old_rc")
+	oldRCID := store.ReplicationControllerID("old_rc")
 
 	rollstore := newRollStore(t, nil)
 
@@ -316,7 +314,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 		t.Fatalf("Unable to create rolling update: %s", err)
 	}
 
-	storedUpdate, err := rollstore.Get(fields.ID(newUpdate.NewRC))
+	storedUpdate, err := rollstore.Get(store.RollingUpdateID(newUpdate.NewRC))
 	if err != nil {
 		t.Fatalf("Unable to retrieve value put in roll store: %s", err)
 	}
@@ -406,7 +404,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 		}
 	}
 
-	update, err := rollstore.Get(fields.ID(newUpdate.NewRC))
+	update, err := rollstore.Get(store.RollingUpdateID(newUpdate.NewRC))
 	if err != nil {
 		t.Fatalf("Should not have erred checking for update creation: %s", err)
 	}
@@ -426,7 +424,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 }
 
 func TestCreateRollingUpdateFromOneExistingRCWithIDFailsIfCantAcquireLock(t *testing.T) {
-	oldRCID := rc_fields.ID("old_rc")
+	oldRCID := store.ReplicationControllerID("old_rc")
 
 	rollstore := newRollStore(t, nil)
 
@@ -460,7 +458,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDFailsIfCantAcquireLock(t *tes
 		t.Fatalf("Should have erred creating conflicting update")
 	}
 
-	update, err := rollstore.Get(fields.ID(newUpdate.NewRC))
+	update, err := rollstore.Get(store.RollingUpdateID(newUpdate.NewRC))
 	if err != nil {
 		t.Fatalf("Should nothave erred checking for update creation: %s", err)
 	}
@@ -831,7 +829,7 @@ func TestPublishLatestRolls(t *testing.T) {
 		}
 	}()
 
-	var val []fields.Update
+	var val []store.RollingUpdate
 	// Put some values on the inCh and read them from outCh transformed
 	// into RCs
 	inCh <- rollsWithIDs(t, "a", 3)
@@ -898,7 +896,7 @@ func TestPublishLatestRCsSkipsIfCorrupt(t *testing.T) {
 	outCh, errCh := publishLatestRolls(inCh, quitCh)
 
 	// push some legitimate RCs and read them out
-	var val []fields.Update
+	var val []store.RollingUpdate
 	inCh <- rollsWithIDs(t, "a", 3)
 	select {
 	case val = <-outCh:
@@ -1014,7 +1012,7 @@ func TestPublishQuitsOnInChannelCloseAfterData(t *testing.T) {
 	outCh, errCh := publishLatestRolls(inCh, quitCh)
 
 	// Write some legitimate data and read it out
-	var val []fields.Update
+	var val []store.RollingUpdate
 	// Put some values on the inCh and read them from outCh transformed
 	// into RUs
 	inCh <- rollsWithIDs(t, "a", 3)
@@ -1058,8 +1056,8 @@ func TestPublishQuitsOnInChannelCloseAfterData(t *testing.T) {
 func rollsWithIDs(t *testing.T, id string, num int) api.KVPairs {
 	var pairs api.KVPairs
 	for i := 0; i < num; i++ {
-		ru := fields.Update{
-			NewRC: rc_fields.ID(id),
+		ru := store.RollingUpdate{
+			NewRC: store.ReplicationControllerID(id),
 		}
 
 		jsonRU, err := json.Marshal(ru)
@@ -1075,15 +1073,15 @@ func rollsWithIDs(t *testing.T, id string, num int) api.KVPairs {
 	return pairs
 }
 
-func testRollValue(id rc_fields.ID) fields.Update {
+func testRollValue(id store.ReplicationControllerID) store.RollingUpdate {
 	// not a full update, just enough for a smoke test
-	return fields.Update{
+	return store.RollingUpdate{
 		NewRC: id,
 	}
 }
 
-func testManifest() manifest.Manifest {
-	builder := manifest.NewBuilder()
+func testManifest() store.Manifest {
+	builder := store.NewBuilder()
 	builder.SetID("slug")
 	return builder.GetManifest()
 }

@@ -17,11 +17,10 @@ import (
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/opencontainer"
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
@@ -53,12 +52,12 @@ const (
 
 type Pod struct {
 	// ID of the pod, i.e. result of ID() called on the manifest defining the pod
-	Id   types.PodID
-	node types.NodeName
+	Id   store.PodID
+	node store.NodeName
 
 	// An (optional) unique identifier for the pod. May be empty for "legacy" pods, will be a uuid
 	// otherwise
-	uniqueKey types.PodUniqueKey
+	uniqueKey store.PodUniqueKey
 
 	// The home directory for the pod. Typically some global root (e.g.
 	// /data/pods) followed by the pod's UniqueName() (e.g.
@@ -76,7 +75,7 @@ type Pod struct {
 
 var NoCurrentManifest error = fmt.Errorf("No current manifest for this pod")
 
-func (pod *Pod) Node() types.NodeName {
+func (pod *Pod) Node() store.NodeName {
 	return pod.node
 }
 
@@ -94,19 +93,19 @@ func (pod *Pod) UniqueName() string {
 	return computeUniqueName(pod.Id, pod.uniqueKey)
 }
 
-func (pod *Pod) UniqueKey() types.PodUniqueKey {
+func (pod *Pod) UniqueKey() store.PodUniqueKey {
 	return pod.uniqueKey
 }
 
-func (pod *Pod) CurrentManifest() (manifest.Manifest, error) {
+func (pod *Pod) CurrentManifest() (store.Manifest, error) {
 	currentManPath := pod.currentPodManifestPath()
 	if _, err := os.Stat(currentManPath); os.IsNotExist(err) {
 		return nil, NoCurrentManifest
 	}
-	return manifest.FromPath(currentManPath)
+	return store.FromPath(currentManPath)
 }
 
-func (pod *Pod) Halt(manifest manifest.Manifest) (bool, error) {
+func (pod *Pod) Halt(manifest store.Manifest) (bool, error) {
 	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return false, err
@@ -144,7 +143,7 @@ func (pod *Pod) Halt(manifest manifest.Manifest) (bool, error) {
 // during the launch process will be logged, but will not stop attempts to launch other launchables
 // in the same pod. If any services fail to start, the first return bool will be false. If an error
 // occurs when writing the current manifest to the pod directory, an error will be returned.
-func (pod *Pod) Launch(manifest manifest.Manifest) (bool, error) {
+func (pod *Pod) Launch(manifest store.Manifest) (bool, error) {
 	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return false, err
@@ -207,7 +206,7 @@ func (pod *Pod) Launch(manifest manifest.Manifest) (bool, error) {
 	return success, nil
 }
 
-func (pod *Pod) Prune(max size.ByteCount, manifest manifest.Manifest) {
+func (pod *Pod) Prune(max size.ByteCount, manifest store.Manifest) {
 	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return
@@ -221,7 +220,7 @@ func (pod *Pod) Prune(max size.ByteCount, manifest manifest.Manifest) {
 	}
 }
 
-func (pod *Pod) Services(manifest manifest.Manifest) ([]runit.Service, error) {
+func (pod *Pod) Services(manifest store.Manifest) ([]runit.Service, error) {
 	allServices := []runit.Service{}
 	launchables, err := pod.Launchables(manifest)
 	if err != nil {
@@ -243,7 +242,7 @@ func (pod *Pod) Services(manifest manifest.Manifest) ([]runit.Service, error) {
 
 // Write servicebuilder *.yaml file and run servicebuilder, which will register runit services for this
 // pod.
-func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest manifest.Manifest) error {
+func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest store.Manifest) error {
 	// if the service is new, building the runit services also starts them
 	sbTemplate := make(map[string]runit.ServiceTemplate)
 	for _, launchable := range launchables {
@@ -274,7 +273,7 @@ func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest 
 	return pod.ServiceBuilder.Prune()
 }
 
-func (pod *Pod) WriteCurrentManifest(manifest manifest.Manifest) (string, error) {
+func (pod *Pod) WriteCurrentManifest(manifest store.Manifest) (string, error) {
 	// write the old manifest to a temporary location in case a launch fails.
 	tmpDir, err := ioutil.TempDir("", "manifests")
 	if err != nil {
@@ -388,7 +387,7 @@ func (pod *Pod) Uninstall() error {
 // Install will ensure that executables for all required services are present on the host
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
-func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifier, artifactRegistry artifact.Registry) error {
+func (pod *Pod) Install(manifest store.Manifest, verifier auth.ArtifactVerifier, artifactRegistry artifact.Registry) error {
 	podHome := pod.home
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
@@ -452,7 +451,7 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 	return nil
 }
 
-func (pod *Pod) Verify(manifest manifest.Manifest, authPolicy auth.Policy) error {
+func (pod *Pod) Verify(manifest store.Manifest, authPolicy auth.Policy) error {
 	for launchableID, stanza := range manifest.GetLaunchableStanzas() {
 		if stanza.DigestLocation == "" {
 			continue
@@ -516,7 +515,7 @@ func (pod *Pod) Verify(manifest manifest.Manifest, authPolicy auth.Policy) error
 //
 // We may wish to provide a "config" directory per launchable at some point as
 // well, so that launchables can have different config namespaces
-func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Launchable) error {
+func (pod *Pod) setupConfig(manifest store.Manifest, launchables []launch.Launchable) error {
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
 		return util.Errorf("Could not determine pod UID/GID: %s", err)
@@ -636,7 +635,7 @@ func writeFileChown(filename string, data []byte, uid, gid int) error {
 	return file.Close()
 }
 
-func (pod *Pod) Launchables(manifest manifest.Manifest) ([]launch.Launchable, error) {
+func (pod *Pod) Launchables(manifest store.Manifest) ([]launch.Launchable, error) {
 	launchableStanzas := manifest.GetLaunchableStanzas()
 	launchables := make([]launch.Launchable, 0, len(launchableStanzas))
 
@@ -756,7 +755,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 	}
 }
 
-func (pod *Pod) disableAndHaltLaunchables(currentManifest manifest.Manifest) error {
+func (pod *Pod) disableAndHaltLaunchables(currentManifest store.Manifest) error {
 	launchables, err := pod.Launchables(currentManifest)
 	if err != nil {
 		return err

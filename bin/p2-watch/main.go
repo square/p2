@@ -13,8 +13,7 @@ import (
 	"github.com/square/p2/pkg/kp/pcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/pc/fields"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/version"
@@ -32,7 +31,7 @@ func main() {
 	kingpin.Version(version.VERSION)
 	_, opts, applicator := flags.ParseWithConsulOptions()
 	client := kp.NewConsulClient(opts)
-	store := kp.NewConsulStore(client)
+	consulStore := kp.NewConsulStore(client)
 
 	if *nodeName == "" {
 		hostname, err := os.Hostname()
@@ -55,7 +54,7 @@ func main() {
 		quit := make(chan struct{})
 		errChan := make(chan error)
 		podCh := make(chan []kp.ManifestResult)
-		go store.WatchPods(podPrefix, types.NodeName(*nodeName), quit, errChan, podCh)
+		go consulStore.WatchPods(podPrefix, store.NodeName(*nodeName), quit, errChan, podCh)
 		for {
 			select {
 			case results := <-podCh:
@@ -79,7 +78,7 @@ type printSyncer struct {
 	logger *logging.Logger
 }
 
-func (p *printSyncer) SyncCluster(cluster *fields.PodCluster, pods []labels.Labeled) error {
+func (p *printSyncer) SyncCluster(cluster *store.PodCluster, pods []labels.Labeled) error {
 	p.logger.WithFields(logrus.Fields{
 		"id":   cluster.ID,
 		"pod":  cluster.PodID,
@@ -91,13 +90,13 @@ func (p *printSyncer) SyncCluster(cluster *fields.PodCluster, pods []labels.Labe
 	return nil
 }
 
-func (p *printSyncer) DeleteCluster(id fields.ID) error {
+func (p *printSyncer) DeleteCluster(id store.PodClusterID) error {
 	p.logger.WithField("id", id).Warnln("DeleteCluster")
 	return nil
 }
 
-func (p *printSyncer) GetInitialClusters() ([]fields.ID, error) {
-	return []fields.ID{}, nil
+func (p *printSyncer) GetInitialClusters() ([]store.PodClusterID, error) {
+	return []store.PodClusterID{}, nil
 }
 
 func (p *printSyncer) Type() pcstore.ConcreteSyncerType {

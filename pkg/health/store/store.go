@@ -8,14 +8,14 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 )
 
 // HealthStore can answer questions about the health of a particular pod on a node
 // It performs this by watching the health tree of consul and caching the result
 type HealthStore interface {
 	StartWatch(quitCh <-chan struct{})
-	Fetch(types.PodID, types.NodeName) *health.Result
+	Fetch(store.PodID, store.NodeName) *health.Result
 }
 
 type healthStore struct {
@@ -62,7 +62,7 @@ func (hs *healthStore) cache(results []*health.Result) {
 	// duplicate key is undefined behavior
 	for _, result := range results {
 		result := result
-		tmpCache[newCacheKey(result.ID, types.NodeName(result.Node))] = result
+		tmpCache[newCacheKey(result.ID, store.NodeName(result.Node))] = result
 	}
 
 	hs.lock.Lock()
@@ -71,7 +71,7 @@ func (hs *healthStore) cache(results []*health.Result) {
 	hs.cachedHealth = tmpCache
 }
 
-func (hs *healthStore) Fetch(podID types.PodID, node types.NodeName) *health.Result {
+func (hs *healthStore) Fetch(podID store.PodID, node store.NodeName) *health.Result {
 	cacheKey := newCacheKey(podID, node)
 
 	hs.lock.RLock()
@@ -86,10 +86,10 @@ func (hs *healthStore) Fetch(podID types.PodID, node types.NodeName) *health.Res
 }
 
 type cacheKey struct {
-	pod  types.PodID
-	node types.NodeName
+	pod  store.PodID
+	node store.NodeName
 }
 
-func newCacheKey(podID types.PodID, node types.NodeName) cacheKey {
+func newCacheKey(podID store.PodID, node store.NodeName) cacheKey {
 	return cacheKey{pod: podID, node: node}
 }

@@ -1,13 +1,13 @@
 package health
 
 import (
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 )
 
 // SortOrder sorts the nodes in the list from least to most health.
 type SortOrder struct {
-	Nodes  []types.NodeName
-	Health map[types.NodeName]Result
+	Nodes  []store.NodeName
+	Health map[store.NodeName]Result
 }
 
 func (s SortOrder) Len() int {

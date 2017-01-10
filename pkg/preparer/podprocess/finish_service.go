@@ -6,7 +6,7 @@ import (
 
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -22,7 +22,7 @@ type FinishService interface {
 	// Reads all finish data after the given ID
 	GetLatestFinishes(lastID int64) ([]FinishOutput, error)
 	// Gets the last finish result for a given PodUniqueKey
-	LastFinishForPodUniqueKey(podUniqueKey types.PodUniqueKey) (FinishOutput, error)
+	LastFinishForPodUniqueKey(podUniqueKey store.PodUniqueKey) (FinishOutput, error)
 	// Deletes any rows with dates before the specified time
 	PruneRowsBefore(time.Time) error
 }
@@ -46,10 +46,10 @@ func NewSQLiteFinishService(sqliteDBPath string, logger logging.Logger) (FinishS
 
 // Represents a row in the sqlite database indicating the exit of a runit process.
 type FinishOutput struct {
-	PodID        types.PodID         `json:"pod_id"`
+	PodID        store.PodID         `json:"pod_id"`
 	LaunchableID launch.LaunchableID `json:"launchable_id"`
 	EntryPoint   string              `json:"entry_point"`
-	PodUniqueKey types.PodUniqueKey  `json:"pod_unique_key"`
+	PodUniqueKey store.PodUniqueKey  `json:"pod_unique_key"`
 
 	// These two model the arguments given to the ./finish script under runit:
 	// (http://smarden.org/runit/runsv.8.html)
@@ -214,7 +214,7 @@ func (f sqliteFinishService) GetLatestFinishes(lastID int64) ([]FinishOutput, er
 	return finishes, nil
 }
 
-func (f sqliteFinishService) LastFinishForPodUniqueKey(podUniqueKey types.PodUniqueKey) (FinishOutput, error) {
+func (f sqliteFinishService) LastFinishForPodUniqueKey(podUniqueKey store.PodUniqueKey) (FinishOutput, error) {
 	row := f.db.QueryRow(`
   SELECT id, date, pod_id, pod_unique_key, launchable_id, entry_point, exit_code, exit_status
   FROM finishes
@@ -242,10 +242,10 @@ func scanRow(scanner Scanner) (FinishOutput, error) {
 
 	return FinishOutput{
 		ID:           id,
-		PodID:        types.PodID(podID),
+		PodID:        store.PodID(podID),
 		LaunchableID: launch.LaunchableID(launchableID),
 		EntryPoint:   entryPoint,
-		PodUniqueKey: types.PodUniqueKey(podUniqueKey),
+		PodUniqueKey: store.PodUniqueKey(podUniqueKey),
 		ExitCode:     exitCode,
 		ExitStatus:   exitStatus,
 		ExitTime:     date,

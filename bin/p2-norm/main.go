@@ -9,7 +9,7 @@ import (
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 )
 
 const helpMessage = `
@@ -38,7 +38,7 @@ func main() {
 		logger.Fatalln(err)
 	}
 
-	m, err := manifest.FromBytes(data)
+	m, err := store.FromBytes(data)
 	if err != nil {
 		logger.Fatalln(err)
 	}

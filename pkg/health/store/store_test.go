@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/health"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 )
 
 type FakeHealthChecker struct {
@@ -12,15 +12,15 @@ type FakeHealthChecker struct {
 	ready   chan struct{}
 }
 
-func (hc *FakeHealthChecker) WatchNodeService(nodename types.NodeName, serviceID string, resultCh chan<- health.Result, errCh chan<- error, quitCh <-chan struct{}) {
+func (hc *FakeHealthChecker) WatchNodeService(nodename store.NodeName, serviceID string, resultCh chan<- health.Result, errCh chan<- error, quitCh <-chan struct{}) {
 	panic("not implemented")
 }
 
-func (hc *FakeHealthChecker) WatchService(serviceID string, resultCh chan<- map[types.NodeName]health.Result, errCh chan<- error, quitCh <-chan struct{}) {
+func (hc *FakeHealthChecker) WatchService(serviceID string, resultCh chan<- map[store.NodeName]health.Result, errCh chan<- error, quitCh <-chan struct{}) {
 	panic("not implemented")
 }
 
-func (hc *FakeHealthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
+func (hc *FakeHealthChecker) Service(serviceID string) (map[store.NodeName]health.Result, error) {
 	panic("not implemented")
 }
 
@@ -51,9 +51,9 @@ func TestStartWatchBasic(t *testing.T) {
 	hs, checker := NewFakeHealthStore()
 	go hs.StartWatch(quitCh)
 
-	node := types.NodeName("abc01.sjc1")
-	podID1 := types.PodID("podID1")
-	podID2 := types.PodID("podID2")
+	node := store.NodeName("abc01.sjc1")
+	podID1 := store.PodID("podID1")
+	podID2 := store.PodID("podID2")
 
 	result := hs.Fetch(podID1, node)
 	if result != nil {

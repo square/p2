@@ -5,9 +5,8 @@ import (
 	"os"
 
 	"github.com/square/p2/pkg/config"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -19,21 +18,21 @@ func CurrentEnv() *HookEnv {
 // useful access to objects exported by the hooks package.
 type HookEnv struct{}
 
-func (h *HookEnv) Manifest() (manifest.Manifest, error) {
+func (h *HookEnv) Manifest() (store.Manifest, error) {
 	path := os.Getenv(HOOKED_POD_MANIFEST_ENV_VAR)
 	if path == "" {
 		return nil, util.Errorf("No manifest exported")
 	}
-	return manifest.FromPath(path)
+	return store.FromPath(path)
 }
 
-func (h *HookEnv) PodID() (types.PodID, error) {
+func (h *HookEnv) PodID() (store.PodID, error) {
 	id := os.Getenv(HOOKED_POD_ID_ENV_VAR)
 	if id == "" {
 		return "", util.Errorf("Did not provide a pod ID to use")
 	}
 
-	return types.PodID(id), nil
+	return store.PodID(id), nil
 }
 
 func (h *HookEnv) PodHome() (string, error) {
@@ -45,7 +44,7 @@ func (h *HookEnv) PodHome() (string, error) {
 	return path, nil
 }
 
-func (h *HookEnv) Node() (types.NodeName, error) {
+func (h *HookEnv) Node() (store.NodeName, error) {
 	node := os.Getenv(HOOKED_NODE_ENV_VAR)
 	if node == "" {
 		// TODO: This can't be a hard error right now. It would mean hooks built with this
@@ -57,7 +56,7 @@ func (h *HookEnv) Node() (types.NodeName, error) {
 		}
 		node = hostname
 	}
-	return types.NodeName(node), nil
+	return store.NodeName(node), nil
 }
 
 // Initializes a pod from the current_manifest.yaml file in the pod's home directory. This function
@@ -73,7 +72,7 @@ func (h *HookEnv) PodFromDisk() (*pods.Pod, error) {
 		return nil, err
 	}
 
-	return pods.PodFromPodHome(types.NodeName(node), podHome)
+	return pods.PodFromPodHome(store.NodeName(node), podHome)
 }
 
 // Initializes a pod based on the hooked pod manifest and the system pod root
@@ -85,7 +84,7 @@ func (h *HookEnv) Pod() (*pods.Pod, error) {
 		return nil, err
 	}
 
-	uuid := types.PodUniqueKey(os.Getenv(HOOKED_POD_UNIQUE_KEY_ENV_VAR))
+	uuid := store.PodUniqueKey(os.Getenv(HOOKED_POD_UNIQUE_KEY_ENV_VAR))
 	if uuid == "" {
 		return factory.NewLegacyPod(podID), nil
 	}
@@ -108,15 +107,15 @@ func (h *HookEnv) ConfigDirPath() string {
 	return os.Getenv(HOOKED_CONFIG_DIR_PATH_ENV_VAR)
 }
 
-func (h *HookEnv) ExitUnlessEvent(types ...HookType) HookType {
+func (h *HookEnv) ExitUnlessEvent(store ...HookType) HookType {
 	t, _ := h.Event()
-	for _, target := range types {
+	for _, target := range store {
 		if t == target {
 			return t
 		}
 	}
 
-	fmt.Printf("this hook responds to %v (but got %s), ignoring", types, t)
+	fmt.Printf("this hook responds to %v (but got %s), ignoring", store, t)
 	os.Exit(0)
 	return HookType("") // never reached
 }

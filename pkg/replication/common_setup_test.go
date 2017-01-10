@@ -11,13 +11,12 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 
 	"github.com/Sirupsen/logrus"
 )
 
-var testNodes = []types.NodeName{"node1", "node2"}
+var testNodes = []store.NodeName{"node1", "node2"}
 
 const (
 	testLockMessage      = "lock is held by replicator_test.go"
@@ -69,14 +68,14 @@ func setupPreparers(fixture consulutil.Fixture) {
 
 type channelBasedHealthChecker struct {
 	// maps node name to a channel on which fake results can be provided
-	resultsChans chan map[types.NodeName]health.Result
+	resultsChans chan map[store.NodeName]health.Result
 
 	t *testing.T
 }
 
 // Pass along whatever results come through c.resultsChan
 func (c channelBasedHealthChecker) WatchNodeService(
-	nodeName types.NodeName,
+	nodeName store.NodeName,
 	serviceID string,
 	resultCh chan<- health.Result,
 	errCh chan<- error,
@@ -87,8 +86,8 @@ func (c channelBasedHealthChecker) WatchNodeService(
 
 // This is used by the initial health query in the replication library for
 // sorting purposes, just return all healthy
-func (c channelBasedHealthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
-	results := make(map[types.NodeName]health.Result)
+func (c channelBasedHealthChecker) Service(serviceID string) (map[store.NodeName]health.Result, error) {
+	results := make(map[store.NodeName]health.Result)
 	for _, node := range testNodes {
 		results[node] = health.Result{
 			ID:     testPodId,
@@ -100,11 +99,11 @@ func (c channelBasedHealthChecker) Service(serviceID string) (map[types.NodeName
 
 func (h channelBasedHealthChecker) WatchService(
 	serviceID string,
-	resultCh chan<- map[types.NodeName]health.Result,
+	resultCh chan<- map[store.NodeName]health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{},
 ) {
-	var results map[types.NodeName]health.Result
+	var results map[store.NodeName]health.Result
 	select {
 	case results = <-h.resultsChans:
 	case <-quitCh:
@@ -129,8 +128,8 @@ func (h channelBasedHealthChecker) WatchHealth(
 
 // returns an implementation of checker.ConsulHealthChecker that will provide
 // results based on what is passed on the returned  chanel
-func channelHealthChecker(nodes []types.NodeName, t *testing.T) (checker.ConsulHealthChecker, chan map[types.NodeName]health.Result) {
-	resultsChans := make(chan map[types.NodeName]health.Result)
+func channelHealthChecker(nodes []store.NodeName, t *testing.T) (checker.ConsulHealthChecker, chan map[store.NodeName]health.Result) {
+	resultsChans := make(chan map[store.NodeName]health.Result)
 	return channelBasedHealthChecker{
 		resultsChans: resultsChans,
 		t:            t,
@@ -145,8 +144,8 @@ func basicLogger() logging.Logger {
 	)
 }
 
-func basicManifest() manifest.Manifest {
-	builder := manifest.NewBuilder()
+func basicManifest() store.Manifest {
+	builder := store.NewBuilder()
 	builder.SetID(testPodId)
 	return builder.GetManifest()
 }

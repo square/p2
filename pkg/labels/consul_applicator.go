@@ -13,7 +13,7 @@ import (
 
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -377,11 +377,11 @@ func watchDiffLabels(inCh <-chan []Labeled, quitCh <-chan struct{}, logger loggi
 // deployment world. We will need to figure out how to replace these with
 // different datasources to allow RCs and DSs to continue to function correctly
 // in the future.
-func MakePodLabelKey(node types.NodeName, podID types.PodID) string {
+func MakePodLabelKey(node store.NodeName, podID store.PodID) string {
 	return node.String() + "/" + podID.String()
 }
 
-func NodeAndPodIDFromPodLabel(labeled Labeled) (types.NodeName, types.PodID, error) {
+func NodeAndPodIDFromPodLabel(labeled Labeled) (store.NodeName, store.PodID, error) {
 	if labeled.LabelType != POD {
 		return "", "", util.Errorf("Label was not a pod label, was %s", labeled.LabelType)
 	}
@@ -391,7 +391,7 @@ func NodeAndPodIDFromPodLabel(labeled Labeled) (types.NodeName, types.PodID, err
 		return "", "", util.Errorf("malformed pod label %s", labeled.ID)
 	}
 
-	return types.NodeName(parts[0]), types.PodID(parts[1]), nil
+	return store.NodeName(parts[0]), store.PodID(parts[1]), nil
 }
 
 // confirm at compile time that consulApplicator is an implementation of the Applicator interface

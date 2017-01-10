@@ -11,33 +11,32 @@ import (
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/scheduler"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 
 	. "github.com/anthonybishopric/gotcha"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 type fakeKpStore struct {
-	manifests map[string]manifest.Manifest
+	manifests map[string]store.Manifest
 }
 
-func (s *fakeKpStore) SetPod(podPrefix kp.PodPrefix, nodeName types.NodeName, manifest manifest.Manifest) (time.Duration, error) {
+func (s *fakeKpStore) SetPod(podPrefix kp.PodPrefix, nodeName store.NodeName, manifest store.Manifest) (time.Duration, error) {
 	key := path.Join(string(podPrefix), nodeName.String(), string(manifest.ID()))
 	s.manifests[key] = manifest
 	return 0, nil
 }
 
-func (s *fakeKpStore) DeletePod(podPrefix kp.PodPrefix, nodeName types.NodeName, podID types.PodID) (time.Duration, error) {
+func (s *fakeKpStore) DeletePod(podPrefix kp.PodPrefix, nodeName store.NodeName, podID store.PodID) (time.Duration, error) {
 	key := path.Join(string(podPrefix), nodeName.String(), podID.String())
 	delete(s.manifests, key)
 	return 0, nil
 }
 
-func (s *fakeKpStore) Pod(podPrefix kp.PodPrefix, nodeName types.NodeName, podID types.PodID) (
-	manifest.Manifest, time.Duration, error) {
+func (s *fakeKpStore) Pod(podPrefix kp.PodPrefix, nodeName store.NodeName, podID store.PodID) (
+	store.Manifest, time.Duration, error) {
 	key := path.Join(string(podPrefix), nodeName.String(), podID.String())
 	if manifest, ok := s.manifests[key]; ok {
 		return manifest, 0, nil
@@ -55,7 +54,7 @@ func setup(t *testing.T) (
 
 	rcStore = rcstore.NewFake()
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID("testPod")
 	podManifest := manifestBuilder.GetManifest()
 
@@ -65,7 +64,7 @@ func setup(t *testing.T) (
 	rcData, err := rcStore.Create(podManifest, nodeSelector, podLabels)
 	Assert(t).IsNil(err, "expected no error creating request")
 
-	kpStore = fakeKpStore{manifests: make(map[string]manifest.Manifest)}
+	kpStore = fakeKpStore{manifests: make(map[string]store.Manifest)}
 	applicator = labels.NewFakeApplicator()
 	alerter = alertingtest.NewRecorder()
 

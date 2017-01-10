@@ -12,8 +12,7 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/rc/fields"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -41,7 +40,7 @@ func main() {
 func handlePodRemoval(consulClient consulutil.ConsulClient, labeler labels.ApplicatorWithoutWatches) error {
 	var rm *P2RM
 	if *podUniqueKey != "" {
-		rm = NewUUIDP2RM(consulClient, types.PodUniqueKey(*podUniqueKey), types.PodID(*podName), labeler)
+		rm = NewUUIDP2RM(consulClient, store.PodUniqueKey(*podUniqueKey), store.PodID(*podName), labeler)
 	} else {
 		if *nodeName == "" {
 			hostname, err := os.Hostname()
@@ -51,7 +50,7 @@ func handlePodRemoval(consulClient consulutil.ConsulClient, labeler labels.Appli
 			*nodeName = hostname
 		}
 
-		rm = NewLegacyP2RM(consulClient, types.PodID(*podName), types.NodeName(*nodeName), labeler)
+		rm = NewLegacyP2RM(consulClient, store.PodID(*podName), store.NodeName(*nodeName), labeler)
 	}
 
 	podIsManagedByRC, rcID, err := rm.checkForManagingReplicationController()
@@ -84,7 +83,7 @@ func handlePodRemoval(consulClient consulutil.ConsulClient, labeler labels.Appli
 	return nil
 }
 
-func sessionName(rcID fields.ID) string {
+func sessionName(rcID store.ReplicationControllerID) string {
 	currentUser, err := user.Current()
 	username := "unknown"
 	if err == nil {

@@ -16,9 +16,8 @@ import (
 	"github.com/square/p2/pkg/kp/statusstore"
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -31,11 +30,11 @@ const (
 )
 
 type ManifestResult struct {
-	Manifest    manifest.Manifest
-	PodLocation types.PodLocation
+	Manifest    store.Manifest
+	PodLocation store.PodLocation
 
 	// This is expected to be nil for "legacy" pods that do not have a uuid, and non-nil for uuid pods.
-	PodUniqueKey types.PodUniqueKey
+	PodUniqueKey store.PodUniqueKey
 }
 
 // HealthManager manages a collection of health checks that share configuration and
@@ -43,7 +42,7 @@ type ManifestResult struct {
 type HealthManager interface {
 	// NewUpdater creates a new object for publishing a single service's health. Each
 	// service should have its own updater.
-	NewUpdater(pod types.PodID, service string) HealthUpdater
+	NewUpdater(pod store.PodID, service string) HealthUpdater
 
 	// Close removes all published health statuses and releases all manager resources.
 	Close()
@@ -61,8 +60,8 @@ type HealthUpdater interface {
 }
 
 type WatchResult struct {
-	Id      types.PodID
-	Node    types.NodeName
+	Id      store.PodID
+	Node    store.NodeName
 	Service string
 	Status  string
 	Time    time.Time
@@ -138,7 +137,7 @@ func (c consulStore) PutHealth(res WatchResult) (time.Time, time.Duration, error
 	return now, retDur, nil
 }
 
-func (c consulStore) GetHealth(service string, node types.NodeName) (WatchResult, error) {
+func (c consulStore) GetHealth(service string, node store.NodeName) (WatchResult, error) {
 	healthRes := &WatchResult{}
 	key := HealthPath(service, node)
 	res, _, err := c.client.KV().Get(key, nil)
@@ -180,7 +179,7 @@ func (c consulStore) GetServiceHealth(service string) (map[string]WatchResult, e
 }
 
 // SetPod writes a pod manifest into the consul key-value store.
-func (c consulStore) SetPod(podPrefix PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error) {
+func (c consulStore) SetPod(podPrefix PodPrefix, nodename store.NodeName, manifest store.Manifest) (time.Duration, error) {
 	buf := bytes.Buffer{}
 	err := manifest.Write(&buf)
 	if err != nil {
@@ -209,7 +208,7 @@ func (c consulStore) SetPod(podPrefix PodPrefix, nodename types.NodeName, manife
 
 // DeletePod deletes a pod manifest from the key-value store. No error will be
 // returned if the key didn't exist.
-func (c consulStore) DeletePod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error) {
+func (c consulStore) DeletePod(podPrefix PodPrefix, nodename store.NodeName, podId store.PodID) (time.Duration, error) {
 	key, err := podPath(podPrefix, nodename, podId)
 	if err != nil {
 		return 0, err
@@ -225,7 +224,7 @@ func (c consulStore) DeletePod(podPrefix PodPrefix, nodename types.NodeName, pod
 // Pod reads a pod manifest from the key-value store. If the given key does not
 // exist, a nil *PodManifest will be returned, along with a pods.NoCurrentManifest
 // error.
-func (c consulStore) Pod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error) {
+func (c consulStore) Pod(podPrefix PodPrefix, nodename store.NodeName, podId store.PodID) (store.Manifest, time.Duration, error) {
 	key, err := podPath(podPrefix, nodename, podId)
 	if err != nil {
 		return nil, 0, err
@@ -238,7 +237,7 @@ func (c consulStore) Pod(podPrefix PodPrefix, nodename types.NodeName, podId typ
 	if kvPair == nil {
 		return nil, writeMeta.RequestTime, pods.NoCurrentManifest
 	}
-	manifest, err := manifest.FromBytes(kvPair.Value)
+	manifest, err := store.FromBytes(kvPair.Value)
 	return manifest, writeMeta.RequestTime, err
 }
 
@@ -247,7 +246,7 @@ func (c consulStore) Pod(podPrefix PodPrefix, nodename types.NodeName, podId typ
 // is returned.
 //
 // All the values under the given path must be pod manifests.
-func (c consulStore) ListPods(podPrefix PodPrefix, nodename types.NodeName) ([]ManifestResult, time.Duration, error) {
+func (c consulStore) ListPods(podPrefix PodPrefix, nodename store.NodeName) ([]ManifestResult, time.Duration, error) {
 	keyPrefix, err := nodePath(podPrefix, nodename)
 	if err != nil {
 		return nil, 0, err
@@ -286,8 +285,8 @@ func (c consulStore) listPods(keyPrefix string) ([]ManifestResult, time.Duration
 // may contain nil manifests, if the target key does not exist.
 func (c consulStore) WatchPod(
 	podPrefix PodPrefix,
-	nodename types.NodeName,
-	podId types.PodID,
+	nodename store.NodeName,
+	podId store.PodID,
 	quitChan <-chan struct{},
 	errChan chan<- error,
 	podChan chan<- ManifestResult,
@@ -337,7 +336,7 @@ func (c consulStore) WatchPod(
 // caller's responsibility to filter out unchanged manifests.
 func (c consulStore) WatchPods(
 	podPrefix PodPrefix,
-	nodename types.NodeName,
+	nodename store.NodeName,
 	quitChan <-chan struct{},
 	errChan chan<- error,
 	podChan chan<- []ManifestResult,
@@ -411,14 +410,14 @@ func (c consulStore) WatchAllPods(
 	}
 }
 
-func HealthPath(service string, node types.NodeName) string {
+func HealthPath(service string, node store.NodeName) string {
 	if node == "" {
 		return fmt.Sprintf("%s/%s", "health", service)
 	}
 	return fmt.Sprintf("%s/%s/%s", "health", service, node)
 }
 
-func (c consulStore) NewHealthManager(node types.NodeName, logger logging.Logger) HealthManager {
+func (c consulStore) NewHealthManager(node store.NodeName, logger logging.Logger) HealthManager {
 	return c.newSessionHealthManager(node, logger)
 }
 
@@ -428,7 +427,7 @@ func (c consulStore) NewHealthManager(node types.NodeName, logger logging.Logger
 // scheduled with. In the /reality tree, the pod status store is instead
 // consulted.  This function wraps the logic to fetch from the correct place
 // based on the key namespace
-func (c consulStore) manifestAndNodeFromIndex(pair *api.KVPair) (manifest.Manifest, types.NodeName, error) {
+func (c consulStore) manifestAndNodeFromIndex(pair *api.KVPair) (store.Manifest, store.NodeName, error) {
 	var podIndex podstore.PodIndex
 	err := json.Unmarshal(pair.Value, &podIndex)
 	if err != nil {
@@ -451,7 +450,7 @@ func (c consulStore) manifestAndNodeFromIndex(pair *api.KVPair) (manifest.Manife
 		if err != nil {
 			return nil, "", err
 		}
-		manifest, err := manifest.FromBytes([]byte(status.Manifest))
+		manifest, err := store.FromBytes([]byte(status.Manifest))
 		if err != nil {
 			return nil, "", err
 		}
@@ -478,8 +477,8 @@ func (c consulStore) manifestResultFromPair(pair *api.KVPair) (ManifestResult, e
 		return ManifestResult{}, err
 	}
 
-	var podManifest manifest.Manifest
-	var node types.NodeName
+	var podManifest store.Manifest
+	var node store.NodeName
 	if podUniqueKey != "" {
 		var podIndex podstore.PodIndex
 		err := json.Unmarshal(pair.Value, &podIndex)
@@ -492,7 +491,7 @@ func (c consulStore) manifestResultFromPair(pair *api.KVPair) (ManifestResult, e
 			return ManifestResult{}, err
 		}
 	} else {
-		podManifest, err = manifest.FromBytes(pair.Value)
+		podManifest, err = store.FromBytes(pair.Value)
 		if err != nil {
 			return ManifestResult{}, err
 		}
@@ -505,7 +504,7 @@ func (c consulStore) manifestResultFromPair(pair *api.KVPair) (ManifestResult, e
 
 	return ManifestResult{
 		Manifest: podManifest,
-		PodLocation: types.PodLocation{
+		PodLocation: store.PodLocation{
 			Node:  node,
 			PodID: podManifest.ID(),
 		},
@@ -513,7 +512,7 @@ func (c consulStore) manifestResultFromPair(pair *api.KVPair) (ManifestResult, e
 	}, nil
 }
 
-func extractNodeFromKey(key string) (types.NodeName, error) {
+func extractNodeFromKey(key string) (store.NodeName, error) {
 	keyParts := strings.Split(key, "/")
 
 	if len(keyParts) == 0 {
@@ -530,7 +529,7 @@ func extractNodeFromKey(key string) (types.NodeName, error) {
 		return "", util.Errorf("Malformed key '%s'", key)
 	}
 
-	return types.NodeName(keyParts[1]), nil
+	return store.NodeName(keyParts[1]), nil
 }
 
 // Deduces a PodUniqueKey from a consul path. This is useful as pod keys are transitioned
@@ -539,7 +538,7 @@ func extractNodeFromKey(key string) (types.NodeName, error) {
 // 'intent/<node>/<pod_uuid>' if the prefix is "intent" or "reality"
 //
 // /hooks is also a valid pod prefix and the key under it will not be a uuid.
-func PodUniqueKeyFromConsulPath(consulPath string) (types.PodUniqueKey, error) {
+func PodUniqueKeyFromConsulPath(consulPath string) (store.PodUniqueKey, error) {
 	keyParts := strings.Split(consulPath, "/")
 	if len(keyParts) == 0 {
 		return "", util.Errorf("Malformed key '%s'", consulPath)
@@ -559,9 +558,9 @@ func PodUniqueKeyFromConsulPath(consulPath string) (types.PodUniqueKey, error) {
 	}
 
 	// Parse() returns nil if the input string does not match the uuid spec
-	podUniqueKey, err := types.ToPodUniqueKey(keyParts[2])
+	podUniqueKey, err := store.ToPodUniqueKey(keyParts[2])
 	switch {
-	case err == types.InvalidUUID:
+	case err == store.InvalidUUID:
 		// this is okay, it's just a legacy pod
 		podUniqueKey = ""
 	case err != nil:

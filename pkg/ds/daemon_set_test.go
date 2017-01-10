@@ -14,11 +14,9 @@ import (
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 
 	. "github.com/anthonybishopric/gotcha"
-	ds_fields "github.com/square/p2/pkg/ds/fields"
 	fake_checker "github.com/square/p2/pkg/health/checker/test"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
@@ -78,8 +76,8 @@ func watchDSChanges(
 	ds *daemonSet,
 	dsStore dsstore.Store,
 	quitCh <-chan struct{},
-	updatedCh chan<- *ds_fields.DaemonSet,
-	deletedCh chan<- *ds_fields.DaemonSet,
+	updatedCh chan<- *store.DaemonSet,
+	deletedCh chan<- *store.DaemonSet,
 ) <-chan error {
 	errCh := make(chan error)
 	changesCh := dsStore.Watch(quitCh)
@@ -134,11 +132,11 @@ func TestSchedule(t *testing.T) {
 	//
 	dsStore := dsstoretest.NewFake()
 
-	podID := types.PodID("testPod")
+	podID := store.PodID("testPod")
 	minHealth := 0
-	clusterName := ds_fields.ClusterName("some_name")
+	clusterName := store.DaemonSetName("some_name")
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
@@ -148,22 +146,22 @@ func TestSchedule(t *testing.T) {
 	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "expected no error creating request")
 
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]store.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
 	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
 	preparer.Enable()
 	defer preparer.Disable()
 
-	var allNodes []types.NodeName
+	var allNodes []store.NodeName
 	allNodes = append(allNodes, "node1", "node2", "nodeOk")
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("good_node%v", i)
-		allNodes = append(allNodes, types.NodeName(nodeName))
+		allNodes = append(allNodes, store.NodeName(nodeName))
 	}
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("bad_node%v", i)
-		allNodes = append(allNodes, types.NodeName(nodeName))
+		allNodes = append(allNodes, store.NodeName(nodeName))
 	}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
@@ -195,8 +193,8 @@ func TestSchedule(t *testing.T) {
 	// to the daemon set
 	//
 	quitCh := make(chan struct{})
-	updatedCh := make(chan *ds_fields.DaemonSet)
-	deletedCh := make(chan *ds_fields.DaemonSet)
+	updatedCh := make(chan *store.DaemonSet)
+	deletedCh := make(chan *store.DaemonSet)
 	defer close(quitCh)
 	defer close(updatedCh)
 	defer close(deletedCh)
@@ -214,7 +212,7 @@ func TestSchedule(t *testing.T) {
 	Assert(t).AreEqual(scheduled[0].ID, "node2/testPod", "expected node labeled with the daemon set's id")
 
 	// Verify that the scheduled pod is correct
-	err = waitForSpecificPod(kpStore, "node2", types.PodID("testPod"))
+	err = waitForSpecificPod(kpStore, "node2", store.PodID("testPod"))
 	Assert(t).IsNil(err, "Unexpected pod scheduled")
 
 	//
@@ -252,7 +250,7 @@ func TestSchedule(t *testing.T) {
 	Assert(t).AreEqual(numNodes, 12, "took too long to schedule")
 
 	// Schedule only a node that is both nodeQuality=good and cherry=pick
-	mutator := func(dsToChange ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator := func(dsToChange store.DaemonSet) (store.DaemonSet, error) {
 		dsToChange.NodeSelector = klabels.Everything().
 			Add("nodeQuality", klabels.EqualsOperator, []string{"good"}).
 			Add("cherry", klabels.EqualsOperator, []string{"pick"})
@@ -265,13 +263,13 @@ func TestSchedule(t *testing.T) {
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
 
 	// Verify that the scheduled pod is correct
-	err = waitForSpecificPod(kpStore, "nodeOk", types.PodID("testPod"))
+	err = waitForSpecificPod(kpStore, "nodeOk", store.PodID("testPod"))
 	Assert(t).IsNil(err, "Unexpected pod scheduled")
 
 	//
 	// Disabling the daemon set and making a change should not do anything
 	//
-	mutator = func(dsToChange ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator = func(dsToChange store.DaemonSet) (store.DaemonSet, error) {
 		dsToChange.Disabled = true
 		dsToChange.NodeSelector = klabels.Everything().
 			Add("nodeQuality", klabels.EqualsOperator, []string{"good"})
@@ -286,7 +284,7 @@ func TestSchedule(t *testing.T) {
 	//
 	// Now re-enable it and try to schedule everything
 	//
-	mutator = func(dsToChange ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator = func(dsToChange store.DaemonSet) (store.DaemonSet, error) {
 		dsToChange.NodeSelector = klabels.Everything()
 		dsToChange.Disabled = false
 		return dsToChange, nil
@@ -324,11 +322,11 @@ func TestPublishToReplication(t *testing.T) {
 	//
 	dsStore := dsstoretest.NewFake()
 
-	podID := types.PodID("testPod")
+	podID := store.PodID("testPod")
 	minHealth := 1
-	clusterName := ds_fields.ClusterName("some_name")
+	clusterName := store.DaemonSetName("some_name")
 
-	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder := store.NewBuilder()
 	manifestBuilder.SetID(podID)
 	podManifest := manifestBuilder.GetManifest()
 
@@ -338,18 +336,18 @@ func TestPublishToReplication(t *testing.T) {
 	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "expected no error creating request")
 
-	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]manifest.Manifest), make(map[string]kp.WatchResult))
+	kpStore := kptest.NewFakePodStore(make(map[kptest.FakePodStoreKey]store.Manifest), make(map[string]kp.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
 	preparer := kptest.NewFakePreparer(kpStore, logging.DefaultLogger)
 	preparer.Enable()
 	defer preparer.Disable()
 
-	var allNodes []types.NodeName
+	var allNodes []store.NodeName
 	allNodes = append(allNodes, "node1", "node2")
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("good_node%v", i)
-		allNodes = append(allNodes, types.NodeName(nodeName))
+		allNodes = append(allNodes, store.NodeName(nodeName))
 	}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
@@ -380,8 +378,8 @@ func TestPublishToReplication(t *testing.T) {
 	// to the daemon set
 	//
 	quitCh := make(chan struct{})
-	updatedCh := make(chan *ds_fields.DaemonSet)
-	deletedCh := make(chan *ds_fields.DaemonSet)
+	updatedCh := make(chan *store.DaemonSet)
+	deletedCh := make(chan *store.DaemonSet)
 	defer close(quitCh)
 	defer close(updatedCh)
 	defer close(deletedCh)
@@ -398,7 +396,7 @@ func TestPublishToReplication(t *testing.T) {
 	Assert(t).AreEqual(len(scheduled), 2, "expected a node to have been labeled")
 
 	// Mutate the daemon set so that the node is unscheduled, this should not produce an error
-	mutator := func(dsToChange ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	mutator := func(dsToChange store.DaemonSet) (store.DaemonSet, error) {
 		dsToChange.NodeSelector = klabels.Everything().
 			Add("nodeQuality", klabels.EqualsOperator, []string{"bad"})
 		return dsToChange, nil
@@ -435,7 +433,7 @@ func waitForPodsInIntent(kpStore *kptest.FakePodStore, numPodsExpected int) erro
 }
 
 // Polls for the store to have a pod with the same pod id and node name
-func waitForSpecificPod(kpStore *kptest.FakePodStore, nodeName types.NodeName, podID types.PodID) error {
+func waitForSpecificPod(kpStore *kptest.FakePodStore, nodeName store.NodeName, podID store.PodID) error {
 	condition := func() error {
 		manifestResults, _, err := kpStore.AllPods(kp.INTENT_TREE)
 		if err != nil {

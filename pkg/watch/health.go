@@ -9,9 +9,8 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/preparer"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util/param"
 )
 
@@ -35,7 +34,7 @@ var HEALTHCHECK_TIMEOUT = param.Int64("healthcheck_timeout", 5)
 // tree, and a bool that indicates whether or not the pod
 // has a running MonitorHealth go routine
 type PodWatch struct {
-	manifest      manifest.Manifest
+	manifest      store.Manifest
 	updater       kp.HealthUpdater
 	statusChecker StatusChecker
 
@@ -49,15 +48,15 @@ type PodWatch struct {
 // StatusChecker holds all the data required to perform
 // a status check on a particular service
 type StatusChecker struct {
-	ID     types.PodID
-	Node   types.NodeName
+	ID     store.PodID
+	Node   store.NodeName
 	URI    string
 	Client *http.Client
 }
 
-type store interface {
-	NewHealthManager(node types.NodeName, logger logging.Logger) kp.HealthManager
-	WatchPods(podPrefix kp.PodPrefix, nodename types.NodeName, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []kp.ManifestResult)
+type consulStore interface {
+	NewHealthManager(node store.NodeName, logger logging.Logger) kp.HealthManager
+	WatchPods(podPrefix kp.PodPrefix, nodename store.NodeName, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []kp.ManifestResult)
 }
 
 // MonitorPodHealth is meant to be a long running go routine.
@@ -72,8 +71,8 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 		// A bad config should have already produced a nice, user-friendly error message.
 		logger.WithError(err).Fatalln("error creating health monitor KV client")
 	}
-	store := kp.NewConsulStore(client)
-	healthManager := store.NewHealthManager(config.NodeName, *logger)
+	consulStore := kp.NewConsulStore(client)
+	healthManager := consulStore.NewHealthManager(config.NodeName, *logger)
 
 	node := config.NodeName
 	pods := []PodWatch{}
@@ -81,7 +80,7 @@ func MonitorPodHealth(config *preparer.PreparerConfig, logger *logging.Logger, s
 	watchQuitCh := make(chan struct{})
 	watchErrCh := make(chan error)
 	watchPodCh := make(chan []kp.ManifestResult)
-	go store.WatchPods(
+	go consulStore.WatchPods(
 		kp.REALITY_TREE,
 		node,
 		watchQuitCh,
@@ -129,7 +128,7 @@ func updatePods(
 	insecureClient *http.Client,
 	current []PodWatch,
 	reality []kp.ManifestResult,
-	node types.NodeName,
+	node store.NodeName,
 	logger *logging.Logger,
 ) []PodWatch {
 	newCurrent := []PodWatch{}
@@ -176,7 +175,7 @@ func updatePods(
 		}
 
 		var client *http.Client
-		var statusHost types.NodeName
+		var statusHost store.NodeName
 		if man.Manifest.GetStatusLocalhostOnly() {
 			statusHost = "localhost"
 			client = insecureClient

@@ -12,7 +12,7 @@ import (
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/kp/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/launch"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -33,7 +33,7 @@ func TestSchedulePod(t *testing.T) {
 	}
 
 	// check that the key we got back actually returns an entry from the store
-	pod, err := fakePodStore.ReadPod(types.PodUniqueKey(resp.PodUniqueKey))
+	pod, err := fakePodStore.ReadPod(store.PodUniqueKey(resp.PodUniqueKey))
 	if err != nil {
 		t.Fatalf("Unexpected error reading pod out of store after scheduling: %s", err)
 	}
@@ -107,7 +107,7 @@ func TestWatchPodStatus(t *testing.T) {
 
 	podStatusStore, server := setupServerWithFakePodStatusStore()
 
-	podUniqueKey := types.NewPodUUID()
+	podUniqueKey := store.NewPodUUID()
 	req := &podstore_protos.WatchPodStatusRequest{
 		StatusNamespace: kp.PreparerPodStatusNamespace.String(),
 		PodUniqueKey:    podUniqueKey.String(),
@@ -203,18 +203,18 @@ func TestWatchPodStatus(t *testing.T) {
 	}
 }
 
-func setupServerWithFakePodStore() (podstore.Store, store) {
+func setupServerWithFakePodStore() (podstore.Store, podStore) {
 	fakePodStore := podstore.NewConsul(consulutil.NewFakeClient().KV_)
-	server := store{
+	server := podStore{
 		scheduler: fakePodStore,
 	}
 
 	return fakePodStore, server
 }
 
-func setupServerWithFakePodStatusStore() (podstatus.Store, store) {
+func setupServerWithFakePodStatusStore() (podstatus.Store, podStore) {
 	fakePodStatusStore := podstatus.NewConsul(statusstoretest.NewFake(), kp.PreparerPodStatusNamespace)
-	return fakePodStatusStore, store{
+	return fakePodStatusStore, podStore{
 		podStatusStore: fakePodStatusStore,
 	}
 }

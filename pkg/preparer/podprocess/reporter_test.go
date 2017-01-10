@@ -11,7 +11,7 @@ import (
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/kp/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 )
 
 func TestFullyConfigured(t *testing.T) {
@@ -108,7 +108,7 @@ func TestRun(t *testing.T) {
 		PodID:        "some_pod",
 		LaunchableID: "some_launchable",
 		EntryPoint:   "launch",
-		PodUniqueKey: types.NewPodUUID(),
+		PodUniqueKey: store.NewPodUUID(),
 		ExitCode:     1,
 		ExitStatus:   120,
 	}
@@ -130,7 +130,7 @@ func TestRun(t *testing.T) {
 		PodID:        "some_pod",
 		LaunchableID: "some_launchable",
 		EntryPoint:   "nginx_worker",
-		PodUniqueKey: types.NewPodUUID(),
+		PodUniqueKey: store.NewPodUUID(),
 		ExitCode:     3,
 		ExitStatus:   67,
 	}

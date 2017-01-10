@@ -14,25 +14,22 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc"
-	rcf "github.com/square/p2/pkg/rc/fields"
-	"github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/scheduler"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 )
 
 type Store interface {
-	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
-	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	SetPod(podPrefix kp.PodPrefix, nodename store.NodeName, manifest store.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodename store.NodeName, podId store.PodID) (store.Manifest, time.Duration, error)
+	DeletePod(podPrefix kp.PodPrefix, nodename store.NodeName, podId store.PodID) (time.Duration, error)
 	NewUnmanagedSession(session, name string) kp.Session
 }
 
 type update struct {
-	fields.Update
+	store.RollingUpdate
 
 	kps     Store
 	rcs     rcstore.Store
@@ -54,7 +51,7 @@ type update struct {
 // session must be valid for the lifetime of the Update; maintaining this is the
 // responsibility of the caller.
 func NewUpdate(
-	f fields.Update,
+	f store.RollingUpdate,
 	kps Store,
 	rcs rcstore.Store,
 	hcheck checker.ConsulHealthChecker,
@@ -73,15 +70,15 @@ func NewUpdate(
 		"minimum_replicas": f.MinimumReplicas,
 	})
 	return &update{
-		Update:  f,
-		kps:     kps,
-		rcs:     rcs,
-		hcheck:  hcheck,
-		labeler: labeler,
-		sched:   sched,
-		logger:  logger,
-		session: session,
-		alerter: alerter,
+		RollingUpdate: f,
+		kps:           kps,
+		rcs:           rcs,
+		hcheck:        hcheck,
+		labeler:       labeler,
+		sched:         sched,
+		logger:        logger,
+		session:       session,
+		alerter:       alerter,
 	}
 }
 
@@ -140,7 +137,7 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 	}
 
 	u.logger.NoFields().Debugln("Launching health watch")
-	var newFields rcf.RC
+	var newFields store.ReplicationController
 	var err error
 	if !RetryOrQuit(func() error {
 		newFields, err = u.rcs.Get(u.NewRC)
@@ -155,7 +152,7 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 		return
 	}
 
-	hChecks := make(chan map[types.NodeName]health.Result)
+	hChecks := make(chan map[store.NodeName]health.Result)
 	hErrs := make(chan error)
 	hQuit := make(chan struct{})
 	defer close(hQuit)
@@ -180,7 +177,7 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 }
 
 // returns true if roll succeeded, false if asked to quit.
-func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]health.Result, hErrs <-chan error, quit <-chan struct{}) bool {
+func (u *update) rollLoop(podID store.PodID, hChecks <-chan map[store.NodeName]health.Result, hErrs <-chan error, quit <-chan struct{}) bool {
 	for {
 		// Select on just the quit channel before entering the select with both quit and hChecks. This protects against a situation where
 		// hChecks and quit are both ready, and hChecks might be chosen due to the random choice semantics of select {}. If multiple
@@ -388,7 +385,7 @@ type rcNodeCounts struct {
 	Unknown   int // the number of real nodes that are of unknown health
 }
 
-func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result) (rcNodeCounts, error) {
+func (u *update) countHealthy(id store.ReplicationControllerID, checks map[store.NodeName]health.Result) (rcNodeCounts, error) {
 	ret := rcNodeCounts{}
 	rcFields, err := u.rcs.Get(id)
 	if rcstore.IsNotExist(err) {
@@ -449,7 +446,7 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 	return ret, err
 }
 
-func (u *update) shouldRollAfterDelay(podID types.PodID) (int, int, error) {
+func (u *update) shouldRollAfterDelay(podID store.PodID) (int, int, error) {
 	// Check health again following the roll delay. If things have gotten
 	// worse since we last looked, or there is an error, we break this iteration.
 	checks, err := u.hcheck.Service(podID.String())

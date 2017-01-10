@@ -27,13 +27,11 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/preparer/podprocess"
 	"github.com/square/p2/pkg/rc"
-	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/schedule"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
@@ -118,7 +116,7 @@ func main() {
 	podStore := podstore.NewConsul(consulClient.KV())
 	for _, key := range keys {
 		keyParts := strings.Split(key, "/")
-		err = podStore.Unschedule(types.PodUniqueKey(keyParts[len(keyParts)-1]))
+		err = podStore.Unschedule(store.PodUniqueKey(keyParts[len(keyParts)-1]))
 		if err != nil {
 			log.Fatalf("Could not unschedule pod %s from consul: %s", keyParts[len(keyParts)-1], err)
 		}
@@ -410,7 +408,7 @@ func signBuild(artifactPath string) error {
 	return nil
 }
 
-func generatePreparerPod(workdir string, userHookManifest manifest.Manifest) (string, error) {
+func generatePreparerPod(workdir string, userHookManifest store.Manifest) (string, error) {
 	// build the artifact from HEAD
 	output, err := exec.Command("go", "build", "github.com/square/p2/bin/p2-preparer").CombinedOutput()
 	if err != nil {
@@ -433,7 +431,7 @@ func generatePreparerPod(workdir string, userHookManifest manifest.Manifest) (st
 		return "", err
 	}
 
-	manifest, err := manifest.FromPath(prepBin2Pod.ManifestPath)
+	manifest, err := store.FromPath(prepBin2Pod.ManifestPath)
 	if err != nil {
 		return "", err
 	}
@@ -538,7 +536,7 @@ func waitForStatus(statusPort int, pod string, waitTime time.Duration) error {
 	}
 }
 
-func userCreationHookManifest(tmpdir string) (manifest.Manifest, error) {
+func userCreationHookManifest(tmpdir string) (store.Manifest, error) {
 	createUserPath := path.Join(tmpdir, "create_user")
 	script := `#!/usr/bin/env bash
 set -e
@@ -561,7 +559,7 @@ mkdir -p $HOOKED_POD_HOME
 	}
 	manifestPath := createUserBin2Pod.ManifestPath
 
-	userHookManifest, err := manifest.FromPath(manifestPath)
+	userHookManifest, err := store.FromPath(manifestPath)
 	if err != nil {
 		return nil, err
 	}
@@ -600,7 +598,7 @@ func getConsulManifest(dir string) (string, error) {
 		"file://%s",
 		util.From(runtime.Caller(0)).ExpandPath("../hoisted-consul_052.tar.gz"),
 	)
-	builder := manifest.NewBuilder()
+	builder := store.NewBuilder()
 	builder.SetID("consul")
 	stanzas := map[launch.LaunchableID]launch.LaunchableStanza{
 		"consul": {
@@ -676,7 +674,7 @@ func scheduleRCTLServer(dir string) error {
 // the signed manifest
 func writeHelloManifest(dir string, manifestName string, port int) (string, error) {
 	hello := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-hello_def456.tar.gz"))
-	builder := manifest.NewBuilder()
+	builder := store.NewBuilder()
 	builder.SetID("hello")
 	builder.SetStatusPort(port)
 	builder.SetStatusHTTP(true)
@@ -706,7 +704,7 @@ func writeHelloManifest(dir string, manifestName string, port int) (string, erro
 	return signManifest(manifestPath, dir)
 }
 
-func createHelloUUIDPod(dir string, port int, logger logging.Logger) (types.PodUniqueKey, error) {
+func createHelloUUIDPod(dir string, port int, logger logging.Logger) (store.PodUniqueKey, error) {
 	signedManifestPath, err := writeHelloManifest(dir, fmt.Sprintf("hello-uuid-%d.yaml", port), port)
 	if err != nil {
 		return "", err
@@ -733,7 +731,7 @@ func createHelloUUIDPod(dir string, port int, logger logging.Logger) (types.PodU
 	return out.PodUniqueKey, nil
 }
 
-func createHelloReplicationController(dir string) (fields.ID, error) {
+func createHelloReplicationController(dir string) (store.ReplicationControllerID, error) {
 	signedManifestPath, err := writeHelloManifest(dir, "hello.yaml", 43770)
 	if err != nil {
 		return "", err
@@ -745,7 +743,7 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 	cmd.Stderr = &out
 	err = cmd.Run()
 	if err != nil {
-		return fields.ID(""), fmt.Errorf("Couldn't create replication controller for hello: %s %s", out.String(), err)
+		return store.ReplicationControllerID(""), fmt.Errorf("Couldn't create replication controller for hello: %s %s", out.String(), err)
 	}
 	var rctlOut struct {
 		ID string `json:"id"`
@@ -753,7 +751,7 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 
 	err = json.Unmarshal(out.Bytes(), &rctlOut)
 	if err != nil {
-		return fields.ID(""), fmt.Errorf("Couldn't read RC ID out of p2-rctl invocation result: %v", err)
+		return store.ReplicationControllerID(""), fmt.Errorf("Couldn't read RC ID out of p2-rctl invocation result: %v", err)
 	}
 
 	output, err := exec.Command("p2-rctl", "set-replicas", rctlOut.ID, "1").CombinedOutput()
@@ -761,10 +759,10 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 		fmt.Println(string(output))
 		return "", err
 	}
-	return fields.ID(rctlOut.ID), nil
+	return store.ReplicationControllerID(rctlOut.ID), nil
 }
 
-func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
+func waitForPodLabeledWithRC(selector klabels.Selector, rcID store.ReplicationControllerID) error {
 	client := kp.NewConsulClient(kp.Options{})
 	applicator := labels.NewConsulApplicator(client, 1)
 
@@ -807,7 +805,7 @@ func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
 	}
 }
 
-func verifyHelloRunning(podUniqueKey types.PodUniqueKey, logger logging.Logger) error {
+func verifyHelloRunning(podUniqueKey store.PodUniqueKey, logger logging.Logger) error {
 	helloPidAppeared := make(chan struct{})
 	quit := make(chan struct{})
 	defer close(quit)
@@ -844,7 +842,7 @@ func verifyHelloRunning(podUniqueKey types.PodUniqueKey, logger logging.Logger) 
 	}
 }
 
-func verifyHelloUUIDRunning(podUniqueKey types.PodUniqueKey) error {
+func verifyHelloUUIDRunning(podUniqueKey store.PodUniqueKey) error {
 	helloUUIDAppeared := make(chan struct{})
 	quit := make(chan struct{})
 	defer close(quit)
@@ -876,7 +874,7 @@ func verifyHelloUUIDRunning(podUniqueKey types.PodUniqueKey) error {
 	}
 }
 
-func targetUUIDLogs(podUniqueKey types.PodUniqueKey) string {
+func targetUUIDLogs(podUniqueKey store.PodUniqueKey) string {
 	var helloUUIDTail bytes.Buffer
 	helloT := exec.Command("tail", fmt.Sprintf("/var/service/hello-%s__hello__launch/log/main/current", podUniqueKey))
 	helloT.Stdout = &helloUUIDTail
@@ -900,7 +898,7 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 	if err != nil {
 		return err
 	}
-	store := kp.NewConsulStore(client)
+	consulStore := kp.NewConsulStore(client)
 
 	time.Sleep(30 * time.Second)
 	// check consul for health information for each app
@@ -909,9 +907,9 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 		return err
 	}
 
-	node := types.NodeName(name)
+	node := store.NodeName(name)
 	for _, sv := range services {
-		res, err := store.GetHealth(sv, node)
+		res, err := consulStore.GetHealth(sv, node)
 		if err != nil {
 			return err
 		} else if (res == kp.WatchResult{}) {
@@ -924,8 +922,8 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 	}
 
 	for _, sv := range services {
-		res, err := store.GetServiceHealth(sv)
-		getres, _ := store.GetHealth(sv, node)
+		res, err := consulStore.GetServiceHealth(sv)
+		getres, _ := consulStore.GetHealth(sv, node)
 		if err != nil {
 			return err
 		}

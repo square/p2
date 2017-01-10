@@ -16,8 +16,7 @@ import (
 	"github.com/square/p2/pkg/kp/consulutil"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/pc/fields"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -66,30 +65,30 @@ func (s *consulStore) SetMetricsRegistry(reg MetricsRegistry) {
 }
 
 func (s *consulStore) Create(
-	podID types.PodID,
-	availabilityZone fields.AvailabilityZone,
-	clusterName fields.ClusterName,
+	podID store.PodID,
+	availabilityZone store.AvailabilityZone,
+	clusterName store.PodClusterName,
 	podSelector klabels.Selector,
-	annotations fields.Annotations,
+	annotations store.Annotations,
 	session Session,
-) (fields.PodCluster, error) {
-	id := fields.ID(uuid.New())
+) (store.PodCluster, error) {
+	id := store.PodClusterID(uuid.New())
 
 	unlocker, err := s.lockForCreation(podID, availabilityZone, clusterName, session)
 	if err != nil {
-		return fields.PodCluster{}, err
+		return store.PodCluster{}, err
 	}
 	defer unlocker.Unlock()
 
 	existing, err := s.FindWhereLabeled(podID, availabilityZone, clusterName)
 	if err != nil {
-		return fields.PodCluster{}, util.Errorf("Couldn't determine if pod cluster exists already: %v", err)
+		return store.PodCluster{}, util.Errorf("Couldn't determine if pod cluster exists already: %v", err)
 	}
 	if len(existing) > 0 {
 		return existing[0], PodClusterAlreadyExists
 	}
 
-	pc := fields.PodCluster{
+	pc := store.PodCluster{
 		ID:               id,
 		PodID:            podID,
 		AvailabilityZone: availabilityZone,
@@ -100,13 +99,13 @@ func (s *consulStore) Create(
 
 	key, err := pcPath(id)
 	if err != nil {
-		return fields.PodCluster{}, err
+		return store.PodCluster{}, err
 	}
 
 	jsonPC, err := json.Marshal(pc)
 	if err != nil {
 		// Probably the annotations don't marshal to JSON
-		return fields.PodCluster{}, util.Errorf("Unable to marshal pod cluster as JSON: %s", err)
+		return store.PodCluster{}, util.Errorf("Unable to marshal pod cluster as JSON: %s", err)
 	}
 
 	// the chance of the UUID already existing is vanishingly small, but
@@ -118,11 +117,11 @@ func (s *consulStore) Create(
 		ModifyIndex: 0,
 	}, nil)
 	if err != nil {
-		return fields.PodCluster{}, consulutil.NewKVError("cas", key, err)
+		return store.PodCluster{}, consulutil.NewKVError("cas", key, err)
 	}
 
 	if !success {
-		return fields.PodCluster{}, util.Errorf("Could not set pod cluster at path '%s'", key)
+		return store.PodCluster{}, util.Errorf("Could not set pod cluster at path '%s'", key)
 	}
 
 	err = s.setLabelsForPC(pc)
@@ -132,40 +131,40 @@ func (s *consulStore) Create(
 		if deleteErr != nil {
 			err = util.Errorf("%s\n%s", err, deleteErr)
 		}
-		return fields.PodCluster{}, err
+		return store.PodCluster{}, err
 	}
 
 	return pc, nil
 }
 
-func (s *consulStore) setLabelsForPC(pc fields.PodCluster) error {
+func (s *consulStore) setLabelsForPC(pc store.PodCluster) error {
 	pcLabels := klabels.Set{}
-	pcLabels[fields.PodIDLabel] = pc.PodID.String()
-	pcLabels[fields.AvailabilityZoneLabel] = pc.AvailabilityZone.String()
-	pcLabels[fields.ClusterNameLabel] = pc.Name.String()
+	pcLabels[store.PodIDLabel] = pc.PodID.String()
+	pcLabels[store.AvailabilityZoneLabel] = pc.AvailabilityZone.String()
+	pcLabels[store.PodClusterNameLabel] = pc.Name.String()
 
 	return s.labeler.SetLabels(labels.PC, pc.ID.String(), pcLabels)
 }
 
-func (s *consulStore) Get(id fields.ID) (fields.PodCluster, error) {
+func (s *consulStore) Get(id store.PodClusterID) (store.PodCluster, error) {
 	key, err := pcPath(id)
 	if err != nil {
-		return fields.PodCluster{}, err
+		return store.PodCluster{}, err
 	}
 
 	kvp, _, err := s.kv.Get(key, nil)
 	if err != nil {
-		return fields.PodCluster{}, consulutil.NewKVError("get", key, err)
+		return store.PodCluster{}, consulutil.NewKVError("get", key, err)
 	}
 	if kvp == nil {
 		// ID didn't exist
-		return fields.PodCluster{}, NoPodCluster
+		return store.PodCluster{}, NoPodCluster
 	}
 
 	return kvpToPC(kvp)
 }
 
-func (s *consulStore) Delete(id fields.ID) error {
+func (s *consulStore) Delete(id store.PodClusterID) error {
 	key, err := pcPath(id)
 	if err != nil {
 		return err
@@ -179,7 +178,7 @@ func (s *consulStore) Delete(id fields.ID) error {
 	return s.labeler.RemoveAllLabels(labels.PC, id.String())
 }
 
-func (s *consulStore) List() ([]fields.PodCluster, error) {
+func (s *consulStore) List() ([]store.PodCluster, error) {
 	pairs, _, err := s.kv.List(podClusterTree+"/", nil)
 	if err != nil {
 		return nil, err
@@ -193,37 +192,37 @@ func (s *consulStore) List() ([]fields.PodCluster, error) {
 // if the mutator returns an error, it will be propagated out
 // if the returned PC has id="", then it will be deleted
 func (s *consulStore) MutatePC(
-	id fields.ID,
-	mutator func(fields.PodCluster) (fields.PodCluster, error),
-) (fields.PodCluster, error) {
+	id store.PodClusterID,
+	mutator func(store.PodCluster) (store.PodCluster, error),
+) (store.PodCluster, error) {
 	pcp, err := pcPath(id)
 	if err != nil {
-		return fields.PodCluster{}, err
+		return store.PodCluster{}, err
 	}
 
 	kvp, meta, err := s.kv.Get(pcp, nil)
 	if err != nil {
-		return fields.PodCluster{}, consulutil.NewKVError("get", pcp, err)
+		return store.PodCluster{}, consulutil.NewKVError("get", pcp, err)
 	}
 
 	if kvp == nil {
-		return fields.PodCluster{}, NoPodCluster
+		return store.PodCluster{}, NoPodCluster
 	}
 
 	pc, err := kvpToPC(kvp)
 	if err != nil {
-		return fields.PodCluster{}, err
+		return store.PodCluster{}, err
 	}
 
 	pc, err = mutator(pc)
 	if err != nil {
-		return fields.PodCluster{}, err
+		return store.PodCluster{}, err
 	}
 
 	jsonPC, err := json.Marshal(pc)
 	if err != nil {
 		// Probably the annotations don't marshal to JSON
-		return fields.PodCluster{}, util.Errorf("Unable to marshal pod cluster as JSON: %s", err)
+		return store.PodCluster{}, util.Errorf("Unable to marshal pod cluster as JSON: %s", err)
 	}
 
 	// the chance of the UUID already existing is vanishingly small, but
@@ -236,11 +235,11 @@ func (s *consulStore) MutatePC(
 		ModifyIndex: meta.LastIndex,
 	}, nil)
 	if err != nil {
-		return fields.PodCluster{}, consulutil.NewKVError("cas", pcp, err)
+		return store.PodCluster{}, consulutil.NewKVError("cas", pcp, err)
 	}
 
 	if !success {
-		return fields.PodCluster{}, util.Errorf("Could not set pod cluster at path '%s'", pcp)
+		return store.PodCluster{}, util.Errorf("Could not set pod cluster at path '%s'", pcp)
 	}
 
 	err = s.setLabelsForPC(pc)
@@ -250,13 +249,13 @@ func (s *consulStore) MutatePC(
 		if deleteErr != nil {
 			err = util.Errorf("%s\n%s", err, deleteErr)
 		}
-		return fields.PodCluster{}, err
+		return store.PodCluster{}, err
 	}
 
 	return pc, nil
 }
 
-func pcPath(pcID fields.ID) (string, error) {
+func pcPath(pcID store.PodClusterID) (string, error) {
 	if pcID == "" {
 		return "", util.Errorf("Path requested for empty pod cluster ID")
 	}
@@ -264,39 +263,39 @@ func pcPath(pcID fields.ID) (string, error) {
 	return path.Join(podClusterTree, pcID.String()), nil
 }
 
-func (s *consulStore) lockForCreation(podID types.PodID,
-	availabilityZone fields.AvailabilityZone,
-	clusterName fields.ClusterName,
+func (s *consulStore) lockForCreation(podID store.PodID,
+	availabilityZone store.AvailabilityZone,
+	clusterName store.PodClusterName,
 	session Session) (consulutil.Unlocker, error) {
 	return session.Lock(pcCreateLockPath(podID, availabilityZone, clusterName))
 }
 
-func pcCreateLockPath(podID types.PodID,
-	availabilityZone fields.AvailabilityZone,
-	clusterName fields.ClusterName) string {
+func pcCreateLockPath(podID store.PodID,
+	availabilityZone store.AvailabilityZone,
+	clusterName store.PodClusterName) string {
 	return path.Join(consulutil.LOCK_TREE, podID.String(), availabilityZone.String(), clusterName.String())
 }
 
-func pcSyncLockPath(id fields.ID, syncerType ConcreteSyncerType) string {
+func pcSyncLockPath(id store.PodClusterID, syncerType ConcreteSyncerType) string {
 	return path.Join(consulutil.LOCK_TREE, podClusterTree, id.String(), syncerType.String())
 }
 
-func (s *consulStore) FindWhereLabeled(podID types.PodID,
-	availabilityZone fields.AvailabilityZone,
-	clusterName fields.ClusterName) ([]fields.PodCluster, error) {
+func (s *consulStore) FindWhereLabeled(podID store.PodID,
+	availabilityZone store.AvailabilityZone,
+	clusterName store.PodClusterName) ([]store.PodCluster, error) {
 
 	sel := klabels.Everything().
-		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
-		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{availabilityZone.String()}).
-		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+		Add(store.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
+		Add(store.AvailabilityZoneLabel, klabels.EqualsOperator, []string{availabilityZone.String()}).
+		Add(store.PodClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
 	podClusters, err := s.labeler.GetMatches(sel, labels.PC, false)
 	if err != nil {
 		return nil, err
 	}
-	ret := make([]fields.PodCluster, len(podClusters))
+	ret := make([]store.PodCluster, len(podClusters))
 	for i, pc := range podClusters {
-		ret[i], err = s.Get(fields.ID(pc.ID))
+		ret[i], err = s.Get(store.PodClusterID(pc.ID))
 		if err != nil {
 			return nil, err
 		}
@@ -368,7 +367,7 @@ func (s *consulStore) Watch(quit <-chan struct{}) <-chan WatchedPodClusters {
 // This function will return ErrNoPodCluster if the podCluster goes away. In
 // this case, the caller should close the quit chan.
 // The caller may shutdown this watch by sending a sentinel on the quitChan.
-func (s *consulStore) WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan WatchedPodCluster {
+func (s *consulStore) WatchPodCluster(id store.PodClusterID, quit <-chan struct{}) <-chan WatchedPodCluster {
 	inCh := make(chan *api.KVPair)
 	outCh := make(chan WatchedPodCluster)
 	errChan := make(chan error, 1)
@@ -417,8 +416,8 @@ func (s *consulStore) WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan
 }
 
 type podClusterChange struct {
-	previous *fields.PodCluster
-	current  *fields.PodCluster
+	previous *store.PodCluster
+	current  *store.PodCluster
 }
 
 func (p podClusterChange) different() bool {
@@ -428,7 +427,7 @@ func (p podClusterChange) different() bool {
 func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) error {
 	watchedRes := s.Watch(quit)
 
-	clusterUpdaters := map[fields.ID]chan podClusterChange{}
+	clusterUpdaters := map[store.PodClusterID]chan podClusterChange{}
 	defer func() {
 		for _, handler := range clusterUpdaters {
 			close(handler)
@@ -503,7 +502,7 @@ func (s *consulStore) getInitialClusters(syncer ConcreteSyncer) (WatchedPodClust
 		// but this means that there will definitely be a "change" for the cluster
 		// when the watch is started, resulting in the label watch being started
 		// as well
-		prevResults.Clusters = append(prevResults.Clusters, &fields.PodCluster{
+		prevResults.Clusters = append(prevResults.Clusters, &store.PodCluster{
 			ID: id,
 		})
 	}
@@ -513,12 +512,12 @@ func (s *consulStore) getInitialClusters(syncer ConcreteSyncer) (WatchedPodClust
 // zipResults takes two sets of watched pod clusters and joins them such that they
 // are paired together in a map of pc ID -> change objects. Each change will be sent
 // to the respective sync channels of each pod cluster later on.
-func (s *consulStore) zipResults(current, previous WatchedPodClusters) map[fields.ID]podClusterChange {
-	allPrevious := make(map[fields.ID]*fields.PodCluster)
+func (s *consulStore) zipResults(current, previous WatchedPodClusters) map[store.PodClusterID]podClusterChange {
+	allPrevious := make(map[store.PodClusterID]*store.PodCluster)
 	for _, prev := range previous.Clusters {
 		allPrevious[prev.ID] = prev
 	}
-	ret := map[fields.ID]podClusterChange{}
+	ret := map[store.PodClusterID]podClusterChange{}
 	for _, cur := range current.Clusters {
 		prev, ok := allPrevious[cur.ID]
 		ret[cur.ID] = podClusterChange{
@@ -637,14 +636,14 @@ func labeledEqual(left, right []labels.Labeled) bool {
 	return leftSet.Equal(rightSet)
 }
 
-func (s *consulStore) LockForSync(id fields.ID, syncerType ConcreteSyncerType, session Session) (consulutil.Unlocker, error) {
+func (s *consulStore) LockForSync(id store.PodClusterID, syncerType ConcreteSyncerType, session Session) (consulutil.Unlocker, error) {
 	return session.Lock(pcSyncLockPath(id, syncerType))
 }
 
-func kvpsToPC(pairs api.KVPairs) ([]fields.PodCluster, error) {
-	ret := make([]fields.PodCluster, 0, len(pairs))
+func kvpsToPC(pairs api.KVPairs) ([]store.PodCluster, error) {
+	ret := make([]store.PodCluster, 0, len(pairs))
 	for _, kvp := range pairs {
-		var pc fields.PodCluster
+		var pc store.PodCluster
 		var err error
 		if pc, err = kvpToPC(kvp); err != nil {
 			return nil, err
@@ -654,8 +653,8 @@ func kvpsToPC(pairs api.KVPairs) ([]fields.PodCluster, error) {
 	return ret, nil
 }
 
-func kvpToPC(pair *api.KVPair) (fields.PodCluster, error) {
-	pc := fields.PodCluster{}
+func kvpToPC(pair *api.KVPair) (store.PodCluster, error) {
+	pc := store.PodCluster{}
 	err := json.Unmarshal(pair.Value, &pc)
 	if err != nil {
 		return pc, util.Errorf("Could not unmarshal pod cluster ('%s') as json: %s", string(pair.Value), err)

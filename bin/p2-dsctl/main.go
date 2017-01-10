@@ -11,14 +11,12 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/Sirupsen/logrus"
-	ds_fields "github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/kp/dsstore"
 	"github.com/square/p2/pkg/kp/flags"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
@@ -99,9 +97,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("Invalid value for minimum health, expected integer: %v", err)
 		}
-		name := ds_fields.ClusterName(*createName)
+		name := store.DaemonSetName(*createName)
 
-		manifest, err := manifest.FromPath(*createManifest)
+		manifest, err := store.FromPath(*createManifest)
 		if err != nil {
 			log.Fatalf("%s", err)
 		}
@@ -136,7 +134,7 @@ func main() {
 		fmt.Println()
 
 	case CmdGet:
-		id := ds_fields.ID(*getID)
+		id := store.DaemonSetID(*getID)
 		ds, _, err := dsstore.Get(id)
 		if err != nil {
 			log.Fatalf("err: %v", err)
@@ -152,7 +150,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("err: %v", err)
 		}
-		podID := types.PodID(*listPod)
+		podID := store.PodID(*listPod)
 		for _, ds := range dsList {
 			if *listPod == "" || podID == ds.PodID {
 				fmt.Printf("%s/%s:%s\n", ds.PodID, ds.Name, ds.ID)
@@ -160,9 +158,9 @@ func main() {
 		}
 
 	case CmdEnable:
-		id := ds_fields.ID(*enableID)
+		id := store.DaemonSetID(*enableID)
 
-		mutator := func(ds ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		mutator := func(ds store.DaemonSet) (store.DaemonSet, error) {
 			if !ds.Disabled {
 				return ds, util.Errorf("Daemon set has already been enabled")
 			}
@@ -178,9 +176,9 @@ func main() {
 		fmt.Println()
 
 	case CmdDisable:
-		id := ds_fields.ID(*disableID)
+		id := store.DaemonSetID(*disableID)
 
-		mutator := func(ds ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		mutator := func(ds store.DaemonSet) (store.DaemonSet, error) {
 			if ds.Disabled {
 				return ds, util.Errorf("Daemon set has already been disabled")
 			}
@@ -196,7 +194,7 @@ func main() {
 		fmt.Println()
 
 	case CmdDelete:
-		id := ds_fields.ID(*deleteID)
+		id := store.DaemonSetID(*deleteID)
 		err := dsstore.Delete(id)
 		if err != nil {
 			log.Fatalf("err: %v", err)
@@ -205,9 +203,9 @@ func main() {
 		fmt.Println()
 
 	case CmdUpdate:
-		id := ds_fields.ID(*updateID)
+		id := store.DaemonSetID(*updateID)
 
-		mutator := func(ds ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		mutator := func(ds store.DaemonSet) (store.DaemonSet, error) {
 			changed := false
 			if *updateMinHealth != "" {
 				minHealth, err := strconv.Atoi(*updateMinHealth)
@@ -220,7 +218,7 @@ func main() {
 				}
 			}
 			if *updateName != "" {
-				name := ds_fields.ClusterName(*updateName)
+				name := store.DaemonSetName(*updateName)
 				if ds.Name != name {
 					changed = true
 					ds.Name = name
@@ -237,7 +235,7 @@ func main() {
 				}
 			}
 			if *updateManifest != "" {
-				manifest, err := manifest.FromPath(*updateManifest)
+				manifest, err := store.FromPath(*updateManifest)
 				if err != nil {
 					return ds, util.Errorf("%s", err)
 				}
@@ -378,20 +376,20 @@ func parseNodeSelector(selectorString string) (klabels.Selector, error) {
 }
 
 // Returns nodes to be removed and nodes to be added
-func makeNodeChanges(oldNodeLabels []labels.Labeled, newNodeLabels []labels.Labeled) ([]types.NodeName, []types.NodeName) {
-	var oldNodeNames []types.NodeName
-	var newNodeNames []types.NodeName
+func makeNodeChanges(oldNodeLabels []labels.Labeled, newNodeLabels []labels.Labeled) ([]store.NodeName, []store.NodeName) {
+	var oldNodeNames []store.NodeName
+	var newNodeNames []store.NodeName
 
 	for _, node := range oldNodeLabels {
-		oldNodeNames = append(oldNodeNames, types.NodeName(node.ID))
+		oldNodeNames = append(oldNodeNames, store.NodeName(node.ID))
 	}
 
 	for _, node := range newNodeLabels {
-		newNodeNames = append(newNodeNames, types.NodeName(node.ID))
+		newNodeNames = append(newNodeNames, store.NodeName(node.ID))
 	}
 
-	toRemove := types.NewNodeSet(oldNodeNames...).Difference(types.NewNodeSet(newNodeNames...)).ListNodes()
-	toAdd := types.NewNodeSet(newNodeNames...).Difference(types.NewNodeSet(oldNodeNames...)).ListNodes()
+	toRemove := store.NewNodeSet(oldNodeNames...).Difference(store.NewNodeSet(newNodeNames...)).ListNodes()
+	toAdd := store.NewNodeSet(newNodeNames...).Difference(store.NewNodeSet(oldNodeNames...)).ListNodes()
 
 	return toRemove, toAdd
 }

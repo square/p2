@@ -14,11 +14,9 @@ import (
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	p2metrics "github.com/square/p2/pkg/metrics"
-	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/scheduler"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/rcrowley/go-metrics"
@@ -44,7 +42,7 @@ type Labeler interface {
 // farms to cooperatively schedule work.
 type Farm struct {
 	// constructor arguments for rcs created by this farm
-	store     store
+	store     Storage
 	rcStore   rcstore.Store
 	scheduler scheduler.Scheduler
 	labeler   Labeler
@@ -52,7 +50,7 @@ type Farm struct {
 	// session stream for the rcs locked by this farm
 	sessions <-chan string
 
-	children map[fields.ID]childRC
+	children map[store.ReplicationControllerID]childRC
 	childMu  sync.Mutex
 	session  kp.Session
 
@@ -73,15 +71,15 @@ type childRC struct {
 	quit     chan<- struct{}
 }
 
-type store interface {
-	SetPod(podPrefix kp.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
-	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+type Storage interface {
+	SetPod(podPrefix kp.PodPrefix, nodename store.NodeName, manifest store.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodename store.NodeName, podId store.PodID) (store.Manifest, time.Duration, error)
+	DeletePod(podPrefix kp.PodPrefix, nodename store.NodeName, podId store.PodID) (time.Duration, error)
 	NewUnmanagedSession(session, name string) kp.Session
 }
 
 func NewFarm(
-	store store,
+	storage Storage,
 	rcs rcstore.Store,
 	scheduler scheduler.Scheduler,
 	labeler Labeler,
@@ -96,13 +94,13 @@ func NewFarm(
 	}
 
 	return &Farm{
-		store:            store,
+		store:            storage,
 		rcStore:          rcs,
 		scheduler:        scheduler,
 		labeler:          labeler,
 		sessions:         sessions,
 		logger:           logger,
-		children:         make(map[fields.ID]childRC),
+		children:         make(map[store.ReplicationControllerID]childRC),
 		alerter:          alerter,
 		rcSelector:       rcSelector,
 		rcWatchPauseTime: rcWatchPauseTime,
@@ -161,7 +159,7 @@ START_LOOP:
 			rcf.failsafe(rcFields)
 
 			// track which children were found in the returned set
-			foundChildren := make(map[fields.ID]struct{})
+			foundChildren := make(map[store.ReplicationControllerID]struct{})
 			for _, rcField := range rcFields {
 				rcLogger := rcf.logger.SubLogger(logrus.Fields{
 					"rc":  rcField.ID,
@@ -210,7 +208,7 @@ START_LOOP:
 				rcLogger.NoFields().Infoln("Acquired lock on new replication controller, spawning")
 
 				newChild := New(
-					rcField.RC,
+					rcField.ReplicationController,
 					rcf.store,
 					rcf.rcStore,
 					rcf.scheduler,
@@ -226,7 +224,7 @@ START_LOOP:
 				}
 				foundChildren[rcField.ID] = struct{}{}
 
-				go func(id fields.ID) {
+				go func(id store.ReplicationControllerID) {
 					defer func() {
 						if r := recover(); r != nil {
 							err := util.Errorf("Caught panic in rc farm: %s", r)
@@ -295,7 +293,7 @@ func (rcf *Farm) failsafe(rcFields []rcstore.RCLockResult) {
 	}
 }
 
-func (rcf *Farm) releaseDeletedChildren(foundChildren map[fields.ID]struct{}) {
+func (rcf *Farm) releaseDeletedChildren(foundChildren map[store.ReplicationControllerID]struct{}) {
 	rcf.childMu.Lock()
 	defer rcf.childMu.Unlock()
 	rcf.logger.NoFields().Debugln("Pruning replication controllers that have disappeared")
@@ -307,7 +305,7 @@ func (rcf *Farm) releaseDeletedChildren(foundChildren map[fields.ID]struct{}) {
 }
 
 // test if the farm should work on the given replication controller ID
-func (rcf *Farm) shouldWorkOn(rcID fields.ID) (bool, error) {
+func (rcf *Farm) shouldWorkOn(rcID store.ReplicationControllerID) (bool, error) {
 	if rcf.rcSelector.Empty() {
 		return true, nil
 	}
@@ -320,7 +318,7 @@ func (rcf *Farm) shouldWorkOn(rcID fields.ID) (bool, error) {
 
 // close one child
 // should only be called with rcf.childMu locked
-func (rcf *Farm) releaseChild(id fields.ID) {
+func (rcf *Farm) releaseChild(id store.ReplicationControllerID) {
 	rcf.logger.WithField("rc", id).Infoln("Releasing replication controller")
 	close(rcf.children[id].quit)
 

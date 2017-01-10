@@ -14,7 +14,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store"
 )
 
 var help = flag.Bool("help", false, "show program usage")
@@ -45,7 +45,7 @@ type HashErr struct {
 
 // SumBytes parses the given contents of a manifest file and returns its canonical hash.
 func SumBytes(data []byte) HashErr {
-	m, err := manifest.FromBytes(data)
+	m, err := store.FromBytes(data)
 	if err != nil {
 		return HashErr{"", err}
 	}

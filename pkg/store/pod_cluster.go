@@ -1,29 +1,26 @@
-package fields
+package store
 
 import (
 	"encoding/json"
 	"reflect"
 
-	"github.com/square/p2/pkg/kp/rcstore"
-	"github.com/square/p2/pkg/types"
-
 	"k8s.io/kubernetes/pkg/labels"
 )
 
-// Types stored in the actual pod cluster document
-type ID string
+// store stored in the actual pod cluster document
+type PodClusterID string
 type AvailabilityZone string
-type ClusterName string
+type PodClusterName string
 type Annotations map[string]interface{}
 
 // label keys used by pod selector
 const (
 	AvailabilityZoneLabel = "availability_zone"
-	ClusterNameLabel      = "cluster_name"
-	PodIDLabel            = rcstore.PodIDLabel // TODO: put this in a different place now that multiple packages use it
+	PodClusterNameLabel   = "cluster_name"
+	PodIDLabel            = "pod_id"
 )
 
-func (id ID) String() string {
+func (id PodClusterID) String() string {
 	return string(id)
 }
 
@@ -31,16 +28,16 @@ func (az AvailabilityZone) String() string {
 	return string(az)
 }
 
-func (cn ClusterName) String() string {
+func (cn PodClusterName) String() string {
 	return string(cn)
 }
 
 type PodCluster struct {
 	// GUID for this cluster
-	ID ID
+	ID PodClusterID
 
 	// The ID of the pods that the cluster contains
-	PodID types.PodID
+	PodID PodID
 
 	// Represents a region the pod cluster inhabits. P2 doesn't use this
 	// value but it is useful for implementations that care about
@@ -49,7 +46,7 @@ type PodCluster struct {
 
 	// Human-readable name for the pod cluster. Must be unique within a
 	// (PodID, AvailabilityZone) space
-	Name ClusterName
+	Name PodClusterName
 
 	// Selector to identify the pods that are members of this pod cluster
 	PodSelector labels.Selector
@@ -86,10 +83,10 @@ func (pc *PodCluster) Equals(other *PodCluster) bool {
 // implement it ourselves. RawPodCluster mimics PodCluster but has a string
 // type for PodSelector instead of labels.Selector
 type RawPodCluster struct {
-	ID               ID               `json:"id"`
-	PodID            types.PodID      `json:"pod_id"`
+	ID               PodClusterID     `json:"id"`
+	PodID            PodID            `json:"pod_id"`
 	AvailabilityZone AvailabilityZone `json:"availability_zone"`
-	Name             ClusterName      `json:"name"`
+	Name             PodClusterName   `json:"name"`
 	PodSelector      string           `json:"pod_selector"`
 	Annotations      Annotations      `json:"annotations"`
 }

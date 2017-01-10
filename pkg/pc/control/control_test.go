@@ -7,19 +7,18 @@ import (
 	"github.com/square/p2/pkg/kp/kptest"
 	"github.com/square/p2/pkg/kp/pcstore"
 	"github.com/square/p2/pkg/kp/pcstore/pcstoretest"
-	"github.com/square/p2/pkg/pc/fields"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"k8s.io/kubernetes/pkg/labels"
 )
 
 func TestCreate(t *testing.T) {
-	testAZ := fields.AvailabilityZone("west-coast")
-	testCN := fields.ClusterName("test")
-	testPodID := types.PodID("pod")
+	testAZ := store.AvailabilityZone("west-coast")
+	testCN := store.PodClusterName("test")
+	testPodID := store.PodID("pod")
 	selector := labels.Everything().
-		Add(fields.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
-		Add(fields.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
-		Add(fields.ClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
+		Add(store.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
+		Add(store.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
+		Add(store.PodClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
 	session := kptest.NewSession()
 	pcstore := pcstoretest.NewFake()
 
@@ -35,12 +34,12 @@ func TestCreate(t *testing.T) {
 		t.Errorf("json marshal error: %v", err)
 	}
 
-	var testAnnotations fields.Annotations
+	var testAnnotations store.Annotations
 	if err := json.Unmarshal(buf, &testAnnotations); err != nil {
 		t.Errorf("json unmarshal error: %v", err)
 	}
 
-	pc, err := pcController.Create(fields.Annotations(testAnnotations))
+	pc, err := pcController.Create(store.Annotations(testAnnotations))
 	if err != nil {
 		t.Errorf("got error during creation: %v", err)
 	}
@@ -74,13 +73,13 @@ func TestCreate(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
-	testAZ := fields.AvailabilityZone("west-coast")
-	testCN := fields.ClusterName("test")
-	testPodID := types.PodID("pod")
+	testAZ := store.AvailabilityZone("west-coast")
+	testCN := store.PodClusterName("test")
+	testPodID := store.PodID("pod")
 	selector := labels.Everything().
-		Add(fields.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
-		Add(fields.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
-		Add(fields.ClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
+		Add(store.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
+		Add(store.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
+		Add(store.PodClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
 	session := kptest.NewSession()
 	pcstore := pcstoretest.NewFake()
 
@@ -96,12 +95,12 @@ func TestUpdate(t *testing.T) {
 		t.Errorf("json marshal error: %v", err)
 	}
 
-	var testAnnotations fields.Annotations
+	var testAnnotations store.Annotations
 	if err := json.Unmarshal(buf, &testAnnotations); err != nil {
 		t.Errorf("json unmarshal error: %v", err)
 	}
 
-	pc, err := pcController.Create(fields.Annotations(testAnnotations))
+	pc, err := pcController.Create(store.Annotations(testAnnotations))
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster due to: %v", err)
 	}
@@ -116,7 +115,7 @@ func TestUpdate(t *testing.T) {
 		t.Errorf("json marshal error: %v", err)
 	}
 
-	var newTestAnnotations fields.Annotations
+	var newTestAnnotations store.Annotations
 	if err := json.Unmarshal(buf, &newTestAnnotations); err != nil {
 		t.Errorf("json unmarshal error: %v", err)
 	}
@@ -140,18 +139,18 @@ func TestUpdate(t *testing.T) {
 }
 
 func TestPodClusterFromID(t *testing.T) {
-	testAZ := fields.AvailabilityZone("west-coast")
-	testCN := fields.ClusterName("test")
-	testPodID := types.PodID("pod")
+	testAZ := store.AvailabilityZone("west-coast")
+	testCN := store.PodClusterName("test")
+	testPodID := store.PodID("pod")
 	selector := labels.Everything().
-		Add(fields.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
-		Add(fields.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
-		Add(fields.ClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
+		Add(store.PodIDLabel, labels.EqualsOperator, []string{testPodID.String()}).
+		Add(store.AvailabilityZoneLabel, labels.EqualsOperator, []string{testAZ.String()}).
+		Add(store.PodClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
 	session := kptest.NewSession()
 	fakePCStore := pcstoretest.NewFake()
 
 	pcControllerFromLabels := NewPodCluster(testAZ, testCN, testPodID, fakePCStore, selector, session)
-	pc, err := pcControllerFromLabels.Create(fields.Annotations{})
+	pc, err := pcControllerFromLabels.Create(store.Annotations{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,8 +6,7 @@ import (
 	podstore_protos "github.com/square/p2/pkg/grpc/podstore/protos"
 	"github.com/square/p2/pkg/kp"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 
 	"golang.org/x/net/context"
@@ -43,7 +42,7 @@ func New(grpcAddress string, creds credentials.TransportCredentials, logger logg
 }
 
 // matches podstore.consulStore signature
-func (c Client) Schedule(manifest manifest.Manifest, node types.NodeName) (types.PodUniqueKey, error) {
+func (c Client) Schedule(manifest store.Manifest, node store.NodeName) (store.PodUniqueKey, error) {
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {
 		return "", util.Errorf("Could not marshal manifest: %s", err)
@@ -59,7 +58,7 @@ func (c Client) Schedule(manifest manifest.Manifest, node types.NodeName) (types
 		return "", util.Errorf("Could not schedule pod: %s", err)
 	}
 
-	return types.PodUniqueKey(resp.PodUniqueKey), nil
+	return store.PodUniqueKey(resp.PodUniqueKey), nil
 }
 
 type PodStatusResult struct {
@@ -67,7 +66,7 @@ type PodStatusResult struct {
 	Error     error                              `json:"-"`
 }
 
-func (c Client) WatchStatus(ctx context.Context, podUniqueKey types.PodUniqueKey, waitIndex uint64) (<-chan PodStatusResult, error) {
+func (c Client) WatchStatus(ctx context.Context, podUniqueKey store.PodUniqueKey, waitIndex uint64) (<-chan PodStatusResult, error) {
 	stream, err := c.client.WatchPodStatus(ctx, &podstore_protos.WatchPodStatusRequest{
 		PodUniqueKey:    podUniqueKey.String(),
 		StatusNamespace: kp.PreparerPodStatusNamespace.String(),

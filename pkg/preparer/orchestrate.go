@@ -13,9 +13,8 @@ import (
 	"github.com/square/p2/pkg/kp/statusstore"
 	"github.com/square/p2/pkg/kp/statusstore/podstatus"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
 )
@@ -31,26 +30,26 @@ var svlogdExec = []string{"svlogd", "-tt", "./main"}
 
 type Pod interface {
 	hooks.Pod
-	Launch(manifest.Manifest) (bool, error)
-	Install(manifest.Manifest, auth.ArtifactVerifier, artifact.Registry) error
+	Launch(store.Manifest) (bool, error)
+	Install(store.Manifest, auth.ArtifactVerifier, artifact.Registry) error
 	Uninstall() error
-	Verify(manifest.Manifest, auth.Policy) error
-	Halt(manifest.Manifest) (bool, error)
-	Prune(size.ByteCount, manifest.Manifest)
+	Verify(store.Manifest, auth.Policy) error
+	Halt(store.Manifest) (bool, error)
+	Prune(size.ByteCount, store.Manifest)
 }
 
 type Hooks interface {
-	RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest manifest.Manifest) error
+	RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest store.Manifest) error
 }
 
 type Store interface {
-	ListPods(podPrefix kp.PodPrefix, nodeName types.NodeName) ([]kp.ManifestResult, time.Duration, error)
-	SetPod(podPrefix kp.PodPrefix, nodeName types.NodeName, podManifest manifest.Manifest) (time.Duration, error)
-	Pod(podPrefix kp.PodPrefix, nodeName types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
-	DeletePod(podPrefix kp.PodPrefix, nodeName types.NodeName, podId types.PodID) (time.Duration, error)
+	ListPods(podPrefix kp.PodPrefix, nodeName store.NodeName) ([]kp.ManifestResult, time.Duration, error)
+	SetPod(podPrefix kp.PodPrefix, nodeName store.NodeName, podManifest store.Manifest) (time.Duration, error)
+	Pod(podPrefix kp.PodPrefix, nodeName store.NodeName, podId store.PodID) (store.Manifest, time.Duration, error)
+	DeletePod(podPrefix kp.PodPrefix, nodeName store.NodeName, podId store.PodID) (time.Duration, error)
 	WatchPods(
 		podPrefix kp.PodPrefix,
-		nodeName types.NodeName,
+		nodeName store.NodeName,
 		quitChan <-chan struct{},
 		errorChan chan<- error,
 		podChan chan<- []kp.ManifestResult,
@@ -62,9 +61,9 @@ type Store interface {
 // interaction
 type podWorkerID struct {
 	// Expected to be "" for legacy pods
-	podUniqueKey types.PodUniqueKey
+	podUniqueKey store.PodUniqueKey
 
-	podID types.PodID
+	podID store.PodID
 }
 
 // Useful in logging messages
@@ -147,7 +146,7 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	}
 }
 
-func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest manifest.Manifest, logger logging.Logger) {
+func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest store.Manifest, logger logging.Logger) {
 	err := p.hooks.RunHookType(hookType, pod, manifest)
 	if err != nil {
 		logger.WithErrorAndFields(err, logrus.Fields{
@@ -270,7 +269,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 					case statusstore.IsNoStatus(err):
 						nextLaunch.Reality = nil
 					default:
-						manifest, err := manifest.FromBytes([]byte(status.Manifest))
+						manifest, err := store.FromBytes([]byte(status.Manifest))
 						if err != nil {
 							manifestLogger.WithError(err).Errorln("Error parsing reality manifest from pod status")
 							break
@@ -299,7 +298,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 }
 
 // check if a manifest satisfies the authorization requirement of this preparer
-func (p *Preparer) authorize(manifest manifest.Manifest, logger logging.Logger) bool {
+func (p *Preparer) authorize(manifest store.Manifest, logger logging.Logger) bool {
 	err := p.authPolicy.AuthorizeApp(manifest, logger)
 	if err != nil {
 		if err, ok := err.(auth.Error); ok {

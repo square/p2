@@ -11,32 +11,31 @@ import (
 	"github.com/square/p2/pkg/kp/rcstore"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/rc"
-	"github.com/square/p2/pkg/rc/fields"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 )
 
-type store interface {
+type Store interface {
 	NewSession(name string, renewalCh <-chan time.Time) (kp.Session, chan error, error)
-	DeletePod(podPrefix kp.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	DeletePod(podPrefix kp.PodPrefix, nodename store.NodeName, podId store.PodID) (time.Duration, error)
 }
 
 type P2RM struct {
-	Store    store
+	Store    Store
 	RCStore  rcstore.Store
 	Client   consulutil.ConsulClient
 	Labeler  labels.ApplicatorWithoutWatches
 	PodStore podstore.Store
 
 	LabelID      string
-	NodeName     types.NodeName
-	PodID        types.PodID
-	PodUniqueKey types.PodUniqueKey
+	NodeName     store.NodeName
+	PodID        store.PodID
+	PodUniqueKey store.PodUniqueKey
 }
 
 // NewLegacyP2RM is a constructor for the P2RM type which configures it to
-// remove a "legacy" pod. It will generate the storage types based on its
+// remove a "legacy" pod. It will generate the storage store based on its
 // api.Client argument
-func NewLegacyP2RM(client consulutil.ConsulClient, podName types.PodID, nodeName types.NodeName, labeler labels.ApplicatorWithoutWatches) *P2RM {
+func NewLegacyP2RM(client consulutil.ConsulClient, podName store.PodID, nodeName store.NodeName, labeler labels.ApplicatorWithoutWatches) *P2RM {
 	rm := &P2RM{}
 	rm.LabelID = path.Join(nodeName.String(), podName.String())
 	rm.PodID = podName
@@ -47,7 +46,7 @@ func NewLegacyP2RM(client consulutil.ConsulClient, podName types.PodID, nodeName
 }
 
 // Constructs a *P2RM configured to remove a pod identified by a PodUniqueKey (uuid)
-func NewUUIDP2RM(client consulutil.ConsulClient, podUniqueKey types.PodUniqueKey, podID types.PodID, labeler labels.ApplicatorWithoutWatches) *P2RM {
+func NewUUIDP2RM(client consulutil.ConsulClient, podUniqueKey store.PodUniqueKey, podID store.PodID, labeler labels.ApplicatorWithoutWatches) *P2RM {
 	rm := &P2RM{}
 	rm.LabelID = podUniqueKey.String()
 	rm.PodID = podID
@@ -65,20 +64,20 @@ func (rm *P2RM) configureStorage(client consulutil.ConsulClient, labeler labels.
 	rm.PodStore = podstore.NewConsul(client.KV())
 }
 
-func (rm *P2RM) checkForManagingReplicationController() (bool, fields.ID, error) {
+func (rm *P2RM) checkForManagingReplicationController() (bool, store.ReplicationControllerID, error) {
 	podLabels, err := rm.Labeler.GetLabels(labels.POD, rm.LabelID)
 	if err != nil {
 		return false, "", fmt.Errorf("unable to check node for labels: %v", err)
 	}
 
 	if podLabels.Labels.Has(rc.RCIDLabel) {
-		return true, fields.ID(podLabels.Labels.Get(rc.RCIDLabel)), nil
+		return true, store.ReplicationControllerID(podLabels.Labels.Get(rc.RCIDLabel)), nil
 	}
 
 	return false, "", nil
 }
 
-func (rm *P2RM) decrementDesiredCount(id fields.ID) error {
+func (rm *P2RM) decrementDesiredCount(id store.ReplicationControllerID) error {
 	session, _, err := rm.Store.NewSession(sessionName(id), nil)
 	if err != nil {
 		return fmt.Errorf("Unable to get consul session: %v", err)
@@ -134,7 +133,7 @@ func (rm *P2RM) deletePod() error {
 }
 
 func (rm *P2RM) deleteLegacyPod() error {
-	_, err := rm.Store.DeletePod(kp.INTENT_TREE, rm.NodeName, types.PodID(rm.PodID))
+	_, err := rm.Store.DeletePod(kp.INTENT_TREE, rm.NodeName, store.PodID(rm.PodID))
 	if err != nil {
 		return fmt.Errorf("unable to remove pod: %v", err)
 	}

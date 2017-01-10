@@ -10,10 +10,9 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 	netutil "github.com/square/p2/pkg/util/net"
@@ -49,7 +48,7 @@ func main() {
 		*nodeName = hostname
 	}
 
-	manifest, err := manifest.FromURI(*manifestURI)
+	manifest, err := store.FromURI(*manifestURI)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
@@ -59,7 +58,7 @@ func main() {
 		log.Fatalf("%s", err)
 	}
 
-	podFactory := pods.NewFactory(*podRoot, types.NodeName(*nodeName))
+	podFactory := pods.NewFactory(*podRoot, store.NodeName(*nodeName))
 	pod := podFactory.NewLegacyPod(manifest.ID())
 
 	var transport http.RoundTripper
@@ -101,7 +100,7 @@ func main() {
 	}
 }
 
-func authorize(manifest manifest.Manifest) error {
+func authorize(manifest store.Manifest) error {
 	var policy auth.Policy
 	var err error
 	switch *authType {
@@ -127,7 +126,7 @@ func authorize(manifest manifest.Manifest) error {
 
 		policy, err = auth.NewFileKeyringPolicy(
 			*keyring,
-			map[types.PodID][]string{
+			map[store.PodID][]string{
 				constants.PreparerPodID: *allowedUsers,
 			},
 		)

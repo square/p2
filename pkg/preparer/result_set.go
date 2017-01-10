@@ -2,28 +2,27 @@ package preparer
 
 import (
 	"github.com/square/p2/pkg/kp"
-	"github.com/square/p2/pkg/manifest"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store"
 )
 
 type ManifestPair struct {
 	// save the ID in a separate field, so that the user of this object doesn't
 	// have to check both manifests
-	ID      types.PodID
-	Intent  manifest.Manifest
-	Reality manifest.Manifest
+	ID      store.PodID
+	Intent  store.Manifest
+	Reality store.Manifest
 
 	// Used to determine where reality came from (and should be written to). If nil,
 	// reality should be written to the /reality tree. If non-nil, status should be
 	// written to the pod status store
-	PodUniqueKey types.PodUniqueKey
+	PodUniqueKey store.PodUniqueKey
 }
 
 // Uniquely represents a pod. There can exist no two intent results or two
 // reality results with the same uniqueKey.
 type uniqueKey struct {
-	podID        types.PodID
-	podUniqueKey types.PodUniqueKey
+	podID        store.PodID
+	podUniqueKey store.PodUniqueKey
 }
 
 func getUniqueKey(result kp.ManifestResult) uniqueKey {
@@ -71,7 +70,7 @@ func (p *Preparer) ZipResultSets(intent []kp.ManifestResult, reality []kp.Manife
 	return ret
 }
 
-func checkResultsForID(intent []kp.ManifestResult, id types.PodID) bool {
+func checkResultsForID(intent []kp.ManifestResult, id store.PodID) bool {
 	for _, result := range intent {
 		if result.Manifest.ID() == id {
 			return true

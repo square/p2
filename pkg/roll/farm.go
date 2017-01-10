@@ -18,16 +18,15 @@ import (
 	"github.com/square/p2/pkg/logging"
 	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/rc"
-	"github.com/square/p2/pkg/rc/fields"
-	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/scheduler"
+	"github.com/square/p2/pkg/store"
 	"github.com/square/p2/pkg/util"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 type Factory interface {
-	New(roll_fields.Update, logging.Logger, kp.Session, alerting.Alerter) Update
+	New(store.RollingUpdate, logging.Logger, kp.Session, alerting.Alerter) Update
 }
 
 type UpdateFactory struct {
@@ -38,7 +37,7 @@ type UpdateFactory struct {
 	Scheduler     scheduler.Scheduler
 }
 
-func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session kp.Session, alerter alerting.Alerter) Update {
+func (f UpdateFactory) New(u store.RollingUpdate, l logging.Logger, session kp.Session, alerter alerting.Alerter) Update {
 	if alerter == nil {
 		alerter = alerting.NewNop()
 	}
@@ -47,7 +46,7 @@ func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session kp.Se
 }
 
 type RCGetter interface {
-	Get(id fields.ID) (fields.RC, error)
+	Get(id store.ReplicationControllerID) (store.ReplicationController, error)
 }
 
 // The Farm is responsible for spawning and reaping rolling updates as they are
@@ -66,7 +65,7 @@ type Farm struct {
 	rcs      RCGetter
 	sessions <-chan string
 
-	children map[roll_fields.ID]childRU
+	children map[store.RollingUpdateID]childRU
 	childMu  sync.Mutex
 	session  kp.Session
 
@@ -85,7 +84,7 @@ type childRU struct {
 
 func NewFarm(
 	factory Factory,
-	store Store,
+	storage Store,
 	rls rollstore.Store,
 	rcs RCGetter,
 	sessions <-chan string,
@@ -99,12 +98,12 @@ func NewFarm(
 	}
 	return &Farm{
 		factory:    factory,
-		store:      store,
+		store:      storage,
 		rls:        rls,
 		rcs:        rcs,
 		sessions:   sessions,
 		logger:     logger,
-		children:   make(map[roll_fields.ID]childRU),
+		children:   make(map[store.RollingUpdateID]childRU),
 		labeler:    labeler,
 		rcSelector: rcSelector,
 		alerter:    alerter,
@@ -147,7 +146,7 @@ START_LOOP:
 			countHistogram.Update(int64(len(rlFields)))
 
 			// track which children were found in the returned set
-			foundChildren := make(map[roll_fields.ID]struct{})
+			foundChildren := make(map[store.RollingUpdateID]struct{})
 			for _, rlField := range rlFields {
 
 				rlLogger := rlf.logger.SubLogger(logrus.Fields{
@@ -234,7 +233,7 @@ START_LOOP:
 				}
 
 				newRC := rlField.NewRC
-				go func(id roll_fields.ID) {
+				go func(id store.RollingUpdateID) {
 					defer func() {
 						if r := recover(); r != nil {
 							err := util.Errorf("Caught panic in roll farm: %s", r)
@@ -274,7 +273,7 @@ START_LOOP:
 	}
 }
 
-func (rlf *Farm) releaseDeletedChildren(foundChildren map[roll_fields.ID]struct{}) {
+func (rlf *Farm) releaseDeletedChildren(foundChildren map[store.RollingUpdateID]struct{}) {
 	rlf.childMu.Lock()
 	defer rlf.childMu.Unlock()
 	rlf.logger.NoFields().Debugln("Pruning updates that have disappeared")
@@ -286,7 +285,7 @@ func (rlf *Farm) releaseDeletedChildren(foundChildren map[roll_fields.ID]struct{
 }
 
 // test if the farm should work on the given replication controller ID
-func (rlf *Farm) shouldWorkOn(rcID fields.ID) (bool, error) {
+func (rlf *Farm) shouldWorkOn(rcID store.ReplicationControllerID) (bool, error) {
 	if rlf.rcSelector.Empty() {
 		return true, nil
 	}
@@ -299,7 +298,7 @@ func (rlf *Farm) shouldWorkOn(rcID fields.ID) (bool, error) {
 
 // close one child
 // should only be called with rlf.childMu locked
-func (rlf *Farm) releaseChild(id roll_fields.ID) {
+func (rlf *Farm) releaseChild(id store.RollingUpdateID) {
 	rlf.logger.WithField("ru", id).Infoln("Releasing update")
 	close(rlf.children[id].quit)
 
@@ -330,7 +329,7 @@ func (rlf *Farm) releaseChildren() {
 // The following conditions make an RU invalid:
 // 1) New RC does not exist
 // 2) Old RC does not exist
-func (rlf *Farm) validateRoll(update roll_fields.Update, logger logging.Logger) error {
+func (rlf *Farm) validateRoll(update store.RollingUpdate, logger logging.Logger) error {
 	_, err := rlf.rcs.Get(update.NewRC)
 	if err == rcstore.NoReplicationController {
 		return fmt.Errorf("RU '%s' is invalid, new RC '%s' did not exist", update.ID(), update.NewRC)
@@ -351,7 +350,7 @@ func (rlf *Farm) validateRoll(update roll_fields.Update, logger logging.Logger) 
 }
 
 // Tries to delete the given RU every second until it succeeds
-func (rlf *Farm) mustDeleteRU(id roll_fields.ID, logger logging.Logger) {
+func (rlf *Farm) mustDeleteRU(id store.RollingUpdateID, logger logging.Logger) {
 	for err := rlf.rls.Delete(id); err != nil; err = rlf.rls.Delete(id) {
 		logger.WithError(err).Errorln("Could not delete update")
 		time.Sleep(1 * time.Second)

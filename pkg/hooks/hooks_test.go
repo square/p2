@@ -10,8 +10,8 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/store"
 )
 
 const podId = "TestPod"
@@ -89,8 +89,8 @@ func TestDirectoriesDoNotBreakEverything(t *testing.T) {
 	Assert(t).IsNil(err, "Got an error when running a directory inside the hooks directory")
 }
 
-func testManifest() manifest.Manifest {
-	builder := manifest.NewBuilder()
+func testManifest() store.Manifest {
+	builder := store.NewBuilder()
 	builder.SetID(podId)
 	return builder.GetManifest()
 }
