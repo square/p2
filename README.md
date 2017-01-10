@@ -86,6 +86,13 @@ libraries require only one of these or are dependency-free.
 * [Consul](https://consul.io/)
 * [Runit](http://smarden.org/runit/), which includes chpst
 
+Many P2 binaries expect to be able to invoke the `p2-exec` binary, ideally by knowing its full path.
+The location can be set at compile-time by modifying the `github.com/square/p2/pkg/p2exec.DefaultP2Exec` variable.
+The `-X` flag to `go install -ldflags` can be used to perform this assignment.
+
+If the preparer config option `process_result_reporter_config` is set, the preparer will crash unless the configured extractor exists.
+We provide one possible implementation at `p2-finish-env-extractor`.
+
 ## Desirable Features
 
 Adding Docker support is a big next step, but will ultimately help us migrate to using Docker (or equally excellent RunC implementation) at Square. 
