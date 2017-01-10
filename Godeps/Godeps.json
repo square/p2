@@ -8,12 +8,13 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/DataDog/datadog-go/statsd",
-			"Rev": "cc2f4770f4d61871e19bfee967bc767fe730b0d9"
+			"Comment": "1.0.0",
+			"Rev": "909c02b65dd8a52e8fa6072db9752a112227cf21"
 		},
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
-			"Comment": "v0.10.0",
-			"Rev": "4b6ea7319e214d98c938f12692336f7ca9348d6b"
+			"Comment": "v0.11.0",
+			"Rev": "d26492970760ca5d33129d2d799e34be5c4782eb"
 		},
 		{
 			"ImportPath": "github.com/alecthomas/template",
@@ -159,11 +160,13 @@
 		},
 		{
 			"ImportPath": "github.com/gorilla/context",
-			"Rev": "1c83b3eabd45b6d76072b66b746c20815fb2872d"
+			"Comment": "v1.1",
+			"Rev": "1ea25387ff6f684839d82767c1733ff4d4d15d0a"
 		},
 		{
 			"ImportPath": "github.com/gorilla/mux",
-			"Rev": "9c068cf16d982f8bd444b8c352acbeec34c4fe5b"
+			"Comment": "v1.1",
+			"Rev": "0eeaf8392f5b04950925b8a69fe70f110fa7cbfc"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/consul/acl",
@@ -376,87 +379,111 @@
 		},
 		{
 			"ImportPath": "github.com/rcrowley/go-metrics",
-			"Rev": "bdb33529eca3e55eac7328e07c57012a797af602"
+			"Rev": "1f30fe9094a513ce4c700b9a54458bbb0c96996c"
 		},
 		{
 			"ImportPath": "github.com/rcrowley/go-metrics/exp",
-			"Rev": "bdb33529eca3e55eac7328e07c57012a797af602"
+			"Rev": "1f30fe9094a513ce4c700b9a54458bbb0c96996c"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/curve25519",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ed25519",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ed25519/internal/edwards25519",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/armor",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/clearsign",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/elgamal",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/errors",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/packet",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/openpgp/s2k",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ssh",
-			"Rev": "bc89c496413265e715159bdc8478ee9a92fdc265"
+			"Rev": "c3b1d0d6d8690eaebe3064711b026770cc37efa3"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
-			"Rev": "d58ca6618b994150e624f6888d871f4709db51a0"
+			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
 		},
 		{
 			"ImportPath": "golang.org/x/net/http2",
-			"Rev": "d58ca6618b994150e624f6888d871f4709db51a0"
+			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
 		},
 		{
 			"ImportPath": "golang.org/x/net/http2/hpack",
-			"Rev": "d58ca6618b994150e624f6888d871f4709db51a0"
+			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
+		},
+		{
+			"ImportPath": "golang.org/x/net/idna",
+			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
 		},
 		{
 			"ImportPath": "golang.org/x/net/internal/timeseries",
-			"Rev": "d58ca6618b994150e624f6888d871f4709db51a0"
+			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
+		},
+		{
+			"ImportPath": "golang.org/x/net/lex/httplex",
+			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
 		},
 		{
 			"ImportPath": "golang.org/x/net/trace",
-			"Rev": "d58ca6618b994150e624f6888d871f4709db51a0"
+			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
 		},
 		{
 			"ImportPath": "golang.org/x/sys/unix",
-			"Rev": "a646d33e2ee3172a661fc09bca23bb4889a41bc8"
+			"Rev": "d75a52659825e75fff6158388dddc6a5b04f9ba5"
+		},
+		{
+			"ImportPath": "golang.org/x/text/secure/bidirule",
+			"Rev": "44f4f658a783b0cee41fe0a23b8fc91d9c120558"
+		},
+		{
+			"ImportPath": "golang.org/x/text/transform",
+			"Rev": "44f4f658a783b0cee41fe0a23b8fc91d9c120558"
+		},
+		{
+			"ImportPath": "golang.org/x/text/unicode/bidi",
+			"Rev": "44f4f658a783b0cee41fe0a23b8fc91d9c120558"
+		},
+		{
+			"ImportPath": "golang.org/x/text/unicode/norm",
+			"Rev": "44f4f658a783b0cee41fe0a23b8fc91d9c120558"
 		},
 		{
 			"ImportPath": "golang.org/x/time/rate",
-			"Rev": "a4bde12657593d5e90d0533a3e4fd95e635124cb"
+			"Rev": "f51c12702a4d776e4c1fa9b0fabab841babae631"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc",
@@ -505,12 +532,12 @@
 		},
 		{
 			"ImportPath": "gopkg.in/alecthomas/kingpin.v2",
-			"Comment": "v2.2.2",
-			"Rev": "e5900212cbf65b181d3d8e08308ef06a01d117cf"
+			"Comment": "v2.2.3",
+			"Rev": "e9044be3ab2a8e11d4e1f418d12f0790d57e8d70"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
-			"Rev": "a83829b6f1293c91addabc89d0571c246397bbf4"
+			"Rev": "a5b47d31c556af34a302ce5d659e6fea44d90de0"
 		},
 		{
 			"ImportPath": "k8s.io/kubernetes/pkg/labels",

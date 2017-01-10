@@ -31,12 +31,12 @@ func (s SocketHook) Fire(entry *logrus.Entry) error {
 	}
 	defer c.Close()
 
-	logMessageBuffer, err := entry.Reader()
+	logMessage, err := entry.Logger.Formatter.Format(entry)
 	if err != nil {
 		// Airbrake someday
 		return nil
 	}
-	_, err = c.Write(logMessageBuffer.Bytes())
+	_, err = c.Write(logMessage)
 	if err != nil {
 		// Airbrake someday
 		fmt.Println("Unable to write to socket:", err)
