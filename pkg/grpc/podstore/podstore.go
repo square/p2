@@ -92,6 +92,16 @@ func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream
 	go func() {
 		for {
 			status, queryMeta, err := s.podStatusStore.WaitForStatus(podUniqueKey, waitIndex)
+
+			if queryMeta != nil {
+				waitIndex = queryMeta.LastIndex
+			}
+
+			if statusstore.IsNoStatus(err) && req.WaitForExists {
+				// the client wants 404 to be ignored, start
+				// the watch again with our new index
+				continue
+			}
 			select {
 			case podStatusResultCh <- podStatusResult{
 				status:    status,
@@ -102,9 +112,6 @@ func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream
 					return
 				}
 
-				if queryMeta != nil {
-					waitIndex = queryMeta.LastIndex
-				}
 			case <-innerQuit:
 				// Client canceled
 				return

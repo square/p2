@@ -111,9 +111,7 @@ func TestWatchPodStatus(t *testing.T) {
 	req := &podstore_protos.WatchPodStatusRequest{
 		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
 		PodUniqueKey:    podUniqueKey.String(),
-		// Set it 1 above last index so we wait for the key to exist. (The test status
-		// store starts at 1234 for some reason)
-		WaitIndex: 1235,
+		WaitForExists:   true,
 	}
 
 	watchErrCh := make(chan error)
