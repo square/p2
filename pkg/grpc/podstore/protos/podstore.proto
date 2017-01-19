@@ -23,6 +23,7 @@ message WatchPodStatusRequest {
   string pod_unique_key = 1;
   uint64 wait_index = 2; // the WaitIndex to pass to watch requests
   string status_namespace = 3;
+  bool wait_for_exists = 4; // If set, the server will wait for a not-existing key to exist (rather than return a Not Found error)
 }
 
 message PodStatusResponse {
