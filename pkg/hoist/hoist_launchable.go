@@ -228,9 +228,7 @@ func (hl *Launchable) Executables(
 		absEntryPointPath := filepath.Join(hl.InstallDir(), relativeEntryPoint)
 
 		entryPointInfo, err := os.Stat(absEntryPointPath)
-		if os.IsNotExist(err) {
-			return []launch.Executable{}, nil
-		} else if err != nil {
+		if err != nil {
 			return nil, util.Errorf("%s", err)
 		}
 
