@@ -660,7 +660,7 @@ func (pod *Pod) FinishExecForExecutable(launchable launch.Launchable, executable
 		Command:  pod.FinishExec,
 		User:     "nobody",
 		EnvDirs:  []string{pod.EnvDir(), launchable.EnvDir()},
-		ExtraEnv: map[string]string{launch.EntryPointEnvVar: executable.ServiceName},
+		ExtraEnv: map[string]string{launch.EntryPointEnvVar: executable.RelativePath},
 	}
 
 	return append([]string{pod.P2Exec}, p2ExecArgs.CommandLine()...)

@@ -166,7 +166,8 @@ type Launchable interface {
 // Executable describes a command and its arguments that should be executed to start a
 // service running.
 type Executable struct {
-	ServiceName   string // e.g. "launch"
+	ServiceName   string // e.g. "bin__launch"
+	RelativePath  string // relative path to executable within launchable, e.g. "bin/launch"
 	Service       runit.Service
 	LogAgent      runit.Service
 	Exec          []string

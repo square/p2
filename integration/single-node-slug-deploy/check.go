@@ -319,7 +319,7 @@ func verifyProcessExit(errCh chan error, tempDir string, logger logging.Logger) 
 		select {
 		case <-timeout:
 			// Try to manually run the finish script in order to make debugging the test failure easier
-			output, err := exec.Command("sudo", fmt.Sprintf("/var/service/hello-%s__hello__launch/finish", podUniqueKey), "1", "2").CombinedOutput()
+			output, err := exec.Command("sudo", fmt.Sprintf("/var/service/hello-%s__hello__bin__launch/finish", podUniqueKey), "1", "2").CombinedOutput()
 			if err != nil {
 				logger.WithError(err).Infoln("DEBUG: Debug attempt to run finish script failed")
 			}
@@ -355,7 +355,7 @@ func verifyProcessExit(errCh chan error, tempDir string, logger logging.Logger) 
 
 		found := false
 		for _, processStatus := range podStatus.ProcessStatuses {
-			if processStatus.LaunchableID == "hello" && processStatus.EntryPoint == "launch" {
+			if processStatus.LaunchableID == "hello" && processStatus.EntryPoint == "bin/launch" {
 				found = true
 				if processStatus.LastExit == nil {
 					errCh <- fmt.Errorf("Found no last exit in consul pod status for %s", podUniqueKey)
@@ -812,9 +812,9 @@ func verifyHelloRunning(podUniqueKey types.PodUniqueKey, logger logging.Logger) 
 	quit := make(chan struct{})
 	defer close(quit)
 
-	serviceDir := "/var/service/hello__hello__launch"
+	serviceDir := "/var/service/hello__hello__bin__launch"
 	if podUniqueKey != "" {
-		serviceDir = fmt.Sprintf("/var/service/hello-%s__hello__launch", podUniqueKey)
+		serviceDir = fmt.Sprintf("/var/service/hello-%s__hello__bin__launch", podUniqueKey)
 	}
 	go func() {
 		for {
@@ -878,7 +878,7 @@ func verifyHelloUUIDRunning(podUniqueKey types.PodUniqueKey) error {
 
 func targetUUIDLogs(podUniqueKey types.PodUniqueKey) string {
 	var helloUUIDTail bytes.Buffer
-	helloT := exec.Command("tail", fmt.Sprintf("/var/service/hello-%s__hello__launch/log/main/current", podUniqueKey))
+	helloT := exec.Command("tail", fmt.Sprintf("/var/service/hello-%s__hello__bin__launch/log/main/current", podUniqueKey))
 	helloT.Stdout = &helloUUIDTail
 	helloT.Run()
 	return fmt.Sprintf("hello uuid tail: \n%s\n\n", helloUUIDTail.String())
@@ -886,10 +886,10 @@ func targetUUIDLogs(podUniqueKey types.PodUniqueKey) string {
 
 func targetLogs() string {
 	var helloTail, preparerTail bytes.Buffer
-	helloT := exec.Command("tail", "/var/service/hello__hello__launch/log/main/current")
+	helloT := exec.Command("tail", "/var/service/hello__hello__bin__launch/log/main/current")
 	helloT.Stdout = &helloTail
 	helloT.Run()
-	preparerT := exec.Command("tail", "/var/service/p2-preparer__p2-preparer__launch/log/main/current")
+	preparerT := exec.Command("tail", "/var/service/p2-preparer__p2-preparer__bin__launch/log/main/current")
 	preparerT.Stdout = &preparerTail
 	preparerT.Run()
 	return fmt.Sprintf("hello tail: \n%s\n\n preparer tail: \n%s", helloTail.String(), preparerTail.String())
