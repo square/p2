@@ -33,15 +33,16 @@ import (
 )
 
 const (
-	cmdCreateText   = "create"
-	cmdDeleteText   = "delete"
-	cmdReplicasText = "set-replicas"
-	cmdListText     = "list"
-	cmdGetText      = "get"
-	cmdEnableText   = "enable"
-	cmdDisableText  = "disable"
-	cmdRollText     = "rolling-update"
-	cmdSchedupText  = "schedule-update"
+	cmdCreateText     = "create"
+	cmdDeleteText     = "delete"
+	cmdReplicasText   = "set-replicas"
+	cmdListText       = "list"
+	cmdGetText        = "get"
+	cmdEnableText     = "enable"
+	cmdDisableText    = "disable"
+	cmdRollText       = "rolling-update"
+	cmdDeleteRollText = "delete-rolling-update"
+	cmdSchedupText    = "schedule-update"
 )
 
 var (
@@ -81,6 +82,9 @@ var (
 	rollWant                = cmdRoll.Flag("desired", "number of replicas desired").Required().Short('d').Int()
 	rollNeed                = cmdRoll.Flag("minimum", "minimum number of healthy replicas during update").Required().Short('m').Int()
 	rollPagerdutyServiceKey = cmdRoll.Flag("pagerduty-service-key", "Pagerduty Service Key to use for alerting if provided").String()
+
+	cmdDeleteRoll = kingpin.Command(cmdDeleteRollText, "Delete a rolling update.")
+	deleteRollID  = cmdDeleteRoll.Flag("id", "rolling update uuid").Required().Short('i').String()
 
 	cmdSchedup   = kingpin.Command(cmdSchedupText, "Schedule new rolling update (will be run by farm)")
 	schedupOldID = cmdSchedup.Flag("old", "old replication controller uuid").Required().Short('o').String()
@@ -142,6 +146,8 @@ func main() {
 		rctl.RollingUpdate(*rollOldID, *rollNewID, *rollWant, *rollNeed, *rollPagerdutyServiceKey)
 	case cmdSchedupText:
 		rctl.ScheduleUpdate(*schedupOldID, *schedupNewID, *schedupWant, *schedupNeed)
+	case cmdDeleteRollText:
+		rctl.DeleteRollingUpdate(*deleteRollID)
 	}
 }
 
@@ -209,6 +215,13 @@ func (r rctlParams) Delete(id string, force bool) {
 		r.logger.WithError(err).Fatalln("Could not delete replication controller in Consul")
 	}
 	r.logger.WithField("id", id).Infoln("Deleted replication controller")
+}
+
+func (r rctlParams) DeleteRollingUpdate(id string) {
+	err := r.rls.Delete(roll_fields.ID(id))
+	if err != nil {
+		r.logger.WithError(err).Fatalln("Could not delete RU. Consider a retry.")
+	}
 }
 
 func (r rctlParams) SetReplicas(id string, replicas int) {
