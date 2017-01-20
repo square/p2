@@ -1,6 +1,7 @@
 package hoist
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"testing"
@@ -58,22 +59,10 @@ func TestMultipleExecutables(t *testing.T) {
 
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
 
-	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__script1", "/var/service/testPod__testLaunchable__script2"}
+	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__bin__launch__script1", "/var/service/testPod__testLaunchable__bin__launch__script2"}
 	Assert(t).AreEqual(2, len(executables), "Found an unexpected number of runit services")
 
-	for _, expected := range expectedServicePaths {
-		found := false
-		for _, executable := range executables {
-			if executable.Service.Path == expected {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			t.Errorf("Did not find %s among executable paths", expected)
-		}
-	}
+	assertExpectedServices(t, expectedServicePaths, executables)
 }
 
 // This test exercises the functionality of having two entry points specified in a pod manifest,
@@ -88,25 +77,13 @@ func TestMultipleEntryPoints(t *testing.T) {
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
 
 	expectedServicePaths := []string{
-		"/var/service/testPod__testLaunchable__script1",
-		"/var/service/testPod__testLaunchable__script2",
-		"/var/service/testPod__testLaunchable__start",
+		"/var/service/testPod__testLaunchable__bin__launch__script1",
+		"/var/service/testPod__testLaunchable__bin__launch__script2",
+		"/var/service/testPod__testLaunchable__bin__start",
 	}
 	Assert(t).AreEqual(3, len(executables), "Found an unexpected number of runit services")
 
-	for _, expected := range expectedServicePaths {
-		found := false
-		for _, executable := range executables {
-			if executable.Service.Path == expected {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			t.Errorf("Did not find %s among executable paths", expected)
-		}
-	}
+	assertExpectedServices(t, expectedServicePaths, executables)
 }
 
 // Tests that bin/launch is ignored if it is not specified as an entry point
@@ -120,38 +97,11 @@ func TestNonStandardEntryPoint(t *testing.T) {
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
 
 	expectedServicePaths := []string{
-		"/var/service/testPod__testLaunchable__start",
+		"/var/service/testPod__testLaunchable__bin__start",
 	}
 	Assert(t).AreEqual(1, len(executables), "Found an unexpected number of runit services")
 
-	for _, expected := range expectedServicePaths {
-		found := false
-		for _, executable := range executables {
-			if executable.Service.Path == expected {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			t.Errorf("Did not find %s among executable paths", expected)
-		}
-	}
-}
-
-// Tests that the Executables() function fails if two runit services with the same
-// service name will be created. We specify bin/start (a normal file) and bin/start2
-// (a directory containing one file called start) which will generate a naming
-// collision and thus (we hope) an error
-func TestErrorIfConflictingServiceNames(t *testing.T) {
-	fakeLaunchable, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
-	defer CleanupFakeLaunchable(fakeLaunchable, sb)
-
-	fakeLaunchable.EntryPoints = []string{"bin/start", "bin/start2"}
-	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
-
-	Assert(t).IsNotNil(err, "Expected naming collision error calling Executables()")
-	Assert(t).AreEqual(0, len(executables), "Found an unexpected number of runit services")
+	assertExpectedServices(t, expectedServicePaths, executables)
 }
 
 func TestSingleRunitService(t *testing.T) {
@@ -161,7 +111,7 @@ func TestSingleRunitService(t *testing.T) {
 	executables, err := launchable.Executables(runit.DefaultBuilder)
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
 
-	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__script1"}
+	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__bin__launch__script1"}
 	Assert(t).AreEqual(len(executables), 1, "Found an unexpected number of runit services")
 	Assert(t).AreEqual(executables[0].Service.Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
 }
@@ -173,7 +123,7 @@ func TestLaunchExecutableOnlyRunitService(t *testing.T) {
 	executables, err := launchable.Executables(runit.DefaultBuilder)
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
 
-	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__launch"}
+	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__bin__launch"}
 	Assert(t).AreEqual(len(executables), 1, "Found an unexpected number of runit services")
 	Assert(t).AreEqual(executables[0].Service.Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
 }
@@ -348,7 +298,7 @@ func TestLaunchWithFailingEnable(t *testing.T) {
 	err := hl.Launch(sb, sv)
 	Assert(t).IsNotNil(err, "Expected error while launching")
 	_, ok := err.(launch.EnableError)
-	Assert(t).IsTrue(ok, "Expected enable error to be returned")
+	Assert(t).IsTrue(ok, fmt.Sprintf("Expected enable error to be returned, was %s", err))
 	_, ok = err.(launch.StartError)
 	Assert(t).IsFalse(ok, "Did not expect start error to be returned")
 }
@@ -429,4 +379,20 @@ func TestRestartServiceAndLogAgent(t *testing.T) {
 	Assert(t).AreEqual(len(commands), 2, "Expected 2 restart commands to be issued")
 	Assert(t).AreEqual(commands[0], "restart", "Expected 2 restart commands to be issued")
 	Assert(t).AreEqual(commands[1], "restart", "Expected 2 restart commands to be issued")
+}
+
+func assertExpectedServices(t *testing.T, expectedServicePaths []string, executables []launch.Executable) {
+	for _, expected := range expectedServicePaths {
+		found := false
+		for _, executable := range executables {
+			if executable.Service.Path == expected {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			t.Errorf("Did not find %s among executable paths, found %s", expected, executables)
+		}
+	}
 }

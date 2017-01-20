@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/square/p2/pkg/artifact"
@@ -228,29 +229,29 @@ func (hl *Launchable) Executables(
 		absEntryPointPath := filepath.Join(hl.InstallDir(), relativeEntryPoint)
 
 		entryPointInfo, err := os.Stat(absEntryPointPath)
-		if os.IsNotExist(err) {
-			return []launch.Executable{}, nil
-		} else if err != nil {
+		if err != nil {
 			return nil, util.Errorf("%s", err)
 		}
 
 		// an entry point can be a file or a directory. If it's a file, simply
 		// add it to our services map. Otherwise, add each file under it.
-		var serviceDir string
-		var services []os.FileInfo
+		var relativeExecutablePaths []string
 		if entryPointInfo.IsDir() {
-			serviceDir = absEntryPointPath
-			services, err = ioutil.ReadDir(absEntryPointPath)
+			services, err := ioutil.ReadDir(absEntryPointPath)
 			if err != nil {
 				return nil, err
 			}
+
+			for _, service := range services {
+				relativeExecutablePaths = append(relativeExecutablePaths, filepath.Join(relativeEntryPoint, service.Name()))
+			}
 		} else {
-			serviceDir = filepath.Dir(absEntryPointPath)
-			services = append(services, entryPointInfo)
+			relativeExecutablePaths = append(relativeExecutablePaths, relativeEntryPoint)
 		}
 
-		for _, service := range services {
-			serviceName := fmt.Sprintf("%s__%s", hl.ServiceId, service.Name())
+		for _, relativePath := range relativeExecutablePaths {
+			entryPointName := strings.Replace(relativePath, "/", "__", -1)
+			serviceName := fmt.Sprintf("%s__%s", hl.ServiceId, entryPointName)
 
 			// Make sure we don't have two services with the same name
 			// (which is possible because) multiple entry points may be
@@ -261,10 +262,10 @@ func (hl *Launchable) Executables(
 			}
 
 			p2ExecArgs := p2exec.P2ExecArgs{
-				Command:          []string{filepath.Join(serviceDir, service.Name())},
+				Command:          []string{filepath.Join(hl.InstallDir(), relativePath)},
 				User:             hl.RunAs,
 				EnvDirs:          []string{hl.PodEnvDir, hl.EnvDir()},
-				ExtraEnv:         map[string]string{launch.EntryPointEnvVar: service.Name()},
+				ExtraEnv:         map[string]string{launch.EntryPointEnvVar: relativePath},
 				NoLimits:         hl.ExecNoLimit,
 				CgroupConfigName: hl.CgroupConfigName,
 				CgroupName:       hl.CgroupName,
@@ -272,7 +273,8 @@ func (hl *Launchable) Executables(
 			execCmd := append([]string{hl.P2Exec}, p2ExecArgs.CommandLine()...)
 
 			executableMap[serviceName] = launch.Executable{
-				ServiceName: service.Name(),
+				ServiceName:  entryPointName,
+				RelativePath: relativePath,
 				Service: runit.Service{
 					Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
 					Name: serviceName,
