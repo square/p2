@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/square/p2",
 	"GoVersion": "go1.7",
-	"GodepVersion": "v74",
+	"GodepVersion": "v75",
 	"Packages": [
 		"github.com/square/p2/..."
 	],
@@ -315,7 +315,7 @@
 		},
 		{
 			"ImportPath": "github.com/hashicorp/scada-client",
-			"Rev": "84989fd23ad4cc0e7ad44d6a871fd793eb9beb0a"
+			"Rev": "6e896784f66f82cdc6f17e00052db91699dc277d"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/serf/coordinate",
