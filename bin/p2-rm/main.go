@@ -80,7 +80,11 @@ func handlePodRemoval(consulClient consulutil.ConsulClient, labeler labels.Appli
 		}
 	}
 
-	fmt.Printf("%s: successfully removed %s\n", rm.NodeName, rm.PodID)
+	if rm.NodeName != "" {
+		fmt.Printf("%s: successfully removed %s\n", rm.NodeName, rm.PodID)
+	} else {
+		fmt.Printf("successfully removed %s-%s\n", rm.PodID, rm.PodUniqueKey)
+	}
 	return nil
 }
 
