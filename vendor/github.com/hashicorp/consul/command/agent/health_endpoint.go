@@ -1,9 +1,10 @@
 package agent
 
 import (
-	"github.com/hashicorp/consul/consul/structs"
 	"net/http"
 	"strings"
+
+	"github.com/hashicorp/consul/consul/structs"
 )
 
 func (s *HTTPServer) HealthChecksInState(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
@@ -126,9 +127,12 @@ func (s *HTTPServer) HealthServiceNodes(resp http.ResponseWriter, req *http.Requ
 	}
 
 	// Filter to only passing if specified
-	if _, ok := params["passing"]; ok {
+	if _, ok := params[structs.HealthPassing]; ok {
 		out.Nodes = filterNonPassing(out.Nodes)
 	}
+
+	// Translate addresses after filtering so we don't waste effort.
+	translateAddresses(s.agent.config, args.Datacenter, out.Nodes)
 
 	// Use empty list instead of nil
 	for i, _ := range out.Nodes {
@@ -142,6 +146,7 @@ func (s *HTTPServer) HealthServiceNodes(resp http.ResponseWriter, req *http.Requ
 	if out.Nodes == nil {
 		out.Nodes = make(structs.CheckServiceNodes, 0)
 	}
+
 	return out.Nodes, nil
 }
 

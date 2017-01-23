@@ -3,10 +3,8 @@ package agent
 import (
 	"bytes"
 	"crypto/md5"
-	crand "crypto/rand"
 	"fmt"
 	"math"
-	"math/rand"
 	"os"
 	"os/exec"
 	"os/user"
@@ -14,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/hashicorp/consul/types"
 	"github.com/hashicorp/go-msgpack/codec"
 )
 
@@ -39,32 +38,6 @@ func aeScale(interval time.Duration, n int) time.Duration {
 	return time.Duration(multiplier) * interval
 }
 
-// rateScaledInterval is used to choose an interval to perform an action in order
-// to target an aggregate number of actions per second across the whole cluster.
-func rateScaledInterval(rate float64, min time.Duration, n int) time.Duration {
-	interval := time.Duration(float64(time.Second) * float64(n) / rate)
-	if interval < min {
-		return min
-	}
-
-	return interval
-}
-
-// Returns a random stagger interval between 0 and the duration
-func randomStagger(intv time.Duration) time.Duration {
-	return time.Duration(uint64(rand.Int63()) % uint64(intv))
-}
-
-// strContains checks if a list contains a string
-func strContains(l []string, s string) bool {
-	for _, v := range l {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
 // ExecScript returns a command to execute a script
 func ExecScript(script string) (*exec.Cmd, error) {
 	var shell, flag string
@@ -82,21 +55,6 @@ func ExecScript(script string) (*exec.Cmd, error) {
 	return cmd, nil
 }
 
-// generateUUID is used to generate a random UUID
-func generateUUID() string {
-	buf := make([]byte, 16)
-	if _, err := crand.Read(buf); err != nil {
-		panic(fmt.Errorf("failed to read random bytes: %v", err))
-	}
-
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%12x",
-		buf[0:4],
-		buf[4:6],
-		buf[6:8],
-		buf[8:10],
-		buf[10:16])
-}
-
 // decodeMsgPack is used to decode a MsgPack encoded object
 func decodeMsgPack(buf []byte, out interface{}) error {
 	return codec.NewDecoder(bytes.NewReader(buf), msgpackHandle).Decode(out)
@@ -112,6 +70,11 @@ func encodeMsgPack(msg interface{}) ([]byte, error) {
 // stringHash returns a simple md5sum for a string.
 func stringHash(s string) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(s)))
+}
+
+// checkIDHash returns a simple md5sum for a types.CheckID.
+func checkIDHash(checkID types.CheckID) string {
+	return stringHash(string(checkID))
 }
 
 // FilePermissions is an interface which allows a struct to set
