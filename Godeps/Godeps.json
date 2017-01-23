@@ -358,7 +358,7 @@
 		},
 		{
 			"ImportPath": "github.com/hashicorp/go-reap",
-			"Rev": "e300e334a8de28a7931fc05331345f9e985128de"
+			"Rev": "2d85522212dcf5a84c6b357094f5c44710441912"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/go-retryablehttp",
