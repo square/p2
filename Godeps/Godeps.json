@@ -38,11 +38,11 @@
 		},
 		{
 			"ImportPath": "github.com/armon/go-metrics",
-			"Rev": "345426c77237ece5dab0e1605c3e4b35c3f54757"
+			"Rev": "3df31a1ada83e310c2e24b267c8e8b68836547b4"
 		},
 		{
 			"ImportPath": "github.com/armon/go-metrics/datadog",
-			"Rev": "345426c77237ece5dab0e1605c3e4b35c3f54757"
+			"Rev": "3df31a1ada83e310c2e24b267c8e8b68836547b4"
 		},
 		{
 			"ImportPath": "github.com/armon/go-radix",
