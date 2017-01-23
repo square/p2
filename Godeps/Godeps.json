@@ -454,13 +454,13 @@
 		},
 		{
 			"ImportPath": "github.com/hashicorp/serf/coordinate",
-			"Comment": "v0.7.0-1-g39c7c06",
-			"Rev": "39c7c06298b480560202bec00c2c77e974e88792"
+			"Comment": "v0.7.0-73-g114430d",
+			"Rev": "114430d8210835d66defdc31cdc176c58e060005"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/serf/serf",
-			"Comment": "v0.7.0-1-g39c7c06",
-			"Rev": "39c7c06298b480560202bec00c2c77e974e88792"
+			"Comment": "v0.7.0-73-g114430d",
+			"Rev": "114430d8210835d66defdc31cdc176c58e060005"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/yamux",
@@ -710,6 +710,36 @@
 			"ImportPath": "k8s.io/kubernetes/pkg/util/validation",
 			"Comment": "v1.2.0-alpha.4",
 			"Rev": "4a9b0fc7153c733832d70c9f6d0796db177643a6"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/serf/vendor/github.com/armon/go-metrics",
+			"Comment": "v0.7.0-73-g114430d",
+			"Rev": "114430d8210835d66defdc31cdc176c58e060005"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/serf/vendor/github.com/hashicorp/go-msgpack/codec",
+			"Comment": "v0.7.0-73-g114430d",
+			"Rev": "114430d8210835d66defdc31cdc176c58e060005"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/serf/vendor/github.com/hashicorp/memberlist",
+			"Comment": "v0.7.0-73-g114430d",
+			"Rev": "114430d8210835d66defdc31cdc176c58e060005"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/serf/vendor/github.com/hashicorp/go-multierror",
+			"Comment": "v0.7.0-73-g114430d",
+			"Rev": "114430d8210835d66defdc31cdc176c58e060005"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/serf/vendor/github.com/miekg/dns",
+			"Comment": "v0.7.0-73-g114430d",
+			"Rev": "114430d8210835d66defdc31cdc176c58e060005"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/serf/vendor/github.com/hashicorp/errwrap",
+			"Comment": "v0.7.0-73-g114430d",
+			"Rev": "114430d8210835d66defdc31cdc176c58e060005"
 		}
 	]
 }
