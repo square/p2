@@ -497,7 +497,7 @@
 		},
 		{
 			"ImportPath": "github.com/miekg/dns",
-			"Rev": "1756430e42a7b2ecded216a9fdd37d002c116df5"
+			"Rev": "db96a2b759cdef4f11a34506a42eb8d1290c598e"
 		},
 		{
 			"ImportPath": "github.com/mitchellh/cli",
