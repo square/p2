@@ -34,10 +34,35 @@ type ServiceQuery struct {
 	// discarded)
 	OnlyPassing bool
 
+	// Near allows the query to always prefer the node nearest the given
+	// node. If the node does not exist, results are returned in their
+	// normal randomly-shuffled order. Supplying the magic "_agent" value
+	// is supported to sort near the agent which initiated the request.
+	Near string
+
 	// Tags are a set of required and/or disallowed tags. If a tag is in
 	// this list it must be present. If the tag is preceded with "!" then
 	// it is disallowed.
 	Tags []string
+}
+
+const (
+	// QueryTemplateTypeNamePrefixMatch uses the Name field of the query as
+	// a prefix to select the template.
+	QueryTemplateTypeNamePrefixMatch = "name_prefix_match"
+)
+
+// QueryTemplateOptions controls settings if this query is a template.
+type QueryTemplateOptions struct {
+	// Type, if non-empty, means that this query is a template. This is
+	// set to one of the QueryTemplateType* constants above.
+	Type string
+
+	// Regexp is an optional regular expression to use to parse the full
+	// name, once the prefix match has selected a template. This can be
+	// used to extract parts of the name and choose a service name, set
+	// tags, etc.
+	Regexp string
 }
 
 // PreparedQuery defines a complete prepared query, and is the structure we
@@ -61,6 +86,11 @@ type PreparedQuery struct {
 	// with management privileges, must be used to change the query later.
 	Token string
 
+	// Template is used to configure this query as a template, which will
+	// respond to queries based on the Name, and then will be rendered
+	// before it is executed.
+	Template QueryTemplateOptions
+
 	// Service defines a service query (leaving things open for other types
 	// later).
 	Service ServiceQuery
@@ -70,6 +100,17 @@ type PreparedQuery struct {
 	DNS QueryDNSOptions
 
 	RaftIndex
+}
+
+// GetACLPrefix returns the prefix to look up the prepared_query ACL policy for
+// this query, and whether the prefix applies to this query. You always need to
+// check the ok value before using the prefix.
+func (pq *PreparedQuery) GetACLPrefix() (string, bool) {
+	if pq.Name != "" || pq.Template.Type != "" {
+		return pq.Name, true
+	}
+
+	return "", false
 }
 
 type PreparedQueries []*PreparedQuery
@@ -142,6 +183,10 @@ type PreparedQueryExecuteRequest struct {
 	// network coordinates.
 	Source QuerySource
 
+	// Agent is used to carry around a reference to the agent which initiated
+	// the execute request. Used to distance-sort relative to the local node.
+	Agent QuerySource
+
 	// QueryOptions (unfortunately named here) controls the consistency
 	// settings for the query lookup itself, as well as the service lookups.
 	QueryOptions
@@ -192,6 +237,15 @@ type PreparedQueryExecuteResponse struct {
 	// Failovers is a count of how many times we had to query a remote
 	// datacenter.
 	Failovers int
+
+	// QueryMeta has freshness information about the query.
+	QueryMeta
+}
+
+// PreparedQueryExplainResponse has the results when explaining a query/
+type PreparedQueryExplainResponse struct {
+	// Query has the fully-rendered query.
+	Query PreparedQuery
 
 	// QueryMeta has freshness information about the query.
 	QueryMeta

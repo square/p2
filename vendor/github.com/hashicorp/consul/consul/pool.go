@@ -10,28 +10,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/consul/consul/agent"
 	"github.com/hashicorp/consul/tlsutil"
 	"github.com/hashicorp/net-rpc-msgpackrpc"
 	"github.com/hashicorp/yamux"
-	"github.com/inconshreveable/muxado"
 )
 
-// muxSession is used to provide an interface for either muxado or yamux
+// muxSession is used to provide an interface for a stream multiplexer.
 type muxSession interface {
 	Open() (net.Conn, error)
 	Close() error
-}
-
-type muxadoWrapper struct {
-	m muxado.Session
-}
-
-func (w *muxadoWrapper) Open() (net.Conn, error) {
-	return w.m.Open()
-}
-
-func (w *muxadoWrapper) Close() error {
-	return w.m.Close()
 }
 
 // streamClient is used to wrap a stream with an RPC client
@@ -294,15 +282,8 @@ func (p *ConnPool) getNewConn(dc string, addr net.Addr, version int) (*Conn, err
 	// Switch the multiplexing based on version
 	var session muxSession
 	if version < 2 {
-		// Write the Consul multiplex byte to set the mode
-		if _, err := conn.Write([]byte{byte(rpcMultiplex)}); err != nil {
-			conn.Close()
-			return nil, err
-		}
-
-		// Create a multiplexed session
-		session = &muxadoWrapper{muxado.Client(conn)}
-
+		conn.Close()
+		return nil, fmt.Errorf("cannot make client connection, unsupported protocol version %d", version)
 	} else {
 		// Write the Consul multiplex byte to set the mode
 		if _, err := conn.Write([]byte{byte(rpcMultiplexV2)}); err != nil {
@@ -403,6 +384,30 @@ func (p *ConnPool) RPC(dc string, addr net.Addr, version int, method string, arg
 	conn.returnClient(sc)
 	p.releaseConn(conn)
 	return nil
+}
+
+// PingConsulServer sends a Status.Ping message to the specified server and
+// returns true if healthy, false if an error occurred
+func (p *ConnPool) PingConsulServer(s *agent.Server) (bool, error) {
+	// Get a usable client
+	conn, sc, err := p.getClient(s.Datacenter, s.Addr, s.Version)
+	if err != nil {
+		return false, err
+	}
+
+	// Make the RPC call
+	var out struct{}
+	err = msgpackrpc.CallWithCodec(sc.codec, "Status.Ping", struct{}{}, &out)
+	if err != nil {
+		sc.Close()
+		p.releaseConn(conn)
+		return false, err
+	}
+
+	// Done with the connection
+	conn.returnClient(sc)
+	p.releaseConn(conn)
+	return true, nil
 }
 
 // Reap is used to close conns open over maxTime

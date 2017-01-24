@@ -1,6 +1,8 @@
+require "json"
+
 def e(cmd)
   puts cmd
-  system(cmd) || abort("Error running `#{cmd}`")
+  system(cmd) || raise("Error running `#{cmd}`")
 end
 
 def target(expand="")
@@ -8,7 +10,7 @@ def target(expand="")
   File.expand_path(expand, File.join(root, 'target'))
 end
 
-task :godep_check do
+task :odep_check do
   system("which godep") || abort("You do not have godep installed. Run `go get github.com/tools/godep` and ensure that it's on your PATH")
 end
 
@@ -81,3 +83,46 @@ end
 
 desc 'By default, gather dependencies, build and test'
 task :default => [:deps, :test, :install]
+
+task :sync_consul_deps do
+  consul_vendor_contents = JSON.parse(File.read(File.join(ENV["GOPATH"], "src", "github.com", "hashicorp", "consul", "vendor", "vendor.json")))
+
+  p2_repo_dir = File.join(ENV["GOPATH"], "src", "github.com", "square", "p2")
+  p2_godep_contents = JSON.parse(File.read(File.join(p2_repo_dir, "Godeps", "Godeps.json")))
+
+  # build a map of package names to revisions from consul's vendor.json
+  consul_deps = {}
+  consul_vendor_contents["package"].each do |package|
+    consul_deps[package["path"]] = package["revision"]
+  end
+
+  # now iterate over our Godeps.json and find any versions that mismatch and print them
+  p2_godep_contents["Deps"].each do |package|
+    package_name = package["ImportPath"]
+    consul_rev = consul_deps[package_name]
+    next unless consul_rev
+
+    our_rev = package["Rev"]
+    if consul_rev != our_rev
+      # grab just the first three items e.g. github.com/hashicorp/consul not github.com/hashicor/consul/api/inner/package/thing
+      first_three = package_name.split("/")[0..2]
+
+      begin
+        Dir.chdir(File.join(ENV["GOPATH"], "src", first_three[0], first_three[1], first_three[2])) do
+          e "git checkout master"
+          e "git pull"
+          e "git checkout #{consul_rev}"
+        end
+
+        Dir.chdir(p2_repo_dir) do
+          e "godep update #{first_three.join("/")}/..."
+        end
+
+        puts "Successfully repaired mismatch in #{package_name}: consul has #{consul_rev} p2 had #{our_rev}"
+      rescue => e
+        puts "Failed to repair mismatch in #{package_name}: consul has #{consul_rev} p2 had #{our_rev}: #{e.message}"
+      end
+
+    end
+  end
+end
