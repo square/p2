@@ -53,7 +53,7 @@
 		},
 		{
 			"ImportPath": "github.com/bgentry/speakeasy",
-			"Rev": "36e9cfdd690967f4f690c6edcc9ffacd006014a0"
+			"Rev": "e1439544d8ecd0f3e9373a636d447668096a8f81"
 		},
 		{
 			"ImportPath": "github.com/boltdb/bolt",
