@@ -57,8 +57,8 @@
 		},
 		{
 			"ImportPath": "github.com/boltdb/bolt",
-			"Comment": "v1.1.0-40-g34a0fa5",
-			"Rev": "34a0fa5307f7562980fb8e7ff4723f7987edf49b"
+			"Comment": "v1.2.1",
+			"Rev": "dfb21201d9270c1082d5fb0f07f500311ff72f18"
 		},
 		{
 			"ImportPath": "github.com/circonus-labs/circonus-gometrics",
