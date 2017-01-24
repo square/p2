@@ -58,6 +58,14 @@ type ACL interface {
 	// EventWrite determines if a specific event may be fired.
 	EventWrite(string) bool
 
+	// PrepardQueryRead determines if a specific prepared query can be read
+	// to show its contents (this is not used for execution).
+	PreparedQueryRead(string) bool
+
+	// PreparedQueryWrite determines if a specific prepared query can be
+	// created, modified, or deleted.
+	PreparedQueryWrite(string) bool
+
 	// KeyringRead determines if the encryption keyring used in
 	// the gossip layer can be read.
 	KeyringRead() bool
@@ -65,17 +73,19 @@ type ACL interface {
 	// KeyringWrite determines if the keyring can be manipulated
 	KeyringWrite() bool
 
+	// OperatorRead determines if the read-only Consul operator functions
+	// can be used.
+	OperatorRead() bool
+
+	// OperatorWrite determines if the state-changing Consul operator
+	// functions can be used.
+	OperatorWrite() bool
+
 	// ACLList checks for permission to list all the ACLs
 	ACLList() bool
 
 	// ACLModify checks for permission to manipulate ACLs
 	ACLModify() bool
-
-	// QueryList checks for permission to list all the prepared queries.
-	QueryList() bool
-
-	// QueryModify checks for permission to modify any prepared query.
-	QueryModify() bool
 }
 
 // StaticACL is used to implement a base ACL policy. It either
@@ -114,6 +124,14 @@ func (s *StaticACL) EventWrite(string) bool {
 	return s.defaultAllow
 }
 
+func (s *StaticACL) PreparedQueryRead(string) bool {
+	return s.defaultAllow
+}
+
+func (s *StaticACL) PreparedQueryWrite(string) bool {
+	return s.defaultAllow
+}
+
 func (s *StaticACL) KeyringRead() bool {
 	return s.defaultAllow
 }
@@ -122,19 +140,19 @@ func (s *StaticACL) KeyringWrite() bool {
 	return s.defaultAllow
 }
 
+func (s *StaticACL) OperatorRead() bool {
+	return s.defaultAllow
+}
+
+func (s *StaticACL) OperatorWrite() bool {
+	return s.defaultAllow
+}
+
 func (s *StaticACL) ACLList() bool {
 	return s.allowManage
 }
 
 func (s *StaticACL) ACLModify() bool {
-	return s.allowManage
-}
-
-func (s *StaticACL) QueryList() bool {
-	return s.allowManage
-}
-
-func (s *StaticACL) QueryModify() bool {
 	return s.allowManage
 }
 
@@ -183,20 +201,27 @@ type PolicyACL struct {
 	// eventRules contains the user event policies
 	eventRules *radix.Tree
 
-	// keyringRules contains the keyring policies. The keyring has
+	// preparedQueryRules contains the prepared query policies
+	preparedQueryRules *radix.Tree
+
+	// keyringRule contains the keyring policies. The keyring has
 	// a very simple yes/no without prefix matching, so here we
 	// don't need to use a radix tree.
 	keyringRule string
+
+	// operatorRule contains the operator policies.
+	operatorRule string
 }
 
 // New is used to construct a policy based ACL from a set of policies
 // and a parent policy to resolve missing cases.
 func New(parent ACL, policy *Policy) (*PolicyACL, error) {
 	p := &PolicyACL{
-		parent:       parent,
-		keyRules:     radix.New(),
-		serviceRules: radix.New(),
-		eventRules:   radix.New(),
+		parent:             parent,
+		keyRules:           radix.New(),
+		serviceRules:       radix.New(),
+		eventRules:         radix.New(),
+		preparedQueryRules: radix.New(),
 	}
 
 	// Load the key policy
@@ -214,8 +239,16 @@ func New(parent ACL, policy *Policy) (*PolicyACL, error) {
 		p.eventRules.Insert(ep.Event, ep.Policy)
 	}
 
+	// Load the prepared query policy
+	for _, pq := range policy.PreparedQueries {
+		p.preparedQueryRules.Insert(pq.Prefix, pq.Policy)
+	}
+
 	// Load the keyring policy
 	p.keyringRule = policy.Keyring
+
+	// Load the operator policy
+	p.operatorRule = policy.Operator
 
 	return p, nil
 }
@@ -226,9 +259,7 @@ func (p *PolicyACL) KeyRead(key string) bool {
 	_, rule, ok := p.keyRules.LongestPrefix(key)
 	if ok {
 		switch rule.(string) {
-		case KeyPolicyRead:
-			return true
-		case KeyPolicyWrite:
+		case PolicyRead, PolicyWrite:
 			return true
 		default:
 			return false
@@ -245,7 +276,7 @@ func (p *PolicyACL) KeyWrite(key string) bool {
 	_, rule, ok := p.keyRules.LongestPrefix(key)
 	if ok {
 		switch rule.(string) {
-		case KeyPolicyWrite:
+		case PolicyWrite:
 			return true
 		default:
 			return false
@@ -260,7 +291,7 @@ func (p *PolicyACL) KeyWrite(key string) bool {
 func (p *PolicyACL) KeyWritePrefix(prefix string) bool {
 	// Look for a matching rule that denies
 	_, rule, ok := p.keyRules.LongestPrefix(prefix)
-	if ok && rule.(string) != KeyPolicyWrite {
+	if ok && rule.(string) != PolicyWrite {
 		return false
 	}
 
@@ -268,7 +299,7 @@ func (p *PolicyACL) KeyWritePrefix(prefix string) bool {
 	deny := false
 	p.keyRules.WalkPrefix(prefix, func(path string, rule interface{}) bool {
 		// We have a rule to prevent a write in a sub-directory!
-		if rule.(string) != KeyPolicyWrite {
+		if rule.(string) != PolicyWrite {
 			deny = true
 			return true
 		}
@@ -296,9 +327,7 @@ func (p *PolicyACL) ServiceRead(name string) bool {
 
 	if ok {
 		switch rule {
-		case ServicePolicyWrite:
-			return true
-		case ServicePolicyRead:
+		case PolicyRead, PolicyWrite:
 			return true
 		default:
 			return false
@@ -316,7 +345,7 @@ func (p *PolicyACL) ServiceWrite(name string) bool {
 
 	if ok {
 		switch rule {
-		case ServicePolicyWrite:
+		case PolicyWrite:
 			return true
 		default:
 			return false
@@ -333,9 +362,7 @@ func (p *PolicyACL) EventRead(name string) bool {
 	// Longest-prefix match on event names
 	if _, rule, ok := p.eventRules.LongestPrefix(name); ok {
 		switch rule {
-		case EventPolicyRead:
-			return true
-		case EventPolicyWrite:
+		case PolicyRead, PolicyWrite:
 			return true
 		default:
 			return false
@@ -351,20 +378,58 @@ func (p *PolicyACL) EventRead(name string) bool {
 func (p *PolicyACL) EventWrite(name string) bool {
 	// Longest-prefix match event names
 	if _, rule, ok := p.eventRules.LongestPrefix(name); ok {
-		return rule == EventPolicyWrite
+		return rule == PolicyWrite
 	}
 
 	// No match, use parent
 	return p.parent.EventWrite(name)
 }
 
+// PreparedQueryRead checks if reading (listing) of a prepared query is
+// allowed - this isn't execution, just listing its contents.
+func (p *PolicyACL) PreparedQueryRead(prefix string) bool {
+	// Check for an exact rule or catch-all
+	_, rule, ok := p.preparedQueryRules.LongestPrefix(prefix)
+
+	if ok {
+		switch rule {
+		case PolicyRead, PolicyWrite:
+			return true
+		default:
+			return false
+		}
+	}
+
+	// No matching rule, use the parent.
+	return p.parent.PreparedQueryRead(prefix)
+}
+
+// PreparedQueryWrite checks if writing (creating, updating, or deleting) of a
+// prepared query is allowed.
+func (p *PolicyACL) PreparedQueryWrite(prefix string) bool {
+	// Check for an exact rule or catch-all
+	_, rule, ok := p.preparedQueryRules.LongestPrefix(prefix)
+
+	if ok {
+		switch rule {
+		case PolicyWrite:
+			return true
+		default:
+			return false
+		}
+	}
+
+	// No matching rule, use the parent.
+	return p.parent.PreparedQueryWrite(prefix)
+}
+
 // KeyringRead is used to determine if the keyring can be
 // read by the current ACL token.
 func (p *PolicyACL) KeyringRead() bool {
 	switch p.keyringRule {
-	case KeyringPolicyRead, KeyringPolicyWrite:
+	case PolicyRead, PolicyWrite:
 		return true
-	case KeyringPolicyDeny:
+	case PolicyDeny:
 		return false
 	default:
 		return p.parent.KeyringRead()
@@ -373,10 +438,31 @@ func (p *PolicyACL) KeyringRead() bool {
 
 // KeyringWrite determines if the keyring can be manipulated.
 func (p *PolicyACL) KeyringWrite() bool {
-	if p.keyringRule == KeyringPolicyWrite {
+	if p.keyringRule == PolicyWrite {
 		return true
 	}
 	return p.parent.KeyringWrite()
+}
+
+// OperatorRead determines if the read-only operator functions are allowed.
+func (p *PolicyACL) OperatorRead() bool {
+	switch p.operatorRule {
+	case PolicyRead, PolicyWrite:
+		return true
+	case PolicyDeny:
+		return false
+	default:
+		return p.parent.OperatorRead()
+	}
+}
+
+// OperatorWrite determines if the state-changing operator functions are
+// allowed.
+func (p *PolicyACL) OperatorWrite() bool {
+	if p.operatorRule == PolicyWrite {
+		return true
+	}
+	return p.parent.OperatorWrite()
 }
 
 // ACLList checks if listing of ACLs is allowed
@@ -387,14 +473,4 @@ func (p *PolicyACL) ACLList() bool {
 // ACLModify checks if modification of ACLs is allowed
 func (p *PolicyACL) ACLModify() bool {
 	return p.parent.ACLModify()
-}
-
-// QueryList checks if listing of all prepared queries is allowed.
-func (p *PolicyACL) QueryList() bool {
-	return p.parent.QueryList()
-}
-
-// QueryModify checks if modifying of any prepared query is allowed.
-func (p *PolicyACL) QueryModify() bool {
-	return p.parent.QueryModify()
 }

@@ -8,19 +8,21 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
+	"github.com/hashicorp/consul/consul/agent"
 	"github.com/hashicorp/consul/consul/structs"
+	"github.com/hashicorp/consul/types"
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/serf/serf"
 )
 
 const (
-	SerfCheckID           = "serfHealth"
-	SerfCheckName         = "Serf Health Status"
-	SerfCheckAliveOutput  = "Agent alive and reachable"
-	SerfCheckFailedOutput = "Agent not live or unreachable"
-	ConsulServiceID       = "consul"
-	ConsulServiceName     = "consul"
-	newLeaderEvent        = "consul:new-leader"
+	SerfCheckID           types.CheckID = "serfHealth"
+	SerfCheckName                       = "Serf Health Status"
+	SerfCheckAliveOutput                = "Agent alive and reachable"
+	SerfCheckFailedOutput               = "Agent not live or unreachable"
+	ConsulServiceID                     = "consul"
+	ConsulServiceName                   = "consul"
+	newLeaderEvent                      = "consul:new-leader"
 )
 
 // monitorLeadership is used to monitor if we acquire or lose our role
@@ -349,7 +351,7 @@ func (s *Server) shouldHandleMember(member serf.Member) bool {
 	if valid, dc := isConsulNode(member); valid && dc == s.config.Datacenter {
 		return true
 	}
-	if valid, parts := isConsulServer(member); valid && parts.Datacenter == s.config.Datacenter {
+	if valid, parts := agent.IsConsulServer(member); valid && parts.Datacenter == s.config.Datacenter {
 		return true
 	}
 	return false
@@ -360,7 +362,7 @@ func (s *Server) shouldHandleMember(member serf.Member) bool {
 func (s *Server) handleAliveMember(member serf.Member) error {
 	// Register consul service if a server
 	var service *structs.NodeService
-	if valid, parts := isConsulServer(member); valid {
+	if valid, parts := agent.IsConsulServer(member); valid {
 		service = &structs.NodeService{
 			ID:      ConsulServiceID,
 			Service: ConsulServiceName,
@@ -496,7 +498,7 @@ func (s *Server) handleDeregisterMember(reason string, member serf.Member) error
 	}
 
 	// Remove from Raft peers if this was a server
-	if valid, parts := isConsulServer(member); valid {
+	if valid, parts := agent.IsConsulServer(member); valid {
 		if err := s.removeConsulServer(member, parts.Port); err != nil {
 			return err
 		}
@@ -523,7 +525,7 @@ func (s *Server) handleDeregisterMember(reason string, member serf.Member) error
 }
 
 // joinConsulServer is used to try to join another consul server
-func (s *Server) joinConsulServer(m serf.Member, parts *serverParts) error {
+func (s *Server) joinConsulServer(m serf.Member, parts *agent.Server) error {
 	// Do not join ourself
 	if m.Name == s.config.NodeName {
 		return nil
@@ -533,7 +535,7 @@ func (s *Server) joinConsulServer(m serf.Member, parts *serverParts) error {
 	if parts.Bootstrap {
 		members := s.serfLAN.Members()
 		for _, member := range members {
-			valid, p := isConsulServer(member)
+			valid, p := agent.IsConsulServer(member)
 			if valid && member.Name != m.Name && p.Bootstrap {
 				s.logger.Printf("[ERR] consul: '%v' and '%v' are both in bootstrap mode. Only one node should be in bootstrap mode, not adding Raft peer.", m.Name, member.Name)
 				return nil
@@ -541,10 +543,26 @@ func (s *Server) joinConsulServer(m serf.Member, parts *serverParts) error {
 		}
 	}
 
+	// TODO (slackpad) - This will need to be changed once we support node IDs.
+	addr := (&net.TCPAddr{IP: m.Addr, Port: parts.Port}).String()
+
+	// See if it's already in the configuration. It's harmless to re-add it
+	// but we want to avoid doing that if possible to prevent useless Raft
+	// log entries.
+	configFuture := s.raft.GetConfiguration()
+	if err := configFuture.Error(); err != nil {
+		s.logger.Printf("[ERR] consul: failed to get raft configuration: %v", err)
+		return err
+	}
+	for _, server := range configFuture.Configuration().Servers {
+		if server.Address == raft.ServerAddress(addr) {
+			return nil
+		}
+	}
+
 	// Attempt to add as a peer
-	var addr net.Addr = &net.TCPAddr{IP: m.Addr, Port: parts.Port}
-	future := s.raft.AddPeer(addr.String())
-	if err := future.Error(); err != nil && err != raft.ErrKnownPeer {
+	addFuture := s.raft.AddPeer(raft.ServerAddress(addr))
+	if err := addFuture.Error(); err != nil {
 		s.logger.Printf("[ERR] consul: failed to add raft peer: %v", err)
 		return err
 	}
@@ -553,15 +571,31 @@ func (s *Server) joinConsulServer(m serf.Member, parts *serverParts) error {
 
 // removeConsulServer is used to try to remove a consul server that has left
 func (s *Server) removeConsulServer(m serf.Member, port int) error {
-	// Attempt to remove as peer
-	peer := &net.TCPAddr{IP: m.Addr, Port: port}
-	future := s.raft.RemovePeer(peer.String())
-	if err := future.Error(); err != nil && err != raft.ErrUnknownPeer {
-		s.logger.Printf("[ERR] consul: failed to remove raft peer '%v': %v",
-			peer, err)
+	// TODO (slackpad) - This will need to be changed once we support node IDs.
+	addr := (&net.TCPAddr{IP: m.Addr, Port: port}).String()
+
+	// See if it's already in the configuration. It's harmless to re-remove it
+	// but we want to avoid doing that if possible to prevent useless Raft
+	// log entries.
+	configFuture := s.raft.GetConfiguration()
+	if err := configFuture.Error(); err != nil {
+		s.logger.Printf("[ERR] consul: failed to get raft configuration: %v", err)
 		return err
-	} else if err == nil {
-		s.logger.Printf("[INFO] consul: removed server '%s' as peer", m.Name)
+	}
+	for _, server := range configFuture.Configuration().Servers {
+		if server.Address == raft.ServerAddress(addr) {
+			goto REMOVE
+		}
+	}
+	return nil
+
+REMOVE:
+	// Attempt to remove as a peer.
+	future := s.raft.RemovePeer(raft.ServerAddress(addr))
+	if err := future.Error(); err != nil {
+		s.logger.Printf("[ERR] consul: failed to remove raft peer '%v': %v",
+			addr, err)
+		return err
 	}
 	return nil
 }
