@@ -49,7 +49,7 @@
 		},
 		{
 			"ImportPath": "github.com/armon/go-radix",
-			"Rev": "fbd82e84e2b13651f3abc5ffd26b65ba71bc8f93"
+			"Rev": "4239b77079c7b5d1243b7b4736304ce8ddb6f0f2"
 		},
 		{
 			"ImportPath": "github.com/bgentry/speakeasy",
