@@ -115,28 +115,25 @@ task :sync_consul_deps do
       # in case the consul dependency is new and not in $GOPATH, do a "go get" first
       e "go get #{first_three_joined}/..."
       begin
-        should_update = false
         Dir.chdir(File.join(ENV["GOPATH"], "src", *first_three)) do
           e "git fetch"
           older_commit = `git merge-base #{our_rev} #{consul_rev}`.chomp
           raise "could not determine which commit is newer for #{first_three_joined}" unless $?.exitstatus == 0
           if older_commit == our_rev
             e "git checkout #{consul_rev}"
-            should_update = true
+          else
+            puts "No action taken for #{package_name}: consul's version #{consul_rev} is older than P2's #{our_rev}"
+            skipped_count += 1
+            next
           end
         end
 
-        if should_update
-          Dir.chdir(p2_repo_dir) do
-            e "godep update #{first_three.join("/")}/..."
-          end
-
-          puts "Successfully repaired mismatch in #{package_name}: consul has #{consul_rev} p2 had #{our_rev}"
-          success_count += 1
-        else
-          puts "No action taken for #{package_name}: consul's version #{consul_rev} is older than P2's #{our_rev}"
-          skipped_count += 1
+        Dir.chdir(p2_repo_dir) do
+          e "godep update #{first_three.join("/")}/..."
         end
+
+        puts "Successfully repaired mismatch in #{package_name}: consul has #{consul_rev} p2 had #{our_rev}"
+        success_count += 1
       rescue => e
         puts "Failed to repair mismatch in #{package_name}: consul has #{consul_rev} p2 had #{our_rev}: #{e.message}"
         failed_count += 1
