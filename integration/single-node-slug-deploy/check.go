@@ -319,7 +319,7 @@ func verifyProcessExit(errCh chan error, tempDir string, logger logging.Logger) 
 		select {
 		case <-timeout:
 			// Try to manually run the finish script in order to make debugging the test failure easier
-			output, err := exec.Command("sudo", fmt.Sprintf("/var/service/hello-%s__hello__bin__launch/finish", podUniqueKey), "1", "2").CombinedOutput()
+			output, err := exec.Command("sudo", fmt.Sprintf("/var/service/hello-%s__hello__launch/finish", podUniqueKey), "1", "2").CombinedOutput()
 			if err != nil {
 				logger.WithError(err).Infoln("DEBUG: Debug attempt to run finish script failed")
 			}
@@ -812,7 +812,7 @@ func verifyHelloRunning(podUniqueKey types.PodUniqueKey, logger logging.Logger) 
 	quit := make(chan struct{})
 	defer close(quit)
 
-	serviceDir := "/var/service/hello__hello__bin__launch"
+	serviceDir := "/var/service/hello__hello__launch"
 	if podUniqueKey != "" {
 		serviceDir = fmt.Sprintf("/var/service/hello-%s__hello__bin__launch", podUniqueKey)
 	}
@@ -886,10 +886,10 @@ func targetUUIDLogs(podUniqueKey types.PodUniqueKey) string {
 
 func targetLogs() string {
 	var helloTail, preparerTail bytes.Buffer
-	helloT := exec.Command("tail", "/var/service/hello__hello__bin__launch/log/main/current")
+	helloT := exec.Command("tail", "/var/service/hello__hello__launch/log/main/current")
 	helloT.Stdout = &helloTail
 	helloT.Run()
-	preparerT := exec.Command("tail", "/var/service/p2-preparer__p2-preparer__bin__launch/log/main/current")
+	preparerT := exec.Command("tail", "/var/service/p2-preparer__p2-preparer__launch/log/main/current")
 	preparerT.Stdout = &preparerTail
 	preparerT.Run()
 	return fmt.Sprintf("hello tail: \n%s\n\n preparer tail: \n%s", helloTail.String(), preparerTail.String())

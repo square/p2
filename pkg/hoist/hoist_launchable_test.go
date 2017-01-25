@@ -52,8 +52,21 @@ func TestInstallDirNoVersion(t *testing.T) {
 // This test is plays out the scenario where no entry points are explicitly declared
 // in the launchable stanza for the launchable. Therefore, bin/launch should be treated
 // as an entry point and that is it.
-func TestMultipleExecutables(t *testing.T) {
-	fakeLaunchable, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+func TestMultipleExecutablesLegacy(t *testing.T) {
+	fakeLaunchable, sb := FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(fakeLaunchable, sb)
+	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
+
+	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
+
+	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__script1", "/var/service/testPod__testLaunchable__script2"}
+	Assert(t).AreEqual(2, len(executables), "Found an unexpected number of runit services")
+
+	assertExpectedServices(t, expectedServicePaths, executables)
+}
+
+func TestMultipleExecutablesUUIDPod(t *testing.T) {
+	fakeLaunchable, sb := FakeHoistLaunchableForDirUUIDPod("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(fakeLaunchable, sb)
 	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
 
@@ -67,8 +80,29 @@ func TestMultipleExecutables(t *testing.T) {
 
 // This test exercises the functionality of having two entry points specified in a pod manifest,
 // in this case bin/launch and bin/start
-func TestMultipleEntryPoints(t *testing.T) {
-	fakeLaunchable, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+func TestMultipleEntryPointsLegacy(t *testing.T) {
+	fakeLaunchable, sb := FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(fakeLaunchable, sb)
+
+	fakeLaunchable.EntryPoints = append(fakeLaunchable.EntryPoints, "bin/start")
+	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
+
+	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
+
+	expectedServicePaths := []string{
+		"/var/service/testPod__testLaunchable__script1",
+		"/var/service/testPod__testLaunchable__script2",
+		"/var/service/testPod__testLaunchable__start",
+	}
+	Assert(t).AreEqual(3, len(executables), "Found an unexpected number of runit services")
+
+	assertExpectedServices(t, expectedServicePaths, executables)
+}
+
+// This test exercises the functionality of having two entry points specified in a pod manifest,
+// in this case bin/launch and bin/start
+func TestMultipleEntryPointsUUIDPod(t *testing.T) {
+	fakeLaunchable, sb := FakeHoistLaunchableForDirUUIDPod("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(fakeLaunchable, sb)
 
 	fakeLaunchable.EntryPoints = append(fakeLaunchable.EntryPoints, "bin/start")
@@ -87,8 +121,26 @@ func TestMultipleEntryPoints(t *testing.T) {
 }
 
 // Tests that bin/launch is ignored if it is not specified as an entry point
-func TestNonStandardEntryPoint(t *testing.T) {
-	fakeLaunchable, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+func TestNonStandardEntryPointLegacy(t *testing.T) {
+	fakeLaunchable, sb := FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(fakeLaunchable, sb)
+
+	fakeLaunchable.EntryPoints = []string{"bin/start"}
+	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
+
+	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
+
+	expectedServicePaths := []string{
+		"/var/service/testPod__testLaunchable__start",
+	}
+	Assert(t).AreEqual(1, len(executables), "Found an unexpected number of runit services")
+
+	assertExpectedServices(t, expectedServicePaths, executables)
+}
+
+// Tests that bin/launch is ignored if it is not specified as an entry point
+func TestNonStandardEntryPointUUIDPod(t *testing.T) {
+	fakeLaunchable, sb := FakeHoistLaunchableForDirUUIDPod("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(fakeLaunchable, sb)
 
 	fakeLaunchable.EntryPoints = []string{"bin/start"}
@@ -104,8 +156,32 @@ func TestNonStandardEntryPoint(t *testing.T) {
 	assertExpectedServices(t, expectedServicePaths, executables)
 }
 
-func TestSingleRunitService(t *testing.T) {
-	launchable, sb := FakeHoistLaunchableForDir("single_script_test_hoist_launchable")
+func TestErrorIfConflictingServiceNames(t *testing.T) {
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	fakeLaunchable, sb := FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(fakeLaunchable, sb)
+
+	fakeLaunchable.EntryPoints = []string{"bin/start", "bin/start2"}
+	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
+
+	Assert(t).IsNotNil(err, "Expected naming collision error calling Executables()")
+	Assert(t).AreEqual(0, len(executables), "Found an unexpected number of runit services")
+}
+
+func TestSingleRunitServiceLegacy(t *testing.T) {
+	launchable, sb := FakeHoistLaunchableForDirLegacyPod("single_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(launchable, sb)
+	Assert(t).IsNil(launchable.MakeCurrent(), "Should have been made current")
+	executables, err := launchable.Executables(runit.DefaultBuilder)
+	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
+
+	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__script1"}
+	Assert(t).AreEqual(len(executables), 1, "Found an unexpected number of runit services")
+	Assert(t).AreEqual(executables[0].Service.Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
+}
+
+func TestSingleRunitServiceUUIDPod(t *testing.T) {
+	launchable, sb := FakeHoistLaunchableForDirUUIDPod("single_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(launchable, sb)
 	Assert(t).IsNil(launchable.MakeCurrent(), "Should have been made current")
 	executables, err := launchable.Executables(runit.DefaultBuilder)
@@ -116,8 +192,20 @@ func TestSingleRunitService(t *testing.T) {
 	Assert(t).AreEqual(executables[0].Service.Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
 }
 
-func TestLaunchExecutableOnlyRunitService(t *testing.T) {
-	launchable, sb := FakeHoistLaunchableForDir("launch_script_only_test_hoist_launchable")
+func TestLaunchExecutableOnlyRunitServiceLegacy(t *testing.T) {
+	launchable, sb := FakeHoistLaunchableForDirLegacyPod("launch_script_only_test_hoist_launchable")
+	defer CleanupFakeLaunchable(launchable, sb)
+	Assert(t).IsNil(launchable.MakeCurrent(), "Should have been made current")
+	executables, err := launchable.Executables(runit.DefaultBuilder)
+	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
+
+	expectedServicePaths := []string{"/var/service/testPod__testLaunchable__launch"}
+	Assert(t).AreEqual(len(executables), 1, "Found an unexpected number of runit services")
+	Assert(t).AreEqual(executables[0].Service.Path, expectedServicePaths[0], "Runit service paths from launchable did not match expected")
+}
+
+func TestLaunchExecutableOnlyRunitServiceUUIDPod(t *testing.T) {
+	launchable, sb := FakeHoistLaunchableForDirUUIDPod("launch_script_only_test_hoist_launchable")
 	defer CleanupFakeLaunchable(launchable, sb)
 	Assert(t).IsNil(launchable.MakeCurrent(), "Should have been made current")
 	executables, err := launchable.Executables(runit.DefaultBuilder)
@@ -129,7 +217,8 @@ func TestLaunchExecutableOnlyRunitService(t *testing.T) {
 }
 
 func TestDisable(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("successful_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	disableOutput, err := hl.disable()
@@ -141,7 +230,8 @@ func TestDisable(t *testing.T) {
 }
 
 func TestFailingDisable(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("failing_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	disableOutput, err := hl.disable()
@@ -154,7 +244,8 @@ func TestFailingDisable(t *testing.T) {
 
 // providing a disable script is optional, make sure we don't error
 func TestNonexistentDisable(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("nonexistent_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("nonexistent_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	disableOutput, err := hl.disable()
@@ -166,7 +257,8 @@ func TestNonexistentDisable(t *testing.T) {
 }
 
 func TestEnable(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("successful_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	enableOutput, err := hl.enable()
@@ -178,7 +270,8 @@ func TestEnable(t *testing.T) {
 }
 
 func TestFailingEnable(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("failing_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	enableOutput, err := hl.enable()
@@ -191,7 +284,8 @@ func TestFailingEnable(t *testing.T) {
 
 // providing an enable script is optional, make sure we don't error
 func TestNonexistentEnable(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("nonexistent_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("nonexistent_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	enableOutput, err := hl.enable()
@@ -203,7 +297,8 @@ func TestNonexistentEnable(t *testing.T) {
 }
 
 func TestFailingStop(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	sv := runit.ErringSV()
@@ -214,7 +309,8 @@ func TestFailingStop(t *testing.T) {
 }
 
 func TestStart(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 	sv := runit.FakeSV()
 	executables, err := hl.Executables(sb)
@@ -241,7 +337,8 @@ func TestStart(t *testing.T) {
 }
 
 func TestFailingStart(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	sv := runit.ErringSV()
@@ -267,7 +364,8 @@ func TestFailingStart(t *testing.T) {
 }
 
 func TestStop(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	sv := runit.FakeSV()
@@ -277,7 +375,8 @@ func TestStop(t *testing.T) {
 }
 
 func TestDisableWithFailingDisable(t *testing.T) {
-	hl, _ := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, _ := FakeHoistLaunchableForDirLegacyPod("failing_scripts_test_hoist_launchable")
 	err := hl.Disable()
 	Assert(t).IsNotNil(err, "Expected error while disabling")
 	_, ok := err.(launch.DisableError)
@@ -285,13 +384,15 @@ func TestDisableWithFailingDisable(t *testing.T) {
 }
 
 func TestDisableWithPassingDisable(t *testing.T) {
-	hl, _ := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, _ := FakeHoistLaunchableForDirLegacyPod("successful_scripts_test_hoist_launchable")
 	err := hl.Disable()
 	Assert(t).IsNil(err, "Expected disable to succeed")
 }
 
 func TestLaunchWithFailingEnable(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("failing_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("failing_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	sv := runit.FakeSV()
@@ -304,7 +405,8 @@ func TestLaunchWithFailingEnable(t *testing.T) {
 }
 
 func TestLaunchWithPassingEnable(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("successful_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	sv := runit.FakeSV()
@@ -313,7 +415,8 @@ func TestLaunchWithPassingEnable(t *testing.T) {
 }
 
 func TestStopWithFailure(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("successful_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	sv := runit.ErringSV()
@@ -324,7 +427,8 @@ func TestStopWithFailure(t *testing.T) {
 }
 
 func TestLaunchWithFailingStart(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("successful_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	sv := runit.ErringSV()
@@ -337,7 +441,8 @@ func TestLaunchWithFailingStart(t *testing.T) {
 }
 
 func TestOnceIfRestartNever(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("successful_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	// If the launchable isn't intended to be restarted, the launchable
@@ -354,7 +459,8 @@ func TestOnceIfRestartNever(t *testing.T) {
 }
 
 func TestRestartIfRestartAlways(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("successful_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
 	// If the launchable is intended to be restarted, the launchable
@@ -368,7 +474,8 @@ func TestRestartIfRestartAlways(t *testing.T) {
 }
 
 func TestRestartServiceAndLogAgent(t *testing.T) {
-	hl, sb := FakeHoistLaunchableForDir("successful_scripts_test_hoist_launchable")
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("successful_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 	sv := runit.NewRecordingSV()
 

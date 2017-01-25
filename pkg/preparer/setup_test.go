@@ -77,7 +77,7 @@ func TestInstallHooks(t *testing.T) {
 	_, err = os.Stat(currentAlias)
 	Assert(t).IsNil(err, fmt.Sprintf("%s should have been created", currentAlias))
 
-	hookFile := filepath.Join(execDir, "users__create__bin__launch")
+	hookFile := filepath.Join(execDir, "users__create__launch")
 	_, err = os.Stat(hookFile)
 	Assert(t).IsNil(err, "should have created the user launch script")
 }
