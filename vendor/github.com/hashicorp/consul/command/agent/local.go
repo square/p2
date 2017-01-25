@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"log"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/hashicorp/consul/consul"
 	"github.com/hashicorp/consul/consul/structs"
+	"github.com/hashicorp/consul/lib"
+	"github.com/hashicorp/consul/types"
 )
 
 const (
@@ -44,18 +47,23 @@ type localState struct {
 	// iface is the consul interface to use for keeping in sync
 	iface consul.Interface
 
+	// nodeInfoInSync tracks whether the server has our correct top-level
+	// node information in sync (currently only used for tagged addresses)
+	nodeInfoInSync bool
+
 	// Services tracks the local services
 	services      map[string]*structs.NodeService
 	serviceStatus map[string]syncStatus
 	serviceTokens map[string]string
 
 	// Checks tracks the local checks
-	checks      map[string]*structs.HealthCheck
-	checkStatus map[string]syncStatus
-	checkTokens map[string]string
+	checks            map[types.CheckID]*structs.HealthCheck
+	checkStatus       map[types.CheckID]syncStatus
+	checkTokens       map[types.CheckID]string
+	checkCriticalTime map[types.CheckID]time.Time
 
 	// Used to track checks that are being deferred
-	deferCheck map[string]*time.Timer
+	deferCheck map[types.CheckID]*time.Timer
 
 	// consulCh is used to inform of a change to the known
 	// consul nodes. This may be used to retry a sync run
@@ -73,10 +81,11 @@ func (l *localState) Init(config *Config, logger *log.Logger) {
 	l.services = make(map[string]*structs.NodeService)
 	l.serviceStatus = make(map[string]syncStatus)
 	l.serviceTokens = make(map[string]string)
-	l.checks = make(map[string]*structs.HealthCheck)
-	l.checkStatus = make(map[string]syncStatus)
-	l.checkTokens = make(map[string]string)
-	l.deferCheck = make(map[string]*time.Timer)
+	l.checks = make(map[types.CheckID]*structs.HealthCheck)
+	l.checkStatus = make(map[types.CheckID]syncStatus)
+	l.checkTokens = make(map[types.CheckID]string)
+	l.checkCriticalTime = make(map[types.CheckID]time.Time)
+	l.deferCheck = make(map[types.CheckID]*time.Timer)
 	l.consulCh = make(chan struct{}, 1)
 	l.triggerCh = make(chan struct{}, 1)
 }
@@ -185,17 +194,17 @@ func (l *localState) Services() map[string]*structs.NodeService {
 	return services
 }
 
-// CheckToken is used to return the configured health check token, or
-// if none is configured, the default agent ACL token.
-func (l *localState) CheckToken(id string) string {
+// CheckToken is used to return the configured health check token for a
+// Check, or if none is configured, the default agent ACL token.
+func (l *localState) CheckToken(checkID types.CheckID) string {
 	l.RLock()
 	defer l.RUnlock()
-	return l.checkToken(id)
+	return l.checkToken(checkID)
 }
 
 // checkToken returns an ACL token associated with a check.
-func (l *localState) checkToken(id string) string {
-	token := l.checkTokens[id]
+func (l *localState) checkToken(checkID types.CheckID) string {
+	token := l.checkTokens[checkID]
 	if token == "" {
 		token = l.config.ACLToken
 	}
@@ -215,29 +224,42 @@ func (l *localState) AddCheck(check *structs.HealthCheck, token string) {
 	l.checks[check.CheckID] = check
 	l.checkStatus[check.CheckID] = syncStatus{}
 	l.checkTokens[check.CheckID] = token
+	delete(l.checkCriticalTime, check.CheckID)
 	l.changeMade()
 }
 
 // RemoveCheck is used to remove a health check from the local state.
 // The agent will make a best effort to ensure it is deregistered
-func (l *localState) RemoveCheck(checkID string) {
+func (l *localState) RemoveCheck(checkID types.CheckID) {
 	l.Lock()
 	defer l.Unlock()
 
 	delete(l.checks, checkID)
 	delete(l.checkTokens, checkID)
+	delete(l.checkCriticalTime, checkID)
 	l.checkStatus[checkID] = syncStatus{remoteDelete: true}
 	l.changeMade()
 }
 
 // UpdateCheck is used to update the status of a check
-func (l *localState) UpdateCheck(checkID, status, output string) {
+func (l *localState) UpdateCheck(checkID types.CheckID, status, output string) {
 	l.Lock()
 	defer l.Unlock()
 
 	check, ok := l.checks[checkID]
 	if !ok {
 		return
+	}
+
+	// Update the critical time tracking (this doesn't cause a server updates
+	// so we can always keep this up to date).
+	if status == structs.HealthCritical {
+		_, wasCritical := l.checkCriticalTime[checkID]
+		if !wasCritical {
+			l.checkCriticalTime[checkID] = time.Now()
+		}
+	} else {
+		delete(l.checkCriticalTime, checkID)
 	}
 
 	// Do nothing if update is idempotent
@@ -252,7 +274,7 @@ func (l *localState) UpdateCheck(checkID, status, output string) {
 	if l.config.CheckUpdateInterval > 0 && check.Status == status {
 		check.Output = output
 		if _, ok := l.deferCheck[checkID]; !ok {
-			intv := time.Duration(uint64(l.config.CheckUpdateInterval)/2) + randomStagger(l.config.CheckUpdateInterval)
+			intv := time.Duration(uint64(l.config.CheckUpdateInterval)/2) + lib.RandomStagger(l.config.CheckUpdateInterval)
 			deferSync := time.AfterFunc(intv, func() {
 				l.Lock()
 				if _, ok := l.checkStatus[checkID]; ok {
@@ -276,14 +298,42 @@ func (l *localState) UpdateCheck(checkID, status, output string) {
 
 // Checks returns the locally registered checks that the
 // agent is aware of and are being kept in sync with the server
-func (l *localState) Checks() map[string]*structs.HealthCheck {
-	checks := make(map[string]*structs.HealthCheck)
+func (l *localState) Checks() map[types.CheckID]*structs.HealthCheck {
+	checks := make(map[types.CheckID]*structs.HealthCheck)
 	l.RLock()
 	defer l.RUnlock()
 
-	for name, check := range l.checks {
-		checks[name] = check
+	for checkID, check := range l.checks {
+		checks[checkID] = check
 	}
+	return checks
+}
+
+// CriticalCheck is used to return the duration a check has been critical along
+// with its associated health check.
+type CriticalCheck struct {
+	CriticalFor time.Duration
+	Check       *structs.HealthCheck
+}
+
+// CriticalChecks returns locally registered health checks that the agent is
+// aware of and are being kept in sync with the server, and that are in a
+// critical state. This also returns information about how long each check has
+// been critical.
+func (l *localState) CriticalChecks() map[types.CheckID]CriticalCheck {
+	checks := make(map[types.CheckID]CriticalCheck)
+
+	l.RLock()
+	defer l.RUnlock()
+
+	now := time.Now()
+	for checkID, criticalTime := range l.checkCriticalTime {
+		checks[checkID] = CriticalCheck{
+			CriticalFor: now.Sub(criticalTime),
+			Check:       l.checks[checkID],
+		}
+	}
+
 	return checks
 }
 
@@ -302,11 +352,11 @@ SYNC:
 		case <-l.consulCh:
 			// Stagger the retry on leader election, avoid a thundering heard
 			select {
-			case <-time.After(randomStagger(aeScale(syncStaggerIntv, len(l.iface.LANMembers())))):
+			case <-time.After(lib.RandomStagger(aeScale(syncStaggerIntv, len(l.iface.LANMembers())))):
 			case <-shutdownCh:
 				return
 			}
-		case <-time.After(syncRetryIntv + randomStagger(aeScale(syncRetryIntv, len(l.iface.LANMembers())))):
+		case <-time.After(syncRetryIntv + lib.RandomStagger(aeScale(syncRetryIntv, len(l.iface.LANMembers())))):
 		case <-shutdownCh:
 			return
 		}
@@ -317,7 +367,7 @@ SYNC:
 
 	// Schedule the next full sync, with a random stagger
 	aeIntv := aeScale(l.config.AEInterval, len(l.iface.LANMembers()))
-	aeIntv = aeIntv + randomStagger(aeIntv)
+	aeIntv = aeIntv + lib.RandomStagger(aeIntv)
 	aeTimer := time.After(aeIntv)
 
 	// Wait for sync events
@@ -360,6 +410,14 @@ func (l *localState) setSyncState() error {
 	l.Lock()
 	defer l.Unlock()
 
+	// Check the node info (currently limited to tagged addresses since
+	// everything else is managed by the Serf layer)
+	if out1.NodeServices == nil || out1.NodeServices.Node == nil ||
+		!reflect.DeepEqual(out1.NodeServices.Node.TaggedAddresses, l.config.TaggedAddresses) {
+		l.nodeInfoInSync = false
+	}
+
+	// Check all our services
 	services := make(map[string]*structs.NodeService)
 	if out1.NodeServices != nil {
 		services = out1.NodeServices.Services
@@ -380,16 +438,19 @@ func (l *localState) setSyncState() error {
 			continue
 		}
 
-		// If our definition is different, we need to update it
+		// If our definition is different, we need to update it. Make a
+		// copy so that we don't retain a pointer to any actual state
+		// store info for in-memory RPCs.
 		if existing.EnableTagOverride {
-			existing.Tags = service.Tags
+			existing.Tags = make([]string, len(service.Tags))
+			copy(existing.Tags, service.Tags)
 		}
 		equal := existing.IsSame(service)
 		l.serviceStatus[id] = syncStatus{inSync: equal}
 	}
 
 	// Index the remote health checks to improve efficiency
-	checkIndex := make(map[string]*structs.HealthCheck, len(checks))
+	checkIndex := make(map[types.CheckID]*structs.HealthCheck, len(checks))
 	for _, check := range checks {
 		checkIndex[check.CheckID] = check
 	}
@@ -420,11 +481,26 @@ func (l *localState) setSyncState() error {
 		if l.config.CheckUpdateInterval == 0 {
 			equal = existing.IsSame(check)
 		} else {
-			eCopy := new(structs.HealthCheck)
-			*eCopy = *existing
-			eCopy.Output = ""
-			check.Output = ""
-			equal = eCopy.IsSame(check)
+			// Copy the existing check before potentially modifying
+			// it before the compare operation.
+			eCopy := existing.Clone()
+
+			// Copy the server's check before modifying, otherwise
+			// in-memory RPCs will have side effects.
+			cCopy := check.Clone()
+
+			// If there's a defer timer active then we've got a
+			// potentially spammy check so we don't sync the output
+			// during this sweep since the timer will mark the check
+			// out of sync for us. Otherwise, it is safe to sync the
+			// output now. This is especially important for checks
+			// that don't change state after they are created, in
+			// which case we'd never see their output synced back ever.
+			if _, ok := l.deferCheck[id]; ok {
+				eCopy.Output = ""
+				cCopy.Output = ""
+			}
+			equal = eCopy.IsSame(cCopy)
 		}
 
 		// Update the status
@@ -438,6 +514,10 @@ func (l *localState) setSyncState() error {
 func (l *localState) syncChanges() error {
 	l.Lock()
 	defer l.Unlock()
+
+	// We will do node-level info syncing at the end, since it will get
+	// updated by a service or check sync anyway, given how the register
+	// API works.
 
 	// Sync the services
 	for id, status := range l.serviceStatus {
@@ -474,6 +554,17 @@ func (l *localState) syncChanges() error {
 			l.logger.Printf("[DEBUG] agent: Check '%s' in sync", id)
 		}
 	}
+
+	// Now sync the node level info if we need to, and didn't do any of
+	// the other sync operations.
+	if !l.nodeInfoInSync {
+		if err := l.syncNodeInfo(); err != nil {
+			return err
+		}
+	} else {
+		l.logger.Printf("[DEBUG] agent: Node info in sync")
+	}
+
 	return nil
 }
 
@@ -498,8 +589,8 @@ func (l *localState) deleteService(id string) error {
 	return err
 }
 
-// deleteCheck is used to delete a service from the server
-func (l *localState) deleteCheck(id string) error {
+// deleteCheck is used to delete a check from the server
+func (l *localState) deleteCheck(id types.CheckID) error {
 	if id == "" {
 		return fmt.Errorf("CheckID missing")
 	}
@@ -522,11 +613,12 @@ func (l *localState) deleteCheck(id string) error {
 // syncService is used to sync a service to the server
 func (l *localState) syncService(id string) error {
 	req := structs.RegisterRequest{
-		Datacenter:   l.config.Datacenter,
-		Node:         l.config.NodeName,
-		Address:      l.config.AdvertiseAddr,
-		Service:      l.services[id],
-		WriteRequest: structs.WriteRequest{Token: l.serviceToken(id)},
+		Datacenter:      l.config.Datacenter,
+		Node:            l.config.NodeName,
+		Address:         l.config.AdvertiseAddr,
+		TaggedAddresses: l.config.TaggedAddresses,
+		Service:         l.services[id],
+		WriteRequest:    structs.WriteRequest{Token: l.serviceToken(id)},
 	}
 
 	// If the service has associated checks that are out of sync,
@@ -552,6 +644,9 @@ func (l *localState) syncService(id string) error {
 	err := l.iface.RPC("Catalog.Register", &req, &out)
 	if err == nil {
 		l.serviceStatus[id] = syncStatus{inSync: true}
+		// Given how the register API works, this info is also updated
+		// every time we sync a service.
+		l.nodeInfoInSync = true
 		l.logger.Printf("[INFO] agent: Synced service '%s'", id)
 		for _, check := range checks {
 			l.checkStatus[check.CheckID] = syncStatus{inSync: true}
@@ -568,7 +663,7 @@ func (l *localState) syncService(id string) error {
 }
 
 // syncCheck is used to sync a check to the server
-func (l *localState) syncCheck(id string) error {
+func (l *localState) syncCheck(id types.CheckID) error {
 	// Pull in the associated service if any
 	check := l.checks[id]
 	var service *structs.NodeService
@@ -579,21 +674,46 @@ func (l *localState) syncCheck(id string) error {
 	}
 
 	req := structs.RegisterRequest{
-		Datacenter:   l.config.Datacenter,
-		Node:         l.config.NodeName,
-		Address:      l.config.AdvertiseAddr,
-		Service:      service,
-		Check:        l.checks[id],
-		WriteRequest: structs.WriteRequest{Token: l.checkToken(id)},
+		Datacenter:      l.config.Datacenter,
+		Node:            l.config.NodeName,
+		Address:         l.config.AdvertiseAddr,
+		TaggedAddresses: l.config.TaggedAddresses,
+		Service:         service,
+		Check:           l.checks[id],
+		WriteRequest:    structs.WriteRequest{Token: l.checkToken(id)},
 	}
 	var out struct{}
 	err := l.iface.RPC("Catalog.Register", &req, &out)
 	if err == nil {
 		l.checkStatus[id] = syncStatus{inSync: true}
+		// Given how the register API works, this info is also updated
+		// every time we sync a service.
+		l.nodeInfoInSync = true
 		l.logger.Printf("[INFO] agent: Synced check '%s'", id)
 	} else if strings.Contains(err.Error(), permissionDenied) {
 		l.checkStatus[id] = syncStatus{inSync: true}
 		l.logger.Printf("[WARN] agent: Check '%s' registration blocked by ACLs", id)
+		return nil
+	}
+	return err
+}
+
+func (l *localState) syncNodeInfo() error {
+	req := structs.RegisterRequest{
+		Datacenter:      l.config.Datacenter,
+		Node:            l.config.NodeName,
+		Address:         l.config.AdvertiseAddr,
+		TaggedAddresses: l.config.TaggedAddresses,
+		WriteRequest:    structs.WriteRequest{Token: l.config.ACLToken},
+	}
+	var out struct{}
+	err := l.iface.RPC("Catalog.Register", &req, &out)
+	if err == nil {
+		l.nodeInfoInSync = true
+		l.logger.Printf("[INFO] agent: Synced node info")
+	} else if strings.Contains(err.Error(), permissionDenied) {
+		l.nodeInfoInSync = true
+		l.logger.Printf("[WARN] agent: Node info update blocked by ACLs")
 		return nil
 	}
 	return err

@@ -42,7 +42,7 @@ type snapshotHeader struct {
 	LastIndex uint64
 }
 
-// NewFSMPath is used to construct a new FSM with a blank state
+// NewFSM is used to construct a new FSM with a blank state
 func NewFSM(gc *state.TombstoneGC, logOutput io.Writer) (*consulFSM, error) {
 	stateNew, err := state.NewStateStore(gc)
 	if err != nil {
@@ -93,6 +93,8 @@ func (c *consulFSM) Apply(log *raft.Log) interface{} {
 		return c.applyCoordinateBatchUpdate(buf[1:], log.Index)
 	case structs.PreparedQueryRequestType:
 		return c.applyPreparedQueryOperation(buf[1:], log.Index)
+	case structs.TxnRequestType:
+		return c.applyTxn(buf[1:], log.Index)
 	default:
 		if ignoreUnknown {
 			c.logger.Printf("[WARN] consul.fsm: ignoring unknown message type (%d), upgrade to newer version", msgType)
@@ -286,6 +288,16 @@ func (c *consulFSM) applyPreparedQueryOperation(buf []byte, index uint64) interf
 	}
 }
 
+func (c *consulFSM) applyTxn(buf []byte, index uint64) interface{} {
+	var req structs.TxnRequest
+	if err := structs.Decode(buf, &req); err != nil {
+		panic(fmt.Errorf("failed to decode request: %v", err))
+	}
+	defer metrics.MeasureSince([]string{"consul", "fsm", "txn"}, time.Now())
+	results, errors := c.state.TxnRW(index, req.Ops)
+	return structs.TxnResponse{results, errors}
+}
+
 func (c *consulFSM) Snapshot() (raft.FSMSnapshot, error) {
 	defer func(start time.Time) {
 		c.logger.Printf("[INFO] consul.fsm: snapshot created in %v", time.Now().Sub(start))
@@ -472,8 +484,9 @@ func (s *consulSnapshot) persistNodes(sink raft.SnapshotSink,
 	for node := nodes.Next(); node != nil; node = nodes.Next() {
 		n := node.(*structs.Node)
 		req := structs.RegisterRequest{
-			Node:    n.Node,
-			Address: n.Address,
+			Node:            n.Node,
+			Address:         n.Address,
+			TaggedAddresses: n.TaggedAddresses,
 		}
 
 		// Register the node itself
@@ -609,9 +622,9 @@ func (s *consulSnapshot) persistPreparedQueries(sink raft.SnapshotSink,
 		return err
 	}
 
-	for query := queries.Next(); query != nil; query = queries.Next() {
+	for _, query := range queries {
 		sink.Write([]byte{byte(structs.PreparedQueryRequestType)})
-		if err := encoder.Encode(query.(*structs.PreparedQuery)); err != nil {
+		if err := encoder.Encode(query); err != nil {
 			return err
 		}
 	}
