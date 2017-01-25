@@ -25,6 +25,10 @@ type FinishService interface {
 	LastFinishForPodUniqueKey(podUniqueKey types.PodUniqueKey) (FinishOutput, error)
 	// Deletes any rows with dates before the specified time
 	PruneRowsBefore(time.Time) error
+	// LastFinishID() returns the highest ID in the finishes table. It is
+	// useful for repairing the workspace file which is meant to contain
+	// the last processed ID.
+	LastFinishID() (int64, error)
 }
 
 type sqliteFinishService struct {
@@ -221,6 +225,19 @@ func (f sqliteFinishService) LastFinishForPodUniqueKey(podUniqueKey types.PodUni
   WHERE pod_unique_key = ?
   `, podUniqueKey.String())
 	return scanRow(row)
+}
+
+// LastFinishID() returns the highest ID in the finishes table. It is useful for repairing the workspace
+// file which is meant to contain the last processed ID.
+func (f sqliteFinishService) LastFinishID() (int64, error) {
+	var id int64
+	row := f.db.QueryRow("SELECT id FROM finishes ORDER BY id DESC LIMIT 1;")
+	err := row.Scan(&id)
+	if err != nil {
+		return 0, util.Errorf("could not read last ID from database: %s", err)
+	}
+
+	return id, nil
 }
 
 // Implemented by both *sql.Row and *sql.Rows

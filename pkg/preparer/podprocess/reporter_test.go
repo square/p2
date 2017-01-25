@@ -101,7 +101,7 @@ func TestRun(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	dbPath, quitCh, podStatusStore := startReporter(t, tempDir)
+	dbPath, quitCh, podStatusStore, _ := startReporter(t, tempDir)
 	defer close(quitCh)
 
 	finishOutput1 := FinishOutput{
@@ -125,6 +125,79 @@ func TestRun(t *testing.T) {
 	}
 
 	assertStatusUpdated(t, finishOutput1, podStatusStore)
+
+	finishOutput2 := FinishOutput{
+		PodID:        "some_pod",
+		LaunchableID: "some_launchable",
+		EntryPoint:   "nginx_worker",
+		PodUniqueKey: types.NewPodUUID(),
+		ExitCode:     3,
+		ExitStatus:   67,
+	}
+	err = finishService.Insert(finishOutput2)
+	if err != nil {
+		t.Fatalf("Could not insert second finish value into the database: %s", err)
+	}
+
+	assertStatusUpdated(t, finishOutput2, podStatusStore)
+}
+
+// The reporter operates by processing events from sqlite and then writing the
+// highest handled ID to a file for use in the next iteration to avoid
+// double-submitting a pod process finish. This test confirms that the reporter
+// can recover from a problem with the file, such as it containing 0 bytes or
+// having non-integer contents
+func TestRepairCorruptWorkspaceFile(t *testing.T) {
+	tempDir, err := ioutil.TempDir("", "process_reporter")
+	if err != nil {
+		t.Fatalf("Could not create temp dir: %s", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath, quitCh, podStatusStore, reporter := startReporter(t, tempDir)
+	defer close(quitCh)
+
+	finishOutput1 := FinishOutput{
+		PodID:        "some_pod",
+		LaunchableID: "some_launchable",
+		EntryPoint:   "launch",
+		PodUniqueKey: types.NewPodUUID(),
+		ExitCode:     1,
+		ExitStatus:   120,
+	}
+
+	finishService, err := NewSQLiteFinishService(dbPath, logging.DefaultLogger)
+	if err != nil {
+		t.Fatalf("Could not initialize finish service: %s", err)
+	}
+	defer finishService.Close()
+
+	err = finishService.Insert(finishOutput1)
+	if err != nil {
+		t.Fatalf("Could not insert first finish value into the database: %s", err)
+	}
+
+	assertStatusUpdated(t, finishOutput1, podStatusStore)
+
+	// now truncate the workspace file and ensure that the file is repaired
+	err = os.Truncate(reporter.workspaceFilePath(), 0)
+	if err != nil {
+		t.Fatalf("could not truncate workspace file to test for repair: %s", err)
+	}
+
+	for try := 0; try < 10; try++ {
+		lastID, err := reporter.getLastID()
+		if err == nil {
+			if lastID == 1 {
+				// the file was repaired
+				break
+			}
+		} else {
+			time.Sleep(1 * time.Millisecond)
+			// we ignore errors because we expect them, what we really want
+			// is that eventually there's no error and 1 is returned
+		}
+	}
 
 	finishOutput2 := FinishOutput{
 		PodID:        "some_pod",
@@ -191,7 +264,7 @@ func assertStatusUpdated(t *testing.T, finish FinishOutput, podStatusStore podst
 	}
 }
 
-func startReporter(t *testing.T, tempDir string) (string, chan struct{}, podstatus.Store) {
+func startReporter(t *testing.T, tempDir string) (string, chan struct{}, podstatus.Store, *Reporter) {
 	dbPath := filepath.Join(tempDir, "finishes.db")
 
 	// The extractor doesn't need to do anything because we'll mimic its behavior in the test,
@@ -225,5 +298,5 @@ func startReporter(t *testing.T, tempDir string) (string, chan struct{}, podstat
 	if err != nil {
 		t.Fatalf("Unable to start reporter: %s", err)
 	}
-	return dbPath, quitCh, store
+	return dbPath, quitCh, store, reporter
 }

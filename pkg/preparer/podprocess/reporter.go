@@ -326,8 +326,13 @@ func (r *Reporter) publishProcessExits(quitCh <-chan struct{}) {
 func (r *Reporter) reportLatestExits() {
 	lastID, err := r.getLastID()
 	if err != nil {
-		r.logger.WithError(err).Errorln("Could not read last ID from process exit sqlite db")
-		return
+		r.logger.WithError(err).Errorln(
+			"could not read last ID from workspace file. Will attempt to repair the file by writing latest ID, some finish data may be lost")
+		lastID, err = r.repairLastID()
+		if err != nil {
+			// logging happened within repairLastID()
+			return
+		}
 	}
 
 	finishes, err := r.finishService.GetLatestFinishes(lastID)
@@ -408,7 +413,31 @@ func (r *Reporter) getLastID() (int64, error) {
 		return 0, err
 	}
 
-	return strconv.ParseInt(string(bytes), 10, 64)
+	ret, err := strconv.ParseInt(string(bytes), 10, 64)
+	if err != nil {
+		return 0, util.Errorf("could not parse last processed ID from %q as an int64: %s", r.workspaceFilePath(), err)
+	}
+
+	return ret, nil
+}
+
+// repairLastID() writes the last ID from the sqlite database to the workspace
+// file. It should only be called if the contents of the file are unusable
+// (e.g. 0 byte file or the contents aren't an integer)
+func (r *Reporter) repairLastID() (int64, error) {
+	lastID, err := r.finishService.LastFinishID()
+	if err != nil {
+		r.logger.WithError(err).Errorln("unable to repair workspace file due to error querying for last ID")
+		return 0, err
+	}
+
+	err = r.writeLastID(lastID)
+	if err != nil {
+		r.logger.WithError(err).Errorln("unable to repair workspace file")
+		return 0, err
+	}
+
+	return lastID, nil
 }
 
 func (r *Reporter) workspaceFilePath() string {

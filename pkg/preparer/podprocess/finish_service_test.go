@@ -135,3 +135,33 @@ func TestPruneRowsBefore(t *testing.T) {
 		t.Fatalf("Expected only 1 row after pruning, but there were %d", len(finishes))
 	}
 }
+
+func TestLastFinishID(t *testing.T) {
+	finishService, _, closeFunc := initFinishService(t)
+	defer closeFunc()
+	defer finishService.Close()
+
+	// Insert 3 rows
+	for i := 0; i < 3; i++ {
+		err := finishService.Insert(FinishOutput{
+			PodID:        "some_pod",
+			PodUniqueKey: types.NewPodUUID(),
+			LaunchableID: "some_launchable",
+			EntryPoint:   "launch",
+			ExitCode:     4,
+			ExitStatus:   127,
+		})
+		if err != nil {
+			t.Errorf("Could not insert a finish row, the finishes table might not have been created: %s", err)
+		}
+	}
+
+	lastID, err := finishService.LastFinishID()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if lastID != 3 {
+		t.Errorf("expected last written ID to be %d but was %d", 3, lastID)
+	}
+}
