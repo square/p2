@@ -732,6 +732,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			CgroupName:       cgroupName,
 			SuppliedEnvVars:  launchableStanza.Env,
 			EntryPoints:      entryPoints,
+			IsUUIDPod:        pod.uniqueKey != "",
 		}
 		ret.CgroupConfig.Name = ret.ServiceId
 		return ret.If(), nil

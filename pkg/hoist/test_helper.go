@@ -10,7 +10,15 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuilder) {
+func FakeHoistLaunchableForDirUUIDPod(dirName string) (*Launchable, *runit.ServiceBuilder) {
+	return fakeHoistLaunchableForDir(dirName, true)
+}
+
+func FakeHoistLaunchableForDirLegacyPod(dirName string) (*Launchable, *runit.ServiceBuilder) {
+	return fakeHoistLaunchableForDir(dirName, false)
+}
+
+func fakeHoistLaunchableForDir(dirName string, isUUIDPod bool) (*Launchable, *runit.ServiceBuilder) {
 	tempDir, _ := ioutil.TempDir("", "fakeenv")
 	launchableInstallDir := util.From(runtime.Caller(0)).ExpandPath(dirName)
 
@@ -23,6 +31,7 @@ func FakeHoistLaunchableForDir(dirName string) (*Launchable, *runit.ServiceBuild
 		P2Exec:      util.From(runtime.Caller(0)).ExpandPath("fake_p2-exec"),
 		Version:     "abc123",
 		EntryPoints: []string{"bin/launch"},
+		IsUUIDPod:   isUUIDPod,
 	}
 
 	curUser, err := user.Current()

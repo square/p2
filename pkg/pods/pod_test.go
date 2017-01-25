@@ -301,7 +301,7 @@ func TestBuildRunitServices(t *testing.T) {
 		LogExec:        runit.DefaultLogExec(),
 		FinishExec:     NopFinishExec,
 	}
-	hl, sb := hoist.FakeHoistLaunchableForDir("multiple_script_test_hoist_launchable")
+	hl, sb := hoist.FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
 	defer hoist.CleanupFakeLaunchable(hl, sb)
 	hl.RunAs = "testPod"
 	executables, err := hl.Executables(serviceBuilder)

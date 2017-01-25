@@ -40,6 +40,18 @@ type Launchable struct {
 	Location         *url.URL                   // URL to download the artifact from
 	VerificationData auth.VerificationData      // Paths to files used to verify the artifact
 	EntryPoints      []string                   // paths to entry points to launch under runit
+
+	// IsUUIDPod indicates whether the launchable is part of a "uuid pod"
+	// vs a "legacy pod". Currently this information is used for determining the name of the runit service directories to use
+	// for each of a pod's processes. UUID pods use the "new" naming scheme and legacy pods use the "old" naming scheme.
+	//
+	// Example old naming scheme:
+	// /var/service/some-pod__some-launchable__launch/
+	//
+	// Example new naming scheme (includes full relative path to entry point with
+	// slashes exchanged for double underscores):
+	// /var/service/some-pod-<uuid>__some-launchable__bin__launch/
+	IsUUIDPod bool
 }
 
 // LaunchAdapter adapts a hoist.Launchable to the launch.Launchable interface.
@@ -214,6 +226,17 @@ func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv runit.SV) e
 	return nil
 }
 
+// Executables() returns a list of the executables present in the launchable.
+// The podUniqueKey argument is a bit of a hack: If it is empty then the "old"
+// naming scheme for runit service directories will be used. Otherwise the
+// newer naming scheme will be used.
+//
+// Example old naming scheme:
+// /var/service/some-pod__some-launchable__launch/
+//
+// Example new naming scheme (includes full relative path to entry point with
+// slashes exchanged for double underscores):
+// /var/service/some-pod-<uuid>__some-launchable__bin__launch/
 func (hl *Launchable) Executables(
 	serviceBuilder *runit.ServiceBuilder,
 ) ([]launch.Executable, error) {
@@ -250,7 +273,12 @@ func (hl *Launchable) Executables(
 		}
 
 		for _, relativePath := range relativeExecutablePaths {
-			entryPointName := strings.Replace(relativePath, "/", "__", -1)
+			var entryPointName string
+			if hl.IsUUIDPod {
+				entryPointName = strings.Replace(relativePath, "/", "__", -1)
+			} else {
+				entryPointName = filepath.Base(relativePath)
+			}
 			serviceName := fmt.Sprintf("%s__%s", hl.ServiceId, entryPointName)
 
 			// Make sure we don't have two services with the same name
