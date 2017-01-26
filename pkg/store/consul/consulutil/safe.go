@@ -7,12 +7,7 @@ import (
 	"runtime"
 
 	"github.com/hashicorp/consul/api"
-
-	"github.com/square/p2/pkg/util/param"
 )
-
-// Show detailed error messages from Consul (use only when debugging)
-var showConsulErrors = param.Bool("show_consul_errors_unsafe", false)
 
 // KVError encapsulates an error in a Store operation. Errors returned from the
 // Consul API cannot be exposed because they may contain the URL of the request,
@@ -28,11 +23,7 @@ type KVError struct {
 
 // Error implements the error and "pkg/util".CallsiteError interfaces.
 func (err KVError) Error() string {
-	cerr := ""
-	if *showConsulErrors {
-		cerr = fmt.Sprintf(": %s", err.UnsafeError)
-	}
-	return fmt.Sprintf("%s failed for path %s%s", err.Op, err.Key, cerr)
+	return fmt.Sprintf("%s failed for path %s: %s", err.Op, err.Key, err.UnsafeError)
 }
 
 // LineNumber implements the "pkg/util".CallsiteError interface.
