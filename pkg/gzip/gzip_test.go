@@ -18,8 +18,6 @@ func testExtraction(t *testing.T, tarfile string,
 ) {
 	tarfile = path.Join("testdata", tarfile) // prefix with testdata so this is ignored by downstream dep management
 	tarPath := util.From(runtime.Caller(0)).ExpandPath(tarfile)
-	file, err := os.Open(tarPath)
-	Assert(t).IsNil(err, "expected no error opening file")
 
 	tmpdir, err := ioutil.TempDir("", "gziptest")
 	defer os.RemoveAll(tmpdir)
@@ -32,7 +30,7 @@ func testExtraction(t *testing.T, tarfile string,
 	user, err := user.Current()
 	Assert(t).IsNil(err, "expected no error getting current user")
 
-	err = ExtractTarGz(user.Username, file, dest)
+	err = ExtractTarGz(user.Username, tarPath, dest)
 
 	check(err, dest)
 }
@@ -47,6 +45,10 @@ func TestFileWithoutDir(t *testing.T) {
 }
 
 func TestSelfHardlink(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("bsdtar doesn't handle a selflink tarball")
+	}
+
 	testExtraction(t, "file_with_selflink.tar.gz", func(tarErr error, dest string) {
 		Assert(t).IsNil(tarErr, "expected no error extracting tarball")
 
