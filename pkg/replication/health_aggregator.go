@@ -22,6 +22,7 @@ func AggregateHealth(id types.PodID, checker checker.ConsulHealthChecker) *podHe
 		podId:   id,
 		checker: checker,
 		cond:    sync.NewCond(&sync.Mutex{}),
+		quit:    make(chan struct{}),
 	}
 	go p.beginWatch()
 
