@@ -9,21 +9,19 @@ import (
 	"github.com/hashicorp/consul/api"
 )
 
-// KVError encapsulates an error in a Store operation. Errors returned from the
-// Consul API cannot be exposed because they may contain the URL of the request,
-// which includes an ACL token as a query parameter.
+// KVError encapsulates a consul error
 type KVError struct {
-	Op          string
-	Key         string
-	UnsafeError error
-	filename    string
-	function    string
-	lineNumber  int
+	Op         string
+	Key        string
+	KVError    error
+	filename   string
+	function   string
+	lineNumber int
 }
 
 // Error implements the error and "pkg/util".CallsiteError interfaces.
 func (err KVError) Error() string {
-	return fmt.Sprintf("%s failed for path %s: %s", err.Op, err.Key, err.UnsafeError)
+	return fmt.Sprintf("%s failed for path %s: %s", err.Op, err.Key, err.KVError)
 }
 
 // LineNumber implements the "pkg/util".CallsiteError interface.
@@ -42,7 +40,7 @@ func (err KVError) Function() string {
 }
 
 // NewKVError constructs a new KVError to wrap errors from Consul.
-func NewKVError(op string, key string, unsafeError error) KVError {
+func NewKVError(op string, key string, err error) KVError {
 	var function string
 	// Skip one stack frame to get the file & line number of caller.
 	pc, file, line, ok := runtime.Caller(1)
@@ -50,12 +48,12 @@ func NewKVError(op string, key string, unsafeError error) KVError {
 		function = runtime.FuncForPC(pc).Name()
 	}
 	return KVError{
-		Op:          op,
-		Key:         key,
-		UnsafeError: unsafeError,
-		filename:    filepath.Base(file),
-		function:    function,
-		lineNumber:  line,
+		Op:         op,
+		Key:        key,
+		KVError:    err,
+		filename:   filepath.Base(file),
+		function:   function,
+		lineNumber: line,
 	}
 }
 
@@ -73,10 +71,10 @@ type listReply struct {
 	err       error
 }
 
-// SafeList performs a KV List operation that can be canceled. When the "done" channel is
+// List performs a KV List operation that can be canceled. When the "done" channel is
 // closed, CanceledError will be immediately returned. (The HTTP RPC can't be canceled,
 // but it will be ignored.) Errors from Consul will be wrapped in a KVError value.
-func SafeList(
+func List(
 	clientKV ConsulLister,
 	done <-chan struct{},
 	prefix string,
@@ -108,8 +106,8 @@ type getReply struct {
 	err       error
 }
 
-// Like SafeList, but for a single key instead of a list.
-func SafeGet(
+// Like List, but for a single key instead of a list.
+func Get(
 	clientKV ConsulGetter,
 	done <-chan struct{},
 	key string,
