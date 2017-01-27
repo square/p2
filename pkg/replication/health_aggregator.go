@@ -80,6 +80,19 @@ func (p *podHealth) GetHealth(host types.NodeName) (health.Result, bool) {
 	return h, ok
 }
 
+func (p *podHealth) NumHealthyOf(hosts []types.NodeName) int {
+	p.cond.L.Lock()
+	defer p.cond.L.Unlock()
+	count := 0
+	for _, host := range hosts {
+		h, ok := p.curHealth[host]
+		if ok && h.Status == health.Passing {
+			count++
+		}
+	}
+	return count
+}
+
 func (p *podHealth) Stop() {
 	close(p.quit)
 }

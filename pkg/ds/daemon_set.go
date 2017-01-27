@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
@@ -18,6 +19,7 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
+	"github.com/rcrowley/go-metrics"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -44,6 +46,8 @@ type DaemonSet interface {
 
 	// Returns a list of all nodes that are selected by this daemon set's selector
 	EligibleNodes() ([]types.NodeName, error)
+
+	MetricNames(suffix string) []string
 
 	// WatchDesires watches for changes to its daemon set, then schedule/unschedule
 	// pods to to the nodes that it is responsible for
@@ -170,6 +174,19 @@ func (ds *daemonSet) EligibleNodes() ([]types.NodeName, error) {
 	return ds.scheduler.EligibleNodes(ds.Manifest, ds.NodeSelector)
 }
 
+func (ds *daemonSet) MetricNames(suffix string) []string {
+	prefix := "daemonset"
+	middles := []string{
+		ds.PodID().String() + "." + ds.ClusterName().String(),
+		ds.ID().String(),
+	}
+	var ret []string
+	for _, middle := range middles {
+		ret = append(ret, fmt.Sprintf("%s.%s.%s", prefix, middle, suffix))
+	}
+	return ret
+}
+
 func (ds *daemonSet) WatchDesires(
 	quitCh <-chan struct{},
 	updatedCh <-chan *fields.DaemonSet,
@@ -235,6 +252,12 @@ func (ds *daemonSet) WatchDesires(
 				}
 				ds.DaemonSet = *newDS
 
+				if reportErr := ds.reportEligible(); reportErr != nil {
+					// An error in sending the metrics shouldn't stop us from doing updates.
+					// Report it, and move on.
+					ds.logger.WithError(reportErr).Warnf("Error reporting number of eligible nodes")
+				}
+
 				if ds.Disabled {
 					ds.cancelReplication()
 					continue
@@ -280,6 +303,11 @@ func (ds *daemonSet) WatchDesires(
 					// channel closed
 					return
 				}
+				if reportErr := ds.reportEligible(); reportErr != nil {
+					// An error in sending the metrics shouldn't stop us from doing updates.
+					// Report it, and move on.
+					ds.logger.WithError(reportErr).Warnf("Error reporting number of eligible nodes")
+				}
 				if ds.Disabled {
 					continue
 				}
@@ -308,6 +336,18 @@ func (ds *daemonSet) WatchDesires(
 	}()
 
 	return errCh
+}
+
+func (ds *daemonSet) reportEligible() error {
+	eligible, err := ds.EligibleNodes()
+	if err != nil {
+		return util.Errorf("Error retrieving eligible nodes for daemon set: %v", err)
+	}
+	for _, name := range ds.MetricNames("total") {
+		gauge := metrics.GetOrRegisterGauge(name, p2metrics.Registry)
+		gauge.Update(int64(len(eligible)))
+	}
+	return nil
 }
 
 // Watch for changes to nodes and sends update and delete signals

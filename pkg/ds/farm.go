@@ -15,6 +15,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	p2metrics "github.com/square/p2/pkg/metrics"
+	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
@@ -47,6 +48,7 @@ type Farm struct {
 
 	healthChecker *checker.ConsulHealthChecker
 
+	monitorHealth  bool
 	cachedPodMatch bool
 }
 
@@ -69,6 +71,7 @@ func NewFarm(
 	alerter alerting.Alerter,
 	healthChecker *checker.ConsulHealthChecker,
 	rateLimitInterval time.Duration,
+	monitorHealth bool,
 	cachedPodMatch bool,
 ) *Farm {
 	if alerter == nil {
@@ -87,6 +90,7 @@ func NewFarm(
 		alerter:           alerter,
 		healthChecker:     healthChecker,
 		rateLimitInterval: rateLimitInterval,
+		monitorHealth:     monitorHealth,
 		cachedPodMatch:    cachedPodMatch,
 	}
 }
@@ -563,6 +567,34 @@ func (dsf *Farm) spawnDaemonSet(
 	deletedCh := make(chan *ds_fields.DaemonSet)
 
 	desiresCh := ds.WatchDesires(quitSpawnCh, updatedCh, deletedCh)
+
+	if dsf.monitorHealth {
+		go func() {
+			aggregateHealth := replication.AggregateHealth(ds.PodID(), *dsf.healthChecker)
+			ticks := time.NewTicker(1 * time.Minute)
+
+			defer aggregateHealth.Stop()
+			defer ticks.Stop()
+
+			for {
+				select {
+				case <-quitSpawnCh:
+					return
+				case <-ticks.C:
+					eligible, err := ds.EligibleNodes()
+					if err != nil {
+						dsLogger.WithError(err).Warnf("Error finding eligible nodes; can't count healthy nodes")
+						continue
+					}
+					numHealthy := aggregateHealth.NumHealthyOf(eligible)
+					for _, name := range ds.MetricNames("healthy") {
+						gauge := metrics.GetOrRegisterGauge(name, p2metrics.Registry)
+						gauge.Update(int64(numHealthy))
+					}
+				}
+			}
+		}()
+	}
 
 	return &childDS{
 		ds:        ds,
