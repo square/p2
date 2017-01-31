@@ -68,19 +68,19 @@
 		},
 		{
 			"ImportPath": "github.com/circonus-labs/circonus-gometrics",
-			"Rev": "a7c30e0dcc6e2341053132470dcedc12bc7705ef"
+			"Rev": "d17a8420c36e800fcb46bbd4d2a15b93c68605ea"
 		},
 		{
 			"ImportPath": "github.com/circonus-labs/circonus-gometrics/api",
-			"Rev": "a7c30e0dcc6e2341053132470dcedc12bc7705ef"
+			"Rev": "d17a8420c36e800fcb46bbd4d2a15b93c68605ea"
 		},
 		{
 			"ImportPath": "github.com/circonus-labs/circonus-gometrics/checkmgr",
-			"Rev": "a7c30e0dcc6e2341053132470dcedc12bc7705ef"
+			"Rev": "d17a8420c36e800fcb46bbd4d2a15b93c68605ea"
 		},
 		{
 			"ImportPath": "github.com/circonus-labs/circonusllhist",
-			"Rev": "d724266ae5270ae8b87a5d2e8081f04e307c3c18"
+			"Rev": "365d370cc1459bdcaceda3499453668373dea1d0"
 		},
 		{
 			"ImportPath": "github.com/davecgh/go-spew/spew",
@@ -221,7 +221,7 @@
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
-			"Rev": "98fa357170587e470c5f27d3c3ea0947b71eb455"
+			"Rev": "8ee79997227bf9b34611aee7946ae64735e6fd93"
 		},
 		{
 			"ImportPath": "github.com/gorilla/context",
@@ -317,11 +317,11 @@
 		},
 		{
 			"ImportPath": "github.com/hashicorp/go-immutable-radix",
-			"Rev": "afc5a0dbb18abdf82c277a7bc01533e81fa1d6b8"
+			"Rev": "76b5f4e390910df355bfb9b16b41899538594a05"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/go-memdb",
-			"Rev": "98f52f52d7a476958fa9da671354d270c50661a7"
+			"Rev": "c01f56b44823e8ba697e23c18d12dca984b85aca"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/go-msgpack/codec",
@@ -337,7 +337,7 @@
 		},
 		{
 			"ImportPath": "github.com/hashicorp/go-retryablehttp",
-			"Rev": "886ce0458bc81ccca0fb7044c1be0e9ab590bed7"
+			"Rev": "6e85be8fee1dcaa02c0eaaac2df5a8fbecf94145"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/go-syslog",
@@ -405,7 +405,7 @@
 		},
 		{
 			"ImportPath": "github.com/hashicorp/memberlist",
-			"Rev": "0c5ba075f8520c65572f001331a1a43b756e01d7"
+			"Rev": "9800c50ab79c002353852a9b1095e9591b161513"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/net-rpc-msgpackrpc",
@@ -413,7 +413,7 @@
 		},
 		{
 			"ImportPath": "github.com/hashicorp/raft",
-			"Rev": "c69c15dd73b6695ba75b3502ce6b332cc0042c83"
+			"Rev": "aaad9f10266e089bd401e7a6487651a69275641b"
 		},
 		{
 			"ImportPath": "github.com/hashicorp/raft-boltdb",
@@ -563,35 +563,35 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
-			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
+			"Rev": "60c41d1de8da134c05b7b40154a9a82bf5b7edb9"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context/ctxhttp",
-			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
+			"Rev": "60c41d1de8da134c05b7b40154a9a82bf5b7edb9"
 		},
 		{
 			"ImportPath": "golang.org/x/net/http2",
-			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
+			"Rev": "60c41d1de8da134c05b7b40154a9a82bf5b7edb9"
 		},
 		{
 			"ImportPath": "golang.org/x/net/http2/hpack",
-			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
+			"Rev": "60c41d1de8da134c05b7b40154a9a82bf5b7edb9"
 		},
 		{
 			"ImportPath": "golang.org/x/net/idna",
-			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
+			"Rev": "60c41d1de8da134c05b7b40154a9a82bf5b7edb9"
 		},
 		{
 			"ImportPath": "golang.org/x/net/internal/timeseries",
-			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
+			"Rev": "60c41d1de8da134c05b7b40154a9a82bf5b7edb9"
 		},
 		{
 			"ImportPath": "golang.org/x/net/lex/httplex",
-			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
+			"Rev": "60c41d1de8da134c05b7b40154a9a82bf5b7edb9"
 		},
 		{
 			"ImportPath": "golang.org/x/net/trace",
-			"Rev": "b03f0d9a164ac99fff690e1e0bb0af36f760322b"
+			"Rev": "60c41d1de8da134c05b7b40154a9a82bf5b7edb9"
 		},
 		{
 			"ImportPath": "golang.org/x/sys/unix",
