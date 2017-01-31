@@ -28,6 +28,7 @@ const (
 func testReplicatorAndServer(t *testing.T) (Replicator, Store, consulutil.Fixture) {
 	active := 1
 	store, f := makeStore(t)
+	defer f.StopOnPanic()
 
 	healthChecker := fake_checker.HappyHealthChecker(testNodes)
 	threshold := health.Passing
@@ -52,6 +53,7 @@ func testReplicatorAndServer(t *testing.T) (Replicator, Store, consulutil.Fixtur
 
 func makeStore(t *testing.T) (Store, consulutil.Fixture) {
 	f := consulutil.NewFixture(t)
+	defer f.StopOnPanic()
 	store := consul.NewConsulStore(f.Client)
 	return store, f
 }

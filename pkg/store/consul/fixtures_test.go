@@ -18,6 +18,7 @@ type ConsulTestFixture struct {
 func NewConsulTestFixture(t *testing.T) *ConsulTestFixture {
 	f := new(ConsulTestFixture)
 	f.Fixture = consulutil.NewFixture(t)
+	defer f.Fixture.StopOnPanic()
 	f.Store = NewConsulStore(f.Client)
 	return f
 }
