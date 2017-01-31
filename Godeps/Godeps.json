@@ -298,6 +298,16 @@
 			"Rev": "50955793b0183f9de69bd78e2ec251cf20aab121"
 		},
 		{
+			"ImportPath": "google.golang.org/grpc/stats",
+			"Comment": "v1.0.5-14-g5095579",
+			"Rev": "50955793b0183f9de69bd78e2ec251cf20aab121"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc/tap",
+			"Comment": "v1.0.5-14-g5095579",
+			"Rev": "50955793b0183f9de69bd78e2ec251cf20aab121"
+		},
+		{
 			"ImportPath": "google.golang.org/grpc/transport",
 			"Comment": "v1.0.5-14-g5095579",
 			"Rev": "50955793b0183f9de69bd78e2ec251cf20aab121"
@@ -330,101 +340,6 @@
 			"ImportPath": "k8s.io/kubernetes/pkg/util/validation",
 			"Comment": "v1.2.0-alpha.4",
 			"Rev": "4a9b0fc7153c733832d70c9f6d0796db177643a6"
-		},
-		{
-			"ImportPath": "google.golang.org/grpc/stats",
-			"Comment": "v1.0.5-14-g5095579",
-			"Rev": "50955793b0183f9de69bd78e2ec251cf20aab121"
-		},
-		{
-			"ImportPath": "google.golang.org/grpc/tap",
-			"Comment": "v1.0.5-14-g5095579",
-			"Rev": "50955793b0183f9de69bd78e2ec251cf20aab121"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/armon/go-radix",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/golang-lru",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/hcl",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/golang-lru/simplelru",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/hcl/hcl/ast",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/hcl/hcl/parser",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/hcl/hcl/token",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/hcl/json/parser",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/hcl/hcl/scanner",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/hcl/hcl/strconv",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/hcl/json/scanner",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/hcl/json/token",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/go-cleanhttp",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/serf/coordinate",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/go-msgpack/codec",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/hashicorp/raft",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/consul/vendor/github.com/armon/go-metrics",
-			"Comment": "v0.7.3",
-			"Rev": "a90bb8f02183e12c312ddb4dfb2c7602fdbf4e12"
 		}
 	]
 }
