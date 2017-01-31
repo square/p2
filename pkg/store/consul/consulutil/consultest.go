@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/command/agent"
 	"github.com/hashicorp/consul/consul"
+	"github.com/hashicorp/consul/logger"
 	"github.com/hashicorp/consul/testutil"
 )
 
@@ -77,7 +78,9 @@ func NewFixture(t *testing.T) Fixture {
 	//
 	// config.ConsulConfig.RaftConfig.StartAsLeader = true
 
-	a, err := agent.Create(config, os.Stdout)
+	// mpuncel: don't really know what reloadCh is but tests pass if we don't do anything
+	reloadCh := make(chan chan error)
+	a, err := agent.Create(config, os.Stdout, logger.NewLogWriter(10), reloadCh)
 	if err != nil {
 		t.Fatal("creating Consul agent:", err)
 	}
