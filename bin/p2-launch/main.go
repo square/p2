@@ -34,7 +34,8 @@ var (
 		"deploy-policy",
 		"the deploy policy specifying who may deploy each pod. Only used when --auth-type is 'user'",
 	).Short('d').ExistingFile()
-	caFile = kingpin.Flag("tls-ca-file", "File containing the x509 PEM-encoded CA ").ExistingFile()
+	caFile              = kingpin.Flag("tls-ca-file", "File containing the x509 PEM-encoded CA ").ExistingFile()
+	artifactRegistryURL = kingpin.Flag("artifact-registry-url", "the artifact registry to fetch artifacts from").Short('r').URL()
 )
 
 func main() {
@@ -87,7 +88,7 @@ func main() {
 
 	fetcher := uri.BasicFetcher{Client: httpClient}
 	pod.Fetcher = fetcher
-	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(nil, fetcher, osversion.DefaultDetector))
+	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(*artifactRegistryURL, fetcher, osversion.DefaultDetector))
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)
 	}
