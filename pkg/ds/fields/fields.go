@@ -20,6 +20,10 @@ func (id ID) String() string {
 // Cluster name is where the DaemonSet lives on
 type ClusterName string
 
+func (cn ClusterName) String() string {
+	return string(cn)
+}
+
 // DaemonSet holds the runtime state of a Daemon Set as saved in Consul.
 type DaemonSet struct {
 	// UUID for this DaemonSet

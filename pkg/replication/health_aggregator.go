@@ -22,6 +22,7 @@ func AggregateHealth(id types.PodID, checker checker.ConsulHealthChecker) *podHe
 		podId:   id,
 		checker: checker,
 		cond:    sync.NewCond(&sync.Mutex{}),
+		quit:    make(chan struct{}),
 	}
 	go p.beginWatch()
 
@@ -77,6 +78,19 @@ func (p *podHealth) GetHealth(host types.NodeName) (health.Result, bool) {
 	defer p.cond.L.Unlock()
 	h, ok := p.curHealth[host]
 	return h, ok
+}
+
+func (p *podHealth) NumHealthyOf(hosts []types.NodeName) int {
+	p.cond.L.Lock()
+	defer p.cond.L.Unlock()
+	count := 0
+	for _, host := range hosts {
+		h, ok := p.curHealth[host]
+		if ok && h.Status == health.Passing {
+			count++
+		}
+	}
+	return count
 }
 
 func (p *podHealth) Stop() {
