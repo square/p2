@@ -55,8 +55,9 @@ var (
 	cmdGet = kingpin.Command(CmdGet, "Show a daemon set.")
 	getID  = cmdGet.Arg("id", "The uuid for the daemon set").Required().String()
 
-	cmdList = kingpin.Command(CmdList, "List daemon sets.")
-	listPod = cmdList.Flag("pod", "The pod ID of the daemon set").String()
+	cmdList  = kingpin.Command(CmdList, "List daemon sets.")
+	listPod  = cmdList.Flag("pod", "The pod ID of the daemon set").String()
+	listJSON = cmdList.Flag("json", "output the entire JSON object of each daemon set").Short('j').Bool()
 
 	cmdEnable = kingpin.Command(CmdEnable, "Enable daemon set.")
 	enableID  = cmdEnable.Arg("id", "The uuid for the daemon set").Required().String()
@@ -155,7 +156,16 @@ func main() {
 		podID := types.PodID(*listPod)
 		for _, ds := range dsList {
 			if *listPod == "" || podID == ds.PodID {
-				fmt.Printf("%s/%s:%s\n", ds.PodID, ds.Name, ds.ID)
+				if *listJSON {
+					bytes, err := json.Marshal(ds)
+					if err != nil {
+						log.Fatalf("could not marshal %s as json: %s", ds.ID, err)
+					}
+
+					fmt.Println(string(bytes))
+				} else {
+					fmt.Printf("%s/%s:%s\n", ds.PodID, ds.Name, ds.ID)
+				}
 			}
 		}
 
