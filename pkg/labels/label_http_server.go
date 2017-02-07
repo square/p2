@@ -64,13 +64,13 @@ func timeHandler(endpoint string, t Type, fn func(string)) {
 }
 
 func (l *labelHTTPServer) badRequest(resp http.ResponseWriter, endpoint string, err error) {
-	l.badRequest(resp, endpoint, err)
+	http.Error(resp, err.Error(), http.StatusBadRequest)
 	counter := metrics.GetOrRegisterCounter(fmt.Sprintf("%v-bad-requests", endpoint), p2metrics.Registry)
 	counter.Inc(1)
 }
 
 func (l *labelHTTPServer) unavailable(resp http.ResponseWriter, endpoint string, err error) {
-	l.badRequest(resp, endpoint, err)
+	http.Error(resp, err.Error(), http.StatusServiceUnavailable)
 	counter := metrics.GetOrRegisterCounter(fmt.Sprintf("%v-unavailable", endpoint), p2metrics.Registry)
 	counter.Inc(1)
 }
