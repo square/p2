@@ -308,7 +308,7 @@ func TestFarmSchedule(t *testing.T) {
 	defer preparer.Disable()
 
 	var allNodes []types.NodeName
-	allNodes = append(allNodes, "node1", "node2", "node3")
+	allNodes = append(allNodes, "node1", "node2", "node3", "node4")
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("good_node%v", i)
 		allNodes = append(allNodes, types.NodeName(nodeName))
@@ -373,10 +373,13 @@ func TestFarmSchedule(t *testing.T) {
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
-	// Make a third unschedulable node and verify it doesn't get scheduled by anything
-	applicator.SetLabel(labels.NODE, "node3", pc_fields.AvailabilityZoneLabel, "undefined")
+	// Make unschedulable nodes and verify they don't get scheduled by anything
+	applicator.SetLabel(labels.NODE, "node3", pc_fields.AvailabilityZoneLabel, "az3")
+	applicator.SetLabel(labels.NODE, "node4", pc_fields.AvailabilityZoneLabel, "undefined")
 
 	labeled, err = waitForPodLabel(applicator, false, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, false, "node4/testPod")
 	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 
 	// Now add 10 new nodes and verify that they are scheduled by the first daemon set
@@ -580,7 +583,7 @@ func TestMultipleFarms(t *testing.T) {
 	})
 
 	var allNodes []types.NodeName
-	allNodes = append(allNodes, "node1", "node2", "node3")
+	allNodes = append(allNodes, "node1", "node2", "node3", "node4")
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("good_node%v", i)
 		allNodes = append(allNodes, types.NodeName(nodeName))
@@ -669,10 +672,13 @@ func TestMultipleFarms(t *testing.T) {
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
-	// Make a third unschedulable node and verify it doesn't get scheduled by anything
-	applicator.SetLabel(labels.NODE, "node3", pc_fields.AvailabilityZoneLabel, "undefined")
+	// Make unschedulable nodes and verify they don't get scheduled by anything
+	applicator.SetLabel(labels.NODE, "node3", pc_fields.AvailabilityZoneLabel, "az3")
+	applicator.SetLabel(labels.NODE, "node4", pc_fields.AvailabilityZoneLabel, "undefined")
 
 	labeled, err = waitForPodLabel(applicator, false, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
+	labeled, err = waitForPodLabel(applicator, false, "node4/testPod")
 	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 
 	// Now add 10 new nodes and verify that they are scheduled by the first daemon set
