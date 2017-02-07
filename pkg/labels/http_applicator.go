@@ -247,6 +247,10 @@ func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type, ca
 		return []Labeled{}, err
 	}
 
+	if resp.StatusCode != 200 {
+		return nil, util.Errorf("got %d response from http label server: %s", resp.StatusCode, string(bodyData))
+	}
+
 	// try to unmarshal as a set of labeled objects.
 	var labeled []Labeled
 	err = json.Unmarshal(bodyData, &labeled)
