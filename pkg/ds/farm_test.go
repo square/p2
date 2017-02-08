@@ -911,6 +911,88 @@ func TestMultipleFarms(t *testing.T) {
 	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 }
 
+func TestFailsafe(t *testing.T) {
+	retryInterval = testFarmRetryInterval
+
+	//
+	// Instantiate farm
+	//
+	dsStore := dsstoretest.NewFake()
+	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
+	applicator := labels.NewFakeApplicator()
+	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"farm": "farmFailsafe",
+	})
+	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
+	preparer.Enable()
+	defer preparer.Disable()
+
+	allNodes := []types.NodeName{"node1"}
+	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+
+	dsf := &Farm{
+		dsStore:       dsStore,
+		store:         consulStore,
+		scheduler:     scheduler.NewApplicatorScheduler(applicator),
+		labeler:       applicator,
+		watcher:       applicator,
+		children:      make(map[ds_fields.ID]*childDS),
+		session:       consultest.NewSession(),
+		logger:        logger,
+		alerter:       alerting.NewNop(),
+		healthChecker: &happyHealthChecker,
+	}
+	quitCh := make(chan struct{})
+	defer close(quitCh)
+	go func() {
+		go dsf.cleanupDaemonSetPods(quitCh)
+		dsf.mainLoop(quitCh)
+	}()
+
+	// Make daemon set
+	podID := types.PodID("testPod")
+	minHealth := 0
+	clusterName := ds_fields.ClusterName("some_name")
+
+	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder.SetID(podID)
+	podManifest := manifestBuilder.GetManifest()
+
+	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
+	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
+	Assert(t).IsNil(err, "Expected no error creating request")
+	err = waitForCreate(dsf, dsData.ID)
+	Assert(t).IsNil(err, "Expected daemon set to be created")
+
+	// Make a node and verify that it was scheduled
+	applicator.SetLabel(labels.NODE, "node1", pc_fields.AvailabilityZoneLabel, "az1")
+
+	labeled, err := waitForPodLabel(applicator, true, "node1/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
+	dsID := labeled.Labels.Get(DSIDLabel)
+	Assert(t).AreEqual(dsData.ID.String(), dsID, "Unexpected dsID labeled")
+
+	// Delete daemon set. Nothing should happen.
+	dsStore.Delete(dsData.ID)
+	Assert(t).IsNil(err, "Expected no error deleting daemon set")
+	// don't call waitForDelete - the delete never happens because of the failsafe.
+
+	nodeDeleted := make(chan struct{})
+	go func() {
+		waitForPodLabel(applicator, false, "node1/testPod")
+		close(nodeDeleted)
+	}()
+
+	// We can't be sure that the node will never get deleted, but waiting some amount of time should be sufficient.
+	select {
+	// This time MUST be shorter than the time of waitForCondition
+	case <-time.After(2 * time.Second):
+		// Good, node is still there.
+	case <-nodeDeleted:
+		t.Fatalf("Node was unexpectedly deleted")
+	}
+}
+
 func waitForPodLabel(applicator labels.Applicator, hasDSIDLabel bool, podPath string) (labels.Labeled, error) {
 	var labeled labels.Labeled
 	var err error

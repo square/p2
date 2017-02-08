@@ -262,6 +262,11 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 		return
 	}
 
+	if changes.Total == 0 {
+		dsf.logger.Errorf("No daemon sets present, asked to delete %d; farm refuses to delete its %d daemon sets", len(changes.Deleted), len(dsf.children))
+		return
+	}
+
 	if len(changes.Created) > 0 {
 		dsf.logger.Infof("The following daemon sets have been created:")
 		for _, dsFields := range changes.Created {
