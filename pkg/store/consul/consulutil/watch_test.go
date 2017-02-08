@@ -490,6 +490,7 @@ func TestWatchDiff(t *testing.T) {
 	if !kvMatch(pairs, kv2a) {
 		t.Error("did not find new value")
 	}
+	Assert(t).AreEqual(changes.Total, 2, "Unexpected total")
 	Assert(t).AreEqual(len(changes.Created), 2, "Unexpected number of creates watched")
 	Assert(t).AreEqual(len(changes.Updated), 0, "Unexpected number of updates watched")
 	Assert(t).AreEqual(len(changes.Deleted), 0, "Unexpected number of deletes watched")
@@ -509,6 +510,7 @@ func TestWatchDiff(t *testing.T) {
 	if !kvMatch(pairs, kv1b) {
 		t.Error("value not updated")
 	}
+	Assert(t).AreEqual(changes.Total, 2, "Unexpected total")
 	Assert(t).AreEqual(len(changes.Created), 0, "Unexpected number of creates watched")
 	Assert(t).AreEqual(len(changes.Updated), 1, "Unexpected number of updates watched")
 	Assert(t).AreEqual(len(changes.Deleted), 0, "Unexpected number of deletes watched")
@@ -527,6 +529,7 @@ func TestWatchDiff(t *testing.T) {
 	if _, ok := pairs[kv1a.Key]; !ok {
 		t.Error("did not register deletion")
 	}
+	Assert(t).AreEqual(changes.Total, 1, "Unexpected total")
 	Assert(t).AreEqual(len(changes.Created), 0, "Unexpected number of creates watched")
 	Assert(t).AreEqual(len(changes.Updated), 0, "Unexpected number of updates watched")
 	Assert(t).AreEqual(len(changes.Deleted), 1, "Unexpected number of deletes watched")
@@ -553,6 +556,7 @@ func TestWatchDiff(t *testing.T) {
 	if !kvMatch(pairs, kv2b) {
 		t.Error("value not updated")
 	}
+	Assert(t).AreEqual(changes.Total, 2, "Unexpected total")
 	Assert(t).AreEqual(len(changes.Created), 1, "Unexpected number of creates watched")
 	Assert(t).AreEqual(len(changes.Updated), 1, "Unexpected number of updates watched")
 	Assert(t).AreEqual(len(changes.Deleted), 0, "Unexpected number of deletes watched")
@@ -575,6 +579,7 @@ func TestWatchDiff(t *testing.T) {
 	if _, ok := pairs[kv3a.Key]; ok {
 		t.Error("found a key with the wrong prefix")
 	}
+	Assert(t).AreEqual(changes.Total, 1, "Unexpected total")
 	Assert(t).AreEqual(len(changes.Created), 0, "Unexpected number of creates watched")
 	Assert(t).AreEqual(len(changes.Updated), 0, "Unexpected number of updates watched")
 	Assert(t).AreEqual(len(changes.Deleted), 1, "Unexpected number of deletes watched")
