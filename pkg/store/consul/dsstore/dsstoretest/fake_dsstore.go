@@ -234,6 +234,11 @@ func (s *FakeDSStore) watchDiffDaemonSets(inCh <-chan []fields.DaemonSet, quitCh
 				results = val
 			}
 
+			// match consulutil's behavior of doing nothing if results empty.
+			if len(results) == 0 {
+				continue
+			}
+
 			newDSs := make(map[fields.ID]fields.DaemonSet)
 			for _, ds := range results {
 				newDSs[ds.ID] = ds
