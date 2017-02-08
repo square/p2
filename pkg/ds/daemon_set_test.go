@@ -298,6 +298,11 @@ func TestSchedule(t *testing.T) {
 	numNodes = waitForNodes(t, ds, 23, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, 23, "took too long to schedule")
 
+	// Create a bogus DS so that deleting the real one doesn't trigger the failsafe.
+	nodeSelector = klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"bogus"})
+	_, err = dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
+	Assert(t).IsNil(err, "expected no error creating bogus DS")
+
 	//
 	// Deleting the daemon set should unschedule all of its nodes
 	//
