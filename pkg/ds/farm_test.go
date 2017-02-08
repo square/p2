@@ -397,10 +397,10 @@ func TestFarmSchedule(t *testing.T) {
 	}
 
 	//
-	// Update a daemon set's node selector and expect a node to be unscheduled
+	// Update a daemon set's node selector and expect one node to be scheduled, one to be unscheduled
 	//
 	mutator := func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
-		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
+		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az3"})
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
@@ -412,6 +412,11 @@ func TestFarmSchedule(t *testing.T) {
 	// Verify node2 is unscheduled
 	labeled, err = waitForPodLabel(applicator, false, "node2/testPod")
 	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
+	// Verify node3 is scheduled
+	labeled, err = waitForPodLabel(applicator, true, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
+	dsID = labeled.Labels.Get(DSIDLabel)
+	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
 	//
 	// Now update the node selector to schedule node2 again and verify
@@ -432,12 +437,12 @@ func TestFarmSchedule(t *testing.T) {
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
 	//
-	// Disabling a daemon set should not unschedule any nodes
+	// Disabling a daemon set should not schedule or unschedule any nodes
 	//
 	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
 		dsToUpdate.Disabled = true
 
-		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
+		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az3"})
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
@@ -457,6 +462,10 @@ func TestFarmSchedule(t *testing.T) {
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
+	// Verify node3 is unscheduled
+	labeled, err = waitForPodLabel(applicator, false, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
+
 	//
 	// Enable a daemon set should make the dameon set resume its regular activities
 	//
@@ -474,6 +483,11 @@ func TestFarmSchedule(t *testing.T) {
 	// Verify node2 is unscheduled
 	labeled, err = waitForPodLabel(applicator, false, "node2/testPod")
 	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
+	// Verify node3 is scheduled
+	labeled, err = waitForPodLabel(applicator, true, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
+	dsID = labeled.Labels.Get(DSIDLabel)
+	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 }
 
 func TestCleanupPods(t *testing.T) {
@@ -696,10 +710,10 @@ func TestMultipleFarms(t *testing.T) {
 	}
 
 	//
-	// Update a daemon set's node selector and expect a node to be unscheduled
+	// Update a daemon set's node selector and expect one node to be scheduled, one to be unscheduled
 	//
 	mutator := func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
-		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
+		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az3"})
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
@@ -711,6 +725,11 @@ func TestMultipleFarms(t *testing.T) {
 	// Verify node2 is unscheduled
 	labeled, err = waitForPodLabel(applicator, false, "node2/testPod")
 	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
+	// Verify node3 is scheduled
+	labeled, err = waitForPodLabel(applicator, true, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
+	dsID = labeled.Labels.Get(DSIDLabel)
+	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
 	//
 	// Now update the node selector to schedule node2 again and verify
@@ -730,14 +749,17 @@ func TestMultipleFarms(t *testing.T) {
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
+	// Verify node3 is unscheduled
+	labeled, err = waitForPodLabel(applicator, false, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 
 	//
-	// Disabling a daemon set should not unschedule any nodes
+	// Disabling a daemon set should not schedule or unschedule any nodes
 	//
 	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
 		dsToUpdate.Disabled = true
 
-		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
+		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az3"})
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
@@ -783,6 +805,9 @@ func TestMultipleFarms(t *testing.T) {
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
+	// Verify node3 is unscheduled
+	labeled, err = waitForPodLabel(applicator, false, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 
 	//
 	// Enable a daemon set should make the dameon set resume its regular activities
@@ -829,6 +854,11 @@ func TestMultipleFarms(t *testing.T) {
 	// Verify node2 is unscheduled
 	labeled, err = waitForPodLabel(applicator, false, "node2/testPod")
 	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
+	// Verify node3 is scheduled
+	labeled, err = waitForPodLabel(applicator, true, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
+	dsID = labeled.Labels.Get(DSIDLabel)
+	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 }
 
 func waitForPodLabel(applicator labels.Applicator, hasDSIDLabel bool, podPath string) (labels.Labeled, error) {
