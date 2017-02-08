@@ -435,7 +435,7 @@ func (ds *daemonSet) removePods() error {
 	// Get the difference in nodes that we need to unschedule on and then sort them
 	// for deterministic ordering
 	toUnscheduleSorted := types.NewNodeSet(currentNodes...).Difference(types.NewNodeSet(eligible...)).ListNodes()
-	ds.logger.NoFields().Infof("Need to unschedule %d nodes", len(toUnscheduleSorted))
+	ds.logger.NoFields().Infof("Need to unschedule %d nodes, remaining on %d nodes", len(toUnscheduleSorted), len(eligible))
 
 	ds.cancelReplication()
 
@@ -467,7 +467,7 @@ func (ds *daemonSet) clearPods() error {
 	// Get the difference in nodes that we need to unschedule on and then sort them
 	// for deterministic ordering
 	toUnscheduleSorted := types.NewNodeSet(currentNodes...).ListNodes()
-	ds.logger.NoFields().Infof("Need to unschedule %d nodes", len(toUnscheduleSorted))
+	ds.logger.NoFields().Infof("Deleted: Need to unschedule %d nodes", len(toUnscheduleSorted))
 
 	ds.cancelReplication()
 
