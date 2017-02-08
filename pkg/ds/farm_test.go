@@ -505,6 +505,15 @@ func TestFarmSchedule(t *testing.T) {
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
+
+	dsStore.Delete(anotherDSData.ID)
+	Assert(t).IsNil(err, "Expected no error deleting daemon set")
+	err = waitForDelete(dsf, anotherDSData.ID)
+	Assert(t).IsNil(err, "Expected daemon set to be deleted in farm")
+
+	// Verify node3 is unscheduled
+	labeled, err = waitForPodLabel(applicator, false, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 }
 
 func TestCleanupPods(t *testing.T) {
@@ -893,6 +902,13 @@ func TestMultipleFarms(t *testing.T) {
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
+
+	dsStore.Delete(anotherDSData.ID)
+	Assert(t).IsNil(err, "Expected no error deleting daemon set")
+
+	// Verify node3 is unscheduled
+	labeled, err = waitForPodLabel(applicator, false, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 }
 
 func waitForPodLabel(applicator labels.Applicator, hasDSIDLabel bool, podPath string) (labels.Labeled, error) {
@@ -956,6 +972,17 @@ func waitForCreate(dsf *Farm, dsID ds_fields.ID) error {
 			return nil
 		}
 		return util.Errorf("Farm does not have daemon set id")
+	}
+	return waitForCondition(condition)
+}
+
+// Polls for the farm to not have a daemon set with the ID.
+func waitForDelete(dsf *Farm, dsID ds_fields.ID) error {
+	condition := func() error {
+		if _, ok := dsf.children[dsID]; !ok {
+			return nil
+		}
+		return util.Errorf("Farm still has daemon set id")
 	}
 	return waitForCondition(condition)
 }
