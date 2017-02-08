@@ -488,6 +488,23 @@ func TestFarmSchedule(t *testing.T) {
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
+
+	// If no nodes are eligible, DS should take no action.
+	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
+		dsToUpdate.NodeSelector = someSelector
+		return dsToUpdate, nil
+	}
+	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	Assert(t).IsNil(err, "Expected no error mutating daemon set")
+	err = waitForMutateSelector(dsf, anotherDSData)
+	Assert(t).IsNil(err, "Expected daemon set to be mutated in farm")
+
+	// Verify node3 is still scheduled
+	labeled, err = waitForPodLabel(applicator, true, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
+	dsID = labeled.Labels.Get(DSIDLabel)
+	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 }
 
 func TestCleanupPods(t *testing.T) {
@@ -855,6 +872,23 @@ func TestMultipleFarms(t *testing.T) {
 	labeled, err = waitForPodLabel(applicator, false, "node2/testPod")
 	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
 	// Verify node3 is scheduled
+	labeled, err = waitForPodLabel(applicator, true, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
+	dsID = labeled.Labels.Get(DSIDLabel)
+	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
+
+	// If no nodes are eligible, DS should take no action.
+	mutator = func(dsToUpdate ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+		someSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
+		dsToUpdate.NodeSelector = someSelector
+		return dsToUpdate, nil
+	}
+	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	Assert(t).IsNil(err, "Expected no error mutating daemon set")
+	err = waitForMutateSelectorFarms(firstFarm, secondFarm, anotherDSData)
+	Assert(t).IsNil(err, "Expected daemon set to be mutated in farm")
+
+	// Verify node3 is still scheduled
 	labeled, err = waitForPodLabel(applicator, true, "node3/testPod")
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 	dsID = labeled.Labels.Get(DSIDLabel)

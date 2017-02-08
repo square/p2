@@ -397,7 +397,8 @@ func TestPublishToReplication(t *testing.T) {
 	scheduled = scheduledPods(t, ds)
 	Assert(t).AreEqual(len(scheduled), 2, "expected a node to have been labeled")
 
-	// Mutate the daemon set so that the node is unscheduled, this should not produce an error
+	// Mutate the daemon set so that no nodes are eligible.
+	// The mutation shouldn't produce an error, but the daemon set should when attempting to meet.
 	mutator := func(dsToChange ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
 		dsToChange.NodeSelector = klabels.Everything().
 			Add("nodeQuality", klabels.EqualsOperator, []string{"bad"})
@@ -408,11 +409,12 @@ func TestPublishToReplication(t *testing.T) {
 
 	select {
 	case <-time.After(1 * time.Second):
+		t.Fatal("Unexpectedly no error when no nodes are eligible")
 	case err := <-desiresErrCh:
-		t.Fatalf("Unexpected error unscheduling pod: %v", err)
+		Assert(t).IsNotNil(err, "Unexpectedly nil error when no nodes are eligible")
 	}
-	numNodes = waitForNodes(t, ds, 0, desiresErrCh, dsChangesErrCh)
-	Assert(t).AreEqual(numNodes, 0, "took too long to unschedule")
+	numNodes = waitForNodes(t, ds, 2, desiresErrCh, dsChangesErrCh)
+	Assert(t).AreEqual(numNodes, 2, "unexpectedly unscheduled")
 }
 
 // Polls for the store to have the same number of pods as the argument
