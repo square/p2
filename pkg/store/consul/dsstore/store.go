@@ -19,6 +19,7 @@ const dsTree string = "daemon_sets"
 var NoDaemonSet error = errors.New("No daemon set found")
 
 type WatchedDaemonSets struct {
+	Total   int
 	Created []*fields.DaemonSet
 	Updated []*fields.DaemonSet
 	Deleted []*fields.DaemonSet
