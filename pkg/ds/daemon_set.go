@@ -432,6 +432,10 @@ func (ds *daemonSet) removePods() error {
 		return util.Errorf("Error retrieving eligible nodes for daemon set: %v", err)
 	}
 
+	if len(eligible) == 0 {
+		return util.Errorf("No nodes eligible; daemon set refuses to unschedule everything.")
+	}
+
 	// Get the difference in nodes that we need to unschedule on and then sort them
 	// for deterministic ordering
 	toUnscheduleSorted := types.NewNodeSet(currentNodes...).Difference(types.NewNodeSet(eligible...)).ListNodes()
