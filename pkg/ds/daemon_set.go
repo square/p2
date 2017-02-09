@@ -6,6 +6,7 @@ import (
 	"os/user"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
@@ -275,27 +276,10 @@ func (ds *daemonSet) WatchDesires(
 
 			case deleteDS, ok := <-deletedCh:
 				if !ok {
-					// channel closed
 					return
 				}
-				ds.logger.NoFields().Infof("Received daemon set delete signal: %v", deleteDS)
-				if deleteDS == nil {
-					ds.logger.Errorf("Unexpected nil daemon set during delete")
-					return
-				}
-				if ds.ID() != deleteDS.ID {
-					err = util.Errorf("Expected uuid to be the same, expected '%v', got '%v'", ds.ID(), deleteDS.ID)
-					continue
-				}
-
-				err = ds.clearPods()
-				if err != nil {
-					err = util.Errorf("Unable to clear pods from intent tree: %v", err)
-					select {
-					case errCh <- err:
-					case <-quitCh:
-					}
-				}
+				// Deleting a daemon sets has no effect
+				ds.logger.WithFields(logrus.Fields{"id": deleteDS, "node_selector": ds.NodeSelector.String()}).Infof("Daemon Set Deletion is disabled and has no effect. You may want to clean this up manually.")
 				return
 
 			case labeledChanges, ok := <-nodesChangedCh:

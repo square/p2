@@ -295,8 +295,9 @@ func TestSchedule(t *testing.T) {
 	Assert(t).IsNil(err, "Unxpected error trying to mutate daemon set")
 
 	// 11 good nodes 11 bad nodes, and 1 good cherry picked node = 23 nodes
-	numNodes = waitForNodes(t, ds, 23, desiresErrCh, dsChangesErrCh)
-	Assert(t).AreEqual(numNodes, 23, "took too long to schedule")
+	expectedNodes := 23
+	numNodes = waitForNodes(t, ds, expectedNodes, desiresErrCh, dsChangesErrCh)
+	Assert(t).AreEqual(numNodes, expectedNodes, "took too long to schedule")
 
 	//
 	// Deleting the daemon set should unschedule all of its nodes
@@ -306,13 +307,14 @@ func TestSchedule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unable to delete daemon set: %v", err)
 	}
-	numNodes = waitForNodes(t, ds, 0, desiresErrCh, dsChangesErrCh)
-	Assert(t).AreEqual(numNodes, 0, "took too long to unschedule")
+	// Behaivour change: Deleting a daemon set will no longer unschedule its pods (for now)
+	numNodes = waitForNodes(t, ds, expectedNodes, desiresErrCh, dsChangesErrCh)
+	Assert(t).AreEqual(numNodes, expectedNodes, "Unexpected number of nodes scheduled")
 
 	scheduled = scheduledPods(t, ds)
-	Assert(t).AreEqual(len(scheduled), 0, "expected all nodes to have been unlabeled")
+	Assert(t).AreEqual(len(scheduled), expectedNodes, "Expected no nodes to be unscheduled")
 
-	err = waitForPodsInIntent(consulStore, 0)
+	err = waitForPodsInIntent(consulStore, 9)
 	Assert(t).IsNil(err, "Unexpected number of pods scheduled")
 }
 

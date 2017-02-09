@@ -512,8 +512,9 @@ func TestFarmSchedule(t *testing.T) {
 	Assert(t).IsNil(err, "Expected daemon set to be deleted in farm")
 
 	// Verify node3 is unscheduled
-	labeled, err = waitForPodLabel(applicator, false, "node3/testPod")
-	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
+	// Behaviour change! Daemon Set deletions do not delete their pods (for now)
+	labeled, err = waitForPodLabel(applicator, true, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 }
 
 func TestCleanupPods(t *testing.T) {
@@ -907,8 +908,9 @@ func TestMultipleFarms(t *testing.T) {
 	Assert(t).IsNil(err, "Expected no error deleting daemon set")
 
 	// Verify node3 is unscheduled
-	labeled, err = waitForPodLabel(applicator, false, "node3/testPod")
-	Assert(t).IsNil(err, "Expected pod not to have a dsID label")
+	// Behaviour change! Daemon Set deletions do not delete their pods (for now)
+	labeled, err = waitForPodLabel(applicator, true, "node3/testPod")
+	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 }
 
 func waitForPodLabel(applicator labels.Applicator, hasDSIDLabel bool, podPath string) (labels.Labeled, error) {
