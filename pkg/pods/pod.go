@@ -181,6 +181,10 @@ func (pod *Pod) Launch(manifest manifest.Manifest) (bool, error) {
 	}
 
 	err = pod.buildRunitServices(launchables, manifest)
+	if err != nil {
+		pod.logger.WithError(err).Errorln("unable to write servicebuilder files for pod")
+		return false, err
+	}
 
 	success := true
 	for _, launchable := range launchables {
