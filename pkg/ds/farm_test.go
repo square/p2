@@ -506,7 +506,7 @@ func TestFarmSchedule(t *testing.T) {
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
-	dsStore.Delete(anotherDSData.ID)
+	err = dsStore.Delete(anotherDSData.ID)
 	Assert(t).IsNil(err, "Expected no error deleting daemon set")
 	err = waitForDelete(dsf, anotherDSData.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be deleted in farm")
@@ -904,7 +904,7 @@ func TestMultipleFarms(t *testing.T) {
 	dsID = labeled.Labels.Get(DSIDLabel)
 	Assert(t).AreEqual(anotherDSData.ID.String(), dsID, "Unexpected dsID labeled")
 
-	dsStore.Delete(anotherDSData.ID)
+	err = dsStore.Delete(anotherDSData.ID)
 	Assert(t).IsNil(err, "Expected no error deleting daemon set")
 
 	// Verify node3 is unscheduled
