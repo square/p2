@@ -27,13 +27,6 @@ const (
 	testDSRetryInterval = time.Duration(1000 * time.Millisecond)
 )
 
-func labeledPods(t *testing.T, ds *daemonSet) []labels.Labeled {
-	selector := klabels.Everything().Add(DSIDLabel, klabels.EqualsOperator, []string{ds.ID().String()})
-	labeled, err := ds.applicator.GetMatches(selector, labels.POD, false)
-	Assert(t).IsNil(err, "expected no error matching pods")
-	return labeled
-}
-
 func waitForNodes(
 	t *testing.T,
 	ds DaemonSet,
@@ -302,8 +295,8 @@ func TestSchedule(t *testing.T) {
 	//
 	// Deleting the daemon set should unschedule all of its nodes
 	//
-	// beforeDeletePods := labeledPods(t, ds)
-	Assert(t).IsNil(err, "Unexpected number of pods labeled")
+	beforeDeletePods, _, err := scheduledPods(consulStore)
+	Assert(t).IsNil(err, "Unable to list intent/")
 	ds.logger.NoFields().Info("Deleting daemon set...")
 	err = dsStore.Delete(ds.ID())
 	if err != nil {
@@ -316,7 +309,7 @@ func TestSchedule(t *testing.T) {
 	labeled = labeledPods(t, ds)
 	Assert(t).AreEqual(len(labeled), expectedNodes, "Expected no nodes to be unlabeled")
 
-	err = waitForPodsInIntent(consulStore, len(labeled))
+	err = waitForPodsInIntent(consulStore, len(beforeDeletePods))
 	Assert(t).IsNil(err, "Unexpected number of pods labeled")
 }
 
@@ -431,7 +424,7 @@ func waitForPodsInIntent(consulStore *consultest.FakePodStore, numPodsExpected i
 		if len(manifestResults) != numPodsExpected {
 			fmt.Printf("%d : %v\n\n", len(manifestResults), manifestResults)
 			return util.Errorf(
-				"Expected no manifests to be labeled, got '%v' manifests, expected '%v'",
+				"Expected no manifests to be scheduled, got '%v' manifests, expected '%v'",
 				len(manifestResults),
 				numPodsExpected,
 			)
@@ -463,4 +456,15 @@ func waitForSpecificPod(consulStore *consultest.FakePodStore, nodeName types.Nod
 		return nil
 	}
 	return waitForCondition(condition)
+}
+
+func labeledPods(t *testing.T, ds *daemonSet) []labels.Labeled {
+	selector := klabels.Everything().Add(DSIDLabel, klabels.EqualsOperator, []string{ds.ID().String()})
+	labeled, err := ds.applicator.GetMatches(selector, labels.POD, false)
+	Assert(t).IsNil(err, "expected no error matching pods")
+	return labeled
+}
+
+func scheduledPods(consulStore *consultest.FakePodStore) ([]consul.ManifestResult, time.Duration, error) {
+	return consulStore.AllPods(consul.INTENT_TREE)
 }
