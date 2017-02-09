@@ -454,6 +454,12 @@ func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) 
 				s.logger.WithError(curResults.Err).Errorln("Could not sync pod clusters")
 				continue
 			}
+
+			if len(curResults.Clusters) == 0 {
+				s.logger.Warnln("could not sync pod clusters because watch returned 0 pod clusters")
+				continue
+			}
+
 			// zip up the previous and current results, act based on the difference.
 			zipped := s.zipResults(curResults, prevResults)
 			for id, change := range zipped {

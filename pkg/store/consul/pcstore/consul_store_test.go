@@ -921,6 +921,8 @@ type RecordingSyncer struct {
 	// Used to signal when SyncCluster is called so tests can have non-racey
 	// timeouts
 	SyncSignal chan<- struct{}
+	// Used to signal when DeleteCluster is called
+	DeleteSignal chan<- struct{}
 }
 
 func (r *RecordingSyncer) GetInitialClusters() ([]fields.ID, error) {
@@ -937,6 +939,9 @@ func (r *RecordingSyncer) SyncCluster(pc *fields.PodCluster, labeledPods []label
 
 func (r *RecordingSyncer) DeleteCluster(id fields.ID) error {
 	r.DeleteClusterCalls = append(r.DeleteClusterCalls, id)
+	if r.DeleteSignal != nil {
+		r.DeleteSignal <- struct{}{}
+	}
 	return nil
 }
 
@@ -1012,6 +1017,126 @@ func TestWatchAndSync(t *testing.T) {
 		if !found {
 			t.Fatalf("Expected sync to be called for %s but it wasn't. Called for %s", expectedID, syncer.SyncClusterCalls)
 		}
+	}
+}
+
+func TestWatchAndSyncWithDelete(t *testing.T) {
+	store := consulStoreWithFakeKV()
+	quit := make(chan struct{})
+	defer close(quit)
+	syncSignal := make(chan struct{})
+	defer close(syncSignal)
+	deleteSignal := make(chan struct{})
+	defer close(deleteSignal)
+
+	example := examplePodCluster()
+	pc1, err := store.Create(
+		example.PodID,
+		example.AvailabilityZone,
+		"name1",
+		example.PodSelector,
+		example.Annotations,
+		consultest.NewSession(),
+	)
+	if err != nil {
+		t.Fatalf("Couldn't create test pod cluster: %s", err)
+	}
+
+	// Include two pod clusters as initial, but we only created one. we
+	// should see a delete call for the second
+	syncer := &RecordingSyncer{
+		InitialClusters: []fields.ID{pc1.ID, "some_other_ID"},
+		SyncSignal:      syncSignal,
+		DeleteSignal:    deleteSignal,
+	}
+
+	go func() {
+		err := store.WatchAndSync(syncer, quit)
+		if err != nil {
+			t.Fatalf("Couldn't start WatchAndSync(): %s", err)
+		}
+	}()
+
+	// We want a sync for pc
+	expectedSyncCount := 1
+	actualSyncCount := 0
+	for actualSyncCount < expectedSyncCount {
+		select {
+		case <-time.After(1 * time.Second):
+			t.Fatalf("Timed out waiting for sync to happen, there were %d syncs: %s", actualSyncCount, syncer.SyncClusterCalls)
+		case <-syncSignal:
+			actualSyncCount++
+		}
+	}
+
+	found := false
+	for _, id := range syncer.SyncClusterCalls {
+		if id == pc1.ID {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Fatalf("Expected sync to be called for %s but it wasn't. Called for %s", pc1.ID, syncer.SyncClusterCalls)
+	}
+
+	// We want a delete for "some_other_ID"
+	expectedDeleteCount := 1
+	actualDeleteCount := 0
+	for actualDeleteCount < expectedDeleteCount {
+		select {
+		case <-time.After(1 * time.Second):
+			t.Fatalf("Timed out waiting for delete to happen, there were %d delete: %s", actualDeleteCount, syncer.DeleteClusterCalls)
+		case <-deleteSignal:
+			actualDeleteCount++
+		}
+	}
+
+	found = false
+	for _, id := range syncer.DeleteClusterCalls {
+		if id == "some_other_ID" {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Fatalf("Expected sync to be called for %s but it wasn't. Called for %s", "some_other_ID", syncer.DeleteClusterCalls)
+	}
+}
+
+// Tests that we don't delete any clusters when we find none as a failsafe
+func TestWatchAndSyncFailsafe(t *testing.T) {
+	store := consulStoreWithFakeKV()
+	quit := make(chan struct{})
+	defer close(quit)
+	syncSignal := make(chan struct{})
+	defer close(syncSignal)
+	deleteSignal := make(chan struct{})
+	defer close(deleteSignal)
+
+	// Include two initial clusters, but don't actually put any in the
+	// store. We shouldn't see any delete calls because of the failsafe
+	// protection against empty pod cluster set
+	syncer := &RecordingSyncer{
+		InitialClusters: []fields.ID{"some_id", "some_other_ID"},
+		DeleteSignal:    deleteSignal,
+	}
+
+	go func() {
+		err := store.WatchAndSync(syncer, quit)
+		if err != nil {
+			t.Fatalf("Couldn't start WatchAndSync(): %s", err)
+		}
+	}()
+
+	select {
+	case <-time.After(1 * time.Second):
+	case <-deleteSignal:
+		t.Errorf("didn't expect any pod cluster deletions due to failsafe but got at least one for %s", syncer.DeleteClusterCalls)
+	case <-syncSignal:
+		t.Errorf("didn't expect any pod cluster sync calls due to failsafe but got at least one for %s", syncer.SyncClusterCalls)
 	}
 }
 
