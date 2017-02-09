@@ -263,10 +263,8 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 	}
 
 	if len(changes.Created) > 0 {
-		dsf.logger.Infof("The following daemon sets have been created:")
+		dsf.logger.Infof("The following %d daemon sets have been created: %s", len(changes.Created), dsIDs(changes.Created))
 		for _, dsFields := range changes.Created {
-			dsf.logger.Infof("%v", *dsFields)
-
 			var dsUnlocker consulutil.Unlocker
 			var err error
 			dsLogger := dsf.makeDSLogger(*dsFields)
@@ -318,10 +316,8 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 	}
 
 	if len(changes.Updated) > 0 {
-		dsf.logger.Infof("The following daemon sets have been updated:")
+		dsf.logger.Infof("The following %d daemon sets have been updated: %s", len(changes.Updated), dsIDs(changes.Updated))
 		for _, dsFields := range changes.Updated {
-			dsf.logger.Infof("%v", *dsFields)
-
 			dsLogger := dsf.makeDSLogger(*dsFields)
 
 			if _, ok := dsf.children[dsFields.ID]; !ok {
@@ -362,7 +358,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 	}
 
 	if len(changes.Deleted) > 0 {
-		dsf.logger.Infof("The following daemon sets have been deleted:")
+		dsf.logger.Infof("The following %d daemon sets have been deleted: %s", len(changes.Deleted), dsIDs(changes.Deleted))
 		for _, dsFields := range changes.Deleted {
 			dsf.logger.Infof("%v", *dsFields)
 
@@ -404,6 +400,16 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 			}
 		}
 	}
+}
+
+func dsIDs(dss []*ds_fields.DaemonSet) []ds_fields.ID {
+	var ids []ds_fields.ID
+	for _, ds := range dss {
+		if ds != nil {
+			ids = append(ids, ds.ID)
+		}
+	}
+	return ids
 }
 
 func (dsf *Farm) makeDSLogger(dsFields ds_fields.DaemonSet) logging.Logger {
