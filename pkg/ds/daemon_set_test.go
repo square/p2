@@ -27,7 +27,7 @@ const (
 	testDSRetryInterval = time.Duration(1000 * time.Millisecond)
 )
 
-func scheduledPods(t *testing.T, ds *daemonSet) []labels.Labeled {
+func labeledPods(t *testing.T, ds *daemonSet) []labels.Labeled {
 	selector := klabels.Everything().Add(DSIDLabel, klabels.EqualsOperator, []string{ds.ID().String()})
 	labeled, err := ds.applicator.GetMatches(selector, labels.POD, false)
 	Assert(t).IsNil(err, "expected no error matching pods")
@@ -179,11 +179,11 @@ func TestSchedule(t *testing.T) {
 		false,
 	).(*daemonSet)
 
-	scheduled := scheduledPods(t, ds)
-	Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
+	labeled := labeledPods(t, ds)
+	Assert(t).AreEqual(len(labeled), 0, "expected no pods to have been labeled")
 
 	err = waitForPodsInIntent(consulStore, 0)
-	Assert(t).IsNil(err, "Unexpected number of pods scheduled")
+	Assert(t).IsNil(err, "Unexpected number of pods labeled")
 
 	err = applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -204,18 +204,18 @@ func TestSchedule(t *testing.T) {
 	dsChangesErrCh := watchDSChanges(ds, dsStore, quitCh, updatedCh, deletedCh)
 
 	//
-	// Verify that the pod has been scheduled
+	// Verify that the pod has been labeled
 	//
 	numNodes := waitForNodes(t, ds, 1, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
 
-	scheduled = scheduledPods(t, ds)
-	Assert(t).AreEqual(len(scheduled), 1, "expected a node to have been labeled")
-	Assert(t).AreEqual(scheduled[0].ID, "node2/testPod", "expected node labeled with the daemon set's id")
+	labeled = labeledPods(t, ds)
+	Assert(t).AreEqual(len(labeled), 1, "expected a node to have been labeled")
+	Assert(t).AreEqual(labeled[0].ID, "node2/testPod", "expected node labeled with the daemon set's id")
 
-	// Verify that the scheduled pod is correct
+	// Verify that the labeled pod is correct
 	err = waitForSpecificPod(consulStore, "node2", types.PodID("testPod"))
-	Assert(t).IsNil(err, "Unexpected pod scheduled")
+	Assert(t).IsNil(err, "Unexpected pod labeled")
 
 	//
 	// Add 10 good nodes and 10 bad nodes then verify
@@ -236,8 +236,8 @@ func TestSchedule(t *testing.T) {
 	numNodes = waitForNodes(t, ds, 11, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, 11, "took too long to schedule")
 
-	scheduled = scheduledPods(t, ds)
-	Assert(t).AreEqual(len(scheduled), 11, "expected a lot of nodes to have been labeled")
+	labeled = labeledPods(t, ds)
+	Assert(t).AreEqual(len(labeled), 11, "expected a lot of nodes to have been labeled")
 
 	//
 	// Add a node with the labels nodeQuality=good and cherry=pick
@@ -264,9 +264,9 @@ func TestSchedule(t *testing.T) {
 	numNodes = waitForNodes(t, ds, 1, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
 
-	// Verify that the scheduled pod is correct
+	// Verify that the labeled pod is correct
 	err = waitForSpecificPod(consulStore, "nodeOk", types.PodID("testPod"))
-	Assert(t).IsNil(err, "Unexpected pod scheduled")
+	Assert(t).IsNil(err, "Unexpected pod labeled")
 
 	//
 	// Disabling the daemon set and making a change should not do anything
@@ -302,20 +302,22 @@ func TestSchedule(t *testing.T) {
 	//
 	// Deleting the daemon set should unschedule all of its nodes
 	//
+	// beforeDeletePods := labeledPods(t, ds)
+	Assert(t).IsNil(err, "Unexpected number of pods labeled")
 	ds.logger.NoFields().Info("Deleting daemon set...")
 	err = dsStore.Delete(ds.ID())
 	if err != nil {
 		t.Fatalf("Unable to delete daemon set: %v", err)
 	}
 	// Behaivour change: Deleting a daemon set will no longer unschedule its pods (for now)
-	numNodes = waitForNodes(t, ds, expectedNodes, desiresErrCh, dsChangesErrCh)
-	Assert(t).AreEqual(numNodes, expectedNodes, "Unexpected number of nodes scheduled")
+	numNodes = waitForNodes(t, ds, 12, desiresErrCh, dsChangesErrCh)
+	Assert(t).AreEqual(numNodes, expectedNodes, "Unexpected number of nodes labeled")
 
-	scheduled = scheduledPods(t, ds)
-	Assert(t).AreEqual(len(scheduled), expectedNodes, "Expected no nodes to be unscheduled")
+	labeled = labeledPods(t, ds)
+	Assert(t).AreEqual(len(labeled), expectedNodes, "Expected no nodes to be unlabeled")
 
-	err = waitForPodsInIntent(consulStore, 9)
-	Assert(t).IsNil(err, "Unexpected number of pods scheduled")
+	err = waitForPodsInIntent(consulStore, len(labeled))
+	Assert(t).IsNil(err, "Unexpected number of pods labeled")
 }
 
 func TestPublishToReplication(t *testing.T) {
@@ -367,10 +369,10 @@ func TestPublishToReplication(t *testing.T) {
 		false,
 	).(*daemonSet)
 
-	scheduled := scheduledPods(t, ds)
-	Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
+	labeled := labeledPods(t, ds)
+	Assert(t).AreEqual(len(labeled), 0, "expected no pods to have been labeled")
 	err = waitForPodsInIntent(consulStore, 0)
-	Assert(t).IsNil(err, "Unexpected number of pods scheduled")
+	Assert(t).IsNil(err, "Unexpected number of pods labeled")
 
 	err = applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -391,13 +393,13 @@ func TestPublishToReplication(t *testing.T) {
 	dsChangesErrCh := watchDSChanges(ds, dsStore, quitCh, updatedCh, deletedCh)
 
 	//
-	// Verify that 2 pods have been scheduled
+	// Verify that 2 pods have been labeled
 	//
 	numNodes := waitForNodes(t, ds, 2, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, 2, "took too long to schedule")
 
-	scheduled = scheduledPods(t, ds)
-	Assert(t).AreEqual(len(scheduled), 2, "expected a node to have been labeled")
+	labeled = labeledPods(t, ds)
+	Assert(t).AreEqual(len(labeled), 2, "expected a node to have been labeled")
 
 	// Mutate the daemon set so that no nodes are eligible.
 	// The mutation shouldn't produce an error, but the daemon set should when attempting to meet.
@@ -416,7 +418,7 @@ func TestPublishToReplication(t *testing.T) {
 		Assert(t).IsNotNil(err, "Unexpectedly nil error when no nodes are eligible")
 	}
 	numNodes = waitForNodes(t, ds, 2, desiresErrCh, dsChangesErrCh)
-	Assert(t).AreEqual(numNodes, 2, "unexpectedly unscheduled")
+	Assert(t).AreEqual(numNodes, 2, "unexpectedly unlabeled")
 }
 
 // Polls for the store to have the same number of pods as the argument
@@ -427,8 +429,9 @@ func waitForPodsInIntent(consulStore *consultest.FakePodStore, numPodsExpected i
 			return util.Errorf("Unable to get all pods from pod store: %v", err)
 		}
 		if len(manifestResults) != numPodsExpected {
+			fmt.Printf("%d : %v\n\n", len(manifestResults), manifestResults)
 			return util.Errorf(
-				"Expected no manifests to be scheduled, got '%v' manifests, expected '%v'",
+				"Expected no manifests to be labeled, got '%v' manifests, expected '%v'",
 				len(manifestResults),
 				numPodsExpected,
 			)
@@ -449,10 +452,10 @@ func waitForSpecificPod(consulStore *consultest.FakePodStore, nodeName types.Nod
 			return util.Errorf("expected a manifest in the intent tree")
 		}
 		if manifestResults[0].PodLocation.Node != nodeName {
-			return util.Errorf("expected manifest scheduled on the right node")
+			return util.Errorf("expected manifest labeled on the right node")
 		}
 		if manifestResults[0].PodLocation.PodID != podID {
-			return util.Errorf("expected manifest scheduled with correct pod ID")
+			return util.Errorf("expected manifest labeled with correct pod ID")
 		}
 		if manifestResults[0].Manifest.ID() != podID {
 			return util.Errorf("expected manifest with correct ID")
