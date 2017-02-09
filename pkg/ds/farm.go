@@ -371,7 +371,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 			dsLogger := dsf.makeDSLogger(*dsFields)
 
 			if child, ok = dsf.children[dsFields.ID]; !ok {
-				_, err := dsf.dsStore.LockForOwnership(dsFields.ID, dsf.session)
+				dsUnlocker, err := dsf.dsStore.LockForOwnership(dsFields.ID, dsf.session)
 				if _, ok := err.(consulutil.AlreadyLockedError); ok {
 					dsf.logger.Infof("Lock on daemon set '%v' was already acquired by another farm", dsFields.ID)
 					if err != nil {
@@ -382,6 +382,11 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 				} else if err != nil {
 					dsf.handleSessionExpiry(*dsFields, dsLogger, err)
 					return
+				} else {
+					// We have to spawn the daemon set, so that it can act on its deletion.
+					// Otherwise, child is nil when we reach the below select.
+					child = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger)
+					dsf.children[dsFields.ID] = child
 				}
 				dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
 			}
