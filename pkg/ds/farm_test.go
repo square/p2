@@ -512,7 +512,7 @@ func TestFarmSchedule(t *testing.T) {
 	Assert(t).IsNil(err, "Expected daemon set to be deleted in farm")
 
 	// Verify node3 is unscheduled
-	// Behaviour change! Daemon Set deletions do not delete their pods (for now)
+	// behavior change: Daemon Set deletions do not delete their pods (for now)
 	labeled, err = waitForPodLabel(applicator, true, "node3/testPod")
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 }
@@ -908,7 +908,7 @@ func TestMultipleFarms(t *testing.T) {
 	Assert(t).IsNil(err, "Expected no error deleting daemon set")
 
 	// Verify node3 is unscheduled
-	// Behaviour change! Daemon Set deletions do not delete their pods (for now)
+	// behavior change: Daemon Set deletions do not delete their pods (for now)
 	labeled, err = waitForPodLabel(applicator, true, "node3/testPod")
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 }

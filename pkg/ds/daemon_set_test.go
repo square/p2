@@ -302,7 +302,7 @@ func TestSchedule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unable to delete daemon set: %v", err)
 	}
-	// Behaivour change: Deleting a daemon set will no longer unschedule its pods (for now)
+	// behavior change: Deleting a daemon set will no longer unschedule its pods (for now)
 	numNodes = waitForNodes(t, ds, 12, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, expectedNodes, "Unexpected number of nodes labeled")
 
