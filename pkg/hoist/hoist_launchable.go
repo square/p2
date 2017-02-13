@@ -102,14 +102,26 @@ func (hl *Launchable) Stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) er
 }
 
 func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
-	err := hl.start(serviceBuilder, sv)
-	if err != nil {
-		return launch.StartError{Inner: err}
+	startErr := hl.start(serviceBuilder, sv)
+	if startErr != nil && !IsMissingEntryPoints(startErr) {
+		return launch.StartError{Inner: startErr}
 	}
 
-	// same as disable
-	out, err := hl.enable()
-	if err != nil {
+	// if we were just missing entry points, we still want to enable.
+	//
+	// backstory: the hoist launchable specification defines that
+	// bin/launch can be a file or a directory that will be turned into
+	// runit services. We then added the explicit entry_points field to the
+	// launchable stanza, introducing a failure mode where the entry points
+	// specified may not actually exist. However some p2 apps intentionally
+	// do not have a bin/launch but expect bin/enable to be run, so we have
+	// to continue onward if the error was due to missing entry points
+	out, enableErr := hl.enable()
+	// if we had a missing entry point error, bubble that one up
+	if startErr != nil {
+		return launch.StartError{Inner: startErr}
+	}
+	if enableErr != nil {
 		return launch.EnableError{Inner: util.Errorf("%s", out)}
 	}
 	return nil
@@ -226,6 +238,21 @@ func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv runit.SV) e
 	return nil
 }
 
+type MissingEntryPoints struct {
+	message string
+}
+
+func (m MissingEntryPoints) Error() string {
+	return m.message
+}
+
+var _ error = MissingEntryPoints{}
+
+func IsMissingEntryPoints(err error) bool {
+	_, ok := err.(MissingEntryPoints)
+	return ok
+}
+
 // Executables() returns a list of the executables present in the launchable.
 // The podUniqueKey argument is a bit of a hack: If it is empty then the "old"
 // naming scheme for runit service directories will be used. Otherwise the
@@ -253,7 +280,9 @@ func (hl *Launchable) Executables(
 
 		entryPointInfo, err := os.Stat(absEntryPointPath)
 		if err != nil {
-			return nil, util.Errorf("%s", err)
+			return nil, MissingEntryPoints{
+				message: util.Errorf("missing entry point %s: %s", absEntryPointPath, err).Error(),
+			}
 		}
 
 		// an entry point can be a file or a directory. If it's a file, simply
