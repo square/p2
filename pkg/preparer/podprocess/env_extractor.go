@@ -17,6 +17,19 @@ type EnvironmentExtractor struct {
 	Logger       logging.Logger
 }
 
+type RetryableError struct {
+	Inner error
+}
+
+func (r RetryableError) Error() string {
+	return r.Inner.Error()
+}
+
+func IsRetryable(err error) bool {
+	_, ok := err.(RetryableError)
+	return ok
+}
+
 // Write exit code and exit status along with some information pulled from the current
 // environment into the configured sqlite database. The environment extractor is hooked
 // into runits ./finish file (http://smarden.org/runit/runsv.8.html)
@@ -34,7 +47,14 @@ func (e EnvironmentExtractor) WriteFinish(exitCode int, exitStatus int) error {
 		return err
 	}
 
-	return finishService.Insert(finish)
+	err = finishService.Insert(finish)
+	if err != nil {
+		return RetryableError{
+			Inner: err,
+		}
+	}
+
+	return nil
 }
 
 func (e EnvironmentExtractor) constructFinishFromEnvironment(exitCode int, exitStatus int) (FinishOutput, error) {
