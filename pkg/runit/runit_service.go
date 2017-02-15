@@ -63,6 +63,7 @@ type StatError error
 
 var (
 	NotRunning         StatError = errors.New("RunSV is not running and must be started")
+	NotRunningTimeout  StatError = errors.New("Timed out while waiting to stop service: either RunSV or this service is not running")
 	SuperviseOkMissing           = errors.New("The supervise/ok file is missing")
 	Killed                       = errors.New("The process was forcibly killed")
 )
@@ -77,7 +78,7 @@ func (sv *sv) waitForSupervision(service *Service) error {
 		}
 		select {
 		case <-maxWait:
-			return NotRunning
+			return NotRunningTimeout
 		case <-time.After(150 * time.Millisecond):
 			// no op
 		}
