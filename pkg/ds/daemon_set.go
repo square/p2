@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	// This label is applied to pods owned by an RC.
+	// This label is applied to pods owned by a DS.
 	DSIDLabel = "daemon_set_id"
 )
 
