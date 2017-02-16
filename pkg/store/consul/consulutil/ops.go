@@ -96,6 +96,42 @@ func List(
 	}
 }
 
+type ConsulKeyser interface {
+	Keys(prefix, separator string, q *api.QueryOptions) ([]string, *api.QueryMeta, error)
+}
+
+type keysReply struct {
+	keys      []string
+	queryMeta *api.QueryMeta
+	err       error
+}
+
+// SafeKeys performs a KV Keys operation that can be canceled. When the "done"
+// channel is closed, CanceledError will be immediately returned. (The HTTP RPC
+// can't be canceled, but it will be ignored.) Errors from Consul will be
+// wrapped in a KVError value.
+func SafeKeys(
+	clientKV ConsulKeyser,
+	done <-chan struct{},
+	prefix string,
+	options *api.QueryOptions,
+) ([]string, *api.QueryMeta, error) {
+	resultChan := make(chan keysReply, 1)
+	go func() {
+		keys, queryMeta, err := clientKV.Keys(prefix, "", options)
+		if err != nil {
+			err = NewKVError("keys", prefix, err)
+		}
+		resultChan <- keysReply{keys, queryMeta, err}
+	}()
+	select {
+	case <-done:
+		return nil, nil, CanceledError
+	case r := <-resultChan:
+		return r.keys, r.queryMeta, r.err
+	}
+}
+
 type ConsulGetter interface {
 	Get(key string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
 }
