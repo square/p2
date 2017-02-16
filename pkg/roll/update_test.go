@@ -797,7 +797,9 @@ func assertRCUpdates(t *testing.T, rc *rc_fields.RC, upd <-chan struct{}, expect
 	case <-time.After(1 * time.Second):
 		t.Fatalf("%s didn't update after one second, was waiting for value %d", desc, expect)
 	}
-	Assert(t).AreEqual(rc.ReplicasDesired, expect, "expected "+desc+" to change")
+	if rc.ReplicasDesired != expect {
+		t.Errorf("expected replicas desired count to be %d but was %d", expect, rc.ReplicasDesired)
+	}
 }
 
 func assertRollLoopResult(t *testing.T, channel <-chan bool, expect bool) {
@@ -865,7 +867,9 @@ func TestRollLoopTypicalCase(t *testing.T) {
 
 func failIfRCDesireChanges(t *testing.T, rc *rc_fields.RC, expected int, updates <-chan struct{}) {
 	for range updates {
-		Assert(t).AreEqual(rc.ReplicasDesired, expected, "RC desire changed unexpectedly")
+		if rc.ReplicasDesired != expected {
+			t.Errorf("expected replicas desired count to be %d but was %d", expected, rc.ReplicasDesired)
+		}
 	}
 }
 

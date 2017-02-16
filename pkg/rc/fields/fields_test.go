@@ -1,4 +1,4 @@
-package fields_test
+package fields
 
 import (
 	"encoding/json"
@@ -6,7 +6,6 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/square/p2/pkg/manifest"
-	"github.com/square/p2/pkg/rc/fields"
 )
 
 func TestJSONMarshal(t *testing.T) {
@@ -14,16 +13,17 @@ func TestJSONMarshal(t *testing.T) {
 	mb.SetID("hello")
 	m := mb.GetManifest()
 
-	rc1 := fields.RC{
-		ID:       "hello",
-		Manifest: m,
+	rc1 := RC{
+		ID:              "hello",
+		Manifest:        m,
+		ReplicasDesired: 2,
 	}
 
 	b, err := json.Marshal(&rc1)
 	Assert(t).IsNil(err, "should have marshaled")
 	t.Log("serialized format:", string(b))
 
-	var rc2 fields.RC
+	var rc2 RC
 	err = json.Unmarshal(b, &rc2)
 	Assert(t).IsNil(err, "should have unmarshaled")
 	Assert(t).AreEqual(rc1.ID, rc2.ID, "RC ID changed when serialized")
@@ -31,7 +31,14 @@ func TestJSONMarshal(t *testing.T) {
 }
 
 func TestZeroUnmarshal(t *testing.T) {
-	var rc fields.RC
+	var rc RC
 	err := json.Unmarshal([]byte(`{}`), &rc)
-	Assert(t).IsNil(err, "error unmarshaling")
+	if err == nil {
+		t.Errorf("expected an error unmarshaling an RC missing the replicas_desired field")
+	}
+
+	err = json.Unmarshal([]byte(`{"replicas_desired": 0}`), &rc)
+	if err != nil {
+		t.Errorf("got an error unmarshaling an otherwise-empty RC with a replicas_desired count of 0: %s", err)
+	}
 }

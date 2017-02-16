@@ -128,6 +128,7 @@ func (rcf *Farm) Start(quit <-chan struct{}) {
 func (rcf *Farm) mainLoop(quit <-chan struct{}) {
 	subQuit := make(chan struct{})
 	defer close(subQuit)
+
 	rcWatch, rcErr := rcf.rcStore.WatchNewWithRCLockInfo(subQuit, rcf.rcWatchPauseTime)
 
 START_LOOP:
@@ -277,22 +278,21 @@ func (rcf *Farm) failsafe(rcFields []rcstore.RCLockResult) {
 		}
 		panic("No RCs are scheduled at all. Create one RC to enable the farm. Panicking to escape a potentially bad situation.")
 	}
-	globalReplicaCount := 0
+
 	for _, rc := range rcFields {
 		if rc.ReplicasDesired > 0 {
+			// If at least one RC has a > 0 count, we're good
 			return
 		}
-		globalReplicaCount += rc.ReplicasDesired
 	}
-	if globalReplicaCount == 0 {
-		if err := rcf.alerter.Alert(alerting.AlertInfo{
-			Description: "All RCs have zero replicas requested",
-			IncidentKey: "zero_replicas_found",
-		}); err != nil {
-			rcf.logger.WithError(err).Errorln("Unable to deliver alert!")
-		}
-		panic("The sum of all replicas is 0. Panicking to escape a potentially bad situation")
+
+	if err := rcf.alerter.Alert(alerting.AlertInfo{
+		Description: "All RCs have zero replicas requested",
+		IncidentKey: "zero_replicas_found",
+	}); err != nil {
+		rcf.logger.WithError(err).Errorln("Unable to deliver alert!")
 	}
+	panic("The sum of all replicas is 0. Panicking to escape a potentially bad situation")
 }
 
 func (rcf *Farm) releaseDeletedChildren(foundChildren map[fields.ID]struct{}) {
