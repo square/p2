@@ -43,7 +43,7 @@ func main() {
 	if err != nil {
 		message := "Could not list intent kvpairs: %s"
 		if kvErr, ok := err.(consulutil.KVError); ok {
-			log.Fatalf(message, kvErr.UnsafeError)
+			log.Fatalf(message, kvErr.KVError)
 		} else {
 			log.Fatalf(message, err)
 		}
@@ -58,7 +58,7 @@ func main() {
 	if err != nil {
 		message := "Could not list reality kvpairs: %s"
 		if kvErr, ok := err.(consulutil.KVError); ok {
-			log.Fatalf(message, kvErr.UnsafeError)
+			log.Fatalf(message, kvErr.KVError)
 		} else {
 			log.Fatalf(message, err)
 		}
