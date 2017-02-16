@@ -4,10 +4,11 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/alerting"
-	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul/rcstore"
 
 	. "github.com/anthonybishopric/gotcha"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 type failsafeAlerter struct {
@@ -35,17 +36,21 @@ func TestNoRCsWillCausePanic(t *testing.T) {
 }
 
 func TestRCsWithCountsWillBeFine(t *testing.T) {
+	fakeStore := rcstore.NewFake()
 	alerter := &failsafeAlerter{}
 	rcf := &Farm{
 		alerter: alerter,
+		rcStore: fakeStore,
 	}
 
-	rcs := []rcstore.RCLockResult{
-		{
-			RC: fields.RC{
-				ReplicasDesired: 5,
-			},
-		},
+	rc, err := fakeStore.Create(testManifest(), klabels.Everything(), map[string]string{})
+	if err != nil {
+		t.Fatalf("could not put an RC in the fake store: %s", err)
+	}
+
+	err = fakeStore.SetDesiredReplicas(rc.ID, 5)
+	if err != nil {
+		t.Fatalf("could not set replicas desired on fake RC: %s", err)
 	}
 
 	defer func() {
@@ -54,21 +59,21 @@ func TestRCsWithCountsWillBeFine(t *testing.T) {
 		}
 		Assert(t).AreEqual("", alerter.savedInfo.IncidentKey, "should not have had a fired alert")
 	}()
-	rcf.failsafe(rcs)
+	rcf.initialFailsafe()
 }
 
 func TestRCsWithZeroCountsWillTriggerIncident(t *testing.T) {
+	fakeStore := rcstore.NewFake()
 	alerter := &failsafeAlerter{}
 	rcf := &Farm{
 		alerter: alerter,
+		rcStore: fakeStore,
 	}
 
-	rcs := []rcstore.RCLockResult{
-		{
-			RC: fields.RC{
-				ReplicasDesired: 0,
-			},
-		},
+	// replica count is implicitly zero
+	_, err := fakeStore.Create(testManifest(), klabels.Everything(), map[string]string{})
+	if err != nil {
+		t.Fatalf("could not put an RC in the fake store: %s", err)
 	}
 
 	defer func() {
@@ -77,5 +82,11 @@ func TestRCsWithZeroCountsWillTriggerIncident(t *testing.T) {
 		}
 		Assert(t).AreEqual("zero_replicas_found", alerter.savedInfo.IncidentKey, "should have had a fired alert")
 	}()
-	rcf.failsafe(rcs)
+	rcf.initialFailsafe()
+}
+
+func testManifest() manifest.Manifest {
+	builder := manifest.NewBuilder()
+	builder.SetID("some_pod")
+	return builder.GetManifest()
 }

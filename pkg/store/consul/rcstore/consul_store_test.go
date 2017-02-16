@@ -2,6 +2,7 @@ package rcstore
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -309,7 +310,7 @@ func TestLockTypeFromKey(t *testing.T) {
 }
 
 type LockInfoTestCase struct {
-	InputRCs       []fields.RC
+	InputRCs       []fields.ID
 	ExpectedOutput []RCLockResult
 }
 
@@ -317,12 +318,12 @@ func TestPublishLatestRCsWithLockInfoNoLocks(t *testing.T) {
 	client := consulutil.NewFakeClient()
 	rcstore := NewConsul(client, labels.NewFakeApplicator(), 1)
 
-	inCh := make(chan []fields.RC)
+	inCh := make(chan []fields.ID)
 	defer close(inCh)
 	quitCh := make(chan struct{})
 	defer close(quitCh)
 
-	lockResultCh, errCh := rcstore.publishLatestRCsWithLockInfo(inCh, quitCh)
+	lockResultCh, errCh := rcstore.publishLatestRCKeysWithLockInfo(inCh, quitCh)
 	go func() {
 		for err := range errCh {
 			t.Fatalf("Unexpected error on errCh: %s", err)
@@ -331,13 +332,13 @@ func TestPublishLatestRCsWithLockInfoNoLocks(t *testing.T) {
 
 	// Create a test case with 2 RCs with no locks
 	unlockedCase := LockInfoTestCase{
-		InputRCs: []fields.RC{{ID: "abc"}, {ID: "123"}},
+		InputRCs: []fields.ID{"abc", "123"},
 		ExpectedOutput: []RCLockResult{
 			{
-				RC: fields.RC{ID: "abc"},
+				ID: "abc",
 			},
 			{
-				RC: fields.RC{ID: "123"},
+				ID: "123",
 			},
 		},
 	}
@@ -354,20 +355,16 @@ func TestPublishLatestRCsWithLockInfoNoLocks(t *testing.T) {
 
 	// create a new case
 	unlockedCase2 := LockInfoTestCase{
-		InputRCs: []fields.RC{
-			{ID: "abc"},
-			{ID: "123"},
-			{ID: "456"},
-		},
+		InputRCs: []fields.ID{"abc", "123", "456"},
 		ExpectedOutput: []RCLockResult{
 			{
-				RC: fields.RC{ID: "abc"},
+				ID: "abc",
 			},
 			{
-				RC: fields.RC{ID: "123"},
+				ID: "123",
 			},
 			{
-				RC: fields.RC{ID: "456"},
+				ID: "456",
 			},
 		},
 	}
@@ -375,17 +372,59 @@ func TestPublishLatestRCsWithLockInfoNoLocks(t *testing.T) {
 	verifyLockInfoTestCase(t, unlockedCase2, inCh, lockResultCh)
 }
 
+func TestKeysToRCIDs(t *testing.T) {
+	type testCase struct {
+		Keys  []string
+		RCIDs []fields.ID
+		Err   bool
+	}
+
+	testCases := []testCase{
+		{
+			Keys:  []string{"replication_controllers/9d738b72-e9f7-0afa-ac0c-183706dff7bf"},
+			RCIDs: []fields.ID{"9d738b72-e9f7-0afa-ac0c-183706dff7bf"},
+		},
+		{
+			Keys:  []string{},
+			RCIDs: []fields.ID{},
+		},
+		{
+			Keys: []string{"mispelled/9d738b72-e9f7-0afa-ac0c-183706dff7bf"},
+			Err:  true,
+		},
+		{
+			Keys: []string{"replication_controllers/malformed_uuid"},
+			Err:  true,
+		},
+	}
+
+	for i, tc := range testCases {
+		ids, err := keysToRCIDs(tc.Keys)
+		if err != nil && !tc.Err {
+			t.Errorf("Case %d: unexpected error: %s", i, err)
+			continue
+		} else if err == nil && tc.Err {
+			t.Errorf("Case %d: expected an error", i)
+			continue
+		}
+
+		if !reflect.DeepEqual(tc.RCIDs, ids) {
+			t.Errorf("Case %d: expected %s but got %s", i, tc.RCIDs, ids)
+		}
+	}
+}
+
 func TestPublishLatestRCsWithLockInfoWithLocks(t *testing.T) {
 	client := consulutil.NewFakeClient()
 	fakeKV := client.KV()
 	rcstore := NewConsul(client, labels.NewFakeApplicator(), 1)
 
-	inCh := make(chan []fields.RC)
+	inCh := make(chan []fields.ID)
 	defer close(inCh)
 	quitCh := make(chan struct{})
 	defer close(quitCh)
 
-	lockResultCh, errCh := rcstore.publishLatestRCsWithLockInfo(inCh, quitCh)
+	lockResultCh, errCh := rcstore.publishLatestRCKeysWithLockInfo(inCh, quitCh)
 	go func() {
 		for err := range errCh {
 			t.Fatalf("Unexpected error on errCh: %s", err)
@@ -394,14 +433,14 @@ func TestPublishLatestRCsWithLockInfoWithLocks(t *testing.T) {
 
 	// Create a test case with 2 RCs with no locks
 	lockedCase := LockInfoTestCase{
-		InputRCs: []fields.RC{{ID: "abc"}, {ID: "123"}},
+		InputRCs: []fields.ID{"abc", "123"},
 		ExpectedOutput: []RCLockResult{
 			{
-				RC:                fields.RC{ID: "abc"},
+				ID:                "abc",
 				LockedForMutation: true,
 			},
 			{
-				RC:                 fields.RC{ID: "123"},
+				ID:                 "123",
 				LockedForOwnership: true,
 			},
 		},
@@ -433,14 +472,14 @@ func TestPublishLatestRCsWithLockInfoWithLocks(t *testing.T) {
 
 	// Add an update creation lock to the second one
 	lockedCase2 := LockInfoTestCase{
-		InputRCs: []fields.RC{{ID: "abc"}, {ID: "123"}},
+		InputRCs: []fields.ID{"abc", "123"},
 		ExpectedOutput: []RCLockResult{
 			{
-				RC:                fields.RC{ID: "abc"},
+				ID:                "abc",
 				LockedForMutation: true,
 			},
 			{
-				RC:                      fields.RC{ID: "123"},
+				ID:                      "123",
 				LockedForOwnership:      true,
 				LockedForUpdateCreation: true,
 			},
@@ -461,7 +500,7 @@ func TestPublishLatestRCsWithLockInfoWithLocks(t *testing.T) {
 	verifyLockInfoTestCase(t, lockedCase2, inCh, lockResultCh)
 }
 
-func verifyLockInfoTestCase(t *testing.T, lockInfoTestCase LockInfoTestCase, inCh chan []fields.RC, lockResultCh chan []RCLockResult) {
+func verifyLockInfoTestCase(t *testing.T, lockInfoTestCase LockInfoTestCase, inCh chan []fields.ID, lockResultCh chan []RCLockResult) {
 	select {
 	case inCh <- lockInfoTestCase.InputRCs:
 	case <-time.After(1 * time.Second):
@@ -477,19 +516,19 @@ func verifyLockInfoTestCase(t *testing.T, lockInfoTestCase LockInfoTestCase, inC
 		for _, val := range lockInfoTestCase.ExpectedOutput {
 			matched := false
 			for _, result := range res {
-				if val.RC.ID != result.RC.ID {
+				if val.ID != result.ID {
 					continue
 				}
 				matched = true
 
 				if val.LockedForOwnership != result.LockedForOwnership {
-					t.Errorf("Expected LockedForOwnership to be %t for %s, was %t", val.LockedForOwnership, result.RC.ID, result.LockedForOwnership)
+					t.Errorf("Expected LockedForOwnership to be %t for %s, was %t", val.LockedForOwnership, result.ID, result.LockedForOwnership)
 				}
 				if val.LockedForMutation != result.LockedForMutation {
-					t.Errorf("Expected LockedForMutation to be %t for %s, was %t", val.LockedForMutation, result.RC.ID, result.LockedForMutation)
+					t.Errorf("Expected LockedForMutation to be %t for %s, was %t", val.LockedForMutation, result.ID, result.LockedForMutation)
 				}
 				if val.LockedForUpdateCreation != result.LockedForUpdateCreation {
-					t.Errorf("Expected LockedForUpdateCreation to be %t for %s, was %t", val.LockedForUpdateCreation, result.RC.ID, result.LockedForUpdateCreation)
+					t.Errorf("Expected LockedForUpdateCreation to be %t for %s, was %t", val.LockedForUpdateCreation, result.ID, result.LockedForUpdateCreation)
 				}
 
 				if matched {

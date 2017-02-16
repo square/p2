@@ -126,10 +126,12 @@ func (rcf *Farm) Start(quit <-chan struct{}) {
 }
 
 func (rcf *Farm) mainLoop(quit <-chan struct{}) {
+	rcf.initialFailsafe()
+
 	subQuit := make(chan struct{})
 	defer close(subQuit)
 
-	rcWatch, rcErr := rcf.rcStore.WatchNewWithRCLockInfo(subQuit, rcf.rcWatchPauseTime)
+	rcKeyWatch, rcErr := rcf.rcStore.WatchRCKeysWithLockInfo(subQuit, rcf.rcWatchPauseTime)
 
 START_LOOP:
 	for {
@@ -153,47 +155,46 @@ START_LOOP:
 			return
 		case err := <-rcErr:
 			rcf.logger.WithError(err).Errorln("Could not read consul replication controllers")
-		case rcFields := <-rcWatch:
+		case rcKeys := <-rcKeyWatch:
 			startTime := time.Now()
-			rcf.logger.WithField("n", len(rcFields)).Debugln("Received replication controller update")
+			rcf.logger.WithField("n", len(rcKeys)).Debugln("Received replication controller update")
 			countHistogram := metrics.GetOrRegisterHistogram("rc_count", p2metrics.Registry, metrics.NewExpDecaySample(1028, 0.015))
-			countHistogram.Update(int64(len(rcFields)))
+			countHistogram.Update(int64(len(rcKeys)))
 
-			rcf.failsafe(rcFields)
+			rcf.failsafe(rcKeys)
 
 			// track which children were found in the returned set
 			foundChildren := make(map[fields.ID]struct{})
-			for _, rcField := range rcFields {
+			for _, rcKey := range rcKeys {
 				rcLogger := rcf.logger.SubLogger(logrus.Fields{
-					"rc":  rcField.ID,
-					"pod": rcField.Manifest.ID(),
+					"rc": rcKey.ID,
 				})
-				if _, ok := rcf.children[rcField.ID]; ok {
+				if _, ok := rcf.children[rcKey.ID]; ok {
 					// this one is already ours, skip
 					rcLogger.NoFields().Debugln("Got replication controller already owned by self")
-					foundChildren[rcField.ID] = struct{}{}
+					foundChildren[rcKey.ID] = struct{}{}
 					continue
 				}
 
 				// Don't try to work on an RC that is already owned. While the LockedForOwnership flag may be stale,
 				// the nature of this function is that we (or another farm) will come back to it and the lock will be
 				// grabbed. Shortening the length of time it takes to process a list of RCs is paramount.
-				if rcField.LockedForOwnership {
+				if rcKey.LockedForOwnership {
 					continue
 				}
 
-				shouldWorkOnRC, err := rcf.shouldWorkOn(rcField.ID)
+				shouldWorkOnRC, err := rcf.shouldWorkOn(rcKey.ID)
 				if err != nil {
-					rcLogger.WithError(err).Errorf("Could not determine if should work on RC %s, skipping", rcField.ID)
+					rcLogger.WithError(err).Errorf("Could not determine if should work on RC %s, skipping", rcKey.ID)
 					continue
 				}
 
 				if !shouldWorkOnRC {
-					rcLogger.WithField("rc", rcField.ID).Infof("Ignoring RC %s, not meant for this farm", rcField.ID)
+					rcLogger.Infof("Ignoring RC %s, not meant for this farm", rcKey.ID)
 					continue
 				}
 
-				rcUnlocker, err := rcf.rcStore.LockForOwnership(rcField.ID, rcf.session)
+				rcUnlocker, err := rcf.rcStore.LockForOwnership(rcKey.ID, rcf.session)
 				if _, ok := err.(consulutil.AlreadyLockedError); ok {
 					// someone else must have gotten it first - log and move to
 					// the next one
@@ -210,8 +211,21 @@ START_LOOP:
 				// at this point the rc is ours, time to spin it up
 				rcLogger.NoFields().Infoln("Acquired lock on new replication controller, spawning")
 
+				// TODO: maybe we don't need to fetch the RC
+				// here, but that involves changing replication
+				// controller code which expands the scope of
+				// the change to watching RC keys rather than
+				// values.  Also it probably doesn't matter
+				// much since we won't actually be doing a
+				// fetch that often (only when lock not held)
+				rc, err := rcf.rcStore.Get(rcKey.ID)
+				if err != nil {
+					rcLogger.WithError(err).Error("unable to fetch RC to process it")
+					continue
+				}
+
 				newChild := New(
-					rcField.RC,
+					rc,
 					rcf.store,
 					rcf.rcStore,
 					rcf.scheduler,
@@ -220,12 +234,12 @@ START_LOOP:
 					rcf.alerter,
 				)
 				childQuit := make(chan struct{})
-				rcf.children[rcField.ID] = childRC{
+				rcf.children[rcKey.ID] = childRC{
 					rc:       newChild,
 					quit:     childQuit,
 					unlocker: rcUnlocker,
 				}
-				foundChildren[rcField.ID] = struct{}{}
+				foundChildren[rcKey.ID] = struct{}{}
 
 				go func(id fields.ID) {
 					defer func() {
@@ -253,7 +267,7 @@ START_LOOP:
 					if _, ok := rcf.children[id]; ok {
 						rcf.releaseChild(id)
 					}
-				}(rcField.ID)
+				}(rcKey.ID)
 			}
 
 			// now remove any children that were not found in the result set
@@ -267,8 +281,21 @@ START_LOOP:
 	}
 }
 
-func (rcf *Farm) failsafe(rcFields []rcstore.RCLockResult) {
-	// FAILSAFES. If no RCs are scheduled, or there are zero replicas of anything scheduled, panic
+// This failsafe is only run at startup of the farm for performance reasons. It checks two conditions:
+// 1) there is at least one RC
+// 2) the sum of the replicas_desired fields for all RCs is greater than zero.
+//
+// If either of those conditions are true, the function panics to prevent the
+// RC farm from uninstalling pods. There is an additional failsafe mechanism in
+// that an RC cannot be unmarshaled from JSON if there is no replicas_desired
+// field which would be the most likely way that all RC counts would be zeroed
+// out.
+func (rcf *Farm) initialFailsafe() {
+	rcFields, err := rcf.rcStore.List()
+	if err != nil {
+		panic(fmt.Sprintf("unable to do initial list of RCs to evaluate failsafe check: %s", err))
+	}
+
 	if len(rcFields) == 0 {
 		if err := rcf.alerter.Alert(alerting.AlertInfo{
 			Description: "No RCs have been scheduled",
@@ -293,6 +320,21 @@ func (rcf *Farm) failsafe(rcFields []rcstore.RCLockResult) {
 		rcf.logger.WithError(err).Errorln("Unable to deliver alert!")
 	}
 	panic("The sum of all replicas is 0. Panicking to escape a potentially bad situation")
+}
+
+// Runs every time the RC key watch returns data. Panics if there are zero keys
+// as that is not expected under normal operation of an RC farm.
+func (rcf *Farm) failsafe(rcs []rcstore.RCLockResult) {
+	// FAILSAFES. If no RCs are scheduled, or there are zero replicas of anything scheduled, panic
+	if len(rcs) == 0 {
+		if err := rcf.alerter.Alert(alerting.AlertInfo{
+			Description: "No RCs have been scheduled",
+			IncidentKey: "no_rcs_found",
+		}); err != nil {
+			rcf.logger.WithError(err).Errorln("Unable to deliver alert!")
+		}
+		panic("No RCs are scheduled at all. Create one RC to enable the farm. Panicking to escape a potentially bad situation.")
+	}
 }
 
 func (rcf *Farm) releaseDeletedChildren(foundChildren map[fields.ID]struct{}) {
