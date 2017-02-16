@@ -10,6 +10,89 @@ import (
 	p2metrics "github.com/square/p2/pkg/metrics"
 )
 
+type WatchedKeys struct {
+	Keys []string
+	Err  error
+}
+
+// WatchKeys executes consul keys queries on a particular prefix and passes the
+// set of keys on an output channel each time the query returns
+func WatchKeys(
+	prefix string,
+	clientKV ConsulKeyser,
+	done <-chan struct{},
+	pause time.Duration,
+) chan WatchedKeys {
+	out := make(chan WatchedKeys)
+	go func() {
+		defer close(out)
+		var currentIndex uint64
+		timer := time.NewTimer(0)
+
+		// put a lower bound on pause time to prevent tight looping queries against
+		// consul
+		if pause < 250*time.Millisecond {
+			pause = 250 * time.Millisecond
+		}
+
+		for {
+			select {
+			case <-done:
+				return
+			case <-timer.C:
+			}
+
+			timer.Reset(pause)
+			keys, queryMeta, err := SafeKeys(clientKV, done, prefix, &api.QueryOptions{
+				WaitIndex:  currentIndex,
+				AllowStale: true,
+			})
+			if err == CanceledError {
+				return
+			} else if err != nil {
+				select {
+				case <-done:
+				case out <- WatchedKeys{
+					Err: err,
+				}:
+				}
+				timer.Reset(2*time.Second + pause) // back off a little
+			}
+
+			// This might happen if a watch expires on a node that was stale for a
+			// long time.  Not likely but good to be careful.
+			if queryMeta.LastIndex < currentIndex {
+				select {
+				case <-done:
+					return
+				case out <- WatchedKeys{
+					Err: fmt.Errorf("watch returned last index of %d but asked for %d", queryMeta.LastIndex, currentIndex),
+				}:
+				}
+
+				// try again
+				continue
+			}
+
+			// nothing has changed since last time, just query
+			// again
+			if queryMeta.LastIndex == currentIndex {
+				continue
+			}
+
+			currentIndex = queryMeta.LastIndex
+			select {
+			case <-done:
+				return
+			case out <- WatchedKeys{
+				Keys: keys,
+			}:
+			}
+		}
+	}()
+	return out
+}
+
 // WatchPrefix watches a Consul prefix for changes to any keys that have the prefix. When
 // anything changes, all Key/Value pairs having that prefix will be written to the
 // provided channel.
