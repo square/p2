@@ -33,13 +33,16 @@ openssl req -x509 -newkey rsa:2048 -keyout $CERTPATH/key.pem -out $CERTPATH/cert
 
 go version
 
+# check.go assumes rake to be present (it invokes `rake install`)
+# gcc is required to `go install` certain packages, probably those that `import "C"`
+# (p2/bin/p2-exec, opencontainers/runc/libcontainer/system, mattn/go-sqlite3)
+# git is required to `go get`
+sudo yum install -y rubygem-rake gcc git
+
 # Build p2.
 cd $GOPATH/src/github.com/square/p2
 go install ./...
 cp $GOPATH/bin/p2-exec /usr/local/bin
-
-# Install ruby + rake
-sudo yum install -y ruby rubygem-rake
 
 # Install P2 test dependencies
 sudo yum -y --nogpgcheck localinstall $GOPATH/src/github.com/square/p2/integration/test-deps/*rpm
