@@ -28,32 +28,38 @@ const (
 )
 
 func waitForNodes(
-	t *testing.T,
 	ds DaemonSet,
 	desired int,
 	desiresErrCh <-chan error,
 	dsChangesErrCh <-chan error,
-) int {
+) error {
 	timeout := time.After(10 * time.Second)
 	podLocations, err := ds.CurrentPods()
-	Assert(t).IsNil(err, "expected no error getting pod locations")
+	if err != nil {
+		return util.Errorf("error getting pod locations: %s", err)
+	}
+
 	timedOut := false
 
 	// This for loop runs until you either time out or len(podLocations) == desired
 	// then return the length of whatever ds.CurrentNodes() is
 	for len(podLocations) != desired && !timedOut {
 		select {
-		case <-time.Tick(100 * time.Millisecond):
-			// Also check for errors
-			var err error
+		case <-time.After(100 * time.Millisecond):
 			podLocations, err = ds.CurrentPods()
-			Assert(t).IsNil(err, "expected no error getting pod locations nodes")
+			if err != nil {
+				return util.Errorf("error getting pod locations: %s", err)
+			}
 
 			select {
 			case err = <-desiresErrCh:
-				Assert(t).IsNil(err, "expected no error watches desires")
+				if err != nil {
+					return util.Errorf("error watching desires: %s", err)
+				}
 			case err = <-dsChangesErrCh:
-				Assert(t).IsNil(err, "expected no error watching for daemon set changes")
+				if err != nil {
+					return util.Errorf("error watching for daemon set changes: %s", err)
+				}
 			default:
 			}
 
@@ -61,7 +67,11 @@ func waitForNodes(
 			timedOut = true
 		}
 	}
-	return len(podLocations)
+	if len(podLocations) != desired {
+		return util.Errorf("expected %d nodes but got %d after timeout", desired, len(podLocations))
+	}
+
+	return nil
 }
 
 // Watches for changes to daemon sets and sends update and delete signals
@@ -203,8 +213,8 @@ func TestSchedule(t *testing.T) {
 	//
 	// Verify that the pod has been labeled
 	//
-	numNodes := waitForNodes(t, ds, 1, desiresErrCh, dsChangesErrCh)
-	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
+	err = waitForNodes(ds, 1, desiresErrCh, dsChangesErrCh)
+	Assert(t).IsNil(err, "took too long to schedule")
 
 	err = waitForPodsInIntent(consulStore, 1)
 	if err != nil {
@@ -234,8 +244,8 @@ func TestSchedule(t *testing.T) {
 	}
 
 	// The node watch should automatically notice a change
-	numNodes = waitForNodes(t, ds, 11, desiresErrCh, dsChangesErrCh)
-	Assert(t).AreEqual(numNodes, 11, "took too long to schedule")
+	err = waitForNodes(ds, 11, desiresErrCh, dsChangesErrCh)
+	Assert(t).IsNil(err, "took too long to schedule")
 
 	labeled = labeledPods(t, ds)
 	Assert(t).AreEqual(len(labeled), 11, "expected a lot of nodes to have been labeled")
@@ -253,8 +263,8 @@ func TestSchedule(t *testing.T) {
 	err = applicator.SetLabel(labels.NODE, "nodeOk", "cherry", "pick")
 	Assert(t).IsNil(err, "expected no error labeling nodeOk")
 
-	numNodes = waitForNodes(t, ds, 12, desiresErrCh, dsChangesErrCh)
-	Assert(t).AreEqual(numNodes, 12, "took too long to schedule")
+	err = waitForNodes(ds, 12, desiresErrCh, dsChangesErrCh)
+	Assert(t).IsNil(err, "took too long to schedule")
 
 	// Schedule only a node that is both nodeQuality=good and cherry=pick
 	mutator := func(dsToChange ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
@@ -266,8 +276,8 @@ func TestSchedule(t *testing.T) {
 	_, err = dsStore.MutateDS(ds.ID(), mutator)
 	Assert(t).IsNil(err, "Unxpected error trying to mutate daemon set")
 
-	numNodes = waitForNodes(t, ds, 1, desiresErrCh, dsChangesErrCh)
-	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
+	err = waitForNodes(ds, 1, desiresErrCh, dsChangesErrCh)
+	Assert(t).IsNil(err, "took too long to schedule")
 
 	err = waitForPodsInIntent(consulStore, 1)
 	if err != nil {
@@ -290,8 +300,8 @@ func TestSchedule(t *testing.T) {
 	_, err = dsStore.MutateDS(ds.ID(), mutator)
 	Assert(t).IsNil(err, "Unxpected error trying to mutate daemon set")
 
-	numNodes = waitForNodes(t, ds, 1, desiresErrCh, dsChangesErrCh)
-	Assert(t).AreEqual(numNodes, 1, "took too long to unschedule")
+	err = waitForNodes(ds, 1, desiresErrCh, dsChangesErrCh)
+	Assert(t).IsNil(err, "took too long to unschedule")
 
 	err = waitForPodsInIntent(consulStore, 1)
 	if err != nil {
@@ -311,8 +321,8 @@ func TestSchedule(t *testing.T) {
 
 	// 11 good nodes 11 bad nodes, and 1 good cherry picked node = 23 nodes
 	expectedNodes := 23
-	numNodes = waitForNodes(t, ds, expectedNodes, desiresErrCh, dsChangesErrCh)
-	Assert(t).AreEqual(numNodes, expectedNodes, "took too long to schedule")
+	err = waitForNodes(ds, expectedNodes, desiresErrCh, dsChangesErrCh)
+	Assert(t).IsNil(err, "took too long to schedule")
 
 	err = waitForPodsInIntent(consulStore, expectedNodes)
 	if err != nil {
@@ -328,8 +338,8 @@ func TestSchedule(t *testing.T) {
 		t.Fatalf("Unable to delete daemon set: %v", err)
 	}
 	// behavior change: Deleting a daemon set will no longer unschedule its pods (for now)
-	numNodes = waitForNodes(t, ds, 12, desiresErrCh, dsChangesErrCh)
-	Assert(t).AreEqual(numNodes, expectedNodes, "Unexpected number of nodes labeled")
+	err = waitForNodes(ds, 23, desiresErrCh, dsChangesErrCh)
+	Assert(t).IsNil(err, "Unexpected number of nodes labeled")
 
 	labeled = labeledPods(t, ds)
 	Assert(t).AreEqual(len(labeled), expectedNodes, "Expected no nodes to be unlabeled")
@@ -415,8 +425,8 @@ func TestPublishToReplication(t *testing.T) {
 	//
 	// Verify that 2 pods have been labeled
 	//
-	numNodes := waitForNodes(t, ds, 2, desiresErrCh, dsChangesErrCh)
-	Assert(t).AreEqual(numNodes, 2, "took too long to schedule")
+	err = waitForNodes(ds, 2, desiresErrCh, dsChangesErrCh)
+	Assert(t).IsNil(err, "took too long to schedule")
 
 	labeled = labeledPods(t, ds)
 	Assert(t).AreEqual(len(labeled), 2, "expected a node to have been labeled")
@@ -437,8 +447,8 @@ func TestPublishToReplication(t *testing.T) {
 	case err := <-desiresErrCh:
 		Assert(t).IsNotNil(err, "Unexpectedly nil error when no nodes are eligible")
 	}
-	numNodes = waitForNodes(t, ds, 2, desiresErrCh, dsChangesErrCh)
-	Assert(t).AreEqual(numNodes, 2, "unexpectedly unlabeled")
+	err = waitForNodes(ds, 2, desiresErrCh, dsChangesErrCh)
+	Assert(t).IsNil(err, "unexpectedly unlabeled")
 }
 
 // Polls for the store to have the same number of pods as the argument
