@@ -8,8 +8,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.provider "virtualbox" do |vb|
      vb.customize ["modifyvm", :id, "--accelerate3d", "off"]
   end
-  config.vm.box_url = "https://atlas.hashicorp.com/centos/boxes/7/versions/1611.01/providers/virtualbox.box"
-  config.vm.box = "centos/7"
+  config.vm.box = "bento/centos-7.2"
 
   config.vm.synced_folder "../../", "/usr/local/share/go/src/github.com/square/p2"
   config.vm.provision "shell", path: "../common-provision.sh"
