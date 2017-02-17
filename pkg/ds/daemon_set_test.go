@@ -120,6 +120,10 @@ func watchDSChanges(
 // 	- mutations to a daemon set
 //	- deleting a daemon set
 func TestSchedule(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+
 	retryInterval = testFarmRetryInterval
 
 	//
@@ -202,6 +206,10 @@ func TestSchedule(t *testing.T) {
 	numNodes := waitForNodes(t, ds, 1, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
 
+	err = waitForPodsInIntent(consulStore, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	labeled = labeledPods(t, ds)
 	Assert(t).AreEqual(len(labeled), 1, "expected a node to have been labeled")
 	Assert(t).AreEqual(labeled[0].ID, "node2/testPod", "expected node labeled with the daemon set's id")
@@ -232,6 +240,11 @@ func TestSchedule(t *testing.T) {
 	labeled = labeledPods(t, ds)
 	Assert(t).AreEqual(len(labeled), 11, "expected a lot of nodes to have been labeled")
 
+	err = waitForPodsInIntent(consulStore, 11)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	//
 	// Add a node with the labels nodeQuality=good and cherry=pick
 	//
@@ -239,7 +252,6 @@ func TestSchedule(t *testing.T) {
 	Assert(t).IsNil(err, "expected no error labeling nodeOk")
 	err = applicator.SetLabel(labels.NODE, "nodeOk", "cherry", "pick")
 	Assert(t).IsNil(err, "expected no error labeling nodeOk")
-	fmt.Println(applicator.GetLabels(labels.NODE, "nodeOk"))
 
 	numNodes = waitForNodes(t, ds, 12, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, 12, "took too long to schedule")
@@ -256,6 +268,11 @@ func TestSchedule(t *testing.T) {
 
 	numNodes = waitForNodes(t, ds, 1, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
+
+	err = waitForPodsInIntent(consulStore, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Verify that the labeled pod is correct
 	err = waitForSpecificPod(consulStore, "nodeOk", types.PodID("testPod"))
@@ -276,6 +293,11 @@ func TestSchedule(t *testing.T) {
 	numNodes = waitForNodes(t, ds, 1, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, 1, "took too long to unschedule")
 
+	err = waitForPodsInIntent(consulStore, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	//
 	// Now re-enable it and try to schedule everything
 	//
@@ -292,11 +314,14 @@ func TestSchedule(t *testing.T) {
 	numNodes = waitForNodes(t, ds, expectedNodes, desiresErrCh, dsChangesErrCh)
 	Assert(t).AreEqual(numNodes, expectedNodes, "took too long to schedule")
 
+	err = waitForPodsInIntent(consulStore, expectedNodes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	//
-	// Deleting the daemon set should unschedule all of its nodes
+	// Deleting the daemon set should not unschedule any nodes
 	//
-	beforeDeletePods, _, err := scheduledPods(consulStore)
-	Assert(t).IsNil(err, "Unable to list intent/")
 	ds.logger.NoFields().Info("Deleting daemon set...")
 	err = dsStore.Delete(ds.ID())
 	if err != nil {
@@ -309,8 +334,10 @@ func TestSchedule(t *testing.T) {
 	labeled = labeledPods(t, ds)
 	Assert(t).AreEqual(len(labeled), expectedNodes, "Expected no nodes to be unlabeled")
 
-	err = waitForPodsInIntent(consulStore, len(beforeDeletePods))
-	Assert(t).IsNil(err, "Unexpected number of pods labeled")
+	err = waitForPodsInIntent(consulStore, expectedNodes)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestPublishToReplication(t *testing.T) {
@@ -422,11 +449,10 @@ func waitForPodsInIntent(consulStore *consultest.FakePodStore, numPodsExpected i
 			return util.Errorf("Unable to get all pods from pod store: %v", err)
 		}
 		if len(manifestResults) != numPodsExpected {
-			fmt.Printf("%d : %v\n\n", len(manifestResults), manifestResults)
 			return util.Errorf(
-				"Expected no manifests to be scheduled, got '%v' manifests, expected '%v'",
-				len(manifestResults),
+				"Expected %d manifests to be scheduled, got %d",
 				numPodsExpected,
+				len(manifestResults),
 			)
 		}
 		return nil

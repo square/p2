@@ -51,11 +51,7 @@ func (f *FakePreparer) Enable() {
 					f.logger.Errorf("Error getting all pods: %v", err)
 					continue
 				}
-				// Make a copy to know what to delete
-				podsToDelete := make(map[consul.ManifestResult]struct{})
-				for _, manifestResult := range allPods {
-					podsToDelete[manifestResult] = struct{}{}
-				}
+
 				// Set pods that are in intent
 				for _, manifestResult := range allPods {
 					_, err = f.podStore.SetPod(
@@ -66,17 +62,34 @@ func (f *FakePreparer) Enable() {
 					if err != nil {
 						f.logger.Errorf("Error setting pod: %v", err)
 					}
-					delete(podsToDelete, manifestResult)
 				}
+
+				allReality, _, err := f.podStore.AllPods(consul.REALITY_TREE)
+				if err != nil {
+					f.logger.Errorf("error getting all reality pods: %v", err)
+					continue
+				}
+
 				// Delete pods that are missing from intent
-				for manifestResult := range podsToDelete {
-					_, err = f.podStore.DeletePod(
-						consul.REALITY_TREE,
-						manifestResult.PodLocation.Node,
-						manifestResult.PodLocation.PodID,
-					)
-					if err != nil {
-						f.logger.Errorf("Error deleting pod: %v", err)
+				for _, manifestResult := range allReality {
+					found := false
+					for _, intentPod := range allPods {
+						if intentPod.PodLocation.Node == manifestResult.PodLocation.Node &&
+							intentPod.PodLocation.PodID == manifestResult.PodLocation.PodID {
+							found = true
+							break
+						}
+					}
+
+					if !found {
+						_, err = f.podStore.DeletePod(
+							consul.REALITY_TREE,
+							manifestResult.PodLocation.Node,
+							manifestResult.PodLocation.PodID,
+						)
+						if err != nil {
+							f.logger.Errorf("Error deleting pod: %v", err)
+						}
 					}
 				}
 			}
