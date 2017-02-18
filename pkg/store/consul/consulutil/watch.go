@@ -62,6 +62,11 @@ func WatchPrefix(
 		case CanceledError:
 			return
 		case nil:
+			if queryMeta.LastIndex < currentIndex {
+				// The "stale" query returned data that's older than what this watcher has
+				// already seen. Ignore the old data.
+				continue
+			}
 			currentIndex = queryMeta.LastIndex
 			consulLatencyHistogram.Update(int64(queryMeta.RequestTime))
 			outputPairsStart = time.Now()
@@ -319,6 +324,11 @@ func WatchDiff(
 				continue
 			}
 
+			if queryMeta.LastIndex < currentIndex {
+				// The "stale" query returned data that's older than what this watcher has
+				// already seen. Ignore the old data.
+				continue
+			}
 			consulLatencyHistogram.Update(int64(queryMeta.RequestTime))
 			currentIndex = queryMeta.LastIndex
 			// A copy used to keep track of what was deleted
