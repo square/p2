@@ -1056,7 +1056,7 @@ func waitForCondition(condition func() error) error {
 		select {
 		case <-timeout:
 			timedOut = true
-		case <-time.Tick(100 * time.Millisecond):
+		case <-time.After(100 * time.Millisecond):
 			err = condition()
 		}
 	}
