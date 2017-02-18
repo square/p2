@@ -2,7 +2,6 @@ package watch
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -53,11 +52,6 @@ type StatusChecker struct {
 	Node   types.NodeName
 	URI    string
 	Client *http.Client
-}
-
-type store interface {
-	NewHealthManager(node types.NodeName, logger logging.Logger) consul.HealthManager
-	WatchPods(podPrefix consul.PodPrefix, nodename types.NodeName, quitChan <-chan struct{}, errChan chan<- error, podChan chan<- []consul.ManifestResult)
 }
 
 // MonitorPodHealth is meant to be a long running go routine.
@@ -289,15 +283,6 @@ func (sc *StatusChecker) resultFromCheck(resp *http.Response, err error) (health
 // Go version of http status check
 func (sc *StatusChecker) StatusCheck() (*http.Response, error) {
 	return sc.Client.Head(sc.URI)
-}
-
-func getBody(resp *http.Response) (string, error) {
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	return string(body), nil
 }
 
 func resToConsulRes(res health.Result) consul.WatchResult {

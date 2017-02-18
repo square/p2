@@ -154,8 +154,3 @@ func newManifestResult(id types.PodID) consul.ManifestResult {
 		Manifest: builder.GetManifest(),
 	}
 }
-
-func statusHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Handler: statusHandler")
-	fmt.Fprintf(w, "ok")
-}
