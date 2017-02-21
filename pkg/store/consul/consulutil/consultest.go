@@ -1,29 +1,24 @@
 // package consulutil contains common routines for setting up a live Consul
-// server for use in unit tests. The server runs within the test process and
-// uses an isolated in-memory data store.
-// This functionality is not currently recommended for use due to data
-/// races present in the github.com/hashicorp/consul/testutil package.
+// server for use in unit tests. It uses Consul's TestServer from its
+// "testutil", which works well on its own for testing inside a single package,
+// but it needs tweaking to be usable from within P2's testing environment.
 package consulutil
 
 import (
-	"fmt"
+	"io/ioutil"
 	"net"
-	"os"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/hashicorp/consul/command/agent"
-	"github.com/hashicorp/consul/consul"
 	"github.com/hashicorp/consul/testutil"
 )
 
 // Fixture sets up a test Consul server and provides the client configuration for
 // accessing it.
 type Fixture struct {
-	Agent    *agent.Agent
-	Servers  []*agent.HTTPServer
+	Server   *testutil.TestServer
 	Client   ConsulClient
 	T        *testing.T
 	HTTPPort int
@@ -52,56 +47,54 @@ func getPorts(t *testing.T, count int) []int {
 
 // NewFixture creates a new testing instance of Consul.
 func NewFixture(t *testing.T) Fixture {
-	ports := getPorts(t, 6)
+	// Every unit test that starts Consul has a ~1 second startup time before the test can
+	// run, so testing a full package tends to take a while. If the -short flag is
+	// present, just skip the test.
+	if testing.Short() {
+		t.Skip("skipping test dependent on consul because of short mode")
+	}
+	// If the "consul" command isn't on the user's path, NewTestServer() will skip the
+	// test. We'd rather make sure that the test actually runs, so this "skip" gets
+	// converted into an error.
+	defer func() {
+		if t.Skipped() {
+			t.Error("failing skipped test")
+		}
+	}()
 
-	config := agent.DevConfig()
-	config.BindAddr = "127.0.0.1"
-	config.Bootstrap = true
-	config.DisableCoordinates = true
-	config.NodeName = "testnode"
-	config.Ports = agent.PortConfig{
-		DNS:     ports[0],
-		HTTP:    ports[1],
-		RPC:     ports[2],
-		SerfLan: ports[3],
-		SerfWan: ports[4],
-		Server:  ports[5],
-	}
-	config.ConsulConfig = consul.DefaultConfig()
-	// Set low timeouts so the agent will become the leader quickly.
-	config.ConsulConfig.RaftConfig.LeaderLeaseTimeout = 10 * time.Millisecond
-	config.ConsulConfig.RaftConfig.HeartbeatTimeout = 20 * time.Millisecond
-	config.ConsulConfig.RaftConfig.ElectionTimeout = 20 * time.Millisecond
-	// We would rather start as the leader without requiring an election, but Consul
-	// contains some atomicity violations that are exacerbated by this option.
-	//
-	// config.ConsulConfig.RaftConfig.StartAsLeader = true
+	var httpPort int
+	server := testutil.NewTestServerConfig(t, func(c *testutil.TestServerConfig) {
+		// Consul's normal debugging output is very noisy and always starts up with a lot
+		// of error messages.
+		c.Stdout = ioutil.Discard
+		c.Stderr = ioutil.Discard
 
-	a, err := agent.Create(config, os.Stdout)
-	if err != nil {
-		t.Fatal("creating Consul agent:", err)
-	}
-	servers, err := agent.NewHTTPServers(a, config, os.Stdout)
-	if err != nil {
-		t.Fatal("creating Consul HTTP server:", err)
-	}
+		// Get random ports to allow multiple packages to execute Consul tests
+		// concurrently.
+		ports := getPorts(t, 6)
+		c.Ports = &testutil.TestPortConfig{
+			DNS:     ports[0],
+			HTTP:    ports[1],
+			RPC:     ports[2],
+			SerfLan: ports[3],
+			SerfWan: ports[4],
+			Server:  ports[5],
+		}
+		httpPort = c.Ports.HTTP
+	})
 	client, err := api.NewClient(&api.Config{
-		Address: fmt.Sprintf("%s:%d", config.BindAddr, config.Ports.HTTP),
+		Address: server.HTTPAddr,
 	})
 	if err != nil {
-		t.Fatal("creating Consul client:", err)
+		server.Stop()
+		t.Fatal(err)
 	}
-
-	consulClient := ConsulClientFromRaw(client)
-	testutil.WaitForLeader(t, a.RPC, config.Datacenter)
-
-	t.Log("starting Consul server with port:", config.Ports.HTTP)
+	t.Log("starting Consul server with port:", httpPort)
 	return Fixture{
-		Agent:    a,
-		Servers:  servers,
-		Client:   consulClient,
+		Server:   server,
+		Client:   ConsulClientFromRaw(client),
 		T:        t,
-		HTTPPort: config.Ports.HTTP,
+		HTTPPort: httpPort,
 	}
 }
 
@@ -109,11 +102,18 @@ func NewFixture(t *testing.T) Fixture {
 // fixture. It should always be called at the end of a unit test.
 func (f Fixture) Stop() {
 	f.T.Log("stopping Consul server with port:", f.HTTPPort)
-	for _, s := range f.Servers {
-		s.Shutdown()
-	}
-	_ = f.Agent.Shutdown()
+	f.Server.Stop()
 	time.Sleep(50 * time.Millisecond)
+}
+
+// StopOnPanic will stop the Consul test server, but only if it's catching a panic. This
+// method is meant to be used whenever a test fixture is created in a method that creates
+// a fixture and returns it.
+func (f Fixture) StopOnPanic() {
+	if r := recover(); r != nil {
+		f.Server.Stop()
+		panic(r)
+	}
 }
 
 func (f Fixture) GetKV(key string) []byte {

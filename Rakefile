@@ -101,7 +101,8 @@ task :sync_consul_deps do
   skipped_count = 0
 
   # now iterate over our Godeps.json and find any versions that mismatch and print them
-  p2_godep_contents["Deps"].each do |package|
+  to_inspect = p2_godep_contents["Deps"]
+  to_inspect.each do |package|
     package_name = package["ImportPath"]
     consul_rev = consul_deps[package_name]
     next unless consul_rev
@@ -113,7 +114,8 @@ task :sync_consul_deps do
       first_three_joined = first_three.join("/")
 
       # in case the consul dependency is new and not in $GOPATH, do a "go get" first
-      e "go get #{first_three_joined}/..."
+      e "go get -d #{first_three_joined}/..."
+
       begin
         Dir.chdir(File.join(ENV["GOPATH"], "src", *first_three)) do
           e "git fetch"
@@ -121,19 +123,17 @@ task :sync_consul_deps do
           raise "could not determine which commit is newer for #{first_three_joined}" unless $?.exitstatus == 0
           if older_commit == our_rev
             e "git checkout #{consul_rev}"
+            Dir.chdir(p2_repo_dir) do
+              e "godep update #{first_three.join("/")}/..."
+            end
+
+            puts "Successfully repaired mismatch in #{package_name}: consul has #{consul_rev} p2 had #{our_rev}"
+            success_count += 1
           else
             puts "No action taken for #{package_name}: consul's version #{consul_rev} is older than P2's #{our_rev}"
             skipped_count += 1
-            next
           end
         end
-
-        Dir.chdir(p2_repo_dir) do
-          e "godep update #{first_three.join("/")}/..."
-        end
-
-        puts "Successfully repaired mismatch in #{package_name}: consul has #{consul_rev} p2 had #{our_rev}"
-        success_count += 1
       rescue => e
         puts "Failed to repair mismatch in #{package_name}: consul has #{consul_rev} p2 had #{our_rev}: #{e.message}"
         failed_count += 1
