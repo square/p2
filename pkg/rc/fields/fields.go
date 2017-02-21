@@ -7,6 +7,7 @@ import (
 	"k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/util"
 )
 
 // ID is a named type alias for Resource Controller IDs. This is preferred to the raw
@@ -32,7 +33,8 @@ type RC struct {
 	// A set of labels that will be added to every pod scheduled by this controller
 	PodLabels labels.Set
 
-	// The desired number of instances of the manifest that should be scheduled
+	// The desired number of instances of the manifest that should be
+	// scheduled.
 	ReplicasDesired int
 
 	// When disabled, this controller will not make any scheduling changes
@@ -42,12 +44,17 @@ type RC struct {
 // RawRC defines the JSON format used to store data into Consul. It should only be used
 // while (de-)serializing the RC state. Prefer using the "RC" when possible.
 type RawRC struct {
-	ID              ID         `json:"id"`
-	Manifest        string     `json:"manifest"`
-	NodeSelector    string     `json:"node_selector"`
-	PodLabels       labels.Set `json:"pod_labels"`
-	ReplicasDesired int        `json:"replicas_desired"`
-	Disabled        bool       `json:"disabled"`
+	ID           ID         `json:"id"`
+	Manifest     string     `json:"manifest"`
+	NodeSelector string     `json:"node_selector"`
+	PodLabels    labels.Set `json:"pod_labels"`
+
+	// ReplicasDesired is an int pointer so we can distinguish between a
+	// zero-count indicating the RC handler should remove any and all pods
+	// from a case (for instance if the json key was changed) where golang
+	// is defaulting to the 0 value
+	ReplicasDesired *int `json:"replicas_desired"`
+	Disabled        bool `json:"disabled"`
 }
 
 // MarshalJSON implements the json.Marshaler interface for serializing the RC to JSON
@@ -89,7 +96,7 @@ func (rc RC) ToRaw() (RawRC, error) {
 		Manifest:        string(manifest),
 		NodeSelector:    nodeSel,
 		PodLabels:       rc.PodLabels,
-		ReplicasDesired: rc.ReplicasDesired,
+		ReplicasDesired: &rc.ReplicasDesired,
 		Disabled:        rc.Disabled,
 	}, nil
 }
@@ -102,6 +109,10 @@ func (rc *RC) UnmarshalJSON(b []byte) error {
 	var rawRC RawRC
 	if err := json.Unmarshal(b, &rawRC); err != nil {
 		return err
+	}
+
+	if rawRC.ReplicasDesired == nil {
+		return util.Errorf("RC %s has no replicas_desired field", rawRC.ID)
 	}
 
 	var m manifest.Manifest
@@ -123,7 +134,7 @@ func (rc *RC) UnmarshalJSON(b []byte) error {
 		Manifest:        m,
 		NodeSelector:    nodeSel,
 		PodLabels:       rawRC.PodLabels,
-		ReplicasDesired: rawRC.ReplicasDesired,
+		ReplicasDesired: *rawRC.ReplicasDesired,
 		Disabled:        rawRC.Disabled,
 	}
 	return nil

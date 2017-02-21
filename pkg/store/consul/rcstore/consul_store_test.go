@@ -513,8 +513,9 @@ func rcsWithIDs(t *testing.T, id string, num int) api.KVPairs {
 	manifest := builder.GetManifest()
 	for i := 0; i < num; i++ {
 		rc := fields.RC{
-			ID:       fields.ID(id),
-			Manifest: manifest,
+			ID:              fields.ID(id),
+			Manifest:        manifest,
+			ReplicasDesired: 1,
 		}
 
 		jsonRC, err := json.Marshal(rc)
