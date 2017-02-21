@@ -48,6 +48,20 @@ func (m *SchedulePodRequest) String() string            { return proto.CompactTe
 func (*SchedulePodRequest) ProtoMessage()               {}
 func (*SchedulePodRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{0} }
 
+func (m *SchedulePodRequest) GetManifest() string {
+	if m != nil {
+		return m.Manifest
+	}
+	return ""
+}
+
+func (m *SchedulePodRequest) GetNodeName() string {
+	if m != nil {
+		return m.NodeName
+	}
+	return ""
+}
+
 type SchedulePodResponse struct {
 	PodUniqueKey string `protobuf:"bytes,1,opt,name=pod_unique_key,json=podUniqueKey" json:"pod_unique_key,omitempty"`
 }
@@ -56,6 +70,13 @@ func (m *SchedulePodResponse) Reset()                    { *m = SchedulePodRespo
 func (m *SchedulePodResponse) String() string            { return proto.CompactTextString(m) }
 func (*SchedulePodResponse) ProtoMessage()               {}
 func (*SchedulePodResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{1} }
+
+func (m *SchedulePodResponse) GetPodUniqueKey() string {
+	if m != nil {
+		return m.PodUniqueKey
+	}
+	return ""
+}
 
 type WatchPodStatusRequest struct {
 	PodUniqueKey    string `protobuf:"bytes,1,opt,name=pod_unique_key,json=podUniqueKey" json:"pod_unique_key,omitempty"`
@@ -69,6 +90,34 @@ func (m *WatchPodStatusRequest) String() string            { return proto.Compac
 func (*WatchPodStatusRequest) ProtoMessage()               {}
 func (*WatchPodStatusRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{2} }
 
+func (m *WatchPodStatusRequest) GetPodUniqueKey() string {
+	if m != nil {
+		return m.PodUniqueKey
+	}
+	return ""
+}
+
+func (m *WatchPodStatusRequest) GetWaitIndex() uint64 {
+	if m != nil {
+		return m.WaitIndex
+	}
+	return 0
+}
+
+func (m *WatchPodStatusRequest) GetStatusNamespace() string {
+	if m != nil {
+		return m.StatusNamespace
+	}
+	return ""
+}
+
+func (m *WatchPodStatusRequest) GetWaitForExists() bool {
+	if m != nil {
+		return m.WaitForExists
+	}
+	return false
+}
+
 type PodStatusResponse struct {
 	Manifest        string           `protobuf:"bytes,1,opt,name=manifest" json:"manifest,omitempty"`
 	PodState        string           `protobuf:"bytes,2,opt,name=pod_state,json=podState" json:"pod_state,omitempty"`
@@ -81,11 +130,32 @@ func (m *PodStatusResponse) String() string            { return proto.CompactTex
 func (*PodStatusResponse) ProtoMessage()               {}
 func (*PodStatusResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{3} }
 
+func (m *PodStatusResponse) GetManifest() string {
+	if m != nil {
+		return m.Manifest
+	}
+	return ""
+}
+
+func (m *PodStatusResponse) GetPodState() string {
+	if m != nil {
+		return m.PodState
+	}
+	return ""
+}
+
 func (m *PodStatusResponse) GetProcessStatuses() []*ProcessStatus {
 	if m != nil {
 		return m.ProcessStatuses
 	}
 	return nil
+}
+
+func (m *PodStatusResponse) GetLastIndex() uint64 {
+	if m != nil {
+		return m.LastIndex
+	}
+	return 0
 }
 
 type ProcessStatus struct {
@@ -98,6 +168,20 @@ func (m *ProcessStatus) Reset()                    { *m = ProcessStatus{} }
 func (m *ProcessStatus) String() string            { return proto.CompactTextString(m) }
 func (*ProcessStatus) ProtoMessage()               {}
 func (*ProcessStatus) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{4} }
+
+func (m *ProcessStatus) GetLaunchableId() string {
+	if m != nil {
+		return m.LaunchableId
+	}
+	return ""
+}
+
+func (m *ProcessStatus) GetEntryPoint() string {
+	if m != nil {
+		return m.EntryPoint
+	}
+	return ""
+}
 
 func (m *ProcessStatus) GetLastExit() *ExitStatus {
 	if m != nil {
@@ -117,6 +201,27 @@ func (m *ExitStatus) String() string            { return proto.CompactTextString
 func (*ExitStatus) ProtoMessage()               {}
 func (*ExitStatus) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{5} }
 
+func (m *ExitStatus) GetExitTime() int64 {
+	if m != nil {
+		return m.ExitTime
+	}
+	return 0
+}
+
+func (m *ExitStatus) GetExitCode() int64 {
+	if m != nil {
+		return m.ExitCode
+	}
+	return 0
+}
+
+func (m *ExitStatus) GetExitStatus() int64 {
+	if m != nil {
+		return m.ExitStatus
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterType((*SchedulePodRequest)(nil), "podstore.SchedulePodRequest")
 	proto.RegisterType((*SchedulePodResponse)(nil), "podstore.SchedulePodResponse")
@@ -132,7 +237,7 @@ var _ grpc.ClientConn
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion3
+const _ = grpc.SupportPackageIsVersion4
 
 // Client API for P2PodStore service
 
@@ -258,7 +363,7 @@ var _P2PodStore_serviceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: fileDescriptor0,
+	Metadata: "pkg/grpc/podstore/protos/podstore.proto",
 }
 
 func init() { proto.RegisterFile("pkg/grpc/podstore/protos/podstore.proto", fileDescriptor0) }
