@@ -83,7 +83,7 @@ func (s *fakeStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan e
 	return nil, nil
 }
 
-func (s *fakeStore) WatchNewWithRCLockInfo(quit <-chan struct{}, pauseTime time.Duration) (<-chan []RCLockResult, <-chan error) {
+func (s *fakeStore) WatchRCKeysWithLockInfo(quit <-chan struct{}, pauseTime time.Duration) (<-chan []RCLockResult, <-chan error) {
 	panic("not implemented")
 }
 

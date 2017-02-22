@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/consul/api"
@@ -56,6 +57,7 @@ type kvPair struct {
 
 type consulKV interface {
 	Get(key string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
+	Keys(prefix string, separator string, opts *api.QueryOptions) ([]string, *api.QueryMeta, error)
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
 	CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
 	DeleteCAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
@@ -195,44 +197,78 @@ func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan
 	return outCh, errCh
 }
 
-// Wraps an RC with lock information
+// Wraps an RC ID with lock information
+// This structure is useful for low-bandwidth detection of new RCs, for use
+// in the RC farm.
 type RCLockResult struct {
-	fields.RC
+	ID                      fields.ID
 	LockedForOwnership      bool
 	LockedForUpdateCreation bool
 	LockedForMutation       bool
 }
 
-// Like WatchNew() but instead of returning raw fields.RC types it wraps them
-// in a struct that indicates what types of locks are held on the RC. This is
-// useful in reducing failed lock attempts in the RC farms which have a latency
-// cost. WatchNewWithLockInfo() can retrieve the contents of the entire
-// replication controller lock tree once and farms can only attempt to acquire
-// locks that were not held at some recent time
+// WatchRCKeysWithLockInfo executes periodic consul watch queries for
+// replication controller keys and passes the results on a channel along with
+// information about which keys have locks on them. Only keys are returned as a
+// bandwidth performance optimization. To observe changes to the fields of a
+// replication controller, individual watches should be used. Lock info is
+// returned so that it can be used to not try to lock RCs that are already
+// locked. In other words, it's a QPS optimization over the naive solution of
+// always attempting to lock every RC and relying on the consul server to
+// decide whether the lock is owned.
 //
 // Since lock information is retrieved once per update to the RC list, it's
 // possible that lock information will be out of date as the list is processed.
 // However, a subsequent update will get the correct view of the world so the
 // behavior should be correct
-func (s *consulStore) WatchNewWithRCLockInfo(quit <-chan struct{}, pauseTime time.Duration) (<-chan []RCLockResult, <-chan error) {
-	inCh := make(chan api.KVPairs)
-	lockInfoErrCh := make(chan error)
+func (s *consulStore) WatchRCKeysWithLockInfo(quit <-chan struct{}, pauseTime time.Duration) (<-chan []RCLockResult, <-chan error) {
 	combinedErrCh := make(chan error)
 
-	rcCh, rcErrCh := publishLatestRCs(inCh, quit)
-	go consulutil.WatchPrefix(rcTree+"/", s.kv, inCh, quit, rcErrCh, pauseTime)
+	keyCh := consulutil.WatchKeys(rcTree+"/", s.kv, quit, pauseTime)
 
+	var combinedErrChWG sync.WaitGroup
+	rcIDCh := make(chan []fields.ID)
+	combinedErrChWG.Add(1)
+	go func() {
+		defer combinedErrChWG.Done()
+		for watchedKeys := range keyCh {
+			if watchedKeys.Err != nil {
+				select {
+				case <-quit:
+					return
+				case combinedErrCh <- watchedKeys.Err:
+					continue
+				}
+			}
+
+			rcIDs, err := keysToRCIDs(watchedKeys.Keys)
+			if err != nil {
+				select {
+				case <-quit:
+					return
+				case combinedErrCh <- err:
+					continue
+				}
+			}
+
+			select {
+			case <-quit:
+				return
+			case rcIDCh <- rcIDs:
+			}
+		}
+	}()
 	// Process RC updates and augment them with lock information
-	outCh, lockInfoErrCh := s.publishLatestRCsWithLockInfo(rcCh, quit)
+	outCh, lockInfoErrCh := s.publishLatestRCKeysWithLockInfo(rcIDCh, quit)
 
 	// Fan-in the two error channels into one source
+	combinedErrChWG.Add(1)
 	go func() {
-		defer close(combinedErrCh)
+		defer combinedErrChWG.Done()
 		var err error
 		for {
 			select {
 			case err = <-lockInfoErrCh:
-			case err = <-rcErrCh:
 			case <-quit:
 				return
 			}
@@ -243,6 +279,13 @@ func (s *consulStore) WatchNewWithRCLockInfo(quit <-chan struct{}, pauseTime tim
 				return
 			}
 		}
+	}()
+
+	// goroutine that will close the combined error channel once all the
+	// goroutines that publish to it have exited
+	go func() {
+		combinedErrChWG.Wait()
+		close(combinedErrCh)
 	}()
 	return outCh, combinedErrCh
 }
@@ -322,7 +365,7 @@ func publishLatestRCs(inCh <-chan api.KVPairs, quit <-chan struct{}) (<-chan []f
 	return outCh, errCh
 }
 
-func (s *consulStore) publishLatestRCsWithLockInfo(inCh <-chan []fields.RC, quit <-chan struct{}) (chan []RCLockResult, chan error) {
+func (s *consulStore) publishLatestRCKeysWithLockInfo(inCh <-chan []fields.ID, quit <-chan struct{}) (chan []RCLockResult, chan error) {
 	// Buffered to deal with slow consumers
 	outCh := make(chan []RCLockResult, 1)
 	errCh := make(chan error)
@@ -333,16 +376,16 @@ func (s *consulStore) publishLatestRCsWithLockInfo(inCh <-chan []fields.RC, quit
 			select {
 			case <-quit:
 				return
-			case rcFields, ok := <-inCh:
+			case rcIDs, ok := <-inCh:
 				if !ok {
 					return
 				}
 
 				var res []RCLockResult
 				rcMap := make(map[fields.ID]*RCLockResult)
-				for _, rc := range rcFields {
-					rcMap[rc.ID] = &RCLockResult{
-						RC: rc,
+				for _, rcID := range rcIDs {
+					rcMap[rcID] = &RCLockResult{
+						ID: rcID,
 					}
 				}
 
@@ -689,6 +732,23 @@ func (s *consulStore) LockForUpdateCreation(rcID fields.ID, session consul.Sessi
 	}
 
 	return session.Lock(updateCreationLockPath)
+}
+
+func keysToRCIDs(keys []string) ([]fields.ID, error) {
+	// we expect keys to be formatted like fmt.Sprintf("%s/%s", rcTree, rcID). If
+	// that's not the format we get then something is really messed up
+	out := make([]fields.ID, len(keys))
+	for i, key := range keys {
+		rcIDStr := strings.TrimPrefix(key, rcTree+"/")
+		rcID, err := fields.ToRCID(rcIDStr)
+		if err != nil {
+			return nil, util.Errorf("couldn't convert key to uuid: %s", err)
+		}
+
+		out[i] = rcID
+	}
+
+	return out, nil
 }
 
 // forEachLabel Attempts to apply the supplied function to labels of the replication controller.

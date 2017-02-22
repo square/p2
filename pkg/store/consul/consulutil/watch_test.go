@@ -2,6 +2,7 @@ package consulutil
 
 import (
 	"bytes"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -207,6 +208,69 @@ func TestWatchPrefix(t *testing.T) {
 	}
 }
 
+// TestWatchKeys verifies some basic operations of the WatchKeys() function. It
+// should find existing keys, send new updates when the data changes, and
+// ignore changes outside its prefix.
+func TestWatchKeys(t *testing.T) {
+	t.Parallel()
+	f := NewFixture(t)
+	defer f.Stop()
+
+	done := make(chan struct{})
+	defer func() {
+		if done != nil {
+			close(done)
+		}
+	}()
+	kv1a := &api.KVPair{Key: "prefix/hello", Value: []byte("these")}
+	kv1b := &api.KVPair{Key: "prefix/hello", Value: []byte("do")}
+	kv2a := &api.KVPair{Key: "prefix/test", Value: []byte("not")}
+	kv3a := &api.KVPair{Key: "something", Value: []byte("matter")}
+
+	// Process existing data
+	f.Client.KV().Put(kv1a, nil)
+	keysChan := WatchKeys("prefix/", f.Client.KV(), done, 0)
+	keys := <-keysChan
+	expected := []string{kv1a.Key}
+	if !reflect.DeepEqual(keys.Keys, expected) {
+		t.Errorf("existing data not recognized, wanted %s but got %s", expected, keys.Keys)
+	}
+
+	// Get an updates when the data changes (create, modify, delete)
+	f.Client.KV().Put(kv1b, nil)
+	keys = <-keysChan
+	expected = []string{kv1b.Key}
+	if !reflect.DeepEqual(keys.Keys, expected) {
+		t.Errorf("keys changed inappropriately: wanted %s got %s", expected, keys.Keys)
+	}
+
+	f.Client.KV().Put(kv2a, nil)
+	keys = <-keysChan
+	expected = []string{kv1a.Key, kv2a.Key}
+	if !reflect.DeepEqual(keys.Keys, expected) {
+		t.Errorf("did not find new key: wanted %s got %s", expected, keys.Keys)
+	}
+
+	f.Client.KV().Delete(kv1a.Key, nil)
+	keys = <-keysChan
+	expected = []string{kv2a.Key}
+	if !reflect.DeepEqual(keys.Keys, expected) {
+		t.Errorf("did not notice key deletion: wanted %s got %s", expected, keys.Keys)
+	}
+
+	// The watcher should ignore kv3a, which is outside its prefix
+	f.Client.KV().Put(kv3a, nil)
+	f.Client.KV().Delete(kv2a.Key, nil)
+	keys = <-keysChan
+	if len(keys.Keys) != 0 {
+		t.Errorf("watch did not ignore keys outside of prefix: got %s but should have been 0 keys", keys.Keys)
+	}
+	close(done)
+	done = nil
+	for range keysChan {
+		t.Error("found a key after quitting")
+	}
+}
 func TestWatchSingle(t *testing.T) {
 	t.Parallel()
 	f := NewFixture(t)

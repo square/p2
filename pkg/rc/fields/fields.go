@@ -6,6 +6,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/labels"
 
+	"github.com/pborman/uuid"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/util"
 )
@@ -17,6 +18,15 @@ type ID string
 // String implements fmt.Stringer
 func (id ID) String() string {
 	return string(id)
+}
+
+func ToRCID(rcID string) (ID, error) {
+	rcUUID := uuid.Parse(rcID)
+	if rcUUID == nil {
+		return "", util.Errorf("%s did not parse cleanly as a uuid", rcID)
+	}
+
+	return ID(rcUUID.String()), nil
 }
 
 // RC holds the runtime state of a Resource Controller as saved in Consul.
