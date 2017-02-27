@@ -7,9 +7,11 @@ import (
 	podstore_protos "github.com/square/p2/pkg/grpc/podstore/protos"
 	"github.com/square/p2/pkg/grpc/testutil"
 	"github.com/square/p2/pkg/launch"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/podstore"
+	"github.com/square/p2/pkg/store/consul/podstore/podstoretest"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/store/consul/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/types"
@@ -81,8 +83,80 @@ func TestSchedulePodFailsNoManifest(t *testing.T) {
 	}
 }
 
+func TestUnschedulePod(t *testing.T) {
+	store, server := setupServerWithFakePodStore()
+
+	key, err := store.Schedule(validManifest(), "some_node")
+	if err != nil {
+		t.Fatalf("could not seed pod store with a pod to unschedule: %s", err)
+	}
+
+	req := &podstore_protos.UnschedulePodRequest{
+		PodUniqueKey: key.String(),
+	}
+	resp, err := server.UnschedulePod(context.Background(), req)
+	if err != nil {
+		t.Errorf("unexpected error unscheduling pod: %s", err)
+	}
+
+	if resp == nil {
+		t.Error("expected non-nil response on successful pod unschedule")
+	}
+}
+
+func TestUnschedulePodNotFound(t *testing.T) {
+	_, server := setupServerWithFakePodStore()
+
+	// unschedule a random key that doesn't exist in the store
+	req := &podstore_protos.UnschedulePodRequest{
+		PodUniqueKey: types.NewPodUUID().String(),
+	}
+	resp, err := server.UnschedulePod(context.Background(), req)
+	if err == nil {
+		t.Error("expected error unscheduling nonexistent pod")
+	}
+
+	if grpc.Code(err) != codes.NotFound {
+		t.Errorf("expected not found error when unscheduling a nonexistent pod, but error was %s", err)
+	}
+
+	if resp != nil {
+		t.Error("expected nil response when attempting to unschedule a nonexistent pod")
+	}
+}
+
+func TestUnscheduleError(t *testing.T) {
+	// Create a server with a failing pod store so we can test what happens when
+	// a failure is encountered
+	server := store{
+		scheduler: podstoretest.NewFailingPodStore(),
+	}
+
+	req := &podstore_protos.UnschedulePodRequest{
+		PodUniqueKey: types.NewPodUUID().String(),
+	}
+	resp, err := server.UnschedulePod(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected an error unscheduling a pod using a failing pod store")
+	}
+
+	if grpc.Code(err) != codes.Unavailable {
+		t.Fatalf("expected an unavailable error when unscheduling from store fails but got %s", err)
+	}
+
+	if resp != nil {
+		t.Fatal("expected nil response when encountering an unscheduling error")
+	}
+}
+
 func validManifestString() string {
 	return "id: test_app"
+}
+
+func validManifest() manifest.Manifest {
+	builder := manifest.NewBuilder()
+	builder.SetID("test_app")
+	return builder.GetManifest()
 }
 
 // implements podstore_protos.PodStore_WatchPodStatusServer

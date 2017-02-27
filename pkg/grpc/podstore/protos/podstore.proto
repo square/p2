@@ -8,6 +8,7 @@ service P2PodStore {
   // Schedules a uuid pod on a host
   rpc SchedulePod (SchedulePodRequest) returns (SchedulePodResponse) {}
   rpc WatchPodStatus (WatchPodStatusRequest) returns (stream PodStatusResponse) {}
+  rpc UnschedulePod (UnschedulePodRequest) returns (UnschedulePodResponse) {}
 }
 
 message SchedulePodRequest {
@@ -44,3 +45,9 @@ message ExitStatus {
   int64 exit_code = 2;
   int64 exit_status = 3;
 }
+
+message UnschedulePodRequest {
+  string pod_unique_key = 1;
+}
+
+message UnschedulePodResponse {}
