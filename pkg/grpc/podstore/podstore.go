@@ -4,6 +4,7 @@ import (
 	podstore_protos "github.com/square/p2/pkg/grpc/podstore/protos"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/podstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/types"
@@ -23,6 +24,7 @@ var _ podstore_protos.P2PodStoreServer = store{}
 
 type Scheduler interface {
 	Schedule(manifest manifest.Manifest, node types.NodeName) (key types.PodUniqueKey, err error)
+	Unschedule(key types.PodUniqueKey) error
 }
 
 type PodStatusStore interface {
@@ -59,6 +61,26 @@ func (s store) SchedulePod(_ context.Context, req *podstore_protos.SchedulePodRe
 		PodUniqueKey: podUniqueKey.String(),
 	}
 	return resp, nil
+}
+
+func (s store) UnschedulePod(_ context.Context, req *podstore_protos.UnschedulePodRequest) (*podstore_protos.UnschedulePodResponse, error) {
+	podUniqueKeyStr := req.GetPodUniqueKey()
+	if podUniqueKeyStr == "" {
+		return nil, grpc.Errorf(codes.InvalidArgument, "pod_unique_key must be provided")
+	}
+
+	podUniqueKey, err := types.ToPodUniqueKey(podUniqueKeyStr)
+	if err != nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "pod_unique_key of %q is invalid", podUniqueKeyStr)
+	}
+
+	err = s.scheduler.Unschedule(podUniqueKey)
+	if podstore.IsNoPod(err) {
+		return nil, grpc.Errorf(codes.NotFound, "no pod with pod_unique_key of %q found", podUniqueKey)
+	} else if err != nil {
+		return nil, grpc.Errorf(codes.Unavailable, "error unscheduling pod: %s", err)
+	}
+	return &podstore_protos.UnschedulePodResponse{}, nil
 }
 
 // Represents the return values of WaitForStatus on the podstore. This is
