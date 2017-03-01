@@ -22,39 +22,56 @@ import (
 )
 
 const (
-	cmdCreateText = "create"
-	cmdGetText    = "get"
-	cmdDeleteText = "delete"
-	cmdUpdateText = "update"
-	cmdListText   = "list"
+	cmdCreateText            = "create"
+	cmdGetText               = "get"
+	cmdDeleteText            = "delete"
+	cmdUpdateAnnotationsText = "update-annotations"
+	cmdListText              = "list"
 )
 
+// "create" command and flags
 var (
 	cmdCreate         = kingpin.Command(cmdCreateText, "Create a pod cluster. ")
 	createPodID       = cmdCreate.Flag("pod", "The pod ID on the pod cluster").Required().String()
 	createAZ          = cmdCreate.Flag("az", "The availability zone of the pod cluster").Required().String()
 	createName        = cmdCreate.Flag("name", "The cluster name (ie. staging, production)").Required().String()
 	createAnnotations = cmdCreate.Flag("annotations", "Complete set of annotations - must parse as JSON!").String()
+)
 
+// "get" command and flags
+var (
 	cmdGet   = kingpin.Command(cmdGetText, "Show a pod cluster. ")
 	getPodID = cmdGet.Flag("pod", "The pod ID on the pod cluster").String()
 	getAZ    = cmdGet.Flag("az", "The availability zone of the pod cluster").String()
 	getName  = cmdGet.Flag("name", "The cluster name (ie. staging, production)").String()
 	getID    = cmdGet.Flag("id", "The cluster UUID. This option is mutually exclusive with pod,az,name").String()
+)
 
+// "delete" command and flags
+var (
 	cmdDelete   = kingpin.Command(cmdDeleteText, "Delete a pod cluster. ")
 	deletePodID = cmdDelete.Flag("pod", "The pod ID on the pod cluster").String()
 	deleteAZ    = cmdDelete.Flag("az", "The availability zone of the pod cluster").String()
 	deleteName  = cmdDelete.Flag("name", "The cluster name (ie. staging, production)").String()
 	deleteID    = cmdDelete.Flag("id", "The cluster UUID. This option is mutually exclusive with pod,az,name").String()
+)
 
-	cmdUpdate         = kingpin.Command(cmdUpdateText, "Update a pod cluster. ")
-	updatePodID       = cmdUpdate.Flag("pod", "The pod ID on the pod cluster").String()
-	updateAZ          = cmdUpdate.Flag("az", "The availability zone of the pod cluster").String()
-	updateName        = cmdUpdate.Flag("name", "The cluster name (ie. staging, production)").String()
-	updateAnnotations = cmdUpdate.Flag("annotations", "JSON string representing the complete update ").String()
-	updateID          = cmdUpdate.Flag("id", "The cluster UUID. This option is mutually exclusive with pod,az,name").String()
+// "update-annotations" command and flags"
+var (
+	cmdUpdateAnnotations = kingpin.Command(cmdUpdateAnnotationsText, "Update a pod cluster's annotations.")
 
+	// these flags identify the pod cluster to update
+	updateAnnotationsPodID = cmdUpdateAnnotations.Flag("pod", "The pod ID on the pod cluster that should be updated.").String()
+	updateAnnotationsAZ    = cmdUpdateAnnotations.Flag("az", "The availability zone of the pod cluster that should be updated").String()
+	updateAnnotationsName  = cmdUpdateAnnotations.Flag("name", "The cluster name (ie. staging, production) for the pod cluster that should be updated.").String()
+	updateAnnotationsID    = cmdUpdateAnnotations.Flag("id", "The UUID of the pod cluster that should be updated. This option is mutually exclusive with pod,az,name").String()
+
+	// this flag specifies the annotations to update.
+	updateAnnotations = cmdUpdateAnnotations.Flag("annotations", "JSON string representing the complete annotations that should be applied to the pod cluster. Annotations will not be updated if this flag is unspecified.").Required().String()
+)
+
+// "list" command
+var (
 	cmdList = kingpin.Command(cmdListText, "Lists pod clusters. ")
 )
 
@@ -136,11 +153,11 @@ func main() {
 			}
 			os.Exit(1)
 		}
-	case cmdUpdateText:
-		az := fields.AvailabilityZone(*updateAZ)
-		cn := fields.ClusterName(*updateName)
-		podID := types.PodID(*updatePodID)
-		pcID := fields.ID(*updateID)
+	case cmdUpdateAnnotationsText:
+		az := fields.AvailabilityZone(*updateAnnotationsAZ)
+		cn := fields.ClusterName(*updateAnnotationsName)
+		podID := types.PodID(*updateAnnotationsPodID)
+		pcID := fields.ID(*updateAnnotationsID)
 
 		var pccontrol *control.PodCluster
 		if pcID != "" {
@@ -159,7 +176,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		pc, err := pccontrol.Update(annotations)
+		pc, err := pccontrol.UpdateAnnotations(annotations)
 		if err != nil {
 			log.Fatalf("Error during PodCluster update: %v\n%v", err, pc)
 			os.Exit(1)

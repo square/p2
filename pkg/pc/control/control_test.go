@@ -73,7 +73,7 @@ func TestCreate(t *testing.T) {
 	}
 }
 
-func TestUpdate(t *testing.T) {
+func TestUpdateAnnotations(t *testing.T) {
 	testAZ := fields.AvailabilityZone("west-coast")
 	testCN := fields.ClusterName("test")
 	testPodID := types.PodID("pod")
@@ -121,7 +121,7 @@ func TestUpdate(t *testing.T) {
 		t.Errorf("json unmarshal error: %v", err)
 	}
 
-	pc, err = pcController.Update(newTestAnnotations)
+	pc, err = pcController.UpdateAnnotations(newTestAnnotations)
 	if err != nil {
 		t.Fatalf("Got error updating PC annotations: %v", err)
 	}
