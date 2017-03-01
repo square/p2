@@ -74,7 +74,17 @@ func (hl *Launchable) If() launch.Launchable {
 	return LaunchAdapter{Launchable: hl}
 }
 
+func (hl *Launchable) IsOneoff() bool {
+	return hl.IsUUIDPod
+}
+
 func (hl *Launchable) Disable() error {
+	if hl.IsOneoff() {
+		// oneoff pods have nothing to disable/enable, they only run once and there's
+		// no server component
+		return nil
+	}
+
 	// the error return from os/exec.Run is almost always meaningless
 	// ("exit status 1")
 	// since the output is more useful to the user, that's what we'll preserve
@@ -151,6 +161,12 @@ func (hl *Launchable) disable() (string, error) {
 }
 
 func (hl *Launchable) enable() (string, error) {
+	if hl.IsOneoff() {
+		// For oneoff pods, there is nothing to enable. It's just an entry
+		// point that runs once.
+		return "", nil
+	}
+
 	output, err := hl.InvokeBinScript("enable")
 
 	// providing an enable script is optional, ignore those errors

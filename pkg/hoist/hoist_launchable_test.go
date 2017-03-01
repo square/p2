@@ -269,6 +269,18 @@ func TestEnable(t *testing.T) {
 	Assert(t).AreEqual(enableOutput, expectedEnableOutput, "Did not get expected output from test enable script")
 }
 
+func TestNoEnableForUUIDPods(t *testing.T) {
+	hl, sb := FakeHoistLaunchableForDirUUIDPod("failing_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+
+	// If enable actually gets run, we'll get an error because we chose the launchable
+	// with failing scripts
+	_, err := hl.enable()
+	if err != nil {
+		t.Error("enable script shouldn't have run for a uuid pod")
+	}
+}
+
 func TestFailingEnable(t *testing.T) {
 	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
 	hl, sb := FakeHoistLaunchableForDirLegacyPod("failing_scripts_test_hoist_launchable")
@@ -372,6 +384,18 @@ func TestStop(t *testing.T) {
 	err := hl.stop(sb, sv)
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to stop runit services")
+}
+
+func TestNoDisableForUUIDPods(t *testing.T) {
+	hl, sb := FakeHoistLaunchableForDirUUIDPod("failing_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+
+	// If disable actually gets run, we'll get an error because we chose the launchable
+	// with failing scripts
+	err := hl.Disable()
+	if err != nil {
+		t.Error("disable script shouldn't have run for a uuid pod")
+	}
 }
 
 func TestDisableWithFailingDisable(t *testing.T) {
