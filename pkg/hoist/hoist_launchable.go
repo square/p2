@@ -319,6 +319,14 @@ func (hl *Launchable) Executables(
 
 		for _, relativePath := range relativeExecutablePaths {
 			var entryPointName string
+
+			// This is a hack to preserve the runit service
+			// directory layout for legacy pods. From a theoretical
+			// standpoint we would like to include all parts of the
+			// path in the service name so that there could be
+			// multiple files started with the same basename but
+			// different paths. UUID pods are new so we can adopt
+			// the scheme we want
 			if hl.IsUUIDPod {
 				entryPointName = strings.Replace(relativePath, "/", "__", -1)
 			} else {
