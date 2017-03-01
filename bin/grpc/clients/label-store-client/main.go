@@ -27,12 +27,12 @@ var (
 	labelType       = cmdWatchMatches.Flag("label-type", "The type of label watch to do, e.g. pod.").Required().String()
 	selector        = cmdWatchMatches.Flag("selector", "A kubernetes style label selector").Required().String()
 	numFetches      = cmdWatchMatches.Flag("num-fetches", "The number of watch iterations to display before exiting").Short('n').Default("1").Int()
+
+	logger = log.New(os.Stderr, "", 0)
 )
 
 func main() {
 	cmd := kingpin.Parse()
-
-	logger := log.New(os.Stderr, "", 0)
 
 	conn, err := grpc.Dial(*address, grpc.WithBlock(), grpc.WithTimeout(5*time.Second), grpc.WithInsecure())
 	if err != nil {
@@ -44,7 +44,7 @@ func main() {
 
 	switch cmd {
 	case cmdWatchMatchesText:
-		watchMatches(grpcLabelClient, logger)
+		watchMatches(grpcLabelClient)
 	}
 }
 
@@ -52,7 +52,7 @@ type matchWatcher interface {
 	WatchMatches(selector klabels.Selector, labelType labels.Type, quitCh <-chan struct{}) (chan []labels.Labeled, error)
 }
 
-func watchMatches(watcher matchWatcher, logger *log.Logger) {
+func watchMatches(watcher matchWatcher) {
 	lType, err := labels.AsType(*labelType)
 	if err != nil {
 		logger.Fatal(err)

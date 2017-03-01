@@ -22,6 +22,8 @@ import (
 
 var (
 	verbose = kingpin.Flag("verbose", "Enable verbose logging for the server").Bool()
+
+	logger = log.New(os.Stderr, "", 0)
 )
 
 type config struct {
@@ -41,8 +43,7 @@ func main() {
 	client := consul.NewConsulClient(opts)
 	applicator := labels.NewConsulApplicator(client, 1)
 
-	logger := log.New(os.Stderr, "", 0)
-	port := getPort(logger)
+	port := getPort()
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
@@ -57,7 +58,7 @@ func main() {
 	}
 }
 
-func getPort(logger *log.Logger) int {
+func getPort() int {
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		return defaultPort
