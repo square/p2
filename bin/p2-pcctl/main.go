@@ -91,7 +91,7 @@ func main() {
 		az := fields.AvailabilityZone(*createAZ)
 		cn := fields.ClusterName(*createName)
 		podID := types.PodID(*createPodID)
-		selector := selectorFrom(az, cn, podID)
+		selector := defaultSelector(az, cn, podID)
 		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, session)
 
 		annotations := *createAnnotations
@@ -114,7 +114,7 @@ func main() {
 		if pcID != "" {
 			pccontrol = control.NewPodClusterFromID(pcID, session, pcstore)
 		} else if az != "" && cn != "" && podID != "" {
-			selector := selectorFrom(az, cn, podID)
+			selector := defaultSelector(az, cn, podID)
 			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, session)
 		} else {
 			log.Fatalf("Expected one of: pcID or (pod,az,name)")
@@ -140,7 +140,7 @@ func main() {
 		if pcID != "" {
 			pccontrol = control.NewPodClusterFromID(pcID, session, pcstore)
 		} else if az != "" && cn != "" && podID != "" {
-			selector := selectorFrom(az, cn, podID)
+			selector := defaultSelector(az, cn, podID)
 			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, session)
 		} else {
 			log.Fatalf("Expected one of: pcID or (pod,az,name)")
@@ -163,7 +163,7 @@ func main() {
 		if pcID != "" {
 			pccontrol = control.NewPodClusterFromID(pcID, session, pcstore)
 		} else if az != "" && cn != "" && podID != "" {
-			selector := selectorFrom(az, cn, podID)
+			selector := defaultSelector(az, cn, podID)
 			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, session)
 		} else {
 			log.Fatalf("Expected one of: pcID or (pod,az,name)")
@@ -205,7 +205,7 @@ func main() {
 	}
 }
 
-func selectorFrom(az fields.AvailabilityZone, cn fields.ClusterName, podID types.PodID) klabels.Selector {
+func defaultSelector(az fields.AvailabilityZone, cn fields.ClusterName, podID types.PodID) klabels.Selector {
 	return klabels.Everything().
 		Add(fields.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
 		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{az.String()}).
