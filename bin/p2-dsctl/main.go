@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"strings"
 	"time"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/cli"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -358,7 +358,7 @@ func parseNodeSelectorWithPrompt(
 	fmt.Printf("Removing:%9s hosts %s\n", fmt.Sprintf("-%v", len(toRemove)), toRemove)
 	fmt.Printf("Adding:  %9s hosts %s\n", fmt.Sprintf("+%v", len(toAdd)), toAdd)
 	fmt.Println("Continue?")
-	if !confirm() {
+	if !cli.Confirm() {
 		return newSelector, util.Errorf("User cancelled")
 	}
 
@@ -372,7 +372,7 @@ func confirmMinheathForSelector(minHealth int, selector klabels.Selector, applic
 	}
 	if len(matches) < minHealth {
 		fmt.Printf("Your selector matches %d nodes but your minhealth is set to only %d, this daemon set will not replicate. Continue?\n", len(matches), minHealth)
-		if !confirm() {
+		if !cli.Confirm() {
 			return util.Errorf("User cancelled")
 		}
 	}
@@ -404,16 +404,4 @@ func makeNodeChanges(oldNodeLabels []labels.Labeled, newNodeLabels []labels.Labe
 	toAdd := types.NewNodeSet(newNodeNames...).Difference(types.NewNodeSet(oldNodeNames...)).ListNodes()
 
 	return toRemove, toAdd
-}
-
-// Confirm asks the user to type "y" and returns whether they do so.
-func confirm() bool {
-	fmt.Printf(`Type "y" to confirm [n]: `)
-	var input string
-	_, err := fmt.Scanln(&input)
-	if err != nil {
-		return false
-	}
-	resp := strings.TrimSpace(strings.ToLower(input))
-	return resp == "y" || resp == "yes"
 }
