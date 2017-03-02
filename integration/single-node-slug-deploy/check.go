@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	label_grpc_client "github.com/square/p2/pkg/grpc/labelstore/client"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/launch"
@@ -37,6 +38,7 @@ import (
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
+	"google.golang.org/grpc"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -99,7 +101,7 @@ func main() {
 	fmt.Println("Executing bootstrap")
 	err = executeBootstrap(signedPreparerManifest, signedConsulManifest)
 	if err != nil {
-		log.Fatalf("Could not execute bootstrap: %s\n%s", err, targetLogs())
+		log.Fatalf("Could not execute bootstrap: %s\n%s\n%s", err, targetLogs("p2-preparer"), targetLogs("consul"))
 	}
 
 	// Wait a bit for preparer's http server to be ready
@@ -122,6 +124,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("Could not unschedule pod %s from consul: %s", keyParts[len(keyParts)-1], err)
 		}
+	}
+
+	err = startLabelStoreServer(tempdir)
+	if err != nil {
+		log.Fatalf("Could not start grpc label store: %s", err)
 	}
 
 	err = scheduleRCTLServer(tempdir)
@@ -765,14 +772,20 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 }
 
 func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
-	client := consul.NewConsulClient(consul.Options{})
-	applicator := labels.NewConsulApplicator(client, 1)
+	conn, err := grpc.Dial("localhost:3000", grpc.WithBlock(), grpc.WithTimeout(5*time.Second), grpc.WithInsecure())
+	if err != nil {
+		return fmt.Errorf("Could not connect to grpc server: %s", err)
+	}
+	grpcClient := label_grpc_client.NewClient(conn, logging.DefaultLogger)
 
 	// we have to label this hostname as being allowed to run tests
 	host, err := os.Hostname()
 	if err != nil {
 		return fmt.Errorf("Could not get hostname: %s", err)
 	}
+
+	client := consul.NewConsulClient(consul.Options{})
+	applicator := labels.NewConsulApplicator(client, 1)
 	err = applicator.SetLabel(labels.NODE, host, "test", "yes")
 	if err != nil {
 		return fmt.Errorf("Could not set node selector label on %s: %v", host, err)
@@ -780,12 +793,17 @@ func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
 
 	quitCh := make(chan struct{})
 	defer close(quitCh)
-	watchCh := applicator.WatchMatches(selector, labels.POD, quitCh)
+
+	watchCh, err := grpcClient.WatchMatches(selector, labels.POD, quitCh)
+	if err != nil {
+		return fmt.Errorf("Could not initialize labels grpc client: %s", err)
+	}
+
 	waitTime := time.After(30 * time.Second)
 	for {
 		select {
 		case <-waitTime:
-			return fmt.Errorf("Label selector %v wasn't matched before timeout: %s", selector, targetLogs())
+			return fmt.Errorf("Label selector %v wasn't matched before timeout: %s%s", selector, targetLogs("hello"), targetLogs("p2-preparer"))
 		case res, ok := <-watchCh:
 			if !ok {
 				return fmt.Errorf("Label selector watch unexpectedly terminated")
@@ -838,7 +856,7 @@ func verifyHelloRunning(podUniqueKey types.PodUniqueKey, logger logging.Logger) 
 	}()
 	select {
 	case <-time.After(30 * time.Second):
-		return fmt.Errorf("Couldn't start hello after 30 seconds:\n\n %s", targetLogs())
+		return fmt.Errorf("Couldn't start hello after 30 seconds:\n\n %s%s", targetLogs("hello"), targetLogs("p2-preparer"))
 	case <-helloPidAppeared:
 		return nil
 	}
@@ -884,15 +902,12 @@ func targetUUIDLogs(podUniqueKey types.PodUniqueKey) string {
 	return fmt.Sprintf("hello uuid tail: \n%s\n\n", helloUUIDTail.String())
 }
 
-func targetLogs() string {
-	var helloTail, preparerTail bytes.Buffer
-	helloT := exec.Command("tail", "/var/service/hello__hello__launch/log/main/current")
-	helloT.Stdout = &helloTail
-	helloT.Run()
-	preparerT := exec.Command("tail", "/var/service/p2-preparer__p2-preparer__launch/log/main/current")
-	preparerT.Stdout = &preparerTail
-	preparerT.Run()
-	return fmt.Sprintf("hello tail: \n%s\n\n preparer tail: \n%s", helloTail.String(), preparerTail.String())
+func targetLogs(app string) string {
+	output, err := exec.Command("tail", fmt.Sprintf("/var/service/%s__%s__launch/log/main/current", app, app)).CombinedOutput()
+	if err != nil {
+		log.Printf("Tail failed: %s", err)
+	}
+	return fmt.Sprintf("%s tail: \n%s\n\n", app, string(output))
 }
 
 func verifyHealthChecks(config *preparer.PreparerConfig, services []string) error {
@@ -915,9 +930,9 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 		if err != nil {
 			return err
 		} else if (res == consul.WatchResult{}) {
-			return fmt.Errorf("No results for %s: \n\n %s", sv, targetLogs())
+			return fmt.Errorf("No results for %s: \n\n %s%s", sv, targetLogs("hello"), targetLogs("p2-preparer"))
 		} else if res.Status != string(health.Passing) {
-			return fmt.Errorf("%s did not pass health check: \n\n %s", sv, targetLogs())
+			return fmt.Errorf("%s did not pass health check: \n\n %s%s", sv, targetLogs("hello"), targetLogs("p2-preparer"))
 		} else {
 			fmt.Println(res)
 		}
@@ -931,11 +946,52 @@ func verifyHealthChecks(config *preparer.PreparerConfig, services []string) erro
 		}
 		val := res[consul.HealthPath(sv, node)]
 		if getres.Id != val.Id || getres.Service != val.Service || getres.Status != val.Status {
-			return fmt.Errorf("GetServiceHealth failed %+v: \n\n%s", res, targetLogs())
+			return fmt.Errorf("GetServiceHealth failed %+v: \n\n%s%s", res, targetLogs("hello"), targetLogs("p2-preparer"))
 		}
 	}
 
 	// if it reaches here it means health checks
 	// are being written to the KV store properly
+	return nil
+}
+
+func startLabelStoreServer(dir string) error {
+	labelStoreServerPath, err := exec.Command("which", "label-store-server").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("Could not find label-store-server on PATH")
+	}
+	chomped := strings.TrimSpace(string(labelStoreServerPath))
+	if _, err = os.Stat(chomped); os.IsNotExist(err) {
+		return fmt.Errorf("%v does not exist", chomped)
+	}
+	cmd := exec.Command("p2-bin2pod", "--work-dir", dir, chomped)
+	labelStoreBin2Pod, err := executeBin2Pod(cmd)
+	if err != nil {
+		return err
+	}
+
+	if err = signBuild(labelStoreBin2Pod.TarPath); err != nil {
+		return err
+	}
+
+	signedPath, err := signManifest(labelStoreBin2Pod.ManifestPath, dir)
+	if err != nil {
+		return err
+	}
+
+	err = exec.Command("p2-schedule", signedPath).Run()
+	if err != nil {
+		return err
+	}
+
+	// Test connection
+	conn, err := grpc.Dial("localhost:3000", grpc.WithBlock(), grpc.WithInsecure(), grpc.WithTimeout(15*time.Second))
+	if err != nil {
+		fmt.Println(targetLogs("label-store-server"))
+		fmt.Println(targetLogs("p2-preparer"))
+		return err
+	}
+	conn.Close()
+
 	return nil
 }

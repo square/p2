@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package label_store_protos;
+
+service LabelStore {
+  rpc WatchMatches (WatchMatchesRequest) returns (stream WatchMatchesResponse) {}
+}
+
+enum LabelType {
+  unknown = 0;
+  pod = 1;
+  node = 2;
+  pod_clusters = 3;
+  replication_controller = 4; // singular because these match consul trees :(
+  rolls = 5;
+}
+
+message WatchMatchesRequest {
+  string selector = 1;
+  LabelType label_type = 2;
+}
+
+message Labeled {
+  LabelType label_type = 1;
+  string id = 2;
+  map<string,string> labels = 3;
+}
+
+message WatchMatchesResponse {
+  repeated Labeled labeled = 1;
+}
