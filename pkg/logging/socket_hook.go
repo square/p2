@@ -22,6 +22,8 @@ func (SocketHook) Levels() []logrus.Level {
 	}
 }
 
+var jsonFormatter = new(logrus.JSONFormatter)
+
 func (s SocketHook) Fire(entry *logrus.Entry) error {
 	c, err := net.Dial("unix", s.socketPath)
 	if err != nil {
@@ -31,7 +33,9 @@ func (s SocketHook) Fire(entry *logrus.Entry) error {
 	}
 	defer c.Close()
 
-	logMessage, err := entry.Logger.Formatter.Format(entry)
+	// always use the JSON formatter when logging to a socket. The thing on
+	// the other end is a program.
+	logMessage, err := jsonFormatter.Format(entry)
 	if err != nil {
 		// Airbrake someday
 		return nil
