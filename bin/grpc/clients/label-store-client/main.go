@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/square/p2/pkg/grpc/label_store/client"
+	"github.com/square/p2/pkg/grpc/labelstore/client"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 

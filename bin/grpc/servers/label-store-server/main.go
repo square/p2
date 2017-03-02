@@ -7,8 +7,8 @@ import (
 	"net"
 	"os"
 
-	"github.com/square/p2/pkg/grpc/label_store"
-	label_protos "github.com/square/p2/pkg/grpc/label_store/protos"
+	"github.com/square/p2/pkg/grpc/labelstore"
+	label_protos "github.com/square/p2/pkg/grpc/labelstore/protos"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store/consul"
@@ -52,7 +52,7 @@ func main() {
 
 	logrusLogger.Infof("Listening tcp on port %d", port)
 	s := grpc.NewServer()
-	label_protos.RegisterLabelStoreServer(s, label_store.NewServer(applicator, logrusLogger))
+	label_protos.RegisterLabelStoreServer(s, labelstore.NewServer(applicator, logrusLogger))
 	if err := s.Serve(lis); err != nil {
 		logger.Fatalf("failed to serve: %v", err)
 	}

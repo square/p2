@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	label_grpc_client "github.com/square/p2/pkg/grpc/label_store/client"
+	label_grpc_client "github.com/square/p2/pkg/grpc/labelstore/client"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/launch"

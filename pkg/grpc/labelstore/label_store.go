@@ -1,7 +1,7 @@
-package label_store
+package labelstore
 
 import (
-	label_protos "github.com/square/p2/pkg/grpc/label_store/protos"
+	label_protos "github.com/square/p2/pkg/grpc/labelstore/protos"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 
