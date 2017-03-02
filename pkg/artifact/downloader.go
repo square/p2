@@ -65,12 +65,13 @@ func (l *downloader) Download(location *url.URL, verificationData auth.Verificat
 		return err
 	}
 
-	err = artifactFile.Chmod(0644)
+	// rewind a second time to allow the archive to be unpacked
+	_, err = artifactFile.Seek(0, os.SEEK_SET)
 	if err != nil {
-		return err
+		return util.Errorf("Could not reset artifact file position after verification: %v", err)
 	}
 
-	err = gzip.ExtractTarGz(owner, artifactFile.Name(), dst)
+	err = gzip.ExtractTarGz(owner, artifactFile, dst)
 	if err != nil {
 		_ = os.RemoveAll(dst)
 		return util.Errorf("error while extracting artifact: %s", err)
