@@ -22,9 +22,20 @@ type store interface {
 	DeletePod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
 }
 
+type ReplicationControllerLocker interface {
+	LockForMutation(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error)
+}
+
+type ReplicationControllerStore interface {
+	Disable(id fields.ID) error
+	AddDesiredReplicas(id fields.ID, n int) error
+	Enable(id fields.ID) error
+}
+
 type P2RM struct {
 	Store    store
-	RCStore  rcstore.Store
+	RCLocker ReplicationControllerLocker
+	RCStore  ReplicationControllerStore
 	Client   consulutil.ConsulClient
 	Labeler  labels.ApplicatorWithoutWatches
 	PodStore podstore.Store
@@ -62,7 +73,12 @@ func NewUUIDP2RM(client consulutil.ConsulClient, podUniqueKey types.PodUniqueKey
 func (rm *P2RM) configureStorage(client consulutil.ConsulClient, labeler labels.ApplicatorWithoutWatches) {
 	rm.Client = client
 	rm.Store = consul.NewConsulStore(client)
-	rm.RCStore = rcstore.NewConsul(client, labeler, 5)
+	consulStore := rcstore.NewConsul(client, labeler, 5)
+
+	// one day these might have different implementations
+	rm.RCStore = consulStore
+	rm.RCLocker = consulStore
+
 	rm.Labeler = labeler
 	rm.PodStore = podstore.NewConsul(client.KV())
 }
@@ -86,7 +102,7 @@ func (rm *P2RM) decrementDesiredCount(id fields.ID) error {
 		return fmt.Errorf("Unable to get consul session: %v", err)
 	}
 
-	rcLock, err := rm.RCStore.LockForMutation(id, session)
+	rcLock, err := rm.RCLocker.LockForMutation(id, session)
 	if err != nil {
 		return fmt.Errorf("Unable to lock RC for mutation: %v", err)
 	}

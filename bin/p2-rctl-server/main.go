@@ -101,6 +101,8 @@ func main() {
 	go rc.NewFarm(
 		consulStore,
 		rcStore,
+		rcStore,
+		rcStore,
 		sched,
 		labeler,
 		pub.Subscribe().Chan(),

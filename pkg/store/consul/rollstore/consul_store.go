@@ -48,13 +48,19 @@ type rollLabeler interface {
 	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
 }
 
+type ReplicationControllerStore interface {
+	LockForUpdateCreation(rcID rc_fields.ID, session consul.Session) (consulutil.Unlocker, error)
+	Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (rc_fields.RC, error)
+	Delete(id rc_fields.ID, force bool) error
+}
+
 type consulStore struct {
 	kv KV
 
 	// Necessary for acquiring locks on the RCs referred to by an RU update
 	// request. This ensures that multiple rolling updates will not be
 	// admitted for the same replication controllers
-	rcstore rcstore.Store
+	rcstore ReplicationControllerStore
 
 	// Needed for obtaining consul.Session
 	store sessionStore

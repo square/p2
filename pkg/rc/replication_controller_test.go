@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/rcstore"
@@ -45,8 +46,15 @@ func (s *fakeconsulStore) Pod(podPrefix consul.PodPrefix, nodeName types.NodeNam
 	return nil, 0, pods.NoCurrentManifest
 }
 
+type testRCStore interface {
+	ReplicationControllerStore
+	ReplicationControllerWatcher
+	Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error)
+	SetDesiredReplicas(id fields.ID, n int) error
+}
+
 func setup(t *testing.T) (
-	rcStore rcstore.Store,
+	rcStore testRCStore,
 	consulStore fakeconsulStore,
 	applicator labels.Applicator,
 	rc *replicationController,
