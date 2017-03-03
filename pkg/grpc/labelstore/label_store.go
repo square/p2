@@ -19,9 +19,9 @@ type labelStore struct {
 	logger       logging.Logger
 }
 
-var _ label_protos.LabelStoreServer = &labelStore{}
+var _ label_protos.P2LabelStoreServer = &labelStore{}
 
-func NewServer(matchWatcher MatchWatcher, logger logging.Logger) label_protos.LabelStoreServer {
+func NewServer(matchWatcher MatchWatcher, logger logging.Logger) label_protos.P2LabelStoreServer {
 	return labelStore{
 		matchWatcher: matchWatcher,
 		logger:       logger,
@@ -29,7 +29,7 @@ func NewServer(matchWatcher MatchWatcher, logger logging.Logger) label_protos.La
 }
 
 // Streams responses back to the client until cancellation is received via stream.Context().Done()
-func (l labelStore) WatchMatches(req *label_protos.WatchMatchesRequest, stream label_protos.LabelStore_WatchMatchesServer) error {
+func (l labelStore) WatchMatches(req *label_protos.WatchMatchesRequest, stream label_protos.P2LabelStore_WatchMatchesServer) error {
 	labelType, err := labels.AsType(req.LabelType.String())
 	if err != nil {
 		return grpc.Errorf(codes.InvalidArgument, "Unrecognized label type %s", req.LabelType.String())

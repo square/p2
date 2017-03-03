@@ -52,7 +52,7 @@ func main() {
 
 	logrusLogger.Infof("Listening tcp on port %d", port)
 	s := grpc.NewServer()
-	label_protos.RegisterLabelStoreServer(s, labelstore.NewServer(applicator, logrusLogger))
+	label_protos.RegisterP2LabelStoreServer(s, labelstore.NewServer(applicator, logrusLogger))
 	if err := s.Serve(lis); err != nil {
 		logger.Fatalf("failed to serve: %v", err)
 	}

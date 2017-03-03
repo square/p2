@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package label_store_protos;
 
-service LabelStore {
+service P2LabelStore {
   rpc WatchMatches (WatchMatchesRequest) returns (stream WatchMatchesResponse) {}
 }
 

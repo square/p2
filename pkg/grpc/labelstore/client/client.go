@@ -16,13 +16,13 @@ import (
 )
 
 type Client struct {
-	labelStoreClient label_protos.LabelStoreClient
+	labelStoreClient label_protos.P2LabelStoreClient
 	logger           logging.Logger
 }
 
 func NewClient(conn *grpc.ClientConn, logger logging.Logger) Client {
 	return Client{
-		labelStoreClient: label_protos.NewLabelStoreClient(conn),
+		labelStoreClient: label_protos.NewP2LabelStoreClient(conn),
 		logger:           logger,
 	}
 }
