@@ -32,6 +32,16 @@ type Labeler interface {
 	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
 }
 
+type ReplicationControllerStore interface {
+	WatchRCKeysWithLockInfo(quit <-chan struct{}, pauseTime time.Duration) (<-chan []rcstore.RCLockResult, <-chan error)
+	Get(id fields.ID) (fields.RC, error)
+	List() ([]fields.RC, error)
+}
+
+type ReplicationControllerLocker interface {
+	LockForOwnership(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error)
+}
+
 // The Farm is responsible for spawning and reaping replication controllers
 // as they are added to and deleted from Consul. Multiple farms can exist
 // simultaneously, but each one must hold a different Consul session. This
@@ -45,7 +55,9 @@ type Labeler interface {
 type Farm struct {
 	// constructor arguments for rcs created by this farm
 	store     store
-	rcStore   rcstore.Store
+	rcStore   ReplicationControllerStore
+	rcLocker  ReplicationControllerLocker
+	rcWatcher ReplicationControllerWatcher
 	scheduler scheduler.Scheduler
 	labeler   Labeler
 
@@ -82,7 +94,9 @@ type store interface {
 
 func NewFarm(
 	store store,
-	rcs rcstore.Store,
+	rcs ReplicationControllerStore,
+	rcLocker ReplicationControllerLocker,
+	rcWatcher ReplicationControllerWatcher,
 	scheduler scheduler.Scheduler,
 	labeler Labeler,
 	sessions <-chan string,
@@ -98,6 +112,8 @@ func NewFarm(
 	return &Farm{
 		store:            store,
 		rcStore:          rcs,
+		rcLocker:         rcLocker,
+		rcWatcher:        rcWatcher,
 		scheduler:        scheduler,
 		labeler:          labeler,
 		sessions:         sessions,
@@ -194,7 +210,7 @@ START_LOOP:
 					continue
 				}
 
-				rcUnlocker, err := rcf.rcStore.LockForOwnership(rcKey.ID, rcf.session)
+				rcUnlocker, err := rcf.rcLocker.LockForOwnership(rcKey.ID, rcf.session)
 				if _, ok := err.(consulutil.AlreadyLockedError); ok {
 					// someone else must have gotten it first - log and move to
 					// the next one
@@ -227,7 +243,7 @@ START_LOOP:
 				newChild := New(
 					rc,
 					rcf.store,
-					rcf.rcStore,
+					rcf.rcWatcher,
 					rcf.scheduler,
 					rcf.labeler,
 					rcLogger,
