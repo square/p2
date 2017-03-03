@@ -55,6 +55,7 @@ func TestContendNodes(t *testing.T) {
 
 	dsf := &Farm{
 		dsStore:       dsStore,
+		dsLocker:      dsStore,
 		store:         consulStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
@@ -166,6 +167,7 @@ func TestContendSelectors(t *testing.T) {
 
 	dsf := &Farm{
 		dsStore:       dsStore,
+		dsLocker:      dsStore,
 		store:         consulStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
@@ -317,6 +319,7 @@ func TestFarmSchedule(t *testing.T) {
 
 	dsf := &Farm{
 		dsStore:       dsStore,
+		dsLocker:      dsStore,
 		store:         consulStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
@@ -636,6 +639,7 @@ func TestMultipleFarms(t *testing.T) {
 	//
 	firstFarm := &Farm{
 		dsStore:       dsStore,
+		dsLocker:      dsStore,
 		store:         consulStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,
@@ -661,6 +665,7 @@ func TestMultipleFarms(t *testing.T) {
 	})
 	secondFarm := &Farm{
 		dsStore:       dsStore,
+		dsLocker:      dsStore,
 		store:         consulStore,
 		scheduler:     scheduler.NewApplicatorScheduler(applicator),
 		labeler:       applicator,

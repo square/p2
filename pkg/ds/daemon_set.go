@@ -16,7 +16,6 @@ import (
 	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
-	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/dsstore"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -100,7 +99,6 @@ type store interface {
 type DaemonSetStore interface {
 	List() ([]fields.DaemonSet, error)
 	Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets
-	LockForOwnership(dsID fields.ID, session consul.Session) (consulutil.Unlocker, error)
 	Disable(id fields.ID) (fields.DaemonSet, error)
 }
 
