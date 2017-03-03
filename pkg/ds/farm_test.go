@@ -1048,7 +1048,7 @@ func waitForMutateSelectorFarms(firstFarm *Farm, secondFarm *Farm, ds ds_fields.
 // Polls for a condition to happen, will return an error if it does not happen
 // before the timeout
 func waitForCondition(condition func() error) error {
-	timeout := time.After(10 * time.Second)
+	timeout := time.After(20 * time.Second)
 	timedOut := false
 	err := condition()
 
