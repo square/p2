@@ -32,7 +32,7 @@ var DefaultLogger = NewLogger(logrus.Fields{})
 
 func NewLogger(baseFields logrus.Fields) Logger {
 	logger := logrus.New()
-	logger.Formatter = new(logrus.JSONFormatter)
+	logger.Formatter = new(logrus.TextFormatter)
 	logger.Hooks.Add(&processCounter)
 	return Logger{logrus.NewEntry(logger).WithFields(baseFields)}
 }
