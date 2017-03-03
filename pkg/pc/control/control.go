@@ -95,7 +95,8 @@ func (pccontrol *PodCluster) Get() (fields.PodCluster, error) {
 	return pccontrol.pcStore.Get(pc.ID)
 }
 
-func (pccontrol *PodCluster) Update(annotations fields.Annotations) (fields.PodCluster, error) {
+// UpdateAnnotations replaces the annotations on the pod cluster configured for the pod cluster control structure
+func (pccontrol *PodCluster) UpdateAnnotations(annotations fields.Annotations) (fields.PodCluster, error) {
 	pc, err := pccontrol.getExactlyOne()
 	if err != nil {
 		return fields.PodCluster{}, err
