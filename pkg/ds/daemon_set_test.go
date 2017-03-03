@@ -79,7 +79,7 @@ func waitForNodes(
 // the entire tree for each daemon set for now
 func watchDSChanges(
 	ds *daemonSet,
-	dsStore dsstore.Store,
+	dsStore DaemonSetStore,
 	quitCh <-chan struct{},
 	updatedCh chan<- *ds_fields.DaemonSet,
 	deletedCh chan<- *ds_fields.DaemonSet,

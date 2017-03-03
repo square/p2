@@ -16,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/dsstore"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -96,6 +97,13 @@ type store interface {
 	replication.Store
 }
 
+type DaemonSetStore interface {
+	List() ([]fields.DaemonSet, error)
+	Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets
+	LockForOwnership(dsID fields.ID, session consul.Session) (consulutil.Unlocker, error)
+	Disable(id fields.ID) (fields.DaemonSet, error)
+}
+
 type daemonSet struct {
 	fields.DaemonSet
 
@@ -103,7 +111,7 @@ type daemonSet struct {
 	logger        logging.Logger
 	store         store
 	scheduler     scheduler.Scheduler
-	dsStore       dsstore.Store
+	dsStore       DaemonSetStore
 	applicator    Labeler
 	watcher       LabelWatcher
 	healthChecker *checker.ConsulHealthChecker
@@ -126,7 +134,7 @@ type dsContention struct {
 
 func New(
 	fields fields.DaemonSet,
-	dsStore dsstore.Store,
+	dsStore DaemonSetStore,
 	store store,
 	applicator Labeler,
 	watcher LabelWatcher,
