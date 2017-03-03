@@ -34,8 +34,6 @@ type FakeDSStore struct {
 	logger     logging.Logger
 }
 
-var _ dsstore.Store = &FakeDSStore{}
-
 func NewFake() *FakeDSStore {
 	return &FakeDSStore{
 		daemonSets: make(map[fields.ID]fields.DaemonSet),

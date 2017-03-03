@@ -30,7 +30,7 @@ import (
 type Farm struct {
 	// constructor arguments
 	store     store
-	dsStore   dsstore.Store
+	dsStore   DaemonSetStore
 	scheduler scheduler.Scheduler
 	labeler   Labeler
 	watcher   LabelWatcher
@@ -64,7 +64,7 @@ type childDS struct {
 
 func NewFarm(
 	store store,
-	dsStore dsstore.Store,
+	dsStore DaemonSetStore,
 	labeler Labeler,
 	watcher LabelWatcher,
 	sessions <-chan string,
