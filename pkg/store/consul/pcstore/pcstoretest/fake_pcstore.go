@@ -20,8 +20,6 @@ type FakePCStore struct {
 	watchers    map[fields.ID]chan pcstore.WatchedPodCluster
 }
 
-var _ pcstore.Store = &FakePCStore{}
-
 func NewFake() *FakePCStore {
 	return &FakePCStore{
 		podClusters: make(map[fields.ID]fields.PodCluster),
