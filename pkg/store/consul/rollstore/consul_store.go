@@ -2,6 +2,7 @@ package rollstore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -34,6 +35,12 @@ type KV interface {
 }
 
 var _ KV = &api.KV{}
+
+var AmbiguousRCSelector error = errors.New("The old RC selector was ambigous and produced > 1 matches")
+
+func IsAmbiguousRCSelector(err error) bool {
+	return err == AmbiguousRCSelector
+}
 
 // A subset of the consul.Store interface used by rollstore
 type sessionStore interface {
@@ -72,9 +79,7 @@ type consulStore struct {
 	logger logging.Logger
 }
 
-var _ Store = consulStore{}
-
-func NewConsul(c consulutil.ConsulClient, labeler rollLabeler, logger *logging.Logger) Store {
+func NewConsul(c consulutil.ConsulClient, labeler rollLabeler, logger *logging.Logger) consulStore {
 	if logger == nil {
 		logger = &logging.DefaultLogger
 	}
@@ -87,6 +92,7 @@ func NewConsul(c consulutil.ConsulClient, labeler rollLabeler, logger *logging.L
 	}
 }
 
+// Get retrieves a rolling update record by it ID.
 func (s consulStore) Get(id roll_fields.ID) (roll_fields.Update, error) {
 	key, err := RollPath(id)
 	if err != nil {
@@ -104,6 +110,7 @@ func (s consulStore) Get(id roll_fields.ID) (roll_fields.Update, error) {
 	return kvpToRU(kvp)
 }
 
+// List returns all rolling update records.
 func (s consulStore) List() ([]roll_fields.Update, error) {
 	listed, _, err := s.kv.List(rollTree+"/", nil)
 	if err != nil {
@@ -119,33 +126,6 @@ func (s consulStore) List() ([]roll_fields.Update, error) {
 		ret = append(ret, ru)
 	}
 	return ret, nil
-}
-
-// DEPRECATED: use one of the Create* functions instead
-func (s consulStore) Put(u roll_fields.Update) error {
-	b, err := json.Marshal(u)
-	if err != nil {
-		return err
-	}
-
-	key, err := RollPath(u.ID())
-	if err != nil {
-		return err
-	}
-
-	success, _, err := s.kv.CAS(&api.KVPair{
-		Key:   key,
-		Value: b,
-		// it must not already exist
-		ModifyIndex: 0,
-	}, nil)
-	if err != nil {
-		return consulutil.NewKVError("cas", key, err)
-	}
-	if !success {
-		return fmt.Errorf("update with new RC ID %s already exists", u.NewRC)
-	}
-	return nil
 }
 
 func (s consulStore) newRUCreationSession() (consul.Session, chan error, error) {
@@ -214,7 +194,8 @@ func (s consulStore) checkForConflictingUpdates(rcIDs rc_fields.IDs) error {
 	return nil
 }
 
-// Admits a rolling update in consul, under the following conditions:
+// CreateRollingUpdateFromExistingRCs creates a rolling update in consul, under
+// the following conditions:
 // 1) A lock can be acquired for both the old and new replication controllers.
 //    - this is in lexicographical order by replication controller id so that
 //      identical update requests will not deadlock eachother
@@ -259,9 +240,10 @@ func (s consulStore) CreateRollingUpdateFromExistingRCs(u roll_fields.Update, ne
 	return s.attemptRUCreation(u, rollLabels, renewalErrCh)
 }
 
-// Like CreateRollingUpdateFromExistingRCs except will create the new RC based
-// on passed parameters, using oldRCID for the old RC. The new RC and new RU
-// will be created transactionally (all or nothing)
+// CreateRollingUpdateFromOneExistingWithRCID is like
+// CreateRollingUpdateFromExistingRCs except will create the new RC based on
+// passed parameters, using oldRCID for the old RC. The new RC and new RU will
+// be created transactionally (all or nothing)
 func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	oldRCID rc_fields.ID,
 	desiredReplicas int,
@@ -359,12 +341,12 @@ func (s consulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	return s.attemptRUCreation(u, rollLabels, renewalErrCh)
 }
 
-// Creates a rolling update that may or may not already have an existing old
-// RC. If one matches the oldRCSelector, it will be used as the old RC in the
-// new update.  If one does not exist, a "dummy" old RC will be created that is
-// identical to the specifications for the new RC.
-// Returns an error if the old RC exists but is part of another RU, or if
-// the label selector returns more than one match.
+// CreateRollingUpdateFromOneMaybeExistingWithLabelSelector creates a rolling
+// update that may or may not already have an existing old RC. If one matches
+// the oldRCSelector, it will be used as the old RC in the new update. If one
+// does not exist, a "dummy" old RC will be created that is identical to the
+// specifications for the new RC.  Returns an error if the old RC exists but is
+// part of another RU, or if the label selector returns more than one match.
 func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	oldRCSelector klabels.Selector,
 	desiredReplicas int,
@@ -510,6 +492,7 @@ func (s consulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	return s.attemptRUCreation(u, rollLabels, renewalErrCh)
 }
 
+// Delete deletes a rolling update based on its ID.
 func (s consulStore) Delete(id roll_fields.ID) error {
 	key, err := RollPath(id)
 	if err != nil {
@@ -530,6 +513,10 @@ func (s consulStore) Delete(id roll_fields.ID) error {
 	return nil
 }
 
+// Lock takes a lock on a rolling update by ID. Before taking ownership of an
+// Update, its new RC ID, and old RC ID if any, should both be locked. If the
+// error return is nil, then the boolean indicates whether the lock was
+// successfully taken.
 func (s consulStore) Lock(id roll_fields.ID, session string) (bool, error) {
 	key, err := RollLockPath(id)
 	if err != nil {
@@ -547,6 +534,8 @@ func (s consulStore) Lock(id roll_fields.ID, session string) (bool, error) {
 	return success, nil
 }
 
+// Watch wtches for changes to the store and generate a list of Updates for each
+// change. This function does not block.
 func (s consulStore) Watch(quit <-chan struct{}) (<-chan []roll_fields.Update, <-chan error) {
 	inCh := make(chan api.KVPairs)
 

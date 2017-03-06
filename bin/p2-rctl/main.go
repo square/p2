@@ -188,6 +188,11 @@ type ReplicationControllerStore interface {
 	Get(id fields.ID) (fields.RC, error)
 }
 
+type RollingUpdateStore interface {
+	Delete(id roll_fields.ID) error
+	CreateRollingUpdateFromExistingRCs(u roll_fields.Update, newRCLabels klabels.Set, rollLabels klabels.Set) (roll_fields.Update, error)
+}
+
 // rctl is a struct for the data structures shared between commands
 // each member function represents a single command that takes over from main
 // and terminates the program on failure
@@ -198,7 +203,7 @@ type rctlParams struct {
 	rollRCStore roll.ReplicationControllerStore
 	rcLocker    roll.ReplicationControllerLocker
 	rcWatcher   rc.ReplicationControllerWatcher
-	rls         rollstore.Store
+	rls         RollingUpdateStore
 	sched       scheduler.Scheduler
 	labeler     labels.ApplicatorWithoutWatches
 	consuls     Store

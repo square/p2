@@ -64,6 +64,11 @@ type RCGetter interface {
 	Get(id fields.ID) (fields.RC, error)
 }
 
+type RollingUpdateStore interface {
+	Watch(quit <-chan struct{}) (<-chan []roll_fields.Update, <-chan error)
+	Delete(id roll_fields.ID) error
+}
+
 // The Farm is responsible for spawning and reaping rolling updates as they are
 // added to and deleted from Consul. Multiple farms can exist simultaneously,
 // but each one must hold a different Consul session. This ensures that the
@@ -76,7 +81,7 @@ type RCGetter interface {
 type Farm struct {
 	factory  Factory
 	store    Store
-	rls      rollstore.Store
+	rls      RollingUpdateStore
 	rcs      RCGetter
 	sessions <-chan string
 
@@ -100,7 +105,7 @@ type childRU struct {
 func NewFarm(
 	factory Factory,
 	store Store,
-	rls rollstore.Store,
+	rls RollingUpdateStore,
 	rcs RCGetter,
 	sessions <-chan string,
 	logger logging.Logger,
