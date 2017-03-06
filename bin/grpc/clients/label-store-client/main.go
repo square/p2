@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"gopkg.in/alecthomas/kingpin.v2"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
@@ -22,6 +23,7 @@ const (
 
 var (
 	address = kingpin.Flag("address", "Address of the p2-store-server to talk to. Defaults to localhost:3000").Default("localhost:3000").String()
+	caCert  = kingpin.Flag("cacert", "Certificate file to use to verify server").ExistingFile()
 
 	cmdWatchMatches = kingpin.Command(cmdWatchMatchesText, "Watch the matches for a label selector")
 	labelType       = cmdWatchMatches.Flag("label-type", "The type of label watch to do, e.g. pod.").Required().String()
@@ -34,7 +36,19 @@ var (
 func main() {
 	cmd := kingpin.Parse()
 
-	conn, err := grpc.Dial(*address, grpc.WithBlock(), grpc.WithTimeout(5*time.Second), grpc.WithInsecure())
+	options := []grpc.DialOption{grpc.WithBlock(), grpc.WithTimeout(5 * time.Second)}
+	if *caCert != "" {
+		creds, err := credentials.NewClientTLSFromFile(*caCert, "")
+		if err != nil {
+			logger.Fatal(err)
+		}
+
+		options = append(options, grpc.WithTransportCredentials(creds))
+	} else {
+		options = append(options, grpc.WithInsecure())
+	}
+
+	conn, err := grpc.Dial(*address, options...)
 	if err != nil {
 		logger.Fatal(err)
 	}
