@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"path"
 	"time"
 
+	"github.com/square/p2/pkg/cli"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/rc/fields"
@@ -147,8 +149,16 @@ func (rm *P2RM) deleteUUIDPod() error {
 	pod, err := rm.PodStore.ReadPod(rm.PodUniqueKey)
 	switch {
 	case err == nil:
-		if pod.Manifest.ID() != rm.PodID {
-			return fmt.Errorf("pod %s has a podID of %s, but %s was passed as the --pod option", rm.PodUniqueKey, pod.Manifest.ID(), rm.PodID)
+		if rm.PodID != "" {
+			if pod.Manifest.ID() != rm.PodID {
+				return fmt.Errorf("pod %s has a podID of %s, but %s was passed as the --pod option", rm.PodUniqueKey, pod.Manifest.ID(), rm.PodID)
+			}
+		} else {
+			fmt.Println(fmt.Sprintf("%s has pod ID of %s, do you wish to proceed?", rm.PodUniqueKey, pod.Manifest.ID()))
+			confirmed := cli.Confirm()
+			if !confirmed {
+				return errors.New("aborted")
+			}
 		}
 
 		err = rm.PodStore.Unschedule(rm.PodUniqueKey)
