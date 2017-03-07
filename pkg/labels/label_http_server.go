@@ -224,6 +224,10 @@ func (l *labelHTTPServer) ListLabels(resp http.ResponseWriter, req *http.Request
 			labeled, err = l.applicator.ListLabels(labelType)
 		}
 
+		if IsNoLabelsFound(err) {
+			l.notFound(resp, endpoint, labelType, err)
+			return
+		}
 		if err != nil {
 			l.unavailable(resp, endpoint, err)
 			return
