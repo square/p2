@@ -786,7 +786,15 @@ func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
 
 	client := consul.NewConsulClient(consul.Options{})
 	applicator := labels.NewConsulApplicator(client, 1)
+
 	err = applicator.SetLabel(labels.NODE, host, "test", "yes")
+	if err != nil {
+		return fmt.Errorf("Could not set node selector label on %s: %v", host, err)
+	}
+
+	// Set a dummy POD label to circumvent the various label failsafes
+	// that ignore missing data for a whole label type
+	err = applicator.SetLabel(labels.POD, fmt.Sprintf("%s/%s", host, "some_pod"), "test", "yes")
 	if err != nil {
 		return fmt.Errorf("Could not set node selector label on %s: %v", host, err)
 	}
