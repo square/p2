@@ -241,9 +241,12 @@ func TestCASNoRetries(t *testing.T) {
 }
 
 func TestWatchMatchDiff(t *testing.T) {
+	DefaultAggregationRate = 0
 	c := &consulApplicator{
-		logger:      logging.DefaultLogger,
-		kv:          &failOnceLabelStore{inner: &fakeLabelStore{data: map[string][]byte{}}},
+		logger: logging.DefaultLogger,
+		kv: &fakeLabelStore{data: map[string][]byte{
+			"labels/node/blah": []byte("{\"sentinel_value\":\"yes\"}"), // Otherwise empty label fail safe will fire
+		}},
 		retries:     3,
 		aggregators: map[Type]*consulAggregator{},
 		retryMetric: metrics.NewGauge(),
@@ -259,7 +262,7 @@ func TestWatchMatchDiff(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Expected something on channel but found nothing")
 	}
-	Assert(t).AreEqual(len(changes.Created), 0, "expected number of created labels to match")
+	Assert(t).AreEqual(len(changes.Created), 1, "expected number of created labels to match")
 	Assert(t).AreEqual(len(changes.Updated), 0, "expected number of updated labels to match")
 	Assert(t).AreEqual(len(changes.Deleted), 0, "expected number of deleted labels to match")
 
