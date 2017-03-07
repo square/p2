@@ -2,6 +2,7 @@ package labels
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -18,6 +19,19 @@ import (
 )
 
 const labelRoot = "labels"
+
+// NoLabelsFound represents a 404 error from consul. In most cases the results
+// should be ignored if this error is encountered because under normal
+// operation there should always be labels for most types such as replication
+// controllers. Resources that trend to zero such as rolling updates are an
+// example of a case where this error might be expected under normal operation.
+// The client must know the safety and likelihood of missing labels and decide
+// what to do based on that information.
+var NoLabelsFound = errors.New("No labels found")
+
+func IsNoLabelsFound(err error) bool {
+	return err == NoLabelsFound
+}
 
 type CASError struct {
 	Key string
@@ -136,6 +150,10 @@ func (c *consulApplicator) ListLabels(labelType Type) ([]Labeled, error) {
 			return nil, err
 		}
 		allLabeled = append(allLabeled, l)
+	}
+
+	if len(allKV) == 0 {
+		return allLabeled, NoLabelsFound
 	}
 	return allLabeled, nil
 }

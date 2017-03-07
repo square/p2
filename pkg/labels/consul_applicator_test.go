@@ -139,7 +139,14 @@ func TestBasicMatch(t *testing.T) {
 	Assert(t).AreEqual(len(matches), 1, "should have had exactly one positive match")
 
 	matches, err = c.GetMatches(labels.Everything().Add("label", labels.EqualsOperator, []string{"value"}), NODE, false)
-	Assert(t).IsNil(err, "should have had nil error fetching positive matches for wrong type")
+	switch err {
+	case nil:
+		t.Error("expected error when requesting matches for a label type for which there are no labels")
+	case NoLabelsFound:
+		// fine
+	default:
+		t.Errorf("expected error to be %s but was %s", NoLabelsFound, err)
+	}
 	Assert(t).AreEqual(len(matches), 0, "should have had exactly zero mistyped matches")
 
 	matches, err = c.GetMatches(labels.Everything().Add("label", labels.NotInOperator, []string{"value"}), POD, false)
@@ -330,4 +337,58 @@ func TestWatchMatchDiff(t *testing.T) {
 	Assert(t).AreEqual(len(changes.Created), 0, "expected number of created labels to match")
 	Assert(t).AreEqual(len(changes.Updated), 0, "expected number of updated labels to match")
 	Assert(t).AreEqual(len(changes.Deleted), 2, "expected number of deleted labels to match")
+}
+
+func TestListLabels(t *testing.T) {
+	c := &consulApplicator{
+		kv: &fakeLabelStore{data: map[string][]byte{
+			"labels/replication_controller/some_key": []byte("{\"some_key\":\"some_value\"}"),
+			"labels/rolls/some_other_key":            []byte("{\"some_key\":\"some_other_value\"}"),
+		}},
+		logger: logging.DefaultLogger,
+	}
+
+	rcLabels, err := c.ListLabels(RC)
+	if err != nil {
+		t.Fatalf("unexpected error listing RC labels: %s", err)
+	}
+
+	if len(rcLabels) != 1 {
+		t.Fatalf("expected one RC label but there were %d", len(rcLabels))
+	}
+
+	if rcLabels[0].ID != "some_key" {
+		t.Errorf("expected the one RC label to have ID %q but was %q", "some_key", rcLabels[0].ID)
+	}
+
+	if rcLabels[0].LabelType != RC {
+		t.Errorf("returned label results should have had type %q but was %q", RC, rcLabels[0].LabelType)
+	}
+
+	if rcLabels[0].Labels["some_key"] != "some_value" {
+		t.Errorf("expected label result to have value %q for key %q but was %q", "some_value", "some_key", rcLabels[0].Labels["some_key"])
+	}
+}
+
+func TestListLabels404(t *testing.T) {
+	c := &consulApplicator{
+		kv: &fakeLabelStore{data: map[string][]byte{
+			"labels/replication_controller/some_key": []byte("{\"some_key\":\"some_value\"}"),
+			"labels/rolls/some_other_key":            []byte("{\"some_key\":\"some_other_value\"}"),
+		}},
+		logger: logging.DefaultLogger,
+	}
+
+	rcLabels, err := c.ListLabels(POD)
+	if err == nil {
+		t.Fatal("expected error when no labels exist for requested label type")
+	}
+
+	if !IsNoLabelsFound(err) {
+		t.Errorf("Expected error to be '%s' but was '%s':", NoLabelsFound, err)
+	}
+
+	if len(rcLabels) != 0 {
+		t.Errorf("expected 404 to result in 0 labels returned but there werd %d", len(rcLabels))
+	}
 }
