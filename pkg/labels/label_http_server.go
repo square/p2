@@ -63,6 +63,16 @@ func timeHandler(endpoint string, t Type, fn func(string)) {
 	fn(endpoint)
 }
 
+// A not found error means that consul returned no labels for the label type.
+// This is really bad for label types like replication controllers where we
+// expect there to always be labels.  It might not be bad for types like
+// rolling updates where there are none during steady state.
+func (l *labelHTTPServer) notFound(resp http.ResponseWriter, endpoint string, labelType Type, err error) {
+	http.Error(resp, err.Error(), http.StatusNotFound)
+	counter := metrics.GetOrRegisterCounter(fmt.Sprintf("%v-%v-not-found", labelType, endpoint), p2metrics.Registry)
+	counter.Inc(1)
+}
+
 func (l *labelHTTPServer) badRequest(resp http.ResponseWriter, endpoint string, err error) {
 	http.Error(resp, err.Error(), http.StatusBadRequest)
 	counter := metrics.GetOrRegisterCounter(fmt.Sprintf("%v-bad-requests", endpoint), p2metrics.Registry)
@@ -168,6 +178,10 @@ func (l *labelHTTPServer) Select(resp http.ResponseWriter, req *http.Request) {
 			}
 		} else {
 			matches, err = l.applicator.GetMatches(selector, labelType, false)
+			if IsNoLabelsFound(err) {
+				l.notFound(resp, endpoint, labelType, err)
+				return
+			}
 			if err != nil {
 				l.unavailable(resp, endpoint, err)
 				return

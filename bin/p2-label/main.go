@@ -93,7 +93,12 @@ func main() {
 			cachedMatch := false
 			matches, err = applicator.GetMatches(subject, labelType, cachedMatch)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error while finding label matches. Check the syntax.\n%v\n", err)
+				if labels.IsNoLabelsFound(err) {
+					fmt.Fprintf(os.Stderr, "No labels were found for the %s type", labelType)
+				} else {
+					fmt.Fprintf(os.Stderr, "Error while finding label matches. Check the syntax.\n%v\n", err)
+				}
+
 				exitCode = 1
 				break
 			}
