@@ -28,6 +28,7 @@ type Scheduler interface {
 }
 
 type PodStatusStore interface {
+	Get(key types.PodUniqueKey) (podstatus.PodStatus, *api.QueryMeta, error)
 	WaitForStatus(key types.PodUniqueKey, waitIndex uint64) (podstatus.PodStatus, *api.QueryMeta, error)
 }
 
@@ -107,10 +108,45 @@ func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream
 
 	clientCancel := stream.Context().Done()
 
+	var waitIndex uint64
+	// Do one consistent fetch from consul to ensure we don't return any
+	// stale results. From then on we'll use watches using the index we got
+	// from the Get()
+	status, queryMeta, err := s.podStatusStore.Get(podUniqueKey)
+	switch {
+	case statusstore.IsNoStatus(err) && req.WaitForExists:
+		// The client has asked to not be sent 404s, just wait for the record
+		// to exist.  Don't send a value, just update the wait index to use
+		// for the next watch.
+		waitIndex = queryMeta.LastIndex
+	case err == nil:
+		// send the value we got
+		waitIndex = queryMeta.LastIndex
+		select {
+		case <-clientCancel:
+			return nil
+		default:
+			resp, err := podStatusResultToResp(podStatusResult{
+				status:    status,
+				queryMeta: queryMeta,
+				err:       err,
+			})
+			if err != nil {
+				return err
+			}
+
+			err = stream.Send(resp)
+			if err != nil {
+				return err
+			}
+		}
+	default:
+		return grpc.Errorf(codes.Unavailable, "error fetching first result from consul: %s", err)
+	}
+
 	podStatusResultCh := make(chan podStatusResult)
 	innerQuit := make(chan struct{})
 	defer close(podStatusResultCh)
-	waitIndex := req.WaitIndex
 	go func() {
 		for {
 			status, queryMeta, err := s.podStatusStore.WaitForStatus(podUniqueKey, waitIndex)
