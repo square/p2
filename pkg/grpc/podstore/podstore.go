@@ -222,6 +222,10 @@ func (s store) ListPodStatus(_ context.Context, req *podstore_protos.ListPodStat
 	}, nil
 }
 
+func (s store) DeletePodStatus(_ context.Context, req *podstore_protos.DeletePodStatusRequest) (*podstore_protos.DeletePodStatusResponse, error) {
+	return nil, grpc.Errorf(codes.Unimplemented, "DeletePodStatus not implemented")
+}
+
 func podStatusResultToResp(result podStatusResult) (*podstore_protos.PodStatusResponse, error) {
 	if statusstore.IsNoStatus(result.err) {
 		return nil, grpc.Errorf(codes.NotFound, result.err.Error())

@@ -10,6 +10,7 @@ service P2PodStore {
   rpc WatchPodStatus (WatchPodStatusRequest) returns (stream PodStatusResponse) {}
   rpc UnschedulePod (UnschedulePodRequest) returns (UnschedulePodResponse) {}
   rpc ListPodStatus (ListPodStatusRequest) returns (ListPodStatusResponse) {}
+  rpc DeletePodStatus (DeletePodStatusRequest) returns (DeletePodStatusResponse) {}
 }
 
 message SchedulePodRequest {
@@ -57,4 +58,11 @@ message ListPodStatusRequest {
 
 message ListPodStatusResponse {
   map<string, PodStatusResponse> pod_statuses = 1;
+}
+
+message DeletePodStatusRequest {
+  string pod_unique_key = 1;
+}
+
+message DeletePodStatusResponse {
 }
