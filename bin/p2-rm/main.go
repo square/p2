@@ -19,7 +19,7 @@ import (
 
 // Command line flags
 var (
-	podName      = kingpin.Arg("pod", "The names of the pod to be removed").Required().String()
+	podName      = kingpin.Arg("pod", "The names of the pod to be removed").String()
 	nodeName     = kingpin.Flag("node", "The node to unschedule the pod from. Uses the hostname by default. Only applies to \"legacy\" pods.").String()
 	podUniqueKey = kingpin.Flag("pod-unique-key", "The pod unique key to unschedule. Only applies to \"uuid\" pods. Cannot be used with --node").Short('k').String()
 	deallocation = kingpin.Flag("deallocate", "Specifies that we are deallocating this pod on this node. Using this switch will mutate the desired_replicas value on a managing RC, if one exists.").Bool()
@@ -43,6 +43,10 @@ func handlePodRemoval(consulClient consulutil.ConsulClient, labeler labels.Appli
 	if *podUniqueKey != "" {
 		rm = NewUUIDP2RM(consulClient, types.PodUniqueKey(*podUniqueKey), types.PodID(*podName), labeler)
 	} else {
+		if *podName == "" {
+			return fmt.Errorf("pod argument is required when removing a legacy pod")
+		}
+
 		if *nodeName == "" {
 			hostname, err := os.Hostname()
 			if err != nil {
