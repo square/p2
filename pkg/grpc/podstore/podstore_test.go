@@ -317,6 +317,49 @@ func TestListPodStatus(t *testing.T) {
 	}
 }
 
+func TestDeletePodStatus(t *testing.T) {
+	statusStore, server := setupServerWithFakePodStatusStore()
+	key := types.NewPodUUID()
+	err := statusStore.Set(key, podstatus.PodStatus{
+		PodStatus: podstatus.PodLaunched,
+	})
+	if err != nil {
+		t.Fatalf("unable to seed status store with a pod status: %s", err)
+	}
+
+	// confirm that there is one entry
+	results, err := server.ListPodStatus(context.Background(), &podstore_protos.ListPodStatusRequest{
+		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
+	})
+	if err != nil {
+		t.Errorf("error listing pod status: %s", err)
+	}
+
+	if len(results.PodStatuses) != 1 {
+		t.Fatalf("expected one status record but there were %d", len(results.PodStatuses))
+	}
+
+	// now delete it
+	_, err = server.DeletePodStatus(context.Background(), &podstore_protos.DeletePodStatusRequest{
+		PodUniqueKey: key.String(),
+	})
+	if err != nil {
+		t.Fatalf("error deleting pod status: %s", err)
+	}
+
+	// confirm that there are now no entries
+	results, err = server.ListPodStatus(context.Background(), &podstore_protos.ListPodStatusRequest{
+		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
+	})
+	if err != nil {
+		t.Errorf("error listing pod status: %s", err)
+	}
+
+	if len(results.PodStatuses) != 0 {
+		t.Fatalf("expected no status records but there were %d", len(results.PodStatuses))
+	}
+}
+
 func setupServerWithFakePodStore() (podstore.Store, store) {
 	fakePodStore := podstore.NewConsul(consulutil.NewFakeClient().KV_)
 	server := store{

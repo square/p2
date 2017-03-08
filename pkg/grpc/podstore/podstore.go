@@ -29,6 +29,7 @@ type Scheduler interface {
 
 type PodStatusStore interface {
 	Get(key types.PodUniqueKey) (podstatus.PodStatus, *api.QueryMeta, error)
+	Delete(podUniqueKey types.PodUniqueKey) error
 	WaitForStatus(key types.PodUniqueKey, waitIndex uint64) (podstatus.PodStatus, *api.QueryMeta, error)
 	List() (map[types.PodUniqueKey]podstatus.PodStatus, error)
 }
@@ -223,7 +224,17 @@ func (s store) ListPodStatus(_ context.Context, req *podstore_protos.ListPodStat
 }
 
 func (s store) DeletePodStatus(_ context.Context, req *podstore_protos.DeletePodStatusRequest) (*podstore_protos.DeletePodStatusResponse, error) {
-	return nil, grpc.Errorf(codes.Unimplemented, "DeletePodStatus not implemented")
+	podUniqueKey, err := types.ToPodUniqueKey(req.PodUniqueKey)
+	if err != nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "could not convert %s to a pod unique key: %s", req.PodUniqueKey, err)
+	}
+
+	err = s.podStatusStore.Delete(podUniqueKey)
+	if err != nil {
+		return nil, grpc.Errorf(codes.Unavailable, "error deleting pod status for %s: %s", podUniqueKey, err)
+	}
+
+	return &podstore_protos.DeletePodStatusResponse{}, nil
 }
 
 func podStatusResultToResp(result podStatusResult) (*podstore_protos.PodStatusResponse, error) {
