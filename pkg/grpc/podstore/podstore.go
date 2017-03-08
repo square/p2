@@ -30,6 +30,7 @@ type Scheduler interface {
 type PodStatusStore interface {
 	Get(key types.PodUniqueKey) (podstatus.PodStatus, *api.QueryMeta, error)
 	WaitForStatus(key types.PodUniqueKey, waitIndex uint64) (podstatus.PodStatus, *api.QueryMeta, error)
+	List() (map[types.PodUniqueKey]podstatus.PodStatus, error)
 }
 
 func NewServer(scheduler Scheduler, podStatusStore PodStatusStore) store {
@@ -193,8 +194,32 @@ func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream
 	}
 }
 
-func (s store) ListPodStatus(context.Context, *podstore_protos.ListPodStatusRequest) (*podstore_protos.ListPodStatusResponse, error) {
-	return nil, grpc.Errorf(codes.Unimplemented, "ListPodStatus is not yet implemented")
+func (s store) ListPodStatus(_ context.Context, req *podstore_protos.ListPodStatusRequest) (*podstore_protos.ListPodStatusResponse, error) {
+	if req.StatusNamespace != consul.PreparerPodStatusNamespace.String() {
+		// Today this is the only namespace so we just make sure it doesn't diverge from expected
+		return nil, grpc.Errorf(codes.InvalidArgument, "%q is not an understood namespace, must be %q", req.StatusNamespace, consul.PreparerPodStatusNamespace)
+	}
+
+	statusMap, err := s.podStatusStore.List()
+	if err != nil {
+		return nil, grpc.Errorf(codes.Unavailable, "error listing pod status: %s", err)
+	}
+
+	ret := make(map[string]*podstore_protos.PodStatusResponse)
+	for podUniqueKey, status := range statusMap {
+		resp, err := podStatusResultToResp(podStatusResult{
+			status: status,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		ret[podUniqueKey.String()] = resp
+	}
+
+	return &podstore_protos.ListPodStatusResponse{
+		PodStatuses: ret,
+	}, nil
 }
 
 func podStatusResultToResp(result podStatusResult) (*podstore_protos.PodStatusResponse, error) {

@@ -275,6 +275,48 @@ func TestWatchPodStatus(t *testing.T) {
 	}
 }
 
+func TestListPodStatus(t *testing.T) {
+	statusStore, server := setupServerWithFakePodStatusStore()
+	results, err := server.ListPodStatus(context.Background(), &podstore_protos.ListPodStatusRequest{
+		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
+	})
+	if err != nil {
+		t.Errorf("error listing pod status: %s", err)
+	}
+
+	if len(results.PodStatuses) != 0 {
+		t.Fatalf("expected no results when listing pod status from empty store but got %d", len(results.PodStatuses))
+	}
+
+	key := types.NewPodUUID()
+	err = statusStore.Set(key, podstatus.PodStatus{
+		PodStatus: podstatus.PodLaunched,
+	})
+	if err != nil {
+		t.Fatalf("unable to seed status store with a pod status: %s", err)
+	}
+
+	results, err = server.ListPodStatus(context.Background(), &podstore_protos.ListPodStatusRequest{
+		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
+	})
+	if err != nil {
+		t.Errorf("error listing pod status: %s", err)
+	}
+
+	if len(results.PodStatuses) != 1 {
+		t.Fatalf("expected one status record but there were %d", len(results.PodStatuses))
+	}
+
+	val, ok := results.PodStatuses[key.String()]
+	if !ok {
+		t.Fatalf("expected a record for pod %s but there wasn't", key)
+	}
+
+	if val.PodState != podstatus.PodLaunched.String() {
+		t.Errorf("expected pod status of status record to be %q but was %q", podstatus.PodLaunched, val.PodState)
+	}
+}
+
 func setupServerWithFakePodStore() (podstore.Store, store) {
 	fakePodStore := podstore.NewConsul(consulutil.NewFakeClient().KV_)
 	server := store{
