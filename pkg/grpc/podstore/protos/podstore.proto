@@ -9,6 +9,7 @@ service P2PodStore {
   rpc SchedulePod (SchedulePodRequest) returns (SchedulePodResponse) {}
   rpc WatchPodStatus (WatchPodStatusRequest) returns (stream PodStatusResponse) {}
   rpc UnschedulePod (UnschedulePodRequest) returns (UnschedulePodResponse) {}
+  rpc ListPodStatus (ListPodStatusRequest) returns (ListPodStatusResponse) {}
 }
 
 message SchedulePodRequest {
@@ -49,3 +50,11 @@ message UnschedulePodRequest {
 }
 
 message UnschedulePodResponse {}
+
+message ListPodStatusRequest {
+  string status_namespace = 1;
+}
+
+message ListPodStatusResponse {
+  map<string, PodStatusResponse> pod_statuses = 1;
+}

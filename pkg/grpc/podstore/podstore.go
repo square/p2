@@ -193,6 +193,10 @@ func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream
 	}
 }
 
+func (s store) ListPodStatus(context.Context, *podstore_protos.ListPodStatusRequest) (*podstore_protos.ListPodStatusResponse, error) {
+	return nil, grpc.Errorf(codes.Unimplemented, "ListPodStatus is not yet implemented")
+}
+
 func podStatusResultToResp(result podStatusResult) (*podstore_protos.PodStatusResponse, error) {
 	if statusstore.IsNoStatus(result.err) {
 		return nil, grpc.Errorf(codes.NotFound, result.err.Error())
