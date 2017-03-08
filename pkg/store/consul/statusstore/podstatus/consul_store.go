@@ -176,3 +176,11 @@ func (c ConsulStore) List() (map[types.PodUniqueKey]PodStatus, error) {
 
 	return ret, nil
 }
+
+func (c ConsulStore) Delete(podUniqueKey types.PodUniqueKey) error {
+	if podUniqueKey == "" {
+		return util.Errorf("pod unique key cannot be empty")
+	}
+
+	return c.statusStore.DeleteStatus(statusstore.POD, statusstore.ResourceID(podUniqueKey.String()), c.namespace)
+}
