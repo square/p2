@@ -284,7 +284,13 @@ func setupServerWithFakePodStore() (podstore.Store, store) {
 	return fakePodStore, server
 }
 
-func setupServerWithFakePodStatusStore() (podstatus.Store, store) {
+// augment PodStatusStore interface so we can do some test setup
+type testPodStatusStore interface {
+	PodStatusStore
+	Set(key types.PodUniqueKey, status podstatus.PodStatus) error
+}
+
+func setupServerWithFakePodStatusStore() (testPodStatusStore, store) {
 	fakePodStatusStore := podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace)
 	return fakePodStatusStore, store{
 		podStatusStore: fakePodStatusStore,

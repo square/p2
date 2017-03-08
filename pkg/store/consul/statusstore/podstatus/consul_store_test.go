@@ -105,8 +105,8 @@ func TestMutateStatusExistingKey(t *testing.T) {
 	}
 }
 
-func newFixture() *consulStore {
-	return &consulStore{
+func newFixture() *ConsulStore {
+	return &ConsulStore{
 		statusStore: statusstoretest.NewFake(),
 		namespace:   "test_namespace",
 	}

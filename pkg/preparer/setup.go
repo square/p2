@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/hashicorp/consul/api"
 	"golang.org/x/net/http2"
 	"gopkg.in/yaml.v2"
 
@@ -59,10 +60,15 @@ type LogDestination struct {
 	Path string          `yaml:"path"`
 }
 
+type PodStatusStore interface {
+	Get(key types.PodUniqueKey) (podstatus.PodStatus, *api.QueryMeta, error)
+	MutateStatus(key types.PodUniqueKey, mutator func(podstatus.PodStatus) (podstatus.PodStatus, error)) error
+}
+
 type Preparer struct {
 	node                   types.NodeName
 	store                  Store
-	podStatusStore         podstatus.Store
+	podStatusStore         PodStatusStore
 	podStore               podstore.Store
 	hooks                  Hooks
 	Logger                 logging.Logger

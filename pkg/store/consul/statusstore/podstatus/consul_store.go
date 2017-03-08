@@ -10,7 +10,7 @@ import (
 	"github.com/hashicorp/consul/api"
 )
 
-type consulStore struct {
+type ConsulStore struct {
 	statusStore statusstore.Store
 
 	// The consul implementation statusstore.Store formats keys like
@@ -20,14 +20,18 @@ type consulStore struct {
 	namespace statusstore.Namespace
 }
 
-func NewConsul(statusStore statusstore.Store, namespace statusstore.Namespace) Store {
-	return &consulStore{
+// TODO: this pod store is coupled with the PodStatus struct, which represents
+// the book keeping that the preparer does about a pod. In other words it only
+// makes sense if the namespace is consul.PreparerPodStatusNamespace. We should
+// probably take namespace out of all these APIs and use that constant instead.
+func NewConsul(statusStore statusstore.Store, namespace statusstore.Namespace) ConsulStore {
+	return ConsulStore{
 		statusStore: statusStore,
 		namespace:   namespace,
 	}
 }
 
-func (c *consulStore) Get(key types.PodUniqueKey) (PodStatus, *api.QueryMeta, error) {
+func (c ConsulStore) Get(key types.PodUniqueKey) (PodStatus, *api.QueryMeta, error) {
 	if key == "" {
 		return PodStatus{}, nil, util.Errorf("Cannot retrieve status for a pod with an empty uuid")
 	}
@@ -45,7 +49,7 @@ func (c *consulStore) Get(key types.PodUniqueKey) (PodStatus, *api.QueryMeta, er
 	return podStatus, queryMeta, nil
 }
 
-func (c *consulStore) WaitForStatus(key types.PodUniqueKey, waitIndex uint64) (PodStatus, *api.QueryMeta, error) {
+func (c ConsulStore) WaitForStatus(key types.PodUniqueKey, waitIndex uint64) (PodStatus, *api.QueryMeta, error) {
 	if key == "" {
 		return PodStatus{}, nil, util.Errorf("Cannot retrieve status for a pod with an empty uuid")
 	}
@@ -63,11 +67,11 @@ func (c *consulStore) WaitForStatus(key types.PodUniqueKey, waitIndex uint64) (P
 	return podStatus, queryMeta, nil
 }
 
-func (c *consulStore) GetStatusFromIndex(index podstore.PodIndex) (PodStatus, *api.QueryMeta, error) {
+func (c ConsulStore) GetStatusFromIndex(index podstore.PodIndex) (PodStatus, *api.QueryMeta, error) {
 	return c.Get(index.PodKey)
 }
 
-func (c *consulStore) Set(key types.PodUniqueKey, status PodStatus) error {
+func (c ConsulStore) Set(key types.PodUniqueKey, status PodStatus) error {
 	if key == "" {
 		return util.Errorf("Could not set status for pod with empty uuid")
 	}
@@ -80,7 +84,7 @@ func (c *consulStore) Set(key types.PodUniqueKey, status PodStatus) error {
 	return c.statusStore.SetStatus(statusstore.POD, statusstore.ResourceID(key), c.namespace, rawStatus)
 }
 
-func (c *consulStore) CAS(key types.PodUniqueKey, status PodStatus, modifyIndex uint64) error {
+func (c ConsulStore) CAS(key types.PodUniqueKey, status PodStatus, modifyIndex uint64) error {
 	if key == "" {
 		return util.Errorf("Could not set status for pod with empty uuid")
 	}
@@ -98,7 +102,7 @@ func (c *consulStore) CAS(key types.PodUniqueKey, status PodStatus, modifyIndex 
 // status is then passed to a mutator function, and then the new status is
 // written back to consul using a CAS operation, guaranteeing that nothing else
 // about the status changed.
-func (c *consulStore) MutateStatus(key types.PodUniqueKey, mutator func(PodStatus) (PodStatus, error)) error {
+func (c ConsulStore) MutateStatus(key types.PodUniqueKey, mutator func(PodStatus) (PodStatus, error)) error {
 	var lastIndex uint64
 	status, queryMeta, err := c.Get(key)
 	switch {
@@ -124,7 +128,7 @@ func (c *consulStore) MutateStatus(key types.PodUniqueKey, mutator func(PodStatu
 // pod. Searches through p.ProcessStatuses for a process matching the
 // launchable ID and launchableScriptName, and mutates its LastExit if found.
 // If not found, a new process is added.
-func (c consulStore) SetLastExit(podUniqueKey types.PodUniqueKey, launchableID launch.LaunchableID, entryPoint string, exitStatus ExitStatus) error {
+func (c ConsulStore) SetLastExit(podUniqueKey types.PodUniqueKey, launchableID launch.LaunchableID, entryPoint string, exitStatus ExitStatus) error {
 	mutator := func(p PodStatus) (PodStatus, error) {
 		for _, processStatus := range p.ProcessStatuses {
 			if processStatus.LaunchableID == launchableID && processStatus.EntryPoint == entryPoint {

@@ -13,8 +13,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
@@ -95,6 +97,10 @@ func (r ReporterConfig) FullyConfigured() bool {
 		r.WorkspaceDirPath != ""
 }
 
+type PodStatusStore interface {
+	SetLastExit(podUniqueKey types.PodUniqueKey, launchableID launch.LaunchableID, entryPoint string, exitStatus podstatus.ExitStatus) error
+}
+
 type Reporter struct {
 	// Abstracts database operations
 	finishService            FinishService
@@ -102,7 +108,7 @@ type Reporter struct {
 	workspaceDirPath         string
 
 	logger         logging.Logger
-	podStatusStore podstatus.Store
+	podStatusStore PodStatusStore
 	pollInterval   time.Duration
 	pruneAfter     time.Duration
 	pruneInterval  time.Duration
@@ -117,7 +123,7 @@ type Reporter struct {
 
 // Should only be called if config.FullyConfigured() returned true.
 // Returns an error iff there is a configuration problem.
-func New(config ReporterConfig, logger logging.Logger, podStatusStore podstatus.Store) (*Reporter, error) {
+func New(config ReporterConfig, logger logging.Logger, podStatusStore PodStatusStore) (*Reporter, error) {
 	if config.SQLiteDatabasePath == "" {
 		// If the caller uses config.FullyConfigured() properly, this shouldn't happen
 		return nil, util.Errorf("sqlite_database_path not configured, process exit status will not be captured")

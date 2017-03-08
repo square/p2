@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/consul/api"
+
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
@@ -215,7 +217,14 @@ func TestRepairCorruptWorkspaceFile(t *testing.T) {
 	assertStatusUpdated(t, finishOutput2, podStatusStore)
 }
 
-func assertStatusUpdated(t *testing.T, finish FinishOutput, podStatusStore podstatus.Store) {
+// augment the PodStatusStore interface because we need a little more than what
+// the production code needs for test setup purposes
+type testPodStatusStore interface {
+	PodStatusStore
+	Get(key types.PodUniqueKey) (podstatus.PodStatus, *api.QueryMeta, error)
+}
+
+func assertStatusUpdated(t *testing.T, finish FinishOutput, podStatusStore testPodStatusStore) {
 	statusRetrieved := false
 	var status podstatus.PodStatus
 	var err error
@@ -264,7 +273,7 @@ func assertStatusUpdated(t *testing.T, finish FinishOutput, podStatusStore podst
 	}
 }
 
-func startReporter(t *testing.T, tempDir string) (string, chan struct{}, podstatus.Store, *Reporter) {
+func startReporter(t *testing.T, tempDir string) (string, chan struct{}, testPodStatusStore, *Reporter) {
 	dbPath := filepath.Join(tempDir, "finishes.db")
 
 	// The extractor doesn't need to do anything because we'll mimic its behavior in the test,
