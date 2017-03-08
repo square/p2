@@ -1,6 +1,8 @@
 package podstatus
 
 import (
+	"encoding/json"
+
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/store/consul/podstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
@@ -146,4 +148,31 @@ func (c ConsulStore) SetLastExit(podUniqueKey types.PodUniqueKey, launchableID l
 	}
 
 	return c.MutateStatus(podUniqueKey, mutator)
+}
+
+// List lists all of the pod status entries in consul.
+func (c ConsulStore) List() (map[types.PodUniqueKey]PodStatus, error) {
+	allStatus, err := c.statusStore.GetAllStatusForResourceType(statusstore.POD)
+	if err != nil {
+		return nil, util.Errorf("could not fetch all status for %s resource type: %s", statusstore.POD, err)
+	}
+
+	ret := make(map[types.PodUniqueKey]PodStatus)
+	for id, statusMap := range allStatus {
+		if status, ok := statusMap[c.namespace]; ok {
+			podUniqueKey, err := types.ToPodUniqueKey(id.String())
+			if err != nil {
+				return nil, util.Errorf("got status record with ID %s that could not be converted to pod unique key: %s", id, err)
+			}
+
+			var podStatus PodStatus
+			err = json.Unmarshal(status.Bytes(), &podStatus)
+			if err != nil {
+				return nil, util.Errorf("could not unmarshal status for %s as JSON (raw status=%q): %s", podUniqueKey, string(status.Bytes()), err)
+			}
+			ret[podUniqueKey] = podStatus
+		}
+	}
+
+	return ret, nil
 }

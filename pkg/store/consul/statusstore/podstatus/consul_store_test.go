@@ -105,6 +105,36 @@ func TestMutateStatusExistingKey(t *testing.T) {
 	}
 }
 
+func TestList(t *testing.T) {
+	store := newFixture()
+
+	key := types.NewPodUUID()
+	err := store.Set(key, PodStatus{
+		PodStatus: PodLaunched,
+	})
+	if err != nil {
+		t.Fatalf("Unable to set up test with an existing key: %s", err)
+	}
+
+	allStatus, err := store.List()
+	if err != nil {
+		t.Fatalf("unexpected error listing pod status: %s", err)
+	}
+
+	if len(allStatus) != 1 {
+		t.Fatalf("expected one status record but there were %d", len(allStatus))
+	}
+
+	val, ok := allStatus[key]
+	if !ok {
+		t.Fatalf("expected a record for pod %s but there wasn't", key)
+	}
+
+	if val.PodStatus != PodLaunched {
+		t.Errorf("expected pod status of status record to be %q but was %q", PodLaunched, val.PodStatus)
+	}
+}
+
 func newFixture() *ConsulStore {
 	return &ConsulStore{
 		statusStore: statusstoretest.NewFake(),
