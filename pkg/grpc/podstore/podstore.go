@@ -88,9 +88,8 @@ func (s store) UnschedulePod(_ context.Context, req *podstore_protos.UnscheduleP
 // useful so the results can be passed on a channel so we can wait for
 // cancellation on the main goroutine
 type podStatusResult struct {
-	status    podstatus.PodStatus
-	queryMeta *api.QueryMeta
-	err       error
+	status podstatus.PodStatus
+	err    error
 }
 
 func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream podstore_protos.P2PodStore_WatchPodStatusServer) error {
@@ -127,9 +126,8 @@ func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream
 			return nil
 		default:
 			resp, err := podStatusResultToResp(podStatusResult{
-				status:    status,
-				queryMeta: queryMeta,
-				err:       err,
+				status: status,
+				err:    err,
 			})
 			if err != nil {
 				return err
@@ -162,9 +160,8 @@ func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream
 			}
 			select {
 			case podStatusResultCh <- podStatusResult{
-				status:    status,
-				queryMeta: queryMeta,
-				err:       err,
+				status: status,
+				err:    err,
 			}:
 				if err != nil {
 					return
@@ -221,6 +218,5 @@ func podStatusResultToResp(result podStatusResult) (*podstore_protos.PodStatusRe
 		Manifest:        result.status.Manifest,
 		PodState:        result.status.PodStatus.String(),
 		ProcessStatuses: processStatuses,
-		LastIndex:       result.queryMeta.LastIndex,
 	}, nil
 }

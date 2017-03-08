@@ -24,27 +24,12 @@ message WatchPodStatusRequest {
   string pod_unique_key = 1;
   string status_namespace = 3;
   bool wait_for_exists = 4; // If set, the server will wait for a not-existing key to exist (rather than return a Not Found error)
-
-  // DEPRECATED: WaitIndex is a consul-specific concept that we should avoid
-  // using in our APIs. The intention behind it was to ensure that a client won't
-  // be returned a result that is older than the last one it saw, but instead we
-  // can provide that guarantee in the server by leveraging consul consistency
-  // modes so we don't need to leak indices to the client.
-  uint64 wait_index = 2; // the WaitIndex to pass to watch requests
 }
 
 message PodStatusResponse {
   string manifest = 1;
   string pod_state = 2; // e.g. "launched" or "removed"
   repeated ProcessStatus process_statuses = 3;
-
-  // DEPRECATED. LastIndex is a consul-specific characteristic so we should
-  // stop using it. The intention behind it was that the last_index from a
-  // PodStatusResponse could be fed into a later WatchPodStatusRequest to
-  // ensure that results don't travel backward in time. However we will instead
-  // provide that guarantee in the server for all requests without needing to
-  // expose the index to the client.
-  uint64 last_index = 4;
 }
 
 message ProcessStatus {

@@ -67,11 +67,11 @@ type PodStatusResult struct {
 	Error     error                              `json:"-"`
 }
 
-func (c Client) WatchStatus(ctx context.Context, podUniqueKey types.PodUniqueKey, waitIndex uint64) (<-chan PodStatusResult, error) {
+func (c Client) WatchStatus(ctx context.Context, podUniqueKey types.PodUniqueKey, waitForExists bool) (<-chan PodStatusResult, error) {
 	stream, err := c.client.WatchPodStatus(ctx, &podstore_protos.WatchPodStatusRequest{
 		PodUniqueKey:    podUniqueKey.String(),
 		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
-		WaitIndex:       waitIndex,
+		WaitForExists:   waitForExists,
 	})
 	if err != nil {
 		return nil, err

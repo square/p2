@@ -97,7 +97,7 @@ func watchStatus(client client.Client, logger logging.Logger) {
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
-	outCh, err := client.WatchStatus(ctx, key, 1) // 1 so we wait for the key to exist
+	outCh, err := client.WatchStatus(ctx, key, true)
 	if err != nil {
 		logger.Fatal(err)
 	}
