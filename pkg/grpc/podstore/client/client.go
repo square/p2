@@ -46,6 +46,13 @@ func (c Client) Schedule(manifest manifest.Manifest, node types.NodeName) (types
 	return types.PodUniqueKey(resp.PodUniqueKey), nil
 }
 
+func (c Client) UnschedulePod(podUniqueKey types.PodUniqueKey) error {
+	_, err := c.client.UnschedulePod(context.Background(), &podstore_protos.UnschedulePodRequest{
+		PodUniqueKey: podUniqueKey.String(),
+	})
+	return err
+}
+
 type PodStatusResult struct {
 	PodStatus *podstore_protos.PodStatusResponse `json:"pod_status"`
 	Error     error                              `json:"-"`
