@@ -110,3 +110,10 @@ func (c Client) ListPodStatus() (map[types.PodUniqueKey]podstatus.PodStatus, err
 
 	return ret, nil
 }
+
+func (c Client) MarkPodFailed(podUniqueKey types.PodUniqueKey) error {
+	_, err := c.client.MarkPodFailed(context.Background(), &podstore_protos.MarkPodFailedRequest{
+		PodUniqueKey: podUniqueKey.String(),
+	})
+	return err
+}
