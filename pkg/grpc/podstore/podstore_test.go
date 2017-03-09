@@ -423,6 +423,42 @@ func TestPodStatusResposeToPodStatus(t *testing.T) {
 	}
 }
 
+func TestMarkPodFailed(t *testing.T) {
+	statusStore, server := setupServerWithFakePodStatusStore()
+	key := types.NewPodUUID()
+	err := statusStore.Set(key, podstatus.PodStatus{
+		PodStatus: podstatus.PodLaunched,
+	})
+	if err != nil {
+		t.Fatalf("unable to seed status store with a pod status: %s", err)
+	}
+
+	// mark it as failed
+	_, err = server.MarkPodFailed(context.Background(), &podstore_protos.MarkPodFailedRequest{
+		PodUniqueKey: key.String(),
+	})
+	if err != nil {
+		t.Fatalf("error marking pod failed: %s", err)
+	}
+
+	// confirm that the record is now failed
+	resp, err := server.ListPodStatus(context.Background(), &podstore_protos.ListPodStatusRequest{
+		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
+	})
+	if err != nil {
+		t.Fatalf("could not list pod status to confirm marking pod as failed: %s", err)
+	}
+
+	val, ok := resp.PodStatuses[key.String()]
+	if !ok {
+		t.Fatal("no status record found for the pod we marked failed")
+	}
+
+	if val.PodState != podstatus.PodFailed.String() {
+		t.Errorf("expected pod to be marked %q but was %q", podstatus.PodFailed, val.PodState)
+	}
+}
+
 func setupServerWithFakePodStore() (podstore.Store, store) {
 	fakePodStore := podstore.NewConsul(consulutil.NewFakeClient().KV_)
 	server := store{

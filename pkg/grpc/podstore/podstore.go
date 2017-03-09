@@ -35,6 +35,7 @@ type PodStatusStore interface {
 	Delete(podUniqueKey types.PodUniqueKey) error
 	WaitForStatus(key types.PodUniqueKey, waitIndex uint64) (podstatus.PodStatus, *api.QueryMeta, error)
 	List() (map[types.PodUniqueKey]podstatus.PodStatus, error)
+	MutateStatus(key types.PodUniqueKey, mutator func(podstatus.PodStatus) (podstatus.PodStatus, error)) error
 }
 
 func NewServer(scheduler Scheduler, podStatusStore PodStatusStore) store {
@@ -232,7 +233,25 @@ func (s store) DeletePodStatus(_ context.Context, req *podstore_protos.DeletePod
 }
 
 func (s store) MarkPodFailed(_ context.Context, req *podstore_protos.MarkPodFailedRequest) (*podstore_protos.MarkPodFailedResponse, error) {
-	return nil, grpc.Errorf(codes.Unimplemented, "MarkPodFailed not implemented")
+	podUniqueKey, err := types.ToPodUniqueKey(req.PodUniqueKey)
+	if err != nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "could not convert %s to a pod unique key: %s", req.PodUniqueKey, err)
+	}
+
+	mutator := func(podStatus podstatus.PodStatus) (podstatus.PodStatus, error) {
+		podStatus.PodStatus = podstatus.PodFailed
+		return podStatus, nil
+	}
+
+	// we don't really need the CAS properties of MutateStatus but there
+	// should be only one system trying to write the status record so it
+	// doesn't hurt.
+	err = s.podStatusStore.MutateStatus(podUniqueKey, mutator)
+	if err != nil {
+		return nil, grpc.Errorf(codes.Unavailable, "could not update pod %s to failed: %s", podUniqueKey, err)
+	}
+
+	return &podstore_protos.MarkPodFailedResponse{}, nil
 }
 
 // converts an error returned by the status store to an appropriate grpc error.
