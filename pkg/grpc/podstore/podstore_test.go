@@ -360,6 +360,69 @@ func TestDeletePodStatus(t *testing.T) {
 	}
 }
 
+// Tests the convenience function that converts from the protobuf definition of
+// pod status to the raw type.
+func TestPodStatusResposeToPodStatus(t *testing.T) {
+	in := podstore_protos.PodStatusResponse{
+		PodState: "removed",
+		Manifest: "id: foobar",
+		ProcessStatuses: []*podstore_protos.ProcessStatus{
+			{
+				LaunchableId: "whatever",
+				EntryPoint:   "some_entry_point",
+				LastExit: &podstore_protos.ExitStatus{
+					ExitTime:   10000,
+					ExitCode:   24,
+					ExitStatus: 1800,
+				},
+			},
+		},
+	}
+
+	out := PodStatusResponseToPodStatus(in)
+	if out.PodStatus.String() != in.PodState {
+		t.Errorf("expected pod status to be %q but was %q", in.PodState, out.PodStatus)
+	}
+
+	if out.Manifest != in.Manifest {
+		t.Errorf("expected manifest to be %q but was %q", in.Manifest, out.Manifest)
+	}
+
+	if len(out.ProcessStatuses) != len(in.ProcessStatuses) {
+		t.Fatalf("expected %d process status(es) but got %d", len(in.ProcessStatuses), len(out.ProcessStatuses))
+	}
+
+	inPS := in.ProcessStatuses[0]
+	outPS := out.ProcessStatuses[0]
+
+	if outPS.LaunchableID.String() != inPS.LaunchableId {
+		t.Errorf("expected launchable id to be %q but was %q", inPS.LaunchableId, outPS.LaunchableID)
+	}
+
+	if outPS.EntryPoint != inPS.EntryPoint {
+		t.Errorf("expected entry point to be %q but was %q", inPS.EntryPoint, outPS.EntryPoint)
+	}
+
+	inLE := inPS.LastExit
+	outLE := outPS.LastExit
+
+	if outLE == nil {
+		t.Fatal("expected non-nil last exit")
+	}
+
+	if outLE.ExitTime.Unix() != inLE.ExitTime {
+		t.Errorf("expected last exit time to be %d but was %d", inLE.ExitTime, outLE.ExitTime.Unix())
+	}
+
+	if outLE.ExitCode != int(inLE.ExitCode) {
+		t.Errorf("expected exit code to be %d but was %d", inLE.ExitCode, outLE.ExitCode)
+	}
+
+	if outLE.ExitStatus != int(inLE.ExitStatus) {
+		t.Errorf("expected exit status to be %d but was %d", inLE.ExitStatus, outLE.ExitStatus)
+	}
+}
+
 func setupServerWithFakePodStore() (podstore.Store, store) {
 	fakePodStore := podstore.NewConsul(consulutil.NewFakeClient().KV_)
 	server := store{
