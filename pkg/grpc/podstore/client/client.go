@@ -1,8 +1,6 @@
 package client
 
 import (
-	"time"
-
 	podstore_protos "github.com/square/p2/pkg/grpc/podstore/protos"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -12,31 +10,15 @@ import (
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
 type Client struct {
-	// Kept around just to close it
-	conn   *grpc.ClientConn
 	client podstore_protos.P2PodStoreClient
 	logger logging.Logger
 }
 
-func New(grpcAddress string, creds credentials.TransportCredentials, logger logging.Logger) (Client, error) {
-	dialOptions := []grpc.DialOption{grpc.WithBlock(), grpc.WithTimeout(5 * time.Second)}
-	if creds != nil {
-		dialOptions = append(dialOptions, grpc.WithTransportCredentials(creds))
-	} else {
-		dialOptions = append(dialOptions, grpc.WithInsecure())
-	}
-
-	conn, err := grpc.Dial(grpcAddress, dialOptions...)
-	if err != nil {
-		return Client{}, err
-	}
-
+func New(conn *grpc.ClientConn, logger logging.Logger) (Client, error) {
 	return Client{
-		conn:   conn,
 		client: podstore_protos.NewP2PodStoreClient(conn),
 		logger: logger,
 	}, nil
@@ -93,8 +75,4 @@ func (c Client) WatchStatus(ctx context.Context, podUniqueKey types.PodUniqueKey
 		}
 	}()
 	return outCh, nil
-}
-
-func (c Client) Close() {
-	_ = c.conn.Close()
 }
