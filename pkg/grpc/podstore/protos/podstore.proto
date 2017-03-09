@@ -11,6 +11,7 @@ service P2PodStore {
   rpc UnschedulePod (UnschedulePodRequest) returns (UnschedulePodResponse) {}
   rpc ListPodStatus (ListPodStatusRequest) returns (ListPodStatusResponse) {}
   rpc DeletePodStatus (DeletePodStatusRequest) returns (DeletePodStatusResponse) {}
+  rpc MarkPodFailed (MarkPodFailedRequest) returns (MarkPodFailedResponse) {}
 }
 
 message SchedulePodRequest {
@@ -65,4 +66,11 @@ message DeletePodStatusRequest {
 }
 
 message DeletePodStatusResponse {
+}
+
+message MarkPodFailedRequest {
+  string pod_unique_key = 1;
+}
+
+message MarkPodFailedResponse {
 }

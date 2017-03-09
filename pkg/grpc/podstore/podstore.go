@@ -231,6 +231,10 @@ func (s store) DeletePodStatus(_ context.Context, req *podstore_protos.DeletePod
 	return &podstore_protos.DeletePodStatusResponse{}, nil
 }
 
+func (s store) MarkPodFailed(_ context.Context, req *podstore_protos.MarkPodFailedRequest) (*podstore_protos.MarkPodFailedResponse, error) {
+	return nil, grpc.Errorf(codes.Unimplemented, "MarkPodFailed not implemented")
+}
+
 // converts an error returned by the status store to an appropriate grpc error.
 func convertStatusStoreError(err error) error {
 	if statusstore.IsNoStatus(err) {
