@@ -130,13 +130,10 @@ func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream
 		case <-clientCancel:
 			return nil
 		default:
-			resp, err := podStatusResultToResp(podStatusResult{
-				status: status,
-				err:    err,
-			})
 			if err != nil {
-				return err
+				return convertStatusStoreError(err)
 			}
+			resp := PodStatusToResp(status)
 
 			err = stream.Send(resp)
 			if err != nil {
@@ -185,10 +182,11 @@ func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream
 			close(innerQuit)
 			return nil
 		case result := <-podStatusResultCh:
-			resp, err := podStatusResultToResp(result)
-			if err != nil {
-				return err
+			if result.err != nil {
+				return convertStatusStoreError(result.err)
 			}
+
+			resp := PodStatusToResp(result.status)
 
 			err = stream.Send(resp)
 			if err != nil {
@@ -211,14 +209,7 @@ func (s store) ListPodStatus(_ context.Context, req *podstore_protos.ListPodStat
 
 	ret := make(map[string]*podstore_protos.PodStatusResponse)
 	for podUniqueKey, status := range statusMap {
-		resp, err := podStatusResultToResp(podStatusResult{
-			status: status,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		ret[podUniqueKey.String()] = resp
+		ret[podUniqueKey.String()] = PodStatusToResp(status)
 	}
 
 	return &podstore_protos.ListPodStatusResponse{
@@ -240,16 +231,21 @@ func (s store) DeletePodStatus(_ context.Context, req *podstore_protos.DeletePod
 	return &podstore_protos.DeletePodStatusResponse{}, nil
 }
 
-func podStatusResultToResp(result podStatusResult) (*podstore_protos.PodStatusResponse, error) {
-	if statusstore.IsNoStatus(result.err) {
-		return nil, grpc.Errorf(codes.NotFound, result.err.Error())
-	} else if result.err != nil {
-		return nil, grpc.Errorf(codes.Unavailable, result.err.Error())
+// converts an error returned by the status store to an appropriate grpc error.
+func convertStatusStoreError(err error) error {
+	if statusstore.IsNoStatus(err) {
+		return grpc.Errorf(codes.NotFound, err.Error())
+	} else if err != nil {
+		return grpc.Errorf(codes.Unavailable, err.Error())
 	}
 
+	return nil
+}
+
+func PodStatusToResp(podStatus podstatus.PodStatus) *podstore_protos.PodStatusResponse {
 	var processStatuses []*podstore_protos.ProcessStatus
 
-	for _, processStatus := range result.status.ProcessStatuses {
+	for _, processStatus := range podStatus.ProcessStatuses {
 		processStatuses = append(processStatuses, &podstore_protos.ProcessStatus{
 			LaunchableId: processStatus.LaunchableID.String(),
 			EntryPoint:   processStatus.EntryPoint,
@@ -262,10 +258,10 @@ func podStatusResultToResp(result podStatusResult) (*podstore_protos.PodStatusRe
 	}
 
 	return &podstore_protos.PodStatusResponse{
-		Manifest:        result.status.Manifest,
-		PodState:        result.status.PodStatus.String(),
+		Manifest:        podStatus.Manifest,
+		PodState:        podStatus.PodStatus.String(),
 		ProcessStatuses: processStatuses,
-	}, nil
+	}
 }
 
 func PodStatusResponseToPodStatus(resp podstore_protos.PodStatusResponse) podstatus.PodStatus {
