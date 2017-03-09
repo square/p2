@@ -1,7 +1,10 @@
 package podstore
 
 import (
+	"time"
+
 	podstore_protos "github.com/square/p2/pkg/grpc/podstore/protos"
+	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/podstore"
@@ -263,4 +266,27 @@ func podStatusResultToResp(result podStatusResult) (*podstore_protos.PodStatusRe
 		PodState:        result.status.PodStatus.String(),
 		ProcessStatuses: processStatuses,
 	}, nil
+}
+
+func PodStatusResponseToPodStatus(resp podstore_protos.PodStatusResponse) podstatus.PodStatus {
+	var ret podstatus.PodStatus
+	ret.PodStatus = podstatus.PodState(resp.PodState)
+	ret.Manifest = resp.Manifest
+
+	for _, rawProcessStatus := range resp.ProcessStatuses {
+		processStatus := podstatus.ProcessStatus{
+			LaunchableID: launch.LaunchableID(rawProcessStatus.LaunchableId),
+			EntryPoint:   rawProcessStatus.EntryPoint,
+		}
+		if rawProcessStatus.LastExit != nil {
+			processStatus.LastExit = &podstatus.ExitStatus{
+				ExitTime:   time.Unix(rawProcessStatus.LastExit.ExitTime, 0),
+				ExitCode:   int(rawProcessStatus.LastExit.ExitCode),
+				ExitStatus: int(rawProcessStatus.LastExit.ExitStatus),
+			}
+		}
+		ret.ProcessStatuses = append(ret.ProcessStatuses, processStatus)
+	}
+
+	return ret
 }

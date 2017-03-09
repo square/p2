@@ -1,10 +1,12 @@
 package client
 
 import (
+	"github.com/square/p2/pkg/grpc/podstore"
 	podstore_protos "github.com/square/p2/pkg/grpc/podstore/protos"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -75,4 +77,36 @@ func (c Client) WatchStatus(ctx context.Context, podUniqueKey types.PodUniqueKey
 		}
 	}()
 	return outCh, nil
+}
+
+func (c Client) DeletePodStatus(podUniqueKey types.PodUniqueKey) error {
+	req := &podstore_protos.DeletePodStatusRequest{
+		PodUniqueKey: podUniqueKey.String(),
+	}
+
+	_, err := c.client.DeletePodStatus(context.Background(), req)
+	return err
+}
+
+func (c Client) ListPodStatus() (map[types.PodUniqueKey]podstatus.PodStatus, error) {
+	resp, err := c.client.ListPodStatus(context.Background(), &podstore_protos.ListPodStatusRequest{
+		// TODO: the whole podstatus.PodStatus type is coupled to the preparer's notion
+		// of pod status, so we ought to just make this namespace a constant in the
+		// pod status store
+		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make(map[types.PodUniqueKey]podstatus.PodStatus)
+	for podUniqueKeyStr, rawStatus := range resp.PodStatuses {
+		podUniqueKey, err := types.ToPodUniqueKey(podUniqueKeyStr)
+		if err != nil {
+			return nil, err
+		}
+		ret[podUniqueKey] = podstore.PodStatusResponseToPodStatus(*rawStatus)
+	}
+
+	return ret, nil
 }
