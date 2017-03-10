@@ -86,24 +86,27 @@ func TestGetHealthWithEntry(t *testing.T) {
 	}
 }
 
-func TestPodUniqueKeyFromConsulPath(t *testing.T) {
+func TestPodUniqueKeyOrIDFromConsulPath(t *testing.T) {
 	type expectation struct {
-		path string
-		err  bool
-		uuid types.PodUniqueKey
+		path  string
+		err   bool
+		uuid  types.PodUniqueKey
+		podID types.PodID
 	}
 
 	uuid := types.NewPodUUID()
 	expectations := []expectation{
 		{
-			path: "intent/example.com/mysql",
-			err:  false,
-			uuid: "",
+			path:  "intent/example.com/mysql",
+			err:   false,
+			uuid:  "",
+			podID: "mysql",
 		},
 		{
-			path: "reality/example.com/mysql",
-			err:  false,
-			uuid: "",
+			path:  "reality/example.com/mysql",
+			err:   false,
+			uuid:  "",
+			podID: "mysql",
 		},
 		{
 			path: "labels/example.com/mysql",
@@ -114,19 +117,21 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 			err:  true,
 		},
 		{
-			path: "hooks/all_hooks",
-			err:  false,
-			uuid: "",
+			path:  "hooks/all_hooks",
+			err:   false,
+			uuid:  "",
+			podID: "all_hooks",
 		},
 		{
-			path: fmt.Sprintf("intent/example.com/%s", uuid),
-			uuid: uuid,
-			err:  false,
+			path:  fmt.Sprintf("intent/example.com/%s", uuid),
+			uuid:  uuid,
+			err:   false,
+			podID: "",
 		},
 	}
 
 	for _, expectation := range expectations {
-		podUniqueKey, err := PodUniqueKeyFromConsulPath(expectation.path)
+		podUniqueKey, podID, err := PodUniqueKeyOrIDFromConsulPath(expectation.path)
 		if expectation.err {
 			if err == nil {
 				t.Errorf("Expected an error for key '%s'", expectation.path)
@@ -141,6 +146,10 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 
 		if podUniqueKey != expectation.uuid {
 			t.Errorf("Expected podUniqueKey to be %s, was %s", expectation.uuid, podUniqueKey)
+		}
+
+		if podID != expectation.podID {
+			t.Errorf("Expected podID to be %s but was %s", expectation.podID, podID)
 		}
 	}
 }

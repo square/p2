@@ -473,7 +473,7 @@ func (c consulStore) manifestResultFromPair(pair *api.KVPair) (ManifestResult, e
 	// /reality trees will contain both manifests (as they always have) and
 	// uuids which refer to consul objects elsewhere in KV tree. Therefore
 	// we have to be able to tell which it is based on the key path
-	podUniqueKey, err := PodUniqueKeyFromConsulPath(pair.Key)
+	podUniqueKey, _, err := PodUniqueKeyOrIDFromConsulPath(pair.Key)
 	if err != nil {
 		return ManifestResult{}, err
 	}
@@ -533,40 +533,44 @@ func extractNodeFromKey(key string) (types.NodeName, error) {
 	return types.NodeName(keyParts[1]), nil
 }
 
-// Deduces a PodUniqueKey from a consul path. This is useful as pod keys are transitioned
-// from using node name and pod ID to using UUIDs.
+// PodUniqueKeyOrIDFromConsulPath analyzes a key path in consul and converts it
+// to either a PodUniqueKey or a PodID depending on the format of the key.
 // Input is expected to have 3 '/' separated sections, e.g. 'intent/<node>/<pod_id>' or
 // 'intent/<node>/<pod_uuid>' if the prefix is "intent" or "reality"
 //
 // /hooks is also a valid pod prefix and the key under it will not be a uuid.
-func PodUniqueKeyFromConsulPath(consulPath string) (types.PodUniqueKey, error) {
+func PodUniqueKeyOrIDFromConsulPath(consulPath string) (types.PodUniqueKey, types.PodID, error) {
 	keyParts := strings.Split(consulPath, "/")
 	if len(keyParts) == 0 {
-		return "", util.Errorf("Malformed key '%s'", consulPath)
+		return "", "", util.Errorf("Malformed key '%s'", consulPath)
 	}
 
+	// TODO: now that hooks are in the preparer's pod manifests, remove
+	// this exception
 	if keyParts[0] == "hooks" {
-		return "", nil
+		return "", types.PodID(keyParts[1]), nil
 	}
 
 	if len(keyParts) != 3 {
-		return "", util.Errorf("Malformed key '%s'", consulPath)
+		return "", "", util.Errorf("Malformed key '%s'", consulPath)
 	}
 
 	// Unforunately we can't use consul.INTENT_TREE and consul.REALITY_TREE here because of an import cycle
 	if keyParts[0] != "intent" && keyParts[0] != "reality" {
-		return "", util.Errorf("Unrecognized key tree '%s' (must be intent or reality)", keyParts[0])
+		return "", "", util.Errorf("Unrecognized key tree '%s' (must be intent or reality)", keyParts[0])
 	}
 
+	var podID types.PodID
 	// Parse() returns nil if the input string does not match the uuid spec
 	podUniqueKey, err := types.ToPodUniqueKey(keyParts[2])
 	switch {
 	case err == types.InvalidUUID:
 		// this is okay, it's just a legacy pod
 		podUniqueKey = ""
+		podID = types.PodID(keyParts[2])
 	case err != nil:
-		return "", util.Errorf("Could not test whether %s is a valid pod unique key: %s", keyParts[2], err)
+		return "", "", util.Errorf("Could not test whether %s is a valid pod unique key: %s", keyParts[2], err)
 	}
 
-	return podUniqueKey, nil
+	return podUniqueKey, podID, nil
 }
