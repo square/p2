@@ -377,6 +377,127 @@ func (c consulStore) WatchPods(
 	}
 }
 
+// IntentKeyResult represents a key within the intent tree. It contains
+// information about the name of the key whether it's the PodUniqueKey for a
+// uuid pod or a pod ID for a legacy pod. Additionally it contains information
+// about the ModifyIndex within consul for the key, allowing clients to make
+// decisions about when to request the value for a given key.
+type IntentKeyResult struct {
+	// PodUniqueKey will be non-empty if and only if the pod was a uuid pod. PodUniqueKey is mutually exclusive with PodID
+	PodUniqueKey types.PodUniqueKey
+
+	// PodID will be non-empty if and only if the pod was a legacy pod (i.e. not a uuid pod). PodID is mutually exclusive
+	// with PodUniqueKey
+	PodID types.PodID
+
+	// ModifyIndex represent's consul's modify index corresponding to the
+	// intent key. This value can be used by clients to cache key values
+	// for bandwidth reduction. If the modify index for a given
+	// PodUniqueKey or PodID has not changed, then the value has not
+	// changed either.
+	ModifyIndex uint64
+}
+
+type IntentKeyResults struct {
+	Results []IntentKeyResult
+	Error   error
+}
+
+// WatchIntentKeys sets up repeated recursive watches on the intent keys in
+// consul for a given node name, returning a result on the output channel for
+// each completed request. This is a lower-bandwidth alternative to WatchPods()
+// since only keys are returned from requests rather than the values which
+// contain pod manifests. This function is ideal when the manifest is expected
+// to change infrequently, so calling code can request an individual manifest
+// when the index for that manifest has changed.
+func (c consulStore) WatchIntentKeys(nodeName types.NodeName, quitCh <-chan struct{}) <-chan IntentKeyResults {
+	return innerWatchIntentKeys(nodeName, quitCh, consulutil.WatchPrefix, c.client.KV())
+}
+
+type watchFunc func(
+	prefix string,
+	clientKV consulutil.ConsulLister,
+	outPairs chan<- api.KVPairs,
+	done <-chan struct{},
+	outErrors chan<- error,
+	pause time.Duration,
+)
+
+// innerWatchIntentKeys is separate from WatchIntentKeys so that tests can
+// easily previde their own WatchFunc rather than having a dependency on consul
+func innerWatchIntentKeys(nodeName types.NodeName, quitCh <-chan struct{}, watchFunc watchFunc, lister consulutil.ConsulLister) <-chan IntentKeyResults {
+	out := make(chan IntentKeyResults)
+
+	go func() {
+		defer close(out)
+		keyPrefix, err := nodePath(INTENT_TREE, nodeName)
+		if err != nil {
+			select {
+			case <-quitCh:
+			case out <- IntentKeyResults{
+				Error: err,
+			}:
+			}
+			return
+		}
+
+		kvPairsChan := make(chan api.KVPairs)
+		errChan := make(chan error)
+		go watchFunc(keyPrefix, lister, kvPairsChan, quitCh, errChan, 0)
+
+		// Run a routine that will send error values on the output
+		// channel whenever one is encountered within WatchPrefix
+		go func() {
+			for {
+				select {
+				case <-quitCh:
+					return
+				case err := <-errChan:
+					select {
+					case <-quitCh:
+					case out <- IntentKeyResults{
+						Error: err,
+					}:
+					}
+				}
+			}
+		}()
+
+		// Send each value from WatchPrefix on the output channel
+		for kvPairs := range kvPairsChan {
+			select {
+			case <-quitCh:
+				return
+			case out <- intentKeyResultsFromPairs(kvPairs):
+			}
+		}
+	}()
+	return out
+}
+
+func intentKeyResultsFromPairs(kvPairs api.KVPairs) IntentKeyResults {
+	intentKeys := make([]IntentKeyResult, 0, len(kvPairs))
+	for _, pair := range kvPairs {
+		// test whether the key is a UUID pod (has a PodUniqueKey)
+		podUniqueKey, podID, err := PodUniqueKeyOrIDFromConsulPath(pair.Key)
+		if err != nil {
+			return IntentKeyResults{
+				Error: err,
+			}
+		}
+
+		intentKeys = append(intentKeys, IntentKeyResult{
+			ModifyIndex:  pair.ModifyIndex,
+			PodUniqueKey: podUniqueKey,
+			PodID:        podID,
+		})
+	}
+
+	return IntentKeyResults{
+		Results: intentKeys,
+	}
+}
+
 // Does the same thing as WatchPods, but does so on all the nodes instead
 func (c consulStore) WatchAllPods(
 	podPrefix PodPrefix,
