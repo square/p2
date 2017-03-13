@@ -3,6 +3,7 @@ package daemonsetstore
 import (
 	"github.com/square/p2/pkg/ds/fields"
 	daemonsetstore_protos "github.com/square/p2/pkg/grpc/daemonsetstore/protos"
+	"github.com/square/p2/pkg/store/consul/dsstore"
 	"github.com/square/p2/pkg/util"
 
 	"golang.org/x/net/context"
@@ -12,6 +13,7 @@ import (
 
 type ConsulStore interface {
 	List() ([]fields.DaemonSet, error)
+	Disable(id fields.ID) (fields.DaemonSet, error)
 }
 
 type Store struct {
@@ -45,8 +47,22 @@ func (s Store) ListDaemonSets(_ context.Context, _ *daemonsetstore_protos.ListDa
 	return ret, nil
 }
 
-func (s Store) DisableDaemonSet(context.Context, *daemonsetstore_protos.DisableDaemonSetRequest) (*daemonsetstore_protos.DisableDaemonSetResponse, error) {
-	return nil, grpc.Errorf(codes.Unimplemented, "DisableDaemonSet not implemented")
+func (s Store) DisableDaemonSet(_ context.Context, req *daemonsetstore_protos.DisableDaemonSetRequest) (*daemonsetstore_protos.DisableDaemonSetResponse, error) {
+	id, err := fields.ToDaemonSetID(req.DaemonSetId)
+	if err != nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, err.Error())
+	}
+
+	_, err = s.consulStore.Disable(id)
+	if err != nil {
+		if err == dsstore.NoDaemonSet {
+			return nil, grpc.Errorf(codes.NotFound, "no daemon set with id %s was found", id)
+		}
+
+		return nil, grpc.Errorf(codes.Unavailable, "could not disable daemon set %s: %s", id, err)
+	}
+
+	return &daemonsetstore_protos.DisableDaemonSetResponse{}, nil
 }
 
 func (s Store) WatchDaemonSets(*daemonsetstore_protos.WatchDaemonSetsRequest, daemonsetstore_protos.P2DaemonSetStore_WatchDaemonSetsServer) error {

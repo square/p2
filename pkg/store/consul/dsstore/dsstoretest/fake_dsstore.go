@@ -141,7 +141,7 @@ func (s *FakeDSStore) Disable(id fields.ID) (fields.DaemonSet, error) {
 
 	// Delete the daemon set because there was an error during mutation
 	if err != nil {
-		return newDS, util.Errorf("Error occured when trying to disable daemon set in store: %v", err)
+		return newDS, err
 	}
 
 	s.logger.Infof("Daemon set '%s' was successfully disabled in store", id)
