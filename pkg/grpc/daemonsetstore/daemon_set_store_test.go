@@ -6,7 +6,9 @@ import (
 
 	"github.com/square/p2/pkg/ds/fields"
 	daemonsetstore_protos "github.com/square/p2/pkg/grpc/daemonsetstore/protos"
+	"github.com/square/p2/pkg/grpc/testutil"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store/consul/dsstore"
 	"github.com/square/p2/pkg/store/consul/dsstore/dsstoretest"
 	"github.com/square/p2/pkg/types"
 
@@ -130,6 +132,176 @@ func TestDisableDaemonSetNotFound(t *testing.T) {
 
 	if grpc.Code(err) != codes.NotFound {
 		t.Errorf("should have gotten a not found error but was %q", err)
+	}
+}
+
+type TestWatchDaemonSetsStream struct {
+	*testutil.FakeServerStream
+
+	responseCh chan<- *daemonsetstore_protos.WatchDaemonSetsResponse
+}
+
+func (w TestWatchDaemonSetsStream) Send(resp *daemonsetstore_protos.WatchDaemonSetsResponse) error {
+	w.responseCh <- resp
+	return nil
+}
+
+type fakeDaemonSetWatcher struct {
+	resultCh <-chan dsstore.WatchedDaemonSets
+}
+
+func newFakeDSWatcher(resultCh <-chan dsstore.WatchedDaemonSets) fakeDaemonSetWatcher {
+	return fakeDaemonSetWatcher{
+		resultCh: resultCh,
+	}
+}
+
+func (fakeDaemonSetWatcher) List() ([]fields.DaemonSet, error) { panic("List() not implemented") }
+func (fakeDaemonSetWatcher) Disable(id fields.ID) (fields.DaemonSet, error) {
+	panic("Disable() not implemented")
+}
+func (f fakeDaemonSetWatcher) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets {
+	out := make(chan dsstore.WatchedDaemonSets)
+	go func() {
+		defer close(out)
+
+		for {
+			select {
+			case <-quitCh:
+				return
+			case val := <-f.resultCh:
+				select {
+				case <-quitCh:
+					return
+				case out <- val:
+				}
+			}
+		}
+	}()
+
+	return out
+}
+
+func TestWatchDaemonSets(t *testing.T) {
+	resultCh := make(chan dsstore.WatchedDaemonSets)
+	server := NewServer(newFakeDSWatcher(resultCh))
+
+	respCh := make(chan *daemonsetstore_protos.WatchDaemonSetsResponse)
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
+	serverExit := make(chan struct{})
+	go func() {
+		defer close(serverExit)
+		err := server.WatchDaemonSets(new(daemonsetstore_protos.WatchDaemonSetsRequest), TestWatchDaemonSetsStream{
+			FakeServerStream: testutil.NewFakeServerStream(ctx),
+			responseCh:       respCh,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	ds, err := createADaemonSet(dsstoretest.NewFake())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		resultCh <- dsstore.WatchedDaemonSets{
+			Created: []*fields.DaemonSet{
+				&ds,
+			},
+		}
+	}()
+
+	select {
+	case out := <-respCh:
+		if out.Error != "" {
+			t.Fatalf("expected no error from watch but got %s", out.Error)
+		}
+
+		if len(out.Created) != 1 {
+			t.Fatalf("expected 1 created daemon set but there were %d", len(out.Created))
+		}
+
+		if len(out.Updated) != 0 {
+			t.Fatalf("expected 0 updated daemon sets but there were %d", len(out.Updated))
+		}
+
+		if len(out.Deleted) != 0 {
+			t.Fatalf("expected 0 deleted daemon sets but there were %d", len(out.Deleted))
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for output")
+	}
+
+	go func() {
+		resultCh <- dsstore.WatchedDaemonSets{
+			Updated: []*fields.DaemonSet{
+				&ds,
+			},
+		}
+	}()
+
+	select {
+	case out := <-respCh:
+		if out.Error != "" {
+			t.Fatalf("expected no error from watch but got %s", out.Error)
+		}
+
+		if len(out.Created) != 0 {
+			t.Fatalf("expected 0 created daemon sets but there were %d", len(out.Created))
+		}
+
+		if len(out.Updated) != 1 {
+			t.Fatalf("expected 1 updated daemon set but there were %d", len(out.Updated))
+		}
+
+		if len(out.Deleted) != 0 {
+			t.Fatalf("expected 0 deleted daemon sets but there were %d", len(out.Deleted))
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for output")
+	}
+
+	go func() {
+		resultCh <- dsstore.WatchedDaemonSets{
+			Deleted: []*fields.DaemonSet{
+				&ds,
+			},
+		}
+	}()
+
+	select {
+	case out := <-respCh:
+		if out.Error != "" {
+			t.Fatalf("expected no error from watch but got %s", out.Error)
+		}
+
+		if len(out.Created) != 0 {
+			t.Fatalf("expected 0 created daemon sets but there were %d", len(out.Created))
+		}
+
+		if len(out.Updated) != 0 {
+			t.Fatalf("expected 0 updated daemon sets but there were %d", len(out.Updated))
+		}
+
+		if len(out.Deleted) != 1 {
+			t.Fatalf("expected 1 deleted daemon set but there were %d", len(out.Deleted))
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for output")
+	}
+
+	cancelFunc()
+	select {
+	case _, ok := <-serverExit:
+		if ok {
+			t.Fatal("expected server to exit after client cancel")
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for server to exit")
 	}
 }
 
