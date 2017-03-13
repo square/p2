@@ -14,6 +14,7 @@ import (
 type ConsulStore interface {
 	List() ([]fields.DaemonSet, error)
 	Disable(id fields.ID) (fields.DaemonSet, error)
+	Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets
 }
 
 type Store struct {
@@ -65,8 +66,24 @@ func (s Store) DisableDaemonSet(_ context.Context, req *daemonsetstore_protos.Di
 	return &daemonsetstore_protos.DisableDaemonSetResponse{}, nil
 }
 
-func (s Store) WatchDaemonSets(*daemonsetstore_protos.WatchDaemonSetsRequest, daemonsetstore_protos.P2DaemonSetStore_WatchDaemonSetsServer) error {
-	return grpc.Errorf(codes.Unimplemented, "WatchDaemonSets not implemented")
+func (s Store) WatchDaemonSets(_ *daemonsetstore_protos.WatchDaemonSetsRequest, stream daemonsetstore_protos.P2DaemonSetStore_WatchDaemonSetsServer) error {
+	clientCancel := stream.Context().Done()
+
+	out := s.consulStore.Watch(clientCancel)
+
+	for watchedDaemonSets := range out {
+		resp, err := watchedDaemonSetsToResp(watchedDaemonSets)
+		if err != nil {
+			return err
+		}
+
+		err = stream.Send(resp)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func rawDSToProtoDS(rawDS fields.DaemonSet) (*daemonsetstore_protos.DaemonSet, error) {
@@ -84,5 +101,45 @@ func rawDSToProtoDS(rawDS fields.DaemonSet) (*daemonsetstore_protos.DaemonSet, e
 		NodeSelector: rawDS.NodeSelector.String(),
 		PodId:        rawDS.PodID.String(),
 		Timeout:      rawDS.Timeout.Nanoseconds(),
+	}, nil
+}
+
+func watchedDaemonSetsToResp(watchedDaemonSets dsstore.WatchedDaemonSets) (*daemonsetstore_protos.WatchDaemonSetsResponse, error) {
+	created := make([]*daemonsetstore_protos.DaemonSet, len(watchedDaemonSets.Created))
+	for i, ds := range watchedDaemonSets.Created {
+		proto, err := rawDSToProtoDS(*ds)
+		if err != nil {
+			return nil, grpc.Errorf(codes.Unavailable, err.Error())
+		}
+		created[i] = proto
+	}
+
+	updated := make([]*daemonsetstore_protos.DaemonSet, len(watchedDaemonSets.Updated))
+	for i, ds := range watchedDaemonSets.Updated {
+		proto, err := rawDSToProtoDS(*ds)
+		if err != nil {
+			return nil, grpc.Errorf(codes.Unavailable, err.Error())
+		}
+		updated[i] = proto
+	}
+
+	deleted := make([]*daemonsetstore_protos.DaemonSet, len(watchedDaemonSets.Deleted))
+	for i, ds := range watchedDaemonSets.Deleted {
+		proto, err := rawDSToProtoDS(*ds)
+		if err != nil {
+			return nil, grpc.Errorf(codes.Unavailable, err.Error())
+		}
+		deleted[i] = proto
+	}
+
+	var errStr string
+	if watchedDaemonSets.Err != nil {
+		errStr = watchedDaemonSets.Err.Error()
+	}
+	return &daemonsetstore_protos.WatchDaemonSetsResponse{
+		Error:   errStr,
+		Created: created,
+		Updated: updated,
+		Deleted: deleted,
 	}, nil
 }
