@@ -188,6 +188,11 @@ func (s *store) MutateDS(
 ) (fields.DaemonSet, error) {
 	ds, metadata, err := s.Get(id)
 	if err != nil {
+		if err == NoDaemonSet {
+			// we need to pass this through so callers can distinguish this from other errors
+			return fields.DaemonSet{}, err
+		}
+
 		return fields.DaemonSet{}, util.Errorf("Error getting daemon set: %v", err)
 	}
 
