@@ -9,6 +9,9 @@ service P2PodStore {
   rpc SchedulePod (SchedulePodRequest) returns (SchedulePodResponse) {}
   rpc WatchPodStatus (WatchPodStatusRequest) returns (stream PodStatusResponse) {}
   rpc UnschedulePod (UnschedulePodRequest) returns (UnschedulePodResponse) {}
+  rpc ListPodStatus (ListPodStatusRequest) returns (ListPodStatusResponse) {}
+  rpc DeletePodStatus (DeletePodStatusRequest) returns (DeletePodStatusResponse) {}
+  rpc MarkPodFailed (MarkPodFailedRequest) returns (MarkPodFailedResponse) {}
 }
 
 message SchedulePodRequest {
@@ -22,7 +25,6 @@ message SchedulePodResponse {
 
 message WatchPodStatusRequest {
   string pod_unique_key = 1;
-  uint64 wait_index = 2; // the WaitIndex to pass to watch requests
   string status_namespace = 3;
   bool wait_for_exists = 4; // If set, the server will wait for a not-existing key to exist (rather than return a Not Found error)
 }
@@ -31,7 +33,6 @@ message PodStatusResponse {
   string manifest = 1;
   string pod_state = 2; // e.g. "launched" or "removed"
   repeated ProcessStatus process_statuses = 3;
-  uint64 last_index = 4;
 }
 
 message ProcessStatus {
@@ -51,3 +52,25 @@ message UnschedulePodRequest {
 }
 
 message UnschedulePodResponse {}
+
+message ListPodStatusRequest {
+  string status_namespace = 1;
+}
+
+message ListPodStatusResponse {
+  map<string, PodStatusResponse> pod_statuses = 1;
+}
+
+message DeletePodStatusRequest {
+  string pod_unique_key = 1;
+}
+
+message DeletePodStatusResponse {
+}
+
+message MarkPodFailedRequest {
+  string pod_unique_key = 1;
+}
+
+message MarkPodFailedResponse {
+}

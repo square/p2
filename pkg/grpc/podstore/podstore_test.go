@@ -275,6 +275,190 @@ func TestWatchPodStatus(t *testing.T) {
 	}
 }
 
+func TestListPodStatus(t *testing.T) {
+	statusStore, server := setupServerWithFakePodStatusStore()
+	results, err := server.ListPodStatus(context.Background(), &podstore_protos.ListPodStatusRequest{
+		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
+	})
+	if err != nil {
+		t.Errorf("error listing pod status: %s", err)
+	}
+
+	if len(results.PodStatuses) != 0 {
+		t.Fatalf("expected no results when listing pod status from empty store but got %d", len(results.PodStatuses))
+	}
+
+	key := types.NewPodUUID()
+	err = statusStore.Set(key, podstatus.PodStatus{
+		PodStatus: podstatus.PodLaunched,
+	})
+	if err != nil {
+		t.Fatalf("unable to seed status store with a pod status: %s", err)
+	}
+
+	results, err = server.ListPodStatus(context.Background(), &podstore_protos.ListPodStatusRequest{
+		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
+	})
+	if err != nil {
+		t.Errorf("error listing pod status: %s", err)
+	}
+
+	if len(results.PodStatuses) != 1 {
+		t.Fatalf("expected one status record but there were %d", len(results.PodStatuses))
+	}
+
+	val, ok := results.PodStatuses[key.String()]
+	if !ok {
+		t.Fatalf("expected a record for pod %s but there wasn't", key)
+	}
+
+	if val.PodState != podstatus.PodLaunched.String() {
+		t.Errorf("expected pod status of status record to be %q but was %q", podstatus.PodLaunched, val.PodState)
+	}
+}
+
+func TestDeletePodStatus(t *testing.T) {
+	statusStore, server := setupServerWithFakePodStatusStore()
+	key := types.NewPodUUID()
+	err := statusStore.Set(key, podstatus.PodStatus{
+		PodStatus: podstatus.PodLaunched,
+	})
+	if err != nil {
+		t.Fatalf("unable to seed status store with a pod status: %s", err)
+	}
+
+	// confirm that there is one entry
+	results, err := server.ListPodStatus(context.Background(), &podstore_protos.ListPodStatusRequest{
+		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
+	})
+	if err != nil {
+		t.Errorf("error listing pod status: %s", err)
+	}
+
+	if len(results.PodStatuses) != 1 {
+		t.Fatalf("expected one status record but there were %d", len(results.PodStatuses))
+	}
+
+	// now delete it
+	_, err = server.DeletePodStatus(context.Background(), &podstore_protos.DeletePodStatusRequest{
+		PodUniqueKey: key.String(),
+	})
+	if err != nil {
+		t.Fatalf("error deleting pod status: %s", err)
+	}
+
+	// confirm that there are now no entries
+	results, err = server.ListPodStatus(context.Background(), &podstore_protos.ListPodStatusRequest{
+		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
+	})
+	if err != nil {
+		t.Errorf("error listing pod status: %s", err)
+	}
+
+	if len(results.PodStatuses) != 0 {
+		t.Fatalf("expected no status records but there were %d", len(results.PodStatuses))
+	}
+}
+
+// Tests the convenience function that converts from the protobuf definition of
+// pod status to the raw type.
+func TestPodStatusResposeToPodStatus(t *testing.T) {
+	in := podstore_protos.PodStatusResponse{
+		PodState: "removed",
+		Manifest: "id: foobar",
+		ProcessStatuses: []*podstore_protos.ProcessStatus{
+			{
+				LaunchableId: "whatever",
+				EntryPoint:   "some_entry_point",
+				LastExit: &podstore_protos.ExitStatus{
+					ExitTime:   10000,
+					ExitCode:   24,
+					ExitStatus: 1800,
+				},
+			},
+		},
+	}
+
+	out := PodStatusResponseToPodStatus(in)
+	if out.PodStatus.String() != in.PodState {
+		t.Errorf("expected pod status to be %q but was %q", in.PodState, out.PodStatus)
+	}
+
+	if out.Manifest != in.Manifest {
+		t.Errorf("expected manifest to be %q but was %q", in.Manifest, out.Manifest)
+	}
+
+	if len(out.ProcessStatuses) != len(in.ProcessStatuses) {
+		t.Fatalf("expected %d process status(es) but got %d", len(in.ProcessStatuses), len(out.ProcessStatuses))
+	}
+
+	inPS := in.ProcessStatuses[0]
+	outPS := out.ProcessStatuses[0]
+
+	if outPS.LaunchableID.String() != inPS.LaunchableId {
+		t.Errorf("expected launchable id to be %q but was %q", inPS.LaunchableId, outPS.LaunchableID)
+	}
+
+	if outPS.EntryPoint != inPS.EntryPoint {
+		t.Errorf("expected entry point to be %q but was %q", inPS.EntryPoint, outPS.EntryPoint)
+	}
+
+	inLE := inPS.LastExit
+	outLE := outPS.LastExit
+
+	if outLE == nil {
+		t.Fatal("expected non-nil last exit")
+	}
+
+	if outLE.ExitTime.Unix() != inLE.ExitTime {
+		t.Errorf("expected last exit time to be %d but was %d", inLE.ExitTime, outLE.ExitTime.Unix())
+	}
+
+	if outLE.ExitCode != int(inLE.ExitCode) {
+		t.Errorf("expected exit code to be %d but was %d", inLE.ExitCode, outLE.ExitCode)
+	}
+
+	if outLE.ExitStatus != int(inLE.ExitStatus) {
+		t.Errorf("expected exit status to be %d but was %d", inLE.ExitStatus, outLE.ExitStatus)
+	}
+}
+
+func TestMarkPodFailed(t *testing.T) {
+	statusStore, server := setupServerWithFakePodStatusStore()
+	key := types.NewPodUUID()
+	err := statusStore.Set(key, podstatus.PodStatus{
+		PodStatus: podstatus.PodLaunched,
+	})
+	if err != nil {
+		t.Fatalf("unable to seed status store with a pod status: %s", err)
+	}
+
+	// mark it as failed
+	_, err = server.MarkPodFailed(context.Background(), &podstore_protos.MarkPodFailedRequest{
+		PodUniqueKey: key.String(),
+	})
+	if err != nil {
+		t.Fatalf("error marking pod failed: %s", err)
+	}
+
+	// confirm that the record is now failed
+	resp, err := server.ListPodStatus(context.Background(), &podstore_protos.ListPodStatusRequest{
+		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
+	})
+	if err != nil {
+		t.Fatalf("could not list pod status to confirm marking pod as failed: %s", err)
+	}
+
+	val, ok := resp.PodStatuses[key.String()]
+	if !ok {
+		t.Fatal("no status record found for the pod we marked failed")
+	}
+
+	if val.PodState != podstatus.PodFailed.String() {
+		t.Errorf("expected pod to be marked %q but was %q", podstatus.PodFailed, val.PodState)
+	}
+}
+
 func setupServerWithFakePodStore() (podstore.Store, store) {
 	fakePodStore := podstore.NewConsul(consulutil.NewFakeClient().KV_)
 	server := store{
@@ -284,7 +468,13 @@ func setupServerWithFakePodStore() (podstore.Store, store) {
 	return fakePodStore, server
 }
 
-func setupServerWithFakePodStatusStore() (podstatus.Store, store) {
+// augment PodStatusStore interface so we can do some test setup
+type testPodStatusStore interface {
+	PodStatusStore
+	Set(key types.PodUniqueKey, status podstatus.PodStatus) error
+}
+
+func setupServerWithFakePodStatusStore() (testPodStatusStore, store) {
 	fakePodStatusStore := podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace)
 	return fakePodStatusStore, store{
 		podStatusStore: fakePodStatusStore,

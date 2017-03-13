@@ -19,6 +19,14 @@ const (
 
 	// Signifies that the pod has been unscheduled and removed from the machine
 	PodRemoved PodState = "removed"
+
+	// PodFailed denotes a pod that failed. The definition of "failed" is
+	// complex as there are potentially many processes spawned by a pod,
+	// some of which may be configured to restart on failure. As a result
+	// of this, it is the responsibility of whatever system scheduled a pod
+	// in the first place to mark a pod as failed. It is not done within P2
+	// itself. This constant is only defined for convenience.
+	PodFailed PodState = "failed"
 )
 
 // Encapsulates information relating to the exit of a process.

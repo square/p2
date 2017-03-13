@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/square/p2/pkg/grpc/podstore/client"
 	"github.com/square/p2/pkg/logging"
@@ -10,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/types"
 
 	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -48,7 +50,19 @@ func main() {
 		}
 	}
 
-	client, err := client.New(*address, creds, logger)
+	dialOptions := []grpc.DialOption{grpc.WithBlock(), grpc.WithTimeout(5 * time.Second)}
+	if creds != nil {
+		dialOptions = append(dialOptions, grpc.WithTransportCredentials(creds))
+	} else {
+		dialOptions = append(dialOptions, grpc.WithInsecure())
+	}
+
+	conn, err := grpc.Dial(*address, dialOptions...)
+	if err != nil {
+		logger.Fatal(err)
+	}
+
+	client, err := client.New(conn, logger)
 	if err != nil {
 		logger.Fatalf("Could not set up grpc client: %s", err)
 	}
@@ -97,7 +111,7 @@ func watchStatus(client client.Client, logger logging.Logger) {
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
-	outCh, err := client.WatchStatus(ctx, key, 1) // 1 so we wait for the key to exist
+	outCh, err := client.WatchStatus(ctx, key, true)
 	if err != nil {
 		logger.Fatal(err)
 	}

@@ -87,6 +87,10 @@ func (r WatchResult) IsStale() bool {
 	return time.Now().After(expires)
 }
 
+type PodStatusStore interface {
+	GetStatusFromIndex(index podstore.PodIndex) (podstatus.PodStatus, *api.QueryMeta, error)
+}
+
 type consulStore struct {
 	client consulutil.ConsulClient
 
@@ -98,7 +102,7 @@ type consulStore struct {
 
 	// The /reality tree can now contain pods that have UUID keys, which
 	// means the reality manifest must be fetched from the pod status store
-	podStatusStore podstatus.Store
+	podStatusStore PodStatusStore
 }
 
 func NewConsulStore(client consulutil.ConsulClient) *consulStore {

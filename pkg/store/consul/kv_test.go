@@ -6,6 +6,7 @@ import (
 
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/types"
 )
@@ -147,6 +148,10 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 
 func TestAllPods(t *testing.T) {
 	fakeConsulClient := consulutil.NewFakeClient()
+
+	// we can't use store.podStatusStore here because we use functions for
+	// test purposes that are not on the PodStatusStore interface
+	podStatusStore := podstatus.NewConsul(statusstore.NewConsul(fakeConsulClient), PreparerPodStatusNamespace)
 	store := NewConsulStore(fakeConsulClient)
 
 	// Add a new uuid pod (i.e. we expect an index rather than a manifest to be written to /intent)
@@ -156,7 +161,7 @@ func TestAllPods(t *testing.T) {
 	}
 
 	// Add a status entry for the pod
-	err = store.podStatusStore.Set(uuidKey, podstatus.PodStatus{Manifest: "id: first_pod"})
+	err = podStatusStore.Set(uuidKey, podstatus.PodStatus{Manifest: "id: first_pod"})
 	if err != nil {
 		t.Fatal(err)
 	}
