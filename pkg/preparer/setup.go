@@ -103,6 +103,16 @@ type store interface {
 	)
 }
 
+// ConsulConfig encapsulates config options related to how p2-preparer
+// interacts with consul.
+// TODO: move ConsulAddress, ConsulHttps, ConsulTokenPath here.
+type ConsulConfig struct {
+	// WaitTime specifies the timeout length for HTTP watches on consul. Longer
+	// values mean longer lived requests and therefore lower QPS and bandwidth
+	// usage when there are infrequent changes to the watched data
+	WatchWaitTime time.Duration `yaml:"watch_wait_time"`
+}
+
 type PreparerConfig struct {
 	NodeName               types.NodeName         `yaml:"node_name"`
 	ConsulAddress          string                 `yaml:"consul_address"`
@@ -124,6 +134,7 @@ type PreparerConfig struct {
 	LogExec                []string               `yaml:"log_exec,omitempty"`
 	LogBridgeBlacklist     []string               `yaml:"log_bridge_blacklist,omitempty"`
 	ArtifactRegistryURL    string                 `yaml:"artifact_registry_url,omitempty"`
+	ConsulConfig           ConsulConfig           `yaml:"consul_config,omitempty"`
 
 	// The pod manifest to use for hooks. If no hooks are desired, use the
 	// NoHooksSentinelValue constant to indicate that there aren't any
@@ -254,11 +265,17 @@ func (c *PreparerConfig) getOpts() (consul.Options, error) {
 		}
 	}
 
+	// Put a lower bound on wait time of 5 minutes
+	waitTime := c.ConsulConfig.WatchWaitTime
+	if waitTime < 5*time.Minute {
+		waitTime = 5 * time.Minute
+	}
 	return consul.Options{
-		Address: c.ConsulAddress,
-		HTTPS:   c.ConsulHttps,
-		Token:   token,
-		Client:  client,
+		Address:  c.ConsulAddress,
+		HTTPS:    c.ConsulHttps,
+		Token:    token,
+		Client:   client,
+		WaitTime: waitTime,
 	}, err
 }
 
