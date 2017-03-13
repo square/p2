@@ -69,16 +69,20 @@ type replicationController struct {
 	logger logging.Logger
 
 	consulStore   consulStore
-	rcStore       rcstore.Store
+	rcWatcher     ReplicationControllerWatcher
 	scheduler     scheduler.Scheduler
 	podApplicator Labeler
 	alerter       alerting.Alerter
 }
 
+type ReplicationControllerWatcher interface {
+	Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error)
+}
+
 func New(
 	fields fields.RC,
 	consulStore consulStore,
-	rcStore rcstore.Store,
+	rcWatcher ReplicationControllerWatcher,
 	scheduler scheduler.Scheduler,
 	podApplicator Labeler,
 	logger logging.Logger,
@@ -93,7 +97,7 @@ func New(
 
 		logger:        logger,
 		consulStore:   consulStore,
-		rcStore:       rcStore,
+		rcWatcher:     rcWatcher,
 		scheduler:     scheduler,
 		podApplicator: podApplicator,
 		alerter:       alerter,
@@ -105,7 +109,7 @@ func (rc *replicationController) ID() fields.ID {
 }
 
 func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error {
-	desiresChanged, errInChannel := rc.rcStore.Watch(&rc.RC, quit)
+	desiresChanged, errInChannel := rc.rcWatcher.Watch(&rc.RC, quit)
 
 	errOutChannel := make(chan error)
 	channelsClosed := make(chan struct{})

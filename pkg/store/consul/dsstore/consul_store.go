@@ -20,6 +20,10 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
+const dsTree string = "daemon_sets"
+
+var NoDaemonSet error = errors.New("No daemon set found")
+
 type consulKV interface {
 	CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
 	Delete(key string, w *api.WriteOptions) (*api.WriteMeta, error)
@@ -27,7 +31,9 @@ type consulKV interface {
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
 }
 
-type consulStore struct {
+// store represents an interface for persisting daemon set to Consul,
+// as well as restoring daemon set from Consul.
+type store struct {
 	kv      consulKV
 	logger  logging.Logger
 	retries int
@@ -40,18 +46,18 @@ func (e CASError) Error() string {
 	return fmt.Sprintf("Could not check-and-set key %q", string(e))
 }
 
-// Make sure functions declared in the Store interface have the proper contract
-var _ Store = &consulStore{}
-
-func NewConsul(client consulutil.ConsulClient, retries int, logger *logging.Logger) Store {
-	return &consulStore{
+func NewConsul(client consulutil.ConsulClient, retries int, logger *logging.Logger) *store {
+	return &store{
 		retries: retries,
 		kv:      client.KV(),
 		logger:  *logger,
 	}
 }
 
-func (s *consulStore) Create(
+// Create creates a daemon set with the specified manifest and selectors.
+// The node selector is used to determine what nodes the daemon set may schedule on.
+// The pod label set is applied to every pod the daemon set schedules.
+func (s *store) Create(
 	manifest manifest.Manifest,
 	minHealth int,
 	name fields.ClusterName,
@@ -79,7 +85,7 @@ func (s *consulStore) Create(
 }
 
 // these parts of Create may require a retry
-func (s *consulStore) innerCreate(
+func (s *store) innerCreate(
 	manifest manifest.Manifest,
 	minHealth int,
 	name fields.ClusterName,
@@ -122,7 +128,8 @@ func (s *consulStore) innerCreate(
 	return ds, nil
 }
 
-func (s *consulStore) Delete(id fields.ID) error {
+// Delete deletes a daemon set by ID. It does not return an error if no daemon set with the given ID exists.
+func (s *store) Delete(id fields.ID) error {
 	dsPath, err := s.dsPath(id)
 	if err != nil {
 		return util.Errorf("Error getting daemon set path: %v", err)
@@ -135,7 +142,8 @@ func (s *consulStore) Delete(id fields.ID) error {
 	return nil
 }
 
-func (s *consulStore) Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error) {
+// Get retrieves a daemon set by ID. If it does not exist, it will produce an error
+func (s *store) Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error) {
 	var metadata *api.QueryMeta
 	dsPath, err := s.dsPath(id)
 	if err != nil {
@@ -162,7 +170,7 @@ func (s *consulStore) Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error
 	return ds, metadata, nil
 }
 
-func (s *consulStore) List() ([]fields.DaemonSet, error) {
+func (s *store) List() ([]fields.DaemonSet, error) {
 	listed, _, err := s.kv.List(dsTree+"/", nil)
 	if err != nil {
 		return nil, consulutil.NewKVError("list", dsTree+"/", err)
@@ -170,12 +178,21 @@ func (s *consulStore) List() ([]fields.DaemonSet, error) {
 	return kvpsToDSs(listed)
 }
 
-func (s *consulStore) MutateDS(
+// MutateDS mutates the daemon set with the given id according to the passed
+// mutator function. Any modifications to the daemon set done within the
+// function will be applied if and only if the daemon set was not changed since
+// the value was read (check-and-set operation used)
+func (s *store) MutateDS(
 	id fields.ID,
 	mutator func(fields.DaemonSet) (fields.DaemonSet, error),
 ) (fields.DaemonSet, error) {
 	ds, metadata, err := s.Get(id)
 	if err != nil {
+		if err == NoDaemonSet {
+			// we need to pass this through so callers can distinguish this from other errors
+			return fields.DaemonSet{}, err
+		}
+
 		return fields.DaemonSet{}, util.Errorf("Error getting daemon set: %v", err)
 	}
 
@@ -216,7 +233,8 @@ func (s *consulStore) MutateDS(
 	return ds, nil
 }
 
-func (s *consulStore) Disable(id fields.ID) (fields.DaemonSet, error) {
+// Disable sets a flag on the daemon set to prevent it from operating.
+func (s *store) Disable(id fields.ID) (fields.DaemonSet, error) {
 	s.logger.Infof("Attempting to disable '%s' in store now", id)
 
 	mutator := func(dsToUpdate fields.DaemonSet) (fields.DaemonSet, error) {
@@ -234,10 +252,26 @@ func (s *consulStore) Disable(id fields.ID) (fields.DaemonSet, error) {
 	return newDS, nil
 }
 
+type WatchedDaemonSets struct {
+	Created []*fields.DaemonSet
+	Updated []*fields.DaemonSet
+	Deleted []*fields.DaemonSet
+	Err     error
+}
+
+type WatchedDaemonSetList struct {
+	DaemonSets []fields.DaemonSet
+	Err        error
+}
+
+func IsNotExist(err error) bool {
+	return err == NoDaemonSet
+}
+
 // Watch watches dsTree for changes and returns a blocking channel
 // where the client can read a WatchedDaemonSets object which contain
 // changed daemon sets
-func (s *consulStore) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
+func (s *store) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
 	outCh := make(chan WatchedDaemonSets)
 	errCh := make(chan error, 1)
 
@@ -326,7 +360,7 @@ func (s *consulStore) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
 // WatchAll watches dsTree for all the daemon sets and returns a blocking
 // channel where the client can read a WatchedDaemonSetsList object which
 // contain all of the daemon sets currently on the tree
-func (s *consulStore) WatchAll(quitCh <-chan struct{}, pauseTime time.Duration) <-chan WatchedDaemonSetList {
+func (s *store) WatchAll(quitCh <-chan struct{}, pauseTime time.Duration) <-chan WatchedDaemonSetList {
 	inCh := make(chan api.KVPairs)
 	outCh := make(chan WatchedDaemonSetList)
 	errCh := make(chan error, 1)
@@ -391,14 +425,14 @@ func checkManifestPodID(dsPodID types.PodID, manifest manifest.Manifest) error {
 	return nil
 }
 
-func (s *consulStore) dsPath(dsID fields.ID) (string, error) {
+func (s *store) dsPath(dsID fields.ID) (string, error) {
 	if dsID == "" {
 		return "", util.Errorf("Path requested for empty DS id")
 	}
 	return path.Join(dsTree, dsID.String()), nil
 }
 
-func (s *consulStore) dsLockPath(dsID fields.ID) (string, error) {
+func (s *store) dsLockPath(dsID fields.ID) (string, error) {
 	dsPath, err := s.dsPath(dsID)
 	if err != nil {
 		return "", err
@@ -406,9 +440,9 @@ func (s *consulStore) dsLockPath(dsID fields.ID) (string, error) {
 	return path.Join(consulutil.LOCK_TREE, dsPath), nil
 }
 
-// Acquires a lock on the DS that should be used by DS farm goroutines, whose
-// job it is to carry out the intent of the DS
-func (s *consulStore) LockForOwnership(dsID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
+// LockForOwnership qcquires a lock on the DS that should be used by DS farm goroutines, whose
+// job it is to carry out the intent of the DS.
+func (s *store) LockForOwnership(dsID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
 	lockPath, err := s.dsLockPath(dsID)
 	if err != nil {
 		return nil, err

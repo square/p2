@@ -96,6 +96,12 @@ type store interface {
 	replication.Store
 }
 
+type DaemonSetStore interface {
+	List() ([]fields.DaemonSet, error)
+	Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets
+	Disable(id fields.ID) (fields.DaemonSet, error)
+}
+
 type daemonSet struct {
 	fields.DaemonSet
 
@@ -103,7 +109,7 @@ type daemonSet struct {
 	logger        logging.Logger
 	store         store
 	scheduler     scheduler.Scheduler
-	dsStore       dsstore.Store
+	dsStore       DaemonSetStore
 	applicator    Labeler
 	watcher       LabelWatcher
 	healthChecker *checker.ConsulHealthChecker
@@ -126,7 +132,7 @@ type dsContention struct {
 
 func New(
 	fields fields.DaemonSet,
-	dsStore dsstore.Store,
+	dsStore DaemonSetStore,
 	store store,
 	applicator Labeler,
 	watcher LabelWatcher,

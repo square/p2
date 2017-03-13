@@ -32,9 +32,10 @@ type FakeDSStore struct {
 	daemonSets map[fields.ID]fields.DaemonSet
 	writeLock  sync.Locker
 	logger     logging.Logger
-}
 
-var _ dsstore.Store = &FakeDSStore{}
+	// used to trigger functions that handle watches
+	somethingChanged chan struct{}
+}
 
 func NewFake() *FakeDSStore {
 	return &FakeDSStore{
@@ -72,6 +73,9 @@ func (s *FakeDSStore) Create(
 	}
 	s.daemonSets[id] = ds
 
+	if s.somethingChanged != nil {
+		s.somethingChanged <- struct{}{}
+	}
 	return ds, nil
 }
 
@@ -81,8 +85,12 @@ func (s *FakeDSStore) Delete(id fields.ID) error {
 
 	if _, ok := s.daemonSets[id]; ok {
 		delete(s.daemonSets, id)
+		if s.somethingChanged != nil {
+			s.somethingChanged <- struct{}{}
+		}
 		return nil
 	}
+
 	return dsstore.NoDaemonSet
 }
 
@@ -126,6 +134,9 @@ func (s *FakeDSStore) MutateDS(
 	}
 
 	s.daemonSets[id] = ds
+	if s.somethingChanged != nil {
+		s.somethingChanged <- struct{}{}
+	}
 
 	return ds, nil
 }
@@ -141,7 +152,7 @@ func (s *FakeDSStore) Disable(id fields.ID) (fields.DaemonSet, error) {
 
 	// Delete the daemon set because there was an error during mutation
 	if err != nil {
-		return newDS, util.Errorf("Error occured when trying to disable daemon set in store: %v", err)
+		return newDS, err
 	}
 
 	s.logger.Infof("Daemon set '%s' was successfully disabled in store", id)
@@ -150,13 +161,14 @@ func (s *FakeDSStore) Disable(id fields.ID) (fields.DaemonSet, error) {
 
 func (s *FakeDSStore) WatchList(quitCh <-chan struct{}) <-chan []fields.DaemonSet {
 	outCh := make(chan []fields.DaemonSet)
+	s.somethingChanged = make(chan struct{})
 
 	go func() {
 		for {
 			select {
 			case <-quitCh:
 				return
-			default:
+			case <-s.somethingChanged:
 			}
 
 			dsList, err := s.List()

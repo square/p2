@@ -31,14 +31,29 @@ type Store interface {
 	NewUnmanagedSession(session, name string) consul.Session
 }
 
+type ReplicationControllerLocker interface {
+	LockForMutation(rcID rcf.ID, session consul.Session) (consulutil.Unlocker, error)
+}
+
+type ReplicationControllerStore interface {
+	Get(id rcf.ID) (rcf.RC, error)
+	SetDesiredReplicas(id rcf.ID, n int) error
+	Delete(id rcf.ID, force bool) error
+	CASDesiredReplicas(id rcf.ID, expected int, n int) error
+	Disable(id rcf.ID) error
+	Enable(id rcf.ID) error
+}
+
 type update struct {
 	fields.Update
 
-	consuls Store
-	rcs     rcstore.Store
-	hcheck  checker.ConsulHealthChecker
-	labeler rc.Labeler
-	sched   scheduler.Scheduler
+	consuls   Store
+	rcStore   ReplicationControllerStore
+	rcLocker  ReplicationControllerLocker
+	rcWatcher rc.ReplicationControllerWatcher
+	hcheck    checker.ConsulHealthChecker
+	labeler   rc.Labeler
+	sched     scheduler.Scheduler
 
 	logger  logging.Logger
 	alerter alerting.Alerter
@@ -56,7 +71,9 @@ type update struct {
 func NewUpdate(
 	f fields.Update,
 	consuls Store,
-	rcs rcstore.Store,
+	rcLocker ReplicationControllerLocker,
+	rcStore ReplicationControllerStore,
+	rcWatcher rc.ReplicationControllerWatcher,
 	hcheck checker.ConsulHealthChecker,
 	labeler rc.Labeler,
 	sched scheduler.Scheduler,
@@ -73,15 +90,16 @@ func NewUpdate(
 		"minimum_replicas": f.MinimumReplicas,
 	})
 	return &update{
-		Update:  f,
-		consuls: consuls,
-		rcs:     rcs,
-		hcheck:  hcheck,
-		labeler: labeler,
-		sched:   sched,
-		logger:  logger,
-		session: session,
-		alerter: alerter,
+		Update:   f,
+		consuls:  consuls,
+		rcLocker: rcLocker,
+		rcStore:  rcStore,
+		hcheck:   hcheck,
+		labeler:  labeler,
+		sched:    sched,
+		logger:   logger,
+		session:  session,
+		alerter:  alerter,
 	}
 }
 
@@ -143,7 +161,7 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 	var newFields rcf.RC
 	var err error
 	if !RetryOrQuit(func() error {
-		newFields, err = u.rcs.Get(u.NewRC)
+		newFields, err = u.rcStore.Get(u.NewRC)
 		if rcstore.IsNotExist(err) {
 			return util.Errorf("Replication controller %s is unexpectedly empty", u.NewRC)
 		} else if err != nil {
@@ -169,10 +187,10 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 	// rollout complete, clean up old RC if told to do so
 	if !u.LeaveOld {
 		u.logger.NoFields().Infoln("Cleaning up old RC")
-		if !RetryOrQuit(func() error { return u.rcs.SetDesiredReplicas(u.OldRC, 0) }, quit, u.logger, "Could not zero old replica count") {
+		if !RetryOrQuit(func() error { return u.rcStore.SetDesiredReplicas(u.OldRC, 0) }, quit, u.logger, "Could not zero old replica count") {
 			return
 		}
-		if !RetryOrQuit(func() error { return u.rcs.Delete(u.OldRC, false) }, quit, u.logger, "Could not delete old RC") {
+		if !RetryOrQuit(func() error { return u.rcStore.Delete(u.OldRC, false) }, quit, u.logger, "Could not delete old RC") {
 			return
 		}
 	}
@@ -257,14 +275,14 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 					"nextAdd":    nextAdd,
 				}).Infof("Adding %d new nodes and removing %d old nodes", nextAdd, nextRemove)
 				if nextRemove > 0 {
-					err = u.rcs.CASDesiredReplicas(u.OldRC, oldNodes.Desired, oldNodes.Desired-nextRemove)
+					err = u.rcStore.CASDesiredReplicas(u.OldRC, oldNodes.Desired, oldNodes.Desired-nextRemove)
 					if err != nil {
 						u.logger.WithError(err).Errorln("Could not decrement old replica count")
 						break
 					}
 				}
 				if nextAdd > 0 {
-					err = u.rcs.CASDesiredReplicas(u.NewRC, newNodes.Desired, newNodes.Desired+nextAdd)
+					err = u.rcStore.CASDesiredReplicas(u.NewRC, newNodes.Desired, newNodes.Desired+nextAdd)
 					if err != nil {
 						u.logger.WithError(err).Errorln("Could not increment new replica count")
 						break
@@ -308,7 +326,7 @@ func (u *update) shouldStop(oldNodes, newNodes rcNodeCounts) ruStep {
 }
 
 func (u *update) lockRCs(done <-chan struct{}) error {
-	newUnlocker, err := u.rcs.LockForMutation(u.NewRC, u.session)
+	newUnlocker, err := u.rcLocker.LockForMutation(u.NewRC, u.session)
 	if _, ok := err.(consulutil.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock new %s", u.NewRC)
 	} else if err != nil {
@@ -316,7 +334,7 @@ func (u *update) lockRCs(done <-chan struct{}) error {
 	}
 	u.newRCUnlocker = newUnlocker
 
-	oldUnlocker, err := u.rcs.LockForMutation(u.OldRC, u.session)
+	oldUnlocker, err := u.rcLocker.LockForMutation(u.OldRC, u.session)
 	if err != nil {
 		// The second key couldn't be locked, so release the first key before retrying.
 		RetryOrQuit(
@@ -366,12 +384,12 @@ func (u *update) unlockRCs(done <-chan struct{}) {
 // the old RC should be disabled and the new RC should be enabled.
 func (u *update) enable() error {
 	// Disable the old RC first to make sure that the two RCs don't fight each other.
-	err := u.rcs.Disable(u.OldRC)
+	err := u.rcStore.Disable(u.OldRC)
 	if err != nil {
 		return err
 	}
 
-	err = u.rcs.Enable(u.NewRC)
+	err = u.rcStore.Enable(u.NewRC)
 	if err != nil {
 		return err
 	}
@@ -390,7 +408,7 @@ type rcNodeCounts struct {
 
 func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result) (rcNodeCounts, error) {
 	ret := rcNodeCounts{}
-	rcFields, err := u.rcs.Get(id)
+	rcFields, err := u.rcStore.Get(id)
 	if rcstore.IsNotExist(err) {
 		err := util.Errorf("RC %s did not exist", id)
 		return ret, err
@@ -400,7 +418,10 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 
 	ret.Desired = rcFields.ReplicasDesired
 
-	currentPods, err := rc.New(rcFields, u.consuls, u.rcs, u.sched, u.labeler, u.logger, u.alerter).CurrentPods()
+	// TODO: make this computation not require initializing a full RC.
+	// We're passing u.rcWatcher which is completely unused but necessary
+	// for this initialization.
+	currentPods, err := rc.New(rcFields, u.consuls, u.rcWatcher, u.sched, u.labeler, u.logger, u.alerter).CurrentPods()
 	if err != nil {
 		return ret, err
 	}

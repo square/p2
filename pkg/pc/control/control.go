@@ -12,8 +12,30 @@ import (
 	"k8s.io/kubernetes/pkg/labels"
 )
 
+type PodClusterStore interface {
+	Get(id fields.ID) (fields.PodCluster, error)
+	FindWhereLabeled(
+		podID types.PodID,
+		availabilityZone fields.AvailabilityZone,
+		clusterName fields.ClusterName,
+	) ([]fields.PodCluster, error)
+	Delete(id fields.ID) error
+	Create(
+		podID types.PodID,
+		availabilityZone fields.AvailabilityZone,
+		clusterName fields.ClusterName,
+		podSelector labels.Selector,
+		annotations fields.Annotations,
+		session pcstore.Session,
+	) (fields.PodCluster, error)
+	MutatePC(
+		id fields.ID,
+		mutator func(fields.PodCluster) (fields.PodCluster, error),
+	) (fields.PodCluster, error)
+}
+
 type PodCluster struct {
-	pcStore pcstore.Store
+	pcStore PodClusterStore
 	session consul.Session
 
 	ID fields.ID
@@ -28,7 +50,7 @@ func NewPodCluster(
 	az fields.AvailabilityZone,
 	cn fields.ClusterName,
 	podID types.PodID,
-	pcstore pcstore.Store,
+	pcstore PodClusterStore,
 	selector labels.Selector,
 	session consul.Session,
 ) *PodCluster {
@@ -47,7 +69,7 @@ func NewPodCluster(
 func NewPodClusterFromID(
 	id fields.ID,
 	session consul.Session,
-	pcStore pcstore.Store,
+	pcStore PodClusterStore,
 ) *PodCluster {
 	pc := &PodCluster{}
 	pc.session = session

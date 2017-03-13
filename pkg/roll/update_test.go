@@ -195,6 +195,8 @@ func TestLockRCs(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
+		nil,
 		logging.DefaultLogger,
 		session,
 		nil,
@@ -373,8 +375,13 @@ func assignManifestsToNodes(
 	}
 }
 
+type testRCCreator interface {
+	Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (rc_fields.RC, error)
+	SetDesiredReplicas(id rc_fields.ID, n int) error
+}
+
 func createRC(
-	rcs rcstore.Store,
+	rcs testRCCreator,
 	applicator labels.Applicator,
 	manifest manifest.Manifest,
 	desired int,
@@ -421,11 +428,12 @@ func updateWithHealth(t *testing.T,
 	Assert(t).IsNil(err, "expected no error setting up new RC")
 
 	return update{
-		consuls: consuls,
-		rcs:     rcs,
-		hcheck:  checkertest.NewSingleService(podID, checks),
-		labeler: applicator,
-		logger:  logging.TestLogger(),
+		consuls:   consuls,
+		rcStore:   rcs,
+		rcWatcher: rcs,
+		hcheck:    checkertest.NewSingleService(podID, checks),
+		labeler:   applicator,
+		logger:    logging.TestLogger(),
 		Update: fields.Update{
 			OldRC: oldRC.ID,
 			NewRC: newRC.ID,
@@ -770,7 +778,11 @@ func TestShouldRollMidwayHealthyMigrationFromZeroWhenNewSatisfies(t *testing.T) 
 	Assert(t).AreEqual(add, 1, "expected to add one node")
 }
 
-func watchRCOrFail(t *testing.T, rcs rcstore.Store, id rc_fields.ID, desc string) (*rc_fields.RC, <-chan struct{}) {
+type testReplicationControllerWatcher interface {
+	Watch(rc *rc_fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error)
+}
+
+func watchRCOrFail(t *testing.T, rcs testReplicationControllerWatcher, id rc_fields.ID, desc string) (*rc_fields.RC, <-chan struct{}) {
 	rc := rc_fields.RC{ID: id}
 	updated, errors := rcs.Watch(&rc, nil)
 	go failOnError(t, desc, errors)
@@ -826,8 +838,8 @@ func TestRollLoopTypicalCase(t *testing.T) {
 
 	healths := make(chan map[types.NodeName]health.Result)
 
-	oldRC, oldRCUpdated := watchRCOrFail(t, upd.rcs, upd.OldRC, "old RC")
-	newRC, newRCUpdated := watchRCOrFail(t, upd.rcs, upd.NewRC, "new RC")
+	oldRC, oldRCUpdated := watchRCOrFail(t, upd.rcWatcher, upd.OldRC, "old RC")
+	newRC, newRCUpdated := watchRCOrFail(t, upd.rcWatcher, upd.NewRC, "new RC")
 
 	rollLoopResult := make(chan bool)
 
@@ -880,8 +892,8 @@ func TestRollLoopMigrateFromZero(t *testing.T) {
 
 	healths := make(chan map[types.NodeName]health.Result)
 
-	oldRC, oldRCUpdated := watchRCOrFail(t, upd.rcs, upd.OldRC, "old RC")
-	newRC, newRCUpdated := watchRCOrFail(t, upd.rcs, upd.NewRC, "new RC")
+	oldRC, oldRCUpdated := watchRCOrFail(t, upd.rcWatcher, upd.OldRC, "old RC")
+	newRC, newRCUpdated := watchRCOrFail(t, upd.rcWatcher, upd.NewRC, "new RC")
 	go failIfRCDesireChanges(t, oldRC, 0, oldRCUpdated)
 
 	rollLoopResult := make(chan bool)
@@ -926,8 +938,8 @@ func TestRollLoopStallsIfUnhealthy(t *testing.T) {
 
 	healths := make(chan map[types.NodeName]health.Result)
 
-	oldRC, oldRCUpdated := watchRCOrFail(t, upd.rcs, upd.OldRC, "old RC")
-	newRC, newRCUpdated := watchRCOrFail(t, upd.rcs, upd.NewRC, "new RC")
+	oldRC, oldRCUpdated := watchRCOrFail(t, upd.rcWatcher, upd.OldRC, "old RC")
+	newRC, newRCUpdated := watchRCOrFail(t, upd.rcWatcher, upd.NewRC, "new RC")
 
 	rollLoopResult := make(chan bool)
 	quitRoll := make(chan struct{})

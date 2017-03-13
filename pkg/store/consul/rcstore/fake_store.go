@@ -27,8 +27,6 @@ type fakeEntry struct {
 	lockedWrite   string
 }
 
-var _ Store = &fakeStore{}
-
 func NewFake() *fakeStore {
 	return &fakeStore{
 		rcs:     make(map[fields.ID]*fakeEntry),
