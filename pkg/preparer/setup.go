@@ -568,31 +568,8 @@ func (p *Preparer) InstallHooks() error {
 		"pod": p.hooksManifest.ID(),
 	})
 
-	// Figure out if we even need to install anything.
-	// Hooks aren't running services and so there isn't a need
-	// to write the current manifest to the reality store. Instead
-	// we just compare to the manifest on disk.
-	current, err := p.hooksPod.CurrentManifest()
-	if err != nil && err != pods.NoCurrentManifest {
-		p.Logger.WithError(err).Errorln("Could not check current manifest")
-		return err
-	}
-
-	var currentSHA string
-	if current != nil {
-		currentSHA, _ = current.SHA()
-	}
-	newSHA, _ := p.hooksManifest.SHA()
-
-	if err != pods.NoCurrentManifest && currentSHA == newSHA {
-		p.Logger.Infoln("Hooks up to date, nothing to do")
-		// we are up-to-date, continue
-		return nil
-	}
-
-	p.Logger.Infoln("Installing new hook manifest")
-	// The manifest is new, go ahead and install
-	err = p.hooksPod.Install(p.hooksManifest, p.artifactVerifier, p.artifactRegistry)
+	p.Logger.Infoln("Installing hook manifest")
+	err := p.hooksPod.Install(p.hooksManifest, p.artifactVerifier, p.artifactRegistry)
 	if err != nil {
 		sub.WithError(err).Errorln("Could not install hook")
 		return err
