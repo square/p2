@@ -181,6 +181,13 @@ func (c *consulAggregator) Aggregate() {
 		case <-c.aggregatorQuit:
 			return
 		case pairs := <-outPairs:
+			if len(pairs) == 0 {
+				// This protects us against spurious 404s from consul. It could
+				// pose problems when the label type is something that might have
+				// zero entries e.g. rolls, but for now there is no such use-case
+				c.logger.WithError(NoLabelsFound).Errorf("No labels found for type %s", c.labelType)
+				continue
+			}
 			c.watcherLock.Lock()
 
 			// replace our current cache with the latest contents of the label tree.
