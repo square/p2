@@ -26,7 +26,7 @@ func New(conn *grpc.ClientConn, logger logging.Logger) (Client, error) {
 	}, nil
 }
 
-// matches podstore.consulStore signature
+// matches podstore.consulStore signature so no context.Context argument
 func (c Client) Schedule(manifest manifest.Manifest, node types.NodeName) (types.PodUniqueKey, error) {
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {
@@ -46,8 +46,8 @@ func (c Client) Schedule(manifest manifest.Manifest, node types.NodeName) (types
 	return types.PodUniqueKey(resp.PodUniqueKey), nil
 }
 
-func (c Client) UnschedulePod(podUniqueKey types.PodUniqueKey) error {
-	_, err := c.client.UnschedulePod(context.Background(), &podstore_protos.UnschedulePodRequest{
+func (c Client) UnschedulePod(ctx context.Context, podUniqueKey types.PodUniqueKey) error {
+	_, err := c.client.UnschedulePod(ctx, &podstore_protos.UnschedulePodRequest{
 		PodUniqueKey: podUniqueKey.String(),
 	})
 	return err
@@ -86,17 +86,17 @@ func (c Client) WatchStatus(ctx context.Context, podUniqueKey types.PodUniqueKey
 	return outCh, nil
 }
 
-func (c Client) DeletePodStatus(podUniqueKey types.PodUniqueKey) error {
+func (c Client) DeletePodStatus(ctx context.Context, podUniqueKey types.PodUniqueKey) error {
 	req := &podstore_protos.DeletePodStatusRequest{
 		PodUniqueKey: podUniqueKey.String(),
 	}
 
-	_, err := c.client.DeletePodStatus(context.Background(), req)
+	_, err := c.client.DeletePodStatus(ctx, req)
 	return err
 }
 
-func (c Client) ListPodStatus() (map[types.PodUniqueKey]podstatus.PodStatus, error) {
-	resp, err := c.client.ListPodStatus(context.Background(), &podstore_protos.ListPodStatusRequest{
+func (c Client) ListPodStatus(ctx context.Context) (map[types.PodUniqueKey]podstatus.PodStatus, error) {
+	resp, err := c.client.ListPodStatus(ctx, &podstore_protos.ListPodStatusRequest{
 		// TODO: the whole podstatus.PodStatus type is coupled to the preparer's notion
 		// of pod status, so we ought to just make this namespace a constant in the
 		// pod status store
