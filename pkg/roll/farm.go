@@ -64,8 +64,7 @@ type Farm struct {
 	childMu  sync.Mutex
 	session  consul.Session
 
-	logger  logging.Logger
-	alerter alerting.Alerter
+	logger logging.Logger
 
 	labeler    rc.Labeler
 	rcSelector klabels.Selector
@@ -86,11 +85,8 @@ func NewFarm(
 	logger logging.Logger,
 	labeler rc.Labeler,
 	rcSelector klabels.Selector,
-	alerter alerting.Alerter,
+	_ alerting.Alerter,
 ) *Farm {
-	if alerter == nil {
-		alerter = alerting.NewNop()
-	}
 	return &Farm{
 		factory:    factory,
 		store:      store,
@@ -101,7 +97,6 @@ func NewFarm(
 		children:   make(map[roll_fields.ID]childRU),
 		labeler:    labeler,
 		rcSelector: rcSelector,
-		alerter:    alerter,
 	}
 }
 
