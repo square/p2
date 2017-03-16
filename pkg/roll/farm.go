@@ -8,7 +8,6 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/rcrowley/go-metrics"
 
-	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -85,7 +84,6 @@ func NewFarm(
 	logger logging.Logger,
 	labeler rc.Labeler,
 	rcSelector klabels.Selector,
-	_ alerting.Alerter,
 ) *Farm {
 	return &Farm{
 		factory:    factory,

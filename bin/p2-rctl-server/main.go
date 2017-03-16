@@ -123,6 +123,5 @@ func main() {
 		logger,
 		labeler,
 		klabels.Everything(),
-		alerter,
 	).Start(nil)
 }
