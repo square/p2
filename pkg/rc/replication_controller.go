@@ -320,12 +320,13 @@ func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {
 	return rc.scheduler.EligibleNodes(rc.Manifest, rc.NodeSelector)
 }
 
-func (rc *replicationController) CurrentPods() (types.PodLocations, error) {
-	selector := klabels.Everything().Add(RCIDLabel, klabels.EqualsOperator, []string{rc.ID().String()})
+// CurrentPods returns all pods managed by an RC with the given ID.
+func CurrentPods(rcid fields.ID, labeler Labeler) (types.PodLocations, error) {
+	selector := klabels.Everything().Add(RCIDLabel, klabels.EqualsOperator, []string{rcid.String()})
 
 	// replication controllers can only pass cachedMatch = false because their operations for matching
 	// replica counts are not necessarily idempotent.
-	podMatches, err := rc.podApplicator.GetMatches(selector, labels.POD, false)
+	podMatches, err := labeler.GetMatches(selector, labels.POD, false)
 	if err != nil {
 		return nil, err
 	}
@@ -341,6 +342,10 @@ func (rc *replicationController) CurrentPods() (types.PodLocations, error) {
 		result[i].PodID = podID
 	}
 	return result, nil
+}
+
+func (rc *replicationController) CurrentPods() (types.PodLocations, error) {
+	return CurrentPods(rc.ID(), rc.podApplicator)
 }
 
 // forEachLabel Attempts to apply the supplied function to all user-supplied labels

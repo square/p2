@@ -371,6 +371,42 @@ func (u *update) enable() error {
 		return err
 	}
 
+	newRC, err := u.rcs.Get(u.NewRC)
+	if err != nil {
+		return err
+	}
+
+	if newRC.Disabled {
+		// We must exercise caution before enabling a disabled RC.
+		//
+		// Consider a deploy:
+		// Old RC:                        | New RC:
+		// disabled, 2 desired, 2 labeled | enabled, 0 desired, 0 labeled.
+		// disabled, 1 desired, 2 labeled | enabled, 1 desired, 0 labeled.
+		//
+		// Now let's say we interrupt the deploy here,
+		// and because of Consul latency the new RC doesn't get to act on its desire.
+		// Then, we rollback.
+		//
+		//  enabled, 1 desired, 2 labeled | disabled, 1 desired, 0 labeled.
+		//
+		// At this point, the formerly-old RC momentarily unschedules one node, because it has too many.
+		// This is undesirable.
+		//
+		// Solution: Wait until formerly-old RC has only 1 node labeled.
+		// TODO: We can explore whether it's safe to just set the RCs to 2 desired if it has 2 RCs labeled,
+		// but we would be more comfortable with this if we could ascertain there is no chance of race.
+		currentPods, err := rc.CurrentPods(u.NewRC, u.labeler)
+		if err != nil {
+			return err
+		}
+
+		if len(currentPods) != newRC.ReplicasDesired {
+			// enable is called in a RetryOrQuit,
+			return util.Errorf("RC %s currently has %d replicas but wants %d - waiting until it matches to enable.", u.NewRC, len(currentPods), newRC.ReplicasDesired)
+		}
+	}
+
 	err = u.rcs.Enable(u.NewRC)
 	if err != nil {
 		return err
@@ -400,7 +436,7 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 
 	ret.Desired = rcFields.ReplicasDesired
 
-	currentPods, err := rc.New(rcFields, u.consuls, u.rcs, u.sched, u.labeler, u.logger, u.alerter).CurrentPods()
+	currentPods, err := rc.CurrentPods(id, u.labeler)
 	if err != nil {
 		return ret, err
 	}
