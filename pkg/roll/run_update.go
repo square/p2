@@ -7,7 +7,6 @@ import (
 
 	"github.com/Sirupsen/logrus"
 
-	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/logging"
@@ -16,7 +15,6 @@ import (
 	"github.com/square/p2/pkg/rc"
 	rcf "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
-	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
@@ -57,10 +55,8 @@ func NewUpdate(
 	rcs rcstore.Store,
 	hcheck checker.ConsulHealthChecker,
 	labeler rc.Labeler,
-	_ scheduler.Scheduler,
 	logger logging.Logger,
 	session consul.Session,
-	_ alerting.Alerter,
 ) Update {
 	logger = logger.SubLogger(logrus.Fields{
 		"desired_replicas": f.DesiredReplicas,

@@ -38,12 +38,8 @@ type UpdateFactory struct {
 	Scheduler     scheduler.Scheduler
 }
 
-func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consul.Session, alerter alerting.Alerter) Update {
-	if alerter == nil {
-		alerter = alerting.NewNop()
-	}
-
-	return NewUpdate(u, f.Store, f.RCStore, f.HealthChecker, f.Labeler, f.Scheduler, l, session, alerter)
+func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consul.Session, _ alerting.Alerter) Update {
+	return NewUpdate(u, f.Store, f.RCStore, f.HealthChecker, f.Labeler, l, session)
 }
 
 type RCGetter interface {

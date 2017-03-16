@@ -194,10 +194,8 @@ func TestLockRCs(t *testing.T) {
 		rcstore.NewFake(),
 		nil,
 		nil,
-		nil,
 		logging.DefaultLogger,
 		session,
-		nil,
 	).(*update)
 	err = update.lockRCs(make(<-chan struct{}))
 	Assert(t).IsNil(err, "should not have erred locking RCs")
