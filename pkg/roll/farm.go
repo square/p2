@@ -27,7 +27,7 @@ import (
 )
 
 type Factory interface {
-	New(roll_fields.Update, logging.Logger, consul.Session, alerting.Alerter) Update
+	New(roll_fields.Update, logging.Logger, consul.Session) Update
 }
 
 type UpdateFactory struct {
@@ -38,7 +38,7 @@ type UpdateFactory struct {
 	Scheduler     scheduler.Scheduler
 }
 
-func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consul.Session, _ alerting.Alerter) Update {
+func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consul.Session) Update {
 	return NewUpdate(u, f.Store, f.RCStore, f.HealthChecker, f.Labeler, l, session)
 }
 
@@ -211,7 +211,7 @@ START_LOOP:
 				// at this point the ru is ours, time to spin it up
 				rlLogger.WithField("new_rc", rlField.ID()).Infof("Acquired lock on update %s -> %s, spawning", rlField.OldRC, rlField.ID())
 
-				newChild := rlf.factory.New(rlField, rlLogger, rlf.session, rlf.alerter)
+				newChild := rlf.factory.New(rlField, rlLogger, rlf.session)
 				childQuit := make(chan struct{})
 				rlf.children[rlField.ID()] = childRU{
 					ru:       newChild,
