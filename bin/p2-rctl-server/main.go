@@ -115,7 +115,6 @@ func main() {
 			RCStore:       rcStore,
 			HealthChecker: healthChecker,
 			Labeler:       labeler,
-			Scheduler:     sched,
 		},
 		consulStore,
 		rollStore,

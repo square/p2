@@ -16,7 +16,6 @@ import (
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/rc/fields"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
-	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
@@ -35,7 +34,6 @@ type UpdateFactory struct {
 	RCStore       rcstore.Store
 	HealthChecker checker.ConsulHealthChecker
 	Labeler       rc.Labeler
-	Scheduler     scheduler.Scheduler
 }
 
 func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consul.Session) Update {
