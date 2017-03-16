@@ -8,7 +8,6 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/rcrowley/go-metrics"
 
-	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -16,7 +15,6 @@ import (
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/rc/fields"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
-	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
@@ -27,7 +25,7 @@ import (
 )
 
 type Factory interface {
-	New(roll_fields.Update, logging.Logger, consul.Session, alerting.Alerter) Update
+	New(roll_fields.Update, logging.Logger, consul.Session) Update
 }
 
 type UpdateFactory struct {
@@ -35,15 +33,10 @@ type UpdateFactory struct {
 	RCStore       rcstore.Store
 	HealthChecker checker.ConsulHealthChecker
 	Labeler       rc.Labeler
-	Scheduler     scheduler.Scheduler
 }
 
-func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consul.Session, alerter alerting.Alerter) Update {
-	if alerter == nil {
-		alerter = alerting.NewNop()
-	}
-
-	return NewUpdate(u, f.Store, f.RCStore, f.HealthChecker, f.Labeler, f.Scheduler, l, session, alerter)
+func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consul.Session) Update {
+	return NewUpdate(u, f.Store, f.RCStore, f.HealthChecker, f.Labeler, l, session)
 }
 
 type RCGetter interface {
@@ -70,8 +63,7 @@ type Farm struct {
 	childMu  sync.Mutex
 	session  consul.Session
 
-	logger  logging.Logger
-	alerter alerting.Alerter
+	logger logging.Logger
 
 	labeler    rc.Labeler
 	rcSelector klabels.Selector
@@ -92,11 +84,7 @@ func NewFarm(
 	logger logging.Logger,
 	labeler rc.Labeler,
 	rcSelector klabels.Selector,
-	alerter alerting.Alerter,
 ) *Farm {
-	if alerter == nil {
-		alerter = alerting.NewNop()
-	}
 	return &Farm{
 		factory:    factory,
 		store:      store,
@@ -107,7 +95,6 @@ func NewFarm(
 		children:   make(map[roll_fields.ID]childRU),
 		labeler:    labeler,
 		rcSelector: rcSelector,
-		alerter:    alerter,
 	}
 }
 
@@ -215,7 +202,7 @@ START_LOOP:
 				// at this point the ru is ours, time to spin it up
 				rlLogger.WithField("new_rc", rlField.ID()).Infof("Acquired lock on update %s -> %s, spawning", rlField.OldRC, rlField.ID())
 
-				newChild := rlf.factory.New(rlField, rlLogger, rlf.session, rlf.alerter)
+				newChild := rlf.factory.New(rlField, rlLogger, rlf.session)
 				childQuit := make(chan struct{})
 				rlf.children[rlField.ID()] = childRU{
 					ru:       newChild,

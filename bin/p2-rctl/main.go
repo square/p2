@@ -15,7 +15,6 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 	klabels "k8s.io/kubernetes/pkg/labels"
 
-	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -23,7 +22,6 @@ import (
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
-	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/flags"
@@ -76,12 +74,11 @@ var (
 	cmdDisable = kingpin.Command(cmdDisableText, "Disable replication controller")
 	disableID  = cmdDisable.Arg("id", "replication controller uuid to disable").Required().String()
 
-	cmdRoll                 = kingpin.Command(cmdRollText, "Rolling update from one replication controller to another")
-	rollOldID               = cmdRoll.Flag("old", "old replication controller uuid").Required().Short('o').String()
-	rollNewID               = cmdRoll.Flag("new", "new replication controller uuid").Required().Short('n').String()
-	rollWant                = cmdRoll.Flag("desired", "number of replicas desired").Required().Short('d').Int()
-	rollNeed                = cmdRoll.Flag("minimum", "minimum number of healthy replicas during update").Required().Short('m').Int()
-	rollPagerdutyServiceKey = cmdRoll.Flag("pagerduty-service-key", "Pagerduty Service Key to use for alerting if provided").String()
+	cmdRoll   = kingpin.Command(cmdRollText, "Rolling update from one replication controller to another")
+	rollOldID = cmdRoll.Flag("old", "old replication controller uuid").Required().Short('o').String()
+	rollNewID = cmdRoll.Flag("new", "new replication controller uuid").Required().Short('n').String()
+	rollWant  = cmdRoll.Flag("desired", "number of replicas desired").Required().Short('d').Int()
+	rollNeed  = cmdRoll.Flag("minimum", "minimum number of healthy replicas during update").Required().Short('m').Int()
 
 	cmdDeleteRoll = kingpin.Command(cmdDeleteRollText, "Delete a rolling update.")
 	deleteRollID  = cmdDeleteRoll.Flag("id", "rolling update uuid").Required().Short('i').String()
@@ -113,7 +110,6 @@ func main() {
 
 	httpClient := cleanhttp.DefaultClient()
 	client := consul.NewConsulClient(opts)
-	sched := scheduler.NewApplicatorScheduler(labeler)
 
 	rctl := rctlParams{
 		httpClient: httpClient,
@@ -122,7 +118,6 @@ func main() {
 		rls:        rollstore.NewConsul(client, labeler, nil),
 		consuls:    consul.NewConsulStore(client),
 		labeler:    labeler,
-		sched:      sched,
 		hcheck:     checker.NewConsulHealthChecker(client),
 		logger:     logger,
 	}
@@ -143,7 +138,7 @@ func main() {
 	case cmdDisableText:
 		rctl.Disable(*disableID)
 	case cmdRollText:
-		rctl.RollingUpdate(*rollOldID, *rollNewID, *rollWant, *rollNeed, *rollPagerdutyServiceKey)
+		rctl.RollingUpdate(*rollOldID, *rollNewID, *rollWant, *rollNeed)
 	case cmdSchedupText:
 		rctl.ScheduleUpdate(*schedupOldID, *schedupNewID, *schedupWant, *schedupNeed)
 	case cmdDeleteRollText:
@@ -175,7 +170,6 @@ type rctlParams struct {
 	baseClient consulutil.ConsulClient
 	rcs        rcstore.Store
 	rls        rollstore.Store
-	sched      scheduler.Scheduler
 	labeler    labels.ApplicatorWithoutWatches
 	consuls    Store
 	hcheck     checker.ConsulHealthChecker
@@ -295,7 +289,7 @@ func (r rctlParams) Disable(id string) {
 	r.logger.WithField("id", id).Infoln("Disabled replication controller")
 }
 
-func (r rctlParams) RollingUpdate(oldID, newID string, want, need int, pagerdutyServiceKey string) {
+func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 	if want < need {
 		r.logger.WithFields(logrus.Fields{
 			"want": want,
@@ -318,15 +312,6 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int, pagerduty
 	}
 	session := r.consuls.NewUnmanagedSession(sessionID, "")
 
-	alerter := alerting.NewNop()
-	if pagerdutyServiceKey != "" {
-		var err error
-		alerter, err = alerting.NewPagerduty(pagerdutyServiceKey, r.httpClient)
-		if err != nil {
-			r.logger.WithError(err).Fatalln("Could not initialize pagerduty alerter")
-		}
-	}
-
 	result := make(chan bool, 1)
 	go func() {
 		result <- roll.NewUpdate(roll_fields.Update{
@@ -334,7 +319,7 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int, pagerduty
 			NewRC:           rc_fields.ID(newID),
 			DesiredReplicas: want,
 			MinimumReplicas: need,
-		}, r.consuls, r.rcs, r.hcheck, r.labeler, r.sched, r.logger, session, alerter).Run(quit)
+		}, r.consuls, r.rcs, r.hcheck, r.labeler, r.logger, session).Run(quit)
 		close(result)
 	}()
 

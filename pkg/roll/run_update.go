@@ -7,7 +7,6 @@ import (
 
 	"github.com/Sirupsen/logrus"
 
-	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/logging"
@@ -16,7 +15,6 @@ import (
 	"github.com/square/p2/pkg/rc"
 	rcf "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
-	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
@@ -38,10 +36,8 @@ type update struct {
 	rcs     rcstore.Store
 	hcheck  checker.ConsulHealthChecker
 	labeler rc.Labeler
-	sched   scheduler.Scheduler
 
-	logger  logging.Logger
-	alerter alerting.Alerter
+	logger logging.Logger
 
 	session consul.Session
 
@@ -59,15 +55,9 @@ func NewUpdate(
 	rcs rcstore.Store,
 	hcheck checker.ConsulHealthChecker,
 	labeler rc.Labeler,
-	sched scheduler.Scheduler,
 	logger logging.Logger,
 	session consul.Session,
-	alerter alerting.Alerter,
 ) Update {
-	if alerter == nil {
-		alerter = alerting.NewNop()
-	}
-
 	logger = logger.SubLogger(logrus.Fields{
 		"desired_replicas": f.DesiredReplicas,
 		"minimum_replicas": f.MinimumReplicas,
@@ -78,10 +68,8 @@ func NewUpdate(
 		rcs:     rcs,
 		hcheck:  hcheck,
 		labeler: labeler,
-		sched:   sched,
 		logger:  logger,
 		session: session,
-		alerter: alerter,
 	}
 }
 
