@@ -38,10 +38,8 @@ type update struct {
 	rcs     rcstore.Store
 	hcheck  checker.ConsulHealthChecker
 	labeler rc.Labeler
-	sched   scheduler.Scheduler
 
-	logger  logging.Logger
-	alerter alerting.Alerter
+	logger logging.Logger
 
 	session consul.Session
 
@@ -59,15 +57,11 @@ func NewUpdate(
 	rcs rcstore.Store,
 	hcheck checker.ConsulHealthChecker,
 	labeler rc.Labeler,
-	sched scheduler.Scheduler,
+	_ scheduler.Scheduler,
 	logger logging.Logger,
 	session consul.Session,
-	alerter alerting.Alerter,
+	_ alerting.Alerter,
 ) Update {
-	if alerter == nil {
-		alerter = alerting.NewNop()
-	}
-
 	logger = logger.SubLogger(logrus.Fields{
 		"desired_replicas": f.DesiredReplicas,
 		"minimum_replicas": f.MinimumReplicas,
@@ -78,10 +72,8 @@ func NewUpdate(
 		rcs:     rcs,
 		hcheck:  hcheck,
 		labeler: labeler,
-		sched:   sched,
 		logger:  logger,
 		session: session,
-		alerter: alerter,
 	}
 }
 
