@@ -239,7 +239,7 @@ func (s *FakeDSStore) watchDiffDaemonSets(inCh <-chan []fields.DaemonSet, quitCh
 				newDSs[ds.ID] = ds
 			}
 
-			outgoingChanges := dsstore.WatchedDaemonSets{}
+			outgoingChanges := dsstore.WatchedDaemonSets{Total: len(results)}
 			for id, ds := range newDSs {
 				copyDS := ds
 

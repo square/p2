@@ -345,6 +345,7 @@ func WatchNewKeys(pairsChan <-chan api.KVPairs, onNewKey NewKeyHandler, done <-c
 }
 
 type WatchedChanges struct {
+	Total   int
 	Created api.KVPairs
 	Updated api.KVPairs
 	Deleted api.KVPairs
@@ -420,7 +421,7 @@ func WatchDiff(
 				mapCopy[key] = val
 			}
 
-			outgoingChanges := &WatchedChanges{}
+			outgoingChanges := &WatchedChanges{Total: len(pairs)}
 			for _, val := range pairs {
 				if _, ok := keys[val.Key]; !ok {
 					// If it is not in the map, then it was a create

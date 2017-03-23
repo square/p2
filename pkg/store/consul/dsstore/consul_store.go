@@ -273,6 +273,7 @@ func (s *consulStore) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
 				}
 			}
 
+			outgoingDSs.Total = kvps.Total
 			createdDSs, err := kvpsToDSs(kvps.Created)
 			if err != nil {
 				outgoingDSs.Err = util.Errorf("Watch create error: %s; ", err)

@@ -440,6 +440,7 @@ func TestWatch(t *testing.T) {
 		t.Errorf("Unexpected error on watched daemon sets: %s", watched.Err)
 	}
 
+	Assert(t).AreEqual(watched.Total, 2, "Unexpected total")
 	Assert(t).AreEqual(len(watched.Created), 2, "Unexpected number of creates watched")
 	Assert(t).AreEqual(len(watched.Updated), 0, "Unexpected number of updates watched")
 	Assert(t).AreEqual(len(watched.Deleted), 0, "Unexpected number of deletes watched")
@@ -470,6 +471,7 @@ func TestWatch(t *testing.T) {
 		t.Errorf("Unexpected error on watched daemon sets: %s", watched.Err)
 	}
 
+	Assert(t).AreEqual(watched.Total, 1, "Unexpected total")
 	Assert(t).AreEqual(len(watched.Created), 0, "Unexpected number of creates watched")
 	Assert(t).AreEqual(len(watched.Updated), 0, "Unexpected number of updates watched")
 	Assert(t).AreEqual(len(watched.Deleted), 1, "Unexpected number of deletes watched")
@@ -498,6 +500,7 @@ func TestWatch(t *testing.T) {
 		t.Errorf("Unexpected error on watched daemon sets: %s", watched.Err)
 	}
 
+	Assert(t).AreEqual(watched.Total, 1, "Unexpected total")
 	Assert(t).AreEqual(len(watched.Created), 0, "Unexpected number of creates watched")
 	Assert(t).AreEqual(len(watched.Updated), 1, "Unexpected number of updates watched")
 	Assert(t).AreEqual(len(watched.Deleted), 0, "Unexpected number of deletes watched")
