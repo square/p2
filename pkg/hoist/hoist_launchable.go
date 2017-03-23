@@ -97,15 +97,16 @@ func (hl *Launchable) Disable() error {
 }
 
 func (hl *Launchable) Stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
-	// probably want to do something with output at some point
-	err := hl.stop(serviceBuilder, sv)
-	if err != nil {
-		return launch.StopError{Inner: err}
+	stopErr := hl.stop(serviceBuilder, sv)
+	// We still want to update the "last" symlink even if there was an
+	// error during stop()
+	makeLastErr := hl.makeLast()
+	if stopErr != nil {
+		// if there was a stop error AND a makeLast() error, we want to report the stop error
+		return launch.StopError{Inner: stopErr}
 	}
-
-	err = hl.makeLast()
-	if err != nil {
-		return err
+	if makeLastErr != nil {
+		return makeLastErr
 	}
 
 	return nil
