@@ -353,12 +353,6 @@ func (u *update) unlockRCs(done <-chan struct{}) {
 // enable sets the old & new RCs to a known-good state to start a rolling update:
 // the old RC should be disabled and the new RC should be enabled.
 func (u *update) enable() error {
-	// Disable the old RC first to make sure that the two RCs don't fight each other.
-	err := u.rcs.Disable(u.OldRC)
-	if err != nil {
-		return err
-	}
-
 	newRC, err := u.rcs.Get(u.NewRC)
 	if err != nil {
 		return err
@@ -393,6 +387,15 @@ func (u *update) enable() error {
 			// enable is called in a RetryOrQuit,
 			return util.Errorf("RC %s currently has %d replicas but wants %d - waiting until it matches to enable.", u.NewRC, len(currentPods), newRC.ReplicasDesired)
 		}
+	}
+
+	// Disable the old RC first to make sure that the two RCs don't fight each other.
+	// We do this AFTER the convergence check, because we don't want to reach this state:
+	// disabled, 1 desired, 2 labeled | disabled, 1 desired, 0 labeled.
+	// In this case, neither RC will act, so manual intervention is required.
+	err = u.rcs.Disable(u.OldRC)
+	if err != nil {
+		return err
 	}
 
 	err = u.rcs.Enable(u.NewRC)
