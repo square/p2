@@ -381,17 +381,28 @@ func (u *update) enable() error {
 		// At this point, the formerly-old RC momentarily unschedules one node, because it has too many.
 		// This is undesirable.
 		//
-		// Solution: Wait until formerly-old RC has only 1 node labeled.
-		// TODO: We can explore whether it's safe to just set the RCs to 2 desired if it has 2 RCs labeled,
-		// but we would be more comfortable with this if we could ascertain there is no chance of race.
+		// Solution:
+		// If desired > labeled, that's fine, just enable it (no nodes can be unscheduled as a result)
+		// If labeled > desired, make the counts match up.
 		currentPods, err := rc.CurrentPods(u.NewRC, u.labeler)
 		if err != nil {
 			return err
 		}
 
-		if len(currentPods) != newRC.ReplicasDesired {
-			// enable is called in a RetryOrQuit,
-			return util.Errorf("RC %s currently has %d replicas but wants %d - waiting until it matches to enable.", u.NewRC, len(currentPods), newRC.ReplicasDesired)
+		if len(currentPods) > newRC.ReplicasDesired {
+			diff := len(currentPods) - newRC.ReplicasDesired
+
+			err = u.rcs.CASDesiredReplicas(u.NewRC, newRC.ReplicasDesired, len(currentPods))
+			if err != nil {
+				return util.Errorf("RC %s currently has %d replicas but wants %d - tried to make new RC match, but %s.", u.NewRC, len(currentPods), newRC.ReplicasDesired, err)
+			}
+
+			// the old RC is disabled at this point, but we should try to make its count match too,
+			// in case we try to reverse the deploy.
+			err = u.rcs.AddDesiredReplicas(u.OldRC, -diff)
+			if err != nil {
+				return util.Errorf("RC %s currently has %d replicas but wants %d - tried to make old RC %s match, but %s.", u.NewRC, len(currentPods), newRC.ReplicasDesired, u.OldRC, err)
+			}
 		}
 	}
 
