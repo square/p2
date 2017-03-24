@@ -15,6 +15,7 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 	klabels "k8s.io/kubernetes/pkg/labels"
 
+	"github.com/square/p2/pkg/cli"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -60,6 +61,7 @@ var (
 	cmdReplicas = kingpin.Command(cmdReplicasText, "Set desired replica count of a replication controller")
 	replicasID  = cmdReplicas.Arg("id", "replication controller uuid to modify").Required().String()
 	replicasNum = cmdReplicas.Arg("replicas", "number of replicas desired").Required().Int()
+	yes         = cmdReplicas.Flag("yes", "auto confirm the replica change (i.e. no confirmatino prompt)").Short('y').Bool()
 
 	cmdList  = kingpin.Command(cmdListText, "List replication controllers")
 	listJSON = cmdList.Flag("json", "output the entire JSON object of each replication controller").Short('j').Bool()
@@ -223,6 +225,10 @@ func (r rctlParams) SetReplicas(id string, replicas int) {
 		r.logger.NoFields().Fatalln("Cannot set negative replica count")
 	}
 
+	fmt.Printf("setting the replica count to %d\n", replicas)
+	if !*yes && !cli.Confirm() {
+		r.logger.Fatal("user aborted")
+	}
 	err := r.rcs.SetDesiredReplicas(rc_fields.ID(id), replicas)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not set desired replica count in Consul")
