@@ -763,7 +763,7 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 		return fields.ID(""), fmt.Errorf("Couldn't read RC ID out of p2-rctl invocation result: %v", err)
 	}
 
-	output, err := exec.Command("p2-rctl", "set-replicas", rctlOut.ID, "1").CombinedOutput()
+	output, err := exec.Command("p2-rctl", "set-replicas", rctlOut.ID, "1", "-y").CombinedOutput()
 	if err != nil {
 		fmt.Println(string(output))
 		return "", err
