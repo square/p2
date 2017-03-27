@@ -189,7 +189,7 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 			newNodes, err := u.countHealthy(u.NewRC, checks)
 			if err != nil {
 				u.logger.WithErrorAndFields(err, logrus.Fields{
-					"new": newNodes,
+					"new": newNodes.ToString(),
 				}).Errorln("Could not count nodes on new RC")
 				break
 			}
@@ -203,14 +203,14 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 
 			if nextAction := u.shouldStop(oldNodes, newNodes); nextAction == ruShouldTerminate {
 				u.logger.WithFields(logrus.Fields{
-					"old": oldNodes,
-					"new": newNodes,
+					"old": oldNodes.ToString(),
+					"new": newNodes.ToString(),
 				}).Debugln("Upgrade complete")
 				return true
 			} else if nextAction == ruShouldBlock {
 				u.logger.WithFields(logrus.Fields{
-					"old": oldNodes,
-					"new": newNodes,
+					"old": oldNodes.ToString(),
+					"new": newNodes.ToString(),
 				}).Debugln("Upgrade almost complete, blocking for more healthy new nodes")
 				break
 			}
@@ -239,8 +239,8 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 				}
 
 				u.logger.WithFields(logrus.Fields{
-					"old":        oldNodes,
-					"new":        newNodes,
+					"old":        oldNodes.ToString(),
+					"new":        newNodes.ToString(),
 					"nextRemove": nextRemove,
 					"nextAdd":    nextAdd,
 				}).Infof("Adding %d new nodes and removing %d old nodes", nextAdd, nextRemove)
@@ -260,8 +260,8 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 				}
 			} else {
 				u.logger.WithFields(logrus.Fields{
-					"old": oldNodes,
-					"new": newNodes,
+					"old": oldNodes.ToString(),
+					"new": newNodes.ToString(),
 				}).Debugln("Blocking for more healthy nodes")
 			}
 		}
@@ -413,6 +413,10 @@ type rcNodeCounts struct {
 	Healthy   int // the number of real nodes that are healthy
 	Unhealthy int // the number of real nodes that are unhealthy
 	Unknown   int // the number of real nodes that are of unknown health
+}
+
+func (r rcNodeCounts) ToString() string {
+	return fmt.Sprintf("%+v", r)
 }
 
 func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result) (rcNodeCounts, error) {
