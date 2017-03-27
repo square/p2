@@ -61,7 +61,7 @@ var (
 	cmdReplicas = kingpin.Command(cmdReplicasText, "Set desired replica count of a replication controller")
 	replicasID  = cmdReplicas.Arg("id", "replication controller uuid to modify").Required().String()
 	replicasNum = cmdReplicas.Arg("replicas", "number of replicas desired").Required().Int()
-	yes         = cmdReplicas.Flag("yes", "auto confirm the replica change (i.e. no confirmatino prompt)").Short('y').Bool()
+	yes         = cmdReplicas.Flag("yes", "auto confirm the replica change (i.e. no confirmation prompt)").Short('y').Bool()
 
 	cmdList  = kingpin.Command(cmdListText, "List replication controllers")
 	listJSON = cmdList.Flag("json", "output the entire JSON object of each replication controller").Short('j').Bool()
