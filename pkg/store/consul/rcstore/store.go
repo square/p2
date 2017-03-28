@@ -76,6 +76,8 @@ type Store interface {
 	// that no two RUs are admitted that operate on the same RCs, which is
 	// accomplished by locking them first
 	LockForUpdateCreation(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error)
+
+	TransferReplicaCounts(toRCID fields.ID, replicasToAdd int, fromRCID fields.ID, replicasToRemove int) error
 }
 
 func IsNotExist(err error) bool {

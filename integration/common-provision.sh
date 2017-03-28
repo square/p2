@@ -46,5 +46,6 @@ cp $GOPATH/bin/p2-exec /usr/local/bin
 
 # Install P2 test dependencies
 sudo yum -y --nogpgcheck localinstall $GOPATH/src/github.com/square/p2/integration/test-deps/*rpm
+sudo yum -y install unzip
 sudo mkdir -p /etc/servicebuilder.d
 sudo mkdir -p /var/service-stage

@@ -231,3 +231,7 @@ func (s *fakeStore) LockForUpdateCreation(rcID fields.ID, session consul.Session
 	key := fmt.Sprintf("%s/%s", rcID, "update_creation_lock")
 	return session.Lock(key)
 }
+
+func (s *fakeStore) TransferReplicaCounts(toRCID fields.ID, replicasToAdd int, fromRCID fields.ID, replicasToRemove int) error {
+	return util.Errorf("TransferReplicaCounts not implemented in the fake store")
+}
