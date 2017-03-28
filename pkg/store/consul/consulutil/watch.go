@@ -29,11 +29,19 @@ func WatchKeys(
 		var currentIndex uint64
 		timer := time.NewTimer(0)
 
+		listLatencyHistogram, consulLatencyHistogram, outputPairsBlocking, _ := watchHistograms("keys")
+
 		// put a lower bound on pause time to prevent tight looping queries against
 		// consul
 		if pause < 250*time.Millisecond {
 			pause = 250 * time.Millisecond
 		}
+
+		// Don't allocate these in a loop
+		var (
+			listStart        time.Time
+			outputPairsStart time.Time
+		)
 
 		for {
 			select {
@@ -43,10 +51,14 @@ func WatchKeys(
 			}
 
 			timer.Reset(pause)
+			listStart = time.Now()
 			keys, queryMeta, err := SafeKeys(clientKV, done, prefix, &api.QueryOptions{
 				WaitIndex:  currentIndex,
 				AllowStale: true,
 			})
+			consulLatencyHistogram.Update(int64(queryMeta.RequestTime))
+			listLatencyHistogram.Update(int64(time.Since(listStart) / time.Millisecond))
+			// outputPairsHistogram.Update(int64(sizeInBytes(keys)))
 			if err == CanceledError {
 				return
 			} else if err != nil {
@@ -81,12 +93,15 @@ func WatchKeys(
 			}
 
 			currentIndex = queryMeta.LastIndex
+			outputPairsStart = time.Now()
 			select {
 			case <-done:
 				return
 			case out <- WatchedKeys{
 				Keys: keys,
 			}:
+
+				outputPairsBlocking.Update(int64(time.Since(outputPairsStart) / time.Millisecond))
 			}
 		}
 	}()
