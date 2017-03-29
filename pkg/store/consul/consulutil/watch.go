@@ -69,6 +69,7 @@ func WatchKeys(
 				}:
 				}
 				timer.Reset(2*time.Second + pause) // back off a little
+				continue
 			}
 
 			// This might happen if a watch expires on a node that was stale for a

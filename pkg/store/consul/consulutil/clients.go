@@ -24,6 +24,7 @@ type ConsulKVClient interface {
 	List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
 	Put(pair *api.KVPair, w *api.WriteOptions) (*api.WriteMeta, error)
 	Release(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error)
+	Txn(txn api.KVTxnOps, q *api.QueryOptions) (bool, *api.KVTxnResponse, *api.QueryMeta, error)
 }
 
 // Specifies the functionality provided by the *api.Session struct for managing

@@ -31,10 +31,13 @@ import (
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/schedule"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/podstore"
+	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
@@ -180,6 +183,19 @@ func main() {
 		testName: "verifyProcessResult",
 		errCh:    processExitTest,
 		logger:   verifyProcessExitLogger,
+	})
+
+	// Test that the consul rc store properly performs atomic "transfer" of
+	// replicas desired from one RC to another.
+	transferReplicasTest := make(chan error)
+	verifyTransferReplicasLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"test_case": "verifyTransferReplicas",
+	})
+	go verifyTransferReplicas(transferReplicasTest, tempdir, verifyTransferReplicasLogger, consulClient)
+	testCases = append(testCases, testCase{
+		testName: "verifyTransferReplicas",
+		errCh:    transferReplicasTest,
+		logger:   verifyTransferReplicasLogger,
 	})
 
 	for _, t := range testCases {
@@ -387,6 +403,58 @@ func verifyProcessExit(errCh chan error, tempDir string, logger logging.Logger) 
 			return
 		default:
 		}
+	}
+}
+
+func verifyTransferReplicas(errCh chan<- error, tempdir string, logger logging.Logger, consulClient consulutil.ConsulClient) {
+	defer close(errCh)
+
+	applicator := labels.NewConsulApplicator(consulClient, 1)
+	rcStore := rcstore.NewConsul(consulClient, applicator, 2)
+
+	builder := manifest.NewBuilder()
+	builder.SetID("some_pod")
+	man := builder.GetManifest()
+
+	fromRC, err := rcStore.Create(man, klabels.Everything(), nil)
+	if err != nil {
+		errCh <- util.Errorf("could not create RC for replica transfer test: %s", err)
+		return
+	}
+
+	toRC, err := rcStore.Create(man, klabels.Everything(), nil)
+	if err != nil {
+		errCh <- util.Errorf("could not create second RC for replica transfer test: %s", err)
+		return
+	}
+
+	err = rcStore.SetDesiredReplicas(fromRC.ID, 4)
+	if err != nil {
+		errCh <- util.Errorf("could not initialize replica count for replica transfer test: %s", err)
+		return
+	}
+
+	err = rcStore.TransferReplicaCounts(toRC.ID, 1, fromRC.ID, 2)
+	if err != nil {
+		errCh <- util.Errorf("failed to transfer replicas from one RC to another: %s", err)
+		return
+	}
+
+	fromRC, err = rcStore.Get(fromRC.ID)
+	if err != nil {
+		errCh <- util.Errorf("could not fetch original RC to verify replica counts: %s", err)
+		return
+	}
+
+	toRC, err = rcStore.Get(toRC.ID)
+	if err != nil {
+		errCh <- util.Errorf("could not fetch second RC to verify replica counts: %s", err)
+		return
+	}
+
+	if fromRC.ReplicasDesired != 2 || toRC.ReplicasDesired != 1 {
+		errCh <- util.Errorf("expected first RC to have %d, and second RC to have %d replicas, but they actually had %d and %d", 2, 1, fromRC.ReplicasDesired, toRC.ReplicasDesired)
+		return
 	}
 }
 
@@ -603,33 +671,48 @@ func executeBin2Pod(cmd *exec.Cmd) (Bin2PodResult, error) {
 }
 
 func getConsulManifest(dir string) (string, error) {
-	consulTar := fmt.Sprintf(
-		"file://%s",
-		util.From(runtime.Caller(0)).ExpandPath("../hoisted-consul_052.tar.gz"),
-	)
-	builder := manifest.NewBuilder()
-	builder.SetID("consul")
-	stanzas := map[launch.LaunchableID]launch.LaunchableStanza{
-		"consul": {
-			LaunchableType: "hoist",
-			Location:       consulTar,
-		},
-	}
-	builder.SetLaunchables(stanzas)
-	manifest := builder.GetManifest()
+	_, err := os.Stat("/usr/bin/consul")
+	if err != nil && !os.IsNotExist(err) {
+		return "", util.Errorf("could not deploy consul because stat /usr/bin/consul failed: %s", err)
+	} else if os.IsNotExist(err) {
+		consulURI, err := url.Parse("https://releases.hashicorp.com/consul/0.7.1/consul_0.7.1_linux_amd64.zip")
+		if err != nil {
+			return "", util.Errorf("could not download consul: %s", err)
+		}
 
-	consulPath := path.Join(dir, "consul.yaml")
-	f, err := os.OpenFile(consulPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		dst := filepath.Join(dir, "consul_zip")
+		err = uri.URICopy(consulURI, dst)
+		if err != nil {
+			return "", util.Errorf("could not download conzul: %s", err)
+		}
+
+		output, err := exec.Command("unzip", dst, "-d", dir).CombinedOutput()
+		if err != nil {
+			return "", util.Errorf("could not unzip the consul zip archive: %s\n%s", err, string(output))
+		}
+
+		output, err = exec.Command("mv", filepath.Join(dir, "consul"), "/usr/bin/consul").CombinedOutput()
+		if err != nil {
+			return "", util.Errorf("could not move consul binary to /usr/bin/consul: %s\n%s", err, string(output))
+		}
+	}
+
+	rubyBin := filepath.Join(dir, "launch")
+	cmds := `#!/usr/bin/env ruby
+
+exec "/usr/bin/consul agent -server -bootstrap-expect 1 -data-dir /tmp/consul"`
+	err = ioutil.WriteFile(rubyBin, []byte(cmds), 0777)
+	if err != nil {
+		return "", util.Errorf("could not write consul exec script: %s", err)
+	}
+
+	cmd := exec.Command("p2-bin2pod", "--work-dir", dir, rubyBin, "--id", "consul")
+	rctlBin2Pod, err := executeBin2Pod(cmd)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
 
-	err = manifest.Write(f)
-	if err != nil {
-		return "", err
-	}
-	return consulPath, f.Close()
+	return rctlBin2Pod.ManifestPath, nil
 }
 
 func executeBootstrap(preparerManifest, consulManifest string) error {
@@ -647,7 +730,7 @@ func executeBootstrap(preparerManifest, consulManifest string) error {
 	if err != nil {
 		return fmt.Errorf("Could not install newest bootstrap: %s", err)
 	}
-	bootstr := exec.Command("p2-bootstrap", "--consul-pod", consulManifest, "--agent-pod", preparerManifest)
+	bootstr := exec.Command("p2-bootstrap", "--consul-pod", consulManifest, "--agent-pod", preparerManifest, "--consul-timeout", "20s")
 	bootstr.Stdout = os.Stdout
 	bootstr.Stderr = os.Stdout
 	return bootstr.Run()

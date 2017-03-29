@@ -130,3 +130,6 @@ func (f *FakeKV) DeleteCAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api
 func (f *FakeKV) Release(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
 	return false, nil, fmt.Errorf("not yet implemented in FakeKV")
 }
+func (f *FakeKV) Txn(txn api.KVTxnOps, q *api.QueryOptions) (bool, *api.KVTxnResponse, *api.QueryMeta, error) {
+	return false, nil, nil, fmt.Errorf("not yet implemented in FakeKV")
+}

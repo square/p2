@@ -61,6 +61,7 @@ type consulKV interface {
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
 	CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
 	DeleteCAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
+	Txn(txn api.KVTxnOps, q *api.QueryOptions) (bool, *api.KVTxnResponse, *api.QueryMeta, error)
 }
 
 type consulStore struct {
@@ -124,6 +125,7 @@ func (s *consulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabe
 	if err != nil {
 		return fields.RC{}, err
 	}
+
 	rc := fields.RC{
 		ID:              id,
 		Manifest:        manifest,
@@ -156,20 +158,31 @@ func (s *consulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabe
 }
 
 func (s *consulStore) Get(id fields.ID) (fields.RC, error) {
+	rc, _, err := s.getWithIndex(id)
+	return rc, err
+}
+
+func (s *consulStore) getWithIndex(id fields.ID) (fields.RC, uint64, error) {
 	rcp, err := s.rcPath(id)
 	if err != nil {
-		return fields.RC{}, err
+		return fields.RC{}, 0, err
 	}
 
 	kvp, _, err := s.kv.Get(rcp, nil)
 	if err != nil {
-		return fields.RC{}, consulutil.NewKVError("get", rcp, err)
+		return fields.RC{}, 0, consulutil.NewKVError("get", rcp, err)
 	}
 	if kvp == nil {
 		// ID didn't exist
-		return fields.RC{}, NoReplicationController
+		return fields.RC{}, 0, NoReplicationController
 	}
-	return kvpToRC(kvp)
+
+	rc, err := kvpToRC(kvp)
+	if err != nil {
+		return fields.RC{}, kvp.ModifyIndex, err
+	}
+
+	return rc, kvp.ModifyIndex, nil
 }
 
 func (s *consulStore) List() ([]fields.RC, error) {
@@ -732,6 +745,85 @@ func (s *consulStore) LockForUpdateCreation(rcID fields.ID, session consul.Sessi
 	}
 
 	return session.Lock(updateCreationLockPath)
+}
+
+// TransferReplicaCounts supports transactionally updating the replica counts
+// of two RCs in consul.  This is useful for rolling updates to transition
+// nodes from the old RC to the new one without risking the consul database
+// dying between updates and violating replica count invariants
+func (s *consulStore) TransferReplicaCounts(toRCID fields.ID, replicasToAdd int, fromRCID fields.ID, replicasToRemove int) error {
+	toRCPath, err := s.rcPath(toRCID)
+	if err != nil {
+		return util.Errorf("couldn't transfer replica counts: %s", err)
+	}
+
+	fromRCPath, err := s.rcPath(fromRCID)
+	if err != nil {
+		return util.Errorf("couldn't transfer replica counts: %s", err)
+	}
+
+	toRC, toRCIndex, err := s.getWithIndex(toRCID)
+	if err != nil {
+		return util.Errorf("couldn't transfer replica counts: %s", err)
+	}
+
+	fromRC, fromRCIndex, err := s.getWithIndex(fromRCID)
+	if err != nil {
+		return util.Errorf("couldn't transfer replica counts: %s", err)
+	}
+
+	toRC.ReplicasDesired = toRC.ReplicasDesired + replicasToAdd
+	fromRC.ReplicasDesired = fromRC.ReplicasDesired - replicasToRemove
+
+	toRCBytes, err := json.Marshal(toRC)
+	if err != nil {
+		return util.Errorf("couldn't transfer replica counts: %s", err)
+	}
+
+	fromRCBytes, err := json.Marshal(fromRC)
+	if err != nil {
+		return util.Errorf("couldn't transfer replica counts: %s", err)
+	}
+
+	ops := api.KVTxnOps{
+		{
+			Verb:  api.KVCAS,
+			Key:   fromRCPath,
+			Value: fromRCBytes,
+			Index: fromRCIndex,
+		},
+		{
+			Verb:  api.KVCAS,
+			Key:   toRCPath,
+			Value: toRCBytes,
+			Index: toRCIndex,
+		},
+	}
+
+	ok, resp, _, err := s.kv.Txn(ops, nil)
+	if err != nil {
+		return util.Errorf("replica count transfer failed: %s", err)
+	}
+
+	if !ok {
+		return util.Errorf("replica count transfer transaction was rolled back. errors: %s", formatTxnErrors(resp))
+	}
+
+	// we don't care what the response was if it worked
+	return nil
+}
+
+func formatTxnErrors(txnResponse *api.KVTxnResponse) string {
+	if txnResponse == nil {
+		return "none"
+	}
+
+	txnErrorsStrings := make([]string, len(txnResponse.Errors))
+	for i, err := range txnResponse.Errors {
+		txnErrorsStrings[i] = fmt.Sprintf("op %d: %s", err.OpIndex, err.What)
+	}
+
+	return strings.Join(txnErrorsStrings, ", ")
 }
 
 func keysToRCIDs(keys []string) ([]fields.ID, error) {
