@@ -6,7 +6,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pc/fields"
@@ -16,16 +18,21 @@ import (
 	"github.com/square/p2/pkg/store/consul/pcstore"
 	"github.com/square/p2/pkg/types"
 
+	"sort"
+
 	"github.com/Sirupsen/logrus"
+	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
-	nodeName     = kingpin.Flag("node", "The node to do the scheduling on. Uses the hostname by default.").String()
-	watchReality = kingpin.Flag("reality", "Watch the reality store instead of the intent store. False by default").Default("false").Bool()
-	hooks        = kingpin.Flag("hook", "Watch hooks.").Bool()
-	podClusters  = kingpin.Flag("pod-clusters", "Watch pod clusters and their labeled pods").Bool()
+	nodeName      = kingpin.Flag("node", "The node to do the scheduling on. Uses the hostname by default.").String()
+	watchReality  = kingpin.Flag("reality", "Watch the reality store instead of the intent store. False by default").Default("false").Bool()
+	hooks         = kingpin.Flag("hook", "Watch hooks.").Bool()
+	podClusters   = kingpin.Flag("pod-clusters", "Watch pod clusters and their labeled pods").Bool()
+	watchHealthF  = kingpin.Flag("health", "Watch health using ConsulHealthChecker").Bool()
+	healthService = kingpin.Arg("health-pod", "Pod to watch. Required if --health is passed").String()
 )
 
 func main() {
@@ -43,6 +50,13 @@ func main() {
 	}
 	if *podClusters {
 		watchPodClusters(client, applicator)
+	} else if *watchHealthF {
+		if *healthService == "" {
+			log.Fatal("Refusing to watch entire health tree, please set a pod ID with --health-pod")
+		}
+
+		watchHealth(*healthService, client)
+		return
 	} else {
 		podPrefix := consul.INTENT_TREE
 		if *watchReality {
@@ -121,4 +135,55 @@ func watchPodClusters(client consulutil.ConsulClient, applicator labels.Applicat
 	if err := pcStore.WatchAndSync(&printSyncer{logger}, quitCh); err != nil {
 		log.Fatalf("error watching pod cluster: %v", err)
 	}
+}
+
+func watchHealth(service string, client consulutil.ConsulClient) {
+	hc := checker.NewConsulHealthChecker(client)
+	healthResults := make(chan map[types.NodeName]health.Result)
+	errCh := make(chan error)
+	quitCh := make(chan struct{})
+	go hc.WatchService(*healthService, healthResults, errCh, quitCh)
+
+	go func() {
+		signalCh := make(chan os.Signal, 2)
+		signal.Notify(signalCh, syscall.SIGTERM, os.Interrupt)
+		received := <-signalCh
+		log.Printf("[WARN] Received %v, shutting down", received)
+		close(quitCh)
+	}()
+
+	for {
+		select {
+		case hr := <-healthResults:
+			var sortedHealthResults nodeHealthResults
+			for _, r := range hr {
+				sortedHealthResults = append(sortedHealthResults, r)
+			}
+			sort.Sort(sortedHealthResults)
+			for _, r := range sortedHealthResults {
+				fmt.Printf("%s %s\n", r.Node.String(), r.Status)
+			}
+			fmt.Printf("\n")
+		case err := <-errCh:
+			log.Printf("[ERROR] %v\n", err)
+		case <-quitCh:
+			os.Exit(0)
+		default:
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+}
+
+type nodeHealthResults []health.Result
+
+func (hrs nodeHealthResults) Len() int {
+	return len(hrs)
+}
+
+func (hrs nodeHealthResults) Less(i, j int) bool {
+	return hrs[i].Node.String() < hrs[j].Node.String()
+}
+
+func (hrs nodeHealthResults) Swap(i, j int) {
+	hrs[i], hrs[j] = hrs[j], hrs[i]
 }
