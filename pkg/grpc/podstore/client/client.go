@@ -1,6 +1,8 @@
 package client
 
 import (
+	"time"
+
 	"github.com/square/p2/pkg/grpc/podstore"
 	podstore_protos "github.com/square/p2/pkg/grpc/podstore/protos"
 	"github.com/square/p2/pkg/logging"
@@ -12,6 +14,7 @@ import (
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 )
 
 type Client struct {
@@ -59,12 +62,15 @@ type PodStatusResult struct {
 }
 
 func (c Client) WatchStatus(ctx context.Context, podUniqueKey types.PodUniqueKey, waitForExists bool) (<-chan PodStatusResult, error) {
-	stream, err := c.client.WatchPodStatus(ctx, &podstore_protos.WatchPodStatusRequest{
+	innerCtx, innerCancel := context.WithCancel(ctx)
+
+	stream, err := c.client.WatchPodStatus(innerCtx, &podstore_protos.WatchPodStatusRequest{
 		PodUniqueKey:    podUniqueKey.String(),
 		StatusNamespace: consul.PreparerPodStatusNamespace.String(),
 		WaitForExists:   waitForExists,
 	})
 	if err != nil {
+		innerCancel()
 		return nil, err
 	}
 
@@ -73,6 +79,11 @@ func (c Client) WatchStatus(ctx context.Context, podUniqueKey types.PodUniqueKey
 		defer close(outCh)
 		for {
 			status, err := stream.Recv()
+			if grpc.Code(err) == codes.Canceled {
+				// client canceled the context and our RPC, shutting down
+				return
+			}
+
 			select {
 			case <-ctx.Done():
 				return
@@ -80,6 +91,30 @@ func (c Client) WatchStatus(ctx context.Context, podUniqueKey types.PodUniqueKey
 				PodStatus: status,
 				Error:     err,
 			}:
+
+				// keep retrying the RPC until success
+				for err != nil {
+					time.Sleep(2 * time.Second)
+
+					innerCtx, innerCancel = context.WithCancel(ctx)
+
+					stream, err = c.client.WatchPodStatus(innerCtx, &podstore_protos.WatchPodStatusRequest{
+						PodUniqueKey:    podUniqueKey.String(),
+						StatusNamespace: consul.PreparerPodStatusNamespace.String(),
+						WaitForExists:   waitForExists,
+					})
+					if err != nil {
+						innerCancel()
+						select {
+						case <-ctx.Done():
+							return
+						case outCh <- PodStatusResult{
+							PodStatus: status,
+							Error:     err,
+						}:
+						}
+					}
+				}
 			}
 		}
 	}()

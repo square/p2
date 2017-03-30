@@ -123,7 +123,7 @@ func watchStatus(client client.Client, logger logging.Logger) {
 		}
 
 		if val.Error != nil {
-			logger.Fatal(val.Error)
+			logger.WithError(val.Error).Infoln("status watcher encountered an error")
 		}
 
 		bytes, err := json.Marshal(val)
