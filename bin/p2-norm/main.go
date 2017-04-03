@@ -32,10 +32,10 @@ func main() {
 	var err error
 	output := os.Stdout
 	if *filename == "" || *filename == "-" {
-		data, err = ioutil.ReadAll(os.Stdin)
 		if *write {
 			logger.Fatalln("--write is incompatible with reading from stdin")
 		}
+		data, err = ioutil.ReadAll(os.Stdin)
 	} else {
 		data, err = ioutil.ReadFile(*filename)
 		if err == nil && *write {
