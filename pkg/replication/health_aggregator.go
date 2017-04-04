@@ -2,6 +2,7 @@ package replication
 
 import (
 	"sync"
+	"time"
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
@@ -17,14 +18,14 @@ type podHealth struct {
 	curHealth map[types.NodeName]health.Result
 }
 
-func AggregateHealth(id types.PodID, checker checker.ConsulHealthChecker) *podHealth {
+func AggregateHealth(id types.PodID, checker checker.ConsulHealthChecker, watchDelay time.Duration) *podHealth {
 	p := &podHealth{
 		podId:   id,
 		checker: checker,
 		cond:    sync.NewCond(&sync.Mutex{}),
 		quit:    make(chan struct{}),
 	}
-	go p.beginWatch()
+	go p.beginWatch(watchDelay)
 
 	// Wait for first update
 	p.cond.L.Lock()
@@ -36,7 +37,7 @@ func AggregateHealth(id types.PodID, checker checker.ConsulHealthChecker) *podHe
 	return p
 }
 
-func (p *podHealth) beginWatch() {
+func (p *podHealth) beginWatch(watchDelay time.Duration) {
 	// TODO: hook up error reporting
 	errCh := make(chan error)
 	go func() {
@@ -45,7 +46,7 @@ func (p *podHealth) beginWatch() {
 	}()
 
 	resultCh := make(chan map[types.NodeName]health.Result)
-	go p.checker.WatchService(p.podId.String(), resultCh, errCh, p.quit)
+	go p.checker.WatchService(p.podId.String(), resultCh, errCh, p.quit, watchDelay)
 
 	// Always unblock AggregateHealth()
 	defer func() {

@@ -25,7 +25,9 @@ type ConsulHealthChecker interface {
 		serviceID string,
 		resultCh chan<- map[types.NodeName]health.Result,
 		errCh chan<- error,
-		quitCh <-chan struct{})
+		quitCh <-chan struct{},
+		watchDelay time.Duration,
+	)
 	WatchHealth(
 		resultCh chan []*health.Result,
 		errCh chan<- error,
@@ -180,15 +182,22 @@ func (c consulHealthChecker) WatchService(
 	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{},
+	watchDelay time.Duration,
 ) {
 	defer close(resultCh)
 	var curIndex uint64 = 0
 
+	if watchDelay < time.Second {
+		watchDelay = time.Second
+	}
+
+	timer := time.NewTimer(0)
 	for {
 		select {
 		case <-quitCh:
 			return
-		case <-time.After(1 * time.Second):
+		case <-timer.C:
+			timer.Reset(watchDelay)
 			results, queryMeta, err := c.client.KV().List(consul.HealthPath(serviceID, "/"), &api.QueryOptions{
 				WaitIndex: curIndex,
 			})

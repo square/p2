@@ -320,12 +320,21 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 
 	result := make(chan bool, 1)
 	go func() {
+		watchDelay := 1 * time.Second
 		result <- roll.NewUpdate(roll_fields.Update{
 			OldRC:           rc_fields.ID(oldID),
 			NewRC:           rc_fields.ID(newID),
 			DesiredReplicas: want,
 			MinimumReplicas: need,
-		}, r.consuls, r.rcs, r.hcheck, r.labeler, r.logger, session).Run(quit)
+		},
+			r.consuls,
+			r.rcs,
+			r.hcheck,
+			r.labeler,
+			r.logger,
+			session,
+			watchDelay,
+		).Run(quit)
 		close(result)
 	}()
 

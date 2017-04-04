@@ -2,6 +2,7 @@ package store
 
 import (
 	"testing"
+	"time"
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/types"
@@ -16,7 +17,13 @@ func (hc *FakeHealthChecker) WatchNodeService(nodename types.NodeName, serviceID
 	panic("not implemented")
 }
 
-func (hc *FakeHealthChecker) WatchService(serviceID string, resultCh chan<- map[types.NodeName]health.Result, errCh chan<- error, quitCh <-chan struct{}) {
+func (hc *FakeHealthChecker) WatchService(
+	serviceID string,
+	resultCh chan<- map[types.NodeName]health.Result,
+	errCh chan<- error,
+	quitCh <-chan struct{},
+	watchDelay time.Duration,
+) {
 	panic("not implemented")
 }
 

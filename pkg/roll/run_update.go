@@ -43,6 +43,12 @@ type update struct {
 
 	oldRCUnlocker consulutil.Unlocker
 	newRCUnlocker consulutil.Unlocker
+
+	// watchDelay can be used to tune the QPS (and therefore bandwidth)
+	// footprint of the health watches performed by the update. A higher
+	// value will slow the responsiveness of the update to health changes
+	// but will reduce the QPS on the datastore
+	watchDelay time.Duration
 }
 
 // Create a new Update. The consul.Store, rcstore.Store, labels.Applicator and
@@ -57,19 +63,21 @@ func NewUpdate(
 	labeler rc.Labeler,
 	logger logging.Logger,
 	session consul.Session,
+	watchDelay time.Duration,
 ) Update {
 	logger = logger.SubLogger(logrus.Fields{
 		"desired_replicas": f.DesiredReplicas,
 		"minimum_replicas": f.MinimumReplicas,
 	})
 	return &update{
-		Update:  f,
-		consuls: consuls,
-		rcs:     rcs,
-		hcheck:  hcheck,
-		labeler: labeler,
-		logger:  logger,
-		session: session,
+		Update:     f,
+		consuls:    consuls,
+		rcs:        rcs,
+		hcheck:     hcheck,
+		labeler:    labeler,
+		logger:     logger,
+		session:    session,
+		watchDelay: watchDelay,
 	}
 }
 
@@ -147,7 +155,8 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 	hErrs := make(chan error)
 	hQuit := make(chan struct{})
 	defer close(hQuit)
-	go u.hcheck.WatchService(string(newFields.Manifest.ID()), hChecks, hErrs, hQuit)
+	watchDelay := 1 * time.Second
+	go u.hcheck.WatchService(string(newFields.Manifest.ID()), hChecks, hErrs, hQuit, watchDelay)
 
 	if updateSucceeded := u.rollLoop(newFields.Manifest.ID(), hChecks, hErrs, quit); !updateSucceeded {
 		// We were asked to quit. Do so without cleaning old RC.

@@ -142,7 +142,8 @@ func watchHealth(service string, client consulutil.ConsulClient) {
 	healthResults := make(chan map[types.NodeName]health.Result)
 	errCh := make(chan error)
 	quitCh := make(chan struct{})
-	go hc.WatchService(*healthService, healthResults, errCh, quitCh)
+	watchDelay := 1 * time.Second
+	go hc.WatchService(*healthService, healthResults, errCh, quitCh, watchDelay)
 
 	go func() {
 		signalCh := make(chan os.Signal, 2)

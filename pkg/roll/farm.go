@@ -33,10 +33,11 @@ type UpdateFactory struct {
 	RCStore       rcstore.Store
 	HealthChecker checker.ConsulHealthChecker
 	Labeler       rc.Labeler
+	WatchDelay    time.Duration
 }
 
 func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consul.Session) Update {
-	return NewUpdate(u, f.Store, f.RCStore, f.HealthChecker, f.Labeler, l, session)
+	return NewUpdate(u, f.Store, f.RCStore, f.HealthChecker, f.Labeler, l, session, f.WatchDelay)
 }
 
 type RCGetter interface {

@@ -117,6 +117,11 @@ type replication struct {
 	// Used to log replications that have timed out
 	timedOutReplications      []types.NodeName
 	timedOutReplicationsMutex sync.Mutex
+
+	// Used to tune the reactiveness of the replication to health changes
+	// to trade off with QPS and bandwidth. 1 second is the lower bound for
+	// this value.
+	healthWatchDelay time.Duration
 }
 
 // Attempts to claim a lock on replicating this pod. Other pkg/replication
@@ -233,7 +238,7 @@ func (r *replication) Enact() {
 
 	nodeQueue := make(chan types.NodeName)
 
-	aggregateHealth := AggregateHealth(r.manifest.ID(), r.health)
+	aggregateHealth := AggregateHealth(r.manifest.ID(), r.health, r.healthWatchDelay)
 	// this loop multiplexes the node queue across some goroutines
 
 	var updatePool sync.WaitGroup

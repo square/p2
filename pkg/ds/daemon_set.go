@@ -99,14 +99,15 @@ type store interface {
 type daemonSet struct {
 	fields.DaemonSet
 
-	contention    dsContention
-	logger        logging.Logger
-	store         store
-	scheduler     scheduler.Scheduler
-	dsStore       dsstore.Store
-	applicator    Labeler
-	watcher       LabelWatcher
-	healthChecker *checker.ConsulHealthChecker
+	contention       dsContention
+	logger           logging.Logger
+	store            store
+	scheduler        scheduler.Scheduler
+	dsStore          dsstore.Store
+	applicator       Labeler
+	watcher          LabelWatcher
+	healthChecker    *checker.ConsulHealthChecker
+	healthWatchDelay time.Duration
 
 	// This is the current replication enact go routine that is running
 	currentReplication replication.Replication
@@ -134,6 +135,7 @@ func New(
 	healthChecker *checker.ConsulHealthChecker,
 	rateLimitInterval time.Duration,
 	cachedPodMatch bool,
+	healthWatchDelay time.Duration,
 ) DaemonSet {
 	return &daemonSet{
 		DaemonSet: fields,
@@ -145,6 +147,7 @@ func New(
 		watcher:            watcher,
 		scheduler:          scheduler.NewApplicatorScheduler(applicator),
 		healthChecker:      healthChecker,
+		healthWatchDelay:   healthWatchDelay,
 		currentReplication: nil,
 		rateLimitInterval:  rateLimitInterval,
 		cachedPodMatch:     cachedPodMatch,
@@ -540,6 +543,7 @@ func (ds *daemonSet) PublishToReplication() error {
 		health.HealthState(health.Passing),
 		lockMessage,
 		ds.Timeout,
+		ds.healthWatchDelay,
 	)
 	if err != nil {
 		ds.logger.Errorf("Could not initialize replicator: %s", err)
