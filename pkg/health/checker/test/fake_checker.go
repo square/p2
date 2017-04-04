@@ -2,6 +2,7 @@ package test
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
@@ -27,7 +28,7 @@ func (s singleServiceChecker) WatchNodeService(nodename types.NodeName, serviceI
 	panic("WatchNodeService not implemented")
 }
 
-func (s singleServiceChecker) WatchService(serviceID string, resultCh chan<- map[types.NodeName]health.Result, errCh chan<- error, quitCh <-chan struct{}) {
+func (s singleServiceChecker) WatchService(serviceID string, resultCh chan<- map[types.NodeName]health.Result, errCh chan<- error, quitCh <-chan struct{}, watchDelay time.Duration) {
 	panic("WatchService not implemented")
 
 }
@@ -89,6 +90,7 @@ func (h AlwaysHappyHealthChecker) WatchService(
 	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{},
+	watchDelay time.Duration,
 ) {
 	allHappy := make(map[types.NodeName]health.Result)
 	for _, node := range h.allNodes {

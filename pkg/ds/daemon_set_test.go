@@ -184,6 +184,7 @@ func TestSchedule(t *testing.T) {
 		&happyHealthChecker,
 		0,
 		false,
+		0,
 	).(*daemonSet)
 
 	labeled := labeledPods(t, ds)
@@ -397,6 +398,7 @@ func TestPublishToReplication(t *testing.T) {
 		&happyHealthChecker,
 		0,
 		false,
+		0,
 	).(*daemonSet)
 
 	labeled := labeledPods(t, ds)

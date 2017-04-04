@@ -3,6 +3,7 @@ package replication
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
@@ -42,6 +43,7 @@ func testReplicatorAndServer(t *testing.T) (Replicator, Store, consulutil.Fixtur
 		threshold,
 		testLockMessage,
 		NoTimeout,
+		0,
 	)
 
 	if err != nil {
@@ -103,6 +105,7 @@ func (h channelBasedHealthChecker) WatchService(
 	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{},
+	watchDelay time.Duration,
 ) {
 	var results map[types.NodeName]health.Result
 	select {

@@ -46,7 +46,8 @@ type Farm struct {
 	logger  logging.Logger
 	alerter alerting.Alerter
 
-	healthChecker *checker.ConsulHealthChecker
+	healthChecker    *checker.ConsulHealthChecker
+	healthWatchDelay time.Duration
 
 	monitorHealth  bool
 	cachedPodMatch bool
@@ -73,6 +74,7 @@ func NewFarm(
 	rateLimitInterval time.Duration,
 	monitorHealth bool,
 	cachedPodMatch bool,
+	healthWatchDelay time.Duration,
 ) *Farm {
 	if alerter == nil {
 		alerter = alerting.NewNop()
@@ -89,6 +91,7 @@ func NewFarm(
 		logger:            logger,
 		alerter:           alerter,
 		healthChecker:     healthChecker,
+		healthWatchDelay:  healthWatchDelay,
 		rateLimitInterval: rateLimitInterval,
 		monitorHealth:     monitorHealth,
 		cachedPodMatch:    cachedPodMatch,
@@ -571,6 +574,7 @@ func (dsf *Farm) spawnDaemonSet(
 		dsf.healthChecker,
 		dsf.rateLimitInterval,
 		dsf.cachedPodMatch,
+		dsf.healthWatchDelay,
 	)
 
 	quitSpawnCh := make(chan struct{})
@@ -581,8 +585,11 @@ func (dsf *Farm) spawnDaemonSet(
 
 	if dsf.monitorHealth {
 		go func() {
-			aggregateHealth := replication.AggregateHealth(ds.PodID(), *dsf.healthChecker)
-			ticks := time.NewTicker(1 * time.Minute)
+			// daemon sets are deployed to many servers and deploys are very slow. This means that
+			// 1) the data size for each health response is huge which can suck up bandwidth
+			// 2) the metrics aren't going to change very frequently, so a low sample rate is acceptable
+			aggregateHealth := replication.AggregateHealth(ds.PodID(), *dsf.healthChecker, dsf.healthWatchDelay)
+			ticks := time.NewTicker(dsf.healthWatchDelay)
 
 			defer aggregateHealth.Stop()
 			defer ticks.Stop()

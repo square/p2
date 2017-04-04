@@ -49,14 +49,15 @@ type Replicator interface {
 
 // Replicator creates replications
 type replicator struct {
-	manifest  manifest.Manifest // the manifest to replicate
-	logger    logging.Logger
-	nodes     []types.NodeName
-	active    int // maximum number of nodes to update concurrently
-	store     Store
-	labeler   Labeler
-	health    checker.ConsulHealthChecker
-	threshold health.HealthState // minimum state to treat as "healthy"
+	manifest         manifest.Manifest // the manifest to replicate
+	logger           logging.Logger
+	nodes            []types.NodeName
+	active           int // maximum number of nodes to update concurrently
+	store            Store
+	labeler          Labeler
+	health           checker.ConsulHealthChecker
+	threshold        health.HealthState // minimum state to treat as "healthy"
+	healthWatchDelay time.Duration      // interval of time between initiating health watches
 
 	lockMessage string
 
@@ -75,6 +76,7 @@ func NewReplicator(
 	threshold health.HealthState,
 	lockMessage string,
 	timeout time.Duration,
+	healthWatchDelay time.Duration,
 ) (Replicator, error) {
 	if active < 1 {
 		return replicator{}, util.Errorf("Active must be >= 1, was %d", active)
@@ -84,16 +86,17 @@ func NewReplicator(
 		active = 50
 	}
 	return replicator{
-		manifest:    manifest,
-		logger:      logger,
-		nodes:       nodes,
-		active:      active,
-		store:       store,
-		labeler:     labeler,
-		health:      health,
-		threshold:   threshold,
-		lockMessage: lockMessage,
-		timeout:     timeout,
+		manifest:         manifest,
+		logger:           logger,
+		nodes:            nodes,
+		active:           active,
+		store:            store,
+		labeler:          labeler,
+		health:           health,
+		threshold:        threshold,
+		lockMessage:      lockMessage,
+		timeout:          timeout,
+		healthWatchDelay: healthWatchDelay,
 	}, nil
 }
 
@@ -158,16 +161,17 @@ func (r replicator) initializeReplicationWithCheck(
 
 	errCh := make(chan error)
 	replication := &replication{
-		active:      r.active,
-		nodes:       r.nodes,
-		store:       r.store,
-		labeler:     r.labeler,
-		manifest:    r.manifest,
-		health:      r.health,
-		threshold:   r.threshold,
-		logger:      r.logger,
-		rateLimiter: ticker,
-		errCh:       errCh,
+		active:                 r.active,
+		nodes:                  r.nodes,
+		store:                  r.store,
+		labeler:                r.labeler,
+		manifest:               r.manifest,
+		health:                 r.health,
+		threshold:              r.threshold,
+		logger:                 r.logger,
+		rateLimiter:            ticker,
+		errCh:                  errCh,
+		healthWatchDelay:       r.healthWatchDelay,
 		replicationCancelledCh: make(chan struct{}),
 		replicationDoneCh:      make(chan struct{}),
 		enactedCh:              make(chan struct{}),
