@@ -233,5 +233,15 @@ func (s *fakeStore) LockForUpdateCreation(rcID fields.ID, session consul.Session
 }
 
 func (s *fakeStore) TransferReplicaCounts(toRCID fields.ID, replicasToAdd int, fromRCID fields.ID, replicasToRemove int) error {
-	return util.Errorf("TransferReplicaCounts not implemented in the fake store")
+	err := s.AddDesiredReplicas(toRCID, replicasToAdd)
+	if err != nil {
+		return err
+	}
+
+	err = s.AddDesiredReplicas(fromRCID, -replicasToRemove)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
