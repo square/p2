@@ -138,7 +138,7 @@ func (rcf *Farm) mainLoop(quit <-chan struct{}) {
 			select {
 			case <-quit:
 				return
-			case err := <-rcErr:
+			case err := <-errCh:
 				rcf.logger.WithError(err).Errorln("Could not read consul replication controllers")
 			}
 		}
