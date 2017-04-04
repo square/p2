@@ -133,6 +133,17 @@ func (rcf *Farm) mainLoop(quit <-chan struct{}) {
 
 	rcKeyWatch, rcErr := rcf.rcStore.WatchRCKeysWithLockInfo(subQuit, rcf.rcWatchPauseTime)
 
+	go func(errCh <-chan error) {
+		for {
+			select {
+			case <-quit:
+				return
+			case err := <-rcErr:
+				rcf.logger.WithError(err).Errorln("Could not read consul replication controllers")
+			}
+		}
+	}(rcErr)
+
 START_LOOP:
 	for {
 		// Check the quit channel independently of the others before entering a multi-channel select.
@@ -153,8 +164,6 @@ START_LOOP:
 			rcf.session = nil
 			rcf.releaseChildren()
 			return
-		case err := <-rcErr:
-			rcf.logger.WithError(err).Errorln("Could not read consul replication controllers")
 		case rcKeys := <-rcKeyWatch:
 			startTime := time.Now()
 			rcf.logger.WithField("n", len(rcKeys)).Debugln("Received replication controller update")
