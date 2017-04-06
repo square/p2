@@ -374,6 +374,32 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 		}
 	}
 
+	if len(changes.Same) > 0 {
+		dsf.logger.Infof("The following %d daemon sets are the same: %s", len(changes.Same), dsIDs(changes.Same))
+		for _, dsFields := range changes.Same {
+			if _, ok := dsf.children[dsFields.ID]; ok {
+				// For unchanged daemon sets, if it's already locked by us, we don't need to do anything.
+				continue
+			}
+
+			dsLogger := dsf.makeDSLogger(*dsFields)
+			dsUnlocker, err := dsf.dsLocker.LockForOwnership(dsFields.ID, dsf.session)
+			if _, ok := err.(consulutil.AlreadyLockedError); ok {
+				dsf.logger.Infof("Lock on daemon set '%v' was already acquired by another farm", dsFields.ID)
+				if err != nil {
+					dsf.logger.Infof("Additional ds farm lock errors: %v", err)
+				}
+				continue
+			} else if err != nil {
+				dsf.handleSessionExpiry(*dsFields, dsLogger, err)
+				return
+			}
+			dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
+
+			dsf.children[dsFields.ID] = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger)
+		}
+	}
+
 	if len(changes.Deleted) > 0 {
 		dsf.logger.Infof("The following %d daemon sets have been deleted: %s", len(changes.Deleted), dsIDs(changes.Deleted))
 		for _, dsFields := range changes.Deleted {

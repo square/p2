@@ -918,6 +918,95 @@ func TestMultipleFarms(t *testing.T) {
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
 }
 
+func TestRelock(t *testing.T) {
+	retryInterval = testFarmRetryInterval
+
+	dsStore := dsstoretest.NewFake()
+	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
+	applicator := labels.NewFakeApplicator()
+
+	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
+	preparer.Enable()
+	defer preparer.Disable()
+
+	session := consultest.NewSession()
+
+	allNodes := []types.NodeName{"node1", "node2", "node3"}
+	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+
+	mkFarm := func(logName string) (chan<- struct{}, <-chan struct{}) {
+		farm := &Farm{
+			dsStore:   dsStore,
+			dsLocker:  dsStore,
+			store:     consulStore,
+			scheduler: scheduler.NewApplicatorScheduler(applicator),
+			labeler:   applicator,
+			watcher:   applicator,
+			children:  make(map[ds_fields.ID]*childDS),
+			session:   session,
+			logger: logging.DefaultLogger.SubLogger(logrus.Fields{
+				"farm": logName,
+			}),
+			alerter:       alerting.NewNop(),
+			healthChecker: &happyHealthChecker,
+		}
+		quitCh := make(chan struct{})
+		farmHasQuit := make(chan struct{})
+		go func() {
+			go farm.cleanupDaemonSetPods(quitCh)
+			farm.mainLoop(quitCh)
+			close(farmHasQuit)
+		}()
+
+		return quitCh, farmHasQuit
+	}
+
+	firstQuitCh, farmHasQuit := mkFarm("firstRelock")
+
+	mkds := func(zone string) ds_fields.DaemonSet {
+		podID := types.PodID("testPod")
+		minHealth := 0
+		clusterName := ds_fields.ClusterName("some_name")
+
+		manifestBuilder := manifest.NewBuilder()
+		manifestBuilder.SetID(podID)
+		podManifest := manifestBuilder.GetManifest()
+
+		nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{zone})
+		dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
+		Assert(t).IsNil(err, "Expected no error creating request")
+		return dsData
+	}
+
+	dsData := mkds("az1")
+
+	assertLabel := func(node, desc string) {
+		applicator.SetLabel(labels.NODE, node, pc_fields.AvailabilityZoneLabel, "az1")
+		labeled, err := waitForPodLabel(applicator, true, node+"/testPod")
+		Assert(t).IsNil(err, "Expected pod to have a dsID label when "+desc)
+		dsID := labeled.Labels.Get(DSIDLabel)
+		Assert(t).AreEqual(dsData.ID.String(), dsID, "Unexpected dsID labeled when "+desc)
+	}
+
+	assertLabel("node1", "one farm")
+
+	secondQuitCh, _ := mkFarm("secondRelock")
+	defer close(secondQuitCh)
+
+	assertLabel("node2", "second farm created, first farm still active")
+
+	close(firstQuitCh)
+	<-farmHasQuit
+
+	// Create a DS to make the watch fire.
+	// Don't modify the existing DS.
+	// The point of this test is to see if the second farm picks up the existing DS despite it not changing.
+	_ = mkds("az2")
+
+	// After the first farm quits, the second farm should take over.
+	assertLabel("node3", "first farm quit")
+}
+
 func waitForPodLabel(applicator labels.Applicator, hasDSIDLabel bool, podPath string) (labels.Labeled, error) {
 	var labeled labels.Labeled
 	var err error

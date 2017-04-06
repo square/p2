@@ -256,6 +256,7 @@ type WatchedDaemonSets struct {
 	Created []*fields.DaemonSet
 	Updated []*fields.DaemonSet
 	Deleted []*fields.DaemonSet
+	Same    []*fields.DaemonSet
 	Err     error
 }
 
@@ -311,6 +312,10 @@ func (s *ConsulStore) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
 			if err != nil {
 				outgoingDSs.Err = util.Errorf("Watch create error: %s; ", err)
 			}
+			sameDSs, err := kvpsToDSs(kvps.Same)
+			if err != nil {
+				outgoingDSs.Err = util.Errorf("%sWatch same error: %s; ", outgoingDSs.Err, err)
+			}
 			updatedDSs, err := kvpsToDSs(kvps.Updated)
 			if err != nil {
 				outgoingDSs.Err = util.Errorf("%sWatch update error: %s; ", outgoingDSs.Err, err)
@@ -335,6 +340,10 @@ func (s *ConsulStore) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
 				// and should not be used outside of this block
 				dsCopy := ds
 				outgoingDSs.Created = append(outgoingDSs.Created, &dsCopy)
+			}
+			for _, ds := range sameDSs {
+				dsCopy := ds
+				outgoingDSs.Same = append(outgoingDSs.Same, &dsCopy)
 			}
 			for _, ds := range updatedDSs {
 				dsCopy := ds
