@@ -6,8 +6,10 @@ import (
 
 	"k8s.io/kubernetes/pkg/labels"
 
+	"github.com/pborman/uuid"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/util"
 )
 
 // ID is a named type alias for DaemonSet IDs
@@ -15,6 +17,14 @@ type ID string
 
 func (id ID) String() string {
 	return string(id)
+}
+
+func ToDaemonSetID(id string) (ID, error) {
+	if uuid.Parse(id) != nil {
+		return ID(id), nil
+	}
+
+	return "", util.Errorf("%s does not parse as a UUID", id)
 }
 
 // Cluster name is where the DaemonSet lives on

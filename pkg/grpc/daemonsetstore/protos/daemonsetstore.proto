@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package daemonsetstore;
+
+service P2DaemonSetStore {
+  rpc ListDaemonSets (ListDaemonSetsRequest) returns (ListDaemonSetsResponse) {}
+  rpc DisableDaemonSet (DisableDaemonSetRequest) returns (DisableDaemonSetResponse) {}
+  rpc WatchDaemonSets (WatchDaemonSetsRequest) returns (stream WatchDaemonSetsResponse) {}
+}
+
+// models fields/DaemonSet
+message DaemonSet {
+  string id = 1;
+  bool disabled = 2;
+  string manifest = 3;
+  int64 min_health = 4;
+  string name = 5;
+  string node_selector = 6;
+  string pod_id = 7;
+
+  // expressed in nanoseconds (matches time.Duration)
+  int64 timeout = 8;
+}
+
+message ListDaemonSetsRequest {}
+
+message ListDaemonSetsResponse {
+  repeated DaemonSet daemon_sets = 1;
+}
+
+message DisableDaemonSetRequest {
+  string daemon_set_id = 1;
+}
+
+message DisableDaemonSetResponse {}
+
+message WatchDaemonSetsRequest {}
+
+// models dsstore.WatchedDaemonSets
+message WatchDaemonSetsResponse {
+  repeated DaemonSet created = 1;
+  repeated DaemonSet updated = 2;
+  repeated DaemonSet deleted = 3;
+  string error = 4;
+}
