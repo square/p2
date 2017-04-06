@@ -56,7 +56,7 @@ func TestCreate(t *testing.T) {
 	}
 }
 
-func createDaemonSet(store *store, t *testing.T) ds_fields.DaemonSet {
+func createDaemonSet(store *ConsulStore, t *testing.T) ds_fields.DaemonSet {
 	podID := types.PodID("some_pod_id")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
@@ -617,8 +617,8 @@ func TestWatchAll(t *testing.T) {
 	Assert(t).AreEqual(ds.PodID, watched.DaemonSets[0].PodID, "Daemon sets should have equal pod ids")
 }
 
-func storeWithFakeKV() *store {
-	return &store{
+func storeWithFakeKV() *ConsulStore {
+	return &ConsulStore{
 		kv:      consulutil.NewFakeClient().KV(),
 		logger:  logging.DefaultLogger,
 		retries: 0,

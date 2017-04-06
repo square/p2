@@ -19,7 +19,7 @@ func TestLockForOwnership(t *testing.T) {
 		t.Fatalf("Unable to create fake session in fake store: %s", err)
 	}
 
-	rcstore := consulStore{}
+	rcstore := ConsulStore{}
 	unlocker, err := rcstore.LockForOwnership(testRCId, session)
 	if err != nil {
 		t.Fatalf("Unable to lock rc for ownership: %s", err)
@@ -39,7 +39,7 @@ func TestLockForMutation(t *testing.T) {
 		t.Fatalf("Unable to create fake session in fake store: %s", err)
 	}
 
-	rcstore := consulStore{}
+	rcstore := ConsulStore{}
 	unlocker, err := rcstore.LockForMutation(testRCId, session)
 	if err != nil {
 		t.Fatalf("Unable to lock rc for mutation: %s", err)
@@ -59,7 +59,7 @@ func TestLockForUpdateCreation(t *testing.T) {
 		t.Fatalf("Unable to create fake session in fake store: %s", err)
 	}
 
-	rcstore := consulStore{}
+	rcstore := ConsulStore{}
 	unlocker, err := rcstore.LockForUpdateCreation(testRCId, session)
 	if err != nil {
 		t.Fatalf("Unable to lock rc for update creation: %s", err)

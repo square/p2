@@ -92,7 +92,7 @@ type testRCStore interface {
 	List() ([]rc_fields.RC, error)
 }
 
-func newRollStore(t *testing.T, entries []fields.Update) (consulStore, testRCStore) {
+func newRollStore(t *testing.T, entries []fields.Update) (ConsulStore, testRCStore) {
 	storeFields := make(map[string]*api.KVPair)
 	for _, u := range entries {
 		path, err := RollPath(fields.ID(u.NewRC))
@@ -109,7 +109,7 @@ func newRollStore(t *testing.T, entries []fields.Update) (consulStore, testRCSto
 		}
 	}
 	rcStore := rcstore.NewFake()
-	return consulStore{
+	return ConsulStore{
 		kv: &consulutil.FakeKV{
 			Entries: storeFields,
 		},

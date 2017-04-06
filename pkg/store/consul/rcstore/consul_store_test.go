@@ -255,7 +255,7 @@ func TestPublishQuitsOnInChannelCloseAfterData(t *testing.T) {
 }
 
 func TestLockTypeFromKey(t *testing.T) {
-	store := consulStore{}
+	store := ConsulStore{}
 	expectedRCID := fields.ID("abcd-1234")
 	mutationLockPath, err := store.mutationLockPath(expectedRCID)
 	if err != nil {
