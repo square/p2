@@ -5,6 +5,8 @@ onto a grpc server call
 package client
 
 import (
+	"time"
+
 	label_protos "github.com/square/p2/pkg/grpc/labelstore/protos"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -27,17 +29,23 @@ func NewClient(conn *grpc.ClientConn, logger logging.Logger) Client {
 	}
 }
 
-// matches labels.Applicator interface
+// WatchMatches uses streaming gRPC to subscribe to updates to a label selector
+// and passes each update on the output channel. Returns an error if the
+// initial gRPC call fails. Any further connection breakages will attempt to be
+// re-established in a loop.
 func (c Client) WatchMatches(selector klabels.Selector, labelType labels.Type, quitCh <-chan struct{}) (chan []labels.Labeled, error) {
-	ctx, cancelFunc := context.WithCancel(context.Background())
+	outerCtx, cancelFunc := context.WithCancel(context.Background())
 
 	go func() {
 		<-quitCh
 
+		c.logger.Infoln("label store client: quit channel closed, cancelling RPCs")
 		// Cancel the RPC
 		cancelFunc()
 	}()
-	watchClient, err := c.labelStoreClient.WatchMatches(ctx, &label_protos.WatchMatchesRequest{
+
+	innerCtx, innerCancel := context.WithCancel(outerCtx)
+	watchClient, err := c.labelStoreClient.WatchMatches(innerCtx, &label_protos.WatchMatchesRequest{
 		LabelType: labelTypeToProtoLabelType(labelType),
 		Selector:  selector.String(),
 	})
@@ -51,15 +59,31 @@ func (c Client) WatchMatches(selector klabels.Selector, labelType labels.Type, q
 		for {
 			labeled, err := watchClient.Recv()
 			if grpc.Code(err) == codes.Canceled {
+				c.logger.Infoln("label store client: terminating WatchMatches()")
 				// This just means quitCh fired and the RPC was canceled as expected
 				return
 			}
 
 			if err != nil {
-				// doesn't hurt to call cancelFunc() more than once potentially
-				cancelFunc()
-				c.logger.WithError(err).Errorln("Unexpected error reading from WatchMatches stream")
-				return
+				innerCancel()
+				c.logger.WithError(err).Errorln("unexpected error reading from WatchMatches stream, starting another RPC")
+
+				watchClient = nil
+
+				for watchClient == nil {
+					innerCtx, innerCancel = context.WithCancel(outerCtx)
+
+					time.Sleep(2 * time.Second)
+					watchClient, err = c.labelStoreClient.WatchMatches(innerCtx, &label_protos.WatchMatchesRequest{
+						LabelType: labelTypeToProtoLabelType(labelType),
+						Selector:  selector.String(),
+					})
+					if err != nil {
+						c.logger.WithError(err).Errorln("could not restart WatchMatches RPC, will retry")
+						innerCancel()
+					}
+				}
+				continue
 			}
 
 			c.sendOnChannel(outCh, labeled, quitCh)
