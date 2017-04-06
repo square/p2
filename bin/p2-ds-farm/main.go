@@ -57,6 +57,7 @@ func main() {
 	dsf := ds_farm.NewFarm(
 		consulStore,
 		dsStore,
+		dsStore,
 		labeler,
 		labels.NewConsulApplicator(client, 0),
 		sessions,

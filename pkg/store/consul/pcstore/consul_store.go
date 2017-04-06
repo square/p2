@@ -2,6 +2,7 @@ package pcstore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"time"
@@ -21,6 +22,42 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
+const podClusterTree string = "pod_clusters"
+
+var (
+	NoPodCluster            error = errors.New("No pod cluster found")
+	PodClusterAlreadyExists error = errors.New("Pod cluster already exists")
+)
+
+type Session interface {
+	Lock(key string) (consulutil.Unlocker, error)
+}
+
+// WatchedPodCluster is an Either type: it will have 1 one of pc xor err
+type WatchedPodCluster struct {
+	PodCluster *fields.PodCluster
+	Err        error
+}
+
+type WatchedPodClusters struct {
+	Clusters []*fields.PodCluster
+	Err      error
+}
+
+// Subset of metrics.Registry interface
+type MetricsRegistry interface {
+	Get(metricName string) interface{}
+	Register(metricName string, metric interface{}) error
+}
+
+func IsNotExist(err error) bool {
+	return err == NoPodCluster
+}
+
+func IsAlreadyExists(err error) bool {
+	return err == PodClusterAlreadyExists
+}
+
 type consulKV interface {
 	Get(key string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
 	CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error)
@@ -28,7 +65,7 @@ type consulKV interface {
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
 }
 
-type consulStore struct {
+type ConsulStore struct {
 	kv      consulKV
 	labeler pcLabeler
 	watcher pcWatcher
@@ -50,10 +87,8 @@ type pcWatcher interface {
 	WatchMatches(selector klabels.Selector, labelType labels.Type, quitCh <-chan struct{}) (chan []labels.Labeled, error)
 }
 
-var _ Store = &consulStore{}
-
-func NewConsul(client consulutil.ConsulClient, labeler pcLabeler, watcher pcWatcher, logger *logging.Logger) Store {
-	return &consulStore{
+func NewConsul(client consulutil.ConsulClient, labeler pcLabeler, watcher pcWatcher, logger *logging.Logger) *ConsulStore {
+	return &ConsulStore{
 		kv:      client.KV(),
 		logger:  *logger,
 		labeler: labeler,
@@ -61,11 +96,11 @@ func NewConsul(client consulutil.ConsulClient, labeler pcLabeler, watcher pcWatc
 	}
 }
 
-func (s *consulStore) SetMetricsRegistry(reg MetricsRegistry) {
+func (s *ConsulStore) SetMetricsRegistry(reg MetricsRegistry) {
 	s.metricsRegistry = reg
 }
 
-func (s *consulStore) Create(
+func (s *ConsulStore) Create(
 	podID types.PodID,
 	availabilityZone fields.AvailabilityZone,
 	clusterName fields.ClusterName,
@@ -138,7 +173,7 @@ func (s *consulStore) Create(
 	return pc, nil
 }
 
-func (s *consulStore) setLabelsForPC(pc fields.PodCluster) error {
+func (s *ConsulStore) setLabelsForPC(pc fields.PodCluster) error {
 	pcLabels := klabels.Set{}
 	pcLabels[fields.PodIDLabel] = pc.PodID.String()
 	pcLabels[fields.AvailabilityZoneLabel] = pc.AvailabilityZone.String()
@@ -147,7 +182,7 @@ func (s *consulStore) setLabelsForPC(pc fields.PodCluster) error {
 	return s.labeler.SetLabels(labels.PC, pc.ID.String(), pcLabels)
 }
 
-func (s *consulStore) Get(id fields.ID) (fields.PodCluster, error) {
+func (s *ConsulStore) Get(id fields.ID) (fields.PodCluster, error) {
 	key, err := pcPath(id)
 	if err != nil {
 		return fields.PodCluster{}, err
@@ -165,7 +200,7 @@ func (s *consulStore) Get(id fields.ID) (fields.PodCluster, error) {
 	return kvpToPC(kvp)
 }
 
-func (s *consulStore) Delete(id fields.ID) error {
+func (s *ConsulStore) Delete(id fields.ID) error {
 	key, err := pcPath(id)
 	if err != nil {
 		return err
@@ -179,7 +214,7 @@ func (s *consulStore) Delete(id fields.ID) error {
 	return s.labeler.RemoveAllLabels(labels.PC, id.String())
 }
 
-func (s *consulStore) List() ([]fields.PodCluster, error) {
+func (s *ConsulStore) List() ([]fields.PodCluster, error) {
 	pairs, _, err := s.kv.List(podClusterTree+"/", nil)
 	if err != nil {
 		return nil, err
@@ -192,7 +227,7 @@ func (s *consulStore) List() ([]fields.PodCluster, error) {
 // using the given function
 // if the mutator returns an error, it will be propagated out
 // if the returned PC has id="", then it will be deleted
-func (s *consulStore) MutatePC(
+func (s *ConsulStore) MutatePC(
 	id fields.ID,
 	mutator func(fields.PodCluster) (fields.PodCluster, error),
 ) (fields.PodCluster, error) {
@@ -264,7 +299,7 @@ func pcPath(pcID fields.ID) (string, error) {
 	return path.Join(podClusterTree, pcID.String()), nil
 }
 
-func (s *consulStore) lockForCreation(podID types.PodID,
+func (s *ConsulStore) lockForCreation(podID types.PodID,
 	availabilityZone fields.AvailabilityZone,
 	clusterName fields.ClusterName,
 	session Session) (consulutil.Unlocker, error) {
@@ -281,7 +316,12 @@ func pcSyncLockPath(id fields.ID, syncerType ConcreteSyncerType) string {
 	return path.Join(consulutil.LOCK_TREE, podClusterTree, id.String(), syncerType.String())
 }
 
-func (s *consulStore) FindWhereLabeled(podID types.PodID,
+// FindWhereLabeled returns a slice of pod clusters that are labeled
+// with the passed information. Although pod clusters should always be
+// unique for this 3-ple, this method will return a slice in cases
+// where duplicates are discovered. It is up to clients to decide how
+// to respond to such situations.
+func (s *ConsulStore) FindWhereLabeled(podID types.PodID,
 	availabilityZone fields.AvailabilityZone,
 	clusterName fields.ClusterName) ([]fields.PodCluster, error) {
 
@@ -308,7 +348,7 @@ func (s *consulStore) FindWhereLabeled(podID types.PodID,
 // It will return a blocking channel on which the client can read
 // WatchedPodCluster objects. The goroutine maintaining the watch will block on
 // writing to this channel so it's up to the caller to read it with haste.
-func (s *consulStore) Watch(quit <-chan struct{}) <-chan WatchedPodClusters {
+func (s *ConsulStore) Watch(quit <-chan struct{}) <-chan WatchedPodClusters {
 	inCh := make(chan api.KVPairs)
 	outCh := make(chan WatchedPodClusters)
 	errChan := make(chan error, 1)
@@ -368,7 +408,7 @@ func (s *consulStore) Watch(quit <-chan struct{}) <-chan WatchedPodClusters {
 // This function will return ErrNoPodCluster if the podCluster goes away. In
 // this case, the caller should close the quit chan.
 // The caller may shutdown this watch by sending a sentinel on the quitChan.
-func (s *consulStore) WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan WatchedPodCluster {
+func (s *ConsulStore) WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan WatchedPodCluster {
 	inCh := make(chan *api.KVPair)
 	outCh := make(chan WatchedPodCluster)
 	errChan := make(chan error, 1)
@@ -425,7 +465,60 @@ func (p podClusterChange) different() bool {
 	return !p.previous.Equals(p.current)
 }
 
-func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) error {
+// There may be multiple implementations of ConcreteSyncer that are interested
+// in pod cluster updates, and wish to acquire a pod cluster lock to guarantee
+// exclusive right to sync an update. ConcreteSyncerType is used to namespace a
+// lock by implementation type so that two different concrete syncer
+// implementations may sync the same pod cluster at the same time
+type ConcreteSyncerType string
+
+func (t ConcreteSyncerType) String() string { return string(t) }
+
+type ConcreteSyncer interface {
+	// SyncCluster implements a concrete synchronization of the pod cluster to
+	// some real world implementation of a load balancer, credential management
+	// system, or service discovery implementation.
+	//
+	// When a ConcreteSyncer is passed to WatchAndSync, SyncCluster is called
+	// every time the set of labeled pods change, the pod cluster's metadata
+	// changes, or when the long-lived watch on the pod cluster store returns.
+	// This function is expected to be idempotent.
+	//
+	// SyncCluster will be called for every pod cluster present in the store.
+	// If this function returns an error, SyncCluster will be called again later
+	// with the same cluster and pods, assuming that no changes occur in the intervening
+	// period.
+	//
+	// ConcreteSyncers will be called concurrently and must operate safely.
+	SyncCluster(pc *fields.PodCluster, pods []labels.Labeled) error
+
+	// DeleteCluster is called when a pod cluster is observed to have been removed
+	// from the store. DeleteCluster can be invoked in two circumstances: first,
+	// if the cluster was present in a first watch, then absent in a subsequent watch,
+	// then it is assumed it was deleted from the pcstore. Second, if the call
+	// to GetInitialClusters() returns a pod cluster ID that is not present in the very
+	// first watch result, DeleteCluster will be invoked with that pod cluster.
+	//
+	// If the passed ID is used to retrieve the pod cluster via store.Get(), it will
+	// return ErrNoPodCluster. Clients should track any relevant metadata to the pod
+	// cluster ID in the status store or in vendor-specific code.
+	DeleteCluster(pc fields.ID) error
+
+	// GetInitialClusters is called at the beginning of the WatchAndSync
+	// routine. See DeleteCluster() for an explanation of how its results are
+	// used. If the function results in an error, the WatchAndSync function will
+	// terminate immediately, forwarding the error.
+	GetInitialClusters() ([]fields.ID, error)
+
+	// Used to derive the syncer type from a syncer instance for things
+	// like namespacing of metrics
+	Type() ConcreteSyncerType
+}
+
+// WatchAndSync registers a ConcreteSyncer which will have its
+// functions invoked on certain pod cluster changes. See the
+// ConcreteSyncer interface for details on how to use this function
+func (s *ConsulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) error {
 	watchedRes := s.Watch(quit)
 
 	clusterUpdaters := map[fields.ID]chan podClusterChange{}
@@ -495,7 +588,7 @@ func (s *consulStore) WatchAndSync(syncer ConcreteSyncer, quit <-chan struct{}) 
 	}
 }
 
-func (s *consulStore) getInitialClusters(syncer ConcreteSyncer) (WatchedPodClusters, error) {
+func (s *ConsulStore) getInitialClusters(syncer ConcreteSyncer) (WatchedPodClusters, error) {
 	var prevResults WatchedPodClusters
 
 	initial, err := syncer.GetInitialClusters()
@@ -519,7 +612,7 @@ func (s *consulStore) getInitialClusters(syncer ConcreteSyncer) (WatchedPodClust
 // zipResults takes two sets of watched pod clusters and joins them such that they
 // are paired together in a map of pc ID -> change objects. Each change will be sent
 // to the respective sync channels of each pod cluster later on.
-func (s *consulStore) zipResults(current, previous WatchedPodClusters) map[fields.ID]podClusterChange {
+func (s *ConsulStore) zipResults(current, previous WatchedPodClusters) map[fields.ID]podClusterChange {
 	allPrevious := make(map[fields.ID]*fields.PodCluster)
 	for _, prev := range previous.Clusters {
 		allPrevious[prev.ID] = prev
@@ -547,7 +640,7 @@ func (s *consulStore) zipResults(current, previous WatchedPodClusters) map[field
 // If a change fails to take, this function will retry that change forever until
 // it works as expected or a newer change appears on the channel. This routine also
 // executes and monitors the label watch for the pod's label selector.
-func (s *consulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podClusterChange, histogram metrics.Histogram) {
+func (s *ConsulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podClusterChange, histogram metrics.Histogram) {
 	var change podClusterChange
 	podWatch := make(chan []labels.Labeled)
 	watching := false
@@ -652,7 +745,7 @@ func labeledEqual(left, right []labels.Labeled) bool {
 	return leftSet.Equal(rightSet)
 }
 
-func (s *consulStore) LockForSync(id fields.ID, syncerType ConcreteSyncerType, session Session) (consulutil.Unlocker, error) {
+func (s *ConsulStore) LockForSync(id fields.ID, syncerType ConcreteSyncerType, session Session) (consulutil.Unlocker, error) {
 	return session.Lock(pcSyncLockPath(id, syncerType))
 }
 

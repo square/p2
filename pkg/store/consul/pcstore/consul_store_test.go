@@ -18,12 +18,12 @@ import (
 )
 
 func TestCreate(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 	createPodCluster(store, t)
 }
 
 func TestMutate(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 	oldPc := createPodCluster(store, t)
 
 	// After creating the pod cluster, we now update it using a mutator function
@@ -109,7 +109,7 @@ func TestMutate(t *testing.T) {
 	}
 }
 
-func createPodCluster(store *consulStore, t *testing.T) fields.PodCluster {
+func createPodCluster(store *ConsulStore, t *testing.T) fields.PodCluster {
 	podID := types.PodID("pod_id")
 	az := fields.AvailabilityZone("us-west")
 	clusterName := fields.ClusterName("cluster_name")
@@ -166,7 +166,7 @@ func createPodCluster(store *consulStore, t *testing.T) fields.PodCluster {
 }
 
 func TestLabelsOnCreate(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 	podID := types.PodID("pod_id")
 	az := fields.AvailabilityZone("us-west")
 	clusterName := fields.ClusterName("cluster_name")
@@ -200,7 +200,7 @@ func TestLabelsOnCreate(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 	podID := types.PodID("pod_id")
 	az := fields.AvailabilityZone("us-west")
 	clusterName := fields.ClusterName("cluster_name")
@@ -274,7 +274,7 @@ func TestGet(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 	podID := types.PodID("pod_id")
 	az := fields.AvailabilityZone("us-west")
 	clusterName := fields.ClusterName("cluster_name")
@@ -324,7 +324,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 	podID := types.PodID("pod_id")
 	az := fields.AvailabilityZone("us-west")
 	clusterName := fields.ClusterName("cluster_name")
@@ -372,7 +372,7 @@ func TestList(t *testing.T) {
 }
 
 func TestWatch(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 	podID := types.PodID("pod_id")
 	az := fields.AvailabilityZone("us-west")
 	clusterName := fields.ClusterName("cluster_name")
@@ -429,7 +429,7 @@ func TestWatch(t *testing.T) {
 }
 
 func TestWatchPodCluster(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 	pod := fields.ID("pod_id")
 	podID := types.PodID("pod_id")
 	az := fields.AvailabilityZone("us-west")
@@ -472,7 +472,7 @@ func TestWatchPodCluster(t *testing.T) {
 }
 
 func TestZipPodClusterResults(t *testing.T) {
-	store := consulStore{}
+	store := ConsulStore{}
 
 	previous := WatchedPodClusters{
 		[]*fields.PodCluster{
@@ -596,7 +596,7 @@ func (f *fakeSyncer) Type() ConcreteSyncerType {
 // the update step will change the pod selector and should result in a
 // different pod ID being returned.
 func TestConcreteSyncer(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 	store.logger.Logger.Level = logrus.DebugLevel
 
 	store.labeler.SetLabel(labels.POD, "1234-123-123-1234", "color", "red")
@@ -710,7 +710,7 @@ func TestConcreteSyncer(t *testing.T) {
 }
 
 func TestConcreteSyncerWithPrevious(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 	store.logger.Logger.Level = logrus.DebugLevel
 
 	store.labeler.SetLabel(labels.POD, "1234-123-123-1234", "color", "red")
@@ -830,7 +830,7 @@ func TestConcreteSyncerWithPrevious(t *testing.T) {
 	close(changes)
 }
 func TestInitialClusters(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 
 	syncer := &fakeSyncer{
 		[]fields.ID{"abc-123"},
@@ -856,7 +856,7 @@ func TestInitialClusters(t *testing.T) {
 
 func TestLockForSync(t *testing.T) {
 	id := fields.ID("abc123")
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 	syncerType := ConcreteSyncerType("some_syncer")
 	session := consultest.NewSession()
 
@@ -886,7 +886,7 @@ func TestLockForSync(t *testing.T) {
 }
 
 func TestClosedChangeChannelResultsInTermination(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 
 	syncer := &fakeSyncer{
 		[]fields.ID{"abc123"},
@@ -950,7 +950,7 @@ func (r *RecordingSyncer) Type() ConcreteSyncerType {
 }
 
 func TestWatchAndSync(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 	quit := make(chan struct{})
 	defer close(quit)
 	syncSignal := make(chan struct{})
@@ -1021,7 +1021,7 @@ func TestWatchAndSync(t *testing.T) {
 }
 
 func TestWatchAndSyncWithDelete(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 	quit := make(chan struct{})
 	defer close(quit)
 	syncSignal := make(chan struct{})
@@ -1108,7 +1108,7 @@ func TestWatchAndSyncWithDelete(t *testing.T) {
 
 // Tests that we don't delete any clusters when we find none as a failsafe
 func TestWatchAndSyncFailsafe(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := ConsulStoreWithFakeKV()
 	quit := make(chan struct{})
 	defer close(quit)
 	syncSignal := make(chan struct{})
@@ -1140,9 +1140,9 @@ func TestWatchAndSyncFailsafe(t *testing.T) {
 	}
 }
 
-func consulStoreWithFakeKV() *consulStore {
+func ConsulStoreWithFakeKV() *ConsulStore {
 	applicator := labels.NewFakeApplicator()
-	return &consulStore{
+	return &ConsulStore{
 		kv:      consulutil.NewFakeClient().KV(),
 		labeler: applicator,
 		watcher: applicator,

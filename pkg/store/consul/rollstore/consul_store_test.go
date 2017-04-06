@@ -25,8 +25,7 @@ const (
 )
 
 func TestNewConsul(t *testing.T) {
-	store := NewConsul(consul.NewConsulClient(consul.Options{}), labels.NewFakeApplicator(), nil)
-	rollstore := store.(consulStore)
+	rollstore := NewConsul(consul.NewConsulClient(consul.Options{}), labels.NewFakeApplicator(), nil)
 	if rollstore.kv == nil {
 		t.Fatal("kv should not be nil for constructed rollstore")
 	}
@@ -88,7 +87,12 @@ func TestRollLockPathErrorNoID(t *testing.T) {
 	}
 }
 
-func newRollStore(t *testing.T, entries []fields.Update) consulStore {
+type testRCStore interface {
+	Get(id rc_fields.ID) (rc_fields.RC, error)
+	List() ([]rc_fields.RC, error)
+}
+
+func newRollStore(t *testing.T, entries []fields.Update) (ConsulStore, testRCStore) {
 	storeFields := make(map[string]*api.KVPair)
 	for _, u := range entries {
 		path, err := RollPath(fields.ID(u.NewRC))
@@ -104,18 +108,19 @@ func newRollStore(t *testing.T, entries []fields.Update) consulStore {
 			Value: json,
 		}
 	}
-	return consulStore{
+	rcStore := rcstore.NewFake()
+	return ConsulStore{
 		kv: &consulutil.FakeKV{
 			Entries: storeFields,
 		},
 		store:   consultest.NewFakePodStore(nil, nil),
-		rcstore: rcstore.NewFake(),
+		rcstore: rcStore,
 		labeler: labels.NewFakeApplicator(),
-	}
+	}, rcStore
 }
 
 func TestGet(t *testing.T) {
-	rollstore := newRollStore(t, []fields.Update{testRollValue(testRCId)})
+	rollstore, _ := newRollStore(t, []fields.Update{testRollValue(testRCId)})
 
 	entry, err := rollstore.Get(fields.ID(testRCId))
 	if err != nil {
@@ -129,7 +134,7 @@ func TestGet(t *testing.T) {
 
 func TestList(t *testing.T) {
 	entries := []fields.Update{testRollValue(testRCId), testRollValue(testRCId2)}
-	rollstore := newRollStore(t, entries)
+	rollstore, _ := newRollStore(t, entries)
 
 	rolls, err := rollstore.List()
 	if err != nil {
@@ -164,7 +169,7 @@ func TestList(t *testing.T) {
 }
 
 func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
-	rollstore := newRollStore(t, nil)
+	rollstore, _ := newRollStore(t, nil)
 
 	newRCID := rc_fields.ID("new_rc")
 	oldRCID := rc_fields.ID("old_rc")
@@ -225,7 +230,7 @@ func TestCreateExistingRCsMutualExclusion(t *testing.T) {
 		NewRC: rc_fields.ID("some_other_rc"),
 	}
 
-	rollstore := newRollStore(t, []fields.Update{conflictingEntry})
+	rollstore, _ := newRollStore(t, []fields.Update{conflictingEntry})
 
 	update := fields.Update{
 		NewRC: newRCID,
@@ -259,7 +264,7 @@ func TestCreateFailsIfCantAcquireLock(t *testing.T) {
 	newRCID := rc_fields.ID("new_rc")
 	oldRCID := rc_fields.ID("old_rc")
 
-	rollstore := newRollStore(t, nil)
+	rollstore, _ := newRollStore(t, nil)
 
 	update := fields.Update{
 		NewRC: newRCID,
@@ -293,7 +298,7 @@ func TestCreateFailsIfCantAcquireLock(t *testing.T) {
 func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 	oldRCID := rc_fields.ID("old_rc")
 
-	rollstore := newRollStore(t, nil)
+	rollstore, rcStore := newRollStore(t, nil)
 
 	newRCLabels := klabels.Set(map[string]string{
 		"some_key": "some_val",
@@ -329,7 +334,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 		t.Errorf("Stored update didn't have expected old rc value: wanted '%s' but got '%s'", oldRCID, storedUpdate.OldRC)
 	}
 
-	_, err = rollstore.rcstore.Get(newUpdate.NewRC)
+	_, err = rcStore.Get(newUpdate.NewRC)
 	if err != nil {
 		t.Fatalf("Shouldn't have failed to fetch new RC: %s", err)
 	}
@@ -354,7 +359,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 }
 
 func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T) {
-	rollstore := newRollStore(t, nil)
+	rollstore, rcStore := newRollStore(t, nil)
 
 	// create the old RC
 	oldRC, err := rollstore.rcstore.Create(testManifest(), nil, nil)
@@ -415,7 +420,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 		t.Fatalf("Update was created but shouldn't have been: %s", err)
 	}
 
-	rcs, err := rollstore.rcstore.List()
+	rcs, err := rcStore.List()
 	if err != nil {
 		t.Fatalf("Shouldn't have failed to list RCs: %s", err)
 	}
@@ -428,7 +433,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 func TestCreateRollingUpdateFromOneExistingRCWithIDFailsIfCantAcquireLock(t *testing.T) {
 	oldRCID := rc_fields.ID("old_rc")
 
-	rollstore := newRollStore(t, nil)
+	rollstore, rcStore := newRollStore(t, nil)
 
 	// Grab an update creation lock on the old RC and make sure the
 	// creation fails
@@ -469,7 +474,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDFailsIfCantAcquireLock(t *tes
 		t.Fatalf("Update was created but shouldn't have been: %s", err)
 	}
 
-	rcs, err := rollstore.rcstore.List()
+	rcs, err := rcStore.List()
 	if err != nil {
 		t.Fatalf("Shouldn't have failed to list RCs: %s", err)
 	}
@@ -480,7 +485,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDFailsIfCantAcquireLock(t *tes
 }
 
 func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist(t *testing.T) {
-	rollstore := newRollStore(t, nil)
+	rollstore, rcStore := newRollStore(t, nil)
 
 	// Make a selector that won't match anything
 	oldRCSelector := klabels.Everything().
@@ -511,12 +516,12 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist
 		t.Fatalf("Update shouldn't have been empty")
 	}
 
-	_, err = rollstore.rcstore.Get(u.NewRC)
+	_, err = rcStore.Get(u.NewRC)
 	if err != nil {
 		t.Fatalf("Shouldn't have failed to fetch newly created new rc: %s", err)
 	}
 
-	_, err = rollstore.rcstore.Get(u.OldRC)
+	_, err = rcStore.Get(u.OldRC)
 	if err != nil {
 		t.Fatalf("Shouldn't have failed to fetch newly created old rc: %s", err)
 	}
@@ -549,7 +554,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist
 }
 
 func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *testing.T) {
-	rollstore := newRollStore(t, nil)
+	rollstore, rcStore := newRollStore(t, nil)
 
 	// Put an RC in the rcstore that matches our label selector
 	oldRC, err := rollstore.rcstore.Create(
@@ -594,7 +599,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *t
 		t.Errorf("Created update didn't have expected old rc ID, wanted '%s' but got '%s'", oldRC.ID, u.OldRC)
 	}
 
-	_, err = rollstore.rcstore.Get(u.NewRC)
+	_, err = rcStore.Get(u.NewRC)
 	if err != nil {
 		t.Fatalf("Shouldn't have failed to fetch newly created new rc: %s", err)
 	}
@@ -602,7 +607,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *t
 }
 
 func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenTwoMatches(t *testing.T) {
-	rollstore := newRollStore(t, nil)
+	rollstore, _ := newRollStore(t, nil)
 
 	// Put two RC in the rcstore that matches our label selector
 	firstRC, err := rollstore.rcstore.Create(
@@ -659,7 +664,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenTwoMat
 }
 
 func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenExistingIsLocked(t *testing.T) {
-	rollstore := newRollStore(t, nil)
+	rollstore, _ := newRollStore(t, nil)
 
 	// Put an RC in the rcstore that matches our label selector
 	oldRC, err := rollstore.rcstore.Create(
@@ -715,7 +720,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenExisti
 }
 
 func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConflict(t *testing.T) {
-	rollstore := newRollStore(t, nil)
+	rollstore, _ := newRollStore(t, nil)
 
 	// Put an RC in the rcstore that matches our label selector
 	oldRC, err := rollstore.rcstore.Create(
@@ -790,7 +795,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 }
 
 func TestLeaveOldInvalidIfNoOldRC(t *testing.T) {
-	rollstore := newRollStore(t, nil)
+	rollstore, _ := newRollStore(t, nil)
 
 	// Make a selector that won't match anything
 	oldRCSelector := klabels.Everything().

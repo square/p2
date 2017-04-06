@@ -29,13 +29,28 @@ type Store interface {
 	NewUnmanagedSession(session, name string) consul.Session
 }
 
+type ReplicationControllerLocker interface {
+	LockForMutation(rcID rcf.ID, session consul.Session) (consulutil.Unlocker, error)
+}
+
+type ReplicationControllerStore interface {
+	Get(id rcf.ID) (rcf.RC, error)
+	SetDesiredReplicas(id rcf.ID, n int) error
+	Delete(id rcf.ID, force bool) error
+	TransferReplicaCounts(toRCID rcf.ID, replicasToAdd int, fromRCID rcf.ID, replicasToRemove int) error
+	Disable(id rcf.ID) error
+	Enable(id rcf.ID) error
+}
+
 type update struct {
 	fields.Update
 
-	consuls Store
-	rcs     rcstore.Store
-	hcheck  checker.ConsulHealthChecker
-	labeler rc.Labeler
+	consuls   Store
+	rcStore   ReplicationControllerStore
+	rcLocker  ReplicationControllerLocker
+	rcWatcher rc.ReplicationControllerWatcher
+	hcheck    checker.ConsulHealthChecker
+	labeler   rc.Labeler
 
 	logger logging.Logger
 
@@ -58,7 +73,9 @@ type update struct {
 func NewUpdate(
 	f fields.Update,
 	consuls Store,
-	rcs rcstore.Store,
+	rcLocker ReplicationControllerLocker,
+	rcStore ReplicationControllerStore,
+	rcWatcher rc.ReplicationControllerWatcher,
 	hcheck checker.ConsulHealthChecker,
 	labeler rc.Labeler,
 	logger logging.Logger,
@@ -72,7 +89,8 @@ func NewUpdate(
 	return &update{
 		Update:     f,
 		consuls:    consuls,
-		rcs:        rcs,
+		rcLocker:   rcLocker,
+		rcStore:    rcStore,
 		hcheck:     hcheck,
 		labeler:    labeler,
 		logger:     logger,
@@ -139,7 +157,7 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 	var newFields rcf.RC
 	var err error
 	if !RetryOrQuit(func() error {
-		newFields, err = u.rcs.Get(u.NewRC)
+		newFields, err = u.rcStore.Get(u.NewRC)
 		if rcstore.IsNotExist(err) {
 			return util.Errorf("Replication controller %s is unexpectedly empty", u.NewRC)
 		} else if err != nil {
@@ -166,10 +184,10 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 	// rollout complete, clean up old RC if told to do so
 	if !u.LeaveOld {
 		u.logger.NoFields().Infoln("Cleaning up old RC")
-		if !RetryOrQuit(func() error { return u.rcs.SetDesiredReplicas(u.OldRC, 0) }, quit, u.logger, "Could not zero old replica count") {
+		if !RetryOrQuit(func() error { return u.rcStore.SetDesiredReplicas(u.OldRC, 0) }, quit, u.logger, "Could not zero old replica count") {
 			return
 		}
-		if !RetryOrQuit(func() error { return u.rcs.Delete(u.OldRC, false) }, quit, u.logger, "Could not delete old RC") {
+		if !RetryOrQuit(func() error { return u.rcStore.Delete(u.OldRC, false) }, quit, u.logger, "Could not delete old RC") {
 			return
 		}
 	}
@@ -253,7 +271,7 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 					"nextRemove": nextRemove,
 					"nextAdd":    nextAdd,
 				}).Infof("Adding %d new nodes and removing %d old nodes", nextAdd, nextRemove)
-				err = u.rcs.TransferReplicaCounts(u.NewRC, nextAdd, u.OldRC, nextRemove)
+				err = u.rcStore.TransferReplicaCounts(u.NewRC, nextAdd, u.OldRC, nextRemove)
 				if err != nil {
 					u.logger.WithError(err).Errorln("could not update RC replica counts")
 					break
@@ -296,7 +314,7 @@ func (u *update) shouldStop(oldNodes, newNodes rcNodeCounts) ruStep {
 }
 
 func (u *update) lockRCs(done <-chan struct{}) error {
-	newUnlocker, err := u.rcs.LockForMutation(u.NewRC, u.session)
+	newUnlocker, err := u.rcLocker.LockForMutation(u.NewRC, u.session)
 	if _, ok := err.(consulutil.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock new %s", u.NewRC)
 	} else if err != nil {
@@ -304,7 +322,7 @@ func (u *update) lockRCs(done <-chan struct{}) error {
 	}
 	u.newRCUnlocker = newUnlocker
 
-	oldUnlocker, err := u.rcs.LockForMutation(u.OldRC, u.session)
+	oldUnlocker, err := u.rcLocker.LockForMutation(u.OldRC, u.session)
 	if err != nil {
 		// The second key couldn't be locked, so release the first key before retrying.
 		RetryOrQuit(
@@ -353,7 +371,7 @@ func (u *update) unlockRCs(done <-chan struct{}) {
 // enable sets the old & new RCs to a known-good state to start a rolling update:
 // the old RC should be disabled and the new RC should be enabled.
 func (u *update) enable() error {
-	newRC, err := u.rcs.Get(u.NewRC)
+	newRC, err := u.rcStore.Get(u.NewRC)
 	if err != nil {
 		return err
 	}
@@ -393,12 +411,12 @@ func (u *update) enable() error {
 	// We do this AFTER the convergence check, because we don't want to reach this state:
 	// disabled, 1 desired, 2 labeled | disabled, 1 desired, 0 labeled.
 	// In this case, neither RC will act, so manual intervention is required.
-	err = u.rcs.Disable(u.OldRC)
+	err = u.rcStore.Disable(u.OldRC)
 	if err != nil {
 		return err
 	}
 
-	err = u.rcs.Enable(u.NewRC)
+	err = u.rcStore.Enable(u.NewRC)
 	if err != nil {
 		return err
 	}
@@ -421,7 +439,7 @@ func (r rcNodeCounts) ToString() string {
 
 func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result) (rcNodeCounts, error) {
 	ret := rcNodeCounts{}
-	rcFields, err := u.rcs.Get(id)
+	rcFields, err := u.rcStore.Get(id)
 	if rcstore.IsNotExist(err) {
 		err := util.Errorf("RC %s did not exist", id)
 		return ret, err

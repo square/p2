@@ -2,6 +2,7 @@ package rcstore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -28,6 +29,14 @@ const (
 	mutationSuffix       = "update"
 	updateCreationSuffix = "update_creation"
 )
+
+const rcTree string = "replication_controllers"
+
+var NoReplicationController error = errors.New("No replication controller found")
+
+func IsNotExist(err error) bool {
+	return err == NoReplicationController
+}
 
 type LockType int
 
@@ -64,7 +73,7 @@ type consulKV interface {
 	Txn(txn api.KVTxnOps, q *api.QueryOptions) (bool, *api.KVTxnResponse, *api.QueryMeta, error)
 }
 
-type consulStore struct {
+type ConsulStore struct {
 	labeler rcLabeler
 	kv      consulKV
 	retries int
@@ -77,22 +86,23 @@ func (e CASError) Error() string {
 	return fmt.Sprintf("Could not check-and-set key %q", string(e))
 }
 
-var _ Store = &consulStore{}
-
 type rcLabeler interface {
 	SetLabel(labelType labels.Type, id, name, value string) error
 	RemoveAllLabels(labelType labels.Type, id string) error
 }
 
-func NewConsul(client consulutil.ConsulClient, labeler rcLabeler, retries int) *consulStore {
-	return &consulStore{
+func NewConsul(client consulutil.ConsulClient, labeler rcLabeler, retries int) *ConsulStore {
+	return &ConsulStore{
 		retries: retries,
 		labeler: labeler,
 		kv:      client.KV(),
 	}
 }
 
-func (s *consulStore) Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
+// Create creates a replication controller with the specified manifest and selectors.
+// The node selector is used to determine what nodes the replication controller may schedule on.
+// The pod label set is applied to every pod the replication controller schedules.
+func (s *ConsulStore) Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
 	rc, err := s.innerCreate(manifest, nodeSelector, podLabels)
 
 	// TODO: measure whether retries are is important in practice
@@ -119,7 +129,7 @@ func (s *consulStore) Create(manifest manifest.Manifest, nodeSelector klabels.Se
 }
 
 // these parts of Create may require a retry
-func (s *consulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
+func (s *ConsulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
 	id := fields.ID(uuid.New())
 	rcp, err := s.rcPath(id)
 	if err != nil {
@@ -157,12 +167,15 @@ func (s *consulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabe
 	return rc, nil
 }
 
-func (s *consulStore) Get(id fields.ID) (fields.RC, error) {
+// Get retrieves a replication controller by its ID. Returns
+// NoReplicationController if the fetch operation succeeds but no replication
+// controller with that ID is found.
+func (s *ConsulStore) Get(id fields.ID) (fields.RC, error) {
 	rc, _, err := s.getWithIndex(id)
 	return rc, err
 }
 
-func (s *consulStore) getWithIndex(id fields.ID) (fields.RC, uint64, error) {
+func (s *ConsulStore) getWithIndex(id fields.ID) (fields.RC, uint64, error) {
 	rcp, err := s.rcPath(id)
 	if err != nil {
 		return fields.RC{}, 0, err
@@ -185,7 +198,8 @@ func (s *consulStore) getWithIndex(id fields.ID) (fields.RC, uint64, error) {
 	return rc, kvp.ModifyIndex, nil
 }
 
-func (s *consulStore) List() ([]fields.RC, error) {
+// List retrieves all of the replication controllers from the consul store.
+func (s *ConsulStore) List() ([]fields.RC, error) {
 	listed, _, err := s.kv.List(rcTree+"/", nil)
 	if err != nil {
 		return nil, consulutil.NewKVError("list", rcTree+"/", err)
@@ -201,7 +215,7 @@ func (s *consulStore) List() ([]fields.RC, error) {
 // writes to the output channel if they're being consumed too slowly.  It will
 // block writing a value to the output channel until 1) it is read or 2) a new
 // value comes in, in which case that value will be written instead
-func (s *consulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan error) {
+func (s *ConsulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan error) {
 	inCh := make(chan api.KVPairs)
 
 	outCh, errCh := publishLatestRCs(inCh, quit)
@@ -234,7 +248,7 @@ type RCLockResult struct {
 // possible that lock information will be out of date as the list is processed.
 // However, a subsequent update will get the correct view of the world so the
 // behavior should be correct
-func (s *consulStore) WatchRCKeysWithLockInfo(quit <-chan struct{}, pauseTime time.Duration) (<-chan []RCLockResult, <-chan error) {
+func (s *ConsulStore) WatchRCKeysWithLockInfo(quit <-chan struct{}, pauseTime time.Duration) (<-chan []RCLockResult, <-chan error) {
 	combinedErrCh := make(chan error)
 
 	keyCh := consulutil.WatchKeys(rcTree+"/", s.kv, quit, pauseTime)
@@ -378,7 +392,7 @@ func publishLatestRCs(inCh <-chan api.KVPairs, quit <-chan struct{}) (<-chan []f
 	return outCh, errCh
 }
 
-func (s *consulStore) publishLatestRCKeysWithLockInfo(inCh <-chan []fields.ID, quit <-chan struct{}) (chan []RCLockResult, chan error) {
+func (s *ConsulStore) publishLatestRCKeysWithLockInfo(inCh <-chan []fields.ID, quit <-chan struct{}) (chan []RCLockResult, chan error) {
 	// Buffered to deal with slow consumers
 	outCh := make(chan []RCLockResult, 1)
 	errCh := make(chan error)
@@ -490,28 +504,36 @@ func kvpsToRCs(l api.KVPairs) ([]fields.RC, error) {
 	return ret, nil
 }
 
-func (s *consulStore) Disable(id fields.ID) error {
+// Disable sets the disabled flag on the given replication controller, instructing
+// any running farm instances to cease handling it.
+func (s *ConsulStore) Disable(id fields.ID) error {
 	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
 		rc.Disabled = true
 		return rc, nil
 	})
 }
 
-func (s *consulStore) Enable(id fields.ID) error {
+// Enable unsets the disabled flag for the given RC, instructing any running
+// farms to begin handling it.
+func (s *ConsulStore) Enable(id fields.ID) error {
 	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
 		rc.Disabled = false
 		return rc, nil
 	})
 }
 
-func (s *consulStore) SetDesiredReplicas(id fields.ID, n int) error {
+// SetDesiredReplicas updates the replica count for the RC with the
+// given ID.
+func (s *ConsulStore) SetDesiredReplicas(id fields.ID, n int) error {
 	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
 		rc.ReplicasDesired = n
 		return rc, nil
 	})
 }
 
-func (s *consulStore) AddDesiredReplicas(id fields.ID, n int) error {
+// AddDesiredReplicas increments the replica count for the specified RC
+// by n.
+func (s *ConsulStore) AddDesiredReplicas(id fields.ID, n int) error {
 	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
 		rc.ReplicasDesired += n
 		if rc.ReplicasDesired < 0 {
@@ -521,7 +543,10 @@ func (s *consulStore) AddDesiredReplicas(id fields.ID, n int) error {
 	})
 }
 
-func (s *consulStore) CASDesiredReplicas(id fields.ID, expected int, n int) error {
+// CASDesiredReplicas first checks that the desired replica count for
+// the given RC is the given integer (returning an error if it is not),
+// and if it is, sets it to the given integer.
+func (s *ConsulStore) CASDesiredReplicas(id fields.ID, expected int, n int) error {
 	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
 		if rc.ReplicasDesired != expected {
 			return rc, fmt.Errorf("replication controller %s has %d desired replicas instead of %d, not setting to %d", rc.ID, rc.ReplicasDesired, expected, n)
@@ -531,7 +556,10 @@ func (s *consulStore) CASDesiredReplicas(id fields.ID, expected int, n int) erro
 	})
 }
 
-func (s *consulStore) Delete(id fields.ID, force bool) error {
+// Delete removes the RC with the given ID the targeted RC, returning an error
+// if it does not exist.  Normally an RC can only be deleted if its desired
+// replica count is zero; pass force=true to override this check.
+func (s *ConsulStore) Delete(id fields.ID, force bool) error {
 	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
 		if !force && rc.ReplicasDesired != 0 {
 			return fields.RC{}, fmt.Errorf("replication controller %s has %d desired replicas (must reduce to 0 before deleting)", rc.ID, rc.ReplicasDesired)
@@ -542,7 +570,7 @@ func (s *consulStore) Delete(id fields.ID, force bool) error {
 
 // TODO: this function is almost a verbatim copy of pkg/labels retryMutate, can
 // we find some way to combine them?
-func (s *consulStore) retryMutate(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
+func (s *ConsulStore) retryMutate(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
 	err := s.mutateRc(id, mutator)
 	for i := 0; i < s.retries; i++ {
 		if _, ok := err.(CASError); ok {
@@ -558,7 +586,7 @@ func (s *consulStore) retryMutate(id fields.ID, mutator func(fields.RC) (fields.
 // using the given function
 // if the mutator returns an error, it will be propagated out
 // if the returned RC has id="", then it will be deleted
-func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
+func (s *ConsulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
 	rcp, err := s.rcPath(id)
 	if err != nil {
 		return err
@@ -621,7 +649,14 @@ func (s *consulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC,
 	return nil
 }
 
-func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
+// Watch watches for any changes to the replication controller `rc`.
+// This returns two output channels.
+// A `struct{}` is sent on the first output channel whenever a change has occurred.
+// At that time, the replication controller will have been updated in place.
+// Errors are sent on the second output channel.
+// Send a value on `quitChannel` to stop watching.
+// The two output channels will be closed in response.
+func (s *ConsulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
 	updated := make(chan struct{})
 
 	rcp, err := s.rcPath(rc.ID)
@@ -667,11 +702,11 @@ func (s *consulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{
 	return updated, errors
 }
 
-func (s *consulStore) rcLockRoot() string {
+func (s *ConsulStore) rcLockRoot() string {
 	return path.Join(consulutil.LOCK_TREE, rcTree)
 }
 
-func (s *consulStore) rcPath(rcID fields.ID) (string, error) {
+func (s *ConsulStore) rcPath(rcID fields.ID) (string, error) {
 	if rcID == "" {
 		return "", util.Errorf("Path requested for empty RC id")
 	}
@@ -679,7 +714,7 @@ func (s *consulStore) rcPath(rcID fields.ID) (string, error) {
 	return path.Join(rcTree, string(rcID)), nil
 }
 
-func (s *consulStore) rcLockPath(rcID fields.ID) (string, error) {
+func (s *ConsulStore) rcLockPath(rcID fields.ID) (string, error) {
 	rcPath, err := s.rcPath(rcID)
 	if err != nil {
 		return "", err
@@ -689,13 +724,13 @@ func (s *consulStore) rcLockPath(rcID fields.ID) (string, error) {
 }
 
 // The path for an ownership lock is simply the base path
-func (s *consulStore) ownershipLockPath(rcID fields.ID) (string, error) {
+func (s *ConsulStore) ownershipLockPath(rcID fields.ID) (string, error) {
 	return s.rcLockPath(rcID)
 }
 
-// Acquires a lock on the RC that should be used by RC farm goroutines, whose
-// job it is to carry out the intent of the RC
-func (s *consulStore) LockForOwnership(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
+// LockForOwnership qcquires a lock on the RC that should be used by RC farm
+// goroutines, whose job it is to carry out the intent of the RC
+func (s *ConsulStore) LockForOwnership(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
 	lockPath, err := s.rcLockPath(rcID)
 	if err != nil {
 		return nil, err
@@ -704,7 +739,7 @@ func (s *consulStore) LockForOwnership(rcID fields.ID, session consul.Session) (
 	return session.Lock(lockPath)
 }
 
-func (s *consulStore) mutationLockPath(rcID fields.ID) (string, error) {
+func (s *ConsulStore) mutationLockPath(rcID fields.ID) (string, error) {
 	baseLockPath, err := s.rcLockPath(rcID)
 	if err != nil {
 		return "", err
@@ -713,10 +748,10 @@ func (s *consulStore) mutationLockPath(rcID fields.ID) (string, error) {
 	return path.Join(baseLockPath, mutationSuffix), nil
 }
 
-// Acquires a lock on the RC with the intent of mutating it. Must be held by
-// goroutines in the rolling update farm as well as any other tool that may
-// mutate an RC
-func (s *consulStore) LockForMutation(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
+// LockForMutation acquires a lock on the RC with the intent of mutating it.
+// Must be held by goroutines in the rolling update farm as well as any other
+// tool that may mutate an RC
+func (s *ConsulStore) LockForMutation(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
 	mutationLockPath, err := s.mutationLockPath(rcID)
 	if err != nil {
 		return nil, err
@@ -725,7 +760,7 @@ func (s *consulStore) LockForMutation(rcID fields.ID, session consul.Session) (c
 	return session.Lock(mutationLockPath)
 }
 
-func (s *consulStore) updateCreationLockPath(rcID fields.ID) (string, error) {
+func (s *ConsulStore) updateCreationLockPath(rcID fields.ID) (string, error) {
 	baseLockPath, err := s.rcLockPath(rcID)
 	if err != nil {
 		return "", err
@@ -734,11 +769,11 @@ func (s *consulStore) updateCreationLockPath(rcID fields.ID) (string, error) {
 	return path.Join(baseLockPath, updateCreationSuffix), nil
 }
 
-// Acquires a lock on the RC for ensuring that no two rolling updates are
-// created that operate on the same replication controllers.  A lock on both
-// the intended "new" and "old" replication controllers should be held before
-// the update is created.
-func (s *consulStore) LockForUpdateCreation(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
+// LockForUpdateCreation acquires a lock on the RC for ensuring that no two
+// rolling updates are created that operate on the same replication
+// controllers. A lock on both the intended "new" and "old" replication
+// controllers should be held before the update is created.
+func (s *ConsulStore) LockForUpdateCreation(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
 	updateCreationLockPath, err := s.updateCreationLockPath(rcID)
 	if err != nil {
 		return nil, err
@@ -751,7 +786,7 @@ func (s *consulStore) LockForUpdateCreation(rcID fields.ID, session consul.Sessi
 // of two RCs in consul.  This is useful for rolling updates to transition
 // nodes from the old RC to the new one without risking the consul database
 // dying between updates and violating replica count invariants
-func (s *consulStore) TransferReplicaCounts(toRCID fields.ID, replicasToAdd int, fromRCID fields.ID, replicasToRemove int) error {
+func (s *ConsulStore) TransferReplicaCounts(toRCID fields.ID, replicasToAdd int, fromRCID fields.ID, replicasToRemove int) error {
 	toRCPath, err := s.rcPath(toRCID)
 	if err != nil {
 		return util.Errorf("couldn't transfer replica counts: %s", err)
@@ -846,7 +881,7 @@ func keysToRCIDs(keys []string) ([]fields.ID, error) {
 // forEachLabel Attempts to apply the supplied function to labels of the replication controller.
 // If forEachLabel encounters any error applying the function, it returns that error immediately.
 // The function is not further applied to subsequent labels on an error.
-func (s *consulStore) forEachLabel(rc fields.RC, f func(id, k, v string) error) error {
+func (s *ConsulStore) forEachLabel(rc fields.RC, f func(id, k, v string) error) error {
 	id := rc.ID.String()
 	// As of this writing the only label we want is the pod ID.
 	// There may be more in the future.
@@ -855,7 +890,7 @@ func (s *consulStore) forEachLabel(rc fields.RC, f func(id, k, v string) error) 
 
 // Given a consul key path, returns the RC ID and the lock type. Returns an err
 // if the key does not resemble an RC lock key
-func (s *consulStore) lockTypeFromKey(key string) (fields.ID, LockType, error) {
+func (s *ConsulStore) lockTypeFromKey(key string) (fields.ID, LockType, error) {
 	keyParts := strings.Split(key, "/")
 	// Sanity check key structure e.g. /lock/replication_controllers/abcd-1234
 	if len(keyParts) < 3 || len(keyParts) > 4 {

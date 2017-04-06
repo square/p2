@@ -19,7 +19,7 @@ import (
 )
 
 func TestCreate(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := storeWithFakeKV()
 	createDaemonSet(store, t)
 
 	// Create a bad DaemonSet
@@ -56,7 +56,7 @@ func TestCreate(t *testing.T) {
 	}
 }
 
-func createDaemonSet(store *consulStore, t *testing.T) ds_fields.DaemonSet {
+func createDaemonSet(store *ConsulStore, t *testing.T) ds_fields.DaemonSet {
 	podID := types.PodID("some_pod_id")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
@@ -110,7 +110,7 @@ func createDaemonSet(store *consulStore, t *testing.T) ds_fields.DaemonSet {
 }
 
 func TestDelete(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := storeWithFakeKV()
 	ds := createDaemonSet(store, t)
 
 	if err := store.Delete("bad_id"); err != nil {
@@ -131,7 +131,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := storeWithFakeKV()
 	//
 	// Create DaemonSet
 	//
@@ -199,7 +199,7 @@ func TestGet(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := storeWithFakeKV()
 
 	// Create first DaemonSet
 	firstPodID := types.PodID("some_pod_id")
@@ -255,7 +255,7 @@ func TestList(t *testing.T) {
 }
 
 func TestMutate(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := storeWithFakeKV()
 
 	podID := types.PodID("some_pod_id")
 	minHealth := 0
@@ -388,7 +388,7 @@ func TestMutate(t *testing.T) {
 }
 
 func TestWatch(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := storeWithFakeKV()
 	//
 	// Create a new daemon set
 	//
@@ -507,7 +507,7 @@ func TestWatch(t *testing.T) {
 }
 
 func TestWatchAll(t *testing.T) {
-	store := consulStoreWithFakeKV()
+	store := storeWithFakeKV()
 	//
 	// Create a new daemon set
 	//
@@ -617,8 +617,8 @@ func TestWatchAll(t *testing.T) {
 	Assert(t).AreEqual(ds.PodID, watched.DaemonSets[0].PodID, "Daemon sets should have equal pod ids")
 }
 
-func consulStoreWithFakeKV() *consulStore {
-	return &consulStore{
+func storeWithFakeKV() *ConsulStore {
+	return &ConsulStore{
 		kv:      consulutil.NewFakeClient().KV(),
 		logger:  logging.DefaultLogger,
 		retries: 0,

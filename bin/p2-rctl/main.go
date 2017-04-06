@@ -20,6 +20,8 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/rc"
+	"github.com/square/p2/pkg/rc/fields"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
@@ -113,15 +115,24 @@ func main() {
 	httpClient := cleanhttp.DefaultClient()
 	client := consul.NewConsulClient(opts)
 
+	rcStore := rcstore.NewConsul(client, labeler, 3)
 	rctl := rctlParams{
 		httpClient: httpClient,
 		baseClient: client,
-		rcs:        rcstore.NewConsul(client, labeler, 3),
-		rls:        rollstore.NewConsul(client, labeler, nil),
-		consuls:    consul.NewConsulStore(client),
-		labeler:    labeler,
-		hcheck:     checker.NewConsulHealthChecker(client),
-		logger:     logger,
+		// rcStore copied so many times right now but might not all be
+		// the same implementation of these various interfaces in
+		// the future. Also rcWatcher isn't even used it is simply
+		// used by the roll farm to initialie an RC for a computation
+		// that probably doesn't need to be defined on RC.
+		rcs:         rcStore,
+		rollRCStore: rcStore,
+		rcLocker:    rcStore,
+		rcWatcher:   rcStore,
+		rls:         rollstore.NewConsul(client, labeler, nil),
+		consuls:     consul.NewConsulStore(client),
+		labeler:     labeler,
+		hcheck:      checker.NewConsulHealthChecker(client),
+		logger:      logger,
 	}
 
 	switch cmd {
@@ -164,18 +175,36 @@ type Store interface {
 	roll.Store
 }
 
+type ReplicationControllerStore interface {
+	Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error)
+	SetDesiredReplicas(id fields.ID, n int) error
+	List() ([]fields.RC, error)
+	Enable(id fields.ID) error
+	Disable(id fields.ID) error
+	Delete(id fields.ID, force bool) error
+	Get(id fields.ID) (fields.RC, error)
+}
+
+type RollingUpdateStore interface {
+	Delete(id roll_fields.ID) error
+	CreateRollingUpdateFromExistingRCs(u roll_fields.Update, newRCLabels klabels.Set, rollLabels klabels.Set) (roll_fields.Update, error)
+}
+
 // rctl is a struct for the data structures shared between commands
 // each member function represents a single command that takes over from main
 // and terminates the program on failure
 type rctlParams struct {
-	httpClient *http.Client
-	baseClient consulutil.ConsulClient
-	rcs        rcstore.Store
-	rls        rollstore.Store
-	labeler    labels.ApplicatorWithoutWatches
-	consuls    Store
-	hcheck     checker.ConsulHealthChecker
-	logger     logging.Logger
+	httpClient  *http.Client
+	baseClient  consulutil.ConsulClient
+	rcs         ReplicationControllerStore
+	rollRCStore roll.ReplicationControllerStore
+	rcLocker    roll.ReplicationControllerLocker
+	rcWatcher   rc.ReplicationControllerWatcher
+	rls         RollingUpdateStore
+	labeler     labels.ApplicatorWithoutWatches
+	consuls     Store
+	hcheck      checker.ConsulHealthChecker
+	logger      logging.Logger
 }
 
 func (r rctlParams) Create(manifestPath, nodeSelector string, podLabels map[string]string, rcLabels map[string]string) {
@@ -321,14 +350,17 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 	result := make(chan bool, 1)
 	go func() {
 		watchDelay := 1 * time.Second
-		result <- roll.NewUpdate(roll_fields.Update{
-			OldRC:           rc_fields.ID(oldID),
-			NewRC:           rc_fields.ID(newID),
-			DesiredReplicas: want,
-			MinimumReplicas: need,
-		},
+		result <- roll.NewUpdate(
+			roll_fields.Update{
+				OldRC:           rc_fields.ID(oldID),
+				NewRC:           rc_fields.ID(newID),
+				DesiredReplicas: want,
+				MinimumReplicas: need,
+			},
 			r.consuls,
-			r.rcs,
+			r.rcLocker,
+			r.rollRCStore,
+			r.rcWatcher,
 			r.hcheck,
 			r.labeler,
 			r.logger,
