@@ -338,7 +338,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 			dsLogger := dsf.makeDSLogger(*dsFields)
 
 			if _, ok := dsf.children[dsFields.ID]; !ok {
-				_, err := dsf.dsLocker.LockForOwnership(dsFields.ID, dsf.session)
+				dsUnlocker, err := dsf.dsLocker.LockForOwnership(dsFields.ID, dsf.session)
 				if _, ok := err.(consulutil.AlreadyLockedError); ok {
 					dsf.logger.Infof("Lock on daemon set '%v' was already acquired by another farm", dsFields.ID)
 					if err != nil {
@@ -351,6 +351,8 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 					return
 				}
 				dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
+
+				dsf.children[dsFields.ID] = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger)
 			}
 
 			// If the daemon set contends with another daemon set, disable it
