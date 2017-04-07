@@ -250,8 +250,10 @@ func (s *FakeDSStore) watchDiffDaemonSets(inCh <-chan []fields.DaemonSet, quitCh
 					// If they are not equal, update them
 					outgoingChanges.Updated = append(outgoingChanges.Updated, &copyDS)
 					oldDSs[id] = copyDS
+				} else {
+					// They're the same.
+					outgoingChanges.Same = append(outgoingChanges.Same, &copyDS)
 				}
-				// Otherwise no changes need to be made
 			}
 
 			for id, ds := range oldDSs {

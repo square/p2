@@ -364,6 +364,7 @@ type WatchedChanges struct {
 	Created api.KVPairs
 	Updated api.KVPairs
 	Deleted api.KVPairs
+	Same    api.KVPairs
 }
 
 // WatchDiff watches a Consul prefix for changes and categorizes them
@@ -463,6 +464,7 @@ func WatchDiff(
 					if _, ok := mapCopy[val.Key]; ok {
 						delete(mapCopy, val.Key)
 					}
+					outgoingChanges.Same = append(outgoingChanges.Same, val)
 				}
 			}
 			// If it was not observed, then it was a delete
