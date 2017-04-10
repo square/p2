@@ -239,6 +239,7 @@ func (r *replication) Enact() {
 	nodeQueue := make(chan types.NodeName)
 
 	aggregateHealth := AggregateHealth(r.manifest.ID(), r.health, r.healthWatchDelay)
+	defer aggregateHealth.Stop()
 	// this loop multiplexes the node queue across some goroutines
 
 	var updatePool sync.WaitGroup
