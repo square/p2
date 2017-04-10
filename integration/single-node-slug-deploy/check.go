@@ -434,7 +434,19 @@ func verifyTransferReplicas(errCh chan<- error, tempdir string, logger logging.L
 		return
 	}
 
-	err = rcStore.TransferReplicaCounts(toRC.ID, 1, fromRC.ID, 2)
+	replicasToAdd := 1
+	replicasToRemove := 2
+	startingFromReplicas := 4
+	startingToReplicas := 0
+	transferReq := rcstore.TransferReplicaCountsRequest{
+		ToRCID:               toRC.ID,
+		ReplicasToAdd:        &replicasToAdd,
+		FromRCID:             fromRC.ID,
+		ReplicasToRemove:     &replicasToRemove,
+		StartingFromReplicas: &startingFromReplicas,
+		StartingToReplicas:   &startingToReplicas,
+	}
+	err = rcStore.TransferReplicaCounts(transferReq)
 	if err != nil {
 		errCh <- util.Errorf("failed to transfer replicas from one RC to another: %s", err)
 		return

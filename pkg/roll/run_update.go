@@ -37,7 +37,7 @@ type ReplicationControllerStore interface {
 	Get(id rcf.ID) (rcf.RC, error)
 	SetDesiredReplicas(id rcf.ID, n int) error
 	Delete(id rcf.ID, force bool) error
-	TransferReplicaCounts(toRCID rcf.ID, replicasToAdd int, fromRCID rcf.ID, replicasToRemove int) error
+	TransferReplicaCounts(rcstore.TransferReplicaCountsRequest) error
 	Disable(id rcf.ID) error
 	Enable(id rcf.ID) error
 }
@@ -271,7 +271,16 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 					"nextRemove": nextRemove,
 					"nextAdd":    nextAdd,
 				}).Infof("Adding %d new nodes and removing %d old nodes", nextAdd, nextRemove)
-				err = u.rcStore.TransferReplicaCounts(u.NewRC, nextAdd, u.OldRC, nextRemove)
+				transferReq := rcstore.TransferReplicaCountsRequest{
+					ToRCID:               u.NewRC,
+					FromRCID:             u.OldRC,
+					ReplicasToAdd:        &nextAdd,
+					ReplicasToRemove:     &nextRemove,
+					StartingToReplicas:   &newNodes.Desired,
+					StartingFromReplicas: &oldNodes.Desired,
+				}
+
+				err = u.rcStore.TransferReplicaCounts(transferReq)
 				if err != nil {
 					u.logger.WithError(err).Errorln("could not update RC replica counts")
 					break

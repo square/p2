@@ -230,13 +230,13 @@ func (s *fakeStore) LockForUpdateCreation(rcID fields.ID, session consul.Session
 	return session.Lock(key)
 }
 
-func (s *fakeStore) TransferReplicaCounts(toRCID fields.ID, replicasToAdd int, fromRCID fields.ID, replicasToRemove int) error {
-	err := s.AddDesiredReplicas(toRCID, replicasToAdd)
+func (s *fakeStore) TransferReplicaCounts(req TransferReplicaCountsRequest) error {
+	err := s.AddDesiredReplicas(req.ToRCID, *req.ReplicasToAdd)
 	if err != nil {
 		return err
 	}
 
-	err = s.AddDesiredReplicas(fromRCID, -replicasToRemove)
+	err = s.AddDesiredReplicas(req.FromRCID, -*req.ReplicasToRemove)
 	if err != nil {
 		return err
 	}

@@ -782,33 +782,92 @@ func (s *ConsulStore) LockForUpdateCreation(rcID fields.ID, session consul.Sessi
 	return session.Lock(updateCreationLockPath)
 }
 
+type TransferReplicaCountsRequest struct {
+	// ToRCID is the RC ID of the replication controller which will have its
+	// replica count increased
+	ToRCID fields.ID
+
+	// FromRCID is the RC ID of the replication controller which will have its
+	// replica count decreased
+	FromRCID fields.ID
+
+	// ReplicasToAdd is the number of replicas to add to the RC indicated by
+	// ToRCID
+	ReplicasToAdd *int
+
+	// ReplicasToRemove is the number of replicas to remove from the RC indicated
+	// by FromRCID
+	ReplicasToRemove *int
+
+	// StartingToReplicas is the number of replicas the caller expects the
+	// RC specified by ToRCID to have prior to the transaction being
+	// applied. This is useful to guarantee that assumptions that went into
+	// the calculation of ReplicasToAdd and ReplicasToRemove haven't
+	// changed.
+	StartingToReplicas *int
+
+	// StartingFromReplicas is the number of replicas the caller expects
+	// the RC specified by FromRCID to have prior to the transaction being
+	// applied. This is useful to guarantee that assumptions that went into
+	// the calculation of ReplicasToAdd and ReplicasToRemove haven't
+	// changed.
+	StartingFromReplicas *int
+}
+
 // TransferReplicaCounts supports transactionally updating the replica counts
 // of two RCs in consul.  This is useful for rolling updates to transition
 // nodes from the old RC to the new one without risking the consul database
 // dying between updates and violating replica count invariants
-func (s *ConsulStore) TransferReplicaCounts(toRCID fields.ID, replicasToAdd int, fromRCID fields.ID, replicasToRemove int) error {
-	toRCPath, err := s.rcPath(toRCID)
+func (s *ConsulStore) TransferReplicaCounts(req TransferReplicaCountsRequest) error {
+	if req.ToRCID == "" {
+		return util.Errorf("couldn't transfer replica counts: ToRCID was empty")
+	}
+	if req.FromRCID == "" {
+		return util.Errorf("couldn't transfer replica counts: FromRCID was empty")
+	}
+	if req.ReplicasToAdd == nil {
+		return util.Errorf("couldn't transfer replica counts: ReplicasToAdd was nil")
+	}
+	if req.ReplicasToRemove == nil {
+		return util.Errorf("couldn't transfer replica counts: ReplicasToRemove was nil")
+	}
+	if req.StartingToReplicas == nil {
+		return util.Errorf("couldn't transfer replica counts: StartingToReplicas was nil")
+	}
+	if req.StartingFromReplicas == nil {
+		return util.Errorf("couldn't transfer replica counts: StartingFromReplicas was nil")
+	}
+
+	toRCPath, err := s.rcPath(req.ToRCID)
 	if err != nil {
 		return util.Errorf("couldn't transfer replica counts: %s", err)
 	}
 
-	fromRCPath, err := s.rcPath(fromRCID)
+	fromRCPath, err := s.rcPath(req.FromRCID)
 	if err != nil {
 		return util.Errorf("couldn't transfer replica counts: %s", err)
 	}
 
-	toRC, toRCIndex, err := s.getWithIndex(toRCID)
+	toRC, toRCIndex, err := s.getWithIndex(req.ToRCID)
 	if err != nil {
 		return util.Errorf("couldn't transfer replica counts: %s", err)
 	}
 
-	fromRC, fromRCIndex, err := s.getWithIndex(fromRCID)
+	if toRC.ReplicasDesired != *req.StartingToReplicas {
+		return util.Errorf("couldn't transfer replica counts: RC %s had %d replicas but the request expected it to have %d", req.ToRCID, toRC.ReplicasDesired, *req.StartingToReplicas)
+	}
+
+	fromRC, fromRCIndex, err := s.getWithIndex(req.FromRCID)
 	if err != nil {
 		return util.Errorf("couldn't transfer replica counts: %s", err)
 	}
 
-	toRC.ReplicasDesired = toRC.ReplicasDesired + replicasToAdd
-	fromRC.ReplicasDesired = fromRC.ReplicasDesired - replicasToRemove
+	if fromRC.ReplicasDesired != *req.StartingFromReplicas {
+		return util.Errorf("couldn't transfer replica counts: RC %s had %d replicas but the request expected it to have %d", req.FromRCID, fromRC.ReplicasDesired, *req.StartingFromReplicas)
+	}
+
+	toRC.ReplicasDesired = toRC.ReplicasDesired + *req.ReplicasToAdd
+	fromRC.ReplicasDesired = fromRC.ReplicasDesired - *req.ReplicasToRemove
 
 	toRCBytes, err := json.Marshal(toRC)
 	if err != nil {
