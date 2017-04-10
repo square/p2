@@ -45,12 +45,11 @@ type ReplicationControllerStore interface {
 type update struct {
 	fields.Update
 
-	consuls   Store
-	rcStore   ReplicationControllerStore
-	rcLocker  ReplicationControllerLocker
-	rcWatcher rc.ReplicationControllerWatcher
-	hcheck    checker.ConsulHealthChecker
-	labeler   rc.Labeler
+	consuls  Store
+	rcStore  ReplicationControllerStore
+	rcLocker ReplicationControllerLocker
+	hcheck   checker.ConsulHealthChecker
+	labeler  rc.Labeler
 
 	logger logging.Logger
 
@@ -75,7 +74,6 @@ func NewUpdate(
 	consuls Store,
 	rcLocker ReplicationControllerLocker,
 	rcStore ReplicationControllerStore,
-	rcWatcher rc.ReplicationControllerWatcher,
 	hcheck checker.ConsulHealthChecker,
 	labeler rc.Labeler,
 	logger logging.Logger,
