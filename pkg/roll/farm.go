@@ -37,6 +37,24 @@ type UpdateFactory struct {
 	WatchDelay    time.Duration
 }
 
+func NewUpdateFactory(
+	store Store,
+	rcLocker ReplicationControllerLocker,
+	rcStore ReplicationControllerStore,
+	healthChecker checker.ConsulHealthChecker,
+	labeler rc.Labeler,
+	watchDelay time.Duration,
+) UpdateFactory {
+	return UpdateFactory{
+		Store:         store,
+		RCLocker:      rcLocker,
+		RCStore:       rcStore,
+		HealthChecker: healthChecker,
+		Labeler:       labeler,
+		WatchDelay:    watchDelay,
+	}
+}
+
 func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consul.Session) Update {
 	return NewUpdate(
 		u,
