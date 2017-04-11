@@ -121,13 +121,10 @@ func main() {
 		baseClient: client,
 		// rcStore copied so many times right now but might not all be
 		// the same implementation of these various interfaces in
-		// the future. Also rcWatcher isn't even used it is simply
-		// used by the roll farm to initialie an RC for a computation
-		// that probably doesn't need to be defined on RC.
+		// the future.
 		rcs:         rcStore,
 		rollRCStore: rcStore,
 		rcLocker:    rcStore,
-		rcWatcher:   rcStore,
 		rls:         rollstore.NewConsul(client, labeler, nil),
 		consuls:     consul.NewConsulStore(client),
 		labeler:     labeler,
@@ -360,7 +357,6 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 			r.consuls,
 			r.rcLocker,
 			r.rollRCStore,
-			r.rcWatcher,
 			r.hcheck,
 			r.labeler,
 			r.logger,
