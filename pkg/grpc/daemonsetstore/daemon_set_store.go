@@ -54,7 +54,7 @@ func (s Store) DisableDaemonSet(_ context.Context, req *daemonsetstore_protos.Di
 		return nil, grpc.Errorf(codes.InvalidArgument, err.Error())
 	}
 
-	_, err = s.consulStore.Disable(id)
+	ds, err := s.consulStore.Disable(id)
 	if err != nil {
 		if err == dsstore.NoDaemonSet {
 			return nil, grpc.Errorf(codes.NotFound, "no daemon set with id %s was found", id)
@@ -63,7 +63,16 @@ func (s Store) DisableDaemonSet(_ context.Context, req *daemonsetstore_protos.Di
 		return nil, grpc.Errorf(codes.Unavailable, "could not disable daemon set %s: %s", id, err)
 	}
 
-	return &daemonsetstore_protos.DisableDaemonSetResponse{}, nil
+	dsProto, err := rawDSToProtoDS(ds)
+	if err != nil {
+		// this is awkward because the disable already worked, but it's
+		// idempotent. This also shouldn't happen
+		return nil, grpc.Errorf(codes.Unavailable, "disable succeeded, but could not convert daemon set to proto type: %s", err)
+	}
+
+	return &daemonsetstore_protos.DisableDaemonSetResponse{
+		DaemonSet: dsProto,
+	}, nil
 }
 
 func (s Store) WatchDaemonSets(_ *daemonsetstore_protos.WatchDaemonSetsRequest, stream daemonsetstore_protos.P2DaemonSetStore_WatchDaemonSetsServer) error {
