@@ -20,7 +20,7 @@ func CurrentEnv() *HookEnv {
 type HookEnv struct{}
 
 func (h *HookEnv) Manifest() (manifest.Manifest, error) {
-	path := os.Getenv(HOOKED_POD_MANIFEST_ENV_VAR)
+	path := os.Getenv(HookedPodManifestEnvVar)
 	if path == "" {
 		return nil, util.Errorf("No manifest exported")
 	}
@@ -28,7 +28,7 @@ func (h *HookEnv) Manifest() (manifest.Manifest, error) {
 }
 
 func (h *HookEnv) PodID() (types.PodID, error) {
-	id := os.Getenv(HOOKED_POD_ID_ENV_VAR)
+	id := os.Getenv(HookedPodIDEnvVar)
 	if id == "" {
 		return "", util.Errorf("Did not provide a pod ID to use")
 	}
@@ -37,7 +37,7 @@ func (h *HookEnv) PodID() (types.PodID, error) {
 }
 
 func (h *HookEnv) PodHome() (string, error) {
-	path := os.Getenv(HOOKED_POD_HOME_ENV_VAR)
+	path := os.Getenv(HookedPodHomeEnvVar)
 	if path == "" {
 		return "", util.Errorf("No pod home given for pod")
 	}
@@ -46,7 +46,7 @@ func (h *HookEnv) PodHome() (string, error) {
 }
 
 func (h *HookEnv) Node() (types.NodeName, error) {
-	node := os.Getenv(HOOKED_NODE_ENV_VAR)
+	node := os.Getenv(HookedNodeEnvVar)
 	if node == "" {
 		// TODO: This can't be a hard error right now. It would mean hooks built with this
 		// change couldn't run under preparers without this change. We'll fix it later.
@@ -78,14 +78,14 @@ func (h *HookEnv) PodFromDisk() (*pods.Pod, error) {
 
 // Initializes a pod based on the hooked pod manifest and the system pod root
 func (h *HookEnv) Pod() (*pods.Pod, error) {
-	factory := pods.NewFactory(os.Getenv(HOOKED_SYSTEM_POD_ROOT_ENV_VAR), HOOKED_NODE_ENV_VAR)
+	factory := pods.NewFactory(os.Getenv(HookedSystemPodRootEnvVar), HookedNodeEnvVar)
 
 	podID, err := h.PodID()
 	if err != nil {
 		return nil, err
 	}
 
-	uuid := types.PodUniqueKey(os.Getenv(HOOKED_POD_UNIQUE_KEY_ENV_VAR))
+	uuid := types.PodUniqueKey(os.Getenv(HookedPodUniqueKeyEnvVar))
 	if uuid == "" {
 		return factory.NewLegacyPod(podID), nil
 	}
@@ -93,19 +93,19 @@ func (h *HookEnv) Pod() (*pods.Pod, error) {
 }
 
 func (h *HookEnv) Config() (*config.Config, error) {
-	return config.LoadConfigFile(os.Getenv(HOOKED_CONFIG_PATH_ENV_VAR))
+	return config.LoadConfigFile(os.Getenv(HookedConfigPathEnvVar))
 }
 
 func (h *HookEnv) Event() (HookType, error) {
-	return AsHookType(os.Getenv(HOOK_EVENT_ENV_VAR))
+	return AsHookType(os.Getenv(HookEventEnvVar))
 }
 
 func (h *HookEnv) EnvPath() string {
-	return os.Getenv(HOOKED_ENV_PATH_ENV_VAR)
+	return os.Getenv(HookedEnvPathEnvVar)
 }
 
 func (h *HookEnv) ConfigDirPath() string {
-	return os.Getenv(HOOKED_CONFIG_DIR_PATH_ENV_VAR)
+	return os.Getenv(HookedConfigDirPathEnvVar)
 }
 
 func (h *HookEnv) ExitUnlessEvent(types ...HookType) HookType {

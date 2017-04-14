@@ -15,24 +15,26 @@ import (
 	"github.com/square/p2/pkg/types"
 )
 
-var DEFAULT_PATH = "/usr/local/p2hooks.d"
+// DefaultPath is a directory on disk where hooks are installed by default.
+var DefaultPath = "/usr/local/p2hooks.d"
 
 const (
-	HOOK_ENV_VAR                   = "HOOK"
-	HOOK_EVENT_ENV_VAR             = "HOOK_EVENT"
-	HOOKED_NODE_ENV_VAR            = "HOOKED_NODE"
-	HOOKED_POD_ID_ENV_VAR          = "HOOKED_POD_ID"
-	HOOKED_POD_HOME_ENV_VAR        = "HOOKED_POD_HOME"
-	HOOKED_POD_MANIFEST_ENV_VAR    = "HOOKED_POD_MANIFEST"
-	HOOKED_CONFIG_PATH_ENV_VAR     = "HOOKED_CONFIG_PATH"
-	HOOKED_ENV_PATH_ENV_VAR        = "HOOKED_ENV_PATH"
-	HOOKED_CONFIG_DIR_PATH_ENV_VAR = "HOOKED_CONFIG_DIR_PATH"
-	HOOKED_SYSTEM_POD_ROOT_ENV_VAR = "HOOKED_SYSTEM_POD_ROOT"
-	HOOKED_POD_UNIQUE_KEY_ENV_VAR  = "HOOKED_POD_UNIQUE_KEY"
+	HookEnvVar                = "HOOK"
+	HookEventEnvVar           = "HOOK_EVENT"
+	HookedNodeEnvVar          = "HOOKED_NODE"
+	HookedPodIDEnvVar         = "HOOKED_POD_ID"
+	HookedPodHomeEnvVar       = "HOOKED_POD_HOME"
+	HookedPodManifestEnvVar   = "HOOKED_POD_MANIFEST"
+	HookedConfigPathEnvVar    = "HOOKED_CONFIG_PATH"
+	HookedEnvPathEnvVar       = "HOOKED_ENV_PATH"
+	HookedConfigDirPathEnvVar = "HOOKED_CONFIG_DIR_PATH"
+	HookedSystemPodRootEnvVar = "HOOKED_SYSTEM_POD_ROOT"
+	HookedPodUniqueKeyEnvVar  = "HOOKED_POD_UNIQUE_KEY"
 
 	DefaultTimeout = 120 * time.Second
 )
 
+// Pod is the minimum set of functions needed for a hook to operate on a Pod
 type Pod interface {
 	ConfigDir() string
 	EnvDir() string
@@ -41,12 +43,13 @@ type Pod interface {
 	UniqueKey() types.PodUniqueKey
 }
 
-type HookDir struct {
+type hookDir struct {
 	dirpath string
 	podRoot string
 	logger  *logging.Logger
 }
 
+// HookType represents the stage in the Hook lifecycle
 type HookType string
 
 func (hookType HookType) String() string {
@@ -54,35 +57,41 @@ func (hookType HookType) String() string {
 }
 
 var (
-	BEFORE_INSTALL   = HookType("before_install")
-	AFTER_INSTALL    = HookType("after_install") // after_install occurs before we have disabled the old version
-	BEFORE_UNINSTALL = HookType("before_uninstall")
-	BEFORE_LAUNCH    = HookType("before_launch") // before_launch occurs after we have disabled the old version
-	AFTER_LAUNCH     = HookType("after_launch")
-	AFTER_AUTH_FAIL  = HookType("after_auth_fail")
+	// BeforeInstall hooks run before the artifact is downloaded and extracted
+	BeforeInstall = HookType("before_install")
+	// AfterInstall hooks run after we have installed but before we have disabled the old version
+	AfterInstall = HookType("after_install")
+	// BeforeUninstall happens after shutdown but before uninstall
+	BeforeUninstall = HookType("before_uninstall")
+	// BeforeLaunch occurs after we have disabled the old version
+	BeforeLaunch = HookType("before_launch")
+	// AfterLaunch occurs after launch
+	AfterLaunch = HookType("after_launch")
+	// AfterAuth occurs conditionally when artifact authorization fails
+	AfterAuthFail = HookType("after_auth_fail")
 )
 
 func AsHookType(value string) (HookType, error) {
 	switch value {
-	case BEFORE_INSTALL.String():
-		return BEFORE_INSTALL, nil
-	case AFTER_INSTALL.String():
-		return AFTER_INSTALL, nil
-	case BEFORE_UNINSTALL.String():
-		return BEFORE_UNINSTALL, nil
-	case BEFORE_LAUNCH.String():
-		return BEFORE_LAUNCH, nil
-	case AFTER_LAUNCH.String():
-		return AFTER_LAUNCH, nil
-	case AFTER_AUTH_FAIL.String():
-		return AFTER_AUTH_FAIL, nil
+	case BeforeInstall.String():
+		return BeforeInstall, nil
+	case AfterInstall.String():
+		return AfterInstall, nil
+	case BeforeUninstall.String():
+		return BeforeUninstall, nil
+	case BeforeLaunch.String():
+		return BeforeLaunch, nil
+	case AfterLaunch.String():
+		return AfterLaunch, nil
+	case AfterAuthFail.String():
+		return AfterAuthFail, nil
 	default:
 		return HookType(""), fmt.Errorf("%s is not a valid hook type", value)
 	}
 }
 
-func Hooks(dirpath string, podRoot string, logger *logging.Logger) *HookDir {
-	return &HookDir{
+func Hooks(dirpath string, podRoot string, logger *logging.Logger) *hookDir {
+	return &hookDir{
 		dirpath: dirpath,
 		podRoot: podRoot,
 		logger:  logger,
@@ -194,7 +203,7 @@ func (h *Hook) Run() {
 	}
 }
 
-func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest manifest.Manifest, logger logging.Logger) error {
+func (h *hookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest manifest.Manifest, logger logging.Logger) error {
 	configFileName, err := podManifest.ConfigFileName()
 	if err != nil {
 		return err
@@ -219,23 +228,23 @@ func (h *HookDir) runHooks(dirpath string, hType HookType, pod Pod, podManifest 
 	}
 
 	hookEnvironment := []string{
-		fmt.Sprintf("%s=%s", HOOK_ENV_VAR, path.Base(dirpath)),
-		fmt.Sprintf("%s=%s", HOOK_EVENT_ENV_VAR, hType.String()),
-		fmt.Sprintf("%s=%s", HOOKED_NODE_ENV_VAR, pod.Node()),
-		fmt.Sprintf("%s=%s", HOOKED_POD_ID_ENV_VAR, podManifest.ID()),
-		fmt.Sprintf("%s=%s", HOOKED_POD_HOME_ENV_VAR, pod.Home()),
-		fmt.Sprintf("%s=%s", HOOKED_POD_MANIFEST_ENV_VAR, tmpManifestFile.Name()),
-		fmt.Sprintf("%s=%s", HOOKED_CONFIG_PATH_ENV_VAR, path.Join(pod.ConfigDir(), configFileName)),
-		fmt.Sprintf("%s=%s", HOOKED_ENV_PATH_ENV_VAR, pod.EnvDir()),
-		fmt.Sprintf("%s=%s", HOOKED_CONFIG_DIR_PATH_ENV_VAR, pod.ConfigDir()),
-		fmt.Sprintf("%s=%s", HOOKED_SYSTEM_POD_ROOT_ENV_VAR, h.podRoot),
-		fmt.Sprintf("%s=%s", HOOKED_POD_UNIQUE_KEY_ENV_VAR, pod.UniqueKey()),
+		fmt.Sprintf("%s=%s", HookEnvVar, path.Base(dirpath)),
+		fmt.Sprintf("%s=%s", HookEventEnvVar, hType.String()),
+		fmt.Sprintf("%s=%s", HookedNodeEnvVar, pod.Node()),
+		fmt.Sprintf("%s=%s", HookedPodIDEnvVar, podManifest.ID()),
+		fmt.Sprintf("%s=%s", HookedPodHomeEnvVar, pod.Home()),
+		fmt.Sprintf("%s=%s", HookedPodManifestEnvVar, tmpManifestFile.Name()),
+		fmt.Sprintf("%s=%s", HookedConfigPathEnvVar, path.Join(pod.ConfigDir(), configFileName)),
+		fmt.Sprintf("%s=%s", HookedEnvPathEnvVar, pod.EnvDir()),
+		fmt.Sprintf("%s=%s", HookedConfigDirPathEnvVar, pod.ConfigDir()),
+		fmt.Sprintf("%s=%s", HookedSystemPodRootEnvVar, h.podRoot),
+		fmt.Sprintf("%s=%s", HookedPodUniqueKeyEnvVar, pod.UniqueKey()),
 	}
 
 	return runDirectory(dirpath, hookEnvironment, logger)
 }
 
-func (h *HookDir) RunHookType(hookType HookType, pod Pod, manifest manifest.Manifest) error {
+func (h *hookDir) RunHookType(hookType HookType, pod Pod, manifest manifest.Manifest) error {
 	logger := h.logger.SubLogger(logrus.Fields{
 		"pod":      manifest.ID(),
 		"pod_path": pod.Home(),

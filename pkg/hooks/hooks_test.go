@@ -33,7 +33,7 @@ func TestExecutableHooksAreRun(t *testing.T) {
 	hooks := Hooks(os.TempDir(), pods.DefaultPath, &logging.DefaultLogger)
 	pod, err := pods.PodFromPodHome("testNode", podDir)
 	Assert(t).IsNil(err, "the error should have been nil")
-	hooks.runHooks(tempDir, AFTER_INSTALL, pod, testManifest(), logging.DefaultLogger)
+	hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger)
 
 	contents, err := ioutil.ReadFile(path.Join(tempDir, "output"))
 	Assert(t).IsNil(err, "the error should have been nil")
@@ -59,7 +59,7 @@ func TestNonExecutableHooksAreNotRun(t *testing.T) {
 	hooks := Hooks(os.TempDir(), pods.DefaultPath, &logging.DefaultLogger)
 	pod, err := pods.PodFromPodHome("testNode", podDir)
 	Assert(t).IsNil(err, "the error should have been nil")
-	hooks.runHooks(tempDir, AFTER_INSTALL, pod, testManifest(), logging.DefaultLogger)
+	hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger)
 
 	if _, err := os.Stat(path.Join(tempDir, "failed")); err == nil {
 		t.Fatal("`failed` file exists; non-executable hook ran but should not have run")
@@ -84,7 +84,7 @@ func TestDirectoriesDoNotBreakEverything(t *testing.T) {
 	Assert(t).IsNil(err, "the error should have been nil")
 	logger := logging.TestLogger()
 	hooks := Hooks(os.TempDir(), pods.DefaultPath, &logger)
-	err = hooks.runHooks(tempDir, AFTER_INSTALL, pod, testManifest(), logging.DefaultLogger)
+	err = hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger)
 
 	Assert(t).IsNil(err, "Got an error when running a directory inside the hooks directory")
 }

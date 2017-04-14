@@ -101,22 +101,22 @@ type fakeHooks struct {
 
 func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest manifest.Manifest) error {
 	switch hookType {
-	case hooks.BEFORE_INSTALL:
+	case hooks.BeforeInstall:
 		f.ranBeforeInstall = true
 		return f.beforeInstallErr
-	case hooks.AFTER_INSTALL:
+	case hooks.AfterInstall:
 		f.ranAfterInstall = true
 		return f.afterInstallErr
-	case hooks.BEFORE_UNINSTALL:
+	case hooks.BeforeUninstall:
 		f.ranBeforeUninstall = true
 		return f.beforeUninstallErr
-	case hooks.BEFORE_LAUNCH:
+	case hooks.BeforeLaunch:
 		f.ranBeforeLaunch = true
 		return f.beforeLaunchErr
-	case hooks.AFTER_LAUNCH:
+	case hooks.AfterLaunch:
 		f.ranAfterLaunch = true
 		return f.afterLaunchErr
-	case hooks.AFTER_AUTH_FAIL:
+	case hooks.AfterAuthFail:
 		f.ranAfterAuthFail = true
 		return f.afterAuthFailErr
 	}

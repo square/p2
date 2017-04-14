@@ -220,7 +220,7 @@ func UnmarshalConfig(config []byte) (*PreparerConfig, error) {
 		preparerConfig.ConsulAddress = DefaultConsulAddress
 	}
 	if preparerConfig.HooksDirectory == "" {
-		preparerConfig.HooksDirectory = hooks.DEFAULT_PATH
+		preparerConfig.HooksDirectory = hooks.DefaultPath
 	}
 	if preparerConfig.PodRoot == "" {
 		preparerConfig.PodRoot = pods.DefaultPath
