@@ -34,7 +34,7 @@ func main() {
 		*nodeName = hostname
 	}
 
-	dir := hooks.Hooks(*hookDir, *podRoot, &logging.DefaultLogger)
+	dir := hooks.NewContext(*hookDir, *podRoot, &logging.DefaultLogger)
 
 	hookType, err := hooks.AsHookType(*hookType)
 	if err != nil {

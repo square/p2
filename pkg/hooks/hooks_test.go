@@ -30,7 +30,7 @@ func TestExecutableHooksAreRun(t *testing.T) {
 	// So PodFromPodHome doesn't bail out, write a minimal current_manifest.yaml
 	ioutil.WriteFile(path.Join(podDir, "current_manifest.yaml"), []byte("id: my_hook"), 0755)
 
-	hooks := Hooks(os.TempDir(), pods.DefaultPath, &logging.DefaultLogger)
+	hooks := NewContext(tempDir, pods.DefaultPath, &logging.DefaultLogger)
 	pod, err := pods.PodFromPodHome("testNode", podDir)
 	Assert(t).IsNil(err, "the error should have been nil")
 	hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger)
@@ -56,7 +56,7 @@ func TestNonExecutableHooksAreNotRun(t *testing.T) {
 	// So PodFromPodHome doesn't bail out, write a minimal current_manifest.yaml
 	ioutil.WriteFile(path.Join(podDir, "current_manifest.yaml"), []byte("id: my_hook"), 0755)
 
-	hooks := Hooks(os.TempDir(), pods.DefaultPath, &logging.DefaultLogger)
+	hooks := NewContext(tempDir, pods.DefaultPath, &logging.DefaultLogger)
 	pod, err := pods.PodFromPodHome("testNode", podDir)
 	Assert(t).IsNil(err, "the error should have been nil")
 	hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger)
@@ -83,7 +83,7 @@ func TestDirectoriesDoNotBreakEverything(t *testing.T) {
 	pod, err := pods.PodFromPodHome("testNode", podDir)
 	Assert(t).IsNil(err, "the error should have been nil")
 	logger := logging.TestLogger()
-	hooks := Hooks(os.TempDir(), pods.DefaultPath, &logger)
+	hooks := NewContext(tempDir, pods.DefaultPath, &logger)
 	err = hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger)
 
 	Assert(t).IsNil(err, "Got an error when running a directory inside the hooks directory")
@@ -108,10 +108,11 @@ func TestHookRunWithTimeout(t *testing.T) {
 	}
 	defer os.Remove(tmpFile)
 
-	hook := Hook{tmpFile, "timeout-test-hook", timeout, []string{}, logging.TestLogger()}
+	logger := logging.TestLogger()
+	hook := NewHookExecContext(tmpFile, "timeout-test-hook", timeout, []string{}, &logger)
 
 	toErr := hook.RunWithTimeout()
-	if _, ok := toErr.(HookTimeoutError); !ok {
+	if _, ok := toErr.(ErrHookTimeout); !ok {
 		// we either had no error or a different error
 		t.Errorf("timeout did not throw a HookTimeoutError: timeout: %#v / sleep: %#v / err: %#v", timeout, sleep, toErr)
 	}

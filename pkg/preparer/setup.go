@@ -443,7 +443,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	return &Preparer{
 		node:                   preparerConfig.NodeName,
 		store:                  store,
-		hooks:                  hooks.Hooks(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger),
+		hooks:                  hooks.NewContext(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger),
 		podStatusStore:         podStatusStore,
 		podStore:               podStore,
 		Logger:                 logger,
