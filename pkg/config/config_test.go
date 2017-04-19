@@ -31,6 +31,15 @@ func TestConfigFileCanReadStringKeys(t *testing.T) {
 	}
 }
 
+func TestReadStringSlice(t *testing.T) {
+	s, err := readTestFile().ReadStringSlice("slice")
+	Assert(t).IsNil(err, "slice should have been a valid string slice key")
+	Assert(t).AreEqual(3, len(s), "Expected 3 entries")
+	Assert(t).AreEqual("a", s[0], "First entry a")
+	Assert(t).AreEqual("b", s[1], "Second entry b")
+	Assert(t).AreEqual("c", s[2], "Third entry c")
+}
+
 func TestConfigCanBeReadFromEnvironment(t *testing.T) {
 	prev := os.Getenv("CONFIG_PATH")
 	os.Setenv("CONFIG_PATH", testFilePath())
