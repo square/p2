@@ -49,7 +49,7 @@ var (
 	createManifest   = cmdCreate.Flag("manifest", "Path to signed manifest file").Required().String()
 	createMinHealth  = cmdCreate.Flag("minhealth", "The minimum health of the daemon set").Required().String()
 	createName       = cmdCreate.Flag("name", "The cluster name (ie. staging, production)").Required().String()
-	createTimeout    = cmdCreate.Flag("timeout", "Non-zero timeout for replicating hosts. e.g. 1m2s for 1 minute and 2 seconds").Required().Duration()
+	createTimeout    = cmdCreate.Flag("timeout", "Non-zero per-pod timeout for replicating hosts. e.g. 1m2s for 1 minute and 2 seconds").Required().Duration()
 	createEverywhere = cmdCreate.Flag("everywhere", "Sets selector to match everything regardless of its value").Bool()
 
 	cmdGet = kingpin.Command(CmdGet, "Show a daemon set.")
@@ -133,7 +133,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("err: %v", err)
 		}
-		fmt.Printf("%v has been created in consul", ds.ID)
+		fmt.Printf("%v has been created in consul and will begin replicating (i.e. deploying) shortly.", ds.ID)
 		fmt.Println()
 
 	case CmdGet:
