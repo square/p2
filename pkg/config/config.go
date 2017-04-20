@@ -68,6 +68,26 @@ func (c *Config) ReadMap(key string) (*Config, error) {
 	return &Config{mapVal}, nil
 }
 
+func (c *Config) ReadStringSlice(key string) ([]string, error) {
+	readVal := c.Read(key)
+	retV := []string{}
+	if readVal == nil {
+		return retV, nil
+	}
+	slice, ok := readVal.([]interface{})
+	if !ok {
+		return retV, fmt.Errorf("%s is not a string slice", key)
+	}
+	for _, intf := range slice {
+		strVal, ok := intf.(string)
+		if !ok {
+			return []string{}, fmt.Errorf("%v is not a string", intf)
+		}
+		retV = append(retV, strVal)
+	}
+	return retV, nil
+}
+
 func (c *Config) Keys() []string {
 	keys := []string{}
 	for intf := range c.unpacked {

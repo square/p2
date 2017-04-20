@@ -2,3 +2,7 @@ app: "multicurse"
 foomap:
   a: b
   c: d
+slice:
+  - a
+  - b
+  - c
