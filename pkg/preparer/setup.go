@@ -404,6 +404,25 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		return nil, util.Errorf("Could not create preparer pod directory: %s", err)
 	}
 
+	// Artifact files are downloaded to os.TempDir().
+	// Since we extract artifact files as target user, we must allow them to access the tmpdir.
+	// We expect that there is no sensitive information in TempDir, so 755 is safe, though 711 could be considered.
+	tmpDirStat, err := os.Stat(os.TempDir())
+	if err != nil {
+		return nil, util.Errorf("Could not stat tmpdir: %s", err)
+	}
+	mode := tmpDirStat.Mode()
+	// We don't chmod if the directory is already 755.
+	// Normally there is no harm in doing so,
+	// but on Travis we don't have permission to do so (we don't run as root).
+	if mode&0755 != 0755 {
+		// keep whatever upper bit is there.
+		err = os.Chmod(os.TempDir(), (mode&07000)|0755)
+		if err != nil {
+			return nil, util.Errorf("Could not chmod tmpdir: %s", err)
+		}
+	}
+
 	var logExec []string
 	if len(preparerConfig.LogExec) > 0 {
 		logExec = preparerConfig.LogExec
