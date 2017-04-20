@@ -16,7 +16,7 @@ import (
 var (
 	podDir       = kingpin.Arg("pod", "A path to a pod that exists on disk already.").Required().String()
 	hookType     = kingpin.Arg("hook-type", "Execute one of the given hook types").Required().String()
-	hookDir      = kingpin.Flag("hook-dir", "The root of the hooks").Default(hooks.DEFAULT_PATH).String()
+	hookDir      = kingpin.Flag("hook-dir", "The root of the hooks").Default(hooks.DefaultPath).String()
 	manifestPath = kingpin.Flag("manifest", "The manifest to use (this is useful when we are in the before_install phase)").ExistingFile()
 	nodeName     = kingpin.Flag("node-name", "The name of this node (default: hostname)").String()
 	podRoot      = kingpin.Flag("pod-root", "The system root for pods").Default(pods.DefaultPath).String()

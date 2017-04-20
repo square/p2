@@ -24,7 +24,7 @@ var (
 	registryURI = kingpin.Arg("registry", "A URL to the registry to download artifacts from").URL()
 	nodeName    = kingpin.Flag("node-name", "the name of this node (default: hostname)").String()
 	podRoot     = kingpin.Flag("pod-root", "the root of the pods directory").Default(pods.DefaultPath).String()
-	hookRoot    = kingpin.Flag("hook-root", "the root of the hook scripts directory").Default(hooks.DEFAULT_PATH).String()
+	hookRoot    = kingpin.Flag("hook-root", "the root of the hook scripts directory").Default(hooks.DefaultPath).String()
 	hookType    = kingpin.Flag("hook-type", "the type of the hook (if unspecified, defaults to global)").String()
 )
 
