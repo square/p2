@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -256,15 +257,15 @@ func main() {
 					return ds, util.Errorf("Manifest ID of %s does not match daemon set's pod ID (%s)", manifest.ID(), ds.PodID)
 				}
 
-				dsSHA, err := ds.Manifest.SHA()
+				dsBytes, err := ds.Manifest.Marshal()
 				if err != nil {
-					return ds, util.Errorf("Unable to get SHA from consul daemon set manifest: %v", err)
+					return ds, util.Errorf("Unable to to marshal daemon set manifest: %v", err)
 				}
-				newSHA, err := manifest.SHA()
+				newBytes, err := manifest.Marshal()
 				if err != nil {
-					return ds, util.Errorf("Unable to get SHA from new manifest: %v", err)
+					return ds, util.Errorf("Unable to marshal proposed daemon set manifest: %v", err)
 				}
-				if dsSHA != newSHA {
+				if !bytes.Equal(dsBytes, newBytes) {
 					changed = true
 					ds.Manifest = manifest
 				}
