@@ -327,7 +327,7 @@ func (p *Preparer) resolvePair(pair ManifestPair, pod Pod, logger logging.Logger
 		authorized := p.authorize(pair.Intent, logger)
 		if !authorized {
 			p.tryRunHooks(
-				hooks.AFTER_AUTH_FAIL,
+				hooks.AfterAuthFail,
 				pod,
 				pair.Intent,
 				logger,
@@ -351,7 +351,7 @@ func (p *Preparer) resolvePair(pair ManifestPair, pod Pod, logger logging.Logger
 	authorized := p.authorize(pair.Intent, logger)
 	if !authorized {
 		p.tryRunHooks(
-			hooks.AFTER_AUTH_FAIL,
+			hooks.AfterAuthFail,
 			pod,
 			pair.Intent,
 			logger,
@@ -366,7 +366,7 @@ func (p *Preparer) resolvePair(pair ManifestPair, pod Pod, logger logging.Logger
 }
 
 func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger logging.Logger) bool {
-	p.tryRunHooks(hooks.BEFORE_INSTALL, pod, pair.Intent, logger)
+	p.tryRunHooks(hooks.BeforeInstall, pod, pair.Intent, logger)
 
 	logger.NoFields().Infoln("Installing pod and launchables")
 
@@ -381,11 +381,11 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 	if err != nil {
 		logger.WithError(err).
 			Errorln("Pod digest verification failed")
-		p.tryRunHooks(hooks.AFTER_AUTH_FAIL, pod, pair.Intent, logger)
+		p.tryRunHooks(hooks.AfterAuthFail, pod, pair.Intent, logger)
 		return false
 	}
 
-	p.tryRunHooks(hooks.AFTER_INSTALL, pod, pair.Intent, logger)
+	p.tryRunHooks(hooks.AfterInstall, pod, pair.Intent, logger)
 
 	if pair.Reality != nil {
 		logger.NoFields().Infoln("Invoking the disable hook and halting runit services")
@@ -398,7 +398,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 		}
 	}
 
-	p.tryRunHooks(hooks.BEFORE_LAUNCH, pod, pair.Intent, logger)
+	p.tryRunHooks(hooks.BeforeLaunch, pod, pair.Intent, logger)
 
 	logger.NoFields().Infoln("Setting up new runit services and running the enable hook")
 
@@ -440,7 +440,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 			}
 		}
 
-		p.tryRunHooks(hooks.AFTER_LAUNCH, pod, pair.Intent, logger)
+		p.tryRunHooks(hooks.AfterLaunch, pod, pair.Intent, logger)
 
 		pod.Prune(p.maxLaunchableDiskUsage, pair.Intent) // errors are logged internally
 	}
@@ -455,7 +455,7 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 		logger.NoFields().Warnln("One or more launchables did not halt successfully")
 	}
 
-	p.tryRunHooks(hooks.BEFORE_UNINSTALL, pod, pair.Reality, logger)
+	p.tryRunHooks(hooks.BeforeUninstall, pod, pair.Reality, logger)
 
 	err = pod.Uninstall()
 	if err != nil {
