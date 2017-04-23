@@ -1,14 +1,18 @@
 package consul
 
 import (
+	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/types"
+
+	"github.com/hashicorp/consul/api"
 )
 
 func TestGetHealthNoEntry(t *testing.T) {
@@ -87,24 +91,27 @@ func TestGetHealthWithEntry(t *testing.T) {
 	}
 }
 
-func TestPodUniqueKeyFromConsulPath(t *testing.T) {
+func TestPodUniqueKeyOrIDFromConsulPath(t *testing.T) {
 	type expectation struct {
-		path string
-		err  bool
-		uuid types.PodUniqueKey
+		path  string
+		err   bool
+		uuid  types.PodUniqueKey
+		podID types.PodID
 	}
 
 	uuid := types.NewPodUUID()
 	expectations := []expectation{
 		{
-			path: "intent/example.com/mysql",
-			err:  false,
-			uuid: "",
+			path:  "intent/example.com/mysql",
+			err:   false,
+			uuid:  "",
+			podID: "mysql",
 		},
 		{
-			path: "reality/example.com/mysql",
-			err:  false,
-			uuid: "",
+			path:  "reality/example.com/mysql",
+			err:   false,
+			uuid:  "",
+			podID: "mysql",
 		},
 		{
 			path: "labels/example.com/mysql",
@@ -115,19 +122,21 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 			err:  true,
 		},
 		{
-			path: "hooks/all_hooks",
-			err:  false,
-			uuid: "",
+			path:  "hooks/all_hooks",
+			err:   false,
+			uuid:  "",
+			podID: "all_hooks",
 		},
 		{
-			path: fmt.Sprintf("intent/example.com/%s", uuid),
-			uuid: uuid,
-			err:  false,
+			path:  fmt.Sprintf("intent/example.com/%s", uuid),
+			uuid:  uuid,
+			err:   false,
+			podID: "",
 		},
 	}
 
 	for _, expectation := range expectations {
-		podUniqueKey, err := PodUniqueKeyFromConsulPath(expectation.path)
+		podUniqueKey, podID, err := PodUniqueKeyOrIDFromConsulPath(expectation.path)
 		if expectation.err {
 			if err == nil {
 				t.Errorf("Expected an error for key '%s'", expectation.path)
@@ -142,6 +151,10 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 
 		if podUniqueKey != expectation.uuid {
 			t.Errorf("Expected podUniqueKey to be %s, was %s", expectation.uuid, podUniqueKey)
+		}
+
+		if podID != expectation.podID {
+			t.Errorf("Expected podID to be %s but was %s", expectation.podID, podID)
 		}
 	}
 }
@@ -283,6 +296,202 @@ func TestAllPods(t *testing.T) {
 
 	if !uuidPodFound {
 		t.Error("Didn't find uuid pod")
+	}
+}
+
+// fakeWatcher provides a way to mock out consulutil.WatchPrefix with canned
+// values.
+type fakeWatcher struct {
+	// outCh is a direct pass-through to the outPairs channel passed to WatchPrefix()
+	outCh <-chan api.KVPairs
+
+	// errCh is a direct pass-through to the outErrors channel passed to WatchPrefix()
+	errCh <-chan error
+}
+
+func (f fakeWatcher) WatchPrefix(
+	_ string,
+	_ consulutil.ConsulLister,
+	outPairs chan<- api.KVPairs,
+	done <-chan struct{},
+	outErrors chan<- error,
+	_ time.Duration,
+) {
+	for {
+		select {
+		case <-done:
+			return
+		case outVal := <-f.outCh:
+			outPairs <- outVal
+		case outError := <-f.errCh:
+			outErrors <- outError
+		}
+	}
+}
+
+type panicLister struct {
+}
+
+func (panicLister) List(_ string, _ *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
+	// panic rather than error to make it clear when tests aren't trying to test error behavior from the lister
+	panic("this should not be called if the test is structured correctly")
+}
+
+func TestWatchIntentKeys(t *testing.T) {
+	// really we're going to call innerWatchIntentKeys because that allows us to
+	// avoid calling consulutil.WatchPrefix which is already well-tested
+	pairsSource := make(chan api.KVPairs)
+	defer close(pairsSource)
+	errsSource := make(chan error)
+	defer close(errsSource)
+
+	quitCh := make(chan struct{})
+	defer close(quitCh)
+	watcher := fakeWatcher{
+		outCh: pairsSource,
+		errCh: errsSource,
+	}
+	outCh := innerWatchIntentKeys("some_node", quitCh, watcher.WatchPrefix, panicLister{})
+
+	uuid := types.NewPodUUID()
+	go func() {
+		pairsSource <- api.KVPairs{
+			{
+				Key:         "intent/some_node/mysql",
+				ModifyIndex: 1800,
+			},
+			{
+				Key:         fmt.Sprintf("intent/some_node/%s", uuid),
+				ModifyIndex: 400,
+			},
+		}
+	}()
+
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timed out waiting for a value from innerWatchIntentKeys")
+	case out := <-outCh:
+		if out.Error != nil {
+			t.Fatalf("error in intent key results: %s", out.Error)
+		}
+
+		keys := out.Results
+		if len(keys) != 2 {
+			t.Fatalf("expected 2 keys but there were %d", len(keys))
+		}
+
+		var foundLegacy bool
+		var foundUUID bool
+		for _, key := range keys {
+			if key.PodID == "mysql" {
+				foundLegacy = true
+				if key.ModifyIndex != 1800 {
+					t.Errorf("expected modify index to be 1800 but was %d", key.ModifyIndex)
+				}
+			}
+
+			if key.PodUniqueKey == uuid {
+				foundUUID = true
+				if key.ModifyIndex != 400 {
+					t.Errorf("expected modify index to be 400 but was %d", key.ModifyIndex)
+				}
+			}
+		}
+
+		if !foundLegacy {
+			t.Error("expected a legacy pod in the returned results")
+		}
+
+		if !foundUUID {
+			t.Error("expected a uuid pod in the returned results")
+		}
+	}
+
+	// pass an error and mmake sure we get it out
+	testErr := errors.New("some error in the list operation")
+	go func() {
+		errsSource <- testErr
+	}()
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timed out waiting for a value from innerWatchIntentKeys")
+	case out := <-outCh:
+		if out.Error == nil {
+			t.Errorf("expected an error result: (%+v)", out)
+		} else {
+			if out.Error != testErr {
+				t.Errorf("expected error to be %s but was %s", testErr, out.Error)
+			}
+		}
+
+		if len(out.Results) != 0 {
+			t.Error("expecte 0 results when receiving an error")
+		}
+	}
+
+	// add a key and make sure we get 3 out
+	go func() {
+		pairsSource <- api.KVPairs{
+			{
+				Key:         "intent/some_node/mysql",
+				ModifyIndex: 1800,
+			},
+			{
+				Key:         fmt.Sprintf("intent/some_node/%s", uuid),
+				ModifyIndex: 400,
+			},
+			{
+				Key:         "intent/some_node/another_pod",
+				ModifyIndex: 2000,
+			},
+		}
+	}()
+
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timed out waiting for a value from innerWatchIntentKeys")
+	case out := <-outCh:
+		if out.Error != nil {
+			t.Fatalf("error in intent key results: %s", out.Error)
+		}
+
+		keys := out.Results
+		if len(keys) != 3 {
+			t.Fatalf("expected 3 keys but there were %d", len(keys))
+		}
+	}
+}
+
+func TestWatchIntentKeysErrorsWhenMissingNodeName(t *testing.T) {
+	// really we're going to call innerWatchIntentKeys because that allows us to
+	// avoid calling consulutil.WatchPrefix which is already well-tested
+	pairsSource := make(chan api.KVPairs)
+	errsSource := make(chan error)
+
+	quitCh := make(chan struct{})
+	defer close(quitCh)
+	watcher := fakeWatcher{
+		outCh: pairsSource,
+		errCh: errsSource,
+	}
+	outCh := innerWatchIntentKeys("", quitCh, watcher.WatchPrefix, panicLister{})
+
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timed out waiting for value from innerWatchIntentKeys")
+	case out := <-outCh:
+		if out.Error == nil {
+			t.Error("expected an error passing an empty node name")
+		}
+	}
+
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timed out waiting for value from innerWatchIntentKeys")
+	case _, ok := <-outCh:
+		if ok {
+			t.Error("expected output channel to be closed when passing an empty node name")
+		}
 	}
 }
 

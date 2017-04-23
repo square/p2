@@ -381,6 +381,127 @@ func (c consulStore) WatchPods(
 	}
 }
 
+// IntentKeyResult represents a key within the intent tree. It contains
+// information about the name of the key whether it's the PodUniqueKey for a
+// uuid pod or a pod ID for a legacy pod. Additionally it contains information
+// about the ModifyIndex within consul for the key, allowing clients to make
+// decisions about when to request the value for a given key.
+type IntentKeyResult struct {
+	// PodUniqueKey will be non-empty if and only if the pod was a uuid pod. PodUniqueKey is mutually exclusive with PodID
+	PodUniqueKey types.PodUniqueKey
+
+	// PodID will be non-empty if and only if the pod was a legacy pod (i.e. not a uuid pod). PodID is mutually exclusive
+	// with PodUniqueKey
+	PodID types.PodID
+
+	// ModifyIndex represent's consul's modify index corresponding to the
+	// intent key. This value can be used by clients to cache key values
+	// for bandwidth reduction. If the modify index for a given
+	// PodUniqueKey or PodID has not changed, then the value has not
+	// changed either.
+	ModifyIndex uint64
+}
+
+type IntentKeyResults struct {
+	Results []IntentKeyResult
+	Error   error
+}
+
+// WatchIntentKeys sets up repeated recursive watches on the intent keys in
+// consul for a given node name, returning a result on the output channel for
+// each completed request. This is a lower-bandwidth alternative to WatchPods()
+// since only keys are returned from requests rather than the values which
+// contain pod manifests. This function is ideal when the manifest is expected
+// to change infrequently, so calling code can request an individual manifest
+// when the index for that manifest has changed.
+func (c consulStore) WatchIntentKeys(nodeName types.NodeName, quitCh <-chan struct{}) <-chan IntentKeyResults {
+	return innerWatchIntentKeys(nodeName, quitCh, consulutil.WatchPrefix, c.client.KV())
+}
+
+type watchFunc func(
+	prefix string,
+	clientKV consulutil.ConsulLister,
+	outPairs chan<- api.KVPairs,
+	done <-chan struct{},
+	outErrors chan<- error,
+	pause time.Duration,
+)
+
+// innerWatchIntentKeys is separate from WatchIntentKeys so that tests can
+// easily previde their own WatchFunc rather than having a dependency on consul
+func innerWatchIntentKeys(nodeName types.NodeName, quitCh <-chan struct{}, watchFunc watchFunc, lister consulutil.ConsulLister) <-chan IntentKeyResults {
+	out := make(chan IntentKeyResults)
+
+	go func() {
+		defer close(out)
+		keyPrefix, err := nodePath(INTENT_TREE, nodeName)
+		if err != nil {
+			select {
+			case <-quitCh:
+			case out <- IntentKeyResults{
+				Error: err,
+			}:
+			}
+			return
+		}
+
+		kvPairsChan := make(chan api.KVPairs)
+		errChan := make(chan error)
+		go watchFunc(keyPrefix, lister, kvPairsChan, quitCh, errChan, 0)
+
+		// Run a routine that will send error values on the output
+		// channel whenever one is encountered within WatchPrefix
+		go func() {
+			for {
+				select {
+				case <-quitCh:
+					return
+				case err := <-errChan:
+					select {
+					case <-quitCh:
+					case out <- IntentKeyResults{
+						Error: err,
+					}:
+					}
+				}
+			}
+		}()
+
+		// Send each value from WatchPrefix on the output channel
+		for kvPairs := range kvPairsChan {
+			select {
+			case <-quitCh:
+				return
+			case out <- intentKeyResultsFromPairs(kvPairs):
+			}
+		}
+	}()
+	return out
+}
+
+func intentKeyResultsFromPairs(kvPairs api.KVPairs) IntentKeyResults {
+	intentKeys := make([]IntentKeyResult, 0, len(kvPairs))
+	for _, pair := range kvPairs {
+		// test whether the key is a UUID pod (has a PodUniqueKey)
+		podUniqueKey, podID, err := PodUniqueKeyOrIDFromConsulPath(pair.Key)
+		if err != nil {
+			return IntentKeyResults{
+				Error: err,
+			}
+		}
+
+		intentKeys = append(intentKeys, IntentKeyResult{
+			ModifyIndex:  pair.ModifyIndex,
+			PodUniqueKey: podUniqueKey,
+			PodID:        podID,
+		})
+	}
+
+	return IntentKeyResults{
+		Results: intentKeys,
+	}
+}
+
 // Does the same thing as WatchPods, but does so on all the nodes instead
 func (c consulStore) WatchAllPods(
 	podPrefix PodPrefix,
@@ -477,7 +598,7 @@ func (c consulStore) manifestResultFromPair(pair *api.KVPair) (ManifestResult, e
 	// /reality trees will contain both manifests (as they always have) and
 	// uuids which refer to consul objects elsewhere in KV tree. Therefore
 	// we have to be able to tell which it is based on the key path
-	podUniqueKey, err := PodUniqueKeyFromConsulPath(pair.Key)
+	podUniqueKey, _, err := PodUniqueKeyOrIDFromConsulPath(pair.Key)
 	if err != nil {
 		return ManifestResult{}, err
 	}
@@ -537,40 +658,44 @@ func extractNodeFromKey(key string) (types.NodeName, error) {
 	return types.NodeName(keyParts[1]), nil
 }
 
-// Deduces a PodUniqueKey from a consul path. This is useful as pod keys are transitioned
-// from using node name and pod ID to using UUIDs.
+// PodUniqueKeyOrIDFromConsulPath analyzes a key path in consul and converts it
+// to either a PodUniqueKey or a PodID depending on the format of the key.
 // Input is expected to have 3 '/' separated sections, e.g. 'intent/<node>/<pod_id>' or
 // 'intent/<node>/<pod_uuid>' if the prefix is "intent" or "reality"
 //
 // /hooks is also a valid pod prefix and the key under it will not be a uuid.
-func PodUniqueKeyFromConsulPath(consulPath string) (types.PodUniqueKey, error) {
+func PodUniqueKeyOrIDFromConsulPath(consulPath string) (types.PodUniqueKey, types.PodID, error) {
 	keyParts := strings.Split(consulPath, "/")
 	if len(keyParts) == 0 {
-		return "", util.Errorf("Malformed key '%s'", consulPath)
+		return "", "", util.Errorf("Malformed key '%s'", consulPath)
 	}
 
+	// TODO: now that hooks are in the preparer's pod manifests, remove
+	// this exception
 	if keyParts[0] == "hooks" {
-		return "", nil
+		return "", types.PodID(keyParts[1]), nil
 	}
 
 	if len(keyParts) != 3 {
-		return "", util.Errorf("Malformed key '%s'", consulPath)
+		return "", "", util.Errorf("Malformed key '%s'", consulPath)
 	}
 
 	// Unforunately we can't use consul.INTENT_TREE and consul.REALITY_TREE here because of an import cycle
 	if keyParts[0] != "intent" && keyParts[0] != "reality" {
-		return "", util.Errorf("Unrecognized key tree '%s' (must be intent or reality)", keyParts[0])
+		return "", "", util.Errorf("Unrecognized key tree '%s' (must be intent or reality)", keyParts[0])
 	}
 
+	var podID types.PodID
 	// Parse() returns nil if the input string does not match the uuid spec
 	podUniqueKey, err := types.ToPodUniqueKey(keyParts[2])
 	switch {
 	case err == types.InvalidUUID:
 		// this is okay, it's just a legacy pod
 		podUniqueKey = ""
+		podID = types.PodID(keyParts[2])
 	case err != nil:
-		return "", util.Errorf("Could not test whether %s is a valid pod unique key: %s", keyParts[2], err)
+		return "", "", util.Errorf("Could not test whether %s is a valid pod unique key: %s", keyParts[2], err)
 	}
 
-	return podUniqueKey, nil
+	return podUniqueKey, podID, nil
 }
