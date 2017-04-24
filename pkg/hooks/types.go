@@ -83,6 +83,15 @@ type hookContext struct {
 	logger  *logging.Logger
 }
 
+
+// AuditLogger defines a mechanism for logging hook success or failure to a store, such as a file or SQLite
+type AuditLogger interface {
+	// LogSuccess should be invoked on successful events.
+	LogSuccess(env *HookExecContext)
+	// LogFailure should be called in case of error or timeout. The second parameter may be null.
+	LogFailure(env *HookExecContext, err error)
+}
+
 type hookExecContext struct {
 	Path    string // path to hook's executable
 	Name    string // human-readable name of Hook
