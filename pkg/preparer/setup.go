@@ -428,6 +428,8 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 
 	var hooksManifest manifest.Manifest
 	var hooksPod *pods.Pod
+	var auditLogger hooks.AuditLogger
+	auditLogger = hooks.NewFileAuditLogger(&logger)
 	if preparerConfig.HooksManifest != NoHooksSentinelValue {
 		if preparerConfig.HooksManifest == "" {
 			return nil, util.Errorf("Most provide a hooks_manifest or sentinel value %q to indicate that there are no hooks", NoHooksSentinelValue)
@@ -439,11 +441,25 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		}
 		hooksPodFactory := pods.NewHookFactory(filepath.Join(preparerConfig.PodRoot, "hooks"), preparerConfig.NodeName)
 		hooksPod = hooksPodFactory.NewHookPod(hooksManifest.ID())
+		hooksSqlite, ok := hooksManifest.GetConfig()["sqlite_path"]
+		if ok {
+			sqlitePath := hooksSqlite.(string)
+			err := os.MkdirAll(sqlitePath, os.ModeDir)
+			if err == nil {
+				logger.Errorf("Unable to construct a SQLite based audit-logger. Using file backed instead: %v", err)
+				al, err := hooks.NewSQLiteAuditLogger(sqlitePath, &logger)
+				if err != nil {
+					logger.Errorf("Unable to construct a SQLite based audit-logger. Using file backed instead: %v", err)
+				} else {
+					auditLogger = al
+				}
+			}
+		}
 	}
 	return &Preparer{
 		node:                   preparerConfig.NodeName,
 		store:                  store,
-		hooks:                  hooks.NewContext(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger),
+		hooks:                  hooks.NewContext(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger, auditLogger),
 		podStatusStore:         podStatusStore,
 		podStore:               podStore,
 		Logger:                 logger,
