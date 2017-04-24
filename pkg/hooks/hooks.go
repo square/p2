@@ -14,17 +14,17 @@ import (
 	"github.com/square/p2/pkg/manifest"
 )
 
-func NewContext(dirpath string, podRoot string, logger *logging.Logger) *hookContext {
+func NewContext(dirpath string, podRoot string, logger *logging.Logger, auditLogger AuditLogger) *hookContext {
 	return &hookContext{
-		dirpath: dirpath,
-		podRoot: podRoot,
-		logger:  logger,
+		dirpath:     dirpath,
+		podRoot:     podRoot,
+		logger:      logger,
+		auditLogger: auditLogger,
 	}
 }
 
 // runDirectory executes all executable files in a given directory path.
-func (h *hookContext) runDirectory(hookEnv []string) error {
-	// func runDirectory(dirpath string, hookEnv []string, logger logging.Logger) error {
+func (h *hookContext) runDirectory(hookEnv *HookExecutionEnvironment) error {
 	entries, err := ioutil.ReadDir(h.dirpath)
 	if os.IsNotExist(err) {
 		h.logger.WithField("dir", h.dirpath).Debugln("Hooks not set up")
@@ -36,8 +36,10 @@ func (h *hookContext) runDirectory(hookEnv []string) error {
 
 	for _, f := range entries {
 		fullpath := path.Join(h.dirpath, f.Name())
+		hec := NewHookExecContext(fullpath, f.Name(), DefaultTimeout, *hookEnv, h.logger)
 		executable := (f.Mode() & 0111) != 0
 		if !executable {
+			h.auditLogger.LogFailure(hec, nil)
 			h.logger.WithField("path", fullpath).Warnln("Hook is not executable")
 			continue
 		}
@@ -45,24 +47,26 @@ func (h *hookContext) runDirectory(hookEnv []string) error {
 			continue
 		}
 
-		h := NewHookExecContext(fullpath, f.Name(), DefaultTimeout, hookEnv, h.logger)
-
-		err := h.RunWithTimeout()
+		err := hec.RunWithTimeout()
 		if htErr, ok := err.(ErrHookTimeout); ok {
+			h.auditLogger.LogFailure(hec, err)
 			h.logger.WithErrorAndFields(htErr, logrus.Fields{
-				"path":      h.Path,
-				"hook_name": h.Name,
-				"timeout":   h.Timeout,
+				"path":      hec.Path,
+				"hook_name": hec.Name,
+				"timeout":   hec.Timeout,
 			}).Warnln(htErr.Error())
 			// we intentionally swallow timeout HookTimeoutErrors
+			continue
 		} else if err != nil {
+			h.auditLogger.LogFailure(hec, err)
 			h.logger.WithErrorAndFields(err, logrus.Fields{
-				"path":      h.Path,
-				"hook_name": h.Name,
-			}).Warningf("Unknown error in hook %s: %s", h.Name, err)
+				"path":      hec.Path,
+				"hook_name": hec.Name,
+			}).Warningf("Unknown error in hook %s: %s", hec.Name, err)
+			continue
 		}
+		h.auditLogger.LogSuccess(hec)
 	}
-
 	return nil
 }
 
@@ -72,7 +76,7 @@ func (h *hookContext) runDirectory(hookEnv []string) error {
 // re-opening its fd's and exec.Start() will dutifully wait on any unclosed fd
 //
 // NB: in the event of a timeout this will leak descriptors
-func (h *hookExecContext) RunWithTimeout() error {
+func (h *HookExecContext) RunWithTimeout() error {
 	finished := make(chan struct{})
 	go func() {
 		h.Run()
@@ -89,13 +93,13 @@ func (h *hookExecContext) RunWithTimeout() error {
 }
 
 // Run executes the hook in the context of its environment and logs the output
-func (h *hookExecContext) Run() {
+func (h *HookExecContext) Run() {
 	h.logger.WithField("path", h.Path).Infof("Executing hook %s", h.Name)
 	cmd := exec.Command(h.Path)
 	hookOut := &bytes.Buffer{}
 	cmd.Stdout = hookOut
 	cmd.Stderr = hookOut
-	cmd.Env = h.env
+	cmd.Env = h.env.Env()
 	err := cmd.Run()
 	if err != nil {
 		h.logger.WithErrorAndFields(err, logrus.Fields{
@@ -134,21 +138,19 @@ func (h *hookContext) runHooks(dirpath string, hType HookType, pod Pod, podManif
 		return err
 	}
 
-	hookEnvironment := []string{
-		fmt.Sprintf("%s=%s", HookEnvVar, path.Base(dirpath)),
-		fmt.Sprintf("%s=%s", HookEventEnvVar, hType.String()),
-		fmt.Sprintf("%s=%s", HookedNodeEnvVar, pod.Node()),
-		fmt.Sprintf("%s=%s", HookedPodIDEnvVar, podManifest.ID()),
-		fmt.Sprintf("%s=%s", HookedPodHomeEnvVar, pod.Home()),
-		fmt.Sprintf("%s=%s", HookedPodManifestEnvVar, tmpManifestFile.Name()),
-		fmt.Sprintf("%s=%s", HookedConfigPathEnvVar, path.Join(pod.ConfigDir(), configFileName)),
-		fmt.Sprintf("%s=%s", HookedEnvPathEnvVar, pod.EnvDir()),
-		fmt.Sprintf("%s=%s", HookedConfigDirPathEnvVar, pod.ConfigDir()),
-		fmt.Sprintf("%s=%s", HookedSystemPodRootEnvVar, h.podRoot),
-		fmt.Sprintf("%s=%s", HookedPodUniqueKeyEnvVar, pod.UniqueKey()),
+	hec := &HookExecutionEnvironment{
+		HookEnvVar:                path.Base(dirpath),
+		HookEventEnvVar:           hType.String(),
+		HookedNodeEnvVar:          pod.Node().String(),
+		HookedPodIDEnvVar:         podManifest.ID().String(),
+		HookedPodHomeEnvVar:       pod.Home(),
+		HookedPodManifestEnvVar:   tmpManifestFile.Name(),
+		HookedConfigPathEnvVar:    path.Join(pod.ConfigDir(), configFileName),
+		HookedEnvPathEnvVar:       pod.ConfigDir(),
+		HookedConfigDirPathEnvVar: h.podRoot,
+		HookedSystemPodRootEnvVar: pod.UniqueKey().String(),
 	}
-
-	return h.runDirectory(hookEnvironment)
+	return h.runDirectory(hec)
 }
 
 func (h *hookContext) RunHookType(hookType HookType, pod Pod, manifest manifest.Manifest) error {

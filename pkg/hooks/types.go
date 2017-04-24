@@ -78,11 +78,44 @@ type Pod interface {
 }
 
 type hookContext struct {
-	dirpath string
-	podRoot string
-	logger  *logging.Logger
+	dirpath     string
+	podRoot     string
+	logger      *logging.Logger
+	auditLogger AuditLogger
 }
 
+// The set of environment variables exposed to the hook as it runs
+// TODO Need this be public?
+type HookExecutionEnvironment struct {
+	HookEnvVar,
+	HookEventEnvVar,
+	HookedNodeEnvVar,
+	HookedPodIDEnvVar,
+	HookedPodHomeEnvVar,
+	HookedPodManifestEnvVar,
+	HookedConfigPathEnvVar,
+	HookedEnvPathEnvVar,
+	HookedConfigDirPathEnvVar,
+	HookedSystemPodRootEnvVar,
+	HookedPodUniqueKeyEnvVar string
+}
+
+// The set of UNIX environment variables for the hook's execution
+func (hee *HookExecutionEnvironment) Env() []string {
+	return []string{
+		fmt.Sprintf("%s=%s", HookEnvVar, hee.HookEnvVar),
+		fmt.Sprintf("%s=%s", HookEventEnvVar, hee.HookEventEnvVar),
+		fmt.Sprintf("%s=%s", HookedNodeEnvVar, hee.HookedNodeEnvVar),
+		fmt.Sprintf("%s=%s", HookedPodIDEnvVar, hee.HookedPodIDEnvVar),
+		fmt.Sprintf("%s=%s", HookedPodHomeEnvVar, hee.HookedPodHomeEnvVar),
+		fmt.Sprintf("%s=%s", HookedPodManifestEnvVar, hee.HookedPodManifestEnvVar),
+		fmt.Sprintf("%s=%s", HookedConfigPathEnvVar, hee.HookedConfigPathEnvVar),
+		fmt.Sprintf("%s=%s", HookedEnvPathEnvVar, hee.HookedEnvPathEnvVar),
+		fmt.Sprintf("%s=%s", HookedConfigDirPathEnvVar, hee.HookedConfigDirPathEnvVar),
+		fmt.Sprintf("%s=%s", HookedSystemPodRootEnvVar, hee.HookedSystemPodRootEnvVar),
+		fmt.Sprintf("%s=%s", HookedPodUniqueKeyEnvVar, hee.HookedPodUniqueKeyEnvVar),
+	}
+}
 
 // AuditLogger defines a mechanism for logging hook success or failure to a store, such as a file or SQLite
 type AuditLogger interface {
@@ -92,16 +125,17 @@ type AuditLogger interface {
 	LogFailure(env *HookExecContext, err error)
 }
 
-type hookExecContext struct {
-	Path    string // path to hook's executable
-	Name    string // human-readable name of Hook
-	Timeout time.Duration
-	env     []string // unix environment in which the hook should be executed
-	logger  *logging.Logger
+type HookExecContext struct {
+	Path        string // path to hook's executable
+	Name        string // human-readable name of Hook
+	Timeout     time.Duration
+	env         HookExecutionEnvironment // This will be used as the set of UNIX environment variables for the hook's execution
+	logger      *logging.Logger
+	auditLogger AuditLogger
 }
 
-func NewHookExecContext(path string, name string, timeout time.Duration, env []string, logger *logging.Logger) *hookExecContext {
-	return &hookExecContext{
+func NewHookExecContext(path string, name string, timeout time.Duration, env HookExecutionEnvironment, logger *logging.Logger) *HookExecContext {
+	return &HookExecContext{
 		Path:    path,
 		Name:    name,
 		Timeout: timeout,
@@ -112,7 +146,7 @@ func NewHookExecContext(path string, name string, timeout time.Duration, env []s
 
 // ErrHookTimeout is returned when a Hook's execution times out
 type ErrHookTimeout struct {
-	Hook hookExecContext
+	Hook HookExecContext
 }
 
 func (e ErrHookTimeout) Error() string {
