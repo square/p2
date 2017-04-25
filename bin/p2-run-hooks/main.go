@@ -42,6 +42,7 @@ func main() {
 		if err != nil {
 			logging.DefaultLogger.Errorf("Unable to connect sqlite database at %s, printing audit logs to STDOUT %v", *sqlitePath, err)
 		}
+		defer al.Close()
 		auditLogger = al
 	}
 
