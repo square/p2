@@ -137,7 +137,7 @@ func (m *consulHealthManager) NewUpdater(pod types.PodID, service string) Health
 		throttledCheckStream := throttleChecks(checksStream, *HealthMaxBucketSize, subLogger)
 
 		processHealthUpdater(
-			m.client,
+			m.client.KV(),
 			throttledCheckStream,
 			sub.Chan(),
 			subLogger,
@@ -244,6 +244,12 @@ func throttleChecks(in <-chan WatchResult, healthMaxBucketSize int64, logger log
 	return out
 }
 
+type ConsulKVClient interface {
+	Delete(key string, w *api.WriteOptions) (*api.WriteMeta, error)
+	Acquire(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error)
+	Put(pair *api.KVPair, w *api.WriteOptions) (*api.WriteMeta, error)
+}
+
 // processHealthUpdater() runs in a goroutine to keep Consul in sync with the local health
 // state. It is written as a non-blocking finite state machine: events arrive and update
 // internal state, and after each event, the internal state is examined to see if an
@@ -263,7 +269,7 @@ func throttleChecks(in <-chan WatchResult, healthMaxBucketSize int64, logger log
 //   B. Write the recent service state to Consul. At most one outstanding write will be
 //      in-flight at any time.
 func processHealthUpdater(
-	client consulutil.ConsulClient,
+	client ConsulKVClient,
 	checksStream <-chan WatchResult,
 	sessionsStream <-chan string,
 	logger logging.Logger,
@@ -323,7 +329,7 @@ func processHealthUpdater(
 				logger.NoFields().Debug("deleting remote health")
 				key := HealthPath(remoteHealth.Service, remoteHealth.Node)
 				go sendHealthUpdate(writeLogger, w, nil, func() error {
-					_, err := client.KV().Delete(key, nil)
+					_, err := client.Delete(key, nil)
 					if err != nil {
 						return consulutil.NewKVError("delete", key, err)
 					}
@@ -342,7 +348,7 @@ func processHealthUpdater(
 				}
 				if remoteHealth == nil {
 					go sendHealthUpdate(writeLogger, w, localHealth, func() error {
-						ok, _, err := client.KV().Acquire(kv, nil)
+						ok, _, err := client.Acquire(kv, nil)
 						if err != nil {
 							return consulutil.NewKVError("acquire", kv.Key, err)
 						}
@@ -353,7 +359,7 @@ func processHealthUpdater(
 					})
 				} else {
 					go sendHealthUpdate(writeLogger, w, localHealth, func() error {
-						_, err := client.KV().Put(kv, nil)
+						_, err := client.Put(kv, nil)
 						if err != nil {
 							return consulutil.NewKVError("put", kv.Key, err)
 						}

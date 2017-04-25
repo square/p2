@@ -124,7 +124,7 @@ func TestHealthSessionRequired(t *testing.T) {
 	// Launch an updater with manual control over health checks and session management
 	checks := make(chan WatchResult)
 	sessions := make(chan string)
-	go processHealthUpdater(f.Client, checks, sessions, logging.TestLogger())
+	go processHealthUpdater(f.Client.KV(), checks, sessions, logging.TestLogger())
 
 	// There should be no health check initially
 	if r, err := f.Store.GetHealth("svc", "node"); err != nil || r != hEmpty {
@@ -152,7 +152,7 @@ func TestHealthSessionRestart(t *testing.T) {
 	// Launch an updater with manual control over health checks and session management
 	checks := make(chan WatchResult)
 	sessions := make(chan string)
-	go processHealthUpdater(f.Client, checks, sessions, logging.TestLogger())
+	go processHealthUpdater(f.Client.KV(), checks, sessions, logging.TestLogger())
 	waiter := f.NewKeyWaiter(hKey)
 
 	// Add check & add session => write
@@ -211,7 +211,7 @@ func TestHealthSessionDestroy(t *testing.T) {
 	// Launch an updater with manual control over health checks and session management
 	checks := make(chan WatchResult)
 	sessions := make(chan string)
-	go processHealthUpdater(f.Client, checks, sessions, logging.TestLogger())
+	go processHealthUpdater(f.Client.KV(), checks, sessions, logging.TestLogger())
 	waiter := f.NewKeyWaiter(hKey)
 
 	// Create health result & create session => write
