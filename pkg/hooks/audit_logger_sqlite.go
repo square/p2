@@ -2,11 +2,15 @@ package hooks
 
 import (
 	"database/sql"
+	"fmt"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/util"
+	"github.com/square/p2/pkg/util/param"
 )
+
+var auditLogTTL = param.Int("audit_log_sqlite_ttl", 3*24*3600)
 
 type SQLiteAuditLogger struct {
 	sqlite *sql.DB
@@ -52,7 +56,17 @@ success
 
 	_, err := al.sqlite.Exec(stmt, podID, podUniqueKey, hookName, hookStage, dbSuccess)
 	if err != nil {
-		al.logger.Errorln("nope: %v", err)
+		al.logger.WithError(err).Errorln("error executing log statement")
+	}
+	al.trimStaleRecords()
+}
+
+func (al *SQLiteAuditLogger) trimStaleRecords() {
+	stmt := fmt.Sprintf(`DELETE FROM hook_results WHERE date <= (SELECT(datetime('now', '-%d seconds')))`, *auditLogTTL)
+
+	_, err := al.sqlite.Exec(stmt)
+	if err != nil {
+		al.logger.WithError(err).Errorln("Error executing cleanup routine!")
 	}
 }
 
