@@ -150,9 +150,10 @@ func (h *hookContext) runHooks(dirpath string, hType HookType, pod Pod, podManif
 		HookedPodHomeEnvVar:       pod.Home(),
 		HookedPodManifestEnvVar:   tmpManifestFile.Name(),
 		HookedConfigPathEnvVar:    path.Join(pod.ConfigDir(), configFileName),
-		HookedEnvPathEnvVar:       pod.ConfigDir(),
-		HookedConfigDirPathEnvVar: h.podRoot,
-		HookedSystemPodRootEnvVar: pod.UniqueKey().String(),
+		HookedEnvPathEnvVar:       pod.EnvDir(),
+		HookedConfigDirPathEnvVar: pod.ConfigDir(),
+		HookedSystemPodRootEnvVar: h.podRoot,
+		HookedPodUniqueKeyEnvVar:  pod.UniqueKey().String(),
 	}
 	return h.runDirectory(hec)
 }
