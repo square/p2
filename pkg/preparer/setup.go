@@ -446,7 +446,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 			sqlitePath := hooksSqlite.(string)
 			err := os.MkdirAll(sqlitePath, os.ModeDir)
 			if err == nil {
-				logger.Errorf("Unable to construct a SQLite based audit-logger. Using file backed instead: %v", err)
+				logger.WithError(err).Errorf("Unable to construct a SQLite based audit-logger. Using file backed instead")
 				al, err := hooks.NewSQLiteAuditLogger(sqlitePath, &logger)
 				if err != nil {
 					logger.Errorf("Unable to construct a SQLite based audit-logger. Using file backed instead: %v", err)
