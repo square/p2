@@ -122,6 +122,7 @@ func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest
 	}
 	return util.Errorf("Invalid hook type configured in test: %s", hookType)
 }
+func (f *fakeHooks) Close() error { return nil }
 
 func testManifest(t *testing.T) manifest.Manifest {
 	manifestPath := util.From(runtime.Caller(0)).ExpandPath("test_manifest.yaml")

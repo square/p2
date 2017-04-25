@@ -26,6 +26,8 @@ func (al *FileAuditLogger) LogFailure(env *HookExecContext, err error) {
 	al.logger.WithFields(lFields).Errorln("<hook audit log>")
 }
 
+func (al *FileAuditLogger) Close() error { return nil }
+
 func envToFields(ctx *HookExecContext) map[string]interface{} {
 	env := ctx.env
 	return map[string]interface{}{

@@ -123,6 +123,9 @@ type AuditLogger interface {
 	LogSuccess(env *HookExecContext)
 	// LogFailure should be called in case of error or timeout. The second parameter may be null.
 	LogFailure(env *HookExecContext, err error)
+
+	// Close any references held by this AuditLogger
+	Close() error
 }
 
 type HookExecContext struct {
@@ -142,6 +145,11 @@ func NewHookExecContext(path string, name string, timeout time.Duration, env Hoo
 		env:     env,
 		logger:  logger,
 	}
+}
+
+// Close any references held by this HookExecContext
+func (hec *HookExecContext) Close() {
+	hec.auditLogger.Close()
 }
 
 // ErrHookTimeout is returned when a Hook's execution times out

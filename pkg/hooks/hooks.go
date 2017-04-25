@@ -70,6 +70,10 @@ func (h *hookContext) runDirectory(hookEnv *HookExecutionEnvironment) error {
 	return nil
 }
 
+func (h *hookContext) Close() error {
+	return h.auditLogger.Close()
+}
+
 // RunWithTimeout runs the hook but returns a HookTimeoutError when it exceeds its timeout
 //
 // Necessary because Run() hangs if the command double-forks without properly
