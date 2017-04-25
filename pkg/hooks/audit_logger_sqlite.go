@@ -67,12 +67,12 @@ func (al *SQLiteAuditLogger) LogFailure(ctx *HookExecContext, err error) {
 var (
 	sqliteMigrations = []string{
 		`create table hook_results (
-	    id integer not null primary key autoincrement,
-	    date datetime default current_timestamp,
-	    pod_id text,
-	    pod_unique_key text,
-	    hook_name string,
-	    hook_stage string,
+	      id integer not null primary key autoincrement,
+	      date datetime default current_timestamp,
+	      pod_id text,
+	      pod_unique_key text,
+	      hook_name string,
+	      hook_stage string,
 	      success tinyint);`,
 
 		"create index hook_results_hook_name on hook_results(hook_name);",
