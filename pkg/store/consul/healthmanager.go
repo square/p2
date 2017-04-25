@@ -415,6 +415,7 @@ func sendHealthUpdate(
 		logger.WithError(err).Error("error writing health")
 		// Try not to overwhelm Consul
 		time.Sleep(time.Duration(*HealthRetryTimeSec) * time.Second)
+
 		w <- writeResult{
 			Health: nil,
 			OK:     false,

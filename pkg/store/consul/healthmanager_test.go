@@ -1,17 +1,22 @@
 package consul
 
 import (
+	"encoding/json"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/logging"
+
+	"github.com/hashicorp/consul/api"
 )
 
 var (
 	// A few different potential helth check results
 	h1     = WatchResult{Id: "svc", Node: "node", Service: "svc", Status: "ok"}
-	h2     = WatchResult{Id: "svc", Node: "node", Service: "svc", Status: "fox"}
+	h2     = WatchResult{Id: "svc", Node: "node", Service: "svc", Status: "not_ok"}
 	h3     = WatchResult{Id: "svc", Node: "node", Service: "svc", Status: "fuzzy"}
 	hEmpty = WatchResult{}
 
@@ -320,6 +325,154 @@ func TestThrottleChecks(t *testing.T) {
 			}
 		case <-time.After(1 * time.Second):
 			t.Fatalf("output channel wasnt closed in %s before timeout", test.TestName)
+		}
+	}
+}
+
+type fakeKV struct {
+	kv map[string][]byte
+
+	// these are used to simulate failures in the kv store. if disabled is
+	// set, the next Put or Acquire operation should fail
+	disabled   bool
+	disabledMu sync.Mutex
+
+	// a value is sent on this channel whenever a Put or Acquire are
+	// attempted, so that test code can synchronize with values being saved
+	// to the store
+	writeAttempted chan<- struct{}
+
+	writeSucceeded chan<- struct{}
+}
+
+func (f *fakeKV) Delete(key string, w *api.WriteOptions) (*api.WriteMeta, error) {
+	delete(f.kv, key)
+	return nil, nil
+}
+
+func (f *fakeKV) Acquire(pair *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
+	f.writeAttempted <- struct{}{}
+
+	f.disabledMu.Lock()
+	defer f.disabledMu.Unlock()
+	if f.disabled {
+		return false, nil, fmt.Errorf("fakeKV was disabled so failing this operation")
+	}
+
+	defer func() {
+		f.writeSucceeded <- struct{}{}
+	}()
+
+	f.kv[pair.Key] = pair.Value
+	return true, nil, nil
+}
+
+func (f *fakeKV) Put(pair *api.KVPair, w *api.WriteOptions) (*api.WriteMeta, error) {
+	f.writeAttempted <- struct{}{}
+
+	f.disabledMu.Lock()
+	defer f.disabledMu.Unlock()
+	if f.disabled {
+		return nil, fmt.Errorf("fakeKV was disabled so failing this operation")
+	}
+	defer func() {
+		f.writeSucceeded <- struct{}{}
+	}()
+	f.kv[pair.Key] = pair.Value
+	return nil, nil
+}
+
+// makes the fakeKV throw an error on Put and Acquire operations
+func (f *fakeKV) Disable() {
+	f.disabledMu.Lock()
+	defer f.disabledMu.Unlock()
+
+	f.disabled = true
+}
+
+func (f *fakeKV) Enable() {
+	f.disabledMu.Lock()
+	defer f.disabledMu.Unlock()
+
+	f.disabled = false
+}
+
+// this test was written in the hopes of catching a reported bug where the
+// preparer doesn't properly write its local state to consul after a failure,
+// but it didn't actually catch anything. probably good to leave in anyway
+func TestHealthUpdatesTolerantToConsulFailures(t *testing.T) {
+	retryTime := 0
+	HealthRetryTimeSec = &retryTime
+
+	writeAttempted := make(chan struct{})
+	writeSucceeded := make(chan struct{})
+	fakeKV := &fakeKV{
+		kv:             make(map[string][]byte),
+		writeAttempted: writeAttempted,
+		writeSucceeded: writeSucceeded,
+	}
+
+	checks := make(chan WatchResult)
+	sessions := make(chan string)
+	go processHealthUpdater(fakeKV, checks, sessions, logging.TestLogger())
+	sessions <- "some_session_i_dont_care"
+
+	keyPath := HealthPath(h1.Service, h1.Node)
+
+	var health WatchResult
+	var err error
+	for i := 0; i < 1000; i++ {
+		checks <- h1
+
+		<-writeAttempted
+		<-writeSucceeded
+
+		err = json.Unmarshal(fakeKV.kv[keyPath], &health)
+		if err != nil {
+			t.Fatalf("iteration %d part A: unable to unmarshal health result: %s", i, err)
+		}
+		if health.Status != h1.Status {
+			t.Fatalf("iteration %d part A: expected status to be %s but was %s", i, h1.Status, health.Status)
+		}
+
+		fakeKV.Disable()
+		checks <- h2
+
+		<-writeAttempted
+
+		err = json.Unmarshal(fakeKV.kv[keyPath], &health)
+		if err != nil {
+			t.Fatalf("iteration %d part B: unable to unmarshal health result: %s", i, err)
+		}
+		if health.Status != h1.Status {
+			t.Fatalf("iteration %d part B: expected status to be %s but was %s", i, h1.Status, health.Status)
+		}
+
+		checks <- h2
+		fakeKV.Enable()
+
+		writeSuccessful := false
+		deadline := time.After(1 * time.Second)
+
+		for !writeSuccessful {
+			select {
+			case <-writeAttempted:
+			case <-writeSucceeded:
+				writeSuccessful = true
+			case <-deadline:
+				t.Fatalf("iteration %d timeout routine: health manager did not successfully write a value after failures within deadline", i)
+			}
+
+		}
+
+		// now should be h2 since disabling the fake KV only affects
+		// the next operation
+		err = json.Unmarshal(fakeKV.kv[keyPath], &health)
+		if err != nil {
+			t.Fatalf("iteration %d part C: unable to unmarshal health result: %s", i, err)
+		}
+		if health.Status != h2.Status {
+			t.Fatalf("iteration %d part C: expected status to be %s but was %s", i, h2.Status, health.Status)
 		}
 	}
 }
