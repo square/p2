@@ -133,7 +133,7 @@ func TestHookAuditLogging(t *testing.T) {
 
 	// So PodFromPodHome doesn't bail out, write a minimal current_manifest.yaml
 	ioutil.WriteFile(path.Join(podDir, "current_manifest.yaml"), []byte("id: my_hook"), 0755)
-	Assert(t).IsNil(err, "Caught error while writing test hook")
+	Assert(t).IsNil(err, "Caught error while writing test manifest")
 
 	auditLoggerLogger := logging.TestLogger()
 	buf := &bytes.Buffer{}

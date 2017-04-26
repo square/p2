@@ -54,7 +54,10 @@ success
 		dbSuccess = 1
 	}
 
-	_, err := al.sqlite.Exec(stmt, podID, podUniqueKey, hookName, hookStage, dbSuccess)
+	err := al.withRetries(func() error {
+		_, err := al.sqlite.Exec(stmt, podID, podUniqueKey, hookName, hookStage, dbSuccess)
+		return err
+	}, 3)
 	if err != nil {
 		al.logger.WithError(err).Errorln("error executing log statement")
 	}
@@ -64,7 +67,10 @@ success
 func (al *SQLiteAuditLogger) trimStaleRecords() {
 	stmt := fmt.Sprintf(`DELETE FROM hook_results WHERE date <= (SELECT(datetime('now', '-%d seconds')))`, *auditLogTTL)
 
-	_, err := al.sqlite.Exec(stmt)
+	err := al.withRetries(func() error {
+		_, err := al.sqlite.Exec(stmt)
+		return err
+	}, 3)
 	if err != nil {
 		al.logger.WithError(err).Errorln("Error executing cleanup routine!")
 	}
@@ -104,6 +110,22 @@ const (
 // Close will terminate this AuditLogger. Re-establishing the connection is not supported, use the constructor.
 func (al *SQLiteAuditLogger) Close() error {
 	return al.sqlite.Close()
+}
+
+func (al *SQLiteAuditLogger) withRetries(f func() error, n int) error {
+	attempts := 0
+	var err error
+	for {
+		err = f()
+		if err == nil {
+			return nil
+		}
+		attempts++
+		al.logger.WithError(err).Errorln("Caught retriable error: %d of %d", attempts, n)
+		if attempts >= n {
+			return err
+		}
+	}
 }
 
 func (al *SQLiteAuditLogger) ensureMigrated() error {
