@@ -102,7 +102,7 @@ func (c Client) WatchStatus(ctx context.Context, podUniqueKey types.PodUniqueKey
 						PodUniqueKey:    podUniqueKey.String(),
 						StatusNamespace: consul.PreparerPodStatusNamespace.String(),
 						WaitForExists:   waitForExists,
-					})
+					}, grpc.FailFast(false))
 					if err != nil {
 						innerCancel()
 						select {
