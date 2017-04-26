@@ -496,7 +496,10 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 
 // Close() releases any resources held by a Preparer.
 func (p *Preparer) Close() {
-	p.hooks.Close()
+	err := p.hooks.Close()
+	if err != nil {
+		p.Logger.WithError(err).Errorln("Unable to close audit logger. Proceeding.")
+	}
 	p.authPolicy.Close()
 	p.authPolicy = nil
 }

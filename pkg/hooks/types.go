@@ -149,7 +149,9 @@ func NewHookExecContext(path string, name string, timeout time.Duration, env Hoo
 
 // Close any references held by this HookExecContext
 func (hec *HookExecContext) Close() {
-	hec.auditLogger.Close()
+	if err := hec.auditLogger.Close(); err != nil {
+		hec.logger.WithError(err).Errorln("Caught and ignored error closing an audit logger.")
+	}
 }
 
 // ErrHookTimeout is returned when a Hook's execution times out
