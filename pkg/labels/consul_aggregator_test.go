@@ -28,7 +28,10 @@ func fakeLabeledPods() map[string][]byte {
 func TestTwoClients(t *testing.T) {
 	alterAggregationTime(100 * time.Millisecond)
 
-	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
+	fakeKV := &fakeLabelStore{
+		data:         fakeLabeledPods(),
+		watchTrigger: nil,
+	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	go aggreg.Aggregate()
 	defer aggreg.Quit()
@@ -67,7 +70,10 @@ func TestTwoClients(t *testing.T) {
 func TestQuitAggregateAfterResults(t *testing.T) {
 	alterAggregationTime(100 * time.Millisecond)
 
-	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
+	fakeKV := &fakeLabelStore{
+		data:         fakeLabeledPods(),
+		watchTrigger: nil,
+	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	go aggreg.Aggregate()
 
@@ -96,7 +102,10 @@ func TestQuitAggregateBeforeResults(t *testing.T) {
 	// this channel prevents the List from returning, so the aggregator
 	// must quit prior to entering the loop
 	trigger := make(chan struct{})
-	fakeKV := &fakeLabelStore{fakeLabeledPods(), trigger}
+	fakeKV := &fakeLabelStore{
+		data:         fakeLabeledPods(),
+		watchTrigger: trigger,
+	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	go aggreg.Aggregate()
 
@@ -118,7 +127,10 @@ func TestQuitAggregateBeforeResults(t *testing.T) {
 func TestQuitIndividualWatch(t *testing.T) {
 	alterAggregationTime(time.Millisecond)
 
-	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
+	fakeKV := &fakeLabelStore{
+		data:         fakeLabeledPods(),
+		watchTrigger: nil,
+	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	go aggreg.Aggregate()
 
@@ -167,7 +179,10 @@ func TestQuitIndividualWatch(t *testing.T) {
 func TestIgnoreIndividualWatch(t *testing.T) {
 	alterAggregationTime(time.Millisecond)
 
-	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
+	fakeKV := &fakeLabelStore{
+		data:         fakeLabeledPods(),
+		watchTrigger: nil,
+	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	go aggreg.Aggregate()
 	defer aggreg.Quit()
@@ -205,7 +220,10 @@ func TestIgnoreIndividualWatch(t *testing.T) {
 }
 
 func TestCachedValueImmediatelySent(t *testing.T) {
-	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
+	fakeKV := &fakeLabelStore{
+		data:         fakeLabeledPods(),
+		watchTrigger: nil,
+	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	aggreg.labeledCache = []Labeled{
 		{

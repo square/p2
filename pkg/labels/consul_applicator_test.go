@@ -3,6 +3,7 @@ package labels
 import (
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,7 +16,9 @@ import (
 )
 
 type fakeLabelStore struct {
-	data map[string][]byte
+	data   map[string][]byte
+	dataMu sync.Mutex
+
 	// If this channel is set, fakeApplicator will wait to return content until
 	// this channel receives a value
 	watchTrigger chan struct{}
@@ -28,6 +31,8 @@ func (f *fakeLabelStore) List(prefix string, opts *api.QueryOptions) (api.KVPair
 		<-f.watchTrigger
 	}
 
+	f.dataMu.Lock()
+	defer f.dataMu.Unlock()
 	for k, v := range f.data {
 		if strings.HasPrefix(k, prefix) {
 			ret = append(ret, &api.KVPair{
@@ -41,21 +46,29 @@ func (f *fakeLabelStore) List(prefix string, opts *api.QueryOptions) (api.KVPair
 }
 
 func (f *fakeLabelStore) Delete(key string, opts *api.WriteOptions) (*api.WriteMeta, error) {
+	f.dataMu.Lock()
+	defer f.dataMu.Unlock()
 	delete(f.data, key)
 	return &api.WriteMeta{}, nil
 }
 
 func (f *fakeLabelStore) DeleteCAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error) {
+	f.dataMu.Lock()
+	defer f.dataMu.Unlock()
 	delete(f.data, pair.Key)
 	return true, &api.WriteMeta{}, nil
 }
 
 func (f *fakeLabelStore) CAS(pair *api.KVPair, opts *api.WriteOptions) (bool, *api.WriteMeta, error) {
+	f.dataMu.Lock()
+	defer f.dataMu.Unlock()
 	f.data[pair.Key] = pair.Value
 	return true, &api.WriteMeta{}, nil
 }
 
 func (f *fakeLabelStore) Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
+	f.dataMu.Lock()
+	defer f.dataMu.Unlock()
 	if v, ok := f.data[key]; ok {
 		return &api.KVPair{
 			Key:   key,
