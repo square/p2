@@ -546,8 +546,15 @@ func getDeployerAuth(preparerConfig *PreparerConfig) (auth.Policy, error) {
 }
 
 func getArtifactVerifier(preparerConfig *PreparerConfig, logger *logging.Logger) (auth.ArtifactVerifier, error) {
+	httpClient, err := preparerConfig.GetClient(30 * time.Second)
+	if err != nil {
+		return nil, err
+	}
+
+	fetcher := uri.BasicFetcher{
+		Client: httpClient,
+	}
 	var verif ManifestVerification
-	var err error
 	switch t, _ := preparerConfig.ArtifactAuth["type"].(string); t {
 	case "", auth.VerifyNone:
 		return auth.NopVerifier(), nil
@@ -556,28 +563,37 @@ func getArtifactVerifier(preparerConfig *PreparerConfig, logger *logging.Logger)
 		if err != nil {
 			return nil, util.Errorf("error configuring artifact verification: %v", err)
 		}
-		return auth.NewBuildManifestVerifier(verif.KeyringPath, uri.DefaultFetcher, logger)
+		return auth.NewBuildManifestVerifier(verif.KeyringPath, fetcher, logger)
 	case auth.VerifyBuild:
 		err = castYaml(preparerConfig.ArtifactAuth, &verif)
 		if err != nil {
 			return nil, util.Errorf("error configuring artifact verification: %v", err)
 		}
-		return auth.NewBuildVerifier(verif.KeyringPath, uri.DefaultFetcher, logger)
+		return auth.NewBuildVerifier(verif.KeyringPath, fetcher, logger)
 	case auth.VerifyEither:
 		err = castYaml(preparerConfig.ArtifactAuth, &verif)
 		if err != nil {
 			return nil, util.Errorf("error configuring artifact verification: %v", err)
 		}
-		return auth.NewCompositeVerifier(verif.KeyringPath, uri.DefaultFetcher, logger)
+		return auth.NewCompositeVerifier(verif.KeyringPath, fetcher, logger)
 	default:
 		return nil, util.Errorf("Unrecognized artifact verification type: %v", t)
 	}
 }
 
 func getArtifactRegistry(preparerConfig *PreparerConfig) (artifact.Registry, error) {
+	httpClient, err := preparerConfig.GetClient(30 * time.Second)
+	if err != nil {
+		return nil, err
+	}
+
+	fetcher := uri.BasicFetcher{
+		Client: httpClient,
+	}
+
 	if preparerConfig.ArtifactRegistryURL == "" {
 		// This will still work as long as all launchables have "location" urls specified.
-		return artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector), nil
+		return artifact.NewRegistry(nil, fetcher, osversion.DefaultDetector), nil
 	}
 
 	url, err := url.Parse(preparerConfig.ArtifactRegistryURL)
@@ -585,7 +601,7 @@ func getArtifactRegistry(preparerConfig *PreparerConfig) (artifact.Registry, err
 		return nil, util.Errorf("Could not parse 'artifact_registry_url': %s", err)
 	}
 
-	return artifact.NewRegistry(url, uri.DefaultFetcher, osversion.DefaultDetector), nil
+	return artifact.NewRegistry(url, fetcher, osversion.DefaultDetector), nil
 }
 
 func (p *Preparer) InstallHooks() error {
