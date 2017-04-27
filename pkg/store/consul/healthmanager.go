@@ -280,7 +280,7 @@ func processHealthUpdater(
 
 	var write <-chan writeResult // Future result of an in-flight write
 
-	logger.NoFields().Info("starting update loop")
+	logger.NoFields().Debug("starting update loop")
 	for {
 		// Receive event notification; update internal FSM state
 		select {
@@ -289,16 +289,16 @@ func processHealthUpdater(
 			if ok {
 				localHealth = &h
 			} else {
-				logger.NoFields().Info("check stream closed")
+				logger.NoFields().Debug("check stream closed")
 				checksStream = nil
 				localHealth = nil
 			}
 		case s, ok := <-sessionsStream:
 			// The active Consul session changed
 			if ok {
-				logger.NoFields().Info("new session: ", s)
+				logger.NoFields().Debug("new session: ", s)
 			} else {
-				logger.NoFields().Info("session stream closed")
+				logger.NoFields().Debug("session stream closed")
 				sessionsStream = nil
 			}
 			session = s
@@ -306,7 +306,7 @@ func processHealthUpdater(
 			remoteHealth = nil
 		case result := <-write:
 			// The in-flight write completed
-			logger.NoFields().Info("write completed: ", result.OK)
+			logger.NoFields().Debug("write completed: ", result.OK)
 			write = nil
 			if result.OK {
 				remoteHealth = result.Health
@@ -315,7 +315,7 @@ func processHealthUpdater(
 
 		// Exit
 		if checksStream == nil && remoteHealth == nil && write == nil {
-			logger.NoFields().Info("exiting update loop")
+			logger.NoFields().Debug("exiting update loop")
 			return
 		}
 
@@ -326,7 +326,7 @@ func processHealthUpdater(
 			})
 			w := make(chan writeResult, 1)
 			if localHealth == nil {
-				logger.NoFields().Info("deleting remote health")
+				logger.NoFields().Debug("deleting remote health")
 				key := HealthPath(remoteHealth.Service, remoteHealth.Node)
 				go sendHealthUpdate(writeLogger, w, nil, func() error {
 					_, err := client.Delete(key, nil)
@@ -336,7 +336,7 @@ func processHealthUpdater(
 					return nil
 				})
 			} else {
-				logger.NoFields().Info("writing remote health")
+				logger.NoFields().Debug("writing remote health")
 				kv, err := healthToKV(*localHealth, session)
 				if err != nil {
 					// Practically, this should never happen.
