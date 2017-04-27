@@ -154,8 +154,11 @@ type PreparerConfig struct {
 	Params param.Values `yaml:"params"`
 
 	// Use a single Store so that all requests go through the same HTTP client.
-	mux          sync.Mutex
-	consulClient consulutil.ConsulClient
+	consulClientMux sync.Mutex
+	consulClient    consulutil.ConsulClient
+
+	httpClientMux sync.Mutex
+	httpClient    *http.Client
 }
 
 // --- Deployer ACL strategies ---
@@ -243,8 +246,8 @@ func loadToken(path string) (string, error) {
 }
 
 func (c *PreparerConfig) GetConsulClient() (consulutil.ConsulClient, error) {
-	c.mux.Lock()
-	defer c.mux.Unlock()
+	c.consulClientMux.Lock()
+	defer c.consulClientMux.Unlock()
 	if c.consulClient != nil {
 		return c.consulClient, nil
 	}
@@ -289,6 +292,12 @@ func (c *PreparerConfig) getClient(
 	cxnTimeout time.Duration,
 	insecureSkipVerify bool,
 ) (*http.Client, error) {
+	c.httpClientMux.Lock()
+	defer c.httpClientMux.Unlock()
+	if c.httpClient != nil {
+		return c.httpClient, nil
+	}
+
 	tlsConfig, err := netutil.GetTLSConfig(c.CertFile, c.KeyFile, c.CAFile)
 	if err != nil {
 		return nil, err
@@ -314,7 +323,9 @@ func (c *PreparerConfig) getClient(
 		// to a non-nil, empty map."
 		transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
 	}
-	return &http.Client{Transport: transport}, nil
+
+	c.httpClient = &http.Client{Transport: transport}
+	return c.httpClient, nil
 }
 
 func (c *PreparerConfig) GetClient(cxnTimeout time.Duration) (*http.Client, error) {
