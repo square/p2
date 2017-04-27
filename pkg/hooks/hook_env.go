@@ -8,6 +8,7 @@ import (
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -78,7 +79,7 @@ func (h *HookEnv) PodFromDisk() (*pods.Pod, error) {
 
 // Initializes a pod based on the hooked pod manifest and the system pod root
 func (h *HookEnv) Pod() (*pods.Pod, error) {
-	factory := pods.NewFactory(os.Getenv(HookedSystemPodRootEnvVar), HookedNodeEnvVar)
+	factory := pods.NewFactory(os.Getenv(HookedSystemPodRootEnvVar), HookedNodeEnvVar, uri.DefaultFetcher)
 
 	podID, err := h.PodID()
 	if err != nil {

@@ -60,9 +60,6 @@ func main() {
 		log.Fatalf("%s", err)
 	}
 
-	podFactory := pods.NewFactory(*podRoot, types.NodeName(*nodeName))
-	pod := podFactory.NewLegacyPod(manifest.ID())
-
 	var transport http.RoundTripper
 	if *caFile != "" {
 		tlsConfig, err := netutil.GetTLSConfig("", "", *caFile)
@@ -87,7 +84,10 @@ func main() {
 	}
 
 	fetcher := uri.BasicFetcher{Client: httpClient}
-	pod.Fetcher = fetcher
+
+	podFactory := pods.NewFactory(*podRoot, types.NodeName(*nodeName), fetcher)
+	pod := podFactory.NewLegacyPod(manifest.ID())
+
 	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(*artifactRegistryURL, fetcher, osversion.DefaultDetector))
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)

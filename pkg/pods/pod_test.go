@@ -29,7 +29,7 @@ import (
 )
 
 func getTestPod() *Pod {
-	podFactory := NewFactory("/data/pods", "testNode")
+	podFactory := NewFactory("/data/pods", "testNode", uri.DefaultFetcher)
 	return podFactory.NewLegacyPod("hello")
 }
 
@@ -141,7 +141,7 @@ config:
 
 	podTemp, _ := ioutil.TempDir("", "pod")
 
-	podFactory := NewFactory(podTemp, "testNode")
+	podFactory := NewFactory(podTemp, "testNode", uri.DefaultFetcher)
 	pod := podFactory.NewLegacyPod(manifest.ID())
 
 	launchables := make([]launch.Launchable, 0)
@@ -209,7 +209,7 @@ func TestLogLaunchableError(t *testing.T) {
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
-	factory := NewFactory(DefaultPath, "testNode")
+	factory := NewFactory(DefaultPath, "testNode", uri.DefaultFetcher)
 	pod := factory.NewLegacyPod(testManifest.ID())
 	pod.logLaunchableError(testLaunchable.ServiceId, testErr, message)
 
@@ -228,7 +228,7 @@ func TestLogError(t *testing.T) {
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
-	factory := NewFactory(DefaultPath, "testNode")
+	factory := NewFactory(DefaultPath, "testNode", uri.DefaultFetcher)
 	pod := factory.NewLegacyPod(testManifest.ID())
 	pod.logError(testErr, message)
 
@@ -244,7 +244,7 @@ func TestLogInfo(t *testing.T) {
 	Log.SetLogOut(&out)
 
 	testManifest := getTestPodManifest(t)
-	factory := NewFactory(DefaultPath, "testNode")
+	factory := NewFactory(DefaultPath, "testNode", uri.DefaultFetcher)
 	pod := factory.NewLegacyPod(testManifest.ID())
 	message := "Pod did something good"
 	pod.logInfo(message)

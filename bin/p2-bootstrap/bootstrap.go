@@ -47,7 +47,8 @@ func main() {
 	}
 	log.Println("Installing and launching consul")
 
-	podFactory := pods.NewFactory(*podRoot, nodeName)
+	// TODO: configure a proper http client instead of using default for fetcher
+	podFactory := pods.NewFactory(*podRoot, nodeName, uri.DefaultFetcher)
 
 	var consulPod *pods.Pod
 	var consulManifest manifest.Manifest

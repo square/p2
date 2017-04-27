@@ -13,6 +13,7 @@ import (
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/flags"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/uri"
 )
 
 const helpMessage = `
@@ -49,7 +50,8 @@ func main() {
 		podsToShutdown = append(podsToShutdown, types.PodID(pod))
 	}
 
-	podFactory := pods.NewFactory(*podRoot, node)
+	// TODO: configure a proper http client instead of using default fetcher
+	podFactory := pods.NewFactory(*podRoot, node, uri.DefaultFetcher)
 	var haltWG sync.WaitGroup
 	for _, realityEntry := range reality {
 		pod := podFactory.NewLegacyPod(realityEntry.Manifest.ID())

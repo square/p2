@@ -154,8 +154,11 @@ type PreparerConfig struct {
 	Params param.Values `yaml:"params"`
 
 	// Use a single Store so that all requests go through the same HTTP client.
-	mux          sync.Mutex
-	consulClient consulutil.ConsulClient
+	consulClientMux sync.Mutex
+	consulClient    consulutil.ConsulClient
+
+	httpClientMux sync.Mutex
+	httpClient    *http.Client
 }
 
 // --- Deployer ACL strategies ---
@@ -243,8 +246,8 @@ func loadToken(path string) (string, error) {
 }
 
 func (c *PreparerConfig) GetConsulClient() (consulutil.ConsulClient, error) {
-	c.mux.Lock()
-	defer c.mux.Unlock()
+	c.consulClientMux.Lock()
+	defer c.consulClientMux.Unlock()
 	if c.consulClient != nil {
 		return c.consulClient, nil
 	}
@@ -289,6 +292,12 @@ func (c *PreparerConfig) getClient(
 	cxnTimeout time.Duration,
 	insecureSkipVerify bool,
 ) (*http.Client, error) {
+	c.httpClientMux.Lock()
+	defer c.httpClientMux.Unlock()
+	if c.httpClient != nil {
+		return c.httpClient, nil
+	}
+
 	tlsConfig, err := netutil.GetTLSConfig(c.CertFile, c.KeyFile, c.CAFile)
 	if err != nil {
 		return nil, err
@@ -314,7 +323,9 @@ func (c *PreparerConfig) getClient(
 		// to a non-nil, empty map."
 		transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
 	}
-	return &http.Client{Transport: transport}, nil
+
+	c.httpClient = &http.Client{Transport: transport}
+	return c.httpClient, nil
 }
 
 func (c *PreparerConfig) GetClient(cxnTimeout time.Duration) (*http.Client, error) {
@@ -459,6 +470,15 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		hooksPodFactory := pods.NewHookFactory(filepath.Join(preparerConfig.PodRoot, "hooks"), preparerConfig.NodeName)
 		hooksPod = hooksPodFactory.NewHookPod(hooksManifest.ID())
 	}
+
+	httpClient, err := preparerConfig.GetClient(30 * time.Second)
+	if err != nil {
+		return nil, err
+	}
+	fetcher := uri.BasicFetcher{
+		Client: httpClient,
+	}
+
 	return &Preparer{
 		node:                   preparerConfig.NodeName,
 		store:                  store,
@@ -466,7 +486,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		podStatusStore:         podStatusStore,
 		podStore:               podStore,
 		Logger:                 logger,
-		podFactory:             pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName),
+		podFactory:             pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName, fetcher),
 		authPolicy:             authPolicy,
 		maxLaunchableDiskUsage: maxLaunchableDiskUsage,
 		finishExec:             finishExec,
@@ -535,8 +555,15 @@ func getDeployerAuth(preparerConfig *PreparerConfig) (auth.Policy, error) {
 }
 
 func getArtifactVerifier(preparerConfig *PreparerConfig, logger *logging.Logger) (auth.ArtifactVerifier, error) {
+	httpClient, err := preparerConfig.GetClient(30 * time.Second)
+	if err != nil {
+		return nil, err
+	}
+
+	fetcher := uri.BasicFetcher{
+		Client: httpClient,
+	}
 	var verif ManifestVerification
-	var err error
 	switch t, _ := preparerConfig.ArtifactAuth["type"].(string); t {
 	case "", auth.VerifyNone:
 		return auth.NopVerifier(), nil
@@ -545,28 +572,37 @@ func getArtifactVerifier(preparerConfig *PreparerConfig, logger *logging.Logger)
 		if err != nil {
 			return nil, util.Errorf("error configuring artifact verification: %v", err)
 		}
-		return auth.NewBuildManifestVerifier(verif.KeyringPath, uri.DefaultFetcher, logger)
+		return auth.NewBuildManifestVerifier(verif.KeyringPath, fetcher, logger)
 	case auth.VerifyBuild:
 		err = castYaml(preparerConfig.ArtifactAuth, &verif)
 		if err != nil {
 			return nil, util.Errorf("error configuring artifact verification: %v", err)
 		}
-		return auth.NewBuildVerifier(verif.KeyringPath, uri.DefaultFetcher, logger)
+		return auth.NewBuildVerifier(verif.KeyringPath, fetcher, logger)
 	case auth.VerifyEither:
 		err = castYaml(preparerConfig.ArtifactAuth, &verif)
 		if err != nil {
 			return nil, util.Errorf("error configuring artifact verification: %v", err)
 		}
-		return auth.NewCompositeVerifier(verif.KeyringPath, uri.DefaultFetcher, logger)
+		return auth.NewCompositeVerifier(verif.KeyringPath, fetcher, logger)
 	default:
 		return nil, util.Errorf("Unrecognized artifact verification type: %v", t)
 	}
 }
 
 func getArtifactRegistry(preparerConfig *PreparerConfig) (artifact.Registry, error) {
+	httpClient, err := preparerConfig.GetClient(30 * time.Second)
+	if err != nil {
+		return nil, err
+	}
+
+	fetcher := uri.BasicFetcher{
+		Client: httpClient,
+	}
+
 	if preparerConfig.ArtifactRegistryURL == "" {
 		// This will still work as long as all launchables have "location" urls specified.
-		return artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector), nil
+		return artifact.NewRegistry(nil, fetcher, osversion.DefaultDetector), nil
 	}
 
 	url, err := url.Parse(preparerConfig.ArtifactRegistryURL)
@@ -574,7 +610,7 @@ func getArtifactRegistry(preparerConfig *PreparerConfig) (artifact.Registry, err
 		return nil, util.Errorf("Could not parse 'artifact_registry_url': %s", err)
 	}
 
-	return artifact.NewRegistry(url, uri.DefaultFetcher, osversion.DefaultDetector), nil
+	return artifact.NewRegistry(url, fetcher, osversion.DefaultDetector), nil
 }
 
 func (p *Preparer) InstallHooks() error {
