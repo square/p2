@@ -20,6 +20,7 @@ var (
 	manifestPath = kingpin.Flag("manifest", "The manifest to use (this is useful when we are in the before_install phase)").ExistingFile()
 	nodeName     = kingpin.Flag("node-name", "The name of this node (default: hostname)").String()
 	podRoot      = kingpin.Flag("pod-root", "The system root for pods").Default(pods.DefaultPath).String()
+	sqlitePath   = kingpin.Flag("sqlite", "Path to SQLite database to use as an audit logger.").String()
 )
 
 func main() {
@@ -34,7 +35,18 @@ func main() {
 		*nodeName = hostname
 	}
 
-	dir := hooks.NewContext(*hookDir, *podRoot, &logging.DefaultLogger)
+	var auditLogger hooks.AuditLogger
+	auditLogger = hooks.NewFileAuditLogger(&logging.DefaultLogger)
+	if *sqlitePath != "" {
+		al, err := hooks.NewSQLiteAuditLogger(*sqlitePath, &logging.DefaultLogger)
+		if err != nil {
+			logging.DefaultLogger.Errorf("Unable to connect sqlite database at %s, printing audit logs to STDOUT %v", *sqlitePath, err)
+		}
+		defer al.Close()
+		auditLogger = al
+	}
+
+	dir := hooks.NewContext(*hookDir, *podRoot, &logging.DefaultLogger, auditLogger)
 
 	hookType, err := hooks.AsHookType(*hookType)
 	if err != nil {
