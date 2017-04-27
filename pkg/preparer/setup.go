@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -444,9 +445,13 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		hooksSqlite, ok := hooksManifest.GetConfig()["sqlite_path"]
 		if ok {
 			sqlitePath := hooksSqlite.(string)
-			err := os.MkdirAll(sqlitePath, os.ModeDir)
-			if err == nil {
+			if err = os.MkdirAll(path.Dir(sqlitePath), os.ModeDir); err != nil {
+				err = os.Chmod(sqlitePath, 0777)
+			}
+
+			if err != nil {
 				logger.WithError(err).Errorf("Unable to construct a SQLite based audit-logger. Using file backed instead")
+			} else {
 				al, err := hooks.NewSQLiteAuditLogger(sqlitePath, &logger)
 				if err != nil {
 					logger.Errorf("Unable to construct a SQLite based audit-logger. Using file backed instead: %v", err)
@@ -454,6 +459,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 					auditLogger = al
 				}
 			}
+
 		}
 	}
 	return &Preparer{
