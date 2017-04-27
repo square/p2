@@ -196,13 +196,32 @@ func (c *consulAggregator) Aggregate() {
 			// Iterate over each watcher and send the []Labeled
 			// that match the watcher's selector to the watcher's out channel.
 			watcher := c.watchers
-			for watcher != nil {
-				if !c.sendMatches(watcher) {
+			var wg sync.WaitGroup
+			missedSendsCh := make(chan struct{})
+
+			missedSendsProcessed := make(chan struct{})
+			go func() {
+				defer close(missedSendsProcessed)
+				for range missedSendsCh {
 					missedSends++
 				}
+			}()
+
+			for watcher != nil {
+				wg.Add(1)
+				go func(watch selectorWatch) {
+					defer wg.Done()
+					if !c.sendMatches(&watch) {
+						missedSendsCh <- struct{}{}
+					}
+				}(*watcher)
 				watcher = watcher.next
 			}
+			wg.Wait()
 			c.watcherLock.Unlock()
+
+			close(missedSendsCh)
+			<-missedSendsProcessed
 			c.metWatchSendMiss.Update(int64(missedSends))
 		}
 		select {
