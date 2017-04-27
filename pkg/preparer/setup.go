@@ -470,6 +470,15 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		hooksPodFactory := pods.NewHookFactory(filepath.Join(preparerConfig.PodRoot, "hooks"), preparerConfig.NodeName)
 		hooksPod = hooksPodFactory.NewHookPod(hooksManifest.ID())
 	}
+
+	httpClient, err := preparerConfig.GetClient(30 * time.Second)
+	if err != nil {
+		return nil, err
+	}
+	fetcher := uri.BasicFetcher{
+		Client: httpClient,
+	}
+
 	return &Preparer{
 		node:                   preparerConfig.NodeName,
 		store:                  store,
@@ -477,7 +486,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		podStatusStore:         podStatusStore,
 		podStore:               podStore,
 		Logger:                 logger,
-		podFactory:             pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName),
+		podFactory:             pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName, fetcher),
 		authPolicy:             authPolicy,
 		maxLaunchableDiskUsage: maxLaunchableDiskUsage,
 		finishExec:             finishExec,

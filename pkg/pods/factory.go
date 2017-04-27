@@ -41,6 +41,8 @@ type HookFactory interface {
 type factory struct {
 	podRoot string
 	node    types.NodeName
+
+	fetcher uri.Fetcher
 }
 
 type hookFactory struct {
@@ -48,7 +50,7 @@ type hookFactory struct {
 	node     types.NodeName
 }
 
-func NewFactory(podRoot string, node types.NodeName) Factory {
+func NewFactory(podRoot string, node types.NodeName, fetcher uri.Fetcher) Factory {
 	if podRoot == "" {
 		podRoot = DefaultPath
 	}
@@ -56,6 +58,7 @@ func NewFactory(podRoot string, node types.NodeName) Factory {
 	return &factory{
 		podRoot: podRoot,
 		node:    node,
+		fetcher: fetcher,
 	}
 }
 
