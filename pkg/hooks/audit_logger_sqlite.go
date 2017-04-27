@@ -128,8 +128,8 @@ func (al *SQLiteAuditLogger) withRetries(f func() error, n int) error {
 	}
 }
 
-func (al *SQLiteAuditLogger) ensureMigrated() error {
-	_, err := al.sqlite.Exec(sqliteCreateSchemaVersionTable)
+func (al *SQLiteAuditLogger) ensureMigrated() (err error) {
+	_, err = al.sqlite.Exec(sqliteCreateSchemaVersionTable)
 	if err != nil {
 		return err
 	}
