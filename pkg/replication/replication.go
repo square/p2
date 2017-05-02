@@ -259,7 +259,7 @@ func (r *replication) Enact() {
 
 				go func() {
 					defer close(exitCh)
-					err = r.updateOne(node, timeoutCh, aggregateHealth)
+					err := r.updateOne(node, timeoutCh, aggregateHealth)
 					if err == nil {
 						r.logger.Infof("The host '%v' successfully replicated the pod '%v'", node, r.manifest.ID())
 						atomic.AddInt32(&completedCount, 1)
