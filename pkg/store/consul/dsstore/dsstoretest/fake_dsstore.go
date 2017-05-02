@@ -30,15 +30,19 @@ type FakeWatchedDaemonSet struct {
 // Used for unit testing
 type FakeDSStore struct {
 	daemonSets map[fields.ID]fields.DaemonSet
-	writeLock  sync.Locker
+	mu         sync.Mutex
 	logger     logging.Logger
+
+	// this condition variable is used to simulate watches rather than
+	// needing busy loop
+	somethingChanged *sync.Cond
 }
 
 func NewFake() *FakeDSStore {
 	return &FakeDSStore{
-		daemonSets: make(map[fields.ID]fields.DaemonSet),
-		writeLock:  &sync.Mutex{},
-		logger:     logging.DefaultLogger,
+		daemonSets:       make(map[fields.ID]fields.DaemonSet),
+		somethingChanged: sync.NewCond(&sync.Mutex{}),
+		logger:           logging.DefaultLogger,
 	}
 }
 
@@ -62,29 +66,37 @@ func (s *FakeDSStore) Create(
 		Timeout:      timeout,
 	}
 
-	s.writeLock.Lock()
-	defer s.writeLock.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if _, ok := s.daemonSets[id]; ok {
 		return ds, util.Errorf("Daemon set uuid collision on id: %v", id)
 	}
 	s.daemonSets[id] = ds
 
+	s.somethingChanged.Broadcast()
+
 	return ds, nil
 }
 
 func (s *FakeDSStore) Delete(id fields.ID) error {
-	s.writeLock.Lock()
-	defer s.writeLock.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if _, ok := s.daemonSets[id]; ok {
 		delete(s.daemonSets, id)
+		s.somethingChanged.Broadcast()
+
 		return nil
 	}
+
 	return dsstore.NoDaemonSet
 }
 
 func (s *FakeDSStore) Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	//TODO: Check if there is a use for this in the fake dsstore
 	queryMeta := &api.QueryMeta{
 		KnownLeader: false,
@@ -100,6 +112,8 @@ func (s *FakeDSStore) Get(id fields.ID) (fields.DaemonSet, *api.QueryMeta, error
 
 func (s *FakeDSStore) List() ([]fields.DaemonSet, error) {
 	var ret []fields.DaemonSet
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, ds := range s.daemonSets {
 		ret = append(ret, ds)
 	}
@@ -110,13 +124,13 @@ func (s *FakeDSStore) MutateDS(
 	id fields.ID,
 	mutator func(fields.DaemonSet) (fields.DaemonSet, error),
 ) (fields.DaemonSet, error) {
-	s.writeLock.Lock()
-	defer s.writeLock.Unlock()
-
 	ds, _, err := s.Get(id)
 	if err != nil {
 		return fields.DaemonSet{}, err
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	ds, err = mutator(ds)
 	if err != nil {
@@ -125,6 +139,7 @@ func (s *FakeDSStore) MutateDS(
 
 	s.daemonSets[id] = ds
 
+	s.somethingChanged.Broadcast()
 	return ds, nil
 }
 
@@ -143,6 +158,7 @@ func (s *FakeDSStore) Disable(id fields.ID) (fields.DaemonSet, error) {
 	}
 
 	s.logger.Infof("Daemon set '%s' was successfully disabled in store", id)
+
 	return newDS, nil
 }
 
@@ -150,7 +166,20 @@ func (s *FakeDSStore) WatchList(quitCh <-chan struct{}) <-chan []fields.DaemonSe
 	outCh := make(chan []fields.DaemonSet)
 
 	go func() {
+		<-quitCh
+		s.somethingChanged.Broadcast()
+	}()
+
+	go func() {
+		runOnce := false
 		for {
+			if runOnce {
+				s.somethingChanged.L.Lock()
+				s.somethingChanged.Wait()
+				s.somethingChanged.L.Unlock()
+			}
+			runOnce = true
+
 			select {
 			case <-quitCh:
 				return
