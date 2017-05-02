@@ -32,7 +32,7 @@ end
 
 desc 'Test all projects'
 task :test_all => [:build] do
-  e "go test -timeout 120s ./..."
+  e "go test -timeout 120s -race ./..."
 end
 
 desc 'Update all dependencies'
