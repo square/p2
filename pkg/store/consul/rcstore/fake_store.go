@@ -3,6 +3,7 @@ package rcstore
 import (
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"k8s.io/kubernetes/pkg/labels"
@@ -176,7 +177,7 @@ func (s *fakeStore) Delete(id fields.ID, force bool) error {
 	return nil
 }
 
-func (s *fakeStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
+func (s *fakeStore) Watch(rc *fields.RC, mu *sync.Mutex, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
 	updatesOut := make(chan struct{})
 	entry, ok := s.rcs[rc.ID]
 	if !ok {
@@ -205,7 +206,11 @@ func (s *fakeStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{},
 
 	go func() {
 		for range updatesIn {
+			mu.Lock()
+			s.mu.Lock()
 			*rc = entry.RC
+			mu.Unlock()
+			s.mu.Unlock()
 			updatesOut <- struct{}{}
 		}
 		close(updatesOut)
