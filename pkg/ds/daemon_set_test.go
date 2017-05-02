@@ -104,16 +104,17 @@ func watchDSChanges(
 				errCh <- util.Errorf("Error occured when watching daemon set changes: %v", watched.Err)
 			}
 
+			dsID := ds.ID()
 			// Signal daemon set when changes have been made,
 			// creations are handled when WatchDesires is called, so ignore them here
 			for _, changedDS := range watched.Updated {
-				if ds.ID() == changedDS.ID {
+				if dsID == changedDS.ID {
 					ds.logger.NoFields().Infof("Watched daemon set was updated: %v", *changedDS)
 					updatedCh <- changedDS
 				}
 			}
 			for _, changedDS := range watched.Deleted {
-				if ds.ID() == changedDS.ID {
+				if dsID == changedDS.ID {
 					ds.logger.NoFields().Infof("Watched daemon set was deleted: %v", *changedDS)
 					deletedCh <- changedDS
 				}

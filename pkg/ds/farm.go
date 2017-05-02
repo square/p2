@@ -228,11 +228,11 @@ func (dsf *Farm) mainLoop(quitCh <-chan struct{}) {
 				return
 			case err, ok = <-child.errCh:
 				if err != nil {
-					dsf.logger.Errorf("An error has occurred in spawned ds '%v':, %v", child.ds, err)
+					dsf.logger.Errorf("An error has occurred in spawned ds '%v':, %v", child.ds.ID(), err)
 				}
 				if !ok {
 					// child error channel closed
-					dsf.logger.Errorf("Child ds '%v' error channel closed, removing ds now", child.ds)
+					dsf.logger.Errorf("Child ds '%v' error channel closed, removing ds now", child.ds.ID())
 					dsf.closeChild(dsID)
 					continue
 				}
