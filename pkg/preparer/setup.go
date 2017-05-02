@@ -665,5 +665,8 @@ func (p *Preparer) InstallHooks() error {
 		return err
 	}
 	sub.NoFields().Infoln("Updated hook")
+
+	p.hooksPod.Prune(p.maxLaunchableDiskUsage, p.hooksManifest)
+
 	return nil
 }
