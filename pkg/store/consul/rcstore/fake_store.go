@@ -17,6 +17,7 @@ import (
 
 type fakeStore struct {
 	rcs     map[fields.ID]*fakeEntry
+	mu      sync.Mutex
 	creates int
 }
 
@@ -54,7 +55,9 @@ func (s *fakeStore) Create(manifest manifest.Manifest, nodeSelector labels.Selec
 		lastWatcherId: 0,
 	}
 
+	s.mu.Lock()
 	s.rcs[id] = &entry
+	s.mu.Unlock()
 
 	return entry.RC, nil
 }
@@ -71,10 +74,12 @@ func (s *fakeStore) Get(id fields.ID) (fields.RC, error) {
 func (s *fakeStore) List() ([]fields.RC, error) {
 	results := make([]fields.RC, len(s.rcs))
 	i := 0
+	s.mu.Lock()
 	for _, v := range s.rcs {
 		results[i] = v.RC
 		i += 1
 	}
+	s.mu.Unlock()
 	return results, nil
 }
 
@@ -87,6 +92,8 @@ func (s *fakeStore) WatchRCKeysWithLockInfo(quit <-chan struct{}, pauseTime time
 }
 
 func (s *fakeStore) Disable(id fields.ID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	entry, ok := s.rcs[id]
 	if !ok {
 		return util.Errorf("Nonexistent RC")
@@ -100,6 +107,8 @@ func (s *fakeStore) Disable(id fields.ID) error {
 }
 
 func (s *fakeStore) Enable(id fields.ID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	entry, ok := s.rcs[id]
 	if !ok {
 		return util.Errorf("Nonexistent RC")
@@ -113,6 +122,8 @@ func (s *fakeStore) Enable(id fields.ID) error {
 }
 
 func (s *fakeStore) SetDesiredReplicas(id fields.ID, n int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	entry, ok := s.rcs[id]
 	if !ok {
 		return util.Errorf("Nonexistent RC")
@@ -126,6 +137,8 @@ func (s *fakeStore) SetDesiredReplicas(id fields.ID, n int) error {
 }
 
 func (s *fakeStore) AddDesiredReplicas(id fields.ID, n int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	entry, ok := s.rcs[id]
 	if !ok {
 		return util.Errorf("Nonexistent RC")
@@ -142,6 +155,8 @@ func (s *fakeStore) AddDesiredReplicas(id fields.ID, n int) error {
 }
 
 func (s *fakeStore) CASDesiredReplicas(id fields.ID, expected int, n int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	entry, ok := s.rcs[id]
 	if !ok {
 		return util.Errorf("Nonexistent RC")
@@ -159,6 +174,8 @@ func (s *fakeStore) CASDesiredReplicas(id fields.ID, expected int, n int) error 
 }
 
 func (s *fakeStore) Delete(id fields.ID, force bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	entry, ok := s.rcs[id]
 	if !ok {
 		return util.Errorf("Nonexistent RC")
