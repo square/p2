@@ -65,3 +65,12 @@ func TestPathWithParent(t *testing.T) {
 		Assert(t).IsTrue(os.IsNotExist(err), "expected extracted file not to exist")
 	})
 }
+
+func TestEscapingSymlink(t *testing.T) {
+	testExtraction(t, "escaping_symlink.tar.gz", func(tarErr error, dest string) {
+		Assert(t).IsNotNil(tarErr, "expected error extracting tarball")
+
+		_, err := os.Stat(filepath.Join(dest, "..", "file"))
+		Assert(t).IsTrue(os.IsNotExist(err), "expected extracted file not to exist")
+	})
+}
