@@ -206,11 +206,36 @@ func TestSchedule(t *testing.T) {
 	quitCh := make(chan struct{})
 	updatedCh := make(chan *ds_fields.DaemonSet)
 	deletedCh := make(chan *ds_fields.DaemonSet)
-	defer close(quitCh)
-	defer close(updatedCh)
-	defer close(deletedCh)
 	desiresErrCh := ds.WatchDesires(quitCh, updatedCh, deletedCh)
 	dsChangesErrCh := watchDSChanges(ds, dsStore, quitCh, updatedCh, deletedCh)
+
+	// We need to be careful when shutting down in order to avoid data
+	// races, since updatedCh and deletedCh are shared between two
+	// functions (WatchDesires() and watchDSChanges()). We need to make
+	// sure that we don't close updatedCh or deletedCh until their
+	// respective output channels have closed which indicates that they
+	// won't try to send any more values
+	defer func() {
+		close(quitCh)
+		desiresErrChClosed := false
+		dsChangesErrChClosed := false
+		for !dsChangesErrChClosed || !desiresErrChClosed {
+			select {
+			case _, ok := <-dsChangesErrCh:
+				if !ok {
+					dsChangesErrChClosed = true
+				}
+			case _, ok := <-desiresErrCh:
+				if !ok {
+					desiresErrChClosed = true
+				}
+			case <-time.After(1 * time.Second):
+				t.Fatal("watchDSChanges or WatchDesires did not exit promptly after closing quitCh")
+			}
+		}
+		close(updatedCh)
+		close(deletedCh)
+	}()
 
 	//
 	// Verify that the pod has been labeled
@@ -419,11 +444,36 @@ func TestPublishToReplication(t *testing.T) {
 	quitCh := make(chan struct{})
 	updatedCh := make(chan *ds_fields.DaemonSet)
 	deletedCh := make(chan *ds_fields.DaemonSet)
-	defer close(quitCh)
-	defer close(updatedCh)
-	defer close(deletedCh)
 	desiresErrCh := ds.WatchDesires(quitCh, updatedCh, deletedCh)
 	dsChangesErrCh := watchDSChanges(ds, dsStore, quitCh, updatedCh, deletedCh)
+
+	// We need to be careful when shutting down in order to avoid data
+	// races, since updatedCh and deletedCh are shared between two
+	// functions (WatchDesires() and watchDSChanges()). We need to make
+	// sure that we don't close updatedCh or deletedCh until their
+	// respective output channels have closed which indicates that they
+	// won't try to send any more values
+	defer func() {
+		close(quitCh)
+		desiresErrChClosed := false
+		dsChangesErrChClosed := false
+		for !dsChangesErrChClosed || !desiresErrChClosed {
+			select {
+			case _, ok := <-dsChangesErrCh:
+				if !ok {
+					dsChangesErrChClosed = true
+				}
+			case _, ok := <-desiresErrCh:
+				if !ok {
+					desiresErrChClosed = true
+				}
+			case <-time.After(1 * time.Second):
+				t.Fatal("watchDSChanges or WatchDesires did not exit promptly after closing quitCh")
+			}
+		}
+		close(updatedCh)
+		close(deletedCh)
+	}()
 
 	//
 	// Verify that 2 pods have been labeled
