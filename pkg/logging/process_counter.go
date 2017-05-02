@@ -7,12 +7,12 @@ import (
 	"github.com/Sirupsen/logrus"
 )
 
+var counter uint64
+
 // ProcessCounter is a Logrus hook that appends a sequence number to all entries. This
 // hook should appear before other hooks that externalize data, to ensure that they see
 // the added fields.
-type ProcessCounter struct {
-	counter uint64
-}
+type ProcessCounter struct{}
 
 func (ProcessCounter) Levels() []logrus.Level {
 	return []logrus.Level{
@@ -30,7 +30,7 @@ func (p *ProcessCounter) Fire(entry *logrus.Entry) error {
 	for k, v := range entry.Data {
 		data[k] = v
 	}
-	data["Counter"] = atomic.AddUint64(&p.counter, 1) - 1
+	data["Counter"] = atomic.AddUint64(&counter, 1) - 1
 	data["PID"] = os.Getpid()
 	entry.Data = data
 	return nil
