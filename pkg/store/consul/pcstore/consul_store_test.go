@@ -2,6 +2,7 @@ package pcstore
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -918,6 +919,9 @@ type RecordingSyncer struct {
 	SyncClusterCalls   []fields.ID
 	DeleteClusterCalls []fields.ID
 
+	// synchronizes access for SyncClusterCalls and DeleteClusterCalls slices
+	mu sync.Mutex
+
 	// Used to signal when SyncCluster is called so tests can have non-racey
 	// timeouts
 	SyncSignal chan<- struct{}
@@ -930,7 +934,9 @@ func (r *RecordingSyncer) GetInitialClusters() ([]fields.ID, error) {
 }
 
 func (r *RecordingSyncer) SyncCluster(pc *fields.PodCluster, labeledPods []labels.Labeled) error {
+	r.mu.Lock()
 	r.SyncClusterCalls = append(r.SyncClusterCalls, pc.ID)
+	r.mu.Unlock()
 	if r.SyncSignal != nil {
 		r.SyncSignal <- struct{}{}
 	}
@@ -938,7 +944,9 @@ func (r *RecordingSyncer) SyncCluster(pc *fields.PodCluster, labeledPods []label
 }
 
 func (r *RecordingSyncer) DeleteCluster(id fields.ID) error {
+	r.mu.Lock()
 	r.DeleteClusterCalls = append(r.DeleteClusterCalls, id)
+	r.mu.Unlock()
 	if r.DeleteSignal != nil {
 		r.DeleteSignal <- struct{}{}
 	}
@@ -954,7 +962,6 @@ func TestWatchAndSync(t *testing.T) {
 	quit := make(chan struct{})
 	defer close(quit)
 	syncSignal := make(chan struct{})
-	defer close(syncSignal)
 
 	example := examplePodCluster()
 	pc1, err := store.Create(
@@ -1007,12 +1014,14 @@ func TestWatchAndSync(t *testing.T) {
 
 	for _, expectedID := range []fields.ID{pc1.ID, pc2.ID} {
 		found := false
+		syncer.mu.Lock()
 		for _, id := range syncer.SyncClusterCalls {
 			if id == expectedID {
 				found = true
 				break
 			}
 		}
+		syncer.mu.Unlock()
 
 		if !found {
 			t.Fatalf("Expected sync to be called for %s but it wasn't. Called for %s", expectedID, syncer.SyncClusterCalls)
@@ -1025,9 +1034,7 @@ func TestWatchAndSyncWithDelete(t *testing.T) {
 	quit := make(chan struct{})
 	defer close(quit)
 	syncSignal := make(chan struct{})
-	defer close(syncSignal)
 	deleteSignal := make(chan struct{})
-	defer close(deleteSignal)
 
 	example := examplePodCluster()
 	pc1, err := store.Create(
@@ -1070,12 +1077,14 @@ func TestWatchAndSyncWithDelete(t *testing.T) {
 	}
 
 	found := false
+	syncer.mu.Lock()
 	for _, id := range syncer.SyncClusterCalls {
 		if id == pc1.ID {
 			found = true
 			break
 		}
 	}
+	syncer.mu.Unlock()
 
 	if !found {
 		t.Fatalf("Expected sync to be called for %s but it wasn't. Called for %s", pc1.ID, syncer.SyncClusterCalls)
@@ -1094,12 +1103,14 @@ func TestWatchAndSyncWithDelete(t *testing.T) {
 	}
 
 	found = false
+	syncer.mu.Lock()
 	for _, id := range syncer.DeleteClusterCalls {
 		if id == "some_other_ID" {
 			found = true
 			break
 		}
 	}
+	syncer.mu.Unlock()
 
 	if !found {
 		t.Fatalf("Expected sync to be called for %s but it wasn't. Called for %s", "some_other_ID", syncer.DeleteClusterCalls)
@@ -1112,9 +1123,7 @@ func TestWatchAndSyncFailsafe(t *testing.T) {
 	quit := make(chan struct{})
 	defer close(quit)
 	syncSignal := make(chan struct{})
-	defer close(syncSignal)
 	deleteSignal := make(chan struct{})
-	defer close(deleteSignal)
 
 	// Include two initial clusters, but don't actually put any in the
 	// store. We shouldn't see any delete calls because of the failsafe
