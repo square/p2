@@ -28,7 +28,10 @@ func fakeLabeledPods() map[string][]byte {
 func TestTwoClients(t *testing.T) {
 	alterAggregationTime(100 * time.Millisecond)
 
-	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
+	fakeKV := &fakeLabelStore{
+		data:         fakeLabeledPods(),
+		watchTrigger: nil,
+	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	go aggreg.Aggregate()
 	defer aggreg.Quit()
@@ -67,7 +70,10 @@ func TestTwoClients(t *testing.T) {
 func TestQuitAggregateAfterResults(t *testing.T) {
 	alterAggregationTime(100 * time.Millisecond)
 
-	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
+	fakeKV := &fakeLabelStore{
+		data:         fakeLabeledPods(),
+		watchTrigger: nil,
+	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	go aggreg.Aggregate()
 
@@ -96,7 +102,10 @@ func TestQuitAggregateBeforeResults(t *testing.T) {
 	// this channel prevents the List from returning, so the aggregator
 	// must quit prior to entering the loop
 	trigger := make(chan struct{})
-	fakeKV := &fakeLabelStore{fakeLabeledPods(), trigger}
+	fakeKV := &fakeLabelStore{
+		data:         fakeLabeledPods(),
+		watchTrigger: trigger,
+	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	go aggreg.Aggregate()
 
@@ -118,7 +127,10 @@ func TestQuitAggregateBeforeResults(t *testing.T) {
 func TestQuitIndividualWatch(t *testing.T) {
 	alterAggregationTime(time.Millisecond)
 
-	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
+	fakeKV := &fakeLabelStore{
+		data:         fakeLabeledPods(),
+		watchTrigger: nil,
+	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	go aggreg.Aggregate()
 
@@ -167,7 +179,10 @@ func TestQuitIndividualWatch(t *testing.T) {
 func TestIgnoreIndividualWatch(t *testing.T) {
 	alterAggregationTime(time.Millisecond)
 
-	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
+	fakeKV := &fakeLabelStore{
+		data:         fakeLabeledPods(),
+		watchTrigger: nil,
+	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	go aggreg.Aggregate()
 	defer aggreg.Quit()
@@ -180,8 +195,9 @@ func TestIgnoreIndividualWatch(t *testing.T) {
 
 	Assert(t).AreEqual(int64(2), aggreg.metWatchCount.Value(), "should currently have two watchers")
 
-	// iterate twice to show that we are not waiting on other now-closed channels
-	for i := 0; i < 2; i++ {
+	// iterate 3 times to show that we are not waiting on other now-closed
+	// channels
+	for i := 0; i < 3; i++ {
 		select {
 		case <-time.After(time.Second):
 			t.Fatalf("Should not have taken a second to get results on iteration %v", i)
@@ -192,11 +208,22 @@ func TestIgnoreIndividualWatch(t *testing.T) {
 		}
 	}
 
-	Assert(t).AreEqual(aggreg.metWatchSendMiss.Value(), int64(1), "should have missed exactly one watch send")
+	// this is a range because sending matches is parallelized, so by the
+	// time we've read 3 values from labeledChannel2 we don't know if we've
+	// failed to send 2 values or 3 values. additionally, metWatchSendMiss
+	// lags the count by 1, because we don't count a value as missed until
+	// the next value comes along
+	missed := aggreg.metWatchSendMiss.Value()
+	if missed < 1 || missed > 2 {
+		t.Errorf("should have missed between one and two sends, but missed %d", aggreg.metWatchSendMiss.Value())
+	}
 }
 
 func TestCachedValueImmediatelySent(t *testing.T) {
-	fakeKV := &fakeLabelStore{fakeLabeledPods(), nil}
+	fakeKV := &fakeLabelStore{
+		data:         fakeLabeledPods(),
+		watchTrigger: nil,
+	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
 	aggreg.labeledCache = []Labeled{
 		{
