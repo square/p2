@@ -45,6 +45,19 @@ func (ConsulStore) Create(
 		Value: auditLogBytes,
 	})
 }
+func (ConsulStore) Delete(
+	txn *transaction.Tx,
+	id audit.ID,
+) error {
+	if uuid.Parse(id.String()) == nil {
+		return util.Errorf("%s is not a valid audit log ID", id)
+	}
+
+	return txn.Add(api.KVTxnOp{
+		Verb: api.KVDelete,
+		Key:  computeKey(id),
+	})
+}
 
 func computeKey(id audit.ID) string {
 	return path.Join(auditLogTree, id.String())
