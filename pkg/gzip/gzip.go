@@ -32,7 +32,11 @@ func ExtractTarGz(owner string, filename string, dest string) (err error) {
 		return util.Errorf("error setting ownership of root directory %s: %s", dest, err)
 	}
 
-	cmd := exec.Command("tar", "xpzf", filename, "-C", dest)
+	// Always pass --no-same-owner:
+	// this is default if extracting as non-root, but --same-owner is default if root.
+	// For run_as root apps, we DO want the files to end up owned by root,
+	// instead of an unknown user dictated by the build system that produced the artifact.
+	cmd := exec.Command("tar", "xpzf", filename, "--no-same-owner", "-C", dest)
 	if currentUser.Username != owner {
 		// If we are running as a non-root user (e.g. in tests), don't change user.
 		// Non-root users are understandably not allowed to change to other users...
