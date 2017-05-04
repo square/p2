@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -60,6 +61,10 @@ func (s *fakeStore) Create(manifest manifest.Manifest, nodeSelector labels.Selec
 	s.mu.Unlock()
 
 	return entry.RC, nil
+}
+
+func (s *fakeStore) CreateTxn(txn *transaction.Tx, manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (fields.RC, error) {
+	panic("transactions not implemented in fake rc store")
 }
 
 func (s *fakeStore) Get(id fields.ID) (fields.RC, error) {
@@ -250,6 +255,14 @@ func (s *fakeStore) LockForOwnership(rcID fields.ID, session consul.Session) (co
 func (s *fakeStore) LockForUpdateCreation(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
 	key := fmt.Sprintf("%s/%s", rcID, "update_creation_lock")
 	return session.Lock(key)
+}
+
+func (s *fakeStore) UpdateCreationLockPath(rcID fields.ID) (string, error) {
+	if rcID == "" {
+		return "", util.Errorf("empty rcID")
+	}
+
+	return fmt.Sprintf("%s/%s", rcID, "update_creation_lock"), nil
 }
 
 func (s *fakeStore) TransferReplicaCounts(req TransferReplicaCountsRequest) error {

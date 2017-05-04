@@ -182,3 +182,10 @@ func (s Session) Destroy() error {
 	}
 	return nil
 }
+
+// Session returns the string identifier for the session that is tracked by the consul
+// server. This is useful to expose for transactions that wish to lock or unlock keys
+// or check that a lock is still held by a session
+func (s Session) Session() string {
+	return s.session
+}

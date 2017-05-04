@@ -262,7 +262,7 @@ func TestLockTypeFromKey(t *testing.T) {
 		t.Fatalf("Unable to compute lock path for rc")
 	}
 
-	updateCreationLockPath, err := store.updateCreationLockPath(expectedRCID)
+	updateCreationLockPath, err := store.UpdateCreationLockPath(expectedRCID)
 	if err != nil {
 		t.Fatalf("Unable to compute lock path for rc")
 	}
@@ -486,7 +486,7 @@ func TestPublishLatestRCsWithLockInfoWithLocks(t *testing.T) {
 		},
 	}
 
-	updateCreationLockPath, err := rcstore.updateCreationLockPath("123")
+	updateCreationLockPath, err := rcstore.UpdateCreationLockPath("123")
 	if err != nil {
 		t.Fatalf("Unable to compute update creation lock path: %s", err)
 	}
