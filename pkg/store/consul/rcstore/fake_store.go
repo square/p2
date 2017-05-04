@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/hashicorp/consul/api"
 	"k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/manifest"
@@ -56,6 +57,10 @@ func (s *fakeStore) Create(manifest manifest.Manifest, nodeSelector labels.Selec
 	s.rcs[id] = &entry
 
 	return entry.RC, nil
+}
+
+func (s *fakeStore) CreateTxn(txn *api.KVTxnOps, manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (fields.RC, error) {
+	panic("transactions not implemented in fake rc store")
 }
 
 func (s *fakeStore) Get(id fields.ID) (fields.RC, error) {
@@ -228,6 +233,14 @@ func (s *fakeStore) LockForOwnership(rcID fields.ID, session consul.Session) (co
 func (s *fakeStore) LockForUpdateCreation(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
 	key := fmt.Sprintf("%s/%s", rcID, "update_creation_lock")
 	return session.Lock(key)
+}
+
+func (s *fakeStore) UpdateCreationLockPath(rcID fields.ID) (string, error) {
+	if rcID == "" {
+		return "", util.Errorf("empty rcID")
+	}
+
+	return fmt.Sprintf("%s/%s", rcID, "update_creation_lock"), nil
 }
 
 func (s *fakeStore) TransferReplicaCounts(req TransferReplicaCountsRequest) error {

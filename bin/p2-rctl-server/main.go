@@ -72,7 +72,16 @@ func main() {
 	client := consul.NewConsulClient(opts)
 	consulStore := consul.NewConsulStore(client)
 	rcStore := rcstore.NewConsul(client, labeler, RetryCount)
-	rollStore := rollstore.NewConsul(client, labeler, nil)
+
+	// This means that p2-rctl=server can only use direct-consul labelers, not
+	// HTTP applicators (because the rollstore requires transactions and
+	// only direct consul access can accomplish that)
+	rollLabeler, ok := labeler.(rollstore.RollLabeler)
+	if !ok {
+		logger.Fatalf("labeler configured via flags is not valid as a rollstore labeler")
+	}
+
+	rollStore := rollstore.NewConsul(client, rollLabeler, nil)
 	healthChecker := checker.NewConsulHealthChecker(client)
 	sched := scheduler.NewApplicatorScheduler(labeler)
 

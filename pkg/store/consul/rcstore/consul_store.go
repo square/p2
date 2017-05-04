@@ -128,6 +128,33 @@ func (s *ConsulStore) Create(manifest manifest.Manifest, nodeSelector klabels.Se
 	return rc, nil
 }
 
+// TODO: replace Create() with this
+func (s *ConsulStore) CreateTxn(txn *api.KVTxnOps, manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
+	rc, err := s.innerCreateTxn(txn, manifest, nodeSelector, podLabels)
+
+	// TODO: measure whether retries are is important in practice
+	for i := 0; i < s.retries; i++ {
+		if _, ok := err.(CASError); ok {
+			rc, err = s.innerCreate(manifest, nodeSelector, podLabels)
+		} else {
+			break
+		}
+	}
+	if err != nil {
+		return fields.RC{}, err
+	}
+
+	// labels do not need to be retried, consul labeler does that itself
+	err = s.forEachLabel(rc, func(id, k, v string) error {
+		return s.labeler.SetLabel(labels.RC, rc.ID.String(), k, v)
+	})
+	if err != nil {
+		return fields.RC{}, err
+	}
+
+	return rc, nil
+}
+
 // these parts of Create may require a retry
 func (s *ConsulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
 	id := fields.ID(uuid.New())
@@ -164,6 +191,40 @@ func (s *ConsulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabe
 	if !success {
 		return fields.RC{}, CASError(rcp)
 	}
+	return rc, nil
+}
+
+// TODO: replace innerCreate() with this function
+func (s *ConsulStore) innerCreateTxn(txn *api.KVTxnOps, manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
+	id := fields.ID(uuid.New())
+	rcp, err := s.rcPath(id)
+	if err != nil {
+		return fields.RC{}, err
+	}
+
+	rc := fields.RC{
+		ID:              id,
+		Manifest:        manifest,
+		NodeSelector:    nodeSelector,
+		PodLabels:       podLabels,
+		ReplicasDesired: 0,
+		Disabled:        false,
+	}
+
+	jsonRC, err := json.Marshal(rc)
+	if err != nil {
+		return fields.RC{}, util.Errorf("Could not marshal RC as json: %s", err)
+	}
+
+	*txn = append(*txn, &api.KVTxnOp{
+		Verb:  api.KVCAS,
+		Key:   rcp,
+		Value: jsonRC,
+		// the chance of the UUID already existing is vanishingly small, but
+		// technically not impossible, so we should use the CAS index to guard
+		// against duplicate UUIDs
+		Index: 0,
+	})
 	return rc, nil
 }
 
@@ -760,7 +821,10 @@ func (s *ConsulStore) LockForMutation(rcID fields.ID, session consul.Session) (c
 	return session.Lock(mutationLockPath)
 }
 
-func (s *ConsulStore) updateCreationLockPath(rcID fields.ID) (string, error) {
+// UpdateCreationLockPath computes the consul key that should be locked by callers
+// creating an RU that will operate on this RC. This function is exported so these
+// callers can perform operations on the lock during a consul transaction
+func (s *ConsulStore) UpdateCreationLockPath(rcID fields.ID) (string, error) {
 	baseLockPath, err := s.rcLockPath(rcID)
 	if err != nil {
 		return "", err
@@ -774,7 +838,7 @@ func (s *ConsulStore) updateCreationLockPath(rcID fields.ID) (string, error) {
 // controllers. A lock on both the intended "new" and "old" replication
 // controllers should be held before the update is created.
 func (s *ConsulStore) LockForUpdateCreation(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
-	updateCreationLockPath, err := s.updateCreationLockPath(rcID)
+	updateCreationLockPath, err := s.UpdateCreationLockPath(rcID)
 	if err != nil {
 		return nil, err
 	}
