@@ -169,3 +169,22 @@ func TesetAlreadyCommitted(t *testing.T) {
 		t.Error("should have erred merging with a transaction that has already been committed")
 	}
 }
+
+func TestCommitHooks(t *testing.T) {
+	hookRan := false
+	hook := func() {
+		hookRan = true
+	}
+
+	txn := New()
+	txn.AddCommitHook(hook)
+
+	err := txn.Commit(&testTxner{shouldOK: true})
+	if err != nil {
+		t.Fatalf("could not commit transaction: %s", err)
+	}
+
+	if !hookRan {
+		t.Error("hook function did not run when committing")
+	}
+}

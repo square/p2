@@ -22,6 +22,8 @@ var (
 type Tx struct {
 	kvOps            *api.KVTxnOps
 	alreadyCommitted bool
+
+	commitHooks []func()
 }
 
 func New() *Tx {
@@ -40,6 +42,18 @@ func (c *Tx) Add(op api.KVTxnOp) error {
 	}
 	*c.kvOps = append(*c.kvOps, &op)
 
+	return nil
+}
+
+// AddCommitHook adds a function that should be run when the transaction is
+// committed.  This is useful for cleaning up resources, e.g. consul sessions
+// that had to be opened as part of transaction setup.
+func (c *Tx) AddCommitHook(f func()) error {
+	if c.alreadyCommitted {
+		return AlreadyCommitted
+	}
+
+	c.commitHooks = append(c.commitHooks, f)
 	return nil
 }
 
@@ -77,6 +91,7 @@ func (c *Tx) Commit(txner Txner) error {
 		return util.Errorf("transaction failed: %s", err)
 	}
 
+	c.runCommitHooks()
 	// Set this after we know err == nil because otherwise it could have
 	// been a retry-able TCP error for example
 	c.alreadyCommitted = true
@@ -92,6 +107,12 @@ func (c *Tx) Commit(txner Txner) error {
 	}
 
 	return nil
+}
+
+func (c *Tx) runCommitHooks() {
+	for _, f := range c.commitHooks {
+		f()
+	}
 }
 
 func txnErrorsToString(errors api.TxnErrors) string {
