@@ -28,7 +28,6 @@ const rollTree string = "rolls"
 
 // Interface that allows us to inject a test implementation of the consul api
 type KV interface {
-	transaction.Txner
 	Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
 	List(prefix string, q *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
 	CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error)
@@ -256,12 +255,23 @@ func (s ConsulStore) CreateRollingUpdateFromExistingRCs(
 	u roll_fields.Update,
 	newRCLabels klabels.Set,
 	rollLabels klabels.Set,
-) (roll_fields.Update, error) {
+) (ret roll_fields.Update, err error) {
 	session, err := s.newRUCreationSession()
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
-	defer session.Destroy()
+	defer func() {
+		// If there was an error, we want to destroy the session. Otherwise,
+		// we want it to happen when the transaction is committed
+		if err != nil {
+			session.Destroy()
+			return
+		} else {
+			txn.AddCommitHook(func() {
+				session.Destroy()
+			})
+		}
+	}()
 
 	rcIDs := rc_fields.IDs{u.NewRC, u.OldRC}
 	locksHeldTxn, err := s.lockRCs(rcIDs, session)
@@ -307,7 +317,19 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
-	defer session.Destroy()
+
+	defer func() {
+		// If there was an error, we want to destroy the session. Otherwise,
+		// we want it to happen when the transaction is committed
+		if err != nil {
+			session.Destroy()
+			return
+		} else {
+			txn.AddCommitHook(func() {
+				session.Destroy()
+			})
+		}
+	}()
 
 	rcIDs := rc_fields.IDs{oldRCID}
 	oldRCIsLockedTxn, err := s.lockRCs(rcIDs, session)
@@ -391,7 +413,18 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
-	defer session.Destroy()
+	defer func() {
+		// If there was an error, we want to destroy the session. Otherwise,
+		// we want it to happen when the transaction is committed
+		if err != nil {
+			session.Destroy()
+			return
+		} else {
+			txn.AddCommitHook(func() {
+				session.Destroy()
+			})
+		}
+	}()
 
 	// Check if any RCs match the oldRCSelector
 	matches, err := s.labeler.GetMatches(oldRCSelector, labels.RC, false)
@@ -678,10 +711,5 @@ func (s ConsulStore) createRU(
 		return err
 	}
 
-	// TODO: ideally the commit would happen outside of the rollstore
-	// because that will allow callers to add operations to the transaction
-	// after calling a Create() function and not just before. However, that
-	// is complicated because the transaction becomes unusable once the "ru
-	// creation session" is destroyed (look for defer session.Destroy())
-	return txn.Commit(s.kv)
+	return nil
 }

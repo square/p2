@@ -5,6 +5,7 @@ package rollstore
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/square/p2/pkg/labels"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
@@ -40,6 +41,11 @@ func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
 	u, err := rollstore.CreateRollingUpdateFromExistingRCs(txn, update, newRCLabels, newRCLabels)
 	if err != nil {
 		t.Fatalf("Unexpected error creating update: %s", err)
+	}
+
+	err = txn.Commit(fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("unexpected error committing update transaction: %s", err)
 	}
 
 	storedUpdate, err := rollstore.Get(update.ID())
@@ -100,6 +106,11 @@ func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatalf("Unable to create rolling update: %s", err)
+	}
+
+	err = txn.Commit(fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("unexpected error committing update transaction: %s", err)
 	}
 
 	storedUpdate, err := rollstore.Get(fields.ID(newUpdate.NewRC))
@@ -166,6 +177,15 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 	if err != nil {
 		t.Fatalf("Unable to create conflicting update: %s", err)
 	}
+
+	err = txn.Commit(fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("unexpected error committing transaction: %s", err)
+	}
+
+	// because the lockDelay is set to 1 millisecond, and we want to get a conflict
+	// error not an "already locked" error
+	time.Sleep(1 * time.Millisecond)
 
 	txn = transaction.New()
 	newUpdate, err := rollstore.CreateRollingUpdateFromOneExistingRCWithID(
@@ -244,6 +264,11 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist
 	)
 	if err != nil {
 		t.Fatalf("Shouldn't have failed to create update: %s", err)
+	}
+
+	err = txn.Commit(fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("unexpected error committing transaction: %s", err)
 	}
 
 	if u.NewRC == "" {
@@ -328,6 +353,11 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *t
 		t.Fatalf("Shouldn't have failed to create update: %s", err)
 	}
 
+	err = txn.Commit(fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("unexpected error committing update transaction: %s", err)
+	}
+
 	if u.NewRC == "" {
 		t.Fatalf("Update shouldn't have been empty")
 	}
@@ -384,9 +414,18 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 		t.Fatalf("Should have succeeded in update creation: %s", err)
 	}
 
+	err = txn.Commit(fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("unexpected error committing update transaction: %s", err)
+	}
+
 	if conflictingEntry.NewRC == "" {
 		t.Fatalf("Update shouldn't be empty")
 	}
+
+	// because the lockDelay is set to 1 millisecond, and we want to get a conflict
+	// error not an "already locked" error
+	time.Sleep(1 * time.Millisecond)
 
 	// Second one should fail
 	txn2 := transaction.New()
@@ -408,7 +447,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 	}
 
 	if conflictingErr, ok := err.(*ConflictingRUError); !ok {
-		t.Error("Returned error didn't have ConflictingRUError type")
+		t.Errorf("Returned error didn't have ConflictingRUError type, was %s", err)
 	} else {
 		if conflictingErr.ConflictingID != conflictingEntry.ID() {
 			t.Errorf("Expected error to have conflicting ID of '%s', was '%s'", conflictingEntry.ID(), conflictingErr.ConflictingID)
