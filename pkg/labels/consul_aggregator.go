@@ -294,3 +294,7 @@ func (c *consulAggregator) sendMatches(watcher *selectorWatch) bool {
 	}
 	return sendSuccess
 }
+
+func selectorsEqual(sel1 labels.Selector, sel2 labels.Selector) bool {
+	return sel1.String() == sel2.String()
+}

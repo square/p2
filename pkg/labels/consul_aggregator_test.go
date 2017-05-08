@@ -250,5 +250,24 @@ func TestCachedValueImmediatelySent(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Could not read result from new watch channel")
 	}
+}
 
+func TestLabelSelectorEquivalence(t *testing.T) {
+	// Write two selectors slightly differently and confirm their equivalence
+	// after being parsed. This equivalence property will be used to deduplicate
+	// the work done if two identical selectors are registered on the consul
+	// aggregator
+	selector1, err := labels.Parse("roses=red,violets=blue")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	selector2, err := labels.Parse("violets=blue,roses=red")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !selectorsEqual(selector1, selector2) {
+		t.Fatal("expected two selectors written in different order to be equivalent, but they weren't")
+	}
 }
