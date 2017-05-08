@@ -229,6 +229,8 @@ func TestSchedule(t *testing.T) {
 				if !ok {
 					desiresErrChClosed = true
 				}
+			case <-deletedCh:
+			case <-updatedCh:
 			case <-time.After(1 * time.Second):
 				t.Fatal("watchDSChanges or WatchDesires did not exit promptly after closing quitCh")
 			}
@@ -467,6 +469,8 @@ func TestPublishToReplication(t *testing.T) {
 				if !ok {
 					desiresErrChClosed = true
 				}
+			case <-deletedCh:
+			case <-updatedCh:
 			case <-time.After(1 * time.Second):
 				t.Fatal("watchDSChanges or WatchDesires did not exit promptly after closing quitCh")
 			}
