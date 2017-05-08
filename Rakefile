@@ -32,7 +32,8 @@ end
 
 desc 'Test all projects'
 task :test_all => [:build] do
-  e "go test -timeout 120s ./..."
+  e "go test -timeout 120s -race ./..."
+  e "go test -timeout 120s github.com/square/p2/pkg/store/consul" # these have build flags that exclude them from race detector due to https://github.com/square/p2/issues/832
 end
 
 desc 'Update all dependencies'

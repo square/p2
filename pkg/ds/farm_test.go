@@ -810,6 +810,10 @@ func TestMultipleFarms(t *testing.T) {
 			return util.Errorf("Expected daemon set to be disabled")
 		}
 
+		firstFarm.childMu.Lock()
+		defer firstFarm.childMu.Unlock()
+		secondFarm.childMu.Lock()
+		defer secondFarm.childMu.Unlock()
 		if _, ok := firstFarm.children[anotherDSData.ID]; ok {
 			if !firstFarm.children[anotherDSData.ID].ds.IsDisabled() {
 				return util.Errorf("Expected daemon set to be disabled in only one farm")
@@ -1154,6 +1158,8 @@ func waitForDisabled(
 // Polls for the farm to get be populated by a daemon set with the same id
 func waitForCreate(dsf *Farm, dsID ds_fields.ID) error {
 	condition := func() error {
+		dsf.childMu.Lock()
+		defer dsf.childMu.Unlock()
 		if _, ok := dsf.children[dsID]; ok {
 			return nil
 		}
@@ -1165,6 +1171,8 @@ func waitForCreate(dsf *Farm, dsID ds_fields.ID) error {
 // Polls for the farm to not have a daemon set with the ID.
 func waitForDelete(dsf *Farm, dsID ds_fields.ID) error {
 	condition := func() error {
+		dsf.childMu.Lock()
+		defer dsf.childMu.Unlock()
 		if _, ok := dsf.children[dsID]; !ok {
 			return nil
 		}
@@ -1177,6 +1185,8 @@ func waitForDelete(dsf *Farm, dsID ds_fields.ID) error {
 // id, disabled value, and node selector as the daemon set in the argument
 func waitForMutateSelector(dsf *Farm, ds ds_fields.DaemonSet) error {
 	condition := func() error {
+		dsf.childMu.Lock()
+		defer dsf.childMu.Unlock()
 		if anotherDS, ok := dsf.children[ds.ID]; ok {
 			if ds.ID != anotherDS.ds.ID() ||
 				ds.NodeSelector.String() != anotherDS.ds.GetNodeSelector().String() {
@@ -1199,6 +1209,10 @@ func waitForMutateSelector(dsf *Farm, ds ds_fields.DaemonSet) error {
 // node selector as the daemon set in the argument
 func waitForMutateSelectorFarms(firstFarm *Farm, secondFarm *Farm, ds ds_fields.DaemonSet) error {
 	condition := func() error {
+		firstFarm.childMu.Lock()
+		defer firstFarm.childMu.Unlock()
+		secondFarm.childMu.Lock()
+		defer secondFarm.childMu.Unlock()
 		if anotherDS, ok := firstFarm.children[ds.ID]; ok {
 			if ds.ID != anotherDS.ds.ID() ||
 				ds.NodeSelector.String() != anotherDS.ds.GetNodeSelector().String() {

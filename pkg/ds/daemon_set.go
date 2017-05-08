@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -102,8 +103,12 @@ type DaemonSetStore interface {
 	Disable(id fields.ID) (fields.DaemonSet, error)
 }
 
+// daemonSet wraps a daemon set struct with information required to manage it.
+// Note: the inner fields.DaemonSet set may be modified during the lifetime of
+// this struct, necessitating access synchronization with a mute
 type daemonSet struct {
 	fields.DaemonSet
+	mu sync.Mutex
 
 	contention       dsContention
 	logger           logging.Logger
@@ -161,27 +166,41 @@ func New(
 }
 
 func (ds *daemonSet) ID() fields.ID {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
 	return ds.DaemonSet.ID
 }
 
 func (ds *daemonSet) IsDisabled() bool {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
 	return ds.DaemonSet.Disabled
 }
 
 func (ds *daemonSet) PodID() types.PodID {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
 	return ds.DaemonSet.PodID
 }
 
 func (ds *daemonSet) ClusterName() fields.ClusterName {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
 	return ds.DaemonSet.Name
 }
 
 func (ds *daemonSet) GetNodeSelector() klabels.Selector {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
 	return ds.DaemonSet.NodeSelector
 }
 
 func (ds *daemonSet) EligibleNodes() ([]types.NodeName, error) {
-	return ds.scheduler.EligibleNodes(ds.Manifest, ds.NodeSelector)
+	ds.mu.Lock()
+	manifest := ds.Manifest
+	nodeSelector := ds.NodeSelector
+	ds.mu.Unlock()
+	return ds.scheduler.EligibleNodes(manifest, nodeSelector)
 }
 
 func (ds *daemonSet) MetricNames(suffix string) []string {
@@ -216,8 +235,8 @@ func (ds *daemonSet) WatchDesires(
 		timer.Stop()
 
 		// Try to schedule pods when this begins watching
-		if !ds.Disabled {
-			ds.logger.NoFields().Infof("Received new daemon set: %v", *ds)
+		if !ds.IsDisabled() {
+			ds.logger.NoFields().Infof("Received new daemon set: %s", ds.ID)
 			err = ds.addPods()
 			if err != nil {
 				err = util.Errorf("Unable to add pods to intent tree: %v", err)
@@ -260,7 +279,10 @@ func (ds *daemonSet) WatchDesires(
 					err = util.Errorf("Expected uuid to be the same, expected '%v', got '%v'", ds.ID(), newDS.ID)
 					continue
 				}
+
+				ds.mu.Lock()
 				ds.DaemonSet = *newDS
+				ds.mu.Unlock()
 
 				if reportErr := ds.reportEligible(); reportErr != nil {
 					// An error in sending the metrics shouldn't stop us from doing updates.
@@ -613,7 +635,8 @@ func (ds *daemonSet) CurrentPods() (types.PodLocations, error) {
 	// Changing DaemonSet.ID is not permitted, so as long as there is no uuid
 	// collision, this will always get the current pod path that this daemon set
 	// had scheduled on
-	selector := klabels.Everything().Add(DSIDLabel, klabels.EqualsOperator, []string{ds.ID().String()})
+	dsID := ds.ID()
+	selector := klabels.Everything().Add(DSIDLabel, klabels.EqualsOperator, []string{dsID.String()})
 
 	podMatches, err := ds.applicator.GetMatches(selector, labels.POD, ds.cachedPodMatch)
 	if err != nil {

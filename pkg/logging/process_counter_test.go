@@ -29,18 +29,18 @@ func (rl *RecordingLogger) Format(entry *logrus.Entry) ([]byte, error) {
 
 func TestProcessCounterIncrementsEveryTime(t *testing.T) {
 	logger := NewRecordingLogger(nil)
-	c := processCounter.counter
-	Assert(t).AreEqual(c+0, processCounter.counter, "unexpected counter value")
+	c := counter
+	Assert(t).AreEqual(c+0, counter, "unexpected counter value")
 
 	logger.Info("First message")
 	Assert(t).AreEqual(c+0, logger.Entries[0].Data["Counter"], "wrong counter value")
-	Assert(t).AreEqual(c+1, processCounter.counter, "unexpected counter value")
+	Assert(t).AreEqual(c+1, counter, "unexpected counter value")
 
 	logger.Info("Second message")
 	Assert(t).AreEqual(c+1, logger.Entries[1].Data["Counter"], "wrong counter value")
-	Assert(t).AreEqual(c+2, processCounter.counter, "unexpected counter value")
+	Assert(t).AreEqual(c+2, counter, "unexpected counter value")
 
 	logger.Info("Third message")
 	Assert(t).AreEqual(c+2, logger.Entries[2].Data["Counter"], "wrong counter value")
-	Assert(t).AreEqual(c+3, processCounter.counter, "unexpected counter value")
+	Assert(t).AreEqual(c+3, counter, "unexpected counter value")
 }

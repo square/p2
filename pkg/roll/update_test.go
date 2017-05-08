@@ -3,6 +3,7 @@ package roll
 import (
 	"fmt"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -776,14 +777,15 @@ func TestShouldRollMidwayHealthyMigrationFromZeroWhenNewSatisfies(t *testing.T) 
 }
 
 type testReplicationControllerWatcher interface {
-	Watch(rc *rc_fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error)
+	Watch(rc *rc_fields.RC, mu *sync.Mutex, quit <-chan struct{}) (<-chan struct{}, <-chan error)
 }
 
-func watchRCOrFail(t *testing.T, rcs testReplicationControllerWatcher, id rc_fields.ID, desc string) (*rc_fields.RC, <-chan struct{}) {
+func watchRCOrFail(t *testing.T, rcs testReplicationControllerWatcher, id rc_fields.ID, desc string) (*rc_fields.RC, *sync.Mutex, <-chan struct{}) {
 	rc := rc_fields.RC{ID: id}
-	updated, errors := rcs.Watch(&rc, nil)
+	var mu sync.Mutex
+	updated, errors := rcs.Watch(&rc, &mu, nil)
 	go failOnError(t, desc, errors)
-	return &rc, updated
+	return &rc, &mu, updated
 }
 
 func failOnError(t *testing.T, desc string, errs <-chan error) {
@@ -800,15 +802,17 @@ func transferNode(node types.NodeName, manifest manifest.Manifest, upd update) e
 	return upd.labeler.SetLabel(labels.POD, labels.MakePodLabelKey(node, manifest.ID()), rc.RCIDLabel, string(upd.NewRC))
 }
 
-func assertRCUpdates(t *testing.T, rc *rc_fields.RC, upd <-chan struct{}, expect int, desc string) {
+func assertRCUpdates(t *testing.T, rc *rc_fields.RC, upd <-chan struct{}, expect int, desc string, mu *sync.Mutex) {
 	select {
 	case <-upd:
 	case <-time.After(3 * time.Second):
 		t.Fatalf("%s didn't update after one second, was waiting for value %d", desc, expect)
 	}
+	mu.Lock()
 	if rc.ReplicasDesired != expect {
 		t.Errorf("expected replicas desired count to be %d but was %d", expect, rc.ReplicasDesired)
 	}
+	mu.Unlock()
 }
 
 func assertRollLoopResult(t *testing.T, channel <-chan bool, expect bool) {
@@ -835,8 +839,8 @@ func TestRollLoopTypicalCase(t *testing.T) {
 
 	healths := make(chan map[types.NodeName]health.Result)
 
-	oldRC, oldRCUpdated := watchRCOrFail(t, rcWatcher, upd.OldRC, "old RC")
-	newRC, newRCUpdated := watchRCOrFail(t, rcWatcher, upd.NewRC, "new RC")
+	oldRC, oldRCMu, oldRCUpdated := watchRCOrFail(t, rcWatcher, upd.OldRC, "old RC")
+	newRC, newRCMu, newRCUpdated := watchRCOrFail(t, rcWatcher, upd.NewRC, "new RC")
 
 	rollLoopResult := make(chan bool)
 
@@ -853,20 +857,20 @@ func TestRollLoopTypicalCase(t *testing.T) {
 
 	healths <- checks
 
-	assertRCUpdates(t, oldRC, oldRCUpdated, 2, "old RC")
-	assertRCUpdates(t, newRC, newRCUpdated, 1, "new RC")
+	assertRCUpdates(t, oldRC, oldRCUpdated, 2, "old RC", oldRCMu)
+	assertRCUpdates(t, newRC, newRCUpdated, 1, "new RC", newRCMu)
 
 	transferNode("node1", manifest, upd)
 	healths <- checks
 
-	assertRCUpdates(t, oldRC, oldRCUpdated, 1, "old RC")
-	assertRCUpdates(t, newRC, newRCUpdated, 2, "new RC")
+	assertRCUpdates(t, oldRC, oldRCUpdated, 1, "old RC", oldRCMu)
+	assertRCUpdates(t, newRC, newRCUpdated, 2, "new RC", newRCMu)
 
 	transferNode("node2", manifest, upd)
 	healths <- checks
 
-	assertRCUpdates(t, oldRC, oldRCUpdated, 0, "old RC")
-	assertRCUpdates(t, newRC, newRCUpdated, 3, "new RC")
+	assertRCUpdates(t, oldRC, oldRCUpdated, 0, "old RC", oldRCMu)
+	assertRCUpdates(t, newRC, newRCUpdated, 3, "new RC", newRCMu)
 
 	transferNode("node3", manifest, upd)
 	healths <- checks
@@ -874,11 +878,13 @@ func TestRollLoopTypicalCase(t *testing.T) {
 	assertRollLoopResult(t, rollLoopResult, true)
 }
 
-func failIfRCDesireChanges(t *testing.T, rc *rc_fields.RC, expected int, updates <-chan struct{}) {
+func failIfRCDesireChanges(t *testing.T, rc *rc_fields.RC, expected int, updates <-chan struct{}, mu *sync.Mutex) {
 	for range updates {
+		mu.Lock()
 		if rc.ReplicasDesired != expected {
 			t.Errorf("expected replicas desired count to be %d but was %d", expected, rc.ReplicasDesired)
 		}
+		mu.Unlock()
 	}
 }
 
@@ -889,9 +895,9 @@ func TestRollLoopMigrateFromZero(t *testing.T) {
 
 	healths := make(chan map[types.NodeName]health.Result)
 
-	oldRC, oldRCUpdated := watchRCOrFail(t, rcWatcher, upd.OldRC, "old RC")
-	newRC, newRCUpdated := watchRCOrFail(t, rcWatcher, upd.NewRC, "new RC")
-	go failIfRCDesireChanges(t, oldRC, 0, oldRCUpdated)
+	oldRC, oldRCMu, oldRCUpdated := watchRCOrFail(t, rcWatcher, upd.OldRC, "old RC")
+	newRC, newRCMu, newRCUpdated := watchRCOrFail(t, rcWatcher, upd.NewRC, "new RC")
+	go failIfRCDesireChanges(t, oldRC, 0, oldRCUpdated, oldRCMu)
 
 	rollLoopResult := make(chan bool)
 
@@ -903,19 +909,19 @@ func TestRollLoopMigrateFromZero(t *testing.T) {
 	checks := map[types.NodeName]health.Result{}
 	healths <- checks
 
-	assertRCUpdates(t, newRC, newRCUpdated, 1, "new RC")
+	assertRCUpdates(t, newRC, newRCUpdated, 1, "new RC", newRCMu)
 
 	checks["node1"] = health.Result{Status: health.Passing}
 	transferNode("node1", manifest, upd)
 	healths <- checks
 
-	assertRCUpdates(t, newRC, newRCUpdated, 2, "new RC")
+	assertRCUpdates(t, newRC, newRCUpdated, 2, "new RC", newRCMu)
 
 	checks["node2"] = health.Result{Status: health.Passing}
 	transferNode("node2", manifest, upd)
 	healths <- checks
 
-	assertRCUpdates(t, newRC, newRCUpdated, 3, "new RC")
+	assertRCUpdates(t, newRC, newRCUpdated, 3, "new RC", newRCMu)
 
 	checks["node3"] = health.Result{Status: health.Passing}
 	transferNode("node3", manifest, upd)
@@ -935,8 +941,8 @@ func TestRollLoopStallsIfUnhealthy(t *testing.T) {
 
 	healths := make(chan map[types.NodeName]health.Result)
 
-	oldRC, oldRCUpdated := watchRCOrFail(t, rcWatcher, upd.OldRC, "old RC")
-	newRC, newRCUpdated := watchRCOrFail(t, rcWatcher, upd.NewRC, "new RC")
+	oldRC, oldRCMu, oldRCUpdated := watchRCOrFail(t, rcWatcher, upd.OldRC, "old RC")
+	newRC, newRCMu, newRCUpdated := watchRCOrFail(t, rcWatcher, upd.NewRC, "new RC")
 
 	rollLoopResult := make(chan bool)
 	quitRoll := make(chan struct{})
@@ -954,13 +960,13 @@ func TestRollLoopStallsIfUnhealthy(t *testing.T) {
 
 	healths <- checks
 
-	assertRCUpdates(t, oldRC, oldRCUpdated, 2, "old RC")
-	assertRCUpdates(t, newRC, newRCUpdated, 1, "new RC")
+	assertRCUpdates(t, oldRC, oldRCUpdated, 2, "old RC", oldRCMu)
+	assertRCUpdates(t, newRC, newRCUpdated, 1, "new RC", newRCMu)
 
 	transferNode("node1", manifest, upd)
 	checks["node1"] = health.Result{Status: health.Critical}
-	go failIfRCDesireChanges(t, oldRC, 2, oldRCUpdated)
-	go failIfRCDesireChanges(t, newRC, 1, newRCUpdated)
+	go failIfRCDesireChanges(t, oldRC, 2, oldRCUpdated, oldRCMu)
+	go failIfRCDesireChanges(t, newRC, 1, newRCUpdated, newRCMu)
 	for i := 0; i < 5; i++ {
 		healths <- checks
 	}

@@ -53,6 +53,9 @@ type consulHealthManager struct {
 	node       types.NodeName
 	logger     logging.Logger // Logger for health events
 	wg         sync.WaitGroup
+
+	// retryTime is the amount of time to sleep between failed health writes
+	retryTime time.Duration
 }
 
 // NewHealthManager implements the Store interface. It creates a new HealthManager that
@@ -60,13 +63,19 @@ type consulHealthManager struct {
 func (c consulStore) newSessionHealthManager(
 	node types.NodeName,
 	logger logging.Logger,
+	retryTime time.Duration,
 ) HealthManager {
 	done := make(chan struct{})
+
+	if retryTime == 0 {
+		retryTime = time.Duration(*HealthRetryTimeSec) * time.Second
+	}
 	m := &consulHealthManager{
-		done:   done,
-		client: c.client,
-		node:   node,
-		logger: logger,
+		done:      done,
+		client:    c.client,
+		node:      node,
+		logger:    logger,
+		retryTime: retryTime,
 	}
 
 	// Create a stream of sessions
@@ -136,7 +145,7 @@ func (m *consulHealthManager) NewUpdater(pod types.PodID, service string) Health
 		})
 		throttledCheckStream := throttleChecks(checksStream, *HealthMaxBucketSize, subLogger)
 
-		processHealthUpdater(
+		m.processHealthUpdater(
 			m.client.KV(),
 			throttledCheckStream,
 			sub.Chan(),
@@ -268,7 +277,7 @@ type ConsulKVClient interface {
 //      removed.
 //   B. Write the recent service state to Consul. At most one outstanding write will be
 //      in-flight at any time.
-func processHealthUpdater(
+func (m *consulHealthManager) processHealthUpdater(
 	client ConsulKVClient,
 	checksStream <-chan WatchResult,
 	sessionsStream <-chan string,
@@ -328,7 +337,7 @@ func processHealthUpdater(
 			if localHealth == nil {
 				logger.NoFields().Debug("deleting remote health")
 				key := HealthPath(remoteHealth.Service, remoteHealth.Node)
-				go sendHealthUpdate(writeLogger, w, nil, func() error {
+				go m.sendHealthUpdate(writeLogger, w, nil, func() error {
 					_, err := client.Delete(key, nil)
 					if err != nil {
 						return consulutil.NewKVError("delete", key, err)
@@ -347,7 +356,7 @@ func processHealthUpdater(
 					continue
 				}
 				if remoteHealth == nil {
-					go sendHealthUpdate(writeLogger, w, localHealth, func() error {
+					go m.sendHealthUpdate(writeLogger, w, localHealth, func() error {
 						ok, _, err := client.Acquire(kv, nil)
 						if err != nil {
 							return consulutil.NewKVError("acquire", kv.Key, err)
@@ -358,7 +367,7 @@ func processHealthUpdater(
 						return nil
 					})
 				} else {
-					go sendHealthUpdate(writeLogger, w, localHealth, func() error {
+					go m.sendHealthUpdate(writeLogger, w, localHealth, func() error {
 						_, err := client.Put(kv, nil)
 						if err != nil {
 							return consulutil.NewKVError("put", kv.Key, err)
@@ -405,7 +414,7 @@ func healthToKV(wr WatchResult, session string) (*api.KVPair, error) {
 }
 
 // Helper to processHealthUpdater()
-func sendHealthUpdate(
+func (m *consulHealthManager) sendHealthUpdate(
 	logger logging.Logger,
 	w chan<- writeResult,
 	health *WatchResult,
@@ -414,7 +423,7 @@ func sendHealthUpdate(
 	if err := sender(); err != nil {
 		logger.WithError(err).Error("error writing health")
 		// Try not to overwhelm Consul
-		time.Sleep(time.Duration(*HealthRetryTimeSec) * time.Second)
+		time.Sleep(m.retryTime)
 
 		w <- writeResult{
 			Health: nil,

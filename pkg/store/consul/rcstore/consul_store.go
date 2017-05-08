@@ -656,7 +656,9 @@ func (s *ConsulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC,
 // Errors are sent on the second output channel.
 // Send a value on `quitChannel` to stop watching.
 // The two output channels will be closed in response.
-func (s *ConsulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
+// The passed mutex is used to synchronize access to the `rc` variable which is mutated
+// by this function
+func (s *ConsulStore) Watch(rc *fields.RC, mu *sync.Mutex, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
 	updated := make(chan struct{})
 
 	rcp, err := s.rcPath(rc.ID)
@@ -690,7 +692,9 @@ func (s *ConsulStore) Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{
 				case <-quit:
 				}
 			} else {
+				mu.Lock()
 				*rc = newRC
+				mu.Unlock()
 				select {
 				case updated <- struct{}{}:
 				case <-quit:

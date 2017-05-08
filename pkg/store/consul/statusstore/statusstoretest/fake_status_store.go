@@ -110,9 +110,12 @@ func (s *FakeStatusStore) WatchStatus(
 	// This should be used in tests that enforce timeouts, so don't worry about
 	// infinite looping here
 	for {
+		s.mu.Lock()
 		if waitIndex <= s.LastIndex {
+			s.mu.Unlock()
 			return s.GetStatus(t, id, namespace)
 		}
+		s.mu.Unlock()
 
 		time.Sleep(1 * time.Millisecond)
 	}

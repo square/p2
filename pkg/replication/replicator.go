@@ -174,13 +174,10 @@ func (r replicator) initializeReplicationWithCheck(
 		healthWatchDelay:       r.healthWatchDelay,
 		replicationCancelledCh: make(chan struct{}),
 		replicationDoneCh:      make(chan struct{}),
-		enactedCh:              make(chan struct{}),
 		quitCh:                 make(chan struct{}),
 		concurrentRealityRequests: make(chan struct{}, concurrentRealityRequests),
 		timeout:                   r.timeout,
 	}
-	// To make a closed channel
-	close(replication.enactedCh)
 
 	var session consul.Session
 	var renewalErrCh chan error

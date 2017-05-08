@@ -423,7 +423,7 @@ func HealthPath(service string, node types.NodeName) string {
 }
 
 func (c consulStore) NewHealthManager(node types.NodeName, logger logging.Logger) HealthManager {
-	return c.newSessionHealthManager(node, logger)
+	return c.newSessionHealthManager(node, logger, 0)
 }
 
 // Now both pod manifests and indexes may be present in the /intent and

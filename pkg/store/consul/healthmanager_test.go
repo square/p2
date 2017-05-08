@@ -1,3 +1,5 @@
+// +build !race
+
 package consul
 
 import (
@@ -129,7 +131,8 @@ func TestHealthSessionRequired(t *testing.T) {
 	// Launch an updater with manual control over health checks and session management
 	checks := make(chan WatchResult)
 	sessions := make(chan string)
-	go processHealthUpdater(f.Client.KV(), checks, sessions, logging.TestLogger())
+	m := &consulHealthManager{retryTime: 1 * time.Second}
+	go m.processHealthUpdater(f.Client.KV(), checks, sessions, logging.TestLogger())
 
 	// There should be no health check initially
 	if r, err := f.Store.GetHealth("svc", "node"); err != nil || r != hEmpty {
@@ -157,7 +160,8 @@ func TestHealthSessionRestart(t *testing.T) {
 	// Launch an updater with manual control over health checks and session management
 	checks := make(chan WatchResult)
 	sessions := make(chan string)
-	go processHealthUpdater(f.Client.KV(), checks, sessions, logging.TestLogger())
+	m := &consulHealthManager{retryTime: 1 * time.Second}
+	go m.processHealthUpdater(f.Client.KV(), checks, sessions, logging.TestLogger())
 	waiter := f.NewKeyWaiter(hKey)
 
 	// Add check & add session => write
@@ -216,7 +220,8 @@ func TestHealthSessionDestroy(t *testing.T) {
 	// Launch an updater with manual control over health checks and session management
 	checks := make(chan WatchResult)
 	sessions := make(chan string)
-	go processHealthUpdater(f.Client.KV(), checks, sessions, logging.TestLogger())
+	m := &consulHealthManager{retryTime: 1 * time.Second}
+	go m.processHealthUpdater(f.Client.KV(), checks, sessions, logging.TestLogger())
 	waiter := f.NewKeyWaiter(hKey)
 
 	// Create health result & create session => write
@@ -414,7 +419,10 @@ func TestHealthUpdatesTolerantToConsulFailures(t *testing.T) {
 
 	checks := make(chan WatchResult)
 	sessions := make(chan string)
-	go processHealthUpdater(fakeKV, checks, sessions, logging.TestLogger())
+	m := &consulHealthManager{
+		retryTime: 0,
+	}
+	go m.processHealthUpdater(fakeKV, checks, sessions, logging.TestLogger())
 	sessions <- "some_session_i_dont_care"
 
 	keyPath := HealthPath(h1.Service, h1.Node)

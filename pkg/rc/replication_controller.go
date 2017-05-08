@@ -3,6 +3,7 @@ package rc
 import (
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -63,8 +64,12 @@ type consulStore interface {
 	) (time.Duration, error)
 }
 
+// replicationController wraps a fields.RC with information required to manage the RC.
+// Note: the fields.RC might be mutated during this struct's lifetime, so a mutex is
+// used to synchronize access to it
 type replicationController struct {
 	fields.RC
+	mu sync.Mutex
 
 	logger logging.Logger
 
@@ -76,7 +81,7 @@ type replicationController struct {
 }
 
 type ReplicationControllerWatcher interface {
-	Watch(rc *fields.RC, quit <-chan struct{}) (<-chan struct{}, <-chan error)
+	Watch(rc *fields.RC, mu *sync.Mutex, quit <-chan struct{}) (<-chan struct{}, <-chan error)
 }
 
 func New(
@@ -105,11 +110,13 @@ func New(
 }
 
 func (rc *replicationController) ID() fields.ID {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	return rc.RC.ID
 }
 
 func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error {
-	desiresChanged, errInChannel := rc.rcWatcher.Watch(&rc.RC, quit)
+	desiresChanged, errInChannel := rc.rcWatcher.Watch(&rc.RC, &rc.mu, quit)
 
 	errOutChannel := make(chan error)
 	channelsClosed := make(chan struct{})
@@ -238,19 +245,24 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 func (rc *replicationController) alertInfo(msg string) alerting.AlertInfo {
 	hostname, _ := os.Hostname()
 
+	rcID := rc.ID()
+	rc.mu.Lock()
+	manifest := rc.Manifest
+	nodeSelector := rc.NodeSelector
+	rc.mu.Unlock()
 	return alerting.AlertInfo{
 		Description: msg,
-		IncidentKey: rc.ID().String(),
+		IncidentKey: rcID.String(),
 		Details: struct {
 			RCID         string `json:"rc_id"`
 			Hostname     string `json:"hostname"`
 			PodId        string `json:"pod_id"`
 			NodeSelector string `json:"node_selector"`
 		}{
-			RCID:         rc.ID().String(),
+			RCID:         rcID.String(),
 			Hostname:     hostname,
-			PodId:        rc.Manifest.ID().String(),
-			NodeSelector: rc.NodeSelector.String(),
+			PodId:        manifest.ID().String(),
+			NodeSelector: nodeSelector.String(),
 		},
 	}
 }
@@ -291,7 +303,10 @@ func (rc *replicationController) removePods(current types.PodLocations) error {
 }
 
 func (rc *replicationController) ensureConsistency(current types.PodLocations) error {
-	manifestSHA, err := rc.Manifest.SHA()
+	rc.mu.Lock()
+	manifest := rc.Manifest
+	rc.mu.Unlock()
+	manifestSHA, err := manifest.SHA()
 	if err != nil {
 		return err
 	}
@@ -321,7 +336,12 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 }
 
 func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {
-	return rc.scheduler.EligibleNodes(rc.Manifest, rc.NodeSelector)
+	rc.mu.Lock()
+	manifest := rc.Manifest
+	nodeSelector := rc.NodeSelector
+	rc.mu.Unlock()
+
+	return rc.scheduler.EligibleNodes(manifest, nodeSelector)
 }
 
 // CurrentPods returns all pods managed by an RC with the given ID.
@@ -357,21 +377,27 @@ func (rc *replicationController) CurrentPods() (types.PodLocations, error) {
 // If forEachLabel encounters any error applying the function, it returns that error immediately.
 // The function is not further applied to subsequent labels on an error.
 func (rc *replicationController) forEachLabel(node types.NodeName, f func(id, k, v string) error) error {
-	id := labels.MakePodLabelKey(node, rc.Manifest.ID())
+	rc.mu.Lock()
+	manifest := rc.Manifest
+	podLabels := rc.PodLabels
+	rc.mu.Unlock()
+	rcID := rc.ID()
+
+	id := labels.MakePodLabelKey(node, manifest.ID())
 
 	// user-requested labels.
-	for k, v := range rc.PodLabels {
+	for k, v := range podLabels {
 		if err := f(id, k, v); err != nil {
 			return err
 		}
 	}
 
 	// our reserved labels (pod id and replication controller id)
-	err := f(id, rcstore.PodIDLabel, rc.Manifest.ID().String())
+	err := f(id, rcstore.PodIDLabel, manifest.ID().String())
 	if err != nil {
 		return err
 	}
-	return f(id, RCIDLabel, rc.ID().String())
+	return f(id, RCIDLabel, rcID.String())
 }
 
 func (rc *replicationController) schedule(node types.NodeName) error {
@@ -383,13 +409,19 @@ func (rc *replicationController) schedule(node types.NodeName) error {
 		return err
 	}
 
-	_, err = rc.consulStore.SetPod(consul.INTENT_TREE, node, rc.Manifest)
+	rc.mu.Lock()
+	manifest := rc.Manifest
+	rc.mu.Unlock()
+	_, err = rc.consulStore.SetPod(consul.INTENT_TREE, node, manifest)
 	return err
 }
 
 func (rc *replicationController) unschedule(node types.NodeName) error {
 	rc.logger.NoFields().Infof("Unscheduling from %s", node)
-	_, err := rc.consulStore.DeletePod(consul.INTENT_TREE, node, rc.Manifest.ID())
+	rc.mu.Lock()
+	manifest := rc.Manifest
+	rc.mu.Unlock()
+	_, err := rc.consulStore.DeletePod(consul.INTENT_TREE, node, manifest.ID())
 	if err != nil {
 		return err
 	}

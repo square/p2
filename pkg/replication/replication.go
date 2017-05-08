@@ -101,9 +101,6 @@ type replication struct {
 	// signals any supplementary goroutines to exit once the
 	// replication has completed successfully
 	replicationDoneCh chan struct{}
-	// The enacted channel will allow us to know when the replication is ongoing
-	// This is originally closed during initialization
-	enactedCh chan struct{}
 	// Used to cancel replication due to a lock renewal failure or a
 	// cancellation by the caller
 	quitCh chan struct{}
@@ -122,6 +119,12 @@ type replication struct {
 	// to trade off with QPS and bandwidth. 1 second is the lower bound for
 	// this value.
 	healthWatchDelay time.Duration
+
+	// The enacted channel will allow us to know when the replication is ongoing
+	// This is originally closed during initialization
+	enactedCh chan struct{}
+	// enactedChMu synchronizes access to enactedCh
+	enactedChMu sync.Mutex
 }
 
 // Attempts to claim a lock on replicating this pod. Other pkg/replication
@@ -209,8 +212,9 @@ func (r *replication) checkForManaged() error {
 // updateOne need to be scoped to the node that they came from
 func (r *replication) Enact() {
 	defer close(r.replicationDoneCh)
-
+	r.enactedChMu.Lock()
 	r.enactedCh = make(chan struct{})
+	r.enactedChMu.Unlock()
 	defer close(r.enactedCh)
 
 	// Sort nodes from least healthy to most healthy to maximize overall
@@ -255,7 +259,7 @@ func (r *replication) Enact() {
 
 				go func() {
 					defer close(exitCh)
-					err = r.updateOne(node, timeoutCh, aggregateHealth)
+					err := r.updateOne(node, timeoutCh, aggregateHealth)
 					if err == nil {
 						r.logger.Infof("The host '%v' successfully replicated the pod '%v'", node, r.manifest.ID())
 						atomic.AddInt32(&completedCount, 1)
@@ -362,7 +366,12 @@ func (r *replication) handleReplicationEnd(session consul.Session, renewalErrCh 
 	case <-r.replicationDoneCh:
 	case <-r.replicationCancelledCh:
 		// If the replication is enacted, wait for it to exit
-		<-r.enactedCh
+		r.enactedChMu.Lock()
+		enactedCh := r.enactedCh
+		r.enactedChMu.Unlock()
+		if enactedCh != nil {
+			<-r.enactedCh
+		}
 	case err := <-renewalErrCh:
 		// communicate the error to the caller.
 		r.errCh <- replicationError{

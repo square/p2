@@ -222,34 +222,39 @@ func (dsf *Farm) mainLoop(quitCh <-chan struct{}) {
 		// This loop will check all the error channels of the children owned by this
 		// farm, if any child outputs an error, close the child.
 		// The quitCh here will also return if the caller to mainLoop closes it
+		dsf.childMu.Lock()
 		for dsID, child := range dsf.children {
 			select {
 			case <-quitCh:
+				dsf.childMu.Unlock()
 				return
 			case err, ok = <-child.errCh:
 				if err != nil {
-					dsf.logger.Errorf("An error has occurred in spawned ds '%v':, %v", child.ds, err)
+					dsf.logger.Errorf("An error has occurred in spawned ds '%v':, %v", child.ds.ID(), err)
 				}
 				if !ok {
 					// child error channel closed
-					dsf.logger.Errorf("Child ds '%v' error channel closed, removing ds now", child.ds)
+					dsf.logger.Errorf("Child ds '%v' error channel closed, removing ds now", child.ds.ID())
 					dsf.closeChild(dsID)
-					continue
 				}
 				continue
 			default:
 			}
 		}
+		dsf.childMu.Unlock()
 		dsf.handleDSChanges(changes, quitCh)
 	}
 }
 
 func (dsf *Farm) closeAllChildren() {
+	dsf.childMu.Lock()
 	for dsID := range dsf.children {
 		dsf.closeChild(dsID)
 	}
+	dsf.childMu.Unlock()
 }
 
+// closeChild must be called with childMu lock held
 func (dsf *Farm) closeChild(dsID fields.ID) {
 	if child, ok := dsf.children[dsID]; ok {
 		dsf.logger.WithField("ds", dsID).Infoln("Releasing daemon set")
@@ -279,6 +284,8 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 		return
 	}
 
+	dsf.childMu.Lock()
+	defer dsf.childMu.Unlock()
 	if len(changes.Created) > 0 {
 		dsf.logger.Infof("The following %d daemon sets have been created: %s", len(changes.Created), dsIDs(changes.Created))
 		for _, dsFields := range changes.Created {
@@ -287,7 +294,8 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 			dsLogger := dsf.makeDSLogger(*dsFields)
 
 			// If it is not in our map, then try to acquire the lock
-			if _, ok := dsf.children[dsFields.ID]; !ok {
+			_, ok := dsf.children[dsFields.ID]
+			if !ok {
 				dsUnlocker, err = dsf.dsLocker.LockForOwnership(dsFields.ID, dsf.session)
 				if _, ok := err.(consulutil.AlreadyLockedError); ok {
 					// Lock was either already acquired by another farm or it was Acquired
@@ -298,7 +306,6 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 					}
 					dsf.releaseLock(dsUnlocker)
 					continue
-
 				} else if err != nil {
 					// The session probably either expired or there was probably a network
 					// error, so the rest will probably fail
@@ -337,7 +344,8 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 		for _, dsFields := range changes.Updated {
 			dsLogger := dsf.makeDSLogger(*dsFields)
 
-			if _, ok := dsf.children[dsFields.ID]; !ok {
+			ds, ok := dsf.children[dsFields.ID]
+			if !ok {
 				dsUnlocker, err := dsf.dsLocker.LockForOwnership(dsFields.ID, dsf.session)
 				if _, ok := err.(consulutil.AlreadyLockedError); ok {
 					dsf.logger.Infof("Lock on daemon set '%v' was already acquired by another farm", dsFields.ID)
@@ -353,6 +361,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 				dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
 
 				dsf.children[dsFields.ID] = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger)
+				ds = dsf.children[dsFields.ID]
 			}
 
 			// If the daemon set contends with another daemon set, disable it
@@ -369,9 +378,9 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 					dsf.logger.Errorf("Error occurred when trying to disable daemon set: %v", err)
 					continue
 				}
-				dsf.children[newDS.ID].updatedCh <- &newDS
+				ds.updatedCh <- &newDS
 			} else {
-				dsf.children[dsFields.ID].updatedCh <- dsFields
+				ds.updatedCh <- dsFields
 			}
 		}
 	}
