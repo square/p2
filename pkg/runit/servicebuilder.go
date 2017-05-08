@@ -93,7 +93,7 @@ func (s ServiceTemplate) runScript() ([]byte, error) {
 $stderr.reopen(STDOUT)
 require 'yaml'
 sleep %d
-exec *YAML.load(DATA.read)
+exec "chpst", "-P", "--", *YAML.load(DATA.read)
 sleep 2
 __END__
 %s
@@ -124,7 +124,7 @@ func (s ServiceTemplate) logScript() ([]byte, error) {
 	ret := fmt.Sprintf(`#!/usr/bin/ruby
 require 'yaml'
 sleep %d
-exec *YAML.load(DATA.read)
+exec "chpst", "-P", "--", *YAML.load(DATA.read)
 sleep 2
 __END__
 %s
