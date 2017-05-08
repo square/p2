@@ -50,6 +50,7 @@ type Farm struct {
 	sessions <-chan string
 	// The time to wait between node updates for each replication
 	rateLimitInterval time.Duration
+	dsRetryInterval   time.Duration
 
 	children map[fields.ID]*childDS
 	childMu  sync.Mutex
@@ -88,6 +89,7 @@ func NewFarm(
 	monitorHealth bool,
 	cachedPodMatch bool,
 	healthWatchDelay time.Duration,
+	dsRetryInterval time.Duration,
 ) *Farm {
 	if alerter == nil {
 		alerter = alerting.NewNop()
@@ -109,6 +111,7 @@ func NewFarm(
 		rateLimitInterval: rateLimitInterval,
 		monitorHealth:     monitorHealth,
 		cachedPodMatch:    cachedPodMatch,
+		dsRetryInterval:   dsRetryInterval,
 	}
 }
 
@@ -626,6 +629,7 @@ func (dsf *Farm) spawnDaemonSet(
 		dsf.rateLimitInterval,
 		dsf.cachedPodMatch,
 		dsf.healthWatchDelay,
+		dsf.dsRetryInterval,
 	)
 
 	quitSpawnCh := make(chan struct{})

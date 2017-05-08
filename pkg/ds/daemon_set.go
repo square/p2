@@ -31,7 +31,7 @@ const (
 )
 
 var (
-	retryInterval = time.Duration(5 * time.Minute)
+	DefaultRetryInterval = 5 * time.Minute
 )
 
 type DaemonSet interface {
@@ -129,6 +129,8 @@ type daemonSet struct {
 	// allow stale reads of matching pods.  We allow stale matches for daemon
 	// set queries because the consequent operations are idempotent.
 	cachedPodMatch bool
+
+	retryInterval time.Duration
 }
 
 type dsContention struct {
@@ -147,7 +149,13 @@ func New(
 	rateLimitInterval time.Duration,
 	cachedPodMatch bool,
 	healthWatchDelay time.Duration,
+	retryInterval time.Duration,
 ) DaemonSet {
+
+	if retryInterval == 0 {
+		retryInterval = DefaultRetryInterval
+	}
+
 	return &daemonSet{
 		DaemonSet: fields,
 
@@ -162,6 +170,7 @@ func New(
 		currentReplication: nil,
 		rateLimitInterval:  rateLimitInterval,
 		cachedPodMatch:     cachedPodMatch,
+		retryInterval:      retryInterval,
 	}
 }
 
@@ -245,11 +254,11 @@ func (ds *daemonSet) WatchDesires(
 
 		for {
 			if err != nil {
-				ds.logger.Errorf("An error has occurred in the daemon set, retrying if no changes are made in %d. %v", retryInterval, err)
+				ds.logger.Errorf("An error has occurred in the daemon set, retrying if no changes are made in %d. %v", ds.retryInterval, err)
 				select {
 				case errCh <- err:
 					// Retry the replication in the RetryInterval's duration
-					timer.Reset(retryInterval)
+					timer.Reset(ds.retryInterval)
 					// This is required in case the user disables the daemon set
 					// so that the timer would be stopped after
 					err = nil

@@ -135,8 +135,6 @@ func TestSchedule(t *testing.T) {
 		t.Skip("skipping test in short mode.")
 	}
 
-	retryInterval = testFarmRetryInterval
-
 	//
 	// Setup fixture and schedule a pod
 	//
@@ -186,6 +184,7 @@ func TestSchedule(t *testing.T) {
 		0,
 		false,
 		0,
+		testFarmRetryInterval,
 	).(*daemonSet)
 
 	labeled := labeledPods(t, ds)
@@ -229,6 +228,8 @@ func TestSchedule(t *testing.T) {
 				if !ok {
 					desiresErrChClosed = true
 				}
+			case <-deletedCh:
+			case <-updatedCh:
 			case <-time.After(1 * time.Second):
 				t.Fatal("watchDSChanges or WatchDesires did not exit promptly after closing quitCh")
 			}
@@ -378,8 +379,6 @@ func TestSchedule(t *testing.T) {
 }
 
 func TestPublishToReplication(t *testing.T) {
-	retryInterval = testFarmRetryInterval
-
 	//
 	// Setup fixture and schedule a pod
 	//
@@ -425,6 +424,7 @@ func TestPublishToReplication(t *testing.T) {
 		0,
 		false,
 		0,
+		testFarmRetryInterval,
 	).(*daemonSet)
 
 	labeled := labeledPods(t, ds)
@@ -467,6 +467,8 @@ func TestPublishToReplication(t *testing.T) {
 				if !ok {
 					desiresErrChClosed = true
 				}
+			case <-deletedCh:
+			case <-updatedCh:
 			case <-time.After(1 * time.Second):
 				t.Fatal("watchDSChanges or WatchDesires did not exit promptly after closing quitCh")
 			}

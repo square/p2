@@ -34,8 +34,6 @@ const (
 
 // Tests dsContends for changes to both daemon sets and nodes
 func TestContendNodes(t *testing.T) {
-	retryInterval = testFarmRetryInterval
-
 	//
 	// Instantiate farm
 	//
@@ -54,17 +52,18 @@ func TestContendNodes(t *testing.T) {
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
 	dsf := &Farm{
-		dsStore:       dsStore,
-		dsLocker:      dsStore,
-		store:         consulStore,
-		scheduler:     scheduler.NewApplicatorScheduler(applicator),
-		labeler:       applicator,
-		watcher:       applicator,
-		children:      make(map[ds_fields.ID]*childDS),
-		session:       consultest.NewSession(),
-		logger:        logger,
-		alerter:       alerting.NewNop(),
-		healthChecker: &happyHealthChecker,
+		dsStore:         dsStore,
+		dsLocker:        dsStore,
+		store:           consulStore,
+		scheduler:       scheduler.NewApplicatorScheduler(applicator),
+		labeler:         applicator,
+		watcher:         applicator,
+		children:        make(map[ds_fields.ID]*childDS),
+		session:         consultest.NewSession(),
+		logger:          logger,
+		alerter:         alerting.NewNop(),
+		healthChecker:   &happyHealthChecker,
+		dsRetryInterval: testFarmRetryInterval,
 	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
@@ -147,7 +146,6 @@ func TestContendNodes(t *testing.T) {
 
 // Tests dsContends for NodeSelectors
 func TestContendSelectors(t *testing.T) {
-	retryInterval = testFarmRetryInterval
 
 	//
 	// Instantiate farm
@@ -166,17 +164,18 @@ func TestContendSelectors(t *testing.T) {
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
 	dsf := &Farm{
-		dsStore:       dsStore,
-		dsLocker:      dsStore,
-		store:         consulStore,
-		scheduler:     scheduler.NewApplicatorScheduler(applicator),
-		labeler:       applicator,
-		watcher:       applicator,
-		children:      make(map[ds_fields.ID]*childDS),
-		session:       consultest.NewSession(),
-		logger:        logger,
-		alerter:       alerting.NewNop(),
-		healthChecker: &happyHealthChecker,
+		dsStore:         dsStore,
+		dsLocker:        dsStore,
+		store:           consulStore,
+		scheduler:       scheduler.NewApplicatorScheduler(applicator),
+		labeler:         applicator,
+		watcher:         applicator,
+		children:        make(map[ds_fields.ID]*childDS),
+		session:         consultest.NewSession(),
+		logger:          logger,
+		alerter:         alerting.NewNop(),
+		healthChecker:   &happyHealthChecker,
+		dsRetryInterval: testFarmRetryInterval,
 	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
@@ -294,8 +293,6 @@ func TestContendSelectors(t *testing.T) {
 }
 
 func TestFarmSchedule(t *testing.T) {
-	retryInterval = testFarmRetryInterval
-
 	//
 	// Instantiate farm
 	//
@@ -318,17 +315,18 @@ func TestFarmSchedule(t *testing.T) {
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
 	dsf := &Farm{
-		dsStore:       dsStore,
-		dsLocker:      dsStore,
-		store:         consulStore,
-		scheduler:     scheduler.NewApplicatorScheduler(applicator),
-		labeler:       applicator,
-		watcher:       applicator,
-		children:      make(map[ds_fields.ID]*childDS),
-		session:       consultest.NewSession(),
-		logger:        logger,
-		alerter:       alerting.NewNop(),
-		healthChecker: &happyHealthChecker,
+		dsStore:         dsStore,
+		dsLocker:        dsStore,
+		store:           consulStore,
+		scheduler:       scheduler.NewApplicatorScheduler(applicator),
+		labeler:         applicator,
+		watcher:         applicator,
+		children:        make(map[ds_fields.ID]*childDS),
+		session:         consultest.NewSession(),
+		logger:          logger,
+		alerter:         alerting.NewNop(),
+		healthChecker:   &happyHealthChecker,
+		dsRetryInterval: testFarmRetryInterval,
 	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
@@ -521,8 +519,6 @@ func TestFarmSchedule(t *testing.T) {
 }
 
 func TestCleanupPods(t *testing.T) {
-	retryInterval = testFarmRetryInterval
-
 	dsStore := dsstoretest.NewFake()
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -573,16 +569,17 @@ func TestCleanupPods(t *testing.T) {
 		"farm": "cleanupPods",
 	})
 	dsf := &Farm{
-		dsStore:       dsStore,
-		store:         consulStore,
-		scheduler:     scheduler.NewApplicatorScheduler(applicator),
-		labeler:       applicator,
-		watcher:       applicator,
-		children:      make(map[ds_fields.ID]*childDS),
-		session:       consultest.NewSession(),
-		logger:        logger,
-		alerter:       alerting.NewNop(),
-		healthChecker: &happyHealthChecker,
+		dsStore:         dsStore,
+		store:           consulStore,
+		scheduler:       scheduler.NewApplicatorScheduler(applicator),
+		labeler:         applicator,
+		watcher:         applicator,
+		children:        make(map[ds_fields.ID]*childDS),
+		session:         consultest.NewSession(),
+		logger:          logger,
+		alerter:         alerting.NewNop(),
+		healthChecker:   &happyHealthChecker,
+		dsRetryInterval: testFarmRetryInterval,
 	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
@@ -611,8 +608,6 @@ func TestCleanupPods(t *testing.T) {
 }
 
 func TestMultipleFarms(t *testing.T) {
-	retryInterval = testFarmRetryInterval
-
 	dsStore := dsstoretest.NewFake()
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -638,17 +633,18 @@ func TestMultipleFarms(t *testing.T) {
 	// Instantiate first farm
 	//
 	firstFarm := &Farm{
-		dsStore:       dsStore,
-		dsLocker:      dsStore,
-		store:         consulStore,
-		scheduler:     scheduler.NewApplicatorScheduler(applicator),
-		labeler:       applicator,
-		watcher:       applicator,
-		children:      make(map[ds_fields.ID]*childDS),
-		session:       session,
-		logger:        firstLogger,
-		alerter:       alerting.NewNop(),
-		healthChecker: &happyHealthChecker,
+		dsStore:         dsStore,
+		dsLocker:        dsStore,
+		store:           consulStore,
+		scheduler:       scheduler.NewApplicatorScheduler(applicator),
+		labeler:         applicator,
+		watcher:         applicator,
+		children:        make(map[ds_fields.ID]*childDS),
+		session:         session,
+		logger:          firstLogger,
+		alerter:         alerting.NewNop(),
+		healthChecker:   &happyHealthChecker,
+		dsRetryInterval: testFarmRetryInterval,
 	}
 	firstQuitCh := make(chan struct{})
 	defer close(firstQuitCh)
@@ -923,8 +919,6 @@ func TestMultipleFarms(t *testing.T) {
 }
 
 func TestRelock(t *testing.T) {
-	retryInterval = testFarmRetryInterval
-
 	dsStore := dsstoretest.NewFake()
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -951,8 +945,9 @@ func TestRelock(t *testing.T) {
 			logger: logging.DefaultLogger.SubLogger(logrus.Fields{
 				"farm": logName,
 			}),
-			alerter:       alerting.NewNop(),
-			healthChecker: &happyHealthChecker,
+			alerter:         alerting.NewNop(),
+			healthChecker:   &happyHealthChecker,
+			dsRetryInterval: testFarmRetryInterval,
 		}
 		quitCh := make(chan struct{})
 		farmHasQuit := make(chan struct{})
@@ -1012,8 +1007,6 @@ func TestRelock(t *testing.T) {
 }
 
 func TestDieAndUpdate(t *testing.T) {
-	retryInterval = testFarmRetryInterval
-
 	dsStore := dsstoretest.NewFake()
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -1040,8 +1033,9 @@ func TestDieAndUpdate(t *testing.T) {
 			logger: logging.DefaultLogger.SubLogger(logrus.Fields{
 				"farm": logName,
 			}),
-			alerter:       alerting.NewNop(),
-			healthChecker: &happyHealthChecker,
+			alerter:         alerting.NewNop(),
+			healthChecker:   &happyHealthChecker,
+			dsRetryInterval: testFarmRetryInterval,
 		}
 		quitCh := make(chan struct{})
 		farmHasQuit := make(chan struct{})
