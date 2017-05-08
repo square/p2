@@ -32,7 +32,9 @@ message DisableDaemonSetRequest {
   string daemon_set_id = 1;
 }
 
-message DisableDaemonSetResponse {}
+message DisableDaemonSetResponse {
+  DaemonSet daemon_set = 1; // this field could probably be eliminated but currently daemon sets depend on it
+}
 
 message WatchDaemonSetsRequest {}
 
