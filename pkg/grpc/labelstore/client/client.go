@@ -77,7 +77,7 @@ func (c Client) WatchMatches(selector klabels.Selector, labelType labels.Type, q
 					watchClient, err = c.labelStoreClient.WatchMatches(innerCtx, &label_protos.WatchMatchesRequest{
 						LabelType: labelTypeToProtoLabelType(labelType),
 						Selector:  selector.String(),
-					})
+					}, grpc.FailFast(false))
 					if err != nil {
 						c.logger.WithError(err).Errorln("could not restart WatchMatches RPC, will retry")
 						innerCancel()
