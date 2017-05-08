@@ -264,11 +264,11 @@ func (s ConsulStore) CreateRollingUpdateFromExistingRCs(
 		// If there was an error, we want to destroy the session. Otherwise,
 		// we want it to happen when the transaction is committed
 		if err != nil {
-			session.Destroy()
+			_ = session.Destroy()
 			return
 		} else {
-			txn.AddCommitHook(func() {
-				session.Destroy()
+			_ = txn.AddCommitHook(func() {
+				_ = session.Destroy()
 			})
 		}
 	}()
@@ -322,11 +322,11 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 		// If there was an error, we want to destroy the session. Otherwise,
 		// we want it to happen when the transaction is committed
 		if err != nil {
-			session.Destroy()
+			_ = session.Destroy()
 			return
 		} else {
-			txn.AddCommitHook(func() {
-				session.Destroy()
+			_ = txn.AddCommitHook(func() {
+				_ = session.Destroy()
 			})
 		}
 	}()
@@ -417,11 +417,11 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		// If there was an error, we want to destroy the session. Otherwise,
 		// we want it to happen when the transaction is committed
 		if err != nil {
-			session.Destroy()
+			_ = session.Destroy()
 			return
 		} else {
-			txn.AddCommitHook(func() {
-				session.Destroy()
+			_ = txn.AddCommitHook(func() {
+				_ = session.Destroy()
 			})
 		}
 	}()
