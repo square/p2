@@ -57,7 +57,7 @@ func (c *Tx) AddCommitHook(f func()) error {
 	return nil
 }
 
-func (c *Tx) Merge(newTxn *Tx) error {
+func (c *Tx) Append(newTxn *Tx) error {
 	if c.alreadyCommitted {
 		return ErrAlreadyCommitted
 	}

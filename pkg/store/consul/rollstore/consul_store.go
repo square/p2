@@ -278,7 +278,7 @@ func (s ConsulStore) CreateRollingUpdateFromExistingRCs(
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
-	err = txn.Merge(locksHeldTxn)
+	err = txn.Append(locksHeldTxn)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -336,7 +336,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
-	err = txn.Merge(oldRCIsLockedTxn)
+	err = txn.Append(oldRCIsLockedTxn)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -359,7 +359,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
-	err = txn.Merge(newRCIsLockedTxn)
+	err = txn.Append(newRCIsLockedTxn)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -465,7 +465,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
-	err = txn.Merge(oldRCIsLockedTxn)
+	err = txn.Append(oldRCIsLockedTxn)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -491,7 +491,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
-	err = txn.Merge(newRCIsLockedTxn)
+	err = txn.Append(newRCIsLockedTxn)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}

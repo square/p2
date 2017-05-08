@@ -28,7 +28,7 @@ func TestAdd(t *testing.T) {
 	}
 }
 
-func TestMerge(t *testing.T) {
+func TestAppend(t *testing.T) {
 	txn1 := New()
 	for i := 0; i < 30; i++ {
 		err := txn1.Add(api.KVTxnOp{})
@@ -46,7 +46,7 @@ func TestMerge(t *testing.T) {
 	}
 
 	var err error
-	err = txn1.Merge(txn2)
+	err = txn1.Append(txn2)
 	if err != nil {
 		t.Fatalf("unexpected error adding a 30 operation txn to another: %s", err)
 	}
@@ -134,7 +134,7 @@ func TesetErrAlreadyCommitted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = txn.Merge(New())
+	err = txn.Append(New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,12 +159,12 @@ func TesetErrAlreadyCommitted(t *testing.T) {
 		t.Error("should have erred adding an operation to a committed transaction")
 	}
 
-	err = txn.Merge(New())
+	err = txn.Append(New())
 	if err == nil {
 		t.Error("should have erred merging a transaction that has already been committed")
 	}
 
-	err = New().Merge(txn)
+	err = New().Append(txn)
 	if err == nil {
 		t.Error("should have erred merging with a transaction that has already been committed")
 	}
