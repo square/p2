@@ -198,6 +198,52 @@ func (c *consulApplicator) mutateLabels(labelType Type, id string, labels map[st
 	return nil
 }
 
+// TODO: replace mutateLabels() with this transaction-using implementation
+func (c *consulApplicator) mutateLabelsTxn(txn *api.KVTxnOps, labelType Type, id string, labels map[string]*string) error {
+	l, index, err := c.getLabels(labelType, id)
+	if err != nil {
+		return err
+	}
+
+	for key, value := range labels {
+		if value == nil {
+			delete(l.Labels, key)
+		} else {
+			l.Labels[key] = *value
+		}
+	}
+
+	// TODO: we don't need convertLabeledToKVP to return an api.KVPair anymore
+	// because we deconstruct it to put it in a transaction
+	setkvp, err := convertLabeledToKVP(l)
+	if err != nil {
+		return err
+	}
+
+	var op *api.KVTxnOp
+	if len(l.Labels) == 0 {
+		// still have to use CAS when deleting, to avoid discarding someone
+		// else's concurrent modification
+		// DeleteCAS ignores the value on the KVPair, so it doesn't matter if
+		// we set it earlier
+		op = &api.KVTxnOp{
+			Verb:  api.KVDeleteCAS,
+			Key:   setkvp.Key,
+			Index: index,
+		}
+	} else {
+		op = &api.KVTxnOp{
+			Verb:  api.KVCAS,
+			Key:   setkvp.Key,
+			Value: setkvp.Value,
+			Index: index,
+		}
+	}
+
+	*txn = append(*txn, op)
+	return nil
+}
+
 func labelsFromKeyValue(label string, value *string) map[string]*string {
 	return map[string]*string{
 		label: value,
@@ -237,6 +283,21 @@ func (c *consulApplicator) SetLabels(labelType Type, id string, labels map[strin
 		labelsToPointers[label] = &valPtr
 	}
 	return c.retryMutate(labelType, id, labelsToPointers)
+}
+
+// TODO: replace SetLabels() with this implementation. It's just separate right now to make
+// exploring solutions require less code churn
+func (c *consulApplicator) SetLabelsTxn(txn *api.KVTxnOps, labelType Type, id string, labels map[string]string) error {
+	labelsToPointers := make(map[string]*string)
+	for label, value := range labels {
+		// We can't just use &value because that would be a pointer to
+		// the iteration variable
+		var valPtr string
+		valPtr = value
+		labelsToPointers[label] = &valPtr
+	}
+
+	return c.mutateLabelsTxn(txn, labelType, id, labelsToPointers)
 }
 
 func (c *consulApplicator) RemoveLabel(labelType Type, id, label string) error {
