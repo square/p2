@@ -22,19 +22,39 @@ type MetricsRegistry interface {
 	Register(metricName string, metric interface{}) error
 }
 
-// selectorWatch represents a watched label selector and its result channel
-type selectorWatch struct {
+// selectorWatches represents a watched label selector and its result channels.
+type selectorWatches struct {
 	selector labels.Selector
+
+	// all accesses to this map are done while the aggregator's watcherLock
+	// is held, so no additonal mutex is necessary
+	watches map[selectorWatch]struct{}
+}
+
+type watchMap map[string]*selectorWatches
+
+func (w watchMap) len() int {
+	total := 0
+	for _, watches := range w {
+		for range watches.watches {
+			total++
+		}
+	}
+
+	return total
+}
+
+type selectorWatch struct {
 	resultCh chan []Labeled
 }
 
 type consulAggregator struct {
 	logger          logging.Logger
 	labelType       Type
-	watcherLock     sync.Mutex // watcherLock synchrnizes access to labeledCache and watchers
+	watcherLock     sync.Mutex // watcherLock synchronizes access to labeledCache and watchers
 	path            string
 	kv              consulutil.ConsulLister
-	watchers        map[string]*selectorWatch
+	watchers        watchMap
 	labeledCache    []Labeled // cached contents of the label subtree
 	aggregatorQuit  chan struct{}
 	aggregationRate time.Duration
@@ -70,7 +90,7 @@ func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logg
 		metWatchCount:    watchCount,
 		metWatchSendMiss: watchSendMiss,
 		metCacheSize:     cacheSize,
-		watchers:         make(map[string]*selectorWatch),
+		watchers:         make(map[string]*selectorWatches),
 	}
 }
 
@@ -88,37 +108,54 @@ func (c *consulAggregator) Watch(selector labels.Selector, quitCh <-chan struct{
 
 	c.watcherLock.Lock()
 	defer c.watcherLock.Unlock()
-	watch, ok := c.watchers[selector.String()]
+	watches, ok := c.watchers[selector.String()]
 	if !ok {
-		watch = &selectorWatch{
+		watches = &selectorWatches{
 			selector: selector,
-			resultCh: resCh,
+			watches:  make(map[selectorWatch]struct{}),
 		}
 
-		c.watchers[selector.String()] = watch
+		c.watchers[selector.String()] = watches
 	}
 
+	watch := selectorWatch{
+		resultCh: resCh,
+	}
+
+	watches.watches[watch] = struct{}{}
 	if c.labeledCache != nil {
-		c.sendMatches(watch)
+		// technically we could send the matches only to the new watcher, but
+		// it simplifies the code to just send to all watchers of that
+		// selector
+		c.sendMatches(*watches)
 	}
 	go func() {
 		select {
 		case <-quitCh:
 		case <-c.aggregatorQuit:
 		}
-		c.removeWatch(watch)
+		c.removeWatch(selector, watch)
 	}()
-	c.metWatchCount.Update(int64(len(c.watchers)))
+	c.metWatchCount.Update(int64(c.watchers.len()))
 	return watch.resultCh
 }
 
-func (c *consulAggregator) removeWatch(watch *selectorWatch) {
+func (c *consulAggregator) removeWatch(selector labels.Selector, watch selectorWatch) {
 	c.watcherLock.Lock()
 	defer c.watcherLock.Unlock()
 	close(watch.resultCh)
-	delete(c.watchers, watch.selector.String())
+	watches, ok := c.watchers[selector.String()]
+	if !ok {
+		// this would indicate a pretty bad bug if this happened, maybe even panic worthy
+		c.logger.Errorf("couldn't find the removed watcher for selector %s", selector)
+	}
+	delete(watches.watches, watch)
 
-	c.metWatchCount.Update(int64(len(c.watchers)))
+	if len(watches.watches) == 0 {
+		delete(c.watchers, selector.String())
+	}
+
+	c.metWatchCount.Update(int64(c.watchers.len()))
 }
 
 func (c *consulAggregator) Quit() {
@@ -171,10 +208,13 @@ func (c *consulAggregator) Aggregate() {
 
 			for _, watcher := range c.watchers {
 				wg.Add(1)
-				go func(watch selectorWatch) {
+				go func(watches selectorWatches) {
 					defer wg.Done()
-					if !c.sendMatches(&watch) {
-						missedSendsCh <- struct{}{}
+					sendResults := c.sendMatches(watches)
+					for _, success := range sendResults {
+						if !success {
+							missedSendsCh <- struct{}{}
+						}
 					}
 				}(*watcher)
 			}
@@ -223,10 +263,10 @@ func (c *consulAggregator) fillCache(pairs api.KVPairs) {
 }
 
 // this must be called within the watcherLock mutex.
-func (c *consulAggregator) sendMatches(watcher *selectorWatch) bool {
+func (c *consulAggregator) sendMatches(watches selectorWatches) []bool {
 	matches := []Labeled{}
 	for _, labeled := range c.labeledCache {
-		if watcher.selector.Matches(labeled.Labels) {
+		if watches.selector.Matches(labeled.Labels) {
 			matches = append(matches, labeled)
 		}
 	}
@@ -242,18 +282,25 @@ func (c *consulAggregator) sendMatches(watcher *selectorWatch) bool {
 	// aggregation goroutine waits.
 
 	// first drain the previous (stale) cached value if present...
-	sendSuccess := true
-	select {
-	case <-watcher.resultCh:
-		sendSuccess = false
-	default:
+	var ret []bool
+	for watcher, _ := range watches.watches {
+		sendSuccess := true
+		select {
+		case <-watcher.resultCh:
+			sendSuccess = false
+		default:
+		}
+
+		// ... then send the newer value.
+		select {
+		case watcher.resultCh <- matches:
+		default:
+		}
+
+		ret = append(ret, sendSuccess)
 	}
-	// ... then send the newer value.
-	select {
-	case watcher.resultCh <- matches:
-	default:
-	}
-	return sendSuccess
+
+	return ret
 }
 
 func selectorsEqual(sel1 labels.Selector, sel2 labels.Selector) bool {

@@ -271,3 +271,59 @@ func TestLabelSelectorEquivalence(t *testing.T) {
 		t.Fatal("expected two selectors written in different order to be equivalent, but they weren't")
 	}
 }
+
+func TestIdenticalSelectors(t *testing.T) {
+	fakeKV := &fakeLabelStore{
+		data:         fakeLabeledPods(),
+		watchTrigger: nil,
+	}
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
+	go aggreg.Aggregate()
+	defer aggreg.Quit()
+
+	quitCh := make(chan struct{})
+	quitCh2 := make(chan struct{})
+	selector := labels.Everything().Add("color", labels.EqualsOperator, []string{"green"})
+	labeledChannel1 := aggreg.Watch(selector, quitCh)
+	labeledChannel2 := aggreg.Watch(selector, quitCh2)
+
+	aggreg.watcherLock.Lock()
+	if aggreg.watchers.len() != 2 {
+		t.Errorf("expected 2 watchers to be reported but there were %d", aggreg.watchers.len())
+	}
+	aggreg.watcherLock.Unlock()
+
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("didn't get a value on the first selector")
+	case <-labeledChannel1:
+	}
+
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("didn't get a value on the first selector")
+	case <-labeledChannel2:
+	}
+
+	close(quitCh2)
+
+	select {
+	case <-time.After(time.Second):
+	case _, ok := <-labeledChannel2:
+		if ok {
+			t.Fatal("the result channel for the second selector should have been closed")
+		}
+	}
+
+	aggreg.watcherLock.Lock()
+	if aggreg.watchers.len() != 1 {
+		t.Errorf("expected 1 watcher (after closing one of them) to be reported but there were %d", aggreg.watchers.len())
+	}
+	aggreg.watcherLock.Unlock()
+
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("didn't get a value on first selector after closing second")
+	case <-labeledChannel1:
+	}
+}
