@@ -63,6 +63,9 @@ func (s *fakeStore) Create(manifest manifest.Manifest, nodeSelector labels.Selec
 	return entry.RC, nil
 }
 
+// If a test needs to use transactions, it should be using a real consul e.g.
+// via consulutil.NewFixture(). We won't be implementing transactions ourselves
+// in these fake storage structs
 func (s *fakeStore) CreateTxn(txn *transaction.Tx, manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (fields.RC, error) {
 	panic("transactions not implemented in fake rc store")
 }
