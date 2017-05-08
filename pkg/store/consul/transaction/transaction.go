@@ -15,8 +15,8 @@ import (
 const maxAllowedOperations = 64
 
 var (
-	TooManyOperations = errors.New("consul transactions cannot have more than 64 operations")
-	AlreadyCommitted  = errors.New("this transaction has already been committed")
+	ErrTooManyOperations = errors.New("consul transactions cannot have more than 64 operations")
+	ErrAlreadyCommitted  = errors.New("this transaction has already been committed")
 )
 
 type Tx struct {
@@ -34,11 +34,11 @@ func New() *Tx {
 
 func (c *Tx) Add(op api.KVTxnOp) error {
 	if c.alreadyCommitted {
-		return AlreadyCommitted
+		return ErrAlreadyCommitted
 	}
 
 	if len(*c.kvOps) == maxAllowedOperations {
-		return TooManyOperations
+		return ErrTooManyOperations
 	}
 	*c.kvOps = append(*c.kvOps, &op)
 
@@ -50,7 +50,7 @@ func (c *Tx) Add(op api.KVTxnOp) error {
 // that had to be opened as part of transaction setup.
 func (c *Tx) AddCommitHook(f func()) error {
 	if c.alreadyCommitted {
-		return AlreadyCommitted
+		return ErrAlreadyCommitted
 	}
 
 	c.commitHooks = append(c.commitHooks, f)
@@ -59,15 +59,15 @@ func (c *Tx) AddCommitHook(f func()) error {
 
 func (c *Tx) Merge(newTxn *Tx) error {
 	if c.alreadyCommitted {
-		return AlreadyCommitted
+		return ErrAlreadyCommitted
 	}
 
 	if newTxn.alreadyCommitted {
-		return AlreadyCommitted
+		return ErrAlreadyCommitted
 	}
 
 	if len(*c.kvOps)+len(*newTxn.kvOps) > 64 {
-		return TooManyOperations
+		return ErrTooManyOperations
 	}
 
 	for _, op := range *newTxn.kvOps {
@@ -83,7 +83,7 @@ type Txner interface {
 
 func (c *Tx) Commit(txner Txner) error {
 	if c.alreadyCommitted {
-		return AlreadyCommitted
+		return ErrAlreadyCommitted
 	}
 
 	ok, resp, _, err := txner.Txn(*c.kvOps, nil)

@@ -23,8 +23,8 @@ func TestAdd(t *testing.T) {
 		t.Fatal("expected an error adding the 64th transaction")
 	}
 
-	if err != TooManyOperations {
-		t.Fatalf("unexpected error adding 64th transaction, wanted %q got %q", TooManyOperations, err)
+	if err != ErrTooManyOperations {
+		t.Fatalf("unexpected error adding 64th transaction, wanted %q got %q", ErrTooManyOperations, err)
 	}
 }
 
@@ -63,8 +63,8 @@ func TestMerge(t *testing.T) {
 		t.Fatal("expected an error adding the 64th transaction")
 	}
 
-	if err != TooManyOperations {
-		t.Fatalf("unexpected error adding 64th transaction, wanted %q got %q", TooManyOperations, err)
+	if err != ErrTooManyOperations {
+		t.Fatalf("unexpected error adding 64th transaction, wanted %q got %q", ErrTooManyOperations, err)
 	}
 }
 
@@ -127,7 +127,7 @@ func TestCommitHappy(t *testing.T) {
 	}
 }
 
-func TesetAlreadyCommitted(t *testing.T) {
+func TesetErrAlreadyCommitted(t *testing.T) {
 	txn := New()
 	err := txn.Add(api.KVTxnOp{})
 	if err != nil {
