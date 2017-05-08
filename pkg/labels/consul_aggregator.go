@@ -22,52 +22,19 @@ type MetricsRegistry interface {
 	Register(metricName string, metric interface{}) error
 }
 
-// linked list of watches with control channels
+// selectorWatch represents a watched label selector and its result channel
 type selectorWatch struct {
 	selector labels.Selector
 	resultCh chan []Labeled
-	next     *selectorWatch
-}
-
-func (s *selectorWatch) append(w *selectorWatch) {
-	if w == nil {
-		return
-	}
-	if s.next != nil {
-		s.next.append(w)
-	} else {
-		s.next = w
-	}
-}
-
-func (s *selectorWatch) delete(w *selectorWatch) {
-	if w == nil {
-		return
-	}
-	if s.next == w {
-		s.next = w.next
-	} else if s.next != nil {
-		s.next.delete(w)
-	}
-}
-
-func (s *selectorWatch) len() int {
-	watch := s
-	ret := 0
-	for watch != nil {
-		ret++
-		watch = watch.next
-	}
-	return ret
 }
 
 type consulAggregator struct {
 	logger          logging.Logger
 	labelType       Type
-	watcherLock     sync.Mutex
+	watcherLock     sync.Mutex // watcherLock synchrnizes access to labeledCache and watchers
 	path            string
 	kv              consulutil.ConsulLister
-	watchers        *selectorWatch
+	watchers        map[string]*selectorWatch
 	labeledCache    []Labeled // cached contents of the label subtree
 	aggregatorQuit  chan struct{}
 	aggregationRate time.Duration
@@ -103,6 +70,7 @@ func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logg
 		metWatchCount:    watchCount,
 		metWatchSendMiss: watchSendMiss,
 		metCacheSize:     cacheSize,
+		watchers:         make(map[string]*selectorWatch),
 	}
 }
 
@@ -117,17 +85,19 @@ func (c *consulAggregator) Watch(selector labels.Selector, quitCh <-chan struct{
 		return resCh
 	default:
 	}
+
 	c.watcherLock.Lock()
 	defer c.watcherLock.Unlock()
-	watch := &selectorWatch{
-		selector: selector,
-		resultCh: resCh,
+	watch, ok := c.watchers[selector.String()]
+	if !ok {
+		watch = &selectorWatch{
+			selector: selector,
+			resultCh: resCh,
+		}
+
+		c.watchers[selector.String()] = watch
 	}
-	if c.watchers == nil {
-		c.watchers = watch
-	} else {
-		c.watchers.append(watch)
-	}
+
 	if c.labeledCache != nil {
 		c.sendMatches(watch)
 	}
@@ -138,7 +108,7 @@ func (c *consulAggregator) Watch(selector labels.Selector, quitCh <-chan struct{
 		}
 		c.removeWatch(watch)
 	}()
-	c.metWatchCount.Update(int64(c.watchers.len()))
+	c.metWatchCount.Update(int64(len(c.watchers)))
 	return watch.resultCh
 }
 
@@ -146,16 +116,9 @@ func (c *consulAggregator) removeWatch(watch *selectorWatch) {
 	c.watcherLock.Lock()
 	defer c.watcherLock.Unlock()
 	close(watch.resultCh)
-	if c.watchers == watch {
-		c.watchers = c.watchers.next
-	} else {
-		c.watchers.delete(watch)
-	}
-	if c.watchers != nil {
-		c.metWatchCount.Update(int64(c.watchers.len()))
-	} else {
-		c.metWatchCount.Update(0)
-	}
+	delete(c.watchers, watch.selector.String())
+
+	c.metWatchCount.Update(int64(len(c.watchers)))
 }
 
 func (c *consulAggregator) Quit() {
@@ -195,7 +158,6 @@ func (c *consulAggregator) Aggregate() {
 
 			// Iterate over each watcher and send the []Labeled
 			// that match the watcher's selector to the watcher's out channel.
-			watcher := c.watchers
 			var wg sync.WaitGroup
 			missedSendsCh := make(chan struct{})
 
@@ -207,7 +169,7 @@ func (c *consulAggregator) Aggregate() {
 				}
 			}()
 
-			for watcher != nil {
+			for _, watcher := range c.watchers {
 				wg.Add(1)
 				go func(watch selectorWatch) {
 					defer wg.Done()
@@ -215,7 +177,6 @@ func (c *consulAggregator) Aggregate() {
 						missedSendsCh <- struct{}{}
 					}
 				}(*watcher)
-				watcher = watcher.next
 			}
 			wg.Wait()
 			c.watcherLock.Unlock()
