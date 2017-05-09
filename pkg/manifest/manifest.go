@@ -290,6 +290,10 @@ func FromBytes(bytes []byte) (Manifest, error) {
 	return manifest, nil
 }
 
+func FromString(manifestStr string) (Manifest, error) {
+	return FromBytes([]byte(manifestStr))
+}
+
 func (manifest *manifest) Write(out io.Writer) error {
 	bytes, err := manifest.Marshal()
 	if err != nil {
