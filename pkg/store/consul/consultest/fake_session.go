@@ -3,6 +3,7 @@ package consultest
 import (
 	"sync"
 
+	"github.com/pborman/uuid"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/util"
@@ -21,6 +22,7 @@ type fakeSession struct {
 
 	// list of locks held to release when session is destroyed
 	locksHeld map[string]bool
+	session   string
 }
 
 func NewSession() consul.Session {
@@ -33,6 +35,7 @@ func newFakeSession(globalLocks map[string]bool, lockMutex *sync.Mutex, renewalE
 		mu:           lockMutex,
 		renewalErrCh: renewalErrCh,
 		locksHeld:    make(map[string]bool),
+		session:      uuid.New(),
 	}
 }
 
@@ -95,4 +98,8 @@ func (f *fakeSession) Destroy() error {
 	}
 	close(f.renewalErrCh)
 	return nil
+}
+
+func (f *fakeSession) Session() string {
+	return f.session
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/flags"
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/store/consul/rollstore"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/version"
 )
 
@@ -116,6 +117,14 @@ func main() {
 	client := consul.NewConsulClient(opts)
 
 	rcStore := rcstore.NewConsul(client, labeler, 3)
+
+	// This means that p2-rctl can only use direct-consul labelers, not
+	// HTTP applicators (because the rollstore requires transactions and
+	// only direct consul access can accomplish that)
+	rollLabeler, ok := labeler.(rollstore.RollLabeler)
+	if !ok {
+		logger.Fatalf("labeler configured via flags is not valid as a rollstore labeler")
+	}
 	rctl := rctlParams{
 		httpClient: httpClient,
 		baseClient: client,
@@ -125,7 +134,7 @@ func main() {
 		rcs:         rcStore,
 		rollRCStore: rcStore,
 		rcLocker:    rcStore,
-		rls:         rollstore.NewConsul(client, labeler, nil),
+		rls:         rollstore.NewConsul(client, rollLabeler, nil),
 		consuls:     consul.NewConsulStore(client),
 		labeler:     labeler,
 		hcheck:      checker.NewConsulHealthChecker(client),
@@ -150,7 +159,7 @@ func main() {
 	case cmdRollText:
 		rctl.RollingUpdate(*rollOldID, *rollNewID, *rollWant, *rollNeed)
 	case cmdSchedupText:
-		rctl.ScheduleUpdate(*schedupOldID, *schedupNewID, *schedupWant, *schedupNeed)
+		rctl.ScheduleUpdate(*schedupOldID, *schedupNewID, *schedupWant, *schedupNeed, client.KV())
 	case cmdDeleteRollText:
 		rctl.DeleteRollingUpdate(*deleteRollID)
 	}
@@ -184,7 +193,7 @@ type ReplicationControllerStore interface {
 
 type RollingUpdateStore interface {
 	Delete(id roll_fields.ID) error
-	CreateRollingUpdateFromExistingRCs(u roll_fields.Update, newRCLabels klabels.Set, rollLabels klabels.Set) (roll_fields.Update, error)
+	CreateRollingUpdateFromExistingRCs(txn *transaction.Tx, u roll_fields.Update, newRCLabels klabels.Set, rollLabels klabels.Set) (roll_fields.Update, error)
 }
 
 // rctl is a struct for the data structures shared between commands
@@ -392,16 +401,25 @@ LOOP:
 	}
 }
 
-func (r rctlParams) ScheduleUpdate(oldID, newID string, want, need int) {
-	_, err := r.rls.CreateRollingUpdateFromExistingRCs(roll_fields.Update{
-		OldRC:           rc_fields.ID(oldID),
-		NewRC:           rc_fields.ID(newID),
-		DesiredReplicas: want,
-		MinimumReplicas: need,
-	}, nil, nil)
+func (r rctlParams) ScheduleUpdate(oldID, newID string, want, need int, txner transaction.Txner) {
+	txn := transaction.New()
+	_, err := r.rls.CreateRollingUpdateFromExistingRCs(
+		txn,
+		roll_fields.Update{
+			OldRC:           rc_fields.ID(oldID),
+			NewRC:           rc_fields.ID(newID),
+			DesiredReplicas: want,
+			MinimumReplicas: need,
+		}, nil, nil)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not create rolling update")
-	} else {
-		r.logger.WithField("id", newID).Infoln("Created new rolling update")
 	}
+
+	err = txn.Commit(txner)
+	if err != nil {
+		r.logger.WithError(err).Fatalln("Could not create rolling update")
+	}
+
+	r.logger.WithField("id", newID).Infoln("Created new rolling update")
+
 }

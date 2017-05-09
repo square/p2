@@ -16,6 +16,7 @@ type Session interface {
 	Lock(key string) (consulutil.Unlocker, error)
 	Renew() error
 	Destroy() error
+	Session() string
 }
 
 const (
