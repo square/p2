@@ -36,9 +36,7 @@ type watchMap map[string]*selectorWatches
 func (w watchMap) len() int {
 	total := 0
 	for _, watches := range w {
-		for range watches.watches {
-			total++
-		}
+		total += len(watches.watches)
 	}
 
 	return total
