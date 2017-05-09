@@ -22,52 +22,39 @@ type MetricsRegistry interface {
 	Register(metricName string, metric interface{}) error
 }
 
-// linked list of watches with control channels
-type selectorWatch struct {
+// selectorWatches represents a watched label selector and its result channels.
+type selectorWatches struct {
 	selector labels.Selector
+
+	// all accesses to this map are done while the aggregator's watcherLock
+	// is held, so no additonal mutex is necessary
+	watches map[selectorWatch]struct{}
+}
+
+type watchMap map[string]*selectorWatches
+
+func (w watchMap) len() int {
+	total := 0
+	for _, watches := range w {
+		for range watches.watches {
+			total++
+		}
+	}
+
+	return total
+}
+
+type selectorWatch struct {
 	resultCh chan []Labeled
-	next     *selectorWatch
-}
-
-func (s *selectorWatch) append(w *selectorWatch) {
-	if w == nil {
-		return
-	}
-	if s.next != nil {
-		s.next.append(w)
-	} else {
-		s.next = w
-	}
-}
-
-func (s *selectorWatch) delete(w *selectorWatch) {
-	if w == nil {
-		return
-	}
-	if s.next == w {
-		s.next = w.next
-	} else if s.next != nil {
-		s.next.delete(w)
-	}
-}
-
-func (s *selectorWatch) len() int {
-	watch := s
-	ret := 0
-	for watch != nil {
-		ret++
-		watch = watch.next
-	}
-	return ret
 }
 
 type consulAggregator struct {
 	logger          logging.Logger
 	labelType       Type
-	watcherLock     sync.Mutex
+	watcherLock     sync.Mutex // watcherLock synchronizes access to labeledCache and watchers
 	path            string
 	kv              consulutil.ConsulLister
-	watchers        *selectorWatch
+	watchers        watchMap
 	labeledCache    []Labeled // cached contents of the label subtree
 	aggregatorQuit  chan struct{}
 	aggregationRate time.Duration
@@ -103,6 +90,7 @@ func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logg
 		metWatchCount:    watchCount,
 		metWatchSendMiss: watchSendMiss,
 		metCacheSize:     cacheSize,
+		watchers:         make(map[string]*selectorWatches),
 	}
 }
 
@@ -117,45 +105,57 @@ func (c *consulAggregator) Watch(selector labels.Selector, quitCh <-chan struct{
 		return resCh
 	default:
 	}
+
 	c.watcherLock.Lock()
 	defer c.watcherLock.Unlock()
-	watch := &selectorWatch{
-		selector: selector,
+	watches, ok := c.watchers[selector.String()]
+	if !ok {
+		watches = &selectorWatches{
+			selector: selector,
+			watches:  make(map[selectorWatch]struct{}),
+		}
+
+		c.watchers[selector.String()] = watches
+	}
+
+	watch := selectorWatch{
 		resultCh: resCh,
 	}
-	if c.watchers == nil {
-		c.watchers = watch
-	} else {
-		c.watchers.append(watch)
-	}
+
+	watches.watches[watch] = struct{}{}
 	if c.labeledCache != nil {
-		c.sendMatches(watch)
+		// technically we could send the matches only to the new watcher, but
+		// it simplifies the code to just send to all watchers of that
+		// selector
+		c.sendMatches(*watches)
 	}
 	go func() {
 		select {
 		case <-quitCh:
 		case <-c.aggregatorQuit:
 		}
-		c.removeWatch(watch)
+		c.removeWatch(selector, watch)
 	}()
 	c.metWatchCount.Update(int64(c.watchers.len()))
 	return watch.resultCh
 }
 
-func (c *consulAggregator) removeWatch(watch *selectorWatch) {
+func (c *consulAggregator) removeWatch(selector labels.Selector, watch selectorWatch) {
 	c.watcherLock.Lock()
 	defer c.watcherLock.Unlock()
 	close(watch.resultCh)
-	if c.watchers == watch {
-		c.watchers = c.watchers.next
-	} else {
-		c.watchers.delete(watch)
+	watches, ok := c.watchers[selector.String()]
+	if !ok {
+		// this would indicate a pretty bad bug if this happened, maybe even panic worthy
+		c.logger.Errorf("couldn't find the removed watcher for selector %s", selector)
 	}
-	if c.watchers != nil {
-		c.metWatchCount.Update(int64(c.watchers.len()))
-	} else {
-		c.metWatchCount.Update(0)
+	delete(watches.watches, watch)
+
+	if len(watches.watches) == 0 {
+		delete(c.watchers, selector.String())
 	}
+
+	c.metWatchCount.Update(int64(c.watchers.len()))
 }
 
 func (c *consulAggregator) Quit() {
@@ -195,7 +195,6 @@ func (c *consulAggregator) Aggregate() {
 
 			// Iterate over each watcher and send the []Labeled
 			// that match the watcher's selector to the watcher's out channel.
-			watcher := c.watchers
 			var wg sync.WaitGroup
 			missedSendsCh := make(chan struct{})
 
@@ -207,15 +206,17 @@ func (c *consulAggregator) Aggregate() {
 				}
 			}()
 
-			for watcher != nil {
+			for _, watcher := range c.watchers {
 				wg.Add(1)
-				go func(watch selectorWatch) {
+				go func(watches selectorWatches) {
 					defer wg.Done()
-					if !c.sendMatches(&watch) {
-						missedSendsCh <- struct{}{}
+					sendResults := c.sendMatches(watches)
+					for _, success := range sendResults {
+						if !success {
+							missedSendsCh <- struct{}{}
+						}
 					}
 				}(*watcher)
-				watcher = watcher.next
 			}
 			wg.Wait()
 			c.watcherLock.Unlock()
@@ -262,10 +263,10 @@ func (c *consulAggregator) fillCache(pairs api.KVPairs) {
 }
 
 // this must be called within the watcherLock mutex.
-func (c *consulAggregator) sendMatches(watcher *selectorWatch) bool {
+func (c *consulAggregator) sendMatches(watches selectorWatches) []bool {
 	matches := []Labeled{}
 	for _, labeled := range c.labeledCache {
-		if watcher.selector.Matches(labeled.Labels) {
+		if watches.selector.Matches(labeled.Labels) {
 			matches = append(matches, labeled)
 		}
 	}
@@ -281,16 +282,27 @@ func (c *consulAggregator) sendMatches(watcher *selectorWatch) bool {
 	// aggregation goroutine waits.
 
 	// first drain the previous (stale) cached value if present...
-	sendSuccess := true
-	select {
-	case <-watcher.resultCh:
-		sendSuccess = false
-	default:
+	var ret []bool
+	for watcher, _ := range watches.watches {
+		sendSuccess := true
+		select {
+		case <-watcher.resultCh:
+			sendSuccess = false
+		default:
+		}
+
+		// ... then send the newer value.
+		select {
+		case watcher.resultCh <- matches:
+		default:
+		}
+
+		ret = append(ret, sendSuccess)
 	}
-	// ... then send the newer value.
-	select {
-	case watcher.resultCh <- matches:
-	default:
-	}
-	return sendSuccess
+
+	return ret
+}
+
+func selectorsEqual(sel1 labels.Selector, sel2 labels.Selector) bool {
+	return sel1.String() == sel2.String()
 }
