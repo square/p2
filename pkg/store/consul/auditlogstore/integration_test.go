@@ -1,5 +1,3 @@
-// +build !race
-
 package auditlogstore
 
 import (
@@ -13,9 +11,7 @@ import (
 )
 
 // The tests in this file utilize a real consul server within the test process
-// in order to perform transactions. There are known data races in this code
-// (see https://github.com/square/p2/issues/832) which is why the build flags
-// exclude these tests from running under the race detector
+// in order to perform transactions.
 
 func TestCreateListAndDelete(t *testing.T) {
 	f := consulutil.NewFixture(t)
