@@ -246,6 +246,11 @@ START_LOOP:
 				rc, err := rcf.rcStore.Get(rcKey.ID)
 				if err != nil {
 					rcLogger.WithError(err).Error("unable to fetch RC to process it")
+
+					unlockErr := rcUnlocker.Unlock()
+					if unlockErr != nil {
+						rcLogger.WithError(unlockErr).Error("unable to unlock RC after processing failure")
+					}
 					continue
 				}
 
