@@ -3,6 +3,7 @@ package rc
 import (
 	"fmt"
 	"path"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,22 +24,29 @@ import (
 
 type fakeconsulStore struct {
 	manifests map[string]manifest.Manifest
+	mu        sync.Mutex
 }
 
 func (s *fakeconsulStore) SetPod(podPrefix consul.PodPrefix, nodeName types.NodeName, manifest manifest.Manifest) (time.Duration, error) {
 	key := path.Join(string(podPrefix), nodeName.String(), string(manifest.ID()))
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.manifests[key] = manifest
 	return 0, nil
 }
 
 func (s *fakeconsulStore) DeletePod(podPrefix consul.PodPrefix, nodeName types.NodeName, podID types.PodID) (time.Duration, error) {
 	key := path.Join(string(podPrefix), nodeName.String(), podID.String())
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	delete(s.manifests, key)
 	return 0, nil
 }
 
 func (s *fakeconsulStore) Pod(podPrefix consul.PodPrefix, nodeName types.NodeName, podID types.PodID) (
 	manifest.Manifest, time.Duration, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	key := path.Join(string(podPrefix), nodeName.String(), podID.String())
 	if manifest, ok := s.manifests[key]; ok {
 		return manifest, 0, nil
@@ -126,6 +134,8 @@ func TestDoNothing(t *testing.T) {
 
 	scheduled := scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
+	consul.mu.Lock()
+	defer consul.mu.Unlock()
 	Assert(t).AreEqual(len(consul.manifests), 0, "expected no manifests to have been scheduled")
 	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to have occurred")
 }
@@ -142,6 +152,8 @@ func TestCantSchedule(t *testing.T) {
 	case <-errors:
 		scheduled := scheduledPods(t, applicator)
 		Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
+		consul.mu.Lock()
+		defer consul.mu.Unlock()
 		Assert(t).AreEqual(len(consul.manifests), 0, "expected no manifests to have been scheduled")
 
 		if len(alerter.Alerts) < 1 {
@@ -172,6 +184,8 @@ func TestSchedule(t *testing.T) {
 	Assert(t).AreEqual(len(scheduled), 1, "expected a pod to have been labeled")
 	Assert(t).AreEqual(scheduled[0].ID, "node2/testPod", "expected pod labeled on the right node")
 
+	consul.mu.Lock()
+	defer consul.mu.Unlock()
 	for k, v := range consul.manifests {
 		Assert(t).AreEqual(k, "intent/node2/testPod", "expected manifest scheduled on the right node")
 		Assert(t).AreEqual(string(v.ID()), "testPod", "expected manifest with correct ID")
@@ -199,6 +213,8 @@ func TestSchedulePartial(t *testing.T) {
 	Assert(t).AreEqual(len(scheduled), 1, "expected a pod to have been labeled")
 	Assert(t).AreEqual(scheduled[0].ID, "node2/testPod", "expected pod labeled on the right node")
 
+	consul.mu.Lock()
+	defer consul.mu.Unlock()
 	for k, v := range consul.manifests {
 		Assert(t).AreEqual(k, "intent/node2/testPod", "expected manifest scheduled on the right node")
 		Assert(t).AreEqual(string(v.ID()), "testPod", "expected manifest with correct ID")
@@ -242,6 +258,8 @@ func TestScheduleTwice(t *testing.T) {
 		Assert(t).Fail("expected manifests to have been scheduled on both nodes")
 	}
 
+	consul.mu.Lock()
+	defer consul.mu.Unlock()
 	Assert(t).AreEqual(len(consul.manifests), 2, "expected two manifests to have been scheduled")
 	for k, v := range consul.manifests {
 		if k != "intent/node1/testPod" && k != "intent/node2/testPod" {
@@ -270,6 +288,8 @@ func TestUnschedule(t *testing.T) {
 
 	scheduled := scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 1, "expected a pod to have been labeled")
+	consul.mu.Lock()
+	defer consul.mu.Unlock()
 	Assert(t).AreEqual(len(consul.manifests), 1, "expected a manifest to have been scheduled")
 
 	rcStore.SetDesiredReplicas(rc.ID(), 0)
@@ -300,6 +320,8 @@ func TestPreferUnscheduleIneligible(t *testing.T) {
 
 	scheduled := scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 1000, "expected 1000 pods to have been labeled")
+	consul.mu.Lock()
+	defer consul.mu.Unlock()
 	Assert(t).AreEqual(len(consul.manifests), 1000, "expected a manifest to have been scheduled on 1000 nodes")
 
 	// Make node503 ineligible, so that it will be preferred for unscheduling
