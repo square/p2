@@ -104,3 +104,63 @@ func TestList(t *testing.T) {
 		t.Errorf("expected 3 records to be returned but there were %d", len(resp.GetAuditLogs()))
 	}
 }
+
+func TestDelete(t *testing.T) {
+	f := consulutil.NewFixture(t)
+	defer f.Stop()
+
+	alStore := auditlogstore.NewConsulStore(f.Client.KV())
+	store := New(
+		alStore,
+		logging.TestLogger(),
+		f.Client.KV(),
+	)
+
+	txn := transaction.New()
+	eventDetails0 := json.RawMessage(`{"bogus_event_details":0}`)
+	eventType := audit.EventType("bogus_event_type")
+	err := alStore.Create(
+		txn,
+		eventType,
+		eventDetails0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = txn.Commit(f.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := store.List(context.Background(), new(audit_log_protos.ListRequest))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(resp.GetAuditLogs()) != 1 {
+		t.Errorf("expected 1 record to be returned but there were %d", len(resp.GetAuditLogs()))
+	}
+
+	var idToDelete string
+	for id, _ := range resp.GetAuditLogs() {
+		idToDelete = id
+	}
+
+	req := &audit_log_protos.DeleteRequest{
+		AuditLogIds: []string{idToDelete},
+	}
+	_, err = store.Delete(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err = store.List(context.Background(), new(audit_log_protos.ListRequest))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(resp.GetAuditLogs()) != 0 {
+		t.Errorf("expected 0 records to be returned after deletion but there were %d", len(resp.GetAuditLogs()))
+	}
+}
