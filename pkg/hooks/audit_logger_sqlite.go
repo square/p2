@@ -86,7 +86,7 @@ func (al *SQLiteAuditLogger) LogFailure(ctx *HookExecContext, err error) {
 
 var (
 	sqliteMigrations = []string{
-		`create table hook_results (
+		`CREATE TABLE IF NOT EXISTS hook_results (
 	      id integer not null primary key autoincrement,
 	      date datetime default current_timestamp,
 	      pod_id text,
@@ -95,16 +95,16 @@ var (
 	      hook_stage string,
 	      success tinyint);`,
 
-		"create index hook_results_hook_name on hook_results(hook_name);",
-		"create index hook_results_pod_id on hook_results(pod_id);",
+		"CREATE INDEX IF NOT EXISTS hook_results_hook_name ON hook_results(hook_name);",
+		"CREATE INDEX IF NOT EXISTS hook_results_pod_id ON hook_results(pod_id);",
 		// FUTURE MIGRATIONS GO HERE
 	}
 )
 
 const (
-	sqliteCreateSchemaVersionTable = `create table if not exists hooks_schema_version ( version integer );`
-	getSchemaVersionQuery          = `select version from hooks_schema_version;`
-	updateSchemaVersionStatement   = `update hooks_schema_version set version = ?;`
+	sqliteCreateSchemaVersionTable = `CREATE TABLE IF NOT EXISTS hooks_schema_version ( version integer );`
+	getSchemaVersionQuery          = `SELECT version FROm hooks_schema_version;`
+	updateSchemaVersionStatement   = `UPDATE hooks_schema_version SET version = ?;`
 )
 
 // Close will terminate this AuditLogger. Re-establishing the connection is not supported, use the constructor.
