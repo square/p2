@@ -7,7 +7,6 @@ import (
 	audit_log_protos "github.com/square/p2/pkg/grpc/auditlogstore/protos"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store/consul/transaction"
-	"github.com/square/p2/pkg/util"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -25,12 +24,14 @@ type AuditLogStore interface {
 type store struct {
 	auditLogStore AuditLogStore
 	logger        logging.Logger
+	txner         transaction.Txner
 }
 
-func New(auditLogStore AuditLogStore, logger logging.Logger) audit_log_protos.P2AuditLogStoreServer {
+func New(auditLogStore AuditLogStore, logger logging.Logger, txner transaction.Txner) audit_log_protos.P2AuditLogStoreServer {
 	return store{
 		auditLogStore: auditLogStore,
 		logger:        logger,
+		txner:         txner,
 	}
 }
 
@@ -50,8 +51,31 @@ func (s store) List(_ context.Context, _ *audit_log_protos.ListRequest) (*audit_
 	}, nil
 }
 
-func (s store) Delete(context.Context, *audit_log_protos.DeleteRequest) (*audit_log_protos.DeleteResponse, error) {
-	return nil, util.Errorf("not yet implemented")
+func (s store) Delete(_ context.Context, req *audit_log_protos.DeleteRequest) (*audit_log_protos.DeleteResponse, error) {
+	if len(req.GetAuditLogIds()) == 0 {
+		return nil, grpc.Errorf(codes.InvalidArgument, "no audit log IDs were specified for deletion")
+	}
+
+	// This is due to a constraint of consul transactions. They're limited to 64 operations per transaction.
+	if len(req.GetAuditLogIds()) > 64 {
+		return nil, grpc.Errorf(codes.InvalidArgument, "no more than 64 audit log records may be deleted at a time, but request was made for %d", len(req.GetAuditLogIds()))
+	}
+
+	txn := transaction.New()
+	var err error
+	for _, id := range req.GetAuditLogIds() {
+		err = s.auditLogStore.Delete(txn, audit.ID(id))
+		if err != nil {
+			return nil, grpc.Errorf(codes.Unavailable, "error queueing up audit log deletions in a transaction: %s", err)
+		}
+	}
+
+	err = txn.Commit(s.txner)
+	if err != nil {
+		return nil, grpc.Errorf(codes.Unavailable, "error committing audit log deletion transaction: %s", err)
+	}
+
+	return nil, nil
 }
 
 func rawAuditLogToProtoAuditLog(al audit.AuditLog) audit_log_protos.AuditLog {
