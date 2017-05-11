@@ -8,7 +8,13 @@ import (
 const CurrentSchemaVersion int = 1
 
 type EventType string
+
+func (e EventType) String() string { return string(e) }
+
 type SchemaVersion int
+
+func (s SchemaVersion) Int() int { return int(s) }
+
 type ID string
 
 func (i ID) String() string { return string(i) }
