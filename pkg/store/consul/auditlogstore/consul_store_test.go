@@ -2,6 +2,7 @@ package auditlogstore
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -27,15 +28,15 @@ func (f *fakeTxner) Txn(txn api.KVTxnOps, q *api.QueryOptions) (bool, *api.KVTxn
 func TestCreate(t *testing.T) {
 	now := time.Now()
 
-	txn := transaction.New()
+	ctx, cancelFunc := transaction.New(context.Background())
 	details := json.RawMessage(`{"some":"details"}`)
-	err := ConsulStore{}.Create(txn, "some_event", details)
+	err := ConsulStore{}.Create(ctx, "some_event", details)
 	if err != nil {
 		t.Fatalf("could not create audit log record: %s", err)
 	}
 
 	fakeTxner := &fakeTxner{}
-	err = txn.Commit(fakeTxner)
+	err = transaction.Commit(ctx, cancelFunc, fakeTxner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,12 +72,15 @@ func TestCreate(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	txn := transaction.New()
+	ctx, cancelFunc := transaction.New(context.Background())
 	id := audit.ID(uuid.New())
-	ConsulStore{}.Delete(txn, id)
+	err := ConsulStore{}.Delete(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	fakeTxner := &fakeTxner{}
-	err := txn.Commit(fakeTxner)
+	err = transaction.Commit(ctx, cancelFunc, fakeTxner)
 	if err != nil {
 		t.Fatal(err)
 	}

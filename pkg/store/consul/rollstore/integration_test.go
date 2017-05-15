@@ -3,6 +3,7 @@
 package rollstore
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -37,13 +38,13 @@ func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
 		"some_key": "some_val",
 	})
 
-	txn := transaction.New()
+	txn, cancelFunc := transaction.New(context.Background())
 	u, err := rollstore.CreateRollingUpdateFromExistingRCs(txn, update, newRCLabels, newRCLabels)
 	if err != nil {
 		t.Fatalf("Unexpected error creating update: %s", err)
 	}
 
-	err = txn.Commit(fixture.Client.KV())
+	err = transaction.Commit(txn, cancelFunc, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unexpected error committing update transaction: %s", err)
 	}
@@ -90,7 +91,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 		"some_key": "some_val",
 	})
 
-	txn := transaction.New()
+	txn, cancelFunc := transaction.New(context.Background())
 	newUpdate, err := rollstore.CreateRollingUpdateFromOneExistingRCWithID(
 		txn,
 		oldRCID,
@@ -108,7 +109,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 		t.Fatalf("Unable to create rolling update: %s", err)
 	}
 
-	err = txn.Commit(fixture.Client.KV())
+	err = transaction.Commit(txn, cancelFunc, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unexpected error committing update transaction: %s", err)
 	}
@@ -160,7 +161,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 		t.Fatalf("Failed to create old rc: %s", err)
 	}
 
-	txn := transaction.New()
+	txn, cancelFunc := transaction.New(context.Background())
 	conflictingEntry, err := rollstore.CreateRollingUpdateFromOneExistingRCWithID(
 		txn,
 		oldRC.ID,
@@ -178,7 +179,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 		t.Fatalf("Unable to create conflicting update: %s", err)
 	}
 
-	err = txn.Commit(fixture.Client.KV())
+	err = transaction.Commit(txn, cancelFunc, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unexpected error committing transaction: %s", err)
 	}
@@ -187,7 +188,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 	// error not an "already locked" error
 	time.Sleep(1 * time.Millisecond)
 
-	txn = transaction.New()
+	txn, cancelFunc = transaction.New(context.Background())
 	newUpdate, err := rollstore.CreateRollingUpdateFromOneExistingRCWithID(
 		txn,
 		oldRC.ID,
@@ -248,7 +249,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist
 		"some_key": "some_val",
 	})
 
-	txn := transaction.New()
+	txn, cancelFunc := transaction.New(context.Background())
 	u, err := rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		txn,
 		oldRCSelector,
@@ -266,7 +267,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist
 		t.Fatalf("Shouldn't have failed to create update: %s", err)
 	}
 
-	err = txn.Commit(fixture.Client.KV())
+	err = transaction.Commit(txn, cancelFunc, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unexpected error committing transaction: %s", err)
 	}
@@ -334,7 +335,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *t
 	oldRCSelector := klabels.Everything().
 		Add("is_test_rc", klabels.EqualsOperator, []string{"true"})
 
-	txn := transaction.New()
+	txn, cancelFunc := transaction.New(context.Background())
 	u, err := rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		txn,
 		oldRCSelector,
@@ -353,7 +354,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *t
 		t.Fatalf("Shouldn't have failed to create update: %s", err)
 	}
 
-	err = txn.Commit(fixture.Client.KV())
+	err = transaction.Commit(txn, cancelFunc, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unexpected error committing update transaction: %s", err)
 	}
@@ -396,7 +397,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 		Add("is_test_rc", klabels.EqualsOperator, []string{"true"})
 
 	// First one should succeed
-	txn := transaction.New()
+	txn, cancelFunc := transaction.New(context.Background())
 	conflictingEntry, err := rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		txn,
 		oldRCSelector,
@@ -414,7 +415,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 		t.Fatalf("Should have succeeded in update creation: %s", err)
 	}
 
-	err = txn.Commit(fixture.Client.KV())
+	err = transaction.Commit(txn, cancelFunc, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unexpected error committing update transaction: %s", err)
 	}
@@ -428,7 +429,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 	time.Sleep(1 * time.Millisecond)
 
 	// Second one should fail
-	txn2 := transaction.New()
+	txn2, cancelFunc := transaction.New(context.Background())
 	_, err = rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		txn2,
 		oldRCSelector,

@@ -1,6 +1,7 @@
 package auditlogstore
 
 import (
+	"context"
 	"time"
 
 	"github.com/square/p2/pkg/audit"
@@ -8,7 +9,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store/consul/transaction"
 
-	"golang.org/x/net/context"
+	grpccontext "golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 )
@@ -16,7 +17,7 @@ import (
 type AuditLogStore interface {
 	List() (map[audit.ID]audit.AuditLog, error)
 	Delete(
-		txn *transaction.Tx,
+		ctx context.Context,
 		id audit.ID,
 	) error
 }
@@ -35,7 +36,7 @@ func New(auditLogStore AuditLogStore, logger logging.Logger, txner transaction.T
 	}
 }
 
-func (s store) List(_ context.Context, _ *audit_log_protos.ListRequest) (*audit_log_protos.ListResponse, error) {
+func (s store) List(_ grpccontext.Context, _ *audit_log_protos.ListRequest) (*audit_log_protos.ListResponse, error) {
 	records, err := s.auditLogStore.List()
 	if err != nil {
 		return nil, grpc.Errorf(codes.Unavailable, "error listing audit log records: %s", err)
@@ -51,7 +52,7 @@ func (s store) List(_ context.Context, _ *audit_log_protos.ListRequest) (*audit_
 	}, nil
 }
 
-func (s store) Delete(_ context.Context, req *audit_log_protos.DeleteRequest) (*audit_log_protos.DeleteResponse, error) {
+func (s store) Delete(ctx grpccontext.Context, req *audit_log_protos.DeleteRequest) (*audit_log_protos.DeleteResponse, error) {
 	if len(req.GetAuditLogIds()) == 0 {
 		return nil, grpc.Errorf(codes.InvalidArgument, "no audit log IDs were specified for deletion")
 	}
@@ -61,16 +62,16 @@ func (s store) Delete(_ context.Context, req *audit_log_protos.DeleteRequest) (*
 		return nil, grpc.Errorf(codes.InvalidArgument, "no more than 64 audit log records may be deleted at a time, but request was made for %d", len(req.GetAuditLogIds()))
 	}
 
-	txn := transaction.New()
+	ctx, cancelFunc := transaction.New(ctx)
 	var err error
 	for _, id := range req.GetAuditLogIds() {
-		err = s.auditLogStore.Delete(txn, audit.ID(id))
+		err = s.auditLogStore.Delete(ctx, audit.ID(id))
 		if err != nil {
 			return nil, grpc.Errorf(codes.Unavailable, "error queueing up audit log deletions in a transaction: %s", err)
 		}
 	}
 
-	err = txn.Commit(s.txner)
+	err = transaction.Commit(ctx, cancelFunc, s.txner)
 	if err != nil {
 		return nil, grpc.Errorf(codes.Unavailable, "error committing audit log deletion transaction: %s", err)
 	}

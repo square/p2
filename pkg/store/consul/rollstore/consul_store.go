@@ -1,6 +1,7 @@
 package rollstore
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -51,7 +52,7 @@ type sessionStore interface {
 type RollLabeler interface {
 	SetLabel(labelType labels.Type, id, name, value string) error
 	SetLabels(labelType labels.Type, id string, labels map[string]string) error
-	SetLabelsTxn(txn *transaction.Tx, labelType labels.Type, id string, labels map[string]string) error
+	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, labels map[string]string) error
 	RemoveAllLabels(labelType labels.Type, id string) error
 	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
 	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
@@ -59,7 +60,7 @@ type RollLabeler interface {
 
 type ReplicationControllerStore interface {
 	LockForUpdateCreation(rcID rc_fields.ID, session consul.Session) (consulutil.Unlocker, error)
-	CreateTxn(txn *transaction.Tx, manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (rc_fields.RC, error)
+	CreateTxn(ctx context.Context, manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (rc_fields.RC, error)
 	Delete(id rc_fields.ID, force bool) error
 	UpdateCreationLockPath(rcID rc_fields.ID) (string, error)
 
@@ -166,34 +167,33 @@ func (s ConsulStore) newRUCreationSession() (consul.Session, error) {
 // lexicographical order by RC id to avoid deadlocks.
 // TODO: lock RCs in a transaction so order doesn't matter
 // Returns an error if the locks could not be acquired
-// If successful, returns a list of api.KVTxnOp which contain the operatons necessary
-// to check that the locks are still held. This is useful to guarantee that the
-// RU is only created while the update creation locks for those RCs are held.
-func (s ConsulStore) lockRCs(rcIDs rc_fields.IDs, session consul.Session) (*transaction.Tx, error) {
-	retTxn := transaction.New()
+// Mutates ctx so that the consul transaction it contains will enforce that the
+// locks acquired in this function are still held at the time the transaction
+// is applied
+func (s ConsulStore) lockRCs(ctx context.Context, rcIDs rc_fields.IDs, session consul.Session) error {
 	sort.Sort(rcIDs)
 	for _, rcID := range rcIDs {
 		updateCreationLockPath, err := s.rcstore.UpdateCreationLockPath(rcID)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		err = retTxn.Add(api.KVTxnOp{
+		err = transaction.Add(ctx, api.KVTxnOp{
 			Verb:    api.KVCheckSession,
 			Key:     updateCreationLockPath,
 			Session: session.Session(),
 		})
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		_, err = s.rcstore.LockForUpdateCreation(rcID, session)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	return retTxn, nil
+	return nil
 }
 
 type ConflictingRUError struct {
@@ -251,7 +251,7 @@ func (s ConsulStore) checkForConflictingUpdates(rcIDs rc_fields.IDs) error {
 //      refer to. Then a constant lookup can be done for those labels, and the
 //      operation can be aborted.
 func (s ConsulStore) CreateRollingUpdateFromExistingRCs(
-	txn *transaction.Tx,
+	ctx context.Context,
 	u roll_fields.Update,
 	newRCLabels klabels.Set,
 	rollLabels klabels.Set,
@@ -267,18 +267,14 @@ func (s ConsulStore) CreateRollingUpdateFromExistingRCs(
 			_ = session.Destroy()
 			return
 		} else {
-			_ = txn.AddCommitHook(func() {
+			_ = transaction.AddCommitHook(ctx, func() {
 				_ = session.Destroy()
 			})
 		}
 	}()
 
 	rcIDs := rc_fields.IDs{u.NewRC, u.OldRC}
-	locksHeldTxn, err := s.lockRCs(rcIDs, session)
-	if err != nil {
-		return roll_fields.Update{}, err
-	}
-	err = txn.Append(locksHeldTxn)
+	err = s.lockRCs(ctx, rcIDs, session)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -288,12 +284,12 @@ func (s ConsulStore) CreateRollingUpdateFromExistingRCs(
 		return roll_fields.Update{}, err
 	}
 
-	err = s.labeler.SetLabelsTxn(txn, labels.RC, u.NewRC.String(), newRCLabels)
+	err = s.labeler.SetLabelsTxn(ctx, labels.RC, u.NewRC.String(), newRCLabels)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
 
-	return u, s.createRU(txn, u, rollLabels, session.Session())
+	return u, s.createRU(ctx, u, rollLabels, session.Session())
 }
 
 // CreateRollingUpdateFromOneExistingWithRCID is like
@@ -301,7 +297,7 @@ func (s ConsulStore) CreateRollingUpdateFromExistingRCs(
 // passed parameters, using oldRCID for the old RC. The new RC and new RU will
 // be created transactionally (all or nothing)
 func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
-	txn *transaction.Tx,
+	ctx context.Context,
 	oldRCID rc_fields.ID,
 	desiredReplicas int,
 	minimumReplicas int,
@@ -325,18 +321,14 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 			_ = session.Destroy()
 			return
 		} else {
-			_ = txn.AddCommitHook(func() {
+			_ = transaction.AddCommitHook(ctx, func() {
 				_ = session.Destroy()
 			})
 		}
 	}()
 
 	rcIDs := rc_fields.IDs{oldRCID}
-	oldRCIsLockedTxn, err := s.lockRCs(rcIDs, session)
-	if err != nil {
-		return roll_fields.Update{}, err
-	}
-	err = txn.Append(oldRCIsLockedTxn)
+	err = s.lockRCs(ctx, rcIDs, session)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -346,7 +338,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 		return roll_fields.Update{}, err
 	}
 
-	rc, err := s.rcstore.CreateTxn(txn, newRCManifest, newRCNodeSelector, newRCPodLabels)
+	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, newRCPodLabels)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -355,11 +347,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 
 	// Get a lock on the new RC we just created so no parallel
 	// update creations can use it
-	newRCIsLockedTxn, err := s.lockRCs(rc_fields.IDs{newRCID}, session)
-	if err != nil {
-		return roll_fields.Update{}, err
-	}
-	err = txn.Append(newRCIsLockedTxn)
+	err = s.lockRCs(ctx, rc_fields.IDs{newRCID}, session)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -372,7 +360,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 		return roll_fields.Update{}, err
 	}
 
-	err = s.labeler.SetLabelsTxn(txn, labels.RC, newRCID.String(), newRCLabels)
+	err = s.labeler.SetLabelsTxn(ctx, labels.RC, newRCID.String(), newRCLabels)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -386,7 +374,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 		RollDelay:       rollDelay,
 	}
 
-	return u, s.createRU(txn, u, rollLabels, session.Session())
+	return u, s.createRU(ctx, u, rollLabels, session.Session())
 }
 
 // CreateRollingUpdateFromOneMaybeExistingWithLabelSelector creates a rolling
@@ -396,7 +384,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 // specifications for the new RC.  Returns an error if the old RC exists but is
 // part of another RU, or if the label selector returns more than one match.
 func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
-	txn *transaction.Tx,
+	ctx context.Context,
 	oldRCSelector klabels.Selector,
 	desiredReplicas int,
 	minimumReplicas int,
@@ -420,7 +408,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 			_ = session.Destroy()
 			return
 		} else {
-			_ = txn.AddCommitHook(func() {
+			_ = transaction.AddCommitHook(ctx, func() {
 				_ = session.Destroy()
 			})
 		}
@@ -447,7 +435,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 		// Create the old RC using the same info as the new RC, it'll be
 		// removed when the update completes anyway
-		rc, err := s.rcstore.CreateTxn(txn, newRCManifest, newRCNodeSelector, newRCPodLabels)
+		rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, newRCPodLabels)
 		if err != nil {
 			return roll_fields.Update{}, err
 		}
@@ -461,11 +449,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	}
 
 	// Lock the old RC to guarantee that no new updates can use it
-	oldRCIsLockedTxn, err := s.lockRCs(rc_fields.IDs{oldRCID}, session)
-	if err != nil {
-		return roll_fields.Update{}, err
-	}
-	err = txn.Append(oldRCIsLockedTxn)
+	err = s.lockRCs(ctx, rc_fields.IDs{oldRCID}, session)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -478,7 +462,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 	// Create the new RC
 	var newRCID rc_fields.ID
-	rc, err := s.rcstore.CreateTxn(txn, newRCManifest, newRCNodeSelector, newRCPodLabels)
+	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, newRCPodLabels)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -487,11 +471,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 	// lock newly-created new rc so it's less likely to race on it
 	// with another parallel update creation
-	newRCIsLockedTxn, err := s.lockRCs(rc_fields.IDs{newRCID}, session)
-	if err != nil {
-		return roll_fields.Update{}, err
-	}
-	err = txn.Append(newRCIsLockedTxn)
+	err = s.lockRCs(ctx, rc_fields.IDs{newRCID}, session)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -505,7 +485,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 	// Now that we know there are no RUs in progress, and we have the
 	// update creation locks, we can safely apply labels.
-	err = s.labeler.SetLabelsTxn(txn, labels.RC, newRCID.String(), newRCLabels)
+	err = s.labeler.SetLabelsTxn(ctx, labels.RC, newRCID.String(), newRCLabels)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -518,7 +498,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 		LeaveOld:        leaveOld,
 		RollDelay:       rollDelay,
 	}
-	return u, s.createRU(txn, u, rollLabels, session.Session())
+	return u, s.createRU(ctx, u, rollLabels, session.Session())
 }
 
 // Delete deletes a rolling update based on its ID.
@@ -681,7 +661,7 @@ func kvpToRU(kvp *api.KVPair) (roll_fields.Update, error) {
 // and then executes the transaction
 // TODO: create an audit log record here as well.
 func (s ConsulStore) createRU(
-	txn *transaction.Tx,
+	ctx context.Context,
 	u roll_fields.Update,
 	rollLabels klabels.Set,
 	session string,
@@ -697,7 +677,7 @@ func (s ConsulStore) createRU(
 	}
 
 	// Create the rolling update
-	err = txn.Add(api.KVTxnOp{
+	err = transaction.Add(ctx, api.KVTxnOp{
 		Verb:  api.KVCAS,
 		Key:   key,
 		Value: b,
@@ -706,7 +686,7 @@ func (s ConsulStore) createRU(
 		return err
 	}
 
-	err = s.labeler.SetLabelsTxn(txn, labels.RU, u.ID().String(), rollLabels)
+	err = s.labeler.SetLabelsTxn(ctx, labels.RU, u.ID().String(), rollLabels)
 	if err != nil {
 		return err
 	}

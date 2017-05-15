@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -193,7 +194,7 @@ type ReplicationControllerStore interface {
 
 type RollingUpdateStore interface {
 	Delete(id roll_fields.ID) error
-	CreateRollingUpdateFromExistingRCs(txn *transaction.Tx, u roll_fields.Update, newRCLabels klabels.Set, rollLabels klabels.Set) (roll_fields.Update, error)
+	CreateRollingUpdateFromExistingRCs(ctx context.Context, u roll_fields.Update, newRCLabels klabels.Set, rollLabels klabels.Set) (roll_fields.Update, error)
 }
 
 // rctl is a struct for the data structures shared between commands
@@ -402,9 +403,9 @@ LOOP:
 }
 
 func (r rctlParams) ScheduleUpdate(oldID, newID string, want, need int, txner transaction.Txner) {
-	txn := transaction.New()
+	ctx, cancelFunc := transaction.New(context.Background())
 	_, err := r.rls.CreateRollingUpdateFromExistingRCs(
-		txn,
+		ctx,
 		roll_fields.Update{
 			OldRC:           rc_fields.ID(oldID),
 			NewRC:           rc_fields.ID(newID),
@@ -415,7 +416,7 @@ func (r rctlParams) ScheduleUpdate(oldID, newID string, want, need int, txner tr
 		r.logger.WithError(err).Fatalln("Could not create rolling update")
 	}
 
-	err = txn.Commit(txner)
+	err = transaction.Commit(ctx, cancelFunc, txner)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not create rolling update")
 	}
