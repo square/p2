@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package auditlogstore;
+
+service P2AuditLogStore {
+  rpc List (ListRequest) returns (ListResponse) {}
+  rpc Delete (DeleteRequest) returns (DeleteResponse) {}
+}
+
+message ListRequest {}
+
+message ListResponse {
+  map<string, AuditLog> audit_logs = 1;
+}
+
+message AuditLog {
+  string event_type = 1;
+  string event_details = 2;
+  string timestamp = 3;
+  int64 schema_version = 4;
+}
+
+message DeleteRequest {
+  repeated string audit_log_ids = 1;
+}
+
+message DeleteResponse {}
