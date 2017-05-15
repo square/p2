@@ -255,22 +255,14 @@ func (s ConsulStore) CreateRollingUpdateFromExistingRCs(
 	u roll_fields.Update,
 	newRCLabels klabels.Set,
 	rollLabels klabels.Set,
-) (ret roll_fields.Update, err error) {
+) (roll_fields.Update, error) {
 	session, err := s.newRUCreationSession()
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
-	defer func() {
-		// If there was an error, we want to destroy the session. Otherwise,
-		// we want it to happen when the transaction is committed
-		if err != nil {
-			_ = session.Destroy()
-			return
-		} else {
-			_ = transaction.AddCommitHook(ctx, func() {
-				_ = session.Destroy()
-			})
-		}
+	go func() {
+		<-ctx.Done()
+		_ = session.Destroy()
 	}()
 
 	rcIDs := rc_fields.IDs{u.NewRC, u.OldRC}
@@ -314,17 +306,9 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 		return roll_fields.Update{}, err
 	}
 
-	defer func() {
-		// If there was an error, we want to destroy the session. Otherwise,
-		// we want it to happen when the transaction is committed
-		if err != nil {
-			_ = session.Destroy()
-			return
-		} else {
-			_ = transaction.AddCommitHook(ctx, func() {
-				_ = session.Destroy()
-			})
-		}
+	go func() {
+		<-ctx.Done()
+		_ = session.Destroy()
 	}()
 
 	rcIDs := rc_fields.IDs{oldRCID}
@@ -401,17 +385,9 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
-	defer func() {
-		// If there was an error, we want to destroy the session. Otherwise,
-		// we want it to happen when the transaction is committed
-		if err != nil {
-			_ = session.Destroy()
-			return
-		} else {
-			_ = transaction.AddCommitHook(ctx, func() {
-				_ = session.Destroy()
-			})
-		}
+	go func() {
+		<-ctx.Done()
+		_ = session.Destroy()
 	}()
 
 	// Check if any RCs match the oldRCSelector

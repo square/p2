@@ -119,25 +119,6 @@ func TesetErrAlreadyCommitted(t *testing.T) {
 	}
 }
 
-func TestCommitHooks(t *testing.T) {
-	hookRan := false
-	hook := func() {
-		hookRan = true
-	}
-
-	ctx, cancelFunc := New(context.Background())
-	AddCommitHook(ctx, hook)
-
-	err := Commit(ctx, cancelFunc, &testTxner{shouldOK: true})
-	if err != nil {
-		t.Fatalf("could not commit transaction: %s", err)
-	}
-
-	if !hookRan {
-		t.Error("hook function did not run when committing")
-	}
-}
-
 func TestCommitErrNoTransaction(t *testing.T) {
 	err := Commit(context.Background(), func() {}, &testTxner{})
 	if err == nil {

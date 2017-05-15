@@ -29,8 +29,6 @@ var (
 
 type Tx struct {
 	kvOps *api.KVTxnOps
-
-	commitHooks []func()
 }
 
 func New(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -55,19 +53,6 @@ func Add(ctx context.Context, op api.KVTxnOp) error {
 	return nil
 }
 
-// AddCommitHook adds a function that should be run when the transaction is
-// committed.  This is useful for cleaning up resources, e.g. consul sessions
-// that had to be opened as part of transaction setup.
-func AddCommitHook(ctx context.Context, f func()) error {
-	txn, err := getTxnFromContext(ctx)
-	if err != nil {
-		return err
-	}
-
-	txn.commitHooks = append(txn.commitHooks, f)
-	return nil
-}
-
 type Txner interface {
 	Txn(txn api.KVTxnOps, q *api.QueryOptions) (bool, *api.KVTxnResponse, *api.QueryMeta, error)
 }
@@ -85,8 +70,6 @@ func Commit(ctx context.Context, cancel context.CancelFunc, txner Txner) error {
 	if err != nil {
 		return util.Errorf("transaction failed: %s", err)
 	}
-
-	txn.runCommitHooks()
 
 	// we call cancel() here to mark the transaction as completed. Any
 	// further function calls using this context will now error via
@@ -107,12 +90,6 @@ func Commit(ctx context.Context, cancel context.CancelFunc, txner Txner) error {
 	}
 
 	return nil
-}
-
-func (c *Tx) runCommitHooks() {
-	for _, f := range c.commitHooks {
-		f()
-	}
 }
 
 func txnErrorsToString(errors api.TxnErrors) string {
