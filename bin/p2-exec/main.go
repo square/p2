@@ -114,24 +114,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	/*
-		from `man setpgid`:
-		* "If pid is zero, then the call applies to the current process" / "if pid is 0, the process ID of the calling process shall be used"
-		* "Also, if pgid is 0, the process ID of the indicated process shall be used."
-		So we set the current process's process group ID to be equal to that of its process ID.
-		Without this, its process group ID is equal to its parent's.
-		This means that operations that act on their entire process tree will affect not only their own pod,
-		but all pods on the same machine (in a typical setup, where they all originate from the same parent).
-
-		For example, a renice may change the entire parent process tree's nice level.
-		Worse, this new nice level may propagate into a container, causing the container to be unable to set its nice level back to 0.
-		This has been observed to cause containers to fail to start.
-	*/
-	if err := unix.Setpgid(0, 0); err != nil {
-		log.Fatal(err)
-	}
-
 	err = syscall.Exec(binPath, *cmd, os.Environ())
 	// should never be reached
 	if err != nil {
