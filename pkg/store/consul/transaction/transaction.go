@@ -27,13 +27,13 @@ var (
 	contextKey = contextKeyType{}
 )
 
-type Tx struct {
+type tx struct {
 	kvOps *api.KVTxnOps
 }
 
 func New(ctx context.Context) (context.Context, context.CancelFunc) {
 	ctx, cancelFunc := context.WithCancel(ctx)
-	ctx = context.WithValue(ctx, contextKey, &Tx{
+	ctx = context.WithValue(ctx, contextKey, &tx{
 		kvOps: new(api.KVTxnOps),
 	})
 	return ctx, cancelFunc
@@ -101,7 +101,7 @@ func txnErrorsToString(errors api.TxnErrors) string {
 	return str
 }
 
-func getTxnFromContext(ctx context.Context) (*Tx, error) {
+func getTxnFromContext(ctx context.Context) (*tx, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ErrAlreadyCommitted
@@ -113,7 +113,7 @@ func getTxnFromContext(ctx context.Context) (*Tx, error) {
 		return nil, util.Errorf("no transaction was opened on the passed Context")
 	}
 
-	txn, ok := txnValue.(*Tx)
+	txn, ok := txnValue.(*tx)
 	if !ok {
 		return nil, util.Errorf("the transaction value on the context had the wrong type!")
 	}
