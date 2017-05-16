@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/store/consul"
@@ -33,7 +34,7 @@ func ParseWithConsulOptions() (string, consul.Options, labels.ApplicatorWithoutW
 		if err != nil {
 			log.Fatalln(err)
 		}
-		*token = string(tokenBytes)
+		*token = strings.TrimSpace(string(tokenBytes))
 	}
 	var transport http.RoundTripper
 	if *caFile != "" || *keyFile != "" || *certFile != "" {
