@@ -1,10 +1,10 @@
 package labels
 
 import (
+	"context"
 	"sync"
 
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/store/consul/transaction"
 
 	"k8s.io/kubernetes/pkg/labels"
 )
@@ -56,7 +56,7 @@ func (app *fakeApplicator) SetLabels(labelType Type, id string, labels map[strin
 	return nil
 }
 
-func (app *fakeApplicator) SetLabelsTxn(txn *transaction.Tx, labelType Type, id string, labels map[string]string) error {
+func (app *fakeApplicator) SetLabelsTxn(ctx context.Context, labelType Type, id string, labels map[string]string) error {
 	panic("not implemented")
 }
 

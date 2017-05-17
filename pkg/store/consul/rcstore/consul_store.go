@@ -1,6 +1,7 @@
 package rcstore
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -130,8 +131,11 @@ func (s *ConsulStore) Create(manifest manifest.Manifest, nodeSelector klabels.Se
 }
 
 // TODO: replace Create() with this
-func (s *ConsulStore) CreateTxn(txn *transaction.Tx, manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
-	rc, err := s.innerCreateTxn(txn, manifest, nodeSelector, podLabels)
+func (s *ConsulStore) CreateTxn(ctx context.Context, manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
+	rc, err := s.innerCreateTxn(ctx, manifest, nodeSelector, podLabels)
+	if err != nil {
+		return fields.RC{}, err
+	}
 
 	// TODO: measure whether retries are is important in practice
 	for i := 0; i < s.retries; i++ {
@@ -196,7 +200,7 @@ func (s *ConsulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabe
 }
 
 // TODO: replace innerCreate() with this function
-func (s *ConsulStore) innerCreateTxn(txn *transaction.Tx, manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
+func (s *ConsulStore) innerCreateTxn(ctx context.Context, manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
 	id := fields.ID(uuid.New())
 	rcp, err := s.rcPath(id)
 	if err != nil {
@@ -217,7 +221,7 @@ func (s *ConsulStore) innerCreateTxn(txn *transaction.Tx, manifest manifest.Mani
 		return fields.RC{}, util.Errorf("Could not marshal RC as json: %s", err)
 	}
 
-	err = txn.Add(api.KVTxnOp{
+	err = transaction.Add(ctx, api.KVTxnOp{
 		Verb:  api.KVCAS,
 		Key:   rcp,
 		Value: jsonRC,

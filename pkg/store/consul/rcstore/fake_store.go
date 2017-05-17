@@ -1,6 +1,7 @@
 package rcstore
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"sync"
@@ -12,7 +13,6 @@ import (
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
-	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -66,7 +66,7 @@ func (s *fakeStore) Create(manifest manifest.Manifest, nodeSelector labels.Selec
 // If a test needs to use transactions, it should be using a real consul e.g.
 // via consulutil.NewFixture(). We won't be implementing transactions ourselves
 // in these fake storage structs
-func (s *fakeStore) CreateTxn(txn *transaction.Tx, manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (fields.RC, error) {
+func (s *fakeStore) CreateTxn(ctx context.Context, manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (fields.RC, error) {
 	panic("transactions not implemented in fake rc store")
 }
 

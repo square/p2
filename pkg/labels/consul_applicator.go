@@ -1,6 +1,7 @@
 package labels
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -200,7 +201,7 @@ func (c *consulApplicator) mutateLabels(labelType Type, id string, labels map[st
 }
 
 // TODO: replace mutateLabels() with this transaction-using implementation
-func (c *consulApplicator) mutateLabelsTxn(txn *transaction.Tx, labelType Type, id string, labels map[string]*string) error {
+func (c *consulApplicator) mutateLabelsTxn(ctx context.Context, labelType Type, id string, labels map[string]*string) error {
 	l, index, err := c.getLabels(labelType, id)
 	if err != nil {
 		return err
@@ -241,7 +242,7 @@ func (c *consulApplicator) mutateLabelsTxn(txn *transaction.Tx, labelType Type, 
 		}
 	}
 
-	return txn.Add(op)
+	return transaction.Add(ctx, op)
 }
 
 func labelsFromKeyValue(label string, value *string) map[string]*string {
@@ -287,7 +288,7 @@ func (c *consulApplicator) SetLabels(labelType Type, id string, labels map[strin
 
 // TODO: replace SetLabels() with this implementation. It's just separate right now to make
 // exploring solutions require less code churn
-func (c *consulApplicator) SetLabelsTxn(txn *transaction.Tx, labelType Type, id string, labels map[string]string) error {
+func (c *consulApplicator) SetLabelsTxn(ctx context.Context, labelType Type, id string, labels map[string]string) error {
 	labelsToPointers := make(map[string]*string)
 	for label, value := range labels {
 		// We can't just use &value because that would be a pointer to
@@ -297,7 +298,7 @@ func (c *consulApplicator) SetLabelsTxn(txn *transaction.Tx, labelType Type, id 
 		labelsToPointers[label] = &valPtr
 	}
 
-	return c.mutateLabelsTxn(txn, labelType, id, labelsToPointers)
+	return c.mutateLabelsTxn(ctx, labelType, id, labelsToPointers)
 }
 
 func (c *consulApplicator) RemoveLabel(labelType Type, id, label string) error {

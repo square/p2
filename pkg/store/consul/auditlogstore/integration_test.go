@@ -2,6 +2,7 @@ package auditlogstore
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -21,20 +22,20 @@ func TestCreateListAndDelete(t *testing.T) {
 
 	// First create two records to confirm Create() works as well as our
 	// transaction pattern
-	txn := transaction.New()
+	ctx, cancelFunc := transaction.New(context.Background())
 	var eventType1, eventType2 audit.EventType = "event_type_1", "event_type_2"
 	details1, details2 := json.RawMessage(`{"some":"details"}`), json.RawMessage(`{"some":"details2"}`)
-	err := consulStore.Create(txn, eventType1, details1)
+	err := consulStore.Create(ctx, eventType1, details1)
 	if err != nil {
 		t.Fatalf("could not create first audit record: %s", err)
 	}
 
-	err = consulStore.Create(txn, eventType2, details2)
+	err = consulStore.Create(ctx, eventType2, details2)
 	if err != nil {
 		t.Fatalf("could not create second audit record: %s", err)
 	}
 
-	err = txn.Commit(f.Client.KV())
+	err = transaction.Commit(ctx, cancelFunc, f.Client.KV())
 	if err != nil {
 		t.Fatalf("could not apply txn with two audit record creations: %s", err)
 	}
@@ -72,13 +73,13 @@ func TestCreateListAndDelete(t *testing.T) {
 	}
 
 	// Now delete a record to confirm that works
-	txn = transaction.New()
-	err = consulStore.Delete(txn, firstID)
+	ctx, cancelFunc = transaction.New(context.Background())
+	err = consulStore.Delete(ctx, firstID)
 	if err != nil {
 		t.Fatalf("error deleting audit log record: %s", err)
 	}
 
-	err = txn.Commit(f.Client.KV())
+	err = transaction.Commit(ctx, cancelFunc, f.Client.KV())
 	if err != nil {
 		t.Fatalf("could not apply txn with a record deletion: %s", err)
 	}

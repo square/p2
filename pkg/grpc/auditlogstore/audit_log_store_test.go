@@ -35,11 +35,11 @@ func TestList(t *testing.T) {
 		t.Errorf("expected 0 records to be returned but there were %d", len(resp.GetAuditLogs()))
 	}
 
-	txn := transaction.New()
+	ctx, cancelFunc := transaction.New(context.Background())
 	eventDetails0 := json.RawMessage(`{"bogus_event_details":0}`)
 	eventType := audit.EventType("bogus_event_type")
 	err = alStore.Create(
-		txn,
+		ctx,
 		eventType,
 		eventDetails0,
 	)
@@ -47,7 +47,7 @@ func TestList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = txn.Commit(f.Client.KV())
+	err = transaction.Commit(ctx, cancelFunc, f.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,9 +71,9 @@ func TestList(t *testing.T) {
 		}
 	}
 
-	txn = transaction.New()
+	ctx, cancelFunc = transaction.New(context.Background())
 	err = alStore.Create(
-		txn,
+		ctx,
 		"bogus_event_type",
 		json.RawMessage(`{"bogus_event_details1":1}`),
 	)
@@ -82,7 +82,7 @@ func TestList(t *testing.T) {
 	}
 
 	err = alStore.Create(
-		txn,
+		ctx,
 		"bogus_event_type",
 		json.RawMessage(`{"bogus_event_details":2}`),
 	)
@@ -90,7 +90,7 @@ func TestList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = txn.Commit(f.Client.KV())
+	err = transaction.Commit(ctx, cancelFunc, f.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,11 +116,11 @@ func TestDelete(t *testing.T) {
 		f.Client.KV(),
 	)
 
-	txn := transaction.New()
+	ctx, cancelFunc := transaction.New(context.Background())
 	eventDetails0 := json.RawMessage(`{"bogus_event_details":0}`)
 	eventType := audit.EventType("bogus_event_type")
 	err := alStore.Create(
-		txn,
+		ctx,
 		eventType,
 		eventDetails0,
 	)
@@ -128,7 +128,7 @@ func TestDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = txn.Commit(f.Client.KV())
+	err = transaction.Commit(ctx, cancelFunc, f.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}

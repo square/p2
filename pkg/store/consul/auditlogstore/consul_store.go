@@ -1,6 +1,7 @@
 package auditlogstore
 
 import (
+	"context"
 	"encoding/json"
 	"path"
 	"strings"
@@ -37,7 +38,7 @@ func NewConsulStore(consulKV ConsulKV) ConsulStore {
 }
 
 func (ConsulStore) Create(
-	txn *transaction.Tx,
+	ctx context.Context,
 	eventType audit.EventType,
 	eventDetails json.RawMessage,
 ) error {
@@ -51,21 +52,21 @@ func (ConsulStore) Create(
 		return util.Errorf("could not create audit log record: %s", err)
 	}
 
-	return txn.Add(api.KVTxnOp{
+	return transaction.Add(ctx, api.KVTxnOp{
 		Verb:  string(api.KVSet),
 		Key:   computeKey(audit.ID(uuid.New())),
 		Value: auditLogBytes,
 	})
 }
 func (ConsulStore) Delete(
-	txn *transaction.Tx,
+	ctx context.Context,
 	id audit.ID,
 ) error {
 	if uuid.Parse(id.String()) == nil {
 		return util.Errorf("%s is not a valid audit log ID", id)
 	}
 
-	return txn.Add(api.KVTxnOp{
+	return transaction.Add(ctx, api.KVTxnOp{
 		Verb: api.KVDelete,
 		Key:  computeKey(id),
 	})

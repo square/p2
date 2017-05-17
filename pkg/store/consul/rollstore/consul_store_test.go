@@ -1,6 +1,7 @@
 package rollstore
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -186,7 +187,8 @@ func TestCreateExistingRCsMutualExclusion(t *testing.T) {
 		OldRC: oldRCID,
 	}
 
-	_, err := rollstore.CreateRollingUpdateFromExistingRCs(transaction.New(), update, nil, nil)
+	ctx, _ := transaction.New(context.Background())
+	_, err := rollstore.CreateRollingUpdateFromExistingRCs(ctx, update, nil, nil)
 	if err == nil {
 		t.Fatal("Expected update creation to fail due to conflict")
 	}
@@ -233,7 +235,8 @@ func TestCreateFailsIfCantAcquireLock(t *testing.T) {
 		t.Fatalf("Unable to acquire conflicting lock on old rc: %s", err)
 	}
 
-	_, err = rollstore.CreateRollingUpdateFromExistingRCs(transaction.New(), update, nil, nil)
+	ctx, _ := transaction.New(context.Background())
+	_, err = rollstore.CreateRollingUpdateFromExistingRCs(ctx, update, nil, nil)
 	if err == nil {
 		t.Fatal("Expected update creation to fail due to lock conflict")
 	}
@@ -262,8 +265,9 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDFailsIfCantAcquireLock(t *tes
 		t.Fatalf("Unable to acquire conflicting lock on old rc: %s", err)
 	}
 
+	ctx, _ := transaction.New(context.Background())
 	newUpdate, err := rollstore.CreateRollingUpdateFromOneExistingRCWithID(
-		transaction.New(),
+		ctx,
 		oldRCID,
 		1,
 		0,
@@ -334,8 +338,9 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenTwoMat
 	oldRCSelector := klabels.Everything().
 		Add("is_test_rc", klabels.EqualsOperator, []string{"true"})
 
+	ctx, _ := transaction.New(context.Background())
 	u, err := rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
-		transaction.New(),
+		ctx,
 		oldRCSelector,
 		1,
 		0,
@@ -391,8 +396,9 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenExisti
 	oldRCSelector := klabels.Everything().
 		Add("is_test_rc", klabels.EqualsOperator, []string{"true"})
 
+	ctx, _ := transaction.New(context.Background())
 	u, err := rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
-		transaction.New(),
+		ctx,
 		oldRCSelector,
 		1,
 		0,
@@ -421,8 +427,9 @@ func TestLeaveOldInvalidIfNoOldRC(t *testing.T) {
 	oldRCSelector := klabels.Everything().
 		Add("is_test_rc", klabels.EqualsOperator, []string{"true"})
 
+	ctx, _ := transaction.New(context.Background())
 	_, err := rollstore.CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
-		transaction.New(),
+		ctx,
 		oldRCSelector,
 		1,
 		0,
