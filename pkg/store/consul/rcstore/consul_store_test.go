@@ -350,7 +350,13 @@ func TestPublishLatestRCsWithLockInfoNoLocks(t *testing.T) {
 	select {
 	case inCh <- unlockedCase.InputRCs:
 	case <-time.After(1 * time.Second):
-		t.Fatalf("Timed out writing to input channel")
+		t.Fatal("Timed out writing to input channel")
+	}
+
+	select {
+	case <-lockResultCh:
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out reading from output channel")
 	}
 
 	// create a new case
