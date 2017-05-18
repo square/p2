@@ -131,6 +131,23 @@ func TestMutate(t *testing.T) {
 	}
 }
 
+func TestMutateError(t *testing.T) {
+	f := NewConsulTestFixture(t)
+	defer f.Close()
+
+	_, err := f.Store.SetPod(INTENT_TREE, "node1", testManifest("pod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = f.Store.MutatePod(context.Background(), []types.NodeName{"node1"}, "pod", func(manifest.Manifest) (manifest.Manifest, error) {
+		return nil, fmt.Errorf("no")
+	})
+	if err == nil {
+		t.Fatal("expected an error if the mutation errors")
+	}
+}
+
 func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 	type expectation struct {
 		path string
