@@ -3,6 +3,7 @@
 package consul
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -86,6 +88,46 @@ func TestGetHealthWithEntry(t *testing.T) {
 	}
 	if len(results) != 2 {
 		t.Fatalf("Expected to have 2 results, got %v", len(results))
+	}
+}
+
+func TestMutate(t *testing.T) {
+	f := NewConsulTestFixture(t)
+	defer f.Close()
+
+	_, err := f.Store.SetPod(INTENT_TREE, "node1", testManifest("pod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := transaction.New(context.Background())
+
+	err = f.Store.MutatePod(ctx, []types.NodeName{"node1", "node2"}, "pod", func(m manifest.Manifest) (manifest.Manifest, error) {
+		builder := m.GetBuilder()
+		builder.SetStatusPort(1000)
+		return builder.GetManifest(), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = transaction.Commit(ctx, cancel, f.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manifest, _, err := f.Store.Pod(INTENT_TREE, "node1", "pod")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if manifest.GetStatusPort() != 1000 {
+		marshaled, err := manifest.Marshal()
+		if err != nil {
+			t.Fatalf("Expected mutated manifest to have status port 1000. Manifest with status port %d can't be marshaled: %s", manifest.GetStatusPort(), err)
+		} else {
+			t.Fatalf("Expected mutated manifest to have status port 1000. Manifest: %s", marshaled)
+		}
 	}
 }
 
