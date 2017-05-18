@@ -4,6 +4,7 @@ package consul
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/podstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -224,6 +226,59 @@ func (c consulStore) DeletePod(podPrefix PodPrefix, nodename types.NodeName, pod
 		return 0, consulutil.NewKVError("delete", key, err)
 	}
 	return writeMeta.RequestTime, nil
+}
+
+// MutatePod mutates the input context in such a way
+// that it will transactionally mutate the pod manifest on the given nodes.
+// If the pod does not exist on some of the given nodes,
+// the operation skips those nodes without considering that an error.
+func (c consulStore) MutatePod(
+	ctx context.Context,
+	nodes []types.NodeName,
+	podID types.PodID,
+	mutate func(manifest.Manifest) (manifest.Manifest, error),
+) error {
+	for _, node := range nodes {
+		path, err := podPath(INTENT_TREE, node, podID)
+		if err != nil {
+			return util.Errorf("can't make path for %s: %s", node, err)
+		}
+
+		kvp, queryMeta, err := c.client.KV().Get(path, nil)
+		if err != nil {
+			return util.Errorf("can't get %s: %s", path, err)
+		}
+		if kvp == nil {
+			continue
+		}
+
+		manifest, err := manifest.FromBytes(kvp.Value)
+		if err != nil {
+			return util.Errorf("%s isn't a manifest: %s\n%s", path, err, string(kvp.Value))
+		}
+
+		mutated, err := mutate(manifest)
+		if err != nil {
+			return util.Errorf("Can't mutate %s: %s\n%s", path, err, string(kvp.Value))
+		}
+
+		bytes, err := mutated.Marshal()
+		if err != nil {
+			return util.Errorf("can't marshal mutated %s: %s\n%s", path, err, string(kvp.Value))
+		}
+
+		err = transaction.Add(ctx, api.KVTxnOp{
+			Verb:  api.KVCAS,
+			Key:   path,
+			Value: bytes,
+			Index: queryMeta.LastIndex,
+		})
+		if err != nil {
+			return util.Errorf("can't add mutated %s to transaction: %s", path, err)
+		}
+	}
+
+	return nil
 }
 
 // Pod reads a pod manifest from the key-value store. If the given key does not
