@@ -2,12 +2,14 @@ package auditlogstore
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/square/p2/pkg/audit"
 	audit_log_protos "github.com/square/p2/pkg/grpc/auditlogstore/protos"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store/consul/transaction"
+	"github.com/square/p2/pkg/util"
 
 	grpccontext "golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -86,4 +88,19 @@ func rawAuditLogToProtoAuditLog(al audit.AuditLog) audit_log_protos.AuditLog {
 		Timestamp:     al.Timestamp.Format(time.RFC3339),
 		SchemaVersion: int64(al.SchemaVersion.Int()),
 	}
+}
+
+func ProtoAuditLogToRawAuditLog(protoAL audit_log_protos.AuditLog) (audit.AuditLog, error) {
+	msg := json.RawMessage([]byte(protoAL.EventDetails))
+	timestamp, err := time.Parse(time.RFC3339, protoAL.Timestamp)
+	if err != nil {
+		return audit.AuditLog{}, util.Errorf("could not parse timestamp %q as RFC3339: %s", protoAL.Timestamp, err)
+	}
+
+	return audit.AuditLog{
+		EventType:     audit.EventType(protoAL.EventType),
+		EventDetails:  &msg,
+		Timestamp:     timestamp,
+		SchemaVersion: audit.SchemaVersion(int(protoAL.SchemaVersion)),
+	}, nil
 }
