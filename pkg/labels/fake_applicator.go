@@ -67,6 +67,12 @@ func (app *fakeApplicator) RemoveAllLabels(labelType Type, id string) error {
 	return nil
 }
 
+// Implemented to satisfy interface constraints, but no test should be using
+// this. Instead, use a real consul store using consulutil.NewFixture()
+func (app *fakeApplicator) RemoveAllLabelsTxn(ctx context.Context, labelType Type, id string) error {
+	panic("not implemented")
+}
+
 func (app *fakeApplicator) RemoveLabel(labelType Type, id, name string) error {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()

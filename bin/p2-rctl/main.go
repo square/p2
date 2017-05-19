@@ -162,7 +162,7 @@ func main() {
 	case cmdSchedupText:
 		rctl.ScheduleUpdate(*schedupOldID, *schedupNewID, *schedupWant, *schedupNeed, client.KV())
 	case cmdDeleteRollText:
-		rctl.DeleteRollingUpdate(*deleteRollID)
+		rctl.DeleteRollingUpdate(*deleteRollID, client.KV())
 	}
 }
 
@@ -193,7 +193,7 @@ type ReplicationControllerStore interface {
 }
 
 type RollingUpdateStore interface {
-	Delete(id roll_fields.ID) error
+	Delete(ctx context.Context, id roll_fields.ID) error
 	CreateRollingUpdateFromExistingRCs(ctx context.Context, u roll_fields.Update, newRCLabels klabels.Set, rollLabels klabels.Set) (roll_fields.Update, error)
 }
 
@@ -249,10 +249,19 @@ func (r rctlParams) Delete(id string, force bool) {
 	r.logger.WithField("id", id).Infoln("Deleted replication controller")
 }
 
-func (r rctlParams) DeleteRollingUpdate(id string) {
-	err := r.rls.Delete(roll_fields.ID(id))
+func (r rctlParams) DeleteRollingUpdate(id string, txner transaction.Txner) {
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
+	err := r.rls.Delete(ctx, roll_fields.ID(id))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not delete RU. Consider a retry.")
+		return
+	}
+
+	err = transaction.Commit(ctx, cancelFunc, txner)
+	if err != nil {
+		r.logger.WithError(err).Fatalln("Could not delete RU. Consider a retry.")
+		return
 	}
 }
 

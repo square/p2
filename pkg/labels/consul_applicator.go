@@ -314,6 +314,18 @@ func (c *consulApplicator) RemoveAllLabels(labelType Type, id string) error {
 	return err
 }
 
+// RemoveAllLabelsTxn is the same as RemoveAllLabels but adds the operation to
+// the passed transaction rather than synchronously making the requisite consul
+// call
+func (c *consulApplicator) RemoveAllLabelsTxn(ctx context.Context, labelType Type, id string) error {
+	path, err := objectPath(labelType, id)
+	if err != nil {
+		return err
+	}
+	_, err = c.kv.Delete(path, nil)
+	return err
+}
+
 // kvp must be non-nil
 func convertKVPToLabeled(kvp *api.KVPair) (Labeled, error) {
 	// /<root>/<type>/<id>

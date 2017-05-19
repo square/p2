@@ -134,5 +134,6 @@ func main() {
 		logger,
 		labeler,
 		klabels.Everything(),
+		client.KV(),
 	).Start(nil)
 }

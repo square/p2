@@ -53,6 +53,7 @@ type RollLabeler interface {
 	SetLabel(labelType labels.Type, id, name, value string) error
 	SetLabels(labelType labels.Type, id string, labels map[string]string) error
 	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, labels map[string]string) error
+	RemoveAllLabelsTxn(ctx context.Context, labelType labels.Type, id string) error
 	RemoveAllLabels(labelType labels.Type, id string) error
 	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
 	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
@@ -478,20 +479,22 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 }
 
 // Delete deletes a rolling update based on its ID.
-func (s ConsulStore) Delete(id roll_fields.ID) error {
+func (s ConsulStore) Delete(ctx context.Context, id roll_fields.ID) error {
 	key, err := RollPath(id)
 	if err != nil {
 		return err
 	}
 
-	_, err = s.kv.Delete(key, nil)
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb: api.KVDelete,
+		Key:  key,
+	})
 	if err != nil {
-		return consulutil.NewKVError("delete", key, err)
+		return util.Errorf("could not add RU deletion operation to transaction: %s", err)
 	}
 
-	err = s.labeler.RemoveAllLabels(labels.RU, id.String())
+	err = s.labeler.RemoveAllLabelsTxn(ctx, labels.RU, id.String())
 	if err != nil {
-		// TODO: If this fails, then we have some dangling labels. The labeler does retry a few times though
 		return err
 	}
 
