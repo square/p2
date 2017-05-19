@@ -11,7 +11,8 @@ import (
 )
 
 const (
-	RUCreationEvent EventType = "ROLLING_UPDATE_CREATION"
+	RUCreationEvent   EventType = "ROLLING_UPDATE_CREATION"
+	RUCompletionEvent EventType = "ROLLING_UPDATE_COMPLETION"
 )
 
 type RUCreationDetails struct {
@@ -21,6 +22,12 @@ type RUCreationDetails struct {
 	Deployer         string                     `json:"deployer"`
 	Manifest         string                     `json:"manifest"`
 	RollingUpdateID  roll_fields.ID             `json:"rolling_update_id"`
+}
+
+type RUCompletionDetails struct {
+	RollingUpdateID roll_fields.ID `json:"rolling_update_id"`
+	Succeeded       bool           `json:"succeeded"`
+	Canceled        bool           `json:"canceled"`
 }
 
 func NewRUCreationEventDetails(
@@ -48,6 +55,25 @@ func NewRUCreationEventDetails(
 	bytes, err := json.Marshal(details)
 	if err != nil {
 		return nil, util.Errorf("could not marshal ru creation details as json: %s", err)
+	}
+
+	return json.RawMessage(bytes), nil
+}
+
+func NewRUCompletionEventDetails(
+	rollingUpdateID roll_fields.ID,
+	succeeded bool,
+	canceled bool,
+) (json.RawMessage, error) {
+	details := RUCompletionDetails{
+		RollingUpdateID: rollingUpdateID,
+		Succeeded:       succeeded,
+		Canceled:        canceled,
+	}
+
+	bytes, err := json.Marshal(details)
+	if err != nil {
+		return nil, util.Errorf("could not marshal ru completion details as json: %s", err)
 	}
 
 	return json.RawMessage(bytes), nil
