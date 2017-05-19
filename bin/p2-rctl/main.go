@@ -255,13 +255,11 @@ func (r rctlParams) DeleteRollingUpdate(id string, txner transaction.Txner) {
 	err := r.rls.Delete(ctx, roll_fields.ID(id))
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not delete RU. Consider a retry.")
-		return
 	}
 
 	err = transaction.Commit(ctx, cancelFunc, txner)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not delete RU. Consider a retry.")
-		return
 	}
 }
 
