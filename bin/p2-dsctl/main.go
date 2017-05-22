@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"time"
 
@@ -12,10 +13,12 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/cli"
+	"github.com/square/p2/pkg/ds"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/dsstore"
 	"github.com/square/p2/pkg/store/consul/flags"
@@ -133,16 +136,27 @@ func main() {
 
 		ctx, cancelFunc := transaction.New(context.Background())
 		defer cancelFunc()
-		ds, err := dsstore.Create(ctx, manifest, minHealth, name, selector, podID, *createTimeout)
+		newDS, err := dsstore.Create(ctx, manifest, minHealth, name, selector, podID, *createTimeout)
 		if err != nil {
 			log.Fatalf("err: %v", err)
+		}
+
+		fmt.Fprintf(os.Stderr, "checking that that the given selector doesn't overlap nodes with other %s daemon sets\n", manifest.ID())
+
+		conflictingDS, isContending, err := ds.DSContends(&newDS, scheduler.NewApplicatorScheduler(applicator), dsstore)
+		if err != nil {
+			log.Fatalf("failed to check for daemon set overlap: %s", err)
+		}
+
+		if isContending {
+			log.Fatalf("daemon set %q contends with the given selector, correct this before re-attempting", conflictingDS.ID)
 		}
 
 		err = transaction.Commit(ctx, cancelFunc, client.KV())
 		if err != nil {
 			log.Fatalf("err: %v", err)
 		}
-		fmt.Printf("%v has been created in consul", ds.ID)
+		fmt.Printf("%v has been created in consul", newDS.ID)
 		fmt.Println()
 
 	case CmdGet:
