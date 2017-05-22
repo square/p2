@@ -1,6 +1,9 @@
+// +build !race
+
 package dsstore
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -13,14 +16,16 @@ import (
 	"github.com/square/p2/pkg/manifest"
 	pc_fields "github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 func TestCreate(t *testing.T) {
-	store := storeWithFakeKV()
-	createDaemonSet(store, t)
+	fixture := consulutil.NewFixture(t)
+	store := newStore(fixture.Client.KV())
+	createDaemonSet(store, fixture.Client.KV(), t)
 
 	// Create a bad DaemonSet
 	podID := types.PodID("")
@@ -38,12 +43,14 @@ func TestCreate(t *testing.T) {
 
 	timeout := replication.NoTimeout
 
-	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
+	if _, err := store.Create(ctx, podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
 		t.Error("Expected create to fail on bad pod id")
 	}
 
 	podID = types.PodID("pod_id")
-	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
+	if _, err := store.Create(ctx, podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
 		t.Error("Expected create to fail on bad manifest pod id")
 	}
 
@@ -51,12 +58,12 @@ func TestCreate(t *testing.T) {
 	manifestBuilder.SetID("different_pod_id")
 
 	podManifest = manifestBuilder.GetManifest()
-	if _, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
+	if _, err := store.Create(ctx, podManifest, minHealth, clusterName, selector, podID, timeout); err == nil {
 		t.Error("Expected create to fail on pod id and manifest pod id mismatch")
 	}
 }
 
-func createDaemonSet(store *ConsulStore, t *testing.T) ds_fields.DaemonSet {
+func createDaemonSet(store *ConsulStore, txner transaction.Txner, t *testing.T) ds_fields.DaemonSet {
 	podID := types.PodID("some_pod_id")
 	minHealth := 0
 	clusterName := ds_fields.ClusterName("some_name")
@@ -72,9 +79,16 @@ func createDaemonSet(store *ConsulStore, t *testing.T) ds_fields.DaemonSet {
 
 	timeout := replication.NoTimeout
 
-	ds, err := store.Create(manifest, minHealth, clusterName, selector, podID, timeout)
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
+	ds, err := store.Create(ctx, manifest, minHealth, clusterName, selector, podID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
+	}
+
+	err = transaction.Commit(ctx, cancelFunc, txner)
+	if err != nil {
+		t.Fatalf("could not commit transaction to create daemon set: %s", err)
 	}
 
 	if ds.ID == "" {
@@ -110,8 +124,9 @@ func createDaemonSet(store *ConsulStore, t *testing.T) ds_fields.DaemonSet {
 }
 
 func TestDelete(t *testing.T) {
-	store := storeWithFakeKV()
-	ds := createDaemonSet(store, t)
+	fixture := consulutil.NewFixture(t)
+	store := newStore(fixture.Client.KV())
+	ds := createDaemonSet(store, fixture.Client.KV(), t)
 
 	if err := store.Delete("bad_id"); err != nil {
 		t.Error("Expected no errors while deleting a daemon set that does not exist")
@@ -131,7 +146,8 @@ func TestDelete(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	store := storeWithFakeKV()
+	fixture := consulutil.NewFixture(t)
+	store := newStore(fixture.Client.KV())
 	//
 	// Create DaemonSet
 	//
@@ -150,7 +166,14 @@ func TestGet(t *testing.T) {
 
 	timeout := replication.NoTimeout
 
-	ds, err := store.Create(manifest, minHealth, clusterName, selector, podID, timeout)
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
+	ds, err := store.Create(ctx, manifest, minHealth, clusterName, selector, podID, timeout)
+	if err != nil {
+		t.Fatalf("Unable to create daemon set: %s", err)
+	}
+
+	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -199,7 +222,8 @@ func TestGet(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	store := storeWithFakeKV()
+	fixture := consulutil.NewFixture(t)
+	store := newStore(fixture.Client.KV())
 
 	// Create first DaemonSet
 	firstPodID := types.PodID("some_pod_id")
@@ -217,9 +241,16 @@ func TestList(t *testing.T) {
 
 	timeout := replication.NoTimeout
 
-	firstDS, err := store.Create(firstManifest, minHealth, clusterName, selector, firstPodID, timeout)
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
+	firstDS, err := store.Create(ctx, firstManifest, minHealth, clusterName, selector, firstPodID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
+	}
+
+	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("unable to commit daemon set: %s", err)
 	}
 
 	// Create second DaemonSet
@@ -229,9 +260,16 @@ func TestList(t *testing.T) {
 	manifestBuilder.SetID(secondPodID)
 
 	secondManifest := manifestBuilder.GetManifest()
-	secondDS, err := store.Create(secondManifest, minHealth, clusterName, selector, secondPodID, timeout)
+	ctx2, cancelFunc2 := transaction.New(context.Background())
+	defer cancelFunc2()
+	secondDS, err := store.Create(ctx2, secondManifest, minHealth, clusterName, selector, secondPodID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
+	}
+
+	err = transaction.Commit(ctx2, cancelFunc2, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("unable to commit daemon set: %s", err)
 	}
 
 	daemonSetList, err := store.List()
@@ -255,7 +293,8 @@ func TestList(t *testing.T) {
 }
 
 func TestMutate(t *testing.T) {
-	store := storeWithFakeKV()
+	fixture := consulutil.NewFixture(t)
+	store := newStore(fixture.Client.KV())
 
 	podID := types.PodID("some_pod_id")
 	minHealth := 0
@@ -271,10 +310,18 @@ func TestMutate(t *testing.T) {
 
 	timeout := replication.NoTimeout
 
-	ds, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout)
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
+	ds, err := store.Create(ctx, podManifest, minHealth, clusterName, selector, podID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
+
+	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("unable to commit daemon set: %s", err)
+	}
+
 	//
 	// Invalid mutates
 	//
@@ -388,7 +435,8 @@ func TestMutate(t *testing.T) {
 }
 
 func TestWatch(t *testing.T) {
-	store := storeWithFakeKV()
+	fixture := consulutil.NewFixture(t)
+	store := newStore(fixture.Client.KV())
 	//
 	// Create a new daemon set
 	//
@@ -406,10 +454,18 @@ func TestWatch(t *testing.T) {
 
 	timeout := replication.NoTimeout
 
-	ds, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout)
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
+	ds, err := store.Create(ctx, podManifest, minHealth, clusterName, selector, podID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
+
+	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("could not commit transaction to create daemon set: %s", err)
+	}
+
 	//
 	// Create another new daemon set
 	//
@@ -419,10 +475,18 @@ func TestWatch(t *testing.T) {
 	manifestBuilder.SetID(someOtherPodID)
 	someOtherManifest := manifestBuilder.GetManifest()
 
-	someOtherDS, err := store.Create(someOtherManifest, minHealth, clusterName, selector, someOtherPodID, timeout)
+	ctx2, cancelFunc2 := transaction.New(context.Background())
+	defer cancelFunc2()
+	someOtherDS, err := store.Create(ctx2, someOtherManifest, minHealth, clusterName, selector, someOtherPodID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
+
+	err = transaction.Commit(ctx2, cancelFunc2, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("could not commit transaction to create daemon set: %s", err)
+	}
+
 	//
 	// Watch for changes
 	//
@@ -507,7 +571,8 @@ func TestWatch(t *testing.T) {
 }
 
 func TestWatchAll(t *testing.T) {
-	store := storeWithFakeKV()
+	fixture := consulutil.NewFixture(t)
+	store := newStore(fixture.Client.KV())
 	//
 	// Create a new daemon set
 	//
@@ -525,9 +590,16 @@ func TestWatchAll(t *testing.T) {
 
 	timeout := replication.NoTimeout
 
-	ds, err := store.Create(podManifest, minHealth, clusterName, selector, podID, timeout)
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
+	ds, err := store.Create(ctx, podManifest, minHealth, clusterName, selector, podID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
+	}
+
+	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("could not commit transaction to create daemon set: %s", err)
 	}
 	//
 	// Create another new daemon set
@@ -538,9 +610,16 @@ func TestWatchAll(t *testing.T) {
 	manifestBuilder.SetID(someOtherPodID)
 	someOtherManifest := manifestBuilder.GetManifest()
 
-	someOtherDS, err := store.Create(someOtherManifest, minHealth, clusterName, selector, someOtherPodID, timeout)
+	ctx2, cancelFunc2 := transaction.New(context.Background())
+	defer cancelFunc2()
+	someOtherDS, err := store.Create(ctx2, someOtherManifest, minHealth, clusterName, selector, someOtherPodID, timeout)
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
+	}
+
+	err = transaction.Commit(ctx2, cancelFunc2, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("could not commit transaction to create daemon set: %s", err)
 	}
 	//
 	// Watch for create and verify
@@ -617,9 +696,9 @@ func TestWatchAll(t *testing.T) {
 	Assert(t).AreEqual(ds.PodID, watched.DaemonSets[0].PodID, "Daemon sets should have equal pod ids")
 }
 
-func storeWithFakeKV() *ConsulStore {
+func newStore(kv consulKV) *ConsulStore {
 	return &ConsulStore{
-		kv:      consulutil.NewFakeClient().KV(),
+		kv:      kv,
 		logger:  logging.DefaultLogger,
 		retries: 0,
 	}

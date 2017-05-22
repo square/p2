@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -18,6 +19,7 @@ import (
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/dsstore"
 	"github.com/square/p2/pkg/store/consul/flags"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -129,7 +131,14 @@ func main() {
 			log.Fatalf("Error occurred: %v", err)
 		}
 
-		ds, err := dsstore.Create(manifest, minHealth, name, selector, podID, *createTimeout)
+		ctx, cancelFunc := transaction.New(context.Background())
+		defer cancelFunc()
+		ds, err := dsstore.Create(ctx, manifest, minHealth, name, selector, podID, *createTimeout)
+		if err != nil {
+			log.Fatalf("err: %v", err)
+		}
+
+		err = transaction.Commit(ctx, cancelFunc, client.KV())
 		if err != nil {
 			log.Fatalf("err: %v", err)
 		}

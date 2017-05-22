@@ -1,6 +1,7 @@
 package dsstore
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -58,6 +60,7 @@ func NewConsul(client consulutil.ConsulClient, retries int, logger *logging.Logg
 // The node selector is used to determine what nodes the daemon set may schedule on.
 // The pod label set is applied to every pod the daemon set schedules.
 func (s *ConsulStore) Create(
+	ctx context.Context,
 	manifest manifest.Manifest,
 	minHealth int,
 	name fields.ClusterName,
@@ -69,15 +72,7 @@ func (s *ConsulStore) Create(
 		return fields.DaemonSet{}, util.Errorf("Error verifying manifest pod id: %v", err)
 	}
 
-	ds, err := s.innerCreate(manifest, minHealth, name, nodeSelector, podID, timeout)
-	// TODO: measure whether retries are is important in practice
-	for i := 0; i < s.retries; i++ {
-		if _, ok := err.(CASError); ok {
-			ds, err = s.innerCreate(manifest, minHealth, name, nodeSelector, podID, timeout)
-		} else {
-			break
-		}
-	}
+	ds, err := s.innerCreate(ctx, manifest, minHealth, name, nodeSelector, podID, timeout)
 	if err != nil {
 		return fields.DaemonSet{}, util.Errorf("Error creating daemon set: %v", err)
 	}
@@ -86,6 +81,7 @@ func (s *ConsulStore) Create(
 
 // these parts of Create may require a retry
 func (s *ConsulStore) innerCreate(
+	ctx context.Context,
 	manifest manifest.Manifest,
 	minHealth int,
 	name fields.ClusterName,
@@ -114,16 +110,14 @@ func (s *ConsulStore) innerCreate(
 		return fields.DaemonSet{}, util.Errorf("Could not marshal DS as json: %s", err)
 	}
 
-	success, _, err := s.kv.CAS(&api.KVPair{
-		Key:         dsPath,
-		Value:       rawDS,
-		ModifyIndex: 0,
-	}, nil)
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb:  api.KVCAS,
+		Key:   dsPath,
+		Value: rawDS,
+		Index: 0,
+	})
 	if err != nil {
-		return fields.DaemonSet{}, consulutil.NewKVError("cas", dsPath, err)
-	}
-	if !success {
-		return fields.DaemonSet{}, CASError(dsPath)
+		return fields.DaemonSet{}, err
 	}
 	return ds, nil
 }
