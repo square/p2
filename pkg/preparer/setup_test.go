@@ -26,6 +26,7 @@ func TestLoadConfigWillMarshalYaml(t *testing.T) {
 	preparerConfig, err := LoadConfig(configPath)
 	Assert(t).IsNil(err, "should have read config correctly")
 
+	Assert(t).AreEqual("/dev/shm/p2-may-run", preparerConfig.RequireFile, "did not read the require file correctly")
 	Assert(t).AreEqual("foohost", preparerConfig.NodeName.String(), "did not read the node name correctly")
 	Assert(t).AreEqual("0.0.0.0", preparerConfig.ConsulAddress, "did not read the consul address correctly")
 	Assert(t).IsTrue(preparerConfig.ConsulHttps, "did not read consul HTTPS correctly (should be true)")

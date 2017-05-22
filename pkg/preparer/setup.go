@@ -131,6 +131,7 @@ type PreparerConfig struct {
 	CertFile               string                 `yaml:"cert_file,omitempty"`
 	KeyFile                string                 `yaml:"key_file,omitempty"`
 	PodRoot                string                 `yaml:"pod_root,omitempty"`
+	RequireFile            string                 `yaml:"require_file,omitempty"`
 	StatusPort             int                    `yaml:"status_port"`
 	StatusSocket           string                 `yaml:"status_socket"`
 	Auth                   map[string]interface{} `yaml:"auth,omitempty"`
@@ -230,7 +231,6 @@ func UnmarshalConfig(config []byte) (*PreparerConfig, error) {
 		preparerConfig.PodRoot = pods.DefaultPath
 	}
 	return preparerConfig, nil
-
 }
 
 // loadToken reads the file at the given path and trims its contents for use as a Consul
@@ -508,7 +508,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		podStatusStore:         podStatusStore,
 		podStore:               podStore,
 		Logger:                 logger,
-		podFactory:             pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName, fetcher),
+		podFactory:             pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName, fetcher, preparerConfig.RequireFile),
 		authPolicy:             authPolicy,
 		maxLaunchableDiskUsage: maxLaunchableDiskUsage,
 		finishExec:             finishExec,

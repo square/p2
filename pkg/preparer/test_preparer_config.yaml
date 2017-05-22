@@ -16,3 +16,4 @@ preparer:
   finish_exec:
     - touch
     - /tmp/process_did_finish
+  require_file: /dev/shm/p2-may-run

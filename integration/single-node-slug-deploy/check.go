@@ -74,12 +74,17 @@ func main() {
 		log.Fatalln("Could not create temp directory, bailing")
 	}
 
+	requireFile, err := createRequireFile(tempdir)
+	if err != nil {
+		log.Fatalln("Could not create temp require file, bailing: %s", err)
+	}
+
 	userHookManifest, err := userCreationHookManifest(tempdir)
 	if err != nil {
 		log.Fatalf("Couldn't schedule the user creation hook: %s", err)
 	}
 
-	preparerManifest, err := generatePreparerPod(tempdir, userHookManifest)
+	preparerManifest, err := generatePreparerPod(tempdir, userHookManifest, requireFile)
 	if err != nil {
 		log.Fatalf("Could not generate preparer pod: %s\n", err)
 	}
@@ -102,7 +107,7 @@ func main() {
 	}
 
 	fmt.Println("Executing bootstrap")
-	err = executeBootstrap(signedPreparerManifest, signedConsulManifest)
+	err = executeBootstrap(signedPreparerManifest, signedConsulManifest, requireFile)
 	if err != nil {
 		log.Fatalf("Could not execute bootstrap: %s\n%s\n%s", err, targetLogs("p2-preparer"), targetLogs("consul"))
 	}
@@ -497,7 +502,7 @@ func signBuild(artifactPath string) error {
 	return nil
 }
 
-func generatePreparerPod(workdir string, userHookManifest manifest.Manifest) (string, error) {
+func generatePreparerPod(workdir string, userHookManifest manifest.Manifest, requireFile string) (string, error) {
 	// build the artifact from HEAD
 	output, err := exec.Command("go", "build", "github.com/square/p2/bin/p2-preparer").CombinedOutput()
 	if err != nil {
@@ -557,6 +562,7 @@ func generatePreparerPod(workdir string, userHookManifest manifest.Manifest) (st
 				"workspace_dir_path":         "/data/pods/p2-preparer/tmp",
 			},
 			"hooks_manifest": string(userCreationHookBytes),
+			"require_file":   requireFile,
 		},
 	})
 	if err != nil {
@@ -727,7 +733,7 @@ exec "/usr/bin/consul agent -server -bootstrap-expect 1 -data-dir /tmp/consul"`
 	return rctlBin2Pod.ManifestPath, nil
 }
 
-func executeBootstrap(preparerManifest, consulManifest string) error {
+func executeBootstrap(preparerManifest, consulManifest string, requireFile string) error {
 	_, err := user.Lookup("consul")
 	if _, ok := err.(user.UnknownUserError); ok {
 		err = exec.Command("sudo", "useradd", "consul").Run()
@@ -742,7 +748,7 @@ func executeBootstrap(preparerManifest, consulManifest string) error {
 	if err != nil {
 		return fmt.Errorf("Could not install newest bootstrap: %s", err)
 	}
-	bootstr := exec.Command("p2-bootstrap", "--consul-pod", consulManifest, "--agent-pod", preparerManifest, "--consul-timeout", "20s")
+	bootstr := exec.Command("p2-bootstrap", "--consul-pod", consulManifest, "--agent-pod", preparerManifest, "--consul-timeout", "20s", "--require-file", requireFile)
 	bootstr.Stdout = os.Stdout
 	bootstr.Stderr = os.Stdout
 	return bootstr.Run()
@@ -1097,4 +1103,24 @@ func startLabelStoreServer(dir string) error {
 	conn.Close()
 
 	return nil
+}
+
+func createRequireFile(dir string) (string, error) {
+	f, err := ioutil.TempFile(dir, "may-run")
+	if err != nil {
+		return "", err
+	}
+
+	// make directory executable by all.
+	err = os.Chmod(dir, 0777)
+	if err != nil {
+		return "", err
+	}
+
+	err = os.Chmod(f.Name(), 0666)
+	if err != nil {
+		return "", err
+	}
+
+	return f.Name(), nil
 }

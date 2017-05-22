@@ -10,6 +10,7 @@ OptionParser.new do |opts|
   opts.on("-c", "--cgroup CGNAME") { |u| }
   opts.on("-n", "--nolimit") { |u| }
   opts.on("--clearenv") { |u| }
+  opts.on("--require-file RFILE") { |u| }
 end.parse!
 
 exec ARGV.join(" ")

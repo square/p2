@@ -59,6 +59,7 @@ func main() {
 		path = *podDir
 	}
 
+	// TODO: pass requirefile from old pod to new pod
 	pod, err := pods.PodFromPodHome(types.NodeName(*nodeName), path)
 	if err != nil {
 		logger.NoFields().Fatalln(err)
