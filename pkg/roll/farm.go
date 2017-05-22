@@ -1,6 +1,7 @@
 package roll
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/rcrowley/go-metrics"
 
+	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -16,9 +18,11 @@ import (
 	"github.com/square/p2/pkg/rc/fields"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/store/consul/rollstore"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/util"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -75,7 +79,7 @@ type RCGetter interface {
 
 type RollingUpdateStore interface {
 	Watch(quit <-chan struct{}) (<-chan []roll_fields.Update, <-chan error)
-	Delete(id roll_fields.ID) error
+	Delete(ctx context.Context, id roll_fields.ID) error
 }
 
 // The Farm is responsible for spawning and reaping rolling updates as they are
@@ -100,14 +104,26 @@ type Farm struct {
 
 	logger logging.Logger
 
-	labeler    rc.Labeler
-	rcSelector klabels.Selector
+	labeler       rc.Labeler
+	rcSelector    klabels.Selector
+	txner         transaction.Txner
+	auditLogStore auditlogstore.ConsulStore
+	config        FarmConfig
 }
 
 type childRU struct {
 	ru       Update
 	unlocker consulutil.Unlocker
 	quit     chan<- struct{}
+}
+
+// FarmConfig contains configuration options for the farm. All fields have safe
+// defaults
+type FarmConfig struct {
+	// ShouldCreateAuditLogRecords determines whether the farm will create audit
+	// log records when deleting a rolling update, which occurs after completing
+	// the RU
+	ShouldCreateAuditLogRecords bool
 }
 
 func NewFarm(
@@ -119,6 +135,8 @@ func NewFarm(
 	logger logging.Logger,
 	labeler rc.Labeler,
 	rcSelector klabels.Selector,
+	txner transaction.Txner,
+	config FarmConfig,
 ) *Farm {
 	return &Farm{
 		factory:    factory,
@@ -130,6 +148,8 @@ func NewFarm(
 		children:   make(map[roll_fields.ID]childRU),
 		labeler:    labeler,
 		rcSelector: rcSelector,
+		txner:      txner,
+		config:     config,
 	}
 }
 
@@ -374,7 +394,32 @@ func (rlf *Farm) validateRoll(update roll_fields.Update, logger logging.Logger) 
 
 // Tries to delete the given RU every second until it succeeds
 func (rlf *Farm) mustDeleteRU(id roll_fields.ID, logger logging.Logger) {
-	for err := rlf.rls.Delete(id); err != nil; err = rlf.rls.Delete(id) {
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc() // technically not necessary once Commit() succeeds
+	err := rlf.rls.Delete(ctx, id)
+	if err != nil {
+		// this error is really bad because we can't recover from it
+		logger.WithError(err).Errorln("could not construct transaction to delete RU")
+		return
+	}
+
+	if rlf.config.ShouldCreateAuditLogRecords {
+		details, err := audit.NewRUCompletionEventDetails(id, true, false)
+		if err != nil {
+			logger.WithError(err).Errorln("could not create RU completion audit log record")
+			// this error won't be recoverable so continue with deleting
+			// the RU without making an audit record
+		} else {
+			err = rlf.auditLogStore.Create(ctx, audit.RUCompletionEvent, details)
+			if err != nil {
+				logger.WithError(err).Errorln("could not add audit log record creation operation to transaction")
+				// this error won't be recoverable so continue with deleting
+				// the RU without making an audit record
+			}
+		}
+	}
+
+	for err = transaction.Commit(ctx, cancelFunc, rlf.txner); err != nil; err = transaction.Commit(ctx, cancelFunc, rlf.txner) {
 		logger.WithError(err).Errorln("Could not delete update")
 		time.Sleep(1 * time.Second)
 	}

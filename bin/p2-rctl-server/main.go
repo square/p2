@@ -134,5 +134,7 @@ func main() {
 		logger,
 		labeler,
 		klabels.Everything(),
+		client.KV(),
+		roll.FarmConfig{},
 	).Start(nil)
 }
