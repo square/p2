@@ -100,10 +100,6 @@ func main() {
 	logger := logging.NewLogger(logrus.Fields{})
 	applicator := labels.NewConsulApplicator(client, 0)
 	pcstore := pcstore.NewConsul(client, labeler, applicator, &logger)
-	session, _, err := kv.NewSession(fmt.Sprintf("pcctl-%s", currentUserName()), nil)
-	if err != nil {
-		log.Fatalf("Could not create session: %s", err)
-	}
 
 	switch cmd {
 	case cmdCreateText:
@@ -119,6 +115,12 @@ func main() {
 		if err != nil {
 			log.Fatalf("could not parse json: %v", err)
 		}
+
+		session, _, err := kv.NewSession(fmt.Sprintf("pcctl-%s", currentUserName()), nil)
+		if err != nil {
+			log.Fatalf("Could not create session: %s", err)
+		}
+
 		_, err = pccontrol.Create(parsedAnnotations, session)
 		if err != nil {
 			log.Fatalf("err: %v", err)
