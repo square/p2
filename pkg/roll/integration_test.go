@@ -20,8 +20,9 @@ func TestAuditLogCreation(t *testing.T) {
 	rollStore := rollstore.NewConsul(fixture.Client, applicator, &logger)
 
 	farm := &Farm{
-		rls:   rollStore,
-		txner: fixture.Client.KV(),
+		rls:     rollStore,
+		txner:   fixture.Client.KV(),
+		labeler: applicator,
 		config: FarmConfig{
 			ShouldCreateAuditLogRecords: true,
 		},
