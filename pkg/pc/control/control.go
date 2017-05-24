@@ -5,7 +5,6 @@ package control
 
 import (
 	"github.com/square/p2/pkg/pc/fields"
-	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/pcstore"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -36,7 +35,6 @@ type PodClusterStore interface {
 
 type PodCluster struct {
 	pcStore PodClusterStore
-	session consul.Session
 
 	ID fields.ID
 
@@ -52,7 +50,6 @@ func NewPodCluster(
 	podID types.PodID,
 	pcstore PodClusterStore,
 	selector labels.Selector,
-	session consul.Session,
 ) *PodCluster {
 
 	pc := &PodCluster{}
@@ -61,18 +58,15 @@ func NewPodCluster(
 	pc.podID = podID
 	pc.pcStore = pcstore
 	pc.selector = selector
-	pc.session = session
 
 	return pc
 }
 
 func NewPodClusterFromID(
 	id fields.ID,
-	session consul.Session,
 	pcStore PodClusterStore,
 ) *PodCluster {
 	pc := &PodCluster{}
-	pc.session = session
 	pc.pcStore = pcStore
 	pc.ID = id
 	return pc
@@ -105,8 +99,8 @@ func (pccontrol *PodCluster) Delete() (errors []error) {
 	return errors
 }
 
-func (pccontrol *PodCluster) Create(annotations fields.Annotations) (fields.PodCluster, error) {
-	return pccontrol.pcStore.Create(pccontrol.podID, pccontrol.az, pccontrol.cn, pccontrol.selector, annotations, pccontrol.session)
+func (pccontrol *PodCluster) Create(annotations fields.Annotations, session pcstore.Session) (fields.PodCluster, error) {
+	return pccontrol.pcStore.Create(pccontrol.podID, pccontrol.az, pccontrol.cn, pccontrol.selector, annotations, session)
 }
 
 func (pccontrol *PodCluster) Get() (fields.PodCluster, error) {

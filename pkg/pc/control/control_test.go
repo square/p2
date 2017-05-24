@@ -23,7 +23,7 @@ func TestCreate(t *testing.T) {
 	session := consultest.NewSession()
 	pcstore := pcstoretest.NewFake()
 
-	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector, session)
+	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector)
 
 	annotations := map[string]string{
 		"load_balancer_info": "totally",
@@ -40,7 +40,7 @@ func TestCreate(t *testing.T) {
 		t.Errorf("json unmarshal error: %v", err)
 	}
 
-	pc, err := pcController.Create(fields.Annotations(testAnnotations))
+	pc, err := pcController.Create(fields.Annotations(testAnnotations), session)
 	if err != nil {
 		t.Errorf("got error during creation: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestUpdateAnnotations(t *testing.T) {
 	session := consultest.NewSession()
 	pcstore := pcstoretest.NewFake()
 
-	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector, session)
+	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector)
 
 	var annotations = map[string]string{
 		"load_balancer_info": "totally",
@@ -101,7 +101,7 @@ func TestUpdateAnnotations(t *testing.T) {
 		t.Errorf("json unmarshal error: %v", err)
 	}
 
-	pc, err := pcController.Create(fields.Annotations(testAnnotations))
+	pc, err := pcController.Create(fields.Annotations(testAnnotations), session)
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster due to: %v", err)
 	}
@@ -150,14 +150,14 @@ func TestPodClusterFromID(t *testing.T) {
 	session := consultest.NewSession()
 	fakePCStore := pcstoretest.NewFake()
 
-	pcControllerFromLabels := NewPodCluster(testAZ, testCN, testPodID, fakePCStore, selector, session)
-	pc, err := pcControllerFromLabels.Create(fields.Annotations{})
+	pcControllerFromLabels := NewPodCluster(testAZ, testCN, testPodID, fakePCStore, selector)
+	pc, err := pcControllerFromLabels.Create(fields.Annotations{}, session)
 	if err != nil {
 		t.Fatal(err)
 	}
 	pcControllerFromLabels = nil
 
-	pcControllerFromID := NewPodClusterFromID(pc.ID, session, fakePCStore)
+	pcControllerFromID := NewPodClusterFromID(pc.ID, fakePCStore)
 	retrievedPC, err := pcControllerFromID.Get()
 	if err != nil {
 		t.Fatal(err)

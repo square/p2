@@ -100,10 +100,6 @@ func main() {
 	logger := logging.NewLogger(logrus.Fields{})
 	applicator := labels.NewConsulApplicator(client, 0)
 	pcstore := pcstore.NewConsul(client, labeler, applicator, &logger)
-	session, _, err := kv.NewSession(fmt.Sprintf("pcctl-%s", currentUserName()), nil)
-	if err != nil {
-		log.Fatalf("Could not create session: %s", err)
-	}
 
 	switch cmd {
 	case cmdCreateText:
@@ -111,7 +107,7 @@ func main() {
 		cn := fields.ClusterName(*createName)
 		podID := types.PodID(*createPodID)
 		selector := defaultSelector(az, cn, podID)
-		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, session)
+		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector)
 
 		annotations := *createAnnotations
 		var parsedAnnotations map[string]interface{}
@@ -119,7 +115,13 @@ func main() {
 		if err != nil {
 			log.Fatalf("could not parse json: %v", err)
 		}
-		_, err = pccontrol.Create(parsedAnnotations)
+
+		session, _, err := kv.NewSession(fmt.Sprintf("pcctl-%s", currentUserName()), nil)
+		if err != nil {
+			log.Fatalf("Could not create session: %s", err)
+		}
+
+		_, err = pccontrol.Create(parsedAnnotations, session)
 		if err != nil {
 			log.Fatalf("err: %v", err)
 		}
@@ -131,10 +133,10 @@ func main() {
 
 		var pccontrol *control.PodCluster
 		if pcID != "" {
-			pccontrol = control.NewPodClusterFromID(pcID, session, pcstore)
+			pccontrol = control.NewPodClusterFromID(pcID, pcstore)
 		} else if az != "" && cn != "" && podID != "" {
 			selector := defaultSelector(az, cn, podID)
-			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, session)
+			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector)
 		} else {
 			log.Fatalf("Expected one of: pcID or (pod,az,name)")
 		}
@@ -157,10 +159,10 @@ func main() {
 
 		var pccontrol *control.PodCluster
 		if pcID != "" {
-			pccontrol = control.NewPodClusterFromID(pcID, session, pcstore)
+			pccontrol = control.NewPodClusterFromID(pcID, pcstore)
 		} else if az != "" && cn != "" && podID != "" {
 			selector := defaultSelector(az, cn, podID)
-			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, session)
+			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector)
 		} else {
 			log.Fatalf("Expected one of: pcID or (pod,az,name)")
 		}
@@ -180,10 +182,10 @@ func main() {
 
 		var pccontrol *control.PodCluster
 		if pcID != "" {
-			pccontrol = control.NewPodClusterFromID(pcID, session, pcstore)
+			pccontrol = control.NewPodClusterFromID(pcID, pcstore)
 		} else if az != "" && cn != "" && podID != "" {
 			selector := defaultSelector(az, cn, podID)
-			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, session)
+			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector)
 		} else {
 			log.Fatalf("Expected one of: pcID or (pod,az,name)")
 		}
