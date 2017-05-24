@@ -32,6 +32,7 @@ var (
 		"Specifies an extra environment KEY=VALUE pair to set for the process. May be used multiple times. Takes precedence over --env if there are conflicts",
 	).StringMap()
 	launchableName = kingpin.Flag("launchable", "The key in $PLATFORM_CONFIG_PATH containing the cgroup parameters.").Short('l').String()
+	requireFile    = kingpin.Flag("require-file", "Check for the presence of a required file before execing its argument").String()
 	cgroupName     = kingpin.Flag("cgroup", "The name of the cgroup that should be created.").Short('c').String()
 	nolim          = kingpin.Flag("nolimit", "Remove rlimits.").Short('n').Bool()
 	clearEnv       = kingpin.Flag("clearenv", "Clear all environment variables before loading envDir(s).").Bool()
@@ -105,6 +106,18 @@ func main() {
 
 	if *workDir != "" {
 		err := os.Chdir(*workDir)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if *requireFile != "" {
+		_, err := os.Stat(*requireFile)
+
+		if os.IsNotExist(err) {
+			log.Fatalf("require file not present: %v\n", err)
+		}
+
 		if err != nil {
 			log.Fatal(err)
 		}

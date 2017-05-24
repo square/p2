@@ -42,7 +42,8 @@ type factory struct {
 	podRoot string
 	node    types.NodeName
 
-	fetcher uri.Fetcher
+	fetcher     uri.Fetcher
+	requireFile string
 }
 
 type hookFactory struct {
@@ -50,15 +51,16 @@ type hookFactory struct {
 	node     types.NodeName
 }
 
-func NewFactory(podRoot string, node types.NodeName, fetcher uri.Fetcher) Factory {
+func NewFactory(podRoot string, node types.NodeName, fetcher uri.Fetcher, requireFile string) Factory {
 	if podRoot == "" {
 		podRoot = DefaultPath
 	}
 
 	return &factory{
-		podRoot: podRoot,
-		node:    node,
-		fetcher: fetcher,
+		podRoot:     podRoot,
+		node:        node,
+		fetcher:     fetcher,
+		requireFile: requireFile,
 	}
 }
 
@@ -90,22 +92,22 @@ func (f *factory) NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod
 		return nil, util.Errorf("uniqueKey cannot be empty")
 	}
 	home := filepath.Join(f.podRoot, computeUniqueName(id, uniqueKey))
-	return newPodWithHome(id, uniqueKey, home, f.node), nil
+	return newPodWithHome(id, uniqueKey, home, f.node, f.requireFile), nil
 }
 
 func (f *factory) NewLegacyPod(id types.PodID) *Pod {
 	home := filepath.Join(f.podRoot, id.String())
-	return newPodWithHome(id, "", home, f.node)
+	return newPodWithHome(id, "", home, f.node, f.requireFile)
 }
 
 func (f *hookFactory) NewHookPod(id types.PodID) *Pod {
 	home := filepath.Join(f.hookRoot, id.String())
 
 	// Hooks can't have a UUID
-	return newPodWithHome(id, "", home, f.node)
+	return newPodWithHome(id, "", home, f.node, "")
 }
 
-func newPodWithHome(id types.PodID, uniqueKey types.PodUniqueKey, podHome string, node types.NodeName) *Pod {
+func newPodWithHome(id types.PodID, uniqueKey types.PodUniqueKey, podHome string, node types.NodeName, requireFile string) *Pod {
 	var logger logging.Logger
 	logger = Log.SubLogger(logrus.Fields{"pod": id, "uuid": uniqueKey})
 
@@ -122,10 +124,15 @@ func newPodWithHome(id types.PodID, uniqueKey types.PodUniqueKey, podHome string
 		LogExec:        runit.DefaultLogExec(),
 		FinishExec:     NopFinishExec,
 		Fetcher:        uri.DefaultFetcher,
+		RequireFile:    requireFile,
 	}
 }
 
 func PodFromPodHome(node types.NodeName, home string) (*Pod, error) {
+	return PodFromPodHomeWithReqFile(node, home, "")
+}
+
+func PodFromPodHomeWithReqFile(node types.NodeName, home string, requireFile string) (*Pod, error) {
 	// Check if the pod home is namespaced by a UUID by splitting on a hyphen and
 	// checking the last part. If it parses as a UUID, pass it to newPodWithHome.
 	// Otherwise, pass a nil uniqueKey
@@ -148,5 +155,5 @@ func PodFromPodHome(node types.NodeName, home string) (*Pod, error) {
 		return nil, err
 	}
 
-	return newPodWithHome(manifest.ID(), uniqueKey, home, node), nil
+	return newPodWithHome(manifest.ID(), uniqueKey, home, node, requireFile), nil
 }

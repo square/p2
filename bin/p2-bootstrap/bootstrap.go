@@ -30,6 +30,7 @@ var (
 	consulToken        = kingpin.Flag("consul-token", "The ACL token to pass to consul when registering the bootstrapped pods").String()
 	podRoot            = kingpin.Flag("pod-root", "The root of where pods will be installed").Default(pods.DefaultPath).String()
 	registryURL        = kingpin.Flag("registry", "The URL of the registry to download artifacts from").URL()
+	requireFile        = kingpin.Flag("require-file", "Check for the presence of a required file before execing its argument").String()
 )
 
 func main() {
@@ -48,7 +49,7 @@ func main() {
 	log.Println("Installing and launching consul")
 
 	// TODO: configure a proper http client instead of using default for fetcher
-	podFactory := pods.NewFactory(*podRoot, nodeName, uri.DefaultFetcher)
+	podFactory := pods.NewFactory(*podRoot, nodeName, uri.DefaultFetcher, *requireFile)
 
 	var consulPod *pods.Pod
 	var consulManifest manifest.Manifest
@@ -67,7 +68,7 @@ func main() {
 	} else {
 		log.Printf("Using existing Consul at %s\n", *existingConsul)
 
-		consulPod, err = pods.PodFromPodHome(nodeName, *existingConsul)
+		consulPod, err = pods.PodFromPodHomeWithReqFile(nodeName, *existingConsul, *requireFile)
 		if err != nil {
 			log.Fatalf("The existing consul pod is invalid: %s", err)
 		}

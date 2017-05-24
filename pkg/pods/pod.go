@@ -72,6 +72,9 @@ type Pod struct {
 	LogExec        runit.Exec
 	FinishExec     runit.Exec
 	Fetcher        uri.Fetcher
+
+	// Pod will not start if file is not present
+	RequireFile string
 }
 
 var NoCurrentManifest error = fmt.Errorf("No current manifest for this pod")
@@ -737,6 +740,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			SuppliedEnvVars:  launchableStanza.Env,
 			EntryPoints:      entryPoints,
 			IsUUIDPod:        pod.uniqueKey != "",
+			RequireFile:      pod.RequireFile,
 		}
 		ret.CgroupConfig.Name = ret.ServiceId
 		return ret.If(), nil

@@ -19,6 +19,7 @@ type P2ExecArgs struct {
 	CgroupConfigName string
 	Command          []string
 	WorkDir          string
+	RequireFile      string
 }
 
 func (args P2ExecArgs) CommandLine() []string {
@@ -49,6 +50,10 @@ func (args P2ExecArgs) CommandLine() []string {
 
 	if args.WorkDir != "" {
 		cmd = append(cmd, "-w", args.WorkDir)
+	}
+
+	if args.RequireFile != "" {
+		cmd = append(cmd, "--require-file", args.RequireFile)
 	}
 
 	if len(cmd) > 0 {

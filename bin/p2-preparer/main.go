@@ -44,6 +44,16 @@ func main() {
 		defer statusServer.Close()
 	}
 
+	if preparerConfig.RequireFile != "" {
+		_, err := os.Stat(preparerConfig.RequireFile)
+		if os.IsNotExist(err) {
+			logger.WithError(err).Fatalln("required file not present")
+		}
+		if err != nil {
+			logger.WithError(err).Fatalln("Could not check for require file's existence")
+		}
+	}
+
 	prep, err := preparer.New(preparerConfig, logger)
 	if err != nil {
 		logger.WithError(err).Fatalln("Could not initialize preparer")
