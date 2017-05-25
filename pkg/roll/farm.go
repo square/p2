@@ -404,7 +404,7 @@ func (rlf *Farm) mustDeleteRU(id roll_fields.ID, logger logging.Logger) {
 	}
 
 	if rlf.config.ShouldCreateAuditLogRecords {
-		details, err := audit.NewRUCompletionEventDetails(id, true, false)
+		details, err := audit.NewRUCompletionEventDetails(id, true, false, rlf.labeler)
 		if err != nil {
 			logger.WithError(err).Errorln("could not create RU completion audit log record")
 			// this error won't be recoverable so continue with deleting
