@@ -63,7 +63,7 @@ type testRCStore interface {
 
 func setup(t *testing.T) (
 	rcStore testRCStore,
-	consulStore fakeconsulStore,
+	consulStore *fakeconsulStore,
 	applicator labels.Applicator,
 	rc *replicationController,
 	alerter *alertingtest.AlertRecorder,
@@ -81,13 +81,13 @@ func setup(t *testing.T) (
 	rcData, err := rcStore.Create(podManifest, nodeSelector, podLabels)
 	Assert(t).IsNil(err, "expected no error creating request")
 
-	consulStore = fakeconsulStore{manifests: make(map[string]manifest.Manifest)}
+	consulStore = &fakeconsulStore{manifests: make(map[string]manifest.Manifest)}
 	applicator = labels.NewFakeApplicator()
 	alerter = alertingtest.NewRecorder()
 
 	rc = New(
 		rcData,
-		&consulStore,
+		consulStore,
 		rcStore,
 		scheduler.NewApplicatorScheduler(applicator),
 		applicator,
@@ -289,8 +289,8 @@ func TestUnschedule(t *testing.T) {
 	scheduled := scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 1, "expected a pod to have been labeled")
 	consul.mu.Lock()
-	defer consul.mu.Unlock()
 	Assert(t).AreEqual(len(consul.manifests), 1, "expected a manifest to have been scheduled")
+	consul.mu.Unlock()
 
 	rcStore.SetDesiredReplicas(rc.ID(), 0)
 	numNodes = waitForNodes(t, rc, 0)
@@ -298,7 +298,9 @@ func TestUnschedule(t *testing.T) {
 
 	scheduled = scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 0, "expected a pod to have been unlabeled")
+	consul.mu.Lock()
 	Assert(t).AreEqual(len(consul.manifests), 0, "expected manifest to have been unscheduled")
+	consul.mu.Unlock()
 	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to fire")
 }
 
@@ -321,8 +323,8 @@ func TestPreferUnscheduleIneligible(t *testing.T) {
 	scheduled := scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 1000, "expected 1000 pods to have been labeled")
 	consul.mu.Lock()
-	defer consul.mu.Unlock()
 	Assert(t).AreEqual(len(consul.manifests), 1000, "expected a manifest to have been scheduled on 1000 nodes")
+	consul.mu.Unlock()
 
 	// Make node503 ineligible, so that it will be preferred for unscheduling
 	// when we decrease ReplicasDesired
