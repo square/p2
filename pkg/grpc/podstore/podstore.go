@@ -147,6 +147,7 @@ func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream
 
 	podStatusResultCh := make(chan podStatusResult)
 	innerQuit := make(chan struct{})
+	defer close(innerQuit)
 	go func() {
 		defer close(podStatusResultCh)
 		for {
@@ -180,7 +181,6 @@ func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream
 	for {
 		select {
 		case <-clientCancel:
-			close(innerQuit)
 			return nil
 		case result := <-podStatusResultCh:
 			if result.err != nil {
