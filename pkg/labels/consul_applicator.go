@@ -322,8 +322,11 @@ func (c *consulApplicator) RemoveAllLabelsTxn(ctx context.Context, labelType Typ
 	if err != nil {
 		return err
 	}
-	_, err = c.kv.Delete(path, nil)
-	return err
+
+	return transaction.Add(ctx, api.KVTxnOp{
+		Verb: api.KVDelete,
+		Key:  path,
+	})
 }
 
 // kvp must be non-nil
