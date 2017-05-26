@@ -150,9 +150,14 @@ func TestDelete(t *testing.T) {
 	req := &audit_log_protos.DeleteRequest{
 		AuditLogIds: []string{idToDelete},
 	}
-	_, err = store.Delete(context.Background(), req)
+
+	deleteResp, err := store.Delete(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if deleteResp == nil {
+		t.Fatal("a nil response was returned along with nil error")
 	}
 
 	resp, err = store.List(context.Background(), new(audit_log_protos.ListRequest))

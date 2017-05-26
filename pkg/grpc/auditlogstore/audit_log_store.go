@@ -78,7 +78,7 @@ func (s store) Delete(ctx grpccontext.Context, req *audit_log_protos.DeleteReque
 		return nil, grpc.Errorf(codes.Unavailable, "error committing audit log deletion transaction: %s", err)
 	}
 
-	return nil, nil
+	return new(audit_log_protos.DeleteResponse), nil
 }
 
 func rawAuditLogToProtoAuditLog(al audit.AuditLog) audit_log_protos.AuditLog {
