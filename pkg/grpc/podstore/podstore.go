@@ -147,8 +147,8 @@ func (s store) WatchPodStatus(req *podstore_protos.WatchPodStatusRequest, stream
 
 	podStatusResultCh := make(chan podStatusResult)
 	innerQuit := make(chan struct{})
-	defer close(podStatusResultCh)
 	go func() {
+		defer close(podStatusResultCh)
 		for {
 			status, queryMeta, err := s.podStatusStore.WaitForStatus(podUniqueKey, waitIndex)
 
