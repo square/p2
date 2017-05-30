@@ -709,9 +709,11 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 	}
 
 	if launchableStanza.LaunchableType == "hoist" {
-		entryPoints := launchableStanza.EntryPoints
-		if len(entryPoints) == 0 {
-			entryPoints = append(entryPoints, path.Join("bin", "launch"))
+		entryPointPaths := launchableStanza.EntryPoints
+		implicitEntryPoints := false
+		if len(entryPointPaths) == 0 {
+			implicitEntryPoints = true
+			entryPointPaths = append(entryPointPaths, path.Join("bin", "launch"))
 		}
 		cgroupName := serviceId
 		if *NestedCgroups {
@@ -721,6 +723,11 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 				pod.UniqueName(),
 				launchableID.String(),
 			)
+		}
+
+		entryPoints := hoist.EntryPoints{
+			Paths:    entryPointPaths,
+			Implicit: implicitEntryPoints,
 		}
 
 		ret := &hoist.Launchable{

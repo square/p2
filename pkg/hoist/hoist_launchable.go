@@ -21,6 +21,17 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
+type EntryPoints struct {
+	// Paths contains the relative paths to each entry point from the root
+	// of the launchable
+	Paths []string
+	// Implicit means that the entry points were not explicitly specified
+	// in the pod manifest and instead a default was used. This is useful
+	// information since we want to treat a missing entry point as an error
+	// if and only if it was listed explicitly
+	Implicit bool
+}
+
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type Launchable struct {
 	Id               launch.LaunchableID        // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
@@ -40,7 +51,7 @@ type Launchable struct {
 	SuppliedEnvVars  map[string]string          // A map of user-supplied environment variables to be exported for this launchable
 	Location         *url.URL                   // URL to download the artifact from
 	VerificationData auth.VerificationData      // Paths to files used to verify the artifact
-	EntryPoints      []string                   // paths to entry points to launch under runit
+	EntryPoints      EntryPoints                // paths to entry points to launch under runit
 
 	// IsUUIDPod indicates whether the launchable is part of a "uuid pod"
 	// vs a "legacy pod". Currently this information is used for determining the name of the runit service directories to use
@@ -294,11 +305,17 @@ func (hl *Launchable) Executables(
 	// a name.
 	executableMap := make(map[string]launch.Executable)
 
-	for _, relativeEntryPoint := range hl.EntryPoints {
+	for _, relativeEntryPoint := range hl.EntryPoints.Paths {
 		absEntryPointPath := filepath.Join(hl.InstallDir(), relativeEntryPoint)
 
 		entryPointInfo, err := os.Stat(absEntryPointPath)
 		if err != nil {
+			if hl.EntryPoints.Implicit && os.IsNotExist(err) {
+				// We assume the deployer knows what they're doing
+				// and there aren't supposed to be any entry points
+				return nil, nil
+			}
+
 			return nil, MissingEntryPoints{
 				message: util.Errorf("missing entry point %s: %s", absEntryPointPath, err).Error(),
 			}
