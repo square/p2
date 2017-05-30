@@ -132,15 +132,15 @@ func (p FixedKeyringPolicy) AuthorizeApp(manifest Manifest, logger logging.Logge
 		return err
 	}
 
-	signerId := fmt.Sprintf("%X", signer.PrimaryKey.Fingerprint)
-	logger.WithField("signer_key", signerId).Debugln("resolved manifest signature")
+	signerID := fmt.Sprintf("%X", signer.PrimaryKey.Fingerprint)
+	logger.WithField("signer_key", signerID).Debugln("resolved manifest signature")
 
 	// Check authorization for this package to be deployed by this
 	// key, if configured.
 	if len(p.AuthorizedDeployers[manifest.ID()]) > 0 {
 		found := false
-		for _, deployerId := range p.AuthorizedDeployers[manifest.ID()] {
-			if deployerId == signerId {
+		for _, deployerID := range p.AuthorizedDeployers[manifest.ID()] {
+			if deployerID == signerID {
 				found = true
 				break
 			}
@@ -148,7 +148,7 @@ func (p FixedKeyringPolicy) AuthorizeApp(manifest Manifest, logger logging.Logge
 		if !found {
 			return Error{
 				util.Errorf("manifest signer not authorized to deploy " + string(manifest.ID())),
-				map[string]interface{}{"signer_key": signerId},
+				map[string]interface{}{"signer_key": signerID},
 			}
 		}
 	}
@@ -171,7 +171,7 @@ func (p FixedKeyringPolicy) Close() {
 // Returns the key ID used to sign a message. This method is extracted
 // from `openpgp.CheckDetachedSignature()`, which only reports that a
 // key wasn't found, not *which* key wasn't found.
-func signerKeyId(signature []byte) (uint64, error) {
+func signerKeyID(signature []byte) (uint64, error) {
 	p, err := packet.Read(bytes.NewReader(signature))
 	if err != nil {
 		return 0, err
@@ -202,11 +202,11 @@ func checkDetachedSignature(
 		bytes.NewReader(signature),
 	)
 	if err == errors.ErrUnknownIssuer {
-		keyId, err := signerKeyId(signature)
+		keyID, err := signerKeyID(signature)
 		if err != nil {
 			return nil, Error{util.Errorf("error validating signature: %s", err), nil}
 		}
-		return nil, Error{util.Errorf("unknown signer: %X", keyId), nil}
+		return nil, Error{util.Errorf("unknown signer: %X", keyID), nil}
 	}
 	if err != nil {
 		return nil, Error{util.Errorf("error validating signature: %s", err), nil}
@@ -465,14 +465,14 @@ func (p UserPolicy) AuthorizePod(podUser string, manifest Signed, logger logging
 	}
 
 	// Check if any of the signer's identities is authorized
-	lastIdName := "(unknown)"
+	lastIDName := "(unknown)"
 	for name, id := range signer.Identities {
 		if dpol.Authorized(podUser, id.UserId.Email) {
 			return nil
 		}
-		lastIdName = name
+		lastIDName = name
 	}
-	return Error{util.Errorf("user %s is not authorized to deploy app as pod user: %s", lastIdName, podUser), nil}
+	return Error{util.Errorf("user %s is not authorized to deploy app as pod user: %s", lastIDName, podUser), nil}
 }
 
 func (p UserPolicy) AuthorizeApp(manifest Manifest, logger logging.Logger) error {
