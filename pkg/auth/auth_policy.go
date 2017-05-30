@@ -472,7 +472,7 @@ func (p UserPolicy) AuthorizePod(podUser string, manifest Signed, logger logging
 		}
 		lastIdName = name
 	}
-	return Error{util.Errorf("user not authorized to deploy app: %s", lastIdName), nil}
+	return Error{util.Errorf("user %s is not authorized to deploy app as pod user: %s", lastIdName, podUser), nil}
 }
 
 func (p UserPolicy) AuthorizeApp(manifest Manifest, logger logging.Logger) error {
