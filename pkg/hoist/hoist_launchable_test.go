@@ -84,7 +84,7 @@ func TestMultipleEntryPointsLegacy(t *testing.T) {
 	fakeLaunchable, sb := FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(fakeLaunchable, sb)
 
-	fakeLaunchable.EntryPoints = append(fakeLaunchable.EntryPoints, "bin/start")
+	fakeLaunchable.EntryPoints.Paths = append(fakeLaunchable.EntryPoints.Paths, "bin/start")
 	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
 
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
@@ -105,7 +105,7 @@ func TestMultipleEntryPointsUUIDPod(t *testing.T) {
 	fakeLaunchable, sb := FakeHoistLaunchableForDirUUIDPod("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(fakeLaunchable, sb)
 
-	fakeLaunchable.EntryPoints = append(fakeLaunchable.EntryPoints, "bin/start")
+	fakeLaunchable.EntryPoints.Paths = append(fakeLaunchable.EntryPoints.Paths, "bin/start")
 	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
 
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
@@ -125,7 +125,7 @@ func TestNonStandardEntryPointLegacy(t *testing.T) {
 	fakeLaunchable, sb := FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(fakeLaunchable, sb)
 
-	fakeLaunchable.EntryPoints = []string{"bin/start"}
+	fakeLaunchable.EntryPoints.Paths = []string{"bin/start"}
 	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
 
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
@@ -143,7 +143,7 @@ func TestNonStandardEntryPointUUIDPod(t *testing.T) {
 	fakeLaunchable, sb := FakeHoistLaunchableForDirUUIDPod("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(fakeLaunchable, sb)
 
-	fakeLaunchable.EntryPoints = []string{"bin/start"}
+	fakeLaunchable.EntryPoints.Paths = []string{"bin/start"}
 	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
 
 	Assert(t).IsNil(err, "Error occurred when obtaining runit services for launchable")
@@ -156,12 +156,22 @@ func TestNonStandardEntryPointUUIDPod(t *testing.T) {
 	assertExpectedServices(t, expectedServicePaths, executables)
 }
 
+func TestMissingExplicitEntryPointError(t *testing.T) {
+	fakeLaunchable, sb := FakeHoistLaunchableForDirUUIDPod("multiple_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(fakeLaunchable, sb)
+
+	fakeLaunchable.EntryPoints.Paths = []string{"bin/missing"}
+	fakeLaunchable.EntryPoints.Implicit = false
+	_, err := fakeLaunchable.Executables(runit.DefaultBuilder)
+	Assert(t).IsNotNil(err, "expected an error if an explicitly enumerated entry point is missing")
+}
+
 func TestErrorIfConflictingServiceNames(t *testing.T) {
 	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
 	fakeLaunchable, sb := FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(fakeLaunchable, sb)
 
-	fakeLaunchable.EntryPoints = []string{"bin/start", "bin/start2"}
+	fakeLaunchable.EntryPoints.Paths = []string{"bin/start", "bin/start2"}
 	executables, err := fakeLaunchable.Executables(runit.DefaultBuilder)
 
 	Assert(t).IsNotNil(err, "Expected naming collision error calling Executables()")
