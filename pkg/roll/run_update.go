@@ -182,9 +182,6 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 	// rollout complete, clean up old RC if told to do so
 	if !u.LeaveOld {
 		u.logger.NoFields().Infoln("Cleaning up old RC")
-		if !RetryOrQuit(func() error { return u.rcStore.SetDesiredReplicas(u.OldRC, 0) }, quit, u.logger, "Could not zero old replica count") {
-			return
-		}
 		if !RetryOrQuit(func() error { return u.rcStore.Delete(u.OldRC, false) }, quit, u.logger, "Could not delete old RC") {
 			return
 		}
