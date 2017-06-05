@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/user"
 	"path"
 	"path/filepath"
 	"strings"
@@ -427,7 +428,12 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	// We don't chmod if the directory is already 755.
 	// Normally there is no harm in doing so,
 	// but on Travis we don't have permission to do so (we don't run as root).
-	if mode&0755 != 0755 {
+
+	currUser, err := user.Current()
+	if err != nil {
+		return nil, err
+	}
+	if mode&0755 != 0755 && currUser.Uid == "0" {
 		// keep whatever upper bit is there.
 		err = os.Chmod(os.TempDir(), (mode&07000)|0755)
 		if err != nil {
