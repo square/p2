@@ -427,6 +427,12 @@ func WatchDiff(
 				}
 				timer.Reset(2 * time.Second) // backoff
 				continue
+			} else if len(pairs) == 0 {
+				// Let's be safe and assume that we will never have an empty result.
+				// We will not be sending this to the watcher.
+				// Assume it means something happened with Consul, and try again.
+				timer.Reset(2 * time.Second) // backoff
+				continue
 			}
 
 			if queryMeta.LastIndex < currentIndex {

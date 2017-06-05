@@ -357,6 +357,11 @@ func TestSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Create a bogus DS so that deleting the real one doesn't trigger the failsafe.
+	nodeSelector = klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"bogus"})
+	_, err = dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
+	Assert(t).IsNil(err, "expected no error creating bogus DS")
+
 	//
 	// Deleting the daemon set should not unschedule any nodes
 	//
