@@ -1,6 +1,7 @@
 package preparer
 
 import (
+	"context"
 	"crypto/tls"
 	"io/ioutil"
 	"net"
@@ -64,7 +65,7 @@ type LogDestination struct {
 
 type PodStatusStore interface {
 	Get(key types.PodUniqueKey) (podstatus.PodStatus, *api.QueryMeta, error)
-	MutateStatus(key types.PodUniqueKey, mutator func(podstatus.PodStatus) (podstatus.PodStatus, error)) error
+	MutateStatus(ctx context.Context, key types.PodUniqueKey, mutator func(podstatus.PodStatus) (podstatus.PodStatus, error)) error
 }
 
 type Preparer struct {

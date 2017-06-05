@@ -1,6 +1,7 @@
 package podstore
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"path"
@@ -216,7 +217,7 @@ func (c *consulStore) Unschedule(podKey types.PodUniqueKey) error {
 
 // Writes a key to the /reality tree to signify that the pod specified by the UUID has been
 // launched on the given node.
-func (c *consulStore) WriteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error {
+func (c *consulStore) WriteRealityIndex(ctx context.Context, podKey types.PodUniqueKey, node types.NodeName) error {
 	if podKey == "" {
 		return util.Errorf("Pod store can only write index for pods with uuid keys")
 	}

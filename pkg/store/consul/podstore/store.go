@@ -16,6 +16,8 @@
 package podstore
 
 import (
+	"context"
+
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 )
@@ -27,5 +29,5 @@ type Store interface {
 	Unschedule(key types.PodUniqueKey) error
 
 	DeleteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error
-	WriteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error
+	WriteRealityIndex(ctx context.Context, podKey types.PodUniqueKey, node types.NodeName) error
 }

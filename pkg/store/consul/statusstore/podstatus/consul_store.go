@@ -1,11 +1,13 @@
 package podstatus
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/store/consul/podstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -104,7 +106,7 @@ func (c ConsulStore) CAS(key types.PodUniqueKey, status PodStatus, modifyIndex u
 // status is then passed to a mutator function, and then the new status is
 // written back to consul using a CAS operation, guaranteeing that nothing else
 // about the status changed.
-func (c ConsulStore) MutateStatus(key types.PodUniqueKey, mutator func(PodStatus) (PodStatus, error)) error {
+func (c ConsulStore) MutateStatus(ctx context.Context, key types.PodUniqueKey, mutator func(PodStatus) (PodStatus, error)) error {
 	var lastIndex uint64
 	status, queryMeta, err := c.Get(key)
 	switch {
@@ -147,7 +149,9 @@ func (c ConsulStore) SetLastExit(podUniqueKey types.PodUniqueKey, launchableID l
 		return p, nil
 	}
 
-	return c.MutateStatus(podUniqueKey, mutator)
+	ctx, _ := transaction.New(context.Background())
+	// TODO commit transaction and return any errors
+	return c.MutateStatus(ctx, podUniqueKey, mutator)
 }
 
 // List lists all of the pod status entries in consul.

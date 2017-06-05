@@ -1,6 +1,7 @@
 package preparer
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
@@ -418,7 +420,8 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 			}
 		} else {
 			// TODO: do this in a transaction
-			err = p.podStore.WriteRealityIndex(pair.PodUniqueKey, p.node)
+			ctx, _ := transaction.New(context.Background())
+			err = p.podStore.WriteRealityIndex(ctx, pair.PodUniqueKey, p.node)
 			if err != nil {
 				logger.WithError(err).
 					Errorln("Could not write uuid index to reality store")
@@ -435,10 +438,11 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 				ps.Manifest = string(manifestBytes)
 				return ps, nil
 			}
-			err := p.podStatusStore.MutateStatus(pair.PodUniqueKey, mutator)
+			err := p.podStatusStore.MutateStatus(ctx, pair.PodUniqueKey, mutator)
 			if err != nil {
 				logger.WithError(err).Errorln("Could not update manifest in pod status")
 			}
+			// TODO commit transaction
 		}
 
 		p.tryRunHooks(hooks.AfterLaunch, pod, pair.Intent, logger)
@@ -476,7 +480,9 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 		// processes can be viewed for some time after installation.
 		// It is the responsibility of external systems to delete pod
 		// status entries when they are no longer needed.
-		err := p.podStatusStore.MutateStatus(pair.PodUniqueKey, func(podStatus podstatus.PodStatus) (podstatus.PodStatus, error) {
+		// TODO make these context aware/use tranasactions
+		ctx, _ := transaction.New(context.Background())
+		err := p.podStatusStore.MutateStatus(ctx, pair.PodUniqueKey, func(podStatus podstatus.PodStatus) (podstatus.PodStatus, error) {
 			podStatus.PodStatus = podstatus.PodRemoved
 			return podStatus, nil
 		})
