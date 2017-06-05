@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/square/p2",
 	"GoVersion": "go1.7",
-	"GodepVersion": "v79",
+	"GodepVersion": "v77",
 	"Packages": [
 		"./..."
 	],
@@ -662,6 +662,16 @@
 			"Rev": "708a7f9f3283aa2d4f6132d287d78683babe55c8"
 		},
 		{
+			"ImportPath": "google.golang.org/grpc/stats",
+			"Comment": "v1.0.5",
+			"Rev": "708a7f9f3283aa2d4f6132d287d78683babe55c8"
+		},
+		{
+			"ImportPath": "google.golang.org/grpc/tap",
+			"Comment": "v1.0.5",
+			"Rev": "708a7f9f3283aa2d4f6132d287d78683babe55c8"
+		},
+		{
 			"ImportPath": "google.golang.org/grpc/transport",
 			"Comment": "v1.0.5",
 			"Rev": "708a7f9f3283aa2d4f6132d287d78683babe55c8"
@@ -694,16 +704,6 @@
 			"ImportPath": "k8s.io/kubernetes/pkg/util/validation",
 			"Comment": "v1.2.0-alpha.4",
 			"Rev": "4a9b0fc7153c733832d70c9f6d0796db177643a6"
-		},
-		{
-			"ImportPath": "google.golang.org/grpc/stats",
-			"Comment": "v1.0.5",
-			"Rev": "708a7f9f3283aa2d4f6132d287d78683babe55c8"
-		},
-		{
-			"ImportPath": "google.golang.org/grpc/tap",
-			"Comment": "v1.0.5",
-			"Rev": "708a7f9f3283aa2d4f6132d287d78683babe55c8"
 		}
 	]
 }
