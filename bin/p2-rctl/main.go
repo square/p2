@@ -16,6 +16,7 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 	klabels "k8s.io/kubernetes/pkg/labels"
 
+	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/cli"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
@@ -376,6 +377,7 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 			r.logger,
 			session,
 			watchDelay,
+			alerting.NewNop(),
 		).Run(quit)
 		close(result)
 	}()
