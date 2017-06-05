@@ -69,11 +69,10 @@ func Parse(sizeStr string) (ByteCount, error) {
 	return ByteCount(size), nil
 }
 
-// MarshalYAML() serializes a ByteCount into YAML. To maintain a canonical representation
-// of the value and to preserve compatibility with older parsers, the byte count will
-// always be serialized as a plain integer without a suffix.
+// MarshalYAML() serializes a ByteCount into YAML as a human-readable value
+// with a suffix.
 func (b ByteCount) MarshalYAML() (interface{}, error) {
-	return uint64(b), nil
+	return b.String(), nil
 }
 
 // UnmarshalYAML unserializes a YAML representation of the ByteCount.
