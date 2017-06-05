@@ -35,10 +35,9 @@
 package transport
 
 import (
+	"context"
 	"net"
 	"time"
-
-	"golang.org/x/net/context"
 )
 
 // dialContext connects to the address on the named network.

@@ -8,12 +8,11 @@
 package ctxhttp
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
-
-	"golang.org/x/net/context"
 )
 
 // Do sends an HTTP request with the provided http.Client and returns

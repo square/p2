@@ -5,13 +5,13 @@ onto a grpc server call
 package client
 
 import (
+	"context"
 	"time"
 
 	label_protos "github.com/square/p2/pkg/grpc/labelstore/protos"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	klabels "k8s.io/kubernetes/pkg/labels"

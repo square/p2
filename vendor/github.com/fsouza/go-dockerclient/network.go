@@ -6,12 +6,11 @@ package docker
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-
-	"golang.org/x/net/context"
 )
 
 // ErrNetworkAlreadyExists is the error returned by CreateNetwork when the

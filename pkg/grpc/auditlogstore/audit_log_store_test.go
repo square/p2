@@ -2,6 +2,7 @@ package auditlogstore
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -11,8 +12,6 @@ import (
 	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/transaction"
-
-	"golang.org/x/net/context"
 )
 
 func TestList(t *testing.T) {

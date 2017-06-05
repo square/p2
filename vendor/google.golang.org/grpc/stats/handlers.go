@@ -34,10 +34,10 @@
 package stats
 
 import (
+	"context"
 	"net"
 	"sync/atomic"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc/grpclog"
 )
 
