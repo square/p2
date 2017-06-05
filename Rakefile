@@ -22,18 +22,18 @@ end
 
 desc 'Build all projects'
 task :build do
-  e "go build -v ./..."
+  e "go build -ldflags -s -v ./..."
 end
 
 desc 'Test all projects (short only)'
 task :test => [:build] do
-  e "go test -short -timeout 10s ./..."
+  e "go test -ldflags -s -short -timeout 10s ./..."
 end
 
 desc 'Test all projects'
 task :test_all => [:build] do
-  e "go test -timeout 120s -race ./..."
-  e "go test -timeout 120s github.com/square/p2/pkg/store/consul" # these have build flags that exclude them from race detector due to https://github.com/square/p2/issues/832
+  e "go test -ldflags -s -timeout 120s -race ./..."
+  e "go test -ldflags -s -timeout 120s github.com/square/p2/pkg/store/consul" # these have build flags that exclude them from race detector due to https://github.com/square/p2/issues/832
 end
 
 desc 'Update all dependencies'
