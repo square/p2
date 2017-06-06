@@ -422,6 +422,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 			// TODO: do this in a transaction
 			// TODO dai - what do I do with the errors?
 			ctx, cancelFunc := transaction.New(context.Background())
+			defer cancelFunc()
 			err = p.podStore.WriteRealityIndex(ctx, pair.PodUniqueKey, p.node)
 			if err != nil {
 				logger.WithError(err).
@@ -483,6 +484,7 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 		// status entries when they are no longer needed.
 		// TODO dai - make these context aware/use tranasactions, check errors
 		ctx, cancelFunc := transaction.New(context.Background())
+		defer cancelFunc()
 		err := p.podStatusStore.MutateStatus(ctx, pair.PodUniqueKey, func(podStatus podstatus.PodStatus) (podstatus.PodStatus, error) {
 			podStatus.PodStatus = podstatus.PodRemoved
 			return podStatus, nil

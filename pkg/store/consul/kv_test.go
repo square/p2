@@ -228,6 +228,7 @@ func TestAllPods(t *testing.T) {
 	}
 
 	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
 	// Write the /reality index for the pod
 	err = store.podStore.WriteRealityIndex(ctx, uuidKey, "node1")
 	if err != nil {

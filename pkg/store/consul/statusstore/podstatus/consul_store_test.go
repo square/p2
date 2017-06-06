@@ -89,6 +89,7 @@ func TestMutateStatusNewKey(t *testing.T) {
 	// TODO dai fix this test
 	key := types.NewPodUUID()
 	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
 	err := store.MutateStatus(ctx, key, func(p PodStatus) (PodStatus, error) {
 		p.PodStatus = PodLaunched
 		return p, nil
@@ -132,6 +133,7 @@ func TestMutateStatusExistingKey(t *testing.T) {
 
 	// TODO dai fix this test
 	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
 	err = store.MutateStatus(ctx, key, func(p PodStatus) (PodStatus, error) {
 		p.PodStatus = PodLaunched
 		return p, nil

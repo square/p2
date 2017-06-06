@@ -229,6 +229,7 @@ func TestWriteRealityIndex(t *testing.T) {
 	}
 
 	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
 	err = store.WriteRealityIndex(ctx, key, node)
 	if err != nil {
 		t.Fatal(err)
