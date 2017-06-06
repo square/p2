@@ -11,6 +11,7 @@ import (
 
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/store/consul/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/types"
@@ -47,8 +48,8 @@ func TestFullyConfigured(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
-	// TODO dai fixme - need to add a consul client
-	reporter, err := New(ReporterConfig{}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace))
+	fixture := consulutil.NewFixture(t)
+	reporter, err := New(ReporterConfig{}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace), fixture.Client)
 	if reporter != nil || err == nil {
 		t.Errorf("Should have gotten a nil reporter and an error with empty config")
 	}
@@ -56,7 +57,7 @@ func TestNew(t *testing.T) {
 	reporter, err = New(ReporterConfig{
 		SQLiteDatabasePath:       "bar",
 		EnvironmentExtractorPath: "/some/nonexistent/path",
-	}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace))
+	}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace), fixture.Client)
 	if reporter != nil || err == nil {
 		t.Errorf("Should have gotten a nil reporter when EnvironmentExtractorPath doesn't exist")
 	}
@@ -76,7 +77,7 @@ func TestNew(t *testing.T) {
 	reporter, err = New(ReporterConfig{
 		SQLiteDatabasePath:       "foo",
 		EnvironmentExtractorPath: nonExecutableExtractor.Name(),
-	}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace))
+	}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace), fixture.Client)
 	if reporter != nil || err == nil {
 		t.Errorf("Should have gotten a nil reporter with non-executable environemnt_extractor_path")
 	}
@@ -91,7 +92,7 @@ func TestNew(t *testing.T) {
 	reporter, err = New(ReporterConfig{
 		SQLiteDatabasePath:       "foo",
 		EnvironmentExtractorPath: executableExtractor.Name(),
-	}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace))
+	}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace), fixture.Client)
 	if err != nil {
 		t.Errorf("Unexpected error calling New(): %s", err)
 	}
@@ -277,6 +278,8 @@ func assertStatusUpdated(t *testing.T, finish FinishOutput, podStatusStore testP
 func startReporter(t *testing.T, tempDir string) (string, chan struct{}, testPodStatusStore, *Reporter) {
 	dbPath := filepath.Join(tempDir, "finishes.db")
 
+	fixture := consulutil.NewFixture(t)
+
 	// The extractor doesn't need to do anything because we'll mimic its behavior in the test,
 	// but it needs to exist and be executable in order to pass constructor validation
 	extractor, err := os.Create(filepath.Join(tempDir, "env_extractor"))
@@ -298,7 +301,7 @@ func startReporter(t *testing.T, tempDir string) (string, chan struct{}, testPod
 	}
 
 	store := podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace)
-	reporter, err := New(config, logging.DefaultLogger, store)
+	reporter, err := New(config, logging.DefaultLogger, store, fixture.Client)
 	if err != nil {
 		t.Fatalf("Error creating reporter: %s", err)
 	}
