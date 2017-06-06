@@ -87,6 +87,10 @@ type Applicator interface {
 	// Get all Labels assigned to the given object
 	GetLabels(labelType Type, id string) (Labeled, error)
 
+	// GetLabelsStale is like GetLabels but may return stale results in
+	// exchange for better performance
+	GetLabelsStale(labelType Type, id string) (Labeled, error)
+
 	// Return all objects of the given type that match the given selector.
 	// When cachedMatch is enabled, Applicators may choose to use an internal cache of
 	// aggregated results to answer GetMatches queries.

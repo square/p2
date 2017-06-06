@@ -55,6 +55,12 @@ type TypeBatcher struct {
 	pending         []chan batchResult
 	batchInProgress bool
 	queriesPerBatch metrics.Histogram
+
+	// staleCache contains the full result set from the last time the
+	// batcher was called. It can be used to serve "stale" queries when
+	// quick responses are valued over consistent ones
+	staleCache    batchResult
+	staleCacheMux sync.Mutex
 }
 
 type batchResult struct {
@@ -72,6 +78,9 @@ func (b *TypeBatcher) handleBatch() {
 
 	allLabels, err := b.lister.ListLabels(b.labelType)
 	res := batchResult{allLabels, err}
+	b.staleCacheMux.Lock()
+	b.staleCache = res
+	b.staleCacheMux.Unlock()
 	b.queriesPerBatch.Update(int64(len(handle)))
 	for _, ch := range handle {
 		ch <- res
@@ -93,4 +102,38 @@ func (b *TypeBatcher) Retrieve() ([]Labeled, error) {
 		return nil, fmt.Errorf("Could not retrieve results, channel closed unexpectedly")
 	}
 	return res.Matches, res.Err
+}
+
+// RetrieveStale is like Retrieve() but returns the most recently completed
+// query result rather than waiting for a new (consistent) query. This will
+// return faster at the expense of getting stale results
+func (b *TypeBatcher) RetrieveStale() ([]Labeled, error) {
+	b.staleCacheMux.Lock()
+	ret := b.staleCache
+	b.staleCacheMux.Unlock()
+
+	// Check that the cache has been populated, if not then let's wait for
+	// one
+	if ret.Matches == nil && ret.Err == nil {
+		return b.Retrieve()
+	}
+
+	return ret.Matches, ret.Err
+}
+
+// RetrieveStaleByID is a convenience function for RetrieveStale() and then
+// locating the Labeled with the specified ID in the []Labeled slice
+func (b *TypeBatcher) RetrieveStaleByID(id string) (Labeled, error) {
+	allLabeled, err := b.RetrieveStale()
+	if err != nil {
+		return Labeled{}, err
+	}
+
+	for _, labeled := range allLabeled {
+		if labeled.ID == id {
+			return labeled, nil
+		}
+	}
+
+	return Labeled{}, fmt.Errorf("no record found for %s", id)
 }
