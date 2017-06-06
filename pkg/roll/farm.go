@@ -9,6 +9,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/rcrowley/go-metrics"
 
+	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
@@ -39,6 +40,7 @@ type UpdateFactory struct {
 	HealthChecker checker.ConsulHealthChecker
 	Labeler       rc.Labeler
 	WatchDelay    time.Duration
+	Alerter       alerting.Alerter
 }
 
 func NewUpdateFactory(
@@ -48,6 +50,7 @@ func NewUpdateFactory(
 	healthChecker checker.ConsulHealthChecker,
 	labeler rc.Labeler,
 	watchDelay time.Duration,
+	alerter alerting.Alerter,
 ) UpdateFactory {
 	return UpdateFactory{
 		Store:         store,
@@ -56,6 +59,7 @@ func NewUpdateFactory(
 		HealthChecker: healthChecker,
 		Labeler:       labeler,
 		WatchDelay:    watchDelay,
+		Alerter:       alerter,
 	}
 }
 
@@ -70,6 +74,7 @@ func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consu
 		l,
 		session,
 		f.WatchDelay,
+		f.Alerter,
 	)
 }
 

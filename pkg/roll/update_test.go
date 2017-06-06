@@ -199,6 +199,7 @@ func TestLockRCs(t *testing.T) {
 		logging.DefaultLogger,
 		session,
 		0,
+		nil,
 	).(*update)
 	err = update.lockRCs(make(<-chan struct{}))
 	Assert(t).IsNil(err, "should not have erred locking RCs")

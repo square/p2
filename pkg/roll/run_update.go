@@ -7,6 +7,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 
+	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/logging"
@@ -63,6 +64,10 @@ type update struct {
 	// value will slow the responsiveness of the update to health changes
 	// but will reduce the QPS on the datastore
 	watchDelay time.Duration
+
+	// alerter allows the roll farm to page human operators if an
+	// unrecoverable problem occurs
+	alerter alerting.Alerter
 }
 
 // Create a new Update. The consul.Store, rcstore.Store, labels.Applicator and
@@ -79,6 +84,7 @@ func NewUpdate(
 	logger logging.Logger,
 	session consul.Session,
 	watchDelay time.Duration,
+	alerter alerting.Alerter,
 ) Update {
 	logger = logger.SubLogger(logrus.Fields{
 		"desired_replicas": f.DesiredReplicas,
@@ -94,6 +100,7 @@ func NewUpdate(
 		logger:     logger,
 		session:    session,
 		watchDelay: watchDelay,
+		alerter:    alerter,
 	}
 }
 
@@ -181,15 +188,60 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 
 	// rollout complete, clean up old RC if told to do so
 	if !u.LeaveOld {
-		u.logger.NoFields().Infoln("Cleaning up old RC")
-		if !RetryOrQuit(func() error { return u.rcStore.SetDesiredReplicas(u.OldRC, 0) }, quit, u.logger, "Could not zero old replica count") {
-			return
-		}
-		if !RetryOrQuit(func() error { return u.rcStore.Delete(u.OldRC, false) }, quit, u.logger, "Could not delete old RC") {
-			return
-		}
+		u.cleanupOldRC(quit)
 	}
 	return true // finally if we make it here, we can return true
+}
+
+func (u *update) cleanupOldRC(quit <-chan struct{}) {
+	cleanupFunc := func() error {
+		oldRC, err := u.rcStore.Get(u.OldRC)
+		if err != nil {
+			return err
+		}
+
+		if oldRC.ReplicasDesired != 0 {
+			// This likely means there was a mathematical error
+			// of some kind that was made when the RU was
+			// scheduled. If LeaveOld is false, we expect that
+			// all nodes will have been rolled from the old RC to
+			// the new one at this point, so we can delete the
+			// old RC after it isn't managing any nodes anymore.
+			// This error likely needs manual fixing by shifting
+			// the remaining nodes off of this RC and then
+			// deleting it
+			u.logger.Errorln("could not delete old RC because its replica count is nonzero")
+			err = u.alerter.Alert(alerting.AlertInfo{
+				Description: "old RC did not have 0 replicas and could not be deleted.",
+				IncidentKey: "roll-" + u.ID().String(),
+				Details: struct {
+					OldRCID     string `json:"old_rc_id"`
+					RUID        string `json:"ru_id"`
+					NumReplicas int    `json:"num_replicas"`
+				}{
+					OldRCID:     u.OldRC.String(),
+					RUID:        u.ID().String(),
+					NumReplicas: oldRC.ReplicasDesired,
+				},
+			},
+			)
+			if err != nil {
+				return err
+			}
+
+			// return nil to avoid looping, the alert
+			// should cause the issue to be fixed by a
+			// human operator
+			return nil
+		}
+
+		return u.rcStore.Delete(u.OldRC, false)
+	}
+
+	u.logger.NoFields().Infoln("Cleaning up old RC")
+	if !RetryOrQuit(cleanupFunc, quit, u.logger, "Could not delete old RC") {
+		return
+	}
 }
 
 // returns true if roll succeeded, false if asked to quit.
