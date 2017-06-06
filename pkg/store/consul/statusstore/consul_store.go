@@ -92,22 +92,6 @@ func (s *consulStore) CASStatus(ctx context.Context, t ResourceType, id Resource
 		return err
 	}
 
-	/*
-		pair := &api.KVPair{
-			Key:         key,
-			Value:       status.Bytes(),
-			ModifyIndex: modifyIndex,
-		}
-		success, _, err := s.kv.CAS(pair, nil)
-		if err != nil {
-			return consulutil.NewKVError("cas", key, err)
-		}
-
-		if !success {
-			return NewStaleIndex(key, modifyIndex)
-		}
-	*/
-
 	return transaction.Add(ctx, api.KVTxnOp{
 		Verb:  api.KVCAS,
 		Key:   key,

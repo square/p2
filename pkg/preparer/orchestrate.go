@@ -419,8 +419,6 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 					Errorln("Could not set pod in reality store")
 			}
 		} else {
-			// TODO: do this in a transaction
-			// TODO dai - what do I do with the errors?
 			backoff := 100 * time.Millisecond
 			for err := p.writeStatusRecord(pair, logger); err == nil; err = p.writeStatusRecord(pair, logger) {
 				time.Sleep(backoff)
@@ -497,7 +495,6 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 				Errorln("Could not delete pod from reality store")
 		}
 	} else {
-		// TODO dai - make these context aware/use tranasactions, check errors
 		backoff := 100 * time.Millisecond
 		for err := p.markUninstalled(pair, pod, logger); err != nil; err = p.markUninstalled(pair, pod, logger) {
 			time.Sleep(backoff)
