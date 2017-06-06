@@ -201,7 +201,15 @@ func (l *labelHTTPServer) GetLabels(resp http.ResponseWriter, req *http.Request)
 		return
 	}
 	timeHandler(endpoint, labelType, func(endpoint string) {
-		labeled, err := l.applicator.GetLabels(labelType, id)
+		var labeled Labeled
+		if _, ok := req.URL.Query()["stale"]; ok {
+			// use the latest query from the batcher to quickly return a
+			// result at the expense of consistency
+			labeled, err = l.batcher.ForType(labelType).RetrieveStaleByID(id)
+		} else {
+			// TODO: consider using the batcher here
+			labeled, err = l.applicator.GetLabels(labelType, id)
+		}
 		if err != nil {
 			l.unavailable(resp, endpoint, err)
 			return
