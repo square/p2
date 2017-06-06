@@ -1,7 +1,6 @@
 package daemonsetstore
 
 import (
-	"context"
 	"time"
 
 	"github.com/square/p2/pkg/ds/fields"
@@ -11,6 +10,7 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	klabels "k8s.io/kubernetes/pkg/labels"

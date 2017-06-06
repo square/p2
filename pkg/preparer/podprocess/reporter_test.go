@@ -47,6 +47,7 @@ func TestFullyConfigured(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
+	// TODO dai fixme - need to add a consul client
 	reporter, err := New(ReporterConfig{}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace))
 	if reporter != nil || err == nil {
 		t.Errorf("Should have gotten a nil reporter and an error with empty config")

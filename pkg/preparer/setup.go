@@ -1,7 +1,6 @@
 package preparer
 
 import (
-	"context"
 	"crypto/tls"
 	"io/ioutil"
 	"net"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/hashicorp/consul/api"
+	context "golang.org/x/net/context"
 	"golang.org/x/net/http2"
 	"gopkg.in/yaml.v2"
 

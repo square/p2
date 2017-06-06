@@ -1,7 +1,6 @@
 package podstore
 
 import (
-	"context"
 	"time"
 
 	podstore_protos "github.com/square/p2/pkg/grpc/podstore/protos"
@@ -14,6 +13,7 @@ import (
 	"github.com/square/p2/pkg/types"
 
 	"github.com/hashicorp/consul/api"
+	context "golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 )

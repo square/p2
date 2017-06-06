@@ -1,7 +1,6 @@
 package podstore
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/types"
 
+	context "golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 )

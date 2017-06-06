@@ -1,7 +1,6 @@
 package podstatus
 
 import (
-	"context"
 	"encoding/json"
 
 	"github.com/square/p2/pkg/launch"
@@ -11,6 +10,7 @@ import (
 	"github.com/square/p2/pkg/util"
 
 	"github.com/hashicorp/consul/api"
+	context "golang.org/x/net/context"
 )
 
 type ConsulStore struct {

@@ -6,7 +6,6 @@ external systems to examine the success or failure of a pod.
 package podprocess
 
 import (
-	"context"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -21,6 +20,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
+	context "golang.org/x/net/context"
 
 	"github.com/Sirupsen/logrus"
 )

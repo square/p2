@@ -11,6 +11,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/util"
 
+	grpccontext "golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 )
@@ -37,7 +38,7 @@ func New(auditLogStore AuditLogStore, logger logging.Logger, txner transaction.T
 	}
 }
 
-func (s store) List(_ context.Context, _ *audit_log_protos.ListRequest) (*audit_log_protos.ListResponse, error) {
+func (s store) List(_ grpccontext.Context, _ *audit_log_protos.ListRequest) (*audit_log_protos.ListResponse, error) {
 	records, err := s.auditLogStore.List()
 	if err != nil {
 		return nil, grpc.Errorf(codes.Unavailable, "error listing audit log records: %s", err)
@@ -53,7 +54,7 @@ func (s store) List(_ context.Context, _ *audit_log_protos.ListRequest) (*audit_
 	}, nil
 }
 
-func (s store) Delete(ctx context.Context, req *audit_log_protos.DeleteRequest) (*audit_log_protos.DeleteResponse, error) {
+func (s store) Delete(ctx grpccontext.Context, req *audit_log_protos.DeleteRequest) (*audit_log_protos.DeleteResponse, error) {
 	if len(req.GetAuditLogIds()) == 0 {
 		return nil, grpc.Errorf(codes.InvalidArgument, "no audit log IDs were specified for deletion")
 	}
