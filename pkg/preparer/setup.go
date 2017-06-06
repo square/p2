@@ -73,6 +73,7 @@ type Preparer struct {
 	store                  Store
 	podStatusStore         PodStatusStore
 	podStore               podstore.Store
+	client                 consulutil.ConsulClient
 	hooks                  Hooks
 	Logger                 logging.Logger
 	podFactory             pods.Factory
@@ -514,6 +515,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		hooks:                  hooks.NewContext(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger, auditLogger),
 		podStatusStore:         podStatusStore,
 		podStore:               podStore,
+		client:                 client,
 		Logger:                 logger,
 		podFactory:             pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName, fetcher, preparerConfig.RequireFile),
 		authPolicy:             authPolicy,

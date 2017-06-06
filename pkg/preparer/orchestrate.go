@@ -420,7 +420,8 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 			}
 		} else {
 			// TODO: do this in a transaction
-			ctx, _ := transaction.New(context.Background())
+			// TODO dai - what do I do with the errors?
+			ctx, cancelFunc := transaction.New(context.Background())
 			err = p.podStore.WriteRealityIndex(ctx, pair.PodUniqueKey, p.node)
 			if err != nil {
 				logger.WithError(err).
@@ -442,7 +443,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 			if err != nil {
 				logger.WithError(err).Errorln("Could not update manifest in pod status")
 			}
-			// TODO commit transaction
+			transaction.Commit(ctx, cancelFunc, p.client.KV())
 		}
 
 		p.tryRunHooks(hooks.AfterLaunch, pod, pair.Intent, logger)
@@ -480,8 +481,8 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 		// processes can be viewed for some time after installation.
 		// It is the responsibility of external systems to delete pod
 		// status entries when they are no longer needed.
-		// TODO make these context aware/use tranasactions
-		ctx, _ := transaction.New(context.Background())
+		// TODO dai - make these context aware/use tranasactions
+		ctx, cancelFunc := transaction.New(context.Background())
 		err := p.podStatusStore.MutateStatus(ctx, pair.PodUniqueKey, func(podStatus podstatus.PodStatus) (podstatus.PodStatus, error) {
 			podStatus.PodStatus = podstatus.PodRemoved
 			return podStatus, nil
@@ -496,6 +497,8 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 			logger.WithError(err).
 				Errorln("Could not remove reality index for uninstalled pod")
 		}
+		// TODO dai - commit transaction
+		transaction.Commit(ctx, cancelFunc, p.client.KV())
 	}
 	return true
 }
