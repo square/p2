@@ -1,11 +1,13 @@
 package statusstore
 
 import (
+	"context"
 	"fmt"
 	"path"
 	"strings"
 
 	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/hashicorp/consul/api"
@@ -84,27 +86,34 @@ func IsStaleIndex(err error) bool {
 	return ok
 }
 
-func (s *consulStore) CASStatus(t ResourceType, id ResourceID, namespace Namespace, status Status, modifyIndex uint64) error {
+func (s *consulStore) CASStatus(ctx context.Context, t ResourceType, id ResourceID, namespace Namespace, status Status, modifyIndex uint64) error {
 	key, err := namespacedResourcePath(t, id, namespace)
 	if err != nil {
 		return err
 	}
 
-	pair := &api.KVPair{
-		Key:         key,
-		Value:       status.Bytes(),
-		ModifyIndex: modifyIndex,
-	}
-	success, _, err := s.kv.CAS(pair, nil)
-	if err != nil {
-		return consulutil.NewKVError("cas", key, err)
-	}
+	/*
+		pair := &api.KVPair{
+			Key:         key,
+			Value:       status.Bytes(),
+			ModifyIndex: modifyIndex,
+		}
+		success, _, err := s.kv.CAS(pair, nil)
+		if err != nil {
+			return consulutil.NewKVError("cas", key, err)
+		}
 
-	if !success {
-		return NewStaleIndex(key, modifyIndex)
-	}
+		if !success {
+			return NewStaleIndex(key, modifyIndex)
+		}
+	*/
 
-	return nil
+	return transaction.Add(ctx, api.KVTxnOp{
+		Verb:  api.KVCAS,
+		Key:   key,
+		Value: status.Bytes(),
+		Index: modifyIndex,
+	})
 }
 
 func (s *consulStore) GetStatus(t ResourceType, id ResourceID, namespace Namespace) (Status, *api.QueryMeta, error) {

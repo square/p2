@@ -1,6 +1,7 @@
 package statusstoretest
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -56,7 +57,9 @@ func (s *FakeStatusStore) SetStatus(
 	return nil
 }
 
+// TODO dai actually use the transaction/context to perform the CAS update?
 func (s *FakeStatusStore) CASStatus(
+	ctx context.Context,
 	t statusstore.ResourceType,
 	id statusstore.ResourceID,
 	namespace statusstore.Namespace,

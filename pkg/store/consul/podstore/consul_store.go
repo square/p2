@@ -9,6 +9,7 @@ import (
 
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -234,16 +235,21 @@ func (c *consulStore) WriteRealityIndex(ctx context.Context, podKey types.PodUni
 		return util.Errorf("Could not marshal index as json: %s", err)
 	}
 
-	indexPair := &api.KVPair{
+	//indexPair := &api.KVPair{
+	//	Key:   realityIndexPath,
+	//	Value: indexBytes,
+	//}
+	//_, err = c.consulKV.Put(indexPair, nil)
+	//if err != nil {
+	//	return consulutil.NewKVError("put", realityIndexPath, err)
+	//}
+	//return nil
+
+	return transaction.Add(ctx, api.KVTxnOp{
+		Verb:  string(api.KVSet),
 		Key:   realityIndexPath,
 		Value: indexBytes,
-	}
-	_, err = c.consulKV.Put(indexPair, nil)
-	if err != nil {
-		return consulutil.NewKVError("put", realityIndexPath, err)
-	}
-
-	return nil
+	})
 }
 
 func (c *consulStore) DeleteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error {

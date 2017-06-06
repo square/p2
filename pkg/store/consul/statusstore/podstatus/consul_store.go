@@ -7,7 +7,6 @@ import (
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/store/consul/podstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
-	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -88,7 +87,7 @@ func (c ConsulStore) Set(key types.PodUniqueKey, status PodStatus) error {
 	return c.statusStore.SetStatus(statusstore.POD, statusstore.ResourceID(key), c.namespace, rawStatus)
 }
 
-func (c ConsulStore) CAS(key types.PodUniqueKey, status PodStatus, modifyIndex uint64) error {
+func (c ConsulStore) CAS(ctx context.Context, key types.PodUniqueKey, status PodStatus, modifyIndex uint64) error {
 	if key == "" {
 		return util.Errorf("Could not set status for pod with empty uuid")
 	}
@@ -98,7 +97,7 @@ func (c ConsulStore) CAS(key types.PodUniqueKey, status PodStatus, modifyIndex u
 		return err
 	}
 
-	return c.statusStore.CASStatus(statusstore.POD, statusstore.ResourceID(key), c.namespace, rawStatus, modifyIndex)
+	return c.statusStore.CASStatus(ctx, statusstore.POD, statusstore.ResourceID(key), c.namespace, rawStatus, modifyIndex)
 }
 
 // Convenience function for only mutating a part of the status structure.
@@ -124,15 +123,14 @@ func (c ConsulStore) MutateStatus(ctx context.Context, key types.PodUniqueKey, m
 	if err != nil {
 		return err
 	}
-
-	return c.CAS(key, newStatus, lastIndex)
+	return c.CAS(ctx, key, newStatus, lastIndex)
 }
 
 // A helper method for updating the LastExit field of one of the processes in a
 // pod. Searches through p.ProcessStatuses for a process matching the
 // launchable ID and launchableScriptName, and mutates its LastExit if found.
 // If not found, a new process is added.
-func (c ConsulStore) SetLastExit(podUniqueKey types.PodUniqueKey, launchableID launch.LaunchableID, entryPoint string, exitStatus ExitStatus) error {
+func (c ConsulStore) SetLastExit(ctx context.Context, podUniqueKey types.PodUniqueKey, launchableID launch.LaunchableID, entryPoint string, exitStatus ExitStatus) error {
 	mutator := func(p PodStatus) (PodStatus, error) {
 		for _, processStatus := range p.ProcessStatuses {
 			if processStatus.LaunchableID == launchableID && processStatus.EntryPoint == entryPoint {
@@ -149,8 +147,6 @@ func (c ConsulStore) SetLastExit(podUniqueKey types.PodUniqueKey, launchableID l
 		return p, nil
 	}
 
-	ctx, _ := transaction.New(context.Background())
-	// TODO commit transaction and return any errors
 	return c.MutateStatus(ctx, podUniqueKey, mutator)
 }
 

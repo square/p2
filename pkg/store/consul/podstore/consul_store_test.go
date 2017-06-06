@@ -1,12 +1,14 @@
 package podstore
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
 
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
 	"github.com/hashicorp/consul/api"
@@ -226,7 +228,12 @@ func TestWriteRealityIndex(t *testing.T) {
 		t.Fatalf("Initial conditions were not met: expected key %s to not exist", realityIndexPath)
 	}
 
-	err = store.WriteRealityIndex(key, node)
+	ctx, cancelFunc := transaction.New(context.Background())
+	err = store.WriteRealityIndex(ctx, key, node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = transaction.Commit(ctx, cancelFunc, fakeKV)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -481,7 +481,7 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 		// processes can be viewed for some time after installation.
 		// It is the responsibility of external systems to delete pod
 		// status entries when they are no longer needed.
-		// TODO dai - make these context aware/use tranasactions
+		// TODO dai - make these context aware/use tranasactions, check errors
 		ctx, cancelFunc := transaction.New(context.Background())
 		err := p.podStatusStore.MutateStatus(ctx, pair.PodUniqueKey, func(podStatus podstatus.PodStatus) (podstatus.PodStatus, error) {
 			podStatus.PodStatus = podstatus.PodRemoved
@@ -497,7 +497,6 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 			logger.WithError(err).
 				Errorln("Could not remove reality index for uninstalled pod")
 		}
-		// TODO dai - commit transaction
 		transaction.Commit(ctx, cancelFunc, p.client.KV())
 	}
 	return true

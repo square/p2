@@ -6,6 +6,7 @@ external systems to examine the success or failure of a pod.
 package podprocess
 
 import (
+	"context"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -15,7 +16,9 @@ import (
 
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -98,7 +101,7 @@ func (r ReporterConfig) FullyConfigured() bool {
 }
 
 type PodStatusStore interface {
-	SetLastExit(podUniqueKey types.PodUniqueKey, launchableID launch.LaunchableID, entryPoint string, exitStatus podstatus.ExitStatus) error
+	SetLastExit(ctx context.Context, podUniqueKey types.PodUniqueKey, launchableID launch.LaunchableID, entryPoint string, exitStatus podstatus.ExitStatus) error
 }
 
 type Reporter struct {
@@ -108,6 +111,7 @@ type Reporter struct {
 	workspaceDirPath         string
 
 	logger         logging.Logger
+	client         consulutil.ConsulClient
 	podStatusStore PodStatusStore
 	pollInterval   time.Duration
 	pruneAfter     time.Duration
@@ -123,7 +127,7 @@ type Reporter struct {
 
 // Should only be called if config.FullyConfigured() returned true.
 // Returns an error iff there is a configuration problem.
-func New(config ReporterConfig, logger logging.Logger, podStatusStore PodStatusStore) (*Reporter, error) {
+func New(config ReporterConfig, logger logging.Logger, podStatusStore PodStatusStore, client consulutil.ConsulClient) (*Reporter, error) {
 	if config.SQLiteDatabasePath == "" {
 		// If the caller uses config.FullyConfigured() properly, this shouldn't happen
 		return nil, util.Errorf("sqlite_database_path not configured, process exit status will not be captured")
@@ -193,6 +197,7 @@ func New(config ReporterConfig, logger logging.Logger, podStatusStore PodStatusS
 		workspaceDirPath:         config.WorkspaceDirPath,
 		logger:                   logger,
 		podStatusStore:           podStatusStore,
+		client:                   client,
 		pollInterval:             pollInterval,
 		pruneInterval:            pruneInterval,
 		pruneAfter:               pruneAfter,
@@ -373,11 +378,14 @@ func (r *Reporter) reportLatestExits() {
 			continue
 		}
 
-		err = r.podStatusStore.SetLastExit(finish.PodUniqueKey, finish.LaunchableID, finish.EntryPoint, podstatus.ExitStatus{
+		ctx, cancelFunc := transaction.New(context.Background())
+		err = r.podStatusStore.SetLastExit(ctx, finish.PodUniqueKey, finish.LaunchableID, finish.EntryPoint, podstatus.ExitStatus{
 			ExitTime:   finish.ExitTime,
 			ExitCode:   finish.ExitCode,
 			ExitStatus: finish.ExitStatus,
 		})
+		err = transaction.Commit(ctx, cancelFunc, r.client.KV())
+		// TODO dai handle errors
 		if err != nil {
 			subLogger.WithError(err).Errorln("Failed to record status")
 			return

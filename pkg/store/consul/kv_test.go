@@ -227,8 +227,13 @@ func TestAllPods(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	ctx, cancelFunc := transaction.New(context.Background())
 	// Write the /reality index for the pod
-	err = store.podStore.WriteRealityIndex(uuidKey, "node1")
+	err = store.podStore.WriteRealityIndex(ctx, uuidKey, "node1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = transaction.Commit(ctx, cancelFunc, store.client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
