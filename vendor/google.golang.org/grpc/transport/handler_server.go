@@ -38,7 +38,6 @@
 package transport
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -48,6 +47,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/context"
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"

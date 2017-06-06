@@ -7,11 +7,12 @@
 package ctxhttp
 
 import (
-	"context"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"golang.org/x/net/context"
 )
 
 func nop() {}

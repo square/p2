@@ -34,7 +34,6 @@
 package grpc
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -42,6 +41,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/context"
 	"golang.org/x/net/trace"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/grpclog"

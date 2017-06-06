@@ -10,7 +10,6 @@ package docker
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -35,7 +34,7 @@ import (
 	"github.com/docker/docker/pkg/homedir"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/hashicorp/go-cleanhttp"
-
+	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 )
 

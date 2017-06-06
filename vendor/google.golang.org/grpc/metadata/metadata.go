@@ -35,10 +35,11 @@
 package metadata
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"strings"
+
+	"golang.org/x/net/context"
 )
 
 const (

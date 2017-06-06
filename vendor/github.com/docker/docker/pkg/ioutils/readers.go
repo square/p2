@@ -1,10 +1,11 @@
 package ioutils
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+
+	"golang.org/x/net/context"
 )
 
 type readCloserWrapper struct {
