@@ -217,6 +217,16 @@ func (h *httpApplicator) GetLabels(labelType Type, id string) (Labeled, error) {
 	return labeled, err
 }
 
+func (h *httpApplicator) GetLabelsStale(labelType Type, id string) (Labeled, error) {
+	values := url.Values{}
+	values.Set("stale", "")
+
+	target := h.toEntityURL("", labelType, id, values)
+	var labeled Labeled
+	err := h.getJSON(target, &labeled)
+	return labeled, err
+}
+
 // Finds all matches for the given type and selector.
 //
 // GET /api/select?selector=:selector&type=:type&cachedMatch=:cachedMatch

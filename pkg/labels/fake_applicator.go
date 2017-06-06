@@ -104,6 +104,11 @@ func (app *fakeApplicator) GetLabels(labelType Type, id string) (Labeled, error)
 	}, nil
 }
 
+// there's no difference between stale and not stale in the fake applicator
+func (app *fakeApplicator) GetLabelsStale(labelType Type, id string) (Labeled, error) {
+	return app.GetLabels(labelType, id)
+}
+
 func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type, _ bool) ([]Labeled, error) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()

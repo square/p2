@@ -25,6 +25,7 @@ type ApplicatorWithoutWatches interface {
 	RemoveAllLabels(labelType Type, id string) error
 	ListLabels(labelType Type) ([]Labeled, error)
 	GetLabels(labelType Type, id string) (Labeled, error)
+	GetLabelsStale(labelType Type, id string) (Labeled, error)
 	GetMatches(selector klabels.Selector, labelType Type, cachedMatch bool) ([]Labeled, error)
 }
 
