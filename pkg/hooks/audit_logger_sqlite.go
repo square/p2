@@ -121,7 +121,7 @@ func (al *SQLiteAuditLogger) withRetries(f func() error, n int) error {
 			return nil
 		}
 		attempts++
-		al.logger.WithError(err).Errorln("Caught retriable error: %d of %d", attempts, n)
+		al.logger.WithError(err).Errorf("Caught retriable error: %d of %d", attempts, n)
 		if attempts >= n {
 			return err
 		}
