@@ -57,7 +57,7 @@ success
 	err := al.withRetries(func() error {
 		_, err := al.sqlite.Exec(stmt, podID, podUniqueKey, hookName, hookStage, dbSuccess)
 		return err
-	}, 3)
+	}, 6)
 	if err != nil {
 		al.logger.WithError(err).Errorln("error executing log statement")
 	}
