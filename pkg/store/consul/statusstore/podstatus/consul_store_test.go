@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/store/consul/transaction"
@@ -84,26 +85,27 @@ func TestDelete(t *testing.T) {
 }
 
 func TestMutateStatusNewKey(t *testing.T) {
-	store := newFixture()
+	fixture := consulutil.NewFixture(t)
+	consulStore := statusstore.NewConsul(fixture.Client)
+	podStore := NewConsul(consulStore, "test_namespace")
 
-	// TODO dai fix this test
 	key := types.NewPodUUID()
 	ctx, cancelFunc := transaction.New(context.Background())
 	defer cancelFunc()
-	err := store.MutateStatus(ctx, key, func(p PodStatus) (PodStatus, error) {
+	err := podStore.MutateStatus(ctx, key, func(p PodStatus) (PodStatus, error) {
 		p.PodStatus = PodLaunched
 		return p, nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// err = transaction.Commit(ctx, cancelFunc, store)
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
+	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Now try to get it and confirm the status was set
-	status, _, err := store.Get(key)
+	status, _, err := podStore.Get(key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +116,9 @@ func TestMutateStatusNewKey(t *testing.T) {
 }
 
 func TestMutateStatusExistingKey(t *testing.T) {
-	store := newFixture()
+	fixture := consulutil.NewFixture(t)
+	consulStore := statusstore.NewConsul(fixture.Client)
+	podStore := NewConsul(consulStore, "test_namespace")
 
 	key := types.NewPodUUID()
 	processStatus := ProcessStatus{
@@ -122,7 +126,7 @@ func TestMutateStatusExistingKey(t *testing.T) {
 		LaunchableID: "some_launchable",
 		LastExit:     nil,
 	}
-	err := store.Set(key, PodStatus{
+	err := podStore.Set(key, PodStatus{
 		ProcessStatuses: []ProcessStatus{
 			processStatus,
 		},
@@ -131,23 +135,22 @@ func TestMutateStatusExistingKey(t *testing.T) {
 		t.Fatalf("Unable to set up test with an existing key: %s", err)
 	}
 
-	// TODO dai fix this test
 	ctx, cancelFunc := transaction.New(context.Background())
 	defer cancelFunc()
-	err = store.MutateStatus(ctx, key, func(p PodStatus) (PodStatus, error) {
+	err = podStore.MutateStatus(ctx, key, func(p PodStatus) (PodStatus, error) {
 		p.PodStatus = PodLaunched
 		return p, nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// transaction.Commit(ctx, cancelFunc, TODO)
-	// if err != nil {
-	//	t.Fatal(err)
-	//}
+	transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Now try to get it and confirm the status was set
-	status, _, err := store.Get(key)
+	status, _, err := podStore.Get(key)
 	if err != nil {
 		t.Fatal(err)
 	}

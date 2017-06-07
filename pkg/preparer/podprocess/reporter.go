@@ -384,8 +384,10 @@ func (r *Reporter) reportLatestExits() {
 			ExitCode:   finish.ExitCode,
 			ExitStatus: finish.ExitStatus,
 		})
+		if err != nil {
+			subLogger.WithError(err).Errorln("Failed to add 'record status' to transaction'")
+		}
 		err = transaction.Commit(ctx, cancelFunc, r.client.KV())
-		// TODO dai handle errors
 		if err != nil {
 			subLogger.WithError(err).Errorln("Failed to record status")
 			return

@@ -57,7 +57,6 @@ func (s *FakeStatusStore) SetStatus(
 	return nil
 }
 
-// TODO dai actually use the transaction/context to perform the CAS update?
 func (s *FakeStatusStore) CASStatus(
 	ctx context.Context,
 	t statusstore.ResourceType,
