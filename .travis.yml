@@ -3,6 +3,10 @@ language: go
 go:
   - 1.7.4
 
+env:
+  - RACE=-race
+  - RACE=
+
 before_install:
   - sudo apt-get update -qq
   - sudo apt-get install -y runit
