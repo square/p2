@@ -379,6 +379,7 @@ func (r *Reporter) reportLatestExits() {
 		}
 
 		ctx, cancelFunc := transaction.New(context.Background())
+		defer cancelFunc()
 		err = r.podStatusStore.SetLastExit(ctx, finish.PodUniqueKey, finish.LaunchableID, finish.EntryPoint, podstatus.ExitStatus{
 			ExitTime:   finish.ExitTime,
 			ExitCode:   finish.ExitCode,

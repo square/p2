@@ -45,6 +45,7 @@ func (c Client) WatchMatches(selector klabels.Selector, labelType labels.Type, q
 	}()
 
 	innerCtx, innerCancel := context.WithCancel(outerCtx)
+	defer innerCancel()
 	watchClient, err := c.labelStoreClient.WatchMatches(innerCtx, &label_protos.WatchMatchesRequest{
 		LabelType: labelTypeToProtoLabelType(labelType),
 		Selector:  selector.String(),
@@ -72,6 +73,7 @@ func (c Client) WatchMatches(selector klabels.Selector, labelType labels.Type, q
 
 				for watchClient == nil {
 					innerCtx, innerCancel = context.WithCancel(outerCtx)
+					defer innerCancel()
 
 					time.Sleep(2 * time.Second)
 					watchClient, err = c.labelStoreClient.WatchMatches(innerCtx, &label_protos.WatchMatchesRequest{

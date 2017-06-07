@@ -75,6 +75,7 @@ func (c Client) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets {
 	go func() {
 		for {
 			innerCtx, innerCancel := context.WithCancel(outerCtx)
+			defer innerCancel()
 			watchClient, err = c.client.WatchDaemonSets(innerCtx, &daemonsetstore_protos.WatchDaemonSetsRequest{})
 			if err != nil {
 				innerCancel()

@@ -97,6 +97,7 @@ func (c Client) WatchStatus(ctx context.Context, podUniqueKey types.PodUniqueKey
 					time.Sleep(2 * time.Second)
 
 					innerCtx, innerCancel = context.WithCancel(ctx)
+					defer innerCancel()
 
 					stream, err = c.client.WatchPodStatus(innerCtx, &podstore_protos.WatchPodStatusRequest{
 						PodUniqueKey:    podUniqueKey.String(),
