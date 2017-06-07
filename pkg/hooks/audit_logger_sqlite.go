@@ -3,6 +3,7 @@ package hooks
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/square/p2/pkg/logging"
@@ -125,6 +126,7 @@ func (al *SQLiteAuditLogger) withRetries(f func() error, n int) error {
 		if attempts >= n {
 			return err
 		}
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 
