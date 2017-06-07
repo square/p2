@@ -235,16 +235,6 @@ func (c *consulStore) WriteRealityIndex(ctx context.Context, podKey types.PodUni
 		return util.Errorf("Could not marshal index as json: %s", err)
 	}
 
-	//indexPair := &api.KVPair{
-	//	Key:   realityIndexPath,
-	//	Value: indexBytes,
-	//}
-	//_, err = c.consulKV.Put(indexPair, nil)
-	//if err != nil {
-	//	return consulutil.NewKVError("put", realityIndexPath, err)
-	//}
-	//return nil
-
 	return transaction.Add(ctx, api.KVTxnOp{
 		Verb:  string(api.KVSet),
 		Key:   realityIndexPath,

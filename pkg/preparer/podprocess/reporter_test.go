@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/store/consul/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/types"
@@ -300,7 +301,7 @@ func startReporter(t *testing.T, tempDir string) (string, chan struct{}, testPod
 		PollInterval:             1 * time.Millisecond,
 	}
 
-	store := podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace)
+	store := podstatus.NewConsul(statusstore.NewConsul(fixture.Client), consul.PreparerPodStatusNamespace)
 	reporter, err := New(config, logging.DefaultLogger, store, fixture.Client)
 	if err != nil {
 		t.Fatalf("Error creating reporter: %s", err)

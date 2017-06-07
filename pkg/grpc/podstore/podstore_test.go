@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/podstore"
 	"github.com/square/p2/pkg/store/consul/podstore/podstoretest"
+	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/store/consul/statusstore/statusstoretest"
 	"github.com/square/p2/pkg/types"
@@ -424,7 +425,13 @@ func TestPodStatusResposeToPodStatus(t *testing.T) {
 }
 
 func TestMarkPodFailed(t *testing.T) {
-	statusStore, server := setupServerWithFakePodStatusStore()
+	fixture := consulutil.NewFixture(t)
+	statusStore := podstatus.NewConsul(statusstore.NewConsul(fixture.Client), consul.PreparerPodStatusNamespace)
+	server := store{
+		podStatusStore: statusStore,
+		consulClient:   fixture.Client,
+	}
+
 	key := types.NewPodUUID()
 	err := statusStore.Set(key, podstatus.PodStatus{
 		PodStatus: podstatus.PodLaunched,

@@ -7,9 +7,11 @@ import (
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/podstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
 	"github.com/hashicorp/consul/api"
@@ -21,6 +23,7 @@ import (
 type store struct {
 	scheduler      Scheduler
 	podStatusStore PodStatusStore
+	consulClient   consulutil.ConsulClient
 }
 
 var _ podstore_protos.P2PodStoreServer = store{}
@@ -38,10 +41,11 @@ type PodStatusStore interface {
 	MutateStatus(ctx context.Context, key types.PodUniqueKey, mutator func(podstatus.PodStatus) (podstatus.PodStatus, error)) error
 }
 
-func NewServer(scheduler Scheduler, podStatusStore PodStatusStore) store {
+func NewServer(scheduler Scheduler, podStatusStore PodStatusStore, consulClient consulutil.ConsulClient) store {
 	return store{
 		scheduler:      scheduler,
 		podStatusStore: podStatusStore,
+		consulClient:   consulClient,
 	}
 }
 
@@ -246,7 +250,12 @@ func (s store) MarkPodFailed(ctx context.Context, req *podstore_protos.MarkPodFa
 	// we don't really need the CAS properties of MutateStatus but there
 	// should be only one system trying to write the status record so it
 	// doesn't hurt.
-	err = s.podStatusStore.MutateStatus(ctx, podUniqueKey, mutator)
+	trxctx, cancelFunc := transaction.New(ctx)
+	err = s.podStatusStore.MutateStatus(trxctx, podUniqueKey, mutator)
+	if err != nil {
+		return nil, grpc.Errorf(codes.Internal, "failed to construct a consul transaction")
+	}
+	err = transaction.Commit(trxctx, cancelFunc, s.consulClient.KV())
 	if err != nil {
 		return nil, grpc.Errorf(codes.Unavailable, "could not update pod %s to failed: %s", podUniqueKey, err)
 	}
