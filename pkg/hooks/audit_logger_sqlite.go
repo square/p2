@@ -3,6 +3,7 @@ package hooks
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/square/p2/pkg/logging"
@@ -57,7 +58,7 @@ success
 	err := al.withRetries(func() error {
 		_, err := al.sqlite.Exec(stmt, podID, podUniqueKey, hookName, hookStage, dbSuccess)
 		return err
-	}, 3)
+	}, 6)
 	if err != nil {
 		al.logger.WithError(err).Errorln("error executing log statement")
 	}
@@ -121,10 +122,11 @@ func (al *SQLiteAuditLogger) withRetries(f func() error, n int) error {
 			return nil
 		}
 		attempts++
-		al.logger.WithError(err).Errorln("Caught retriable error: %d of %d", attempts, n)
+		al.logger.WithError(err).Errorf("Caught retriable error: %d of %d", attempts, n)
 		if attempts >= n {
 			return err
 		}
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 
