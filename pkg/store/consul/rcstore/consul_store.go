@@ -638,6 +638,15 @@ func (s *ConsulStore) Delete(id fields.ID, force bool) error {
 	})
 }
 
+// UpdateManifest will set the manifest on the RC at the given ID. Be careful with this function!
+func (s *ConsulStore) UpdateManifest(id fields.ID, man manifest.Manifest) error {
+	manifestUpdater := func(rc fields.RC) (fields.RC, error) {
+		rc.Manifest = man
+		return rc, nil
+	}
+	return s.retryMutate(id, manifestUpdater)
+}
+
 // TODO: this function is almost a verbatim copy of pkg/labels retryMutate, can
 // we find some way to combine them?
 func (s *ConsulStore) retryMutate(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {

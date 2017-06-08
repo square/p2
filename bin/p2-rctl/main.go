@@ -37,16 +37,17 @@ import (
 )
 
 const (
-	cmdCreateText     = "create"
-	cmdDeleteText     = "delete"
-	cmdReplicasText   = "set-replicas"
-	cmdListText       = "list"
-	cmdGetText        = "get"
-	cmdEnableText     = "enable"
-	cmdDisableText    = "disable"
-	cmdRollText       = "rolling-update"
-	cmdDeleteRollText = "delete-rolling-update"
-	cmdSchedupText    = "schedule-update"
+	cmdCreateText         = "create"
+	cmdDeleteText         = "delete"
+	cmdReplicasText       = "set-replicas"
+	cmdListText           = "list"
+	cmdGetText            = "get"
+	cmdEnableText         = "enable"
+	cmdDisableText        = "disable"
+	cmdRollText           = "rolling-update"
+	cmdDeleteRollText     = "delete-rolling-update"
+	cmdSchedupText        = "schedule-update"
+	cmdUpdateManifestText = "update-manifest"
 )
 
 var (
@@ -95,6 +96,10 @@ var (
 	schedupNewID = cmdSchedup.Flag("new", "new replication controller uuid").Required().Short('n').String()
 	schedupWant  = cmdSchedup.Flag("desired", "number of replicas desired").Required().Short('d').Int()
 	schedupNeed  = cmdSchedup.Flag("minimum", "minimum number of healthy replicas during update").Required().Short('m').Int()
+
+	cmdUpdateManifest  = kingpin.Command(cmdUpdateManifestText, "DANGEROUS. Forcefully update the manifest for the given RC. Consider disabling the RC before invoking this command.")
+	updateManifestRCID = cmdUpdateManifest.Arg("id", "replication controller uuid to update").Required().String()
+	updateManifestPath = cmdUpdateManifest.Arg("manifest-path", "Path to a signed manifest").Required().String()
 )
 
 func main() {
@@ -161,6 +166,8 @@ func main() {
 		rctl.ScheduleUpdate(*schedupOldID, *schedupNewID, *schedupWant, *schedupNeed, client.KV())
 	case cmdDeleteRollText:
 		rctl.DeleteRollingUpdate(*deleteRollID, client.KV())
+	case cmdUpdateManifestText:
+		rctl.UpdateManifest(fields.ID(*updateManifestRCID), *updateManifestPath)
 	}
 }
 
@@ -188,6 +195,7 @@ type ReplicationControllerStore interface {
 	Disable(id fields.ID) error
 	Delete(id fields.ID, force bool) error
 	Get(id fields.ID) (fields.RC, error)
+	UpdateManifest(id fields.ID, man manifest.Manifest) error
 }
 
 type RollingUpdateStore interface {
@@ -428,5 +436,13 @@ func (r rctlParams) ScheduleUpdate(oldID, newID string, want, need int, txner tr
 	}
 
 	r.logger.WithField("id", newID).Infoln("Created new rolling update")
+}
 
+func (r rctlParams) UpdateManifest(id fields.ID, manifestPath string) {
+	man, err := manifest.FromPath(manifestPath)
+
+	err = r.rcs.UpdateManifest(id, man)
+	if err != nil {
+		r.logger.WithError(err).Fatalln("Manifest update failed! Please retry after checking the database")
+	}
 }
