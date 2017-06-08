@@ -34,7 +34,7 @@ func NewClient(conn *grpc.ClientConn, logger logging.Logger) Client {
 // initial gRPC call fails. Any further connection breakages will attempt to be
 // re-established in a loop.
 func (c Client) WatchMatches(selector klabels.Selector, labelType labels.Type, quitCh <-chan struct{}) (chan []labels.Labeled, error) {
-	outerCtx, cancelFunc := context.WithCancel(context.Background())
+	ctx, cancelFunc := context.WithCancel(context.Background())
 
 	go func() {
 		<-quitCh
@@ -44,13 +44,12 @@ func (c Client) WatchMatches(selector klabels.Selector, labelType labels.Type, q
 		cancelFunc()
 	}()
 
-	innerCtx, innerCancel := context.WithCancel(outerCtx)
-	defer innerCancel()
-	watchClient, err := c.labelStoreClient.WatchMatches(innerCtx, &label_protos.WatchMatchesRequest{
+	watchClient, err := c.labelStoreClient.WatchMatches(ctx, &label_protos.WatchMatchesRequest{
 		LabelType: labelTypeToProtoLabelType(labelType),
 		Selector:  selector.String(),
 	})
 	if err != nil {
+		cancelFunc()
 		return nil, err
 	}
 
@@ -66,23 +65,19 @@ func (c Client) WatchMatches(selector klabels.Selector, labelType labels.Type, q
 			}
 
 			if err != nil {
-				innerCancel()
 				c.logger.WithError(err).Errorln("unexpected error reading from WatchMatches stream, starting another RPC")
 
 				watchClient = nil
 
 				for watchClient == nil {
-					innerCtx, innerCancel = context.WithCancel(outerCtx)
-					defer innerCancel()
 
 					time.Sleep(2 * time.Second)
-					watchClient, err = c.labelStoreClient.WatchMatches(innerCtx, &label_protos.WatchMatchesRequest{
+					watchClient, err = c.labelStoreClient.WatchMatches(ctx, &label_protos.WatchMatchesRequest{
 						LabelType: labelTypeToProtoLabelType(labelType),
 						Selector:  selector.String(),
 					}, grpc.FailFast(false))
 					if err != nil {
 						c.logger.WithError(err).Errorln("could not restart WatchMatches RPC, will retry")
-						innerCancel()
 					}
 				}
 				continue
