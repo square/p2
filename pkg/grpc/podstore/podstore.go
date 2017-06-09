@@ -251,9 +251,10 @@ func (s store) MarkPodFailed(ctx context.Context, req *podstore_protos.MarkPodFa
 	// should be only one system trying to write the status record so it
 	// doesn't hurt.
 	trxctx, cancelFunc := transaction.New(ctx)
+	defer cancelFunc()
 	err = s.podStatusStore.MutateStatus(trxctx, podUniqueKey, mutator)
 	if err != nil {
-		return nil, grpc.Errorf(codes.Internal, "failed to construct a consul transaction")
+		return nil, grpc.Errorf(codes.Internal, "failed to construct a consul transaction to update pod %s to failed: %s", podUniqueKey, err)
 	}
 	err = transaction.Commit(trxctx, cancelFunc, s.consulClient.KV())
 	if err != nil {
