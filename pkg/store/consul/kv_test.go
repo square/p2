@@ -208,7 +208,8 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 }
 
 func TestAllPods(t *testing.T) {
-	fakeConsulClient := consulutil.NewFakeClient()
+	fixture := consulutil.NewFixture(t)
+	fakeConsulClient := fixture.Client
 
 	// we can't use store.podStatusStore here because we use functions for
 	// test purposes that are not on the PodStatusStore interface
@@ -227,8 +228,14 @@ func TestAllPods(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
 	// Write the /reality index for the pod
-	err = store.podStore.WriteRealityIndex(uuidKey, "node1")
+	err = store.podStore.WriteRealityIndex(ctx, uuidKey, "node1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = transaction.Commit(ctx, cancelFunc, store.client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,12 +1,14 @@
 package podstore
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
 
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
 	"github.com/hashicorp/consul/api"
@@ -214,10 +216,12 @@ func TestWriteRealityIndex(t *testing.T) {
 
 	realityIndexPath := fmt.Sprintf("reality/%s/%s", node, key)
 
-	store, fakeKV := storeWithFakeKV(t, make(map[string]Pod), make(map[string]PodIndex))
+	fixture := consulutil.NewFixture(t)
+	kv := fixture.Client.KV()
+	store := NewConsul(kv)
 
 	// confirm that the reality index doesn't exist
-	pair, _, err := fakeKV.Get(realityIndexPath, nil)
+	pair, _, err := kv.Get(realityIndexPath, nil)
 	if err != nil {
 		t.Fatalf("Initial conditions were not met: error fetching %s: %s", realityIndexPath, err)
 	}
@@ -226,12 +230,18 @@ func TestWriteRealityIndex(t *testing.T) {
 		t.Fatalf("Initial conditions were not met: expected key %s to not exist", realityIndexPath)
 	}
 
-	err = store.WriteRealityIndex(key, node)
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
+	err = store.WriteRealityIndex(ctx, key, node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = transaction.Commit(ctx, cancelFunc, kv)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	pair, _, err = fakeKV.Get(realityIndexPath, nil)
+	pair, _, err = kv.Get(realityIndexPath, nil)
 	if err != nil {
 		t.Fatalf("Unable to fetch the deleted key (%s): %s", realityIndexPath, err)
 	}

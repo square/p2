@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"gopkg.in/alecthomas/kingpin.v2"

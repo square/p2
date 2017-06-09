@@ -7,13 +7,15 @@ import (
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/podstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
 	"github.com/hashicorp/consul/api"
-	"golang.org/x/net/context"
+	context "golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 )
@@ -21,6 +23,7 @@ import (
 type store struct {
 	scheduler      Scheduler
 	podStatusStore PodStatusStore
+	consulClient   consulutil.ConsulClient
 }
 
 var _ podstore_protos.P2PodStoreServer = store{}
@@ -35,13 +38,14 @@ type PodStatusStore interface {
 	Delete(podUniqueKey types.PodUniqueKey) error
 	WaitForStatus(key types.PodUniqueKey, waitIndex uint64) (podstatus.PodStatus, *api.QueryMeta, error)
 	List() (map[types.PodUniqueKey]podstatus.PodStatus, error)
-	MutateStatus(key types.PodUniqueKey, mutator func(podstatus.PodStatus) (podstatus.PodStatus, error)) error
+	MutateStatus(ctx context.Context, key types.PodUniqueKey, mutator func(podstatus.PodStatus) (podstatus.PodStatus, error)) error
 }
 
-func NewServer(scheduler Scheduler, podStatusStore PodStatusStore) store {
+func NewServer(scheduler Scheduler, podStatusStore PodStatusStore, consulClient consulutil.ConsulClient) store {
 	return store{
 		scheduler:      scheduler,
 		podStatusStore: podStatusStore,
+		consulClient:   consulClient,
 	}
 }
 
@@ -232,7 +236,7 @@ func (s store) DeletePodStatus(_ context.Context, req *podstore_protos.DeletePod
 	return &podstore_protos.DeletePodStatusResponse{}, nil
 }
 
-func (s store) MarkPodFailed(_ context.Context, req *podstore_protos.MarkPodFailedRequest) (*podstore_protos.MarkPodFailedResponse, error) {
+func (s store) MarkPodFailed(ctx context.Context, req *podstore_protos.MarkPodFailedRequest) (*podstore_protos.MarkPodFailedResponse, error) {
 	podUniqueKey, err := types.ToPodUniqueKey(req.PodUniqueKey)
 	if err != nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "could not convert %s to a pod unique key: %s", req.PodUniqueKey, err)
@@ -246,7 +250,13 @@ func (s store) MarkPodFailed(_ context.Context, req *podstore_protos.MarkPodFail
 	// we don't really need the CAS properties of MutateStatus but there
 	// should be only one system trying to write the status record so it
 	// doesn't hurt.
-	err = s.podStatusStore.MutateStatus(podUniqueKey, mutator)
+	trxctx, cancelFunc := transaction.New(ctx)
+	defer cancelFunc()
+	err = s.podStatusStore.MutateStatus(trxctx, podUniqueKey, mutator)
+	if err != nil {
+		return nil, grpc.Errorf(codes.Internal, "failed to construct a consul transaction to update pod %s to failed: %s", podUniqueKey, err)
+	}
+	err = transaction.Commit(trxctx, cancelFunc, s.consulClient.KV())
 	if err != nil {
 		return nil, grpc.Errorf(codes.Unavailable, "could not update pod %s to failed: %s", podUniqueKey, err)
 	}

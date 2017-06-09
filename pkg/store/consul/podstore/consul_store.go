@@ -1,6 +1,7 @@
 package podstore
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"path"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -216,7 +218,7 @@ func (c *consulStore) Unschedule(podKey types.PodUniqueKey) error {
 
 // Writes a key to the /reality tree to signify that the pod specified by the UUID has been
 // launched on the given node.
-func (c *consulStore) WriteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error {
+func (c *consulStore) WriteRealityIndex(ctx context.Context, podKey types.PodUniqueKey, node types.NodeName) error {
 	if podKey == "" {
 		return util.Errorf("Pod store can only write index for pods with uuid keys")
 	}
@@ -233,16 +235,11 @@ func (c *consulStore) WriteRealityIndex(podKey types.PodUniqueKey, node types.No
 		return util.Errorf("Could not marshal index as json: %s", err)
 	}
 
-	indexPair := &api.KVPair{
+	return transaction.Add(ctx, api.KVTxnOp{
+		Verb:  string(api.KVSet),
 		Key:   realityIndexPath,
 		Value: indexBytes,
-	}
-	_, err = c.consulKV.Put(indexPair, nil)
-	if err != nil {
-		return consulutil.NewKVError("put", realityIndexPath, err)
-	}
-
-	return nil
+	})
 }
 
 func (c *consulStore) DeleteRealityIndex(podKey types.PodUniqueKey, node types.NodeName) error {

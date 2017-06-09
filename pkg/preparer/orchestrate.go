@@ -1,6 +1,7 @@
 package preparer
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
@@ -417,27 +419,13 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 					Errorln("Could not set pod in reality store")
 			}
 		} else {
-			// TODO: do this in a transaction
-			err = p.podStore.WriteRealityIndex(pair.PodUniqueKey, p.node)
-			if err != nil {
-				logger.WithError(err).
-					Errorln("Could not write uuid index to reality store")
-			}
-
-			// uuid pod, write the manifest to the pod status tree.
-			mutator := func(ps podstatus.PodStatus) (podstatus.PodStatus, error) {
-				manifestBytes, err := pair.Intent.Marshal()
-				if err != nil {
-					return ps, util.Errorf("Could not convert manifest to string to update pod status")
+			backoff := 100 * time.Millisecond
+			for err := p.writeStatusRecord(pair, logger); err == nil; err = p.writeStatusRecord(pair, logger) {
+				time.Sleep(backoff)
+				backoff = 2 * backoff
+				if backoff > time.Minute {
+					backoff = time.Minute
 				}
-
-				ps.PodStatus = podstatus.PodLaunched
-				ps.Manifest = string(manifestBytes)
-				return ps, nil
-			}
-			err := p.podStatusStore.MutateStatus(pair.PodUniqueKey, mutator)
-			if err != nil {
-				logger.WithError(err).Errorln("Could not update manifest in pod status")
 			}
 		}
 
@@ -446,6 +434,41 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 		pod.Prune(p.maxLaunchableDiskUsage, pair.Intent) // errors are logged internally
 	}
 	return err == nil && ok
+}
+
+func (p *Preparer) writeStatusRecord(pair ManifestPair, logger logging.Logger) error {
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
+	err := p.podStore.WriteRealityIndex(ctx, pair.PodUniqueKey, p.node)
+	if err != nil {
+		logger.WithError(err).
+			Errorln("Could not add 'write uuid index to reality store' to transaction")
+		return err
+	}
+
+	// uuid pod, write the manifest to the pod status tree.
+	mutator := func(ps podstatus.PodStatus) (podstatus.PodStatus, error) {
+		manifestBytes, err := pair.Intent.Marshal()
+		if err != nil {
+			return ps, util.Errorf("Could not convert manifest to string to update pod status")
+		}
+
+		ps.PodStatus = podstatus.PodLaunched
+		ps.Manifest = string(manifestBytes)
+		return ps, nil
+	}
+	err = p.podStatusStore.MutateStatus(ctx, pair.PodUniqueKey, mutator)
+	if err != nil {
+		logger.WithError(err).Errorln("Could not add 'update manifest in pod status' to transaction")
+		return err
+	}
+	err = transaction.Commit(ctx, cancelFunc, p.client.KV())
+	if err != nil {
+		logger.WithError(err).
+			Errorln("Could not write uuid index to reality store and update manifest in pod status")
+		return err
+	}
+	return nil
 }
 
 func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger logging.Logger) bool {
@@ -472,26 +495,48 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 				Errorln("Could not delete pod from reality store")
 		}
 	} else {
-		// We don't delete so that the exit status of the pod's
-		// processes can be viewed for some time after installation.
-		// It is the responsibility of external systems to delete pod
-		// status entries when they are no longer needed.
-		err := p.podStatusStore.MutateStatus(pair.PodUniqueKey, func(podStatus podstatus.PodStatus) (podstatus.PodStatus, error) {
-			podStatus.PodStatus = podstatus.PodRemoved
-			return podStatus, nil
-		})
-		if err != nil {
-			logger.WithError(err).
-				Errorln("Could not update pod status to reflect removal")
-		}
-
-		err = p.podStore.DeleteRealityIndex(pair.PodUniqueKey, p.node)
-		if err != nil {
-			logger.WithError(err).
-				Errorln("Could not remove reality index for uninstalled pod")
+		backoff := 100 * time.Millisecond
+		for err := p.markUninstalled(pair, pod, logger); err != nil; err = p.markUninstalled(pair, pod, logger) {
+			time.Sleep(backoff)
+			backoff = 2 * backoff
+			if backoff > time.Minute {
+				backoff = time.Minute
+			}
 		}
 	}
 	return true
+}
+
+func (p *Preparer) markUninstalled(pair ManifestPair, pod Pod, logger logging.Logger) error {
+	// We don't delete so that the exit status of the pod's
+	// processes can be viewed for some time after installation.
+	// It is the responsibility of external systems to delete pod
+	// status entries when they are no longer needed.
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
+	err := p.podStatusStore.MutateStatus(ctx, pair.PodUniqueKey, func(podStatus podstatus.PodStatus) (podstatus.PodStatus, error) {
+		podStatus.PodStatus = podstatus.PodRemoved
+		return podStatus, nil
+	})
+	if err != nil {
+		logger.WithError(err).
+			Errorln("Could not update pod status to reflect removal")
+		return err
+	}
+
+	err = p.podStore.DeleteRealityIndex(pair.PodUniqueKey, p.node)
+	if err != nil {
+		logger.WithError(err).
+			Errorln("Could not remove reality index for uninstalled pod")
+		return err
+	}
+	err = transaction.Commit(ctx, cancelFunc, p.client.KV())
+	if err != nil {
+		logger.WithError(err).
+			Errorln("Could not update pod status to reflect removal and remove reality index for uninstalled pod")
+		return err
+	}
+	return nil
 }
 
 // Close() releases any resources held by a Preparer.

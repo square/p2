@@ -42,7 +42,7 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	podstore_protos.RegisterP2PodStoreServer(s, podstore.NewServer(podStore, podStatusStore))
+	podstore_protos.RegisterP2PodStoreServer(s, podstore.NewServer(podStore, podStatusStore, client))
 	if err := s.Serve(lis); err != nil {
 		logger.Fatalf("failed to serve: %v", err)
 	}

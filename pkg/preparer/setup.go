@@ -16,6 +16,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/hashicorp/consul/api"
+	context "golang.org/x/net/context"
 	"golang.org/x/net/http2"
 	"gopkg.in/yaml.v2"
 
@@ -64,7 +65,7 @@ type LogDestination struct {
 
 type PodStatusStore interface {
 	Get(key types.PodUniqueKey) (podstatus.PodStatus, *api.QueryMeta, error)
-	MutateStatus(key types.PodUniqueKey, mutator func(podstatus.PodStatus) (podstatus.PodStatus, error)) error
+	MutateStatus(ctx context.Context, key types.PodUniqueKey, mutator func(podstatus.PodStatus) (podstatus.PodStatus, error)) error
 }
 
 type Preparer struct {
@@ -72,6 +73,7 @@ type Preparer struct {
 	store                  Store
 	podStatusStore         PodStatusStore
 	podStore               podstore.Store
+	client                 consulutil.ConsulClient
 	hooks                  Hooks
 	Logger                 logging.Logger
 	podFactory             pods.Factory
@@ -455,7 +457,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 			"component": "PodProcessReporter",
 		})
 
-		podProcessReporter, err = podprocess.New(preparerConfig.PodProcessReporterConfig, podProcessReporterLogger, podStatusStore)
+		podProcessReporter, err = podprocess.New(preparerConfig.PodProcessReporterConfig, podProcessReporterLogger, podStatusStore, client)
 		if err != nil {
 			return nil, err
 		}
@@ -513,6 +515,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		hooks:                  hooks.NewContext(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger, auditLogger),
 		podStatusStore:         podStatusStore,
 		podStore:               podStore,
+		client:                 client,
 		Logger:                 logger,
 		podFactory:             pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName, fetcher, preparerConfig.RequireFile),
 		authPolicy:             authPolicy,

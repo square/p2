@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"time"
 
 	"github.com/square/p2/pkg/grpc/podstore"
@@ -12,7 +13,6 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 )
@@ -97,6 +97,7 @@ func (c Client) WatchStatus(ctx context.Context, podUniqueKey types.PodUniqueKey
 					time.Sleep(2 * time.Second)
 
 					innerCtx, innerCancel = context.WithCancel(ctx)
+					defer innerCancel()
 
 					stream, err = c.client.WatchPodStatus(innerCtx, &podstore_protos.WatchPodStatusRequest{
 						PodUniqueKey:    podUniqueKey.String(),

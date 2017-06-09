@@ -1,6 +1,8 @@
 package statusstore
 
 import (
+	"context"
+
 	"github.com/hashicorp/consul/api"
 )
 
@@ -47,7 +49,7 @@ type Store interface {
 	SetStatus(t ResourceType, id ResourceID, namespace Namespace, status Status) error
 
 	// Like SetStatus(), but compare-and-swap value at a specified ModifyIndex (see consul docs)
-	CASStatus(t ResourceType, id ResourceID, namespace Namespace, status Status, modifyIndex uint64) error
+	CASStatus(ctx context.Context, t ResourceType, id ResourceID, namespace Namespace, status Status, modifyIndex uint64) error
 
 	// Get the status for a particular resource specified by ResourceType and ID,
 	// namespaced by a Namespace string

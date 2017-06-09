@@ -1,6 +1,8 @@
 package client
 
 import (
+	"context"
+
 	"github.com/square/p2/pkg/ds"
 	"github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/grpc/daemonsetstore"
@@ -9,7 +11,6 @@ import (
 	"github.com/square/p2/pkg/store/consul/dsstore"
 	"github.com/square/p2/pkg/util"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 )
@@ -74,6 +75,7 @@ func (c Client) Watch(quitCh <-chan struct{}) <-chan dsstore.WatchedDaemonSets {
 	go func() {
 		for {
 			innerCtx, innerCancel := context.WithCancel(outerCtx)
+			defer innerCancel()
 			watchClient, err = c.client.WatchDaemonSets(innerCtx, &daemonsetstore_protos.WatchDaemonSetsRequest{})
 			if err != nil {
 				innerCancel()

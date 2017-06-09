@@ -1,6 +1,8 @@
 package statusstoretest
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -57,28 +59,14 @@ func (s *FakeStatusStore) SetStatus(
 }
 
 func (s *FakeStatusStore) CASStatus(
+	ctx context.Context,
 	t statusstore.ResourceType,
 	id statusstore.ResourceID,
 	namespace statusstore.Namespace,
 	status statusstore.Status,
 	modifyIndex uint64,
 ) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	identifier := StatusIdentifier{t, id, namespace}
-	if modifyIndex == 0 {
-		// Check that the key doesn't exist which is what consul does https://www.consul.io/docs/agent/http/kv.html
-		_, ok := s.Statuses[identifier]
-		if ok {
-			return statusstore.NewStaleIndex(id.String(), modifyIndex)
-		}
-	} else if modifyIndex != s.LastIndex {
-		return statusstore.NewStaleIndex(id.String(), modifyIndex)
-	}
-
-	s.Statuses[identifier] = status
-	s.LastIndex++
-	return nil
+	return errors.New("CASStatus uses transactions which requires a real consul instance")
 }
 
 func (s *FakeStatusStore) GetStatus(
