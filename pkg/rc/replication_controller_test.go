@@ -1,9 +1,10 @@
+// +build !race
+
 package rc
 
 import (
+	"context"
 	"fmt"
-	"path"
-	"sync"
 	"testing"
 	"time"
 
@@ -15,44 +16,13 @@ import (
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
-
-type fakeconsulStore struct {
-	manifests map[string]manifest.Manifest
-	mu        sync.Mutex
-}
-
-func (s *fakeconsulStore) SetPod(podPrefix consul.PodPrefix, nodeName types.NodeName, manifest manifest.Manifest) (time.Duration, error) {
-	key := path.Join(string(podPrefix), nodeName.String(), string(manifest.ID()))
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.manifests[key] = manifest
-	return 0, nil
-}
-
-func (s *fakeconsulStore) DeletePod(podPrefix consul.PodPrefix, nodeName types.NodeName, podID types.PodID) (time.Duration, error) {
-	key := path.Join(string(podPrefix), nodeName.String(), podID.String())
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.manifests, key)
-	return 0, nil
-}
-
-func (s *fakeconsulStore) Pod(podPrefix consul.PodPrefix, nodeName types.NodeName, podID types.PodID) (
-	manifest.Manifest, time.Duration, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	key := path.Join(string(podPrefix), nodeName.String(), podID.String())
-	if manifest, ok := s.manifests[key]; ok {
-		return manifest, 0, nil
-	}
-	return nil, 0, pods.NoCurrentManifest
-}
 
 type testRCStore interface {
 	ReplicationControllerStore
@@ -61,15 +31,43 @@ type testRCStore interface {
 	SetDesiredReplicas(id fields.ID, n int) error
 }
 
+type testConsulStore interface {
+	consulStore
+	AllPods(podPrefix consul.PodPrefix) ([]consul.ManifestResult, time.Duration, error)
+	SetPod(podPrefix consul.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
+	DeletePod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+}
+
+// union of labels.Applicator and Labeler.
+type testApplicator interface {
+	labels.Applicator
+	RemoveLabelsTxn(ctx context.Context, labelType labels.Type, id string, keysToRemove []string) error
+	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, values map[string]string) error
+}
+
 func setup(t *testing.T) (
 	rcStore testRCStore,
-	consulStore *fakeconsulStore,
-	applicator labels.Applicator,
+	consulStore testConsulStore,
+	applicator testApplicator,
 	rc *replicationController,
 	alerter *alertingtest.AlertRecorder,
+	closeFn func(),
 ) {
+	fixture := consulutil.NewFixture(t)
+	closeFn = fixture.Stop
+	applicator = labels.NewConsulApplicator(fixture.Client, 0)
 
-	rcStore = rcstore.NewFake()
+	// set a bogus label so we don't get "no labels" errors
+	err := applicator.SetLabel(labels.POD, "some_id", "some_key", "some_value")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = applicator.SetLabel(labels.NODE, "some_id", "some_key", "some_value")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rcStore = rcstore.NewConsul(fixture.Client, applicator, 0)
+	consulStore = consul.NewConsulStore(fixture.Client)
 
 	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID("testPod")
@@ -81,13 +79,12 @@ func setup(t *testing.T) (
 	rcData, err := rcStore.Create(podManifest, nodeSelector, podLabels)
 	Assert(t).IsNil(err, "expected no error creating request")
 
-	consulStore = &fakeconsulStore{manifests: make(map[string]manifest.Manifest)}
-	applicator = labels.NewFakeApplicator()
 	alerter = alertingtest.NewRecorder()
 
 	rc = New(
 		rcData,
 		consulStore,
+		fixture.Client.KV(),
 		rcStore,
 		scheduler.NewApplicatorScheduler(applicator),
 		applicator,
@@ -127,21 +124,27 @@ func waitForNodes(t *testing.T, rc ReplicationController, desired int) int {
 }
 
 func TestDoNothing(t *testing.T) {
-	_, consul, applicator, rc, alerter := setup(t)
+	_, consulStore, applicator, rc, alerter, closeFn := setup(t)
+	defer closeFn()
 
 	err := rc.meetDesires()
 	Assert(t).IsNil(err, "expected no error meeting")
 
 	scheduled := scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
-	consul.mu.Lock()
-	defer consul.mu.Unlock()
-	Assert(t).AreEqual(len(consul.manifests), 0, "expected no manifests to have been scheduled")
+	manifests, _, err := consulStore.AllPods(consul.INTENT_TREE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manifests) != 0 {
+		t.Fatalf("expected no manifests to have been scheduled but there were %d", len(manifests))
+	}
 	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to have occurred")
 }
 
 func TestCantSchedule(t *testing.T) {
-	rcStore, consul, applicator, rc, alerter := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, closeFn := setup(t)
+	defer closeFn()
 
 	quit := make(chan struct{})
 	errors := rc.WatchDesires(quit)
@@ -149,15 +152,19 @@ func TestCantSchedule(t *testing.T) {
 	rcStore.SetDesiredReplicas(rc.ID(), 1)
 
 	select {
-	case <-errors:
+	case rcErr := <-errors:
 		scheduled := scheduledPods(t, applicator)
 		Assert(t).AreEqual(len(scheduled), 0, "expected no pods to have been labeled")
-		consul.mu.Lock()
-		defer consul.mu.Unlock()
-		Assert(t).AreEqual(len(consul.manifests), 0, "expected no manifests to have been scheduled")
+		manifests, _, err := consulStore.AllPods(consul.INTENT_TREE)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(manifests) != 0 {
+			t.Fatalf("expected no manifests to have been scheduled but there were %d", len(manifests))
+		}
 
 		if len(alerter.Alerts) < 1 {
-			t.Fatalf("Expected an alert to fire due to not enough nodes being scheduled")
+			t.Fatalf("Expected an alert to fire due to not enough nodes being scheduled, but instead got %s", rcErr)
 		}
 	case <-time.After(1 * time.Second):
 		Assert(t).Fail("took too long to receive error")
@@ -165,7 +172,8 @@ func TestCantSchedule(t *testing.T) {
 }
 
 func TestSchedule(t *testing.T) {
-	rcStore, consul, applicator, rc, alerter := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, closeFn := setup(t)
+	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -184,54 +192,111 @@ func TestSchedule(t *testing.T) {
 	Assert(t).AreEqual(len(scheduled), 1, "expected a pod to have been labeled")
 	Assert(t).AreEqual(scheduled[0].ID, "node2/testPod", "expected pod labeled on the right node")
 
-	consul.mu.Lock()
-	defer consul.mu.Unlock()
-	for k, v := range consul.manifests {
-		Assert(t).AreEqual(k, "intent/node2/testPod", "expected manifest scheduled on the right node")
-		Assert(t).AreEqual(string(v.ID()), "testPod", "expected manifest with correct ID")
+	manifests, _, err := consulStore.AllPods(consul.INTENT_TREE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range manifests {
+		if v.PodLocation.PodID != "testPod" {
+			t.Errorf("expected manifest to be scheduled with pod id %s but was scheduled with %s", "testPod", v.PodLocation.PodID)
+		}
+		if v.PodLocation.Node != "node2" {
+			t.Errorf("expected manifest to be scheduled on %s but was scheduled on %s", "node2", v.PodLocation.Node)
+		}
+
+		Assert(t).AreEqual(string(v.Manifest.ID()), "testPod", "expected manifest with correct ID")
 	}
 
 	Assert(t).AreEqual(len(alerter.Alerts), 0, "Expected no alerts to fire")
 }
 
 func TestSchedulePartial(t *testing.T) {
-	rcStore, consul, applicator, rc, alerter := setup(t)
+	_, consulStore, applicator, rc, alerter, closeFn := setup(t)
+	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
 	Assert(t).IsNil(err, "expected no error labeling node1")
 	err = applicator.SetLabel(labels.NODE, "node2", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error labeling node2")
 
-	quit := make(chan struct{})
-	errors := rc.WatchDesires(quit)
+	rc.ReplicasDesired = 2
 
-	rcStore.SetDesiredReplicas(rc.ID(), 2)
-	numNodes := waitForNodes(t, rc, 1)
-	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
+	err = rc.meetDesires()
+	if err == nil {
+		t.Fatal("expected an error when there weren't enough nodes to schedule")
+	}
+
+	current, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(current) != 1 {
+		t.Errorf("expected 1 node to be scheduled but there were %d", len(current))
+	}
 
 	scheduled := scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 1, "expected a pod to have been labeled")
 	Assert(t).AreEqual(scheduled[0].ID, "node2/testPod", "expected pod labeled on the right node")
 
-	consul.mu.Lock()
-	defer consul.mu.Unlock()
-	for k, v := range consul.manifests {
-		Assert(t).AreEqual(k, "intent/node2/testPod", "expected manifest scheduled on the right node")
-		Assert(t).AreEqual(string(v.ID()), "testPod", "expected manifest with correct ID")
+	manifests, _, err := consulStore.AllPods(consul.INTENT_TREE)
+	if err != nil {
+		t.Fatal(err)
 	}
+	for _, v := range manifests {
+		if v.PodLocation.PodID != "testPod" {
+			t.Errorf("expected manifest to be scheduled with pod id %s but was scheduled with %s", "testPod", v.PodLocation.PodID)
+		}
+		if v.PodLocation.Node != "node2" {
+			t.Errorf("expected manifest to be scheduled on %s but was scheduled on %s", "node2", v.PodLocation.Node)
+		}
 
-	select {
-	case <-errors:
-		// Good, we should receive an error (not enough nodes to meet desire)
-	case <-time.After(1 * time.Second):
-		Assert(t).Fail("took too long to receive error")
+		Assert(t).AreEqual(string(v.Manifest.ID()), "testPod", "expected manifest with correct ID")
 	}
 
 	Assert(t).AreEqual(len(alerter.Alerts), 1, "Expected an alert due to there not being enough nodes to schedule on")
 }
 
+func TestUnschedulePartial(t *testing.T) {
+	_, consulStore, applicator, rc, _, closeFn := setup(t)
+	defer closeFn()
+
+	err := applicator.SetLabel(labels.NODE, "node2", "nodeQuality", "good")
+	Assert(t).IsNil(err, "expected no error labeling node2")
+
+	rc.ReplicasDesired = 1
+
+	err = rc.meetDesires()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	current, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(current) != 1 {
+		t.Errorf("expected 1 node to be scheduled but there were %d", len(current))
+	}
+
+	// we would never set this to a negative number in production but we're testing an error path here
+	rc.ReplicasDesired = -1
+	err = rc.meetDesires()
+	if err == nil {
+		t.Fatal("expected an error setting replicas desired to a negative number because there aren't enough nodes to unschedule to meet such a request")
+	}
+
+	manifests, _, err := consulStore.AllPods(consul.INTENT_TREE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manifests) != 0 {
+		t.Fatalf("expected all manifests to be unscheduled even though there weren't enough to unschedule, but there were %d", len(manifests))
+	}
+}
+
 func TestScheduleTwice(t *testing.T) {
-	rcStore, consul, applicator, rc, alerter := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, closeFn := setup(t)
+	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -258,20 +323,23 @@ func TestScheduleTwice(t *testing.T) {
 		Assert(t).Fail("expected manifests to have been scheduled on both nodes")
 	}
 
-	consul.mu.Lock()
-	defer consul.mu.Unlock()
-	Assert(t).AreEqual(len(consul.manifests), 2, "expected two manifests to have been scheduled")
-	for k, v := range consul.manifests {
-		if k != "intent/node1/testPod" && k != "intent/node2/testPod" {
-			Assert(t).Fail("expected manifest scheduled on the right node")
+	manifests, _, err := consulStore.AllPods(consul.INTENT_TREE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	Assert(t).AreEqual(len(manifests), 2, "expected two manifests to have been scheduled")
+	for _, v := range manifests {
+		if v.PodLocation.PodID != "testPod" || (v.PodLocation.Node != "node1" && v.PodLocation.Node != "node2") {
+			t.Errorf("expected manifest to be scheduled with pod id %s but was scheduled with %s", "testPod", v.PodLocation.PodID)
 		}
-		Assert(t).AreEqual(string(v.ID()), "testPod", "expected manifest with correct ID")
+		Assert(t).AreEqual(string(v.Manifest.ID()), "testPod", "expected manifest with correct ID")
 	}
 	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to fire")
 }
 
 func TestUnschedule(t *testing.T) {
-	rcStore, consul, applicator, rc, alerter := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, closeFn := setup(t)
+	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
 	Assert(t).IsNil(err, "expected no error labeling node1")
@@ -288,9 +356,11 @@ func TestUnschedule(t *testing.T) {
 
 	scheduled := scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 1, "expected a pod to have been labeled")
-	consul.mu.Lock()
-	Assert(t).AreEqual(len(consul.manifests), 1, "expected a manifest to have been scheduled")
-	consul.mu.Unlock()
+	manifests, _, err := consulStore.AllPods(consul.INTENT_TREE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	Assert(t).AreEqual(len(manifests), 1, "expected a manifest to have been scheduled")
 
 	rcStore.SetDesiredReplicas(rc.ID(), 0)
 	numNodes = waitForNodes(t, rc, 0)
@@ -298,14 +368,17 @@ func TestUnschedule(t *testing.T) {
 
 	scheduled = scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 0, "expected a pod to have been unlabeled")
-	consul.mu.Lock()
-	Assert(t).AreEqual(len(consul.manifests), 0, "expected manifest to have been unscheduled")
-	consul.mu.Unlock()
+	manifests, _, err = consulStore.AllPods(consul.INTENT_TREE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	Assert(t).AreEqual(len(manifests), 0, "expected manifest to have been unscheduled")
 	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to fire")
 }
 
 func TestPreferUnscheduleIneligible(t *testing.T) {
-	rcStore, consul, applicator, rc, alerter := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, closeFn := setup(t)
+	defer closeFn()
 	for i := 0; i < 1000; i++ {
 		nodeName := fmt.Sprintf("node%d", i)
 		err := applicator.SetLabel(labels.NODE, nodeName, "nodeQuality", "good")
@@ -322,13 +395,15 @@ func TestPreferUnscheduleIneligible(t *testing.T) {
 
 	scheduled := scheduledPods(t, applicator)
 	Assert(t).AreEqual(len(scheduled), 1000, "expected 1000 pods to have been labeled")
-	consul.mu.Lock()
-	Assert(t).AreEqual(len(consul.manifests), 1000, "expected a manifest to have been scheduled on 1000 nodes")
-	consul.mu.Unlock()
+	manifests, _, err := consulStore.AllPods(consul.INTENT_TREE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	Assert(t).AreEqual(len(manifests), 1000, "expected a manifest to have been scheduled on 1000 nodes")
 
 	// Make node503 ineligible, so that it will be preferred for unscheduling
 	// when we decrease ReplicasDesired
-	err := applicator.SetLabel(labels.NODE, "node503", "nodeQuality", "bad")
+	err = applicator.SetLabel(labels.NODE, "node503", "nodeQuality", "bad")
 	Assert(t).IsNil(err, "expected no error marking node503 as bad")
 
 	rcStore.SetDesiredReplicas(rc.ID(), 999)
@@ -344,7 +419,8 @@ func TestPreferUnscheduleIneligible(t *testing.T) {
 }
 
 func TestConsistencyNoChange(t *testing.T) {
-	_, kvStore, applicator, rc, alerter := setup(t)
+	_, kvStore, applicator, rc, alerter, closeFn := setup(t)
+	defer closeFn()
 	rcSHA, _ := rc.Manifest.SHA()
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error assigning label")
@@ -375,7 +451,8 @@ func TestConsistencyNoChange(t *testing.T) {
 }
 
 func TestConsistencyModify(t *testing.T) {
-	_, kvStore, applicator, rc, alerter := setup(t)
+	_, kvStore, applicator, rc, alerter, closeFn := setup(t)
+	defer closeFn()
 	rcSHA, _ := rc.Manifest.SHA()
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error assigning label")
@@ -404,7 +481,8 @@ func TestConsistencyModify(t *testing.T) {
 }
 
 func TestConsistencyDelete(t *testing.T) {
-	_, kvStore, applicator, rc, alerter := setup(t)
+	_, kvStore, applicator, rc, alerter, closeFn := setup(t)
+	defer closeFn()
 	rcSHA, _ := rc.Manifest.SHA()
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error assigning label")
@@ -431,7 +509,8 @@ func TestConsistencyDelete(t *testing.T) {
 }
 
 func TestReservedLabels(t *testing.T) {
-	_, _, applicator, rc, _ := setup(t)
+	_, _, applicator, rc, _, closeFn := setup(t)
+	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error assigning label")
@@ -439,7 +518,9 @@ func TestReservedLabels(t *testing.T) {
 	// Install manifest on a single node
 	rc.ReplicasDesired = 1
 	err = rc.meetDesires()
-	Assert(t).IsNil(err, "unexpected error scheduling nodes")
+	if err != nil {
+		t.Fatalf("unexpected error scheduling nodes: %s", err)
+	}
 
 	labeled, err := applicator.GetLabels(labels.POD, labels.MakePodLabelKey("node1", "testPod"))
 	Assert(t).IsNil(err, "unexpected error getting pod labels")

@@ -1,6 +1,7 @@
 package rc
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -11,14 +12,13 @@ import (
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
 	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
-	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/rcrowley/go-metrics"
@@ -26,9 +26,15 @@ import (
 
 // subset of labels.Applicator
 type Labeler interface {
-	SetLabel(labelType labels.Type, id, name, value string) error
-	RemoveLabel(labelType labels.Type, id, name string) error
+	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, labels map[string]string) error
+	RemoveLabelsTxn(ctx context.Context, labelType labels.Type, id string, keysToRemove []string) error
 	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
+	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
+}
+
+// LabelMatcher is a subset of Labeler, but its small size makes it easier to
+// call CurrentPods() in code where transactions are not available
+type LabelMatcher interface {
 	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
 }
 
@@ -54,12 +60,13 @@ type ReplicationControllerLocker interface {
 // farms to cooperatively schedule work.
 type Farm struct {
 	// constructor arguments for rcs created by this farm
-	store     store
+	store     consulStore
 	rcStore   ReplicationControllerStore
 	rcLocker  ReplicationControllerLocker
 	rcWatcher ReplicationControllerWatcher
 	scheduler scheduler.Scheduler
 	labeler   Labeler
+	txner     transaction.Txner
 
 	// session stream for the rcs locked by this farm
 	sessions <-chan string
@@ -85,18 +92,12 @@ type childRC struct {
 	quit     chan<- struct{}
 }
 
-type store interface {
-	SetPod(podPrefix consul.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
-	Pod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
-	DeletePod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
-	NewUnmanagedSession(session, name string) consul.Session
-}
-
 func NewFarm(
-	store store,
+	store consulStore,
 	rcs ReplicationControllerStore,
 	rcLocker ReplicationControllerLocker,
 	rcWatcher ReplicationControllerWatcher,
+	txner transaction.Txner,
 	scheduler scheduler.Scheduler,
 	labeler Labeler,
 	sessions <-chan string,
@@ -114,6 +115,7 @@ func NewFarm(
 		rcStore:          rcs,
 		rcLocker:         rcLocker,
 		rcWatcher:        rcWatcher,
+		txner:            txner,
 		scheduler:        scheduler,
 		labeler:          labeler,
 		sessions:         sessions,
@@ -257,6 +259,7 @@ START_LOOP:
 				newChild := New(
 					rc,
 					rcf.store,
+					rcf.txner,
 					rcf.rcWatcher,
 					rcf.scheduler,
 					rcf.labeler,

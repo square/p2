@@ -1,6 +1,7 @@
 package rc
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/rcstore"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -46,11 +48,12 @@ type ReplicationController interface {
 // These methods are the same as the methods of the same name in consul.Store.
 // Replication controllers have no need of any methods other than these.
 type consulStore interface {
-	SetPod(
+	SetPodTxn(
+		ctx context.Context,
 		podPrefix consul.PodPrefix,
 		nodeName types.NodeName,
 		manifest manifest.Manifest,
-	) (time.Duration, error)
+	) error
 
 	Pod(
 		podPrefix consul.PodPrefix,
@@ -58,10 +61,13 @@ type consulStore interface {
 		podId types.PodID,
 	) (manifest.Manifest, time.Duration, error)
 
-	DeletePod(podPrefix consul.PodPrefix,
+	DeletePodTxn(
+		ctx context.Context,
+		podPrefix consul.PodPrefix,
 		nodeName types.NodeName,
 		manifestID types.PodID,
-	) (time.Duration, error)
+	) error
+	NewUnmanagedSession(session, name string) consul.Session
 }
 
 // replicationController wraps a fields.RC with information required to manage the RC.
@@ -74,6 +80,7 @@ type replicationController struct {
 	logger logging.Logger
 
 	consulStore   consulStore
+	txner         transaction.Txner
 	rcWatcher     ReplicationControllerWatcher
 	scheduler     scheduler.Scheduler
 	podApplicator Labeler
@@ -87,6 +94,7 @@ type ReplicationControllerWatcher interface {
 func New(
 	fields fields.RC,
 	consulStore consulStore,
+	txner transaction.Txner,
 	rcWatcher ReplicationControllerWatcher,
 	scheduler scheduler.Scheduler,
 	podApplicator Labeler,
@@ -102,6 +110,7 @@ func New(
 
 		logger:        logger,
 		consulStore:   consulStore,
+		txner:         txner,
 		rcWatcher:     rcWatcher,
 		scheduler:     scheduler,
 		podApplicator: podApplicator,
@@ -217,7 +226,20 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 
 	rc.logger.NoFields().Infof("Need to schedule %d nodes out of %s", toSchedule, possible)
 
+	ctx, cancelFunc := transaction.New(context.Background())
 	for i := 0; i < toSchedule; i++ {
+		// create a new context for every 5 nodes. This is done to make sure
+		// we're safely under the 64 operation limit imposed by consul on
+		// transactions
+		if i%5 == 0 && i > 0 {
+			err = transaction.Commit(ctx, cancelFunc, rc.txner)
+			if err != nil {
+				cancelFunc()
+				return err
+			}
+
+			ctx, cancelFunc = transaction.New(context.Background())
+		}
 		if len(possibleSorted) < i+1 {
 			errMsg := fmt.Sprintf(
 				"Not enough nodes to meet desire: %d replicas desired, %d currentNodes, %d eligible. Scheduled on %d nodes instead.",
@@ -227,16 +249,25 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 			if err != nil {
 				rc.logger.WithError(err).Errorln("Unable to send alert")
 			}
+
+			// commit any queued operations
+			txnErr := transaction.Commit(ctx, cancelFunc, rc.txner)
+			if txnErr != nil {
+				return txnErr
+			}
+
 			return util.Errorf(errMsg)
 		}
 		scheduleOn := possibleSorted[i]
 
-		err := rc.schedule(scheduleOn)
+		err := rc.schedule(ctx, scheduleOn)
 		if err != nil {
+			cancelFunc()
 			return err
 		}
 	}
-	return nil
+
+	return transaction.Commit(ctx, cancelFunc, rc.txner)
 }
 
 // Generates an alerting.AlertInfo struct. Includes information relevant to
@@ -281,25 +312,48 @@ func (rc *replicationController) removePods(current types.PodLocations) error {
 	toUnschedule := len(current) - rc.ReplicasDesired
 	rc.logger.NoFields().Infof("Need to unschedule %d nodes out of %s", toUnschedule, current)
 
+	ctx, cancelFunc := transaction.New(context.Background())
 	for i := 0; i < toUnschedule; i++ {
+		// create a new context for every 5 nodes. This is done to make sure
+		// we're safely under the 64 operation limit imposed by consul on
+		// transactions
+		if i%5 == 0 && i > 0 {
+			err = transaction.Commit(ctx, cancelFunc, rc.txner)
+			if err != nil {
+				cancelFunc()
+				return err
+			}
+
+			ctx, cancelFunc = transaction.New(context.Background())
+		}
+
 		unscheduleFrom, ok := preferred.PopAny()
 		if !ok {
 			var ok bool
 			unscheduleFrom, ok = rest.PopAny()
 			if !ok {
 				// This should be mathematically impossible unless replicasDesired was negative
+
+				// commit any queued operations
+				txnErr := transaction.Commit(ctx, cancelFunc, rc.txner)
+				if txnErr != nil {
+					return txnErr
+				}
+
+				cancelFunc()
 				return util.Errorf(
 					"Unable to unschedule enough nodes to meet replicas desired: %d replicas desired, %d current.",
 					rc.ReplicasDesired, len(current),
 				)
 			}
 		}
-		err := rc.unschedule(unscheduleFrom)
+		err := rc.unschedule(ctx, unscheduleFrom)
 		if err != nil {
+			cancelFunc()
 			return err
 		}
 	}
-	return nil
+	return transaction.Commit(ctx, cancelFunc, rc.txner)
 }
 
 func (rc *replicationController) ensureConsistency(current types.PodLocations) error {
@@ -310,9 +364,24 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 	if err != nil {
 		return err
 	}
-	for _, pod := range current {
+
+	ctx, cancelFunc := transaction.New(context.Background())
+	for i, pod := range current {
+		// create a new context for every 5 nodes. This is done to make sure
+		// we're safely under the 64 operation limit imposed by consul on
+		// transactions
+		if i%5 == 0 && i > 0 {
+			err = transaction.Commit(ctx, cancelFunc, rc.txner)
+			if err != nil {
+				cancelFunc()
+				return err
+			}
+
+			ctx, cancelFunc = transaction.New(context.Background())
+		}
 		intent, _, err := rc.consulStore.Pod(consul.INTENT_TREE, pod.Node, types.PodID(pod.PodID))
 		if err != nil && err != pods.NoCurrentManifest {
+			cancelFunc()
 			return err
 		}
 		var intentSHA string
@@ -327,12 +396,13 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 		}
 
 		rc.logger.WithField("node", pod.Node).WithField("intentManifestSHA", intentSHA).Info("Found inconsistency in scheduled manifest")
-		if err := rc.schedule(pod.Node); err != nil {
+		if err := rc.schedule(ctx, pod.Node); err != nil {
+			cancelFunc()
 			return err
 		}
 	}
 
-	return nil
+	return transaction.Commit(ctx, cancelFunc, rc.txner)
 }
 
 func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {
@@ -345,7 +415,7 @@ func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {
 }
 
 // CurrentPods returns all pods managed by an RC with the given ID.
-func CurrentPods(rcid fields.ID, labeler Labeler) (types.PodLocations, error) {
+func CurrentPods(rcid fields.ID, labeler LabelMatcher) (types.PodLocations, error) {
 	selector := klabels.Everything().Add(RCIDLabel, klabels.EqualsOperator, []string{rcid.String()})
 
 	// replication controllers can only pass cachedMatch = false because their operations for matching
@@ -372,61 +442,59 @@ func (rc *replicationController) CurrentPods() (types.PodLocations, error) {
 	return CurrentPods(rc.ID(), rc.podApplicator)
 }
 
-// forEachLabel Attempts to apply the supplied function to all user-supplied labels
-// and the reserved labels.
-// If forEachLabel encounters any error applying the function, it returns that error immediately.
-// The function is not further applied to subsequent labels on an error.
-func (rc *replicationController) forEachLabel(node types.NodeName, f func(id, k, v string) error) error {
+// computePodLabels() computes the set of pod labels that should be applied to
+// every pod scheduled by this RC. The labels include a combination of user
+// requested ones and automatic ones
+func (rc *replicationController) computePodLabels() map[string]string {
 	rc.mu.Lock()
 	manifest := rc.Manifest
 	podLabels := rc.PodLabels
 	rc.mu.Unlock()
 	rcID := rc.ID()
-
-	id := labels.MakePodLabelKey(node, manifest.ID())
-
+	ret := make(map[string]string)
 	// user-requested labels.
 	for k, v := range podLabels {
-		if err := f(id, k, v); err != nil {
-			return err
-		}
+		ret[k] = v
 	}
 
 	// our reserved labels (pod id and replication controller id)
-	err := f(id, rcstore.PodIDLabel, manifest.ID().String())
-	if err != nil {
-		return err
-	}
-	return f(id, RCIDLabel, rcID.String())
+	ret[rcstore.PodIDLabel] = manifest.ID().String()
+	ret[RCIDLabel] = rcID.String()
+
+	return ret
 }
 
-func (rc *replicationController) schedule(node types.NodeName) error {
+func (rc *replicationController) schedule(ctx context.Context, node types.NodeName) error {
 	rc.logger.NoFields().Infof("Scheduling on %s", node)
-	err := rc.forEachLabel(node, func(podID, k, v string) error {
-		return rc.podApplicator.SetLabel(labels.POD, podID, k, v)
-	})
-	if err != nil {
-		return err
-	}
-
 	rc.mu.Lock()
 	manifest := rc.Manifest
 	rc.mu.Unlock()
-	_, err = rc.consulStore.SetPod(consul.INTENT_TREE, node, manifest)
-	return err
+	labelKey := labels.MakePodLabelKey(node, manifest.ID())
+
+	err := rc.podApplicator.SetLabelsTxn(ctx, labels.POD, labelKey, rc.computePodLabels())
+	if err != nil {
+		return err
+	}
+
+	return rc.consulStore.SetPodTxn(ctx, consul.INTENT_TREE, node, manifest)
 }
 
-func (rc *replicationController) unschedule(node types.NodeName) error {
+func (rc *replicationController) unschedule(ctx context.Context, node types.NodeName) error {
 	rc.logger.NoFields().Infof("Unscheduling from %s", node)
 	rc.mu.Lock()
 	manifest := rc.Manifest
 	rc.mu.Unlock()
-	_, err := rc.consulStore.DeletePod(consul.INTENT_TREE, node, manifest.ID())
+	err := rc.consulStore.DeletePodTxn(ctx, consul.INTENT_TREE, node, manifest.ID())
 	if err != nil {
 		return err
 	}
 
-	return rc.forEachLabel(node, func(podID, k, _ string) error {
-		return rc.podApplicator.RemoveLabel(labels.POD, podID, k)
-	})
+	labelsToSet := rc.computePodLabels()
+	var keysToRemove []string
+	for k, _ := range labelsToSet {
+		keysToRemove = append(keysToRemove, k)
+	}
+
+	labelKey := labels.MakePodLabelKey(node, manifest.ID())
+	return rc.podApplicator.RemoveLabelsTxn(ctx, labels.POD, labelKey, keysToRemove)
 }

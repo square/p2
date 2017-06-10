@@ -38,9 +38,14 @@ type UpdateFactory struct {
 	RCLocker      ReplicationControllerLocker
 	RCStore       ReplicationControllerStore
 	HealthChecker checker.ConsulHealthChecker
-	Labeler       rc.Labeler
+	Labeler       labeler
 	WatchDelay    time.Duration
 	Alerter       alerting.Alerter
+}
+
+type labeler interface {
+	rc.LabelMatcher
+	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
 }
 
 func NewUpdateFactory(
@@ -48,7 +53,7 @@ func NewUpdateFactory(
 	rcLocker ReplicationControllerLocker,
 	rcStore ReplicationControllerStore,
 	healthChecker checker.ConsulHealthChecker,
-	labeler rc.Labeler,
+	labeler labeler,
 	watchDelay time.Duration,
 	alerter alerting.Alerter,
 ) UpdateFactory {
@@ -109,7 +114,7 @@ type Farm struct {
 
 	logger logging.Logger
 
-	labeler       rc.Labeler
+	labeler       labeler
 	rcSelector    klabels.Selector
 	txner         transaction.Txner
 	auditLogStore auditlogstore.ConsulStore
