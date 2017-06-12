@@ -1,3 +1,5 @@
+// +build !race
+
 package daemonsetstore
 
 import (
@@ -8,9 +10,11 @@ import (
 	"github.com/square/p2/pkg/ds/fields"
 	daemonsetstore_protos "github.com/square/p2/pkg/grpc/daemonsetstore/protos"
 	"github.com/square/p2/pkg/grpc/testutil"
+	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/dsstore"
-	"github.com/square/p2/pkg/store/consul/dsstore/dsstoretest"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
 	"github.com/pborman/uuid"
@@ -20,8 +24,9 @@ import (
 )
 
 func TestListDaemonSets(t *testing.T) {
-	dsStore := dsstoretest.NewFake()
-	seedDS, err := createADaemonSet(dsStore)
+	fixture := consulutil.NewFixture(t)
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
+	seedDS, err := createADaemonSet(dsStore, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("could not seed daemon set store with a daemon set")
 	}
@@ -76,8 +81,9 @@ func TestListDaemonSets(t *testing.T) {
 }
 
 func TestDisableDaemonSet(t *testing.T) {
-	dsStore := dsstoretest.NewFake()
-	daemonSet, err := createADaemonSet(dsStore)
+	fixture := consulutil.NewFixture(t)
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
+	daemonSet, err := createADaemonSet(dsStore, fixture.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +112,9 @@ func TestDisableDaemonSet(t *testing.T) {
 }
 
 func TestDisableDaemonSetInvalidArgument(t *testing.T) {
-	server := NewServer(dsstoretest.NewFake())
+	fixture := consulutil.NewFixture(t)
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
+	server := NewServer(dsStore)
 
 	_, err := server.DisableDaemonSet(context.Background(), &daemonsetstore_protos.DisableDaemonSetRequest{
 		DaemonSetId: "bad daemon set ID",
@@ -121,7 +129,9 @@ func TestDisableDaemonSetInvalidArgument(t *testing.T) {
 }
 
 func TestDisableDaemonSetNotFound(t *testing.T) {
-	server := NewServer(dsstoretest.NewFake())
+	fixture := consulutil.NewFixture(t)
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
+	server := NewServer(dsStore)
 
 	_, err := server.DisableDaemonSet(context.Background(), &daemonsetstore_protos.DisableDaemonSetRequest{
 		DaemonSetId: uuid.New(),
@@ -202,7 +212,9 @@ func TestWatchDaemonSets(t *testing.T) {
 		}
 	}()
 
-	ds, err := createADaemonSet(dsstoretest.NewFake())
+	fixture := consulutil.NewFixture(t)
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
+	ds, err := createADaemonSet(dsStore, fixture.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +323,7 @@ func validManifest() manifest.Manifest {
 	return builder.GetManifest()
 }
 
-func createADaemonSet(store *dsstoretest.FakeDSStore) (fields.DaemonSet, error) {
+func createADaemonSet(store *dsstore.ConsulStore, txner transaction.Txner) (fields.DaemonSet, error) {
 	minHealth := 18
 	name := fields.ClusterName("some_daemon_set")
 	nodeSelector, err := klabels.Parse("foo=bar")
@@ -321,7 +333,10 @@ func createADaemonSet(store *dsstoretest.FakeDSStore) (fields.DaemonSet, error) 
 	podID := types.PodID("fooapp")
 	timeout := 100 * time.Nanosecond
 
-	return store.Create(
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	ds, err := store.Create(
+		ctx,
 		validManifest(),
 		minHealth,
 		name,
@@ -329,4 +344,8 @@ func createADaemonSet(store *dsstoretest.FakeDSStore) (fields.DaemonSet, error) 
 		podID,
 		timeout,
 	)
+	if err != nil {
+		return fields.DaemonSet{}, err
+	}
+	return ds, transaction.Commit(ctx, cancel, txner)
 }
