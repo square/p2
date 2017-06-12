@@ -76,7 +76,7 @@ func TestCleanupOldRCHappy(t *testing.T) {
 	builder := manifest.NewBuilder()
 	builder.SetID("whatever")
 
-	rc, err := rcStore.Create(builder.GetManifest(), klabels.Everything(), nil)
+	rc, err := rcStore.Create(builder.GetManifest(), klabels.Everything(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestCleanupOldRCTooManyReplicas(t *testing.T) {
 	builder := manifest.NewBuilder()
 	builder.SetID("whatever")
 
-	rc, err := rcStore.Create(builder.GetManifest(), klabels.Everything(), nil)
+	rc, err := rcStore.Create(builder.GetManifest(), klabels.Everything(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

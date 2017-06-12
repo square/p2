@@ -27,7 +27,7 @@ import (
 type testRCStore interface {
 	ReplicationControllerStore
 	ReplicationControllerWatcher
-	Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error)
+	Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set, additionalLabels klabels.Set) (fields.RC, error)
 	SetDesiredReplicas(id fields.ID, n int) error
 }
 
@@ -76,7 +76,7 @@ func setup(t *testing.T) (
 	nodeSelector := klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"})
 	podLabels := map[string]string{"podTest": "successful"}
 
-	rcData, err := rcStore.Create(podManifest, nodeSelector, podLabels)
+	rcData, err := rcStore.Create(podManifest, nodeSelector, podLabels, nil)
 	Assert(t).IsNil(err, "expected no error creating request")
 
 	alerter = alertingtest.NewRecorder()

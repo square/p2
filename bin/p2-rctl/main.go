@@ -104,7 +104,7 @@ var (
 
 func main() {
 	kingpin.Version(version.VERSION)
-	cmd, opts, labeler := flags.ParseWithConsulOptions()
+	cmd, opts, _ := flags.ParseWithConsulOptions()
 
 	logger := logging.NewLogger(logrus.Fields{})
 	if *logJSON {
@@ -122,6 +122,12 @@ func main() {
 
 	httpClient := cleanhttp.DefaultClient()
 	client := consul.NewConsulClient(opts)
+
+	// we ignore the labels.ApplicatorWithoutWatches that
+	// flags.ParseWithConsulOptions() gives you because that interface
+	// doesn't support transactions which is required by the rc store. so
+	// we just set up a labeler that directly accesses consul
+	labeler := labels.NewConsulApplicator(client, 0)
 
 	rcStore := rcstore.NewConsul(client, labeler, 3)
 
@@ -188,7 +194,12 @@ type Store interface {
 }
 
 type ReplicationControllerStore interface {
-	Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error)
+	Create(
+		manifest manifest.Manifest,
+		nodeSelector klabels.Selector,
+		podLabels klabels.Set,
+		additionalLabels klabels.Set,
+	) (fields.RC, error)
 	SetDesiredReplicas(id fields.ID, n int) error
 	List() ([]fields.RC, error)
 	Enable(id fields.ID) error
@@ -235,16 +246,11 @@ func (r rctlParams) Create(manifestPath, nodeSelector string, podLabels map[stri
 		}).Fatalln("Could not parse node selector")
 	}
 
-	newRC, err := r.rcs.Create(manifest, nodeSel, klabels.Set(podLabels))
+	newRC, err := r.rcs.Create(manifest, nodeSel, klabels.Set(podLabels), rcLabels)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not create replication controller in Consul")
 	}
 	r.logger.WithField("id", newRC.ID).Infoln("Created new replication controller")
-
-	err = r.labeler.SetLabels(labels.RC, newRC.ID.String(), rcLabels)
-	if err != nil {
-		r.logger.WithError(err).Fatalln("Could not label replication controller")
-	}
 }
 
 func (r rctlParams) Delete(id string, force bool) {
