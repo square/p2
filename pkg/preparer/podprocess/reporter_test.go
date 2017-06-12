@@ -228,19 +228,15 @@ type testPodStatusStore interface {
 }
 
 func assertStatusUpdated(t *testing.T, finish FinishOutput, podStatusStore testPodStatusStore) {
-	statusRetrieved := false
 	var status podstatus.PodStatus
 	var err error
-	for i := 0; i < 100; i++ {
+	for {
 		status, _, err = podStatusStore.Get(finish.PodUniqueKey)
 		if err == nil {
-			statusRetrieved = true
 			break
 		}
+
 		time.Sleep(15 * time.Millisecond)
-	}
-	if !statusRetrieved {
-		t.Fatalf("Could not retrieve status for the pod %s__%s__%s: %s", finish.PodID, finish.LaunchableID, finish.EntryPoint, err)
 	}
 
 	found := false
