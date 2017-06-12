@@ -137,18 +137,6 @@ func (s *ConsulStore) CreateTxn(ctx context.Context, manifest manifest.Manifest,
 		return fields.RC{}, err
 	}
 
-	// TODO: measure whether retries are is important in practice
-	for i := 0; i < s.retries; i++ {
-		if _, ok := err.(CASError); ok {
-			rc, err = s.innerCreate(manifest, nodeSelector, podLabels)
-		} else {
-			break
-		}
-	}
-	if err != nil {
-		return fields.RC{}, err
-	}
-
 	// labels do not need to be retried, consul labeler does that itself
 	err = s.forEachLabel(rc, func(id, k, v string) error {
 		return s.labeler.SetLabel(labels.RC, rc.ID.String(), k, v)
