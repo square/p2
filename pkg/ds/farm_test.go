@@ -1,11 +1,12 @@
+// +build !race
+
 package ds
 
 import (
+	"context"
 	"fmt"
 	"testing"
-	"time"
 
-	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
@@ -17,19 +18,17 @@ import (
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consultest"
-	"github.com/square/p2/pkg/store/consul/dsstore/dsstoretest"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/dsstore"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/hashicorp/consul/api"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	fake_checker "github.com/square/p2/pkg/health/checker/test"
 	pc_fields "github.com/square/p2/pkg/pc/fields"
 	klabels "k8s.io/kubernetes/pkg/labels"
-)
-
-const (
-	replicationTimeout    = replication.NoTimeout
-	testFarmRetryInterval = time.Duration(1000 * time.Millisecond)
 )
 
 // Tests dsContends for changes to both daemon sets and nodes
@@ -37,7 +36,8 @@ func TestContendNodes(t *testing.T) {
 	//
 	// Instantiate farm
 	//
-	dsStore := dsstoretest.NewFake()
+	fixture := consulutil.NewFixture(t)
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
@@ -85,8 +85,12 @@ func TestContendNodes(t *testing.T) {
 	podManifest := manifestBuilder.GetManifest()
 
 	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
-	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	dsData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 	err = waitForCreate(dsf, dsData.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
@@ -100,9 +104,13 @@ func TestContendNodes(t *testing.T) {
 
 	// Make another daemon set with a contending AvailabilityZoneLabel and verify
 	// that it gets disabled and that the node label does not change
-	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
+	ctx, cancel = transaction.New(context.Background())
+	defer cancel()
+	anotherDSData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 	Assert(t).AreNotEqual(dsData.ID.String(), anotherDSData.ID.String(), "Precondition failed")
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 	err = waitForCreate(dsf, anotherDSData.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
@@ -120,8 +128,12 @@ func TestContendNodes(t *testing.T) {
 	// then verify that it has been disabled and the node hasn't been overwritten
 	//
 	anotherSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"undefined"})
-	badDS, err := dsStore.Create(podManifest, minHealth, clusterName, anotherSelector, podID, replicationTimeout)
+	ctx, cancel = transaction.New(context.Background())
+	defer cancel()
+	badDS, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, anotherSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 	err = waitForCreate(dsf, badDS.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
@@ -150,7 +162,8 @@ func TestContendSelectors(t *testing.T) {
 	//
 	// Instantiate farm
 	//
-	dsStore := dsstoretest.NewFake()
+	fixture := consulutil.NewFixture(t)
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
@@ -198,13 +211,21 @@ func TestContendSelectors(t *testing.T) {
 	podManifest := manifestBuilder.GetManifest()
 
 	everythingSelector := klabels.Everything()
-	firstDSData, err := dsStore.Create(podManifest, minHealth, clusterName, everythingSelector, podID, replicationTimeout)
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	firstDSData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, everythingSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 	err = waitForCreate(dsf, firstDSData.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
-	secondDSData, err := dsStore.Create(podManifest, minHealth, clusterName, everythingSelector, podID, replicationTimeout)
+	ctx, cancel = transaction.New(context.Background())
+	defer cancel()
+	secondDSData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, everythingSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 	err = waitForCreate(dsf, secondDSData.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
@@ -218,8 +239,12 @@ func TestContendSelectors(t *testing.T) {
 	// Add another daemon set with different selector and verify it gets disabled
 	someSelector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"nowhere"})
-	thirdDSData, err := dsStore.Create(podManifest, minHealth, clusterName, someSelector, podID, replicationTimeout)
+	ctx, cancel = transaction.New(context.Background())
+	defer cancel()
+	thirdDSData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, someSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 	err = waitForCreate(dsf, thirdDSData.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
@@ -268,13 +293,17 @@ func TestContendSelectors(t *testing.T) {
 
 	anotherManifestBuilder := manifest.NewBuilder()
 	anotherManifestBuilder.SetID(anotherPodID)
-	anotherPodManifest := manifestBuilder.GetManifest()
+	anotherPodManifest := anotherManifestBuilder.GetManifest()
 
 	equalSelector := klabels.Everything().
 		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az99"})
 
-	fourthDSData, err := dsStore.Create(anotherPodManifest, minHealth, clusterName, equalSelector, anotherPodID, replicationTimeout)
+	ctx, cancel = transaction.New(context.Background())
+	defer cancel()
+	fourthDSData, err := dsStore.Create(ctx, anotherPodManifest, minHealth, clusterName, equalSelector, anotherPodID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 	err = waitForCreate(dsf, fourthDSData.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
@@ -282,8 +311,12 @@ func TestContendSelectors(t *testing.T) {
 	err = waitForDisabled(dsf, dsStore, fourthDSData.ID, false)
 	Assert(t).IsNil(err, "Error enabling fourth daemon set")
 
-	fifthDSData, err := dsStore.Create(anotherPodManifest, minHealth, clusterName, equalSelector, anotherPodID, replicationTimeout)
+	ctx, cancel = transaction.New(context.Background())
+	defer cancel()
+	fifthDSData, err := dsStore.Create(ctx, anotherPodManifest, minHealth, clusterName, equalSelector, anotherPodID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 	err = waitForCreate(dsf, fifthDSData.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
@@ -296,7 +329,8 @@ func TestFarmSchedule(t *testing.T) {
 	//
 	// Instantiate farm
 	//
-	dsStore := dsstoretest.NewFake()
+	fixture := consulutil.NewFixture(t)
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
@@ -346,15 +380,23 @@ func TestFarmSchedule(t *testing.T) {
 	podManifest := manifestBuilder.GetManifest()
 
 	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
-	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	dsData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 	err = waitForCreate(dsf, dsData.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
 	// Second daemon set
 	anotherNodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
-	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, anotherNodeSelector, podID, replicationTimeout)
+	ctx, cancel = transaction.New(context.Background())
+	defer cancel()
+	anotherDSData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, anotherNodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 	err = waitForCreate(dsf, anotherDSData.ID)
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
@@ -519,7 +561,8 @@ func TestFarmSchedule(t *testing.T) {
 }
 
 func TestCleanupPods(t *testing.T) {
-	dsStore := dsstoretest.NewFake()
+	fixture := consulutil.NewFixture(t)
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
@@ -608,7 +651,8 @@ func TestCleanupPods(t *testing.T) {
 }
 
 func TestMultipleFarms(t *testing.T) {
-	dsStore := dsstoretest.NewFake()
+	fixture := consulutil.NewFixture(t)
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
@@ -690,13 +734,21 @@ func TestMultipleFarms(t *testing.T) {
 	podManifest := manifestBuilder.GetManifest()
 
 	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
-	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	dsData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 
 	// Second daemon set
 	anotherNodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az2"})
-	anotherDSData, err := dsStore.Create(podManifest, minHealth, clusterName, anotherNodeSelector, podID, replicationTimeout)
+	ctx, cancel = transaction.New(context.Background())
+	defer cancel()
+	anotherDSData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, anotherNodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 
 	// Make a node and verify that it was scheduled by the first daemon set
 	applicator.SetLabel(labels.NODE, "node1", pc_fields.AvailabilityZoneLabel, "az1")
@@ -919,7 +971,8 @@ func TestMultipleFarms(t *testing.T) {
 }
 
 func TestRelock(t *testing.T) {
-	dsStore := dsstoretest.NewFake()
+	fixture := consulutil.NewFixture(t)
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
@@ -972,8 +1025,12 @@ func TestRelock(t *testing.T) {
 		podManifest := manifestBuilder.GetManifest()
 
 		nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{zone})
-		dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
+		ctx, cancel := transaction.New(context.Background())
+		defer cancel()
+		dsData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 		Assert(t).IsNil(err, "Expected no error creating request")
+		err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+		Assert(t).IsNil(err, "Expected no error committing transaction")
 		return dsData
 	}
 
@@ -1007,7 +1064,8 @@ func TestRelock(t *testing.T) {
 }
 
 func TestDieAndUpdate(t *testing.T) {
-	dsStore := dsstoretest.NewFake()
+	fixture := consulutil.NewFixture(t)
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
 
@@ -1060,8 +1118,12 @@ func TestDieAndUpdate(t *testing.T) {
 		podManifest := manifestBuilder.GetManifest()
 
 		nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{zone})
-		dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
+		ctx, cancel := transaction.New(context.Background())
+		defer cancel()
+		dsData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 		Assert(t).IsNil(err, "Expected no error creating request")
+		err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+		Assert(t).IsNil(err, "Expected no error committing transaction")
 		return dsData
 	}
 
@@ -1115,9 +1177,13 @@ func waitForPodLabel(applicator labels.Applicator, hasDSIDLabel bool, podPath st
 	return labeled, err
 }
 
+type testDSGetter interface {
+	Get(ds_fields.ID) (ds_fields.DaemonSet, *api.QueryMeta, error)
+}
+
 func waitForDisabled(
 	dsf *Farm,
-	dsStore *dsstoretest.FakeDSStore,
+	dsStore testDSGetter,
 	dsID ds_fields.ID,
 	isDisabled bool,
 ) error {
@@ -1235,22 +1301,4 @@ func waitForMutateSelectorFarms(firstFarm *Farm, secondFarm *Farm, ds ds_fields.
 		return util.Errorf("Farm does not have daemon set id")
 	}
 	return waitForCondition(condition)
-}
-
-// Polls for a condition to happen, will return an error if it does not happen
-// before the timeout
-func waitForCondition(condition func() error) error {
-	timeout := time.After(20 * time.Second)
-	timedOut := false
-	err := condition()
-
-	for err != nil && !timedOut {
-		select {
-		case <-timeout:
-			timedOut = true
-		case <-time.After(100 * time.Millisecond):
-			err = condition()
-		}
-	}
-	return err
 }

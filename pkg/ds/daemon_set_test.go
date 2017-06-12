@@ -1,6 +1,9 @@
+// +build !race
+
 package ds
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -13,8 +16,9 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul/consultest"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/dsstore"
-	"github.com/square/p2/pkg/store/consul/dsstore/dsstoretest"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -24,8 +28,28 @@ import (
 )
 
 const (
-	testDSRetryInterval = time.Duration(1000 * time.Millisecond)
+	testDSRetryInterval   = time.Duration(1000 * time.Millisecond)
+	replicationTimeout    = replication.NoTimeout
+	testFarmRetryInterval = time.Duration(1000 * time.Millisecond)
 )
+
+// Polls for a condition to happen, will return an error if it does not happen
+// before the timeout
+func waitForCondition(condition func() error) error {
+	timeout := time.After(20 * time.Second)
+	timedOut := false
+	err := condition()
+
+	for err != nil && !timedOut {
+		select {
+		case <-timeout:
+			timedOut = true
+		case <-time.After(100 * time.Millisecond):
+			err = condition()
+		}
+	}
+	return err
+}
 
 func waitForNodes(
 	ds DaemonSet,
@@ -138,7 +162,8 @@ func TestSchedule(t *testing.T) {
 	//
 	// Setup fixture and schedule a pod
 	//
-	dsStore := dsstoretest.NewFake()
+	fixture := consulutil.NewFixture(t)
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 
 	podID := types.PodID("testPod")
 	minHealth := 0
@@ -151,8 +176,12 @@ func TestSchedule(t *testing.T) {
 	nodeSelector := klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"})
 	timeout := replication.NoTimeout
 
-	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	dsData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -382,7 +411,8 @@ func TestPublishToReplication(t *testing.T) {
 	//
 	// Setup fixture and schedule a pod
 	//
-	dsStore := dsstoretest.NewFake()
+	fixture := consulutil.NewFixture(t)
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 
 	podID := types.PodID("testPod")
 	minHealth := 1
@@ -395,8 +425,12 @@ func TestPublishToReplication(t *testing.T) {
 	nodeSelector := klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"})
 	timeout := replication.NoTimeout
 
-	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	dsData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
