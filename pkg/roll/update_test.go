@@ -376,7 +376,7 @@ func assignManifestsToNodes(
 }
 
 type testRCCreator interface {
-	Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (rc_fields.RC, error)
+	Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set, additionalLabels klabels.Set) (rc_fields.RC, error)
 	SetDesiredReplicas(id rc_fields.ID, n int) error
 }
 
@@ -387,7 +387,7 @@ func createRC(
 	desired int,
 	nodes map[types.NodeName]bool,
 ) (rc_fields.RC, error) {
-	created, err := rcs.Create(manifest, nil, nil)
+	created, err := rcs.Create(manifest, nil, nil, nil)
 	if err != nil {
 		return rc_fields.RC{}, fmt.Errorf("Error creating RC: %s", err)
 	}

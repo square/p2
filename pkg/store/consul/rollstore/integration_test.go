@@ -156,7 +156,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 	rollstore, rcStore := newRollStoreWithRealConsul(t, fixture, nil)
 
 	// create the old RC
-	oldRC, err := rollstore.rcstore.Create(testManifest(), nil, nil)
+	oldRC, err := rollstore.rcstore.Create(testManifest(), nil, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create old rc: %s", err)
 	}
@@ -322,6 +322,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *t
 		testManifest(),
 		nil,
 		nil,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("Unable to create fake rc for test")
@@ -381,6 +382,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 	// Put an RC in the rcstore that matches our label selector
 	oldRC, err := rollstore.rcstore.Create(
 		testManifest(),
+		nil,
 		nil,
 		nil,
 	)

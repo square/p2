@@ -32,12 +32,17 @@ type ReplicationControllerStore interface {
 	Enable(id fields.ID) error
 }
 
+type Labeler interface {
+	rcstore.RCLabeler
+	GetLabels(labels.Type, string) (labels.Labeled, error)
+}
+
 type P2RM struct {
 	Store    store
 	RCLocker ReplicationControllerLocker
 	RCStore  ReplicationControllerStore
 	Client   consulutil.ConsulClient
-	Labeler  labels.ApplicatorWithoutWatches
+	Labeler  Labeler
 	PodStore podstore.Store
 
 	LabelID      string
@@ -49,7 +54,7 @@ type P2RM struct {
 // NewLegacyP2RM is a constructor for the P2RM type which configures it to
 // remove a "legacy" pod. It will generate the storage types based on its
 // api.Client argument
-func NewLegacyP2RM(client consulutil.ConsulClient, podName types.PodID, nodeName types.NodeName, labeler labels.ApplicatorWithoutWatches) *P2RM {
+func NewLegacyP2RM(client consulutil.ConsulClient, podName types.PodID, nodeName types.NodeName, labeler Labeler) *P2RM {
 	rm := &P2RM{}
 	rm.LabelID = path.Join(nodeName.String(), podName.String())
 	rm.PodID = podName
@@ -60,7 +65,7 @@ func NewLegacyP2RM(client consulutil.ConsulClient, podName types.PodID, nodeName
 }
 
 // Constructs a *P2RM configured to remove a pod identified by a PodUniqueKey (uuid)
-func NewUUIDP2RM(client consulutil.ConsulClient, podUniqueKey types.PodUniqueKey, podID types.PodID, labeler labels.ApplicatorWithoutWatches) *P2RM {
+func NewUUIDP2RM(client consulutil.ConsulClient, podUniqueKey types.PodUniqueKey, podID types.PodID, labeler Labeler) *P2RM {
 	rm := &P2RM{}
 	rm.LabelID = podUniqueKey.String()
 	rm.PodID = podID
@@ -70,7 +75,7 @@ func NewUUIDP2RM(client consulutil.ConsulClient, podUniqueKey types.PodUniqueKey
 	return rm
 }
 
-func (rm *P2RM) configureStorage(client consulutil.ConsulClient, labeler labels.ApplicatorWithoutWatches) {
+func (rm *P2RM) configureStorage(client consulutil.ConsulClient, labeler Labeler) {
 	rm.Client = client
 	rm.Store = consul.NewConsulStore(client)
 	consulStore := rcstore.NewConsul(client, labeler, 5)
