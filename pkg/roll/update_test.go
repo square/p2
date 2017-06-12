@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	pc_fields "github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/rc"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
@@ -376,7 +377,14 @@ func assignManifestsToNodes(
 }
 
 type testRCCreator interface {
-	Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set, additionalLabels klabels.Set) (rc_fields.RC, error)
+	Create(
+		manifest manifest.Manifest,
+		nodeSelector klabels.Selector,
+		availabilityZone pc_fields.AvailabilityZone,
+		clusterName pc_fields.ClusterName,
+		podLabels klabels.Set,
+		additionalLabels klabels.Set,
+	) (rc_fields.RC, error)
 	SetDesiredReplicas(id rc_fields.ID, n int) error
 }
 
@@ -387,7 +395,7 @@ func createRC(
 	desired int,
 	nodes map[types.NodeName]bool,
 ) (rc_fields.RC, error) {
-	created, err := rcs.Create(manifest, nil, nil, nil)
+	created, err := rcs.Create(manifest, nil, "some_az", "some_cn", nil, nil)
 	if err != nil {
 		return rc_fields.RC{}, fmt.Errorf("Error creating RC: %s", err)
 	}

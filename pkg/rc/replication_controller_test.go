@@ -13,6 +13,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	pc_fields "github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/scheduler"
@@ -28,7 +29,14 @@ import (
 type testRCStore interface {
 	ReplicationControllerStore
 	ReplicationControllerWatcher
-	Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set, additionalLabels klabels.Set) (fields.RC, error)
+	Create(
+		manifest manifest.Manifest,
+		nodeSelector klabels.Selector,
+		availabilityZone pc_fields.AvailabilityZone,
+		clusterName pc_fields.ClusterName,
+		podLabels klabels.Set,
+		additionalLabels klabels.Set,
+	) (fields.RC, error)
 	SetDesiredReplicas(id fields.ID, n int) error
 }
 
@@ -77,7 +85,7 @@ func setup(t *testing.T) (
 	nodeSelector := klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"})
 	podLabels := map[string]string{"podTest": "successful"}
 
-	rcData, err := rcStore.Create(podManifest, nodeSelector, podLabels, nil)
+	rcData, err := rcStore.Create(podManifest, nodeSelector, "some_az", "some_cn", podLabels, nil)
 	Assert(t).IsNil(err, "expected no error creating request")
 
 	alerter = alertingtest.NewRecorder()

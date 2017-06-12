@@ -15,6 +15,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/store/consul/transaction"
+	"github.com/square/p2/pkg/types"
 
 	"github.com/hashicorp/consul/api"
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -101,6 +102,8 @@ func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 		0,
 		false,
 		0,
+		"some_az",
+		"some_cn",
 		testManifest(),
 		testNodeSelector(),
 		nil,
@@ -159,7 +162,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 	rollstore, rcStore := newRollStoreWithRealConsul(t, fixture, nil)
 
 	// create the old RC
-	oldRC, err := rollstore.rcstore.Create(testManifest(), nil, nil, nil)
+	oldRC, err := rollstore.rcstore.Create(testManifest(), nil, "some_az", "some_cn", podLabels(), nil)
 	if err != nil {
 		t.Fatalf("Failed to create old rc: %s", err)
 	}
@@ -172,6 +175,8 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 		0,
 		false,
 		0,
+		"some_az",
+		"some_cn",
 		testManifest(),
 		testNodeSelector(),
 		nil,
@@ -199,6 +204,8 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 		0,
 		false,
 		0,
+		"some_az",
+		"some_cn",
 		testManifest(),
 		testNodeSelector(),
 		nil,
@@ -261,6 +268,8 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist
 		0,
 		false,
 		0,
+		"some_az",
+		"some_cn",
 		testManifest(),
 		testNodeSelector(),
 		nil,
@@ -326,6 +335,8 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *t
 	oldRC, err := rollstore.rcstore.Create(
 		testManifest(),
 		nil,
+		"some_az",
+		"some_cn",
 		nil,
 		nil,
 	)
@@ -349,6 +360,8 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *t
 		0,
 		false,
 		0,
+		"some_az",
+		"some_cn",
 		testManifest(),
 		testNodeSelector(),
 		nil,
@@ -389,6 +402,8 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 	oldRC, err := rollstore.rcstore.Create(
 		testManifest(),
 		nil,
+		"some_az",
+		"some_cn",
 		nil,
 		nil,
 	)
@@ -413,6 +428,8 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 		0,
 		false,
 		0,
+		"some_az",
+		"some_cn",
 		testManifest(),
 		testNodeSelector(),
 		nil,
@@ -445,6 +462,8 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 		0,
 		false,
 		0,
+		"some_az",
+		"some_cn",
 		testManifest(),
 		testNodeSelector(),
 		nil,
@@ -497,4 +516,11 @@ func newRollStoreWithRealConsul(t *testing.T, fixture consulutil.Fixture, entrie
 		rcstore: rcStore,
 		labeler: applicator,
 	}, rcStore
+}
+
+func podLabels() klabels.Set {
+	return klabels.Set{
+		types.AvailabilityZoneLabel: "some_az",
+		types.ClusterNameLabel:      "some_cn",
+	}
 }

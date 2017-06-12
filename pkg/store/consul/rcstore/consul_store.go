@@ -16,16 +16,18 @@ import (
 
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/manifest"
+	pc_fields "github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/transaction"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
 
 const (
 	// This label is applied to an RC, to identify the ID of its pod manifest.
-	PodIDLabel = "pod_id"
+	PodIDLabel = types.PodIDLabel
 	// This is called "update" for backwards compatibility reasons, it
 	// should probably be named "mutate"
 	mutationSuffix       = "update"
@@ -106,7 +108,21 @@ func NewConsul(client consulutil.ConsulClient, labeler RCLabeler, retries int) *
 // The node selector is used to determine what nodes the replication controller may schedule on.
 // The pod label set is applied to every pod the replication controller schedules.
 // The additionalLabels label set is applied to the RCs own labels
-func (s *ConsulStore) Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set, additionalLabels klabels.Set) (fields.RC, error) {
+func (s *ConsulStore) Create(
+	manifest manifest.Manifest,
+	nodeSelector klabels.Selector,
+	availabilityZone pc_fields.AvailabilityZone,
+	clusterName pc_fields.ClusterName,
+	podLabels klabels.Set,
+	additionalLabels klabels.Set,
+) (fields.RC, error) {
+
+	if podLabels == nil {
+		podLabels = make(klabels.Set)
+	}
+	podLabels[types.ClusterNameLabel] = clusterName.String()
+	podLabels[types.AvailabilityZoneLabel] = availabilityZone.String()
+
 	rc, err := s.innerCreate(manifest, nodeSelector, podLabels)
 
 	// TODO: measure whether retries are is important in practice
@@ -136,6 +152,8 @@ func (s *ConsulStore) CreateTxn(
 	ctx context.Context,
 	manifest manifest.Manifest,
 	nodeSelector klabels.Selector,
+	availabilityZone pc_fields.AvailabilityZone,
+	clusterName pc_fields.ClusterName,
 	podLabels klabels.Set,
 	additionalLabels klabels.Set,
 ) (fields.RC, error) {
