@@ -21,6 +21,7 @@ import (
 	"github.com/square/p2/pkg/roll"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/flags"
 	"github.com/square/p2/pkg/store/consul/rcstore"
@@ -98,9 +99,12 @@ func main() {
 		}
 	}
 
+	auditLogStore := auditlogstore.NewConsulStore(client.KV())
+
 	// Run the farms!
 	go rc.NewFarm(
 		consulStore,
+		auditLogStore,
 		rcStore,
 		rcStore,
 		rcStore,

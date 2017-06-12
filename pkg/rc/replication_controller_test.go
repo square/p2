@@ -4,12 +4,14 @@ package rc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/square/p2/pkg/alerting/alertingtest"
+	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -18,6 +20,7 @@ import (
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/types"
@@ -54,12 +57,18 @@ type testApplicator interface {
 	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, values map[string]string) error
 }
 
+type testAuditLogStore interface {
+	AuditLogStore
+	List() (map[audit.ID]audit.AuditLog, error)
+}
+
 func setup(t *testing.T) (
 	rcStore testRCStore,
 	consulStore testConsulStore,
 	applicator testApplicator,
 	rc *replicationController,
 	alerter *alertingtest.AlertRecorder,
+	auditLogStore testAuditLogStore,
 	closeFn func(),
 ) {
 	fixture := consulutil.NewFixture(t)
@@ -89,10 +98,12 @@ func setup(t *testing.T) (
 	Assert(t).IsNil(err, "expected no error creating request")
 
 	alerter = alertingtest.NewRecorder()
+	auditLogStore = auditlogstore.NewConsulStore(fixture.Client.KV())
 
 	rc = New(
 		rcData,
 		consulStore,
+		auditLogStore,
 		fixture.Client.KV(),
 		rcStore,
 		scheduler.NewApplicatorScheduler(applicator),
@@ -133,7 +144,7 @@ func waitForNodes(t *testing.T, rc ReplicationController, desired int) int {
 }
 
 func TestDoNothing(t *testing.T) {
-	_, consulStore, applicator, rc, alerter, closeFn := setup(t)
+	_, consulStore, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
 	err := rc.meetDesires()
@@ -152,7 +163,7 @@ func TestDoNothing(t *testing.T) {
 }
 
 func TestCantSchedule(t *testing.T) {
-	rcStore, consulStore, applicator, rc, alerter, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
 	quit := make(chan struct{})
@@ -181,7 +192,7 @@ func TestCantSchedule(t *testing.T) {
 }
 
 func TestSchedule(t *testing.T) {
-	rcStore, consulStore, applicator, rc, alerter, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
@@ -217,10 +228,35 @@ func TestSchedule(t *testing.T) {
 	}
 
 	Assert(t).AreEqual(len(alerter.Alerts), 0, "Expected no alerts to fire")
+
+	records, err := auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected a single audit log record but there were %d", len(records))
+	}
+	for _, record := range records {
+		if record.EventType != audit.RCRetargetingEvent {
+			t.Errorf("expected audit log type to be %q but was %q", audit.RCRetargetingEvent, record.EventType)
+		}
+		var details audit.RCRetargetingDetails
+		err = json.Unmarshal([]byte(*record.EventDetails), &details)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(details.Nodes) != 1 {
+			t.Error("expected one node")
+		} else {
+			if details.Nodes[0] != "node2" {
+				t.Errorf("expected node list to only have %v but had %v", "node2", details.Nodes[0])
+			}
+		}
+	}
 }
 
 func TestSchedulePartial(t *testing.T) {
-	_, consulStore, applicator, rc, alerter, closeFn := setup(t)
+	_, consulStore, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
@@ -266,7 +302,7 @@ func TestSchedulePartial(t *testing.T) {
 }
 
 func TestUnschedulePartial(t *testing.T) {
-	_, consulStore, applicator, rc, _, closeFn := setup(t)
+	_, consulStore, applicator, rc, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node2", "nodeQuality", "good")
@@ -304,7 +340,7 @@ func TestUnschedulePartial(t *testing.T) {
 }
 
 func TestScheduleTwice(t *testing.T) {
-	rcStore, consulStore, applicator, rc, alerter, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
@@ -347,7 +383,7 @@ func TestScheduleTwice(t *testing.T) {
 }
 
 func TestUnschedule(t *testing.T) {
-	rcStore, consulStore, applicator, rc, alerter, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
@@ -383,10 +419,49 @@ func TestUnschedule(t *testing.T) {
 	}
 	Assert(t).AreEqual(len(manifests), 0, "expected manifest to have been unscheduled")
 	Assert(t).AreEqual(len(alerter.Alerts), 0, "expected no alerts to fire")
+
+	records, err := auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected 2 audit log records but there were %d", len(records))
+	}
+
+	foundNone := false
+	for _, record := range records {
+		if record.EventType != audit.RCRetargetingEvent {
+			t.Errorf("expected audit log type to be %q but was %q", audit.RCRetargetingEvent, record.EventType)
+		}
+		var details audit.RCRetargetingDetails
+		err = json.Unmarshal([]byte(*record.EventDetails), &details)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(details.Nodes) == 0 {
+			if foundNone {
+				t.Fatal("both audit records had no nodes in them")
+			}
+			foundNone = true
+		} else {
+			if len(details.Nodes) != 1 {
+				t.Error("expected one node")
+			} else {
+				if details.Nodes[0] != "node2" {
+					t.Errorf("expected node list to only have %v but had %v", "node2", details.Nodes[0])
+				}
+			}
+		}
+	}
+
+	if !foundNone {
+		t.Fatal("should have found an audit record with no nodes but didn't")
+	}
 }
 
 func TestPreferUnscheduleIneligible(t *testing.T) {
-	rcStore, consulStore, applicator, rc, alerter, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 	for i := 0; i < 1000; i++ {
 		nodeName := fmt.Sprintf("node%d", i)
@@ -428,7 +503,7 @@ func TestPreferUnscheduleIneligible(t *testing.T) {
 }
 
 func TestConsistencyNoChange(t *testing.T) {
-	_, kvStore, applicator, rc, alerter, closeFn := setup(t)
+	_, kvStore, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 	rcSHA, _ := rc.Manifest.SHA()
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
@@ -460,7 +535,7 @@ func TestConsistencyNoChange(t *testing.T) {
 }
 
 func TestConsistencyModify(t *testing.T) {
-	_, kvStore, applicator, rc, alerter, closeFn := setup(t)
+	_, kvStore, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 	rcSHA, _ := rc.Manifest.SHA()
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
@@ -490,7 +565,7 @@ func TestConsistencyModify(t *testing.T) {
 }
 
 func TestConsistencyDelete(t *testing.T) {
-	_, kvStore, applicator, rc, alerter, closeFn := setup(t)
+	_, kvStore, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 	rcSHA, _ := rc.Manifest.SHA()
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
@@ -518,7 +593,7 @@ func TestConsistencyDelete(t *testing.T) {
 }
 
 func TestReservedLabels(t *testing.T) {
-	_, _, applicator, rc, _, closeFn := setup(t)
+	_, _, applicator, rc, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
@@ -539,7 +614,7 @@ func TestReservedLabels(t *testing.T) {
 }
 
 func TestScheduleMoreThan5(t *testing.T) {
-	rcStore, _, applicator, rc, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	for i := 0; i < 7; i++ {
@@ -570,7 +645,7 @@ func TestScheduleMoreThan5(t *testing.T) {
 }
 
 func TestUnscheduleMoreThan5(t *testing.T) {
-	rcStore, _, applicator, rc, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	for i := 0; i < 7; i++ {

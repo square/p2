@@ -40,7 +40,7 @@ type RC struct {
 	// Defines the set of nodes on which the manifest can be scheduled
 	NodeSelector labels.Selector
 
-	// A set of labels that will be added to every pod scheduled by this controller
+	// A set of labels that will be added to every pod scheduled by this controller.
 	PodLabels labels.Set
 
 	// The desired number of instances of the manifest that should be
