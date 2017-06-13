@@ -64,6 +64,7 @@ type testConsulStore interface {
 type testApplicator interface {
 	labels.Applicator
 	RemoveLabelsTxn(ctx context.Context, labelType labels.Type, id string, keysToRemove []string) error
+	RemoveAllLabelsTxn(ctx context.Context, labelType labels.Type, id string) error
 	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, values map[string]string) error
 }
 
