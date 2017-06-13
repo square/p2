@@ -542,7 +542,13 @@ func TestWatchDiff(t *testing.T) {
 		t.Error("Unexpected error during put operation")
 	}
 
-	watchedCh := WatchDiff("prefix/", f.Client.KV(), done, testLogger(t))
+	watchedCh, errCh := WatchDiff("prefix/", f.Client.KV(), done)
+	go func() {
+		for err := range errCh {
+			t.Log(err)
+		}
+	}()
+
 	select {
 	case changes = <-watchedCh:
 	case <-time.After(2 * time.Second):

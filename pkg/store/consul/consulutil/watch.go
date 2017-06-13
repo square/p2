@@ -375,9 +375,9 @@ func WatchDiff(
 	prefix string,
 	clientKV ConsulLister,
 	quitCh <-chan struct{},
-	outErrors chan<- error,
-) <-chan *WatchedChanges {
+) (<-chan *WatchedChanges, <-chan error) {
 	outCh := make(chan *WatchedChanges)
+	outErrors := make(chan error)
 
 	// initialized tracks whether we've done a loop iteration yet. For the first iteration, we don't want to
 	// do a stale query of consul to ensure the caller of WatchDiff() doesn't get a more stale result
@@ -386,6 +386,7 @@ func WatchDiff(
 	initialized := false
 	go func() {
 		defer close(outCh)
+		defer close(outErrors)
 
 		// Keep track of what we have seen so that we know when something was changed
 		keys := make(map[string]*api.KVPair)
@@ -485,7 +486,7 @@ func WatchDiff(
 		}
 	}()
 
-	return outCh
+	return outCh, outErrors
 }
 
 func sizeInBytes(pairs api.KVPairs) int {

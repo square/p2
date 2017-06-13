@@ -268,14 +268,12 @@ func IsNotExist(err error) bool {
 // changed daemon sets
 func (s *ConsulStore) Watch(quitCh <-chan struct{}) <-chan WatchedDaemonSets {
 	outCh := make(chan WatchedDaemonSets)
-	errCh := make(chan error, 1)
 
 	// Watch for changes in the dsTree and deletedDSTree
-	inCh := consulutil.WatchDiff(dsTree, s.kv, quitCh, errCh)
+	inCh, errCh := consulutil.WatchDiff(dsTree, s.kv, quitCh)
 
 	go func() {
 		defer close(outCh)
-		defer close(errCh)
 
 		for {
 			var kvps *consulutil.WatchedChanges
