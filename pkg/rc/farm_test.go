@@ -43,7 +43,7 @@ func TestRCsWithCountsWillBeFine(t *testing.T) {
 		rcStore: fakeStore,
 	}
 
-	rc, err := fakeStore.Create(testManifest(), klabels.Everything(), map[string]string{})
+	rc, err := fakeStore.Create(testManifest(), klabels.Everything(), map[string]string{}, nil)
 	if err != nil {
 		t.Fatalf("could not put an RC in the fake store: %s", err)
 	}
@@ -71,7 +71,7 @@ func TestRCsWithZeroCountsWillTriggerIncident(t *testing.T) {
 	}
 
 	// replica count is implicitly zero
-	_, err := fakeStore.Create(testManifest(), klabels.Everything(), map[string]string{})
+	_, err := fakeStore.Create(testManifest(), klabels.Everything(), map[string]string{}, nil)
 	if err != nil {
 		t.Fatalf("could not put an RC in the fake store: %s", err)
 	}

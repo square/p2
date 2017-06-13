@@ -76,7 +76,7 @@ type consulKV interface {
 }
 
 type ConsulStore struct {
-	labeler rcLabeler
+	labeler RCLabeler
 	kv      consulKV
 	retries int
 }
@@ -88,12 +88,14 @@ func (e CASError) Error() string {
 	return fmt.Sprintf("Could not check-and-set key %q", string(e))
 }
 
-type rcLabeler interface {
-	SetLabel(labelType labels.Type, id, name, value string) error
+type RCLabeler interface {
+	SetLabels(labelType labels.Type, id string, labels map[string]string) error
 	RemoveAllLabels(labelType labels.Type, id string) error
+	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, labels map[string]string) error
+	RemoveAllLabelsTxn(ctx context.Context, labelType labels.Type, id string) error
 }
 
-func NewConsul(client consulutil.ConsulClient, labeler rcLabeler, retries int) *ConsulStore {
+func NewConsul(client consulutil.ConsulClient, labeler RCLabeler, retries int) *ConsulStore {
 	return &ConsulStore{
 		retries: retries,
 		labeler: labeler,
@@ -104,7 +106,8 @@ func NewConsul(client consulutil.ConsulClient, labeler rcLabeler, retries int) *
 // Create creates a replication controller with the specified manifest and selectors.
 // The node selector is used to determine what nodes the replication controller may schedule on.
 // The pod label set is applied to every pod the replication controller schedules.
-func (s *ConsulStore) Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
+// The additionalLabels label set is applied to the RCs own labels
+func (s *ConsulStore) Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set, additionalLabels klabels.Set) (fields.RC, error) {
 	rc, err := s.innerCreate(manifest, nodeSelector, podLabels)
 
 	// TODO: measure whether retries are is important in practice
@@ -120,9 +123,8 @@ func (s *ConsulStore) Create(manifest manifest.Manifest, nodeSelector klabels.Se
 	}
 
 	// labels do not need to be retried, consul labeler does that itself
-	err = s.forEachLabel(rc, func(id, k, v string) error {
-		return s.labeler.SetLabel(labels.RC, rc.ID.String(), k, v)
-	})
+	labelsToSet := s.computeLabels(rc, additionalLabels)
+	err = s.labeler.SetLabels(labels.RC, rc.ID.String(), labelsToSet)
 	if err != nil {
 		return fields.RC{}, err
 	}
@@ -131,28 +133,21 @@ func (s *ConsulStore) Create(manifest manifest.Manifest, nodeSelector klabels.Se
 }
 
 // TODO: replace Create() with this
-func (s *ConsulStore) CreateTxn(ctx context.Context, manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
+func (s *ConsulStore) CreateTxn(
+	ctx context.Context,
+	manifest manifest.Manifest,
+	nodeSelector klabels.Selector,
+	podLabels klabels.Set,
+	additionalLabels klabels.Set,
+) (fields.RC, error) {
 	rc, err := s.innerCreateTxn(ctx, manifest, nodeSelector, podLabels)
 	if err != nil {
 		return fields.RC{}, err
 	}
 
-	// TODO: measure whether retries are is important in practice
-	for i := 0; i < s.retries; i++ {
-		if _, ok := err.(CASError); ok {
-			rc, err = s.innerCreate(manifest, nodeSelector, podLabels)
-		} else {
-			break
-		}
-	}
-	if err != nil {
-		return fields.RC{}, err
-	}
-
 	// labels do not need to be retried, consul labeler does that itself
-	err = s.forEachLabel(rc, func(id, k, v string) error {
-		return s.labeler.SetLabel(labels.RC, rc.ID.String(), k, v)
-	})
+	labelsToSet := s.computeLabels(rc, additionalLabels)
+	err = s.labeler.SetLabelsTxn(ctx, labels.RC, rc.ID.String(), labelsToSet)
 	if err != nil {
 		return fields.RC{}, err
 	}
@@ -638,6 +633,42 @@ func (s *ConsulStore) Delete(id fields.ID, force bool) error {
 	})
 }
 
+// DeleteTxn adds a deletion operation to the passed context rather than
+// immediately deleting ig
+func (s *ConsulStore) DeleteTxn(ctx context.Context, id fields.ID, force bool) error {
+	err := s.labeler.RemoveAllLabelsTxn(ctx, labels.RC, id.String())
+	if err != nil {
+		return err
+	}
+
+	keyPath, err := s.rcPath(id)
+	if err != nil {
+		return err
+	}
+
+	if force {
+		return transaction.Add(ctx, api.KVTxnOp{
+			Verb: api.KVDelete,
+			Key:  keyPath,
+		})
+	}
+
+	rc, index, err := s.getWithIndex(id)
+	if err != nil {
+		return util.Errorf("could not fetch RC %s to determine its replica count is 0: %s", id, err)
+	}
+
+	if rc.ReplicasDesired != 0 {
+		return util.Errorf("cannot delete RC %s because its replica count is nonzero, was %d", id, rc.ReplicasDesired)
+	}
+
+	return transaction.Add(ctx, api.KVTxnOp{
+		Verb:  api.KVDeleteCAS,
+		Key:   keyPath,
+		Index: index,
+	})
+}
+
 // UpdateManifest will set the manifest on the RC at the given ID. Be careful with this function!
 func (s *ConsulStore) UpdateManifest(id fields.ID, man manifest.Manifest) error {
 	manifestUpdater := func(rc fields.RC) (fields.RC, error) {
@@ -1023,14 +1054,19 @@ func keysToRCIDs(keys []string) ([]fields.ID, error) {
 	return out, nil
 }
 
-// forEachLabel Attempts to apply the supplied function to labels of the replication controller.
-// If forEachLabel encounters any error applying the function, it returns that error immediately.
-// The function is not further applied to subsequent labels on an error.
-func (s *ConsulStore) forEachLabel(rc fields.RC, f func(id, k, v string) error) error {
-	id := rc.ID.String()
-	// As of this writing the only label we want is the pod ID.
-	// There may be more in the future.
-	return f(id, PodIDLabel, string(rc.Manifest.ID()))
+// computeLabels returns the set of labels to apply when creating a replication
+// controller. Currently the only automatic label is the pod ID label which is
+// inferred from the rc's manifest. Additional user-supplied labels are also
+// added into the label set
+func (s *ConsulStore) computeLabels(rc fields.RC, additionalLabels klabels.Set) map[string]string {
+	labels := make(map[string]string)
+	for k, v := range additionalLabels {
+		labels[k] = v
+	}
+
+	labels[PodIDLabel] = rc.Manifest.ID().String()
+
+	return labels
 }
 
 // Given a consul key path, returns the RC ID and the lock type. Returns an err

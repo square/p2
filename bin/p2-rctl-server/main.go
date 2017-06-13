@@ -16,6 +16,7 @@ import (
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health/checker"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/roll"
@@ -53,7 +54,7 @@ func SessionName() string {
 func main() {
 	// Parse custom flags + standard Consul routing options
 	kingpin.Version(version.VERSION)
-	_, opts, labeler := flags.ParseWithConsulOptions()
+	_, opts, _ := flags.ParseWithConsulOptions()
 
 	// Set up the logger
 	logger := logging.NewLogger(logrus.Fields{})
@@ -71,17 +72,13 @@ func main() {
 	httpClient := cleanhttp.DefaultClient()
 	client := consul.NewConsulClient(opts)
 	consulStore := consul.NewConsulStore(client)
+	// we ignore the labels.ApplicatorWithoutWatches given by
+	// flags.ParseWithConsulOptions() because that interface doesn't
+	// support transactions which is now required by the RC store
+	labeler := labels.NewConsulApplicator(client, 0)
 	rcStore := rcstore.NewConsul(client, labeler, RetryCount)
 
-	// This means that p2-rctl=server can only use direct-consul labelers, not
-	// HTTP applicators (because the rollstore requires transactions and
-	// only direct consul access can accomplish that)
-	rollLabeler, ok := labeler.(rollstore.RollLabeler)
-	if !ok {
-		logger.Fatalf("labeler configured via flags is not valid as a rollstore labeler")
-	}
-
-	rollStore := rollstore.NewConsul(client, rollLabeler, nil)
+	rollStore := rollstore.NewConsul(client, labeler, nil)
 	healthChecker := checker.NewConsulHealthChecker(client)
 	sched := scheduler.NewApplicatorScheduler(labeler)
 

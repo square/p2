@@ -3,8 +3,8 @@
 package roll
 
 import (
+	"context"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +18,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/store/consul/rollstore"
+	"github.com/square/p2/pkg/store/consul/transaction"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
@@ -41,7 +42,8 @@ func TestAuditLogCreation(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		farm.mustDeleteRU("some_id", logger)
+		ctx, cancel := transaction.New(context.Background())
+		farm.mustDeleteRU(ctx, cancel, "some_id", logger)
 	}()
 
 	select {
@@ -76,7 +78,7 @@ func TestCleanupOldRCHappy(t *testing.T) {
 	builder := manifest.NewBuilder()
 	builder.SetID("whatever")
 
-	rc, err := rcStore.Create(builder.GetManifest(), klabels.Everything(), nil)
+	rc, err := rcStore.Create(builder.GetManifest(), klabels.Everything(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +91,12 @@ func TestCleanupOldRCHappy(t *testing.T) {
 
 	quit := make(chan struct{})
 	defer close(quit)
-	update.cleanupOldRC(quit)
+	ctx, cancel := transaction.New(context.Background())
+	update.cleanupOldRC(ctx, quit)
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	_, err = rcStore.Get(rc.ID)
 	switch err {
@@ -128,7 +135,7 @@ func TestCleanupOldRCTooManyReplicas(t *testing.T) {
 	builder := manifest.NewBuilder()
 	builder.SetID("whatever")
 
-	rc, err := rcStore.Create(builder.GetManifest(), klabels.Everything(), nil)
+	rc, err := rcStore.Create(builder.GetManifest(), klabels.Everything(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,11 +156,11 @@ func TestCleanupOldRCTooManyReplicas(t *testing.T) {
 
 	quit := make(chan struct{})
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	errCh := make(chan error)
 	go func() {
-		defer wg.Done()
-		update.cleanupOldRC(quit)
+		ctx, cancel := transaction.New(context.Background())
+		update.cleanupOldRC(ctx, quit)
+		errCh <- transaction.Commit(ctx, cancel, fixture.Client.KV())
 	}()
 
 	// the first attempt will error so make sure there are two attempts
@@ -161,7 +168,12 @@ func TestCleanupOldRCTooManyReplicas(t *testing.T) {
 	<-alertOut
 	close(quit)
 
-	wg.Wait()
+	err = <-errCh
+	if err != nil {
+		t.Fatalf("failed to delete the old RC: %s", err)
+	}
+	close(errCh)
+
 	_, err = rcStore.Get(rc.ID)
 	switch err {
 	case rcstore.NoReplicationController:

@@ -37,7 +37,7 @@ func NewFake() *fakeStore {
 	}
 }
 
-func (s *fakeStore) Create(manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (fields.RC, error) {
+func (s *fakeStore) Create(manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set, additionalLabels labels.Set) (fields.RC, error) {
 	// A real replication controller will use a UUID.
 	// We'll just use a monotonically increasing counter for expedience.
 	s.creates += 1
@@ -66,7 +66,7 @@ func (s *fakeStore) Create(manifest manifest.Manifest, nodeSelector labels.Selec
 // If a test needs to use transactions, it should be using a real consul e.g.
 // via consulutil.NewFixture(). We won't be implementing transactions ourselves
 // in these fake storage structs
-func (s *fakeStore) CreateTxn(ctx context.Context, manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set) (fields.RC, error) {
+func (s *fakeStore) CreateTxn(ctx context.Context, manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set, additionalLabels labels.Set) (fields.RC, error) {
 	panic("transactions not implemented in fake rc store")
 }
 
@@ -200,6 +200,10 @@ func (s *fakeStore) Delete(id fields.ID, force bool) error {
 
 	delete(s.rcs, id)
 	return nil
+}
+
+func (s *fakeStore) DeleteTxn(ctx context.Context, id fields.ID, force bool) error {
+	return util.Errorf("DeleteTxn not implemented in fake RC store. Use a real consul store (e.g. via consulutil) if this functionality is needed")
 }
 
 func (s *fakeStore) Watch(rc *fields.RC, mu *sync.Mutex, quit <-chan struct{}) (<-chan struct{}, <-chan error) {

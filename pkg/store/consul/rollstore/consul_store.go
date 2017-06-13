@@ -61,12 +61,23 @@ type RollLabeler interface {
 
 type ReplicationControllerStore interface {
 	LockForUpdateCreation(rcID rc_fields.ID, session consul.Session) (consulutil.Unlocker, error)
-	CreateTxn(ctx context.Context, manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (rc_fields.RC, error)
+	CreateTxn(
+		ctx context.Context,
+		manifest manifest.Manifest,
+		nodeSelector klabels.Selector,
+		podLabels klabels.Set,
+		additionalLabels klabels.Set,
+	) (rc_fields.RC, error)
 	Delete(id rc_fields.ID, force bool) error
 	UpdateCreationLockPath(rcID rc_fields.ID) (string, error)
 
 	// TODO: delete this. the tests are still using it but the real code isn't
-	Create(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (rc_fields.RC, error)
+	Create(
+		manifest manifest.Manifest,
+		nodeSelector klabels.Selector,
+		podLabels klabels.Set,
+		additionalLabels klabels.Set,
+	) (rc_fields.RC, error)
 }
 
 type ConsulStore struct {
@@ -323,7 +334,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 		return roll_fields.Update{}, err
 	}
 
-	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, newRCPodLabels)
+	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, newRCPodLabels, newRCLabels)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -341,11 +352,6 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	// Check for conflicts again in case an update was created on the new
 	// RC between when we created it and locked it
 	err = s.checkForConflictingUpdates(rcIDs)
-	if err != nil {
-		return roll_fields.Update{}, err
-	}
-
-	err = s.labeler.SetLabelsTxn(ctx, labels.RC, newRCID.String(), newRCLabels)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -412,17 +418,12 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 		// Create the old RC using the same info as the new RC, it'll be
 		// removed when the update completes anyway
-		rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, newRCPodLabels)
+		rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, newRCPodLabels, newRCLabels)
 		if err != nil {
 			return roll_fields.Update{}, err
 		}
 
 		oldRCID = rc.ID
-		// Copy the new RC labels to the old RC as well
-		err = s.labeler.SetLabels(labels.RC, oldRCID.String(), newRCLabels)
-		if err != nil {
-			return roll_fields.Update{}, err
-		}
 	}
 
 	// Lock the old RC to guarantee that no new updates can use it
@@ -439,7 +440,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 	// Create the new RC
 	var newRCID rc_fields.ID
-	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, newRCPodLabels)
+	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, newRCPodLabels, newRCLabels)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -456,13 +457,6 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	// Check once again for conflicting updates in case a racing update
 	// creation grabbed the new RC we just created
 	err = s.checkForConflictingUpdates(rc_fields.IDs{newRCID})
-	if err != nil {
-		return roll_fields.Update{}, err
-	}
-
-	// Now that we know there are no RUs in progress, and we have the
-	// update creation locks, we can safely apply labels.
-	err = s.labeler.SetLabelsTxn(ctx, labels.RC, newRCID.String(), newRCLabels)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}

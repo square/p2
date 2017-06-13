@@ -27,9 +27,14 @@ var (
 
 func main() {
 	kingpin.Version(version.VERSION)
-	_, opts, labeler := flags.ParseWithConsulOptions()
+	_, opts, _ := flags.ParseWithConsulOptions()
 
 	consulClient := consul.NewConsulClient(opts)
+
+	// we ignore the labels.ApplicatorWithoutWatches that
+	// ParseWithConsulOptions() gives us because the RC store now requires
+	// transactions which that interface does not provide
+	labeler := labels.NewConsulApplicator(consulClient, 0)
 
 	err := handlePodRemoval(consulClient, labeler)
 	if err != nil {
@@ -38,7 +43,7 @@ func main() {
 	}
 }
 
-func handlePodRemoval(consulClient consulutil.ConsulClient, labeler labels.ApplicatorWithoutWatches) error {
+func handlePodRemoval(consulClient consulutil.ConsulClient, labeler Labeler) error {
 	var rm *P2RM
 	if *podUniqueKey != "" {
 		rm = NewUUIDP2RM(consulClient, types.PodUniqueKey(*podUniqueKey), types.PodID(*podName), labeler)

@@ -276,7 +276,9 @@ START_LOOP:
 					rlLogger.WithError(err).Errorln("RU was invalid, deleting")
 
 					// Just delete the RU, the farm will clean up the lock when releaseDeletedChildren() is called
-					rlf.mustDeleteRU(rlField.ID(), rlLogger)
+					ctx, cancel := transaction.New(context.Background())
+					rlf.mustDeleteRU(ctx, cancel, rlField.ID(), rlLogger)
+					cancel()
 					continue
 				}
 
@@ -304,14 +306,16 @@ START_LOOP:
 							}
 						}
 					}()
-					if !newChild.Run(childQuit) {
+					ctx, cancel := transaction.New(context.Background())
+					if !newChild.Run(ctx, childQuit) {
 						// returned false, farm must have asked us to quit
+						cancel()
 						return
 					}
 
 					// Block until the RU is deleted because the farm does not release locks until it detects an RU deletion
 					// our lock on this RU won't be released until it's deleted
-					rlf.mustDeleteRU(id, rlLogger)
+					rlf.mustDeleteRU(ctx, cancel, id, rlLogger)
 				}(rlField.ID()) // do not close over rlField, it's a loop variable
 			}
 
@@ -398,8 +402,7 @@ func (rlf *Farm) validateRoll(update roll_fields.Update, logger logging.Logger) 
 }
 
 // Tries to delete the given RU every second until it succeeds
-func (rlf *Farm) mustDeleteRU(id roll_fields.ID, logger logging.Logger) {
-	ctx, cancelFunc := transaction.New(context.Background())
+func (rlf *Farm) mustDeleteRU(ctx context.Context, cancelFunc func(), id roll_fields.ID, logger logging.Logger) {
 	defer cancelFunc() // technically not necessary once Commit() succeeds
 	err := rlf.rls.Delete(ctx, id)
 	if err != nil {

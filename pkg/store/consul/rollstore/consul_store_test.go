@@ -311,6 +311,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenTwoMat
 		testManifest(),
 		nil,
 		nil,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("Unable to create first fake rc for test")
@@ -323,6 +324,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenTwoMat
 
 	secondRC, err := rollstore.rcstore.Create(
 		testManifest(),
+		nil,
 		nil,
 		nil,
 	)
@@ -368,6 +370,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenExisti
 	// Put an RC in the rcstore that matches our label selector
 	oldRC, err := rollstore.rcstore.Create(
 		testManifest(),
+		nil,
 		nil,
 		nil,
 	)
