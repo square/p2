@@ -125,3 +125,16 @@ func TestCommitErrNoTransaction(t *testing.T) {
 		t.Fatal("should have gotten an error committing using a context that does not have a transaction")
 	}
 }
+
+func TestCommitTransactionWithNoOperations(t *testing.T) {
+	ctx, cancelFunc := New(context.Background())
+	txner := &testTxner{shouldOK: true}
+	err := Commit(ctx, cancelFunc, txner)
+	if err != nil {
+		t.Fatalf("unexpected error committing transaction: %s", err)
+	}
+
+	if txner.recordedCall != nil {
+		t.Error("no txn call should have been made to consul if there are no operations on the transaction")
+	}
+}

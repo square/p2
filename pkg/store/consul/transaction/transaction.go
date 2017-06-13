@@ -66,6 +66,12 @@ func Commit(ctx context.Context, cancel context.CancelFunc, txner Txner) error {
 		return err
 	}
 
+	// make it more convenient for callers to call Commit() even if they're
+	// not sure if there are in fact any operations
+	if len(*txn.kvOps) == 0 {
+		return nil
+	}
+
 	ok, resp, _, err := txner.Txn(*txn.kvOps, nil)
 	if err != nil {
 		return util.Errorf("transaction failed: %s", err)

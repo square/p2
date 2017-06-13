@@ -213,6 +213,24 @@ func (c consulStore) SetPod(podPrefix PodPrefix, nodename types.NodeName, manife
 	return retDur, nil
 }
 
+func (c consulStore) SetPodTxn(ctx context.Context, podPrefix PodPrefix, nodename types.NodeName, manifest manifest.Manifest) error {
+	manifestBytes, err := manifest.Marshal()
+	if err != nil {
+		return err
+	}
+
+	key, err := podPath(podPrefix, nodename, manifest.ID())
+	if err != nil {
+		return err
+	}
+
+	return transaction.Add(ctx, api.KVTxnOp{
+		Verb:  string(api.KVSet),
+		Key:   key,
+		Value: manifestBytes,
+	})
+}
+
 // DeletePod deletes a pod manifest from the key-value store. No error will be
 // returned if the key didn't exist.
 func (c consulStore) DeletePod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error) {
@@ -226,6 +244,18 @@ func (c consulStore) DeletePod(podPrefix PodPrefix, nodename types.NodeName, pod
 		return 0, consulutil.NewKVError("delete", key, err)
 	}
 	return writeMeta.RequestTime, nil
+}
+
+func (c consulStore) DeletePodTxn(ctx context.Context, podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) error {
+	key, err := podPath(podPrefix, nodename, podId)
+	if err != nil {
+		return err
+	}
+
+	return transaction.Add(ctx, api.KVTxnOp{
+		Verb: api.KVDelete,
+		Key:  key,
+	})
 }
 
 // MutatePod mutates the input context in such a way

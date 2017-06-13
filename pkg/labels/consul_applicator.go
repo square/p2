@@ -274,6 +274,10 @@ func (c *consulApplicator) SetLabel(labelType Type, id, label, value string) err
 	return c.retryMutate(labelType, id, labelsFromKeyValue(label, &value))
 }
 
+func (c *consulApplicator) SetLabelTxn(ctx context.Context, labelType Type, id, label, value string) error {
+	return c.mutateLabelsTxn(ctx, labelType, id, labelsFromKeyValue(label, &value))
+}
+
 func (c *consulApplicator) SetLabels(labelType Type, id string, labels map[string]string) error {
 	labelsToPointers := make(map[string]*string)
 	for label, value := range labels {
@@ -303,6 +307,18 @@ func (c *consulApplicator) SetLabelsTxn(ctx context.Context, labelType Type, id 
 
 func (c *consulApplicator) RemoveLabel(labelType Type, id, label string) error {
 	return c.retryMutate(labelType, id, labelsFromKeyValue(label, nil))
+}
+
+func (c *consulApplicator) RemoveLabelTxn(ctx context.Context, labelType Type, id, label string) error {
+	return c.mutateLabelsTxn(ctx, labelType, id, labelsFromKeyValue(label, nil))
+}
+
+func (c *consulApplicator) RemoveLabelsTxn(ctx context.Context, labelType Type, id string, keysToRemove []string) error {
+	mutation := make(map[string]*string)
+	for _, keyToRemove := range keysToRemove {
+		mutation[keyToRemove] = nil
+	}
+	return c.mutateLabelsTxn(ctx, labelType, id, mutation)
 }
 
 func (c *consulApplicator) RemoveAllLabels(labelType Type, id string) error {

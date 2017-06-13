@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
@@ -351,6 +352,93 @@ func TestAllPods(t *testing.T) {
 
 	if !uuidPodFound {
 		t.Error("Didn't find uuid pod")
+	}
+}
+
+func TestSetPodTxn(t *testing.T) {
+	f := NewConsulTestFixture(t)
+	defer f.Close()
+
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
+
+	manifestToSet := testManifest("some_pod")
+	err := f.Store.SetPodTxn(ctx, INTENT_TREE, "some_node", manifestToSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm manifest wasn't written yet since transaction wasn't committed
+	_, _, err = f.Store.Pod(INTENT_TREE, "some_node", "some_pod")
+	if err == nil {
+		t.Fatal("expected an error when fetching a nonexistent manifest")
+	}
+
+	if err != pods.NoCurrentManifest {
+		t.Fatalf("unexpected error %q, expected %q", err, pods.NoCurrentManifest)
+	}
+
+	err = transaction.Commit(ctx, cancelFunc, f.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manifest, _, err := f.Store.Pod(INTENT_TREE, "some_node", "some_pod")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	setManifestSHA, err := manifestToSet.SHA()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fetchedManifestSHA, err := manifest.SHA()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if fetchedManifestSHA != setManifestSHA {
+		t.Error("manifest set did not match manifest fetched")
+	}
+}
+
+func TestDeletePodTxn(t *testing.T) {
+	f := NewConsulTestFixture(t)
+	defer f.Close()
+
+	_, err := f.Store.SetPod(INTENT_TREE, "some_node", testManifest("some_pod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
+
+	err = f.Store.DeletePodTxn(ctx, INTENT_TREE, "some_node", "some_pod")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm it wasn't actually deleted yet because the transaction wasn't committed
+	_, _, err = f.Store.Pod(INTENT_TREE, "some_node", "some_pod")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = transaction.Commit(ctx, cancelFunc, f.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm manifest was deleted
+	_, _, err = f.Store.Pod(INTENT_TREE, "some_node", "some_pod")
+	if err == nil {
+		t.Fatal("expected an error when fetching a nonexistent manifest")
+	}
+
+	if err != pods.NoCurrentManifest {
+		t.Fatalf("unexpected error %q, expected %q", err, pods.NoCurrentManifest)
 	}
 }
 

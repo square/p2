@@ -50,7 +50,7 @@ type update struct {
 	rcStore  ReplicationControllerStore
 	rcLocker ReplicationControllerLocker
 	hcheck   checker.ConsulHealthChecker
-	labeler  rc.Labeler
+	labeler  rc.LabelMatcher
 
 	logger logging.Logger
 
@@ -80,7 +80,7 @@ func NewUpdate(
 	rcLocker ReplicationControllerLocker,
 	rcStore ReplicationControllerStore,
 	hcheck checker.ConsulHealthChecker,
-	labeler rc.Labeler,
+	labeler rc.LabelMatcher,
 	logger logging.Logger,
 	session consul.Session,
 	watchDelay time.Duration,

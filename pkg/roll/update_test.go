@@ -795,12 +795,18 @@ func failOnError(t *testing.T, desc string, errs <-chan error) {
 	}
 }
 
+type testLabeler interface {
+	SetLabel(labels.Type, string, string, string) error
+}
+
 // Transfers the named node from the old RC to the new RC
 func transferNode(node types.NodeName, manifest manifest.Manifest, upd update) error {
 	if _, err := upd.consuls.SetPod(consul.REALITY_TREE, node, manifest); err != nil {
 		return err
 	}
-	return upd.labeler.SetLabel(labels.POD, labels.MakePodLabelKey(node, manifest.ID()), rc.RCIDLabel, string(upd.NewRC))
+
+	fullLabeler := upd.labeler.(testLabeler)
+	return fullLabeler.SetLabel(labels.POD, labels.MakePodLabelKey(node, manifest.ID()), rc.RCIDLabel, string(upd.NewRC))
 }
 
 func assertRCUpdates(t *testing.T, rc *rc_fields.RC, upd <-chan struct{}, expect int, desc string, mu *sync.Mutex) {
