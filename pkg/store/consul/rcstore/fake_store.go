@@ -202,6 +202,10 @@ func (s *fakeStore) Delete(id fields.ID, force bool) error {
 	return nil
 }
 
+func (s *fakeStore) DeleteTxn(ctx context.Context, id fields.ID, force bool) error {
+	return util.Errorf("DeleteTxn not implemented in fake RC store. Use a real consul store (e.g. via consulutil) if this functionality is needed")
+}
+
 func (s *fakeStore) Watch(rc *fields.RC, mu *sync.Mutex, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
 	updatesOut := make(chan struct{})
 	entry, ok := s.rcs[rc.ID]

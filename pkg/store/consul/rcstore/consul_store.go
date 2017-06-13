@@ -92,6 +92,7 @@ type RCLabeler interface {
 	SetLabels(labelType labels.Type, id string, labels map[string]string) error
 	RemoveAllLabels(labelType labels.Type, id string) error
 	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, labels map[string]string) error
+	RemoveAllLabelsTxn(ctx context.Context, labelType labels.Type, id string) error
 }
 
 func NewConsul(client consulutil.ConsulClient, labeler RCLabeler, retries int) *ConsulStore {
@@ -629,6 +630,42 @@ func (s *ConsulStore) Delete(id fields.ID, force bool) error {
 			return fields.RC{}, fmt.Errorf("replication controller %s has %d desired replicas (must reduce to 0 before deleting)", rc.ID, rc.ReplicasDesired)
 		}
 		return fields.RC{}, nil
+	})
+}
+
+// DeleteTxn adds a deletion operation to the passed context rather than
+// immediately deleting ig
+func (s *ConsulStore) DeleteTxn(ctx context.Context, id fields.ID, force bool) error {
+	err := s.labeler.RemoveAllLabelsTxn(ctx, labels.RC, id.String())
+	if err != nil {
+		return err
+	}
+
+	keyPath, err := s.rcPath(id)
+	if err != nil {
+		return err
+	}
+
+	if force {
+		return transaction.Add(ctx, api.KVTxnOp{
+			Verb: api.KVDelete,
+			Key:  keyPath,
+		})
+	}
+
+	rc, index, err := s.getWithIndex(id)
+	if err != nil {
+		return util.Errorf("could not fetch RC %s to determine its replica count is 0: %s", id, err)
+	}
+
+	if rc.ReplicasDesired != 0 {
+		return util.Errorf("cannot delete RC %s because its replica count is nonzero, was %d", id, rc.ReplicasDesired)
+	}
+
+	return transaction.Add(ctx, api.KVTxnOp{
+		Verb:  api.KVDeleteCAS,
+		Key:   keyPath,
+		Index: index,
 	})
 }
 
