@@ -406,6 +406,8 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 
 	result := make(chan bool, 1)
 	go func() {
+		ctx, cancel := transaction.New(context.Background())
+		defer cancel()
 		watchDelay := 1 * time.Second
 		result <- roll.NewUpdate(
 			roll_fields.Update{
@@ -423,7 +425,7 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 			session,
 			watchDelay,
 			alerting.NewNop(),
-		).Run(quit)
+		).Run(ctx, quit)
 		close(result)
 	}()
 

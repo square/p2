@@ -1,6 +1,7 @@
 package roll
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -37,6 +38,7 @@ type ReplicationControllerStore interface {
 	Get(id rcf.ID) (rcf.RC, error)
 	SetDesiredReplicas(id rcf.ID, n int) error
 	Delete(id rcf.ID, force bool) error
+	DeleteTxn(ctx context.Context, id rcf.ID, force bool) error
 	TransferReplicaCounts(rcstore.TransferReplicaCountsRequest) error
 	Disable(id rcf.ID) error
 	Enable(id rcf.ID) error
@@ -104,14 +106,15 @@ func NewUpdate(
 }
 
 type Update interface {
-	// Run will execute the Update and remove the old RC upon completion. Run
-	// should claim exclusive ownership of both affected RCs, and release that
-	// exclusivity upon completion. Run is long-lived and blocking; close the
-	// quit channel to terminate it early. If an Update is interrupted, Run
-	// should leave the RCs in a state such that it can later be called again to
-	// resume. The return value indicates if the update completed (true) or if
-	// it was terminated early (false).
-	Run(quit <-chan struct{}) bool
+	// Run will execute the Update and modify the passed context such that
+	// its transaction removes the old RC upon completion. Run should claim
+	// exclusive ownership of both affected RCs, and release that
+	// exclusivity upon completion. Run is long-lived and blocking; close
+	// the quit channel to terminate it early. If an Update is interrupted,
+	// Run should leave the RCs in a state such that it can later be called
+	// again to resume. The return value indicates if the update completed
+	// (true) or if it was terminated early (false).
+	Run(ctx context.Context, quit <-chan struct{}) bool
 }
 
 // returned by shouldStop
@@ -139,7 +142,12 @@ func RetryOrQuit(f func() error, quit <-chan struct{}, logger logging.Logger, er
 	return true
 }
 
-func (u *update) Run(quit <-chan struct{}) (ret bool) {
+// Run causes the update to be processed either until it is complete or it is
+// cancelled via the passed quit channel. The passed context is expected to
+// have a consul transaction value stored in it and cleanup operations such as
+// deleting the old RC will be added to it when applicable.
+// TODO: replace the quit channel with context cancelation
+func (u *update) Run(ctx context.Context, quit <-chan struct{}) (ret bool) {
 	u.logger.NoFields().Debugln("Locking")
 	// TODO: implement API for blocking locks and use that instead of retrying
 	if !RetryOrQuit(
@@ -187,12 +195,12 @@ func (u *update) Run(quit <-chan struct{}) (ret bool) {
 
 	// rollout complete, clean up old RC if told to do so
 	if !u.LeaveOld {
-		u.cleanupOldRC(quit)
+		u.cleanupOldRC(ctx, quit)
 	}
 	return true // finally if we make it here, we can return true
 }
 
-func (u *update) cleanupOldRC(quit <-chan struct{}) {
+func (u *update) cleanupOldRC(ctx context.Context, quit <-chan struct{}) {
 	cleanupFunc := func() error {
 		oldRC, err := u.rcStore.Get(u.OldRC)
 		if err != nil {
@@ -233,7 +241,7 @@ func (u *update) cleanupOldRC(quit <-chan struct{}) {
 			return nil
 		}
 
-		return u.rcStore.Delete(u.OldRC, false)
+		return u.rcStore.DeleteTxn(ctx, u.OldRC, false)
 	}
 
 	u.logger.NoFields().Infoln("Cleaning up old RC")
