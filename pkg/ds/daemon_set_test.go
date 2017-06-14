@@ -33,22 +33,14 @@ const (
 	testFarmRetryInterval = time.Duration(1000 * time.Millisecond)
 )
 
-// Polls for a condition to happen, will return an error if it does not happen
-// before the timeout
+// Polls for a condition to happen. This should only be run with the -timeout
+// flag to go test set to avoid tests hanging forever if something goes wrong
 func waitForCondition(condition func() error) error {
-	timeout := time.After(20 * time.Second)
-	timedOut := false
-	err := condition()
-
-	for err != nil && !timedOut {
-		select {
-		case <-timeout:
-			timedOut = true
-		case <-time.After(100 * time.Millisecond):
-			err = condition()
-		}
+	for err := condition(); err != nil; err = condition() {
+		time.Sleep(100 * time.Millisecond)
 	}
-	return err
+
+	return nil
 }
 
 func waitForNodes(
