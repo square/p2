@@ -65,6 +65,7 @@ func (s store) Delete(ctx grpccontext.Context, req *audit_log_protos.DeleteReque
 	}
 
 	ctx, cancelFunc := transaction.New(ctx)
+	defer cancelFunc()
 	var err error
 	for _, id := range req.GetAuditLogIds() {
 		err = s.auditLogStore.Delete(ctx, audit.ID(id))
@@ -73,7 +74,7 @@ func (s store) Delete(ctx grpccontext.Context, req *audit_log_protos.DeleteReque
 		}
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, s.txner)
+	err = transaction.Commit(ctx, s.txner)
 	if err != nil {
 		return nil, grpc.Errorf(codes.Unavailable, "error committing audit log deletion transaction: %s", err)
 	}

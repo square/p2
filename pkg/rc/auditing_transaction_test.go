@@ -37,7 +37,7 @@ func TestAuditingTransaction(t *testing.T) {
 	ctx.AddNode("node3")
 	ctx.RemoveNode("node2")
 
-	err := ctx.Commit(cancel, fixture.Client.KV())
+	err := ctx.Commit(fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("could not commit audit log record: %s", err)
 	}

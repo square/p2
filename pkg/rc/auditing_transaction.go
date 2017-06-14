@@ -71,7 +71,7 @@ func (a *auditingTransaction) RemoveNode(node types.NodeName) {
 // create an audit log record with the set of nodes that already have been
 // scheduled and nodes that will be scheduled as a part of this transaction by
 // the RC. Then it commits the transaction
-func (a *auditingTransaction) Commit(cancelFunc func(), txner transaction.Txner) error {
+func (a *auditingTransaction) Commit(txner transaction.Txner) error {
 	details, err := audit.NewRCRetargetingEventDetails(
 		a.podID,
 		a.az,
@@ -91,5 +91,5 @@ func (a *auditingTransaction) Commit(cancelFunc func(), txner transaction.Txner)
 		return util.Errorf("could not add rc retargeting audit log to context: %s", err)
 	}
 
-	return transaction.Commit(a.ctx, cancelFunc, txner)
+	return transaction.Commit(a.ctx, txner)
 }

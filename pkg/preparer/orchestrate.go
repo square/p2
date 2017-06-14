@@ -462,7 +462,7 @@ func (p *Preparer) writeStatusRecord(pair ManifestPair, logger logging.Logger) e
 		logger.WithError(err).Errorln("Could not add 'update manifest in pod status' to transaction")
 		return err
 	}
-	err = transaction.Commit(ctx, cancelFunc, p.client.KV())
+	err = transaction.Commit(ctx, p.client.KV())
 	if err != nil {
 		logger.WithError(err).
 			Errorln("Could not write uuid index to reality store and update manifest in pod status")
@@ -530,7 +530,7 @@ func (p *Preparer) markUninstalled(pair ManifestPair, pod Pod, logger logging.Lo
 			Errorln("Could not remove reality index for uninstalled pod")
 		return err
 	}
-	err = transaction.Commit(ctx, cancelFunc, p.client.KV())
+	err = transaction.Commit(ctx, p.client.KV())
 	if err != nil {
 		logger.WithError(err).
 			Errorln("Could not update pod status to reflect removal and remove reality index for uninstalled pod")

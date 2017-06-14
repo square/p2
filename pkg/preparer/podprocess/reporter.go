@@ -379,7 +379,6 @@ func (r *Reporter) reportLatestExits() {
 		}
 
 		ctx, cancelFunc := transaction.New(context.Background())
-		defer cancelFunc()
 		err = r.podStatusStore.SetLastExit(ctx, finish.PodUniqueKey, finish.LaunchableID, finish.EntryPoint, podstatus.ExitStatus{
 			ExitTime:   finish.ExitTime,
 			ExitCode:   finish.ExitCode,
@@ -388,11 +387,13 @@ func (r *Reporter) reportLatestExits() {
 		if err != nil {
 			subLogger.WithError(err).Errorln("Failed to add 'record status' to transaction'")
 		}
-		err = transaction.Commit(ctx, cancelFunc, r.client.KV())
+		err = transaction.Commit(ctx, r.client.KV())
 		if err != nil {
 			subLogger.WithError(err).Errorln("Failed to record status")
+			cancelFunc()
 			return
 		}
+		cancelFunc()
 
 		subLogger.Debugln("Successfully recorded status")
 		lastID = finish.ID

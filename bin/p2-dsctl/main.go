@@ -152,7 +152,7 @@ func main() {
 			log.Fatalf("daemon set %q contends with the given selector, correct this before re-attempting", conflictingDS.ID)
 		}
 
-		err = transaction.Commit(ctx, cancelFunc, client.KV())
+		err = transaction.Commit(ctx, client.KV())
 		if err != nil {
 			log.Fatalf("err: %v", err)
 		}

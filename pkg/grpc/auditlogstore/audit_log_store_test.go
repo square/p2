@@ -35,6 +35,7 @@ func TestList(t *testing.T) {
 	}
 
 	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
 	eventDetails0 := json.RawMessage(`{"bogus_event_details":0}`)
 	eventType := audit.EventType("bogus_event_type")
 	err = alStore.Create(
@@ -46,7 +47,7 @@ func TestList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, f.Client.KV())
+	err = transaction.Commit(ctx, f.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,6 +72,7 @@ func TestList(t *testing.T) {
 	}
 
 	ctx, cancelFunc = transaction.New(context.Background())
+	defer cancelFunc()
 	err = alStore.Create(
 		ctx,
 		"bogus_event_type",
@@ -89,7 +91,7 @@ func TestList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, f.Client.KV())
+	err = transaction.Commit(ctx, f.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,6 +118,7 @@ func TestDelete(t *testing.T) {
 	)
 
 	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
 	eventDetails0 := json.RawMessage(`{"bogus_event_details":0}`)
 	eventType := audit.EventType("bogus_event_type")
 	err := alStore.Create(
@@ -127,7 +130,7 @@ func TestDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, f.Client.KV())
+	err = transaction.Commit(ctx, f.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}

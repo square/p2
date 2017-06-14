@@ -45,7 +45,7 @@ func TestRemoveAllLabelsTxn(t *testing.T) {
 		t.Fatal("no labels found when we haven't committed transaction for removal yet")
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	err = transaction.Commit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("error committing transaction: %s", err)
 	}
@@ -83,7 +83,7 @@ func TestSetLabelTxn(t *testing.T) {
 		t.Fatal("labels were set before transaction was committed!")
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	err = transaction.Commit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestSetLabelTxnFailsIfLabelsChange(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	err = transaction.Commit(ctx, fixture.Client.KV())
 	if err == nil {
 		t.Fatal("expected the transaction to fail when the labels are changed out from under it")
 	}
@@ -155,7 +155,7 @@ func TestRemoveLabelTxn(t *testing.T) {
 		t.Errorf("expected value for %q to be %q but was %q", "some_key", "some_value", labeled.Labels["some_key"])
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	err = transaction.Commit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestRemoveLabelTxnFailsIfLabelsChange(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	err = transaction.Commit(ctx, fixture.Client.KV())
 	if err == nil {
 		t.Fatal("expected the transaction to fail when the labels are changed out from under it")
 	}
@@ -227,7 +227,7 @@ func TestSetLabelsTxn(t *testing.T) {
 		t.Fatal("labels were set before transaction was committed!")
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	err = transaction.Commit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestSetLabelsTxnFailsIfLabelsChange(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	err = transaction.Commit(ctx, fixture.Client.KV())
 	if err == nil {
 		t.Fatal("expected the transaction to fail when the labels are changed out from under it")
 	}
@@ -299,7 +299,7 @@ func TestRemoveLabelsTxn(t *testing.T) {
 		t.Errorf("expected value for %q to be %q but was %q", "some_key", "some_value", labeled.Labels["some_key"])
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	err = transaction.Commit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestRemoveLabelsTxnFailsIfLabelsChange(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	err = transaction.Commit(ctx, fixture.Client.KV())
 	if err == nil {
 		t.Fatal("expected the transaction to fail when the labels are changed out from under it")
 	}

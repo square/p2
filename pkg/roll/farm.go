@@ -405,7 +405,7 @@ func (rlf *Farm) validateRoll(update roll_fields.Update, logger logging.Logger) 
 // Tries to delete the given RU every second until it succeeds
 func (rlf *Farm) mustDeleteRU(id roll_fields.ID, logger logging.Logger) {
 	ctx, cancelFunc := transaction.New(context.Background())
-	defer cancelFunc() // technically not necessary once Commit() succeeds
+	defer cancelFunc()
 	err := rlf.rls.Delete(ctx, id)
 	if err != nil {
 		// this error is really bad because we can't recover from it
@@ -429,7 +429,7 @@ func (rlf *Farm) mustDeleteRU(id roll_fields.ID, logger logging.Logger) {
 		}
 	}
 
-	for err = transaction.Commit(ctx, cancelFunc, rlf.txner); err != nil; err = transaction.Commit(ctx, cancelFunc, rlf.txner) {
+	for err = transaction.Commit(ctx, rlf.txner); err != nil; err = transaction.Commit(ctx, rlf.txner) {
 		logger.WithError(err).Errorln("Could not delete update")
 		time.Sleep(1 * time.Second)
 	}
