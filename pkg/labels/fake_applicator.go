@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/util"
 
 	"k8s.io/kubernetes/pkg/labels"
 )
@@ -103,6 +104,10 @@ func (app *fakeApplicator) GetLabels(labelType Type, id string) (Labeled, error)
 		LabelType: labelType,
 		Labels:    copySet(entry),
 	}, nil
+}
+
+func (app *fakeApplicator) GetLabelsWithIndex(Type, string) (Labeled, uint64, error) {
+	return Labeled{}, 0, util.Errorf("get labels with index not implemented in fake label store, use a real consul instance")
 }
 
 func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {

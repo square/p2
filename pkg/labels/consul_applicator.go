@@ -89,7 +89,7 @@ func objectPath(labelType Type, id string) (string, error) {
 	return path.Join(typePath(labelType), id), nil
 }
 
-func (c *consulApplicator) getLabels(labelType Type, id string) (Labeled, uint64, error) {
+func (c *consulApplicator) GetLabelsWithIndex(labelType Type, id string) (Labeled, uint64, error) {
 	path, err := objectPath(labelType, id)
 	if err != nil {
 		return Labeled{}, 0, err
@@ -106,8 +106,9 @@ func (c *consulApplicator) getLabels(labelType Type, id string) (Labeled, uint64
 	l, err := convertKVPToLabeled(kvp)
 	return l, kvp.ModifyIndex, err
 }
+
 func (c *consulApplicator) GetLabels(labelType Type, id string) (Labeled, error) {
-	l, _, err := c.getLabels(labelType, id)
+	l, _, err := c.GetLabelsWithIndex(labelType, id)
 	return l, err
 }
 
@@ -170,7 +171,7 @@ func (c *consulApplicator) ListLabels(labelType Type) ([]Labeled, error) {
 
 // generalized label mutator function - pass nil value for any label to delete it
 func (c *consulApplicator) mutateLabels(labelType Type, id string, labels map[string]*string) error {
-	l, index, err := c.getLabels(labelType, id)
+	l, index, err := c.GetLabelsWithIndex(labelType, id)
 	if err != nil {
 		return err
 	}
@@ -210,7 +211,7 @@ func (c *consulApplicator) mutateLabels(labelType Type, id string, labels map[st
 
 // TODO: replace mutateLabels() with this transaction-using implementation
 func (c *consulApplicator) mutateLabelsTxn(ctx context.Context, labelType Type, id string, labels map[string]*string) error {
-	l, index, err := c.getLabels(labelType, id)
+	l, index, err := c.GetLabelsWithIndex(labelType, id)
 	if err != nil {
 		return err
 	}

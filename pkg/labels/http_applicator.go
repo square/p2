@@ -218,6 +218,13 @@ func (h *httpApplicator) GetLabels(labelType Type, id string) (Labeled, error) {
 	return labeled, err
 }
 
+func (h *httpApplicator) GetLabelsWithIndex(labelType Type, id string) (Labeled, uint64, error) {
+	target := h.toEntityURL("", labelType, id, url.Values{})
+	var out LabeledWithIndex
+	err := h.getJSON(target, &out)
+	return out.Labeled, out.Index, err
+}
+
 // Finds all matches for the given type and selector.
 //
 // GET /api/select?selector=:selector&type=:type&cachedMatch=:cachedMatch
