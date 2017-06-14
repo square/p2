@@ -421,13 +421,13 @@ func verifyTransferReplicas(errCh chan<- error, tempdir string, logger logging.L
 	builder.SetID("some_pod")
 	man := builder.GetManifest()
 
-	fromRC, err := rcStore.Create(man, klabels.Everything(), nil)
+	fromRC, err := rcStore.Create(man, klabels.Everything(), nil, nil)
 	if err != nil {
 		errCh <- util.Errorf("could not create RC for replica transfer test: %s", err)
 		return
 	}
 
-	toRC, err := rcStore.Create(man, klabels.Everything(), nil)
+	toRC, err := rcStore.Create(man, klabels.Everything(), nil, nil)
 	if err != nil {
 		errCh <- util.Errorf("could not create second RC for replica transfer test: %s", err)
 		return

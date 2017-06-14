@@ -72,10 +72,8 @@ func main() {
 	httpClient := cleanhttp.DefaultClient()
 	client := consul.NewConsulClient(opts)
 	consulStore := consul.NewConsulStore(client)
-
-	// we can't use the labeler returned by flags.ParseWithConsulOptions()
-	// because it doesn't offer the transactional operations needed by the
-	// RC farm. Instead we'll up a labeler that uses direct consul access
+	// flags.ParseWithConsulOptions() because that interface doesn't
+	// support transactions which is now required by the RC store
 	labeler := labels.NewConsulApplicator(client, 0)
 	rcStore := rcstore.NewConsul(client, labeler, RetryCount)
 
