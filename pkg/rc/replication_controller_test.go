@@ -103,7 +103,7 @@ func scheduledPods(t *testing.T, pods labels.Applicator) []labels.Labeled {
 }
 
 func waitForNodes(t *testing.T, rc ReplicationController, desired int) int {
-	timeout := time.After(1 * time.Second)
+	timeout := time.After(5 * time.Second)
 	current, err := rc.CurrentPods()
 	Assert(t).IsNil(err, "expected no error getting current nodes")
 	timedOut := false
