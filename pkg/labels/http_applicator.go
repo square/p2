@@ -2,6 +2,7 @@ package labels
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -156,6 +157,10 @@ func (h *httpApplicator) SetLabels(labelType Type, id string, labels map[string]
 	return err
 }
 
+func (h *httpApplicator) SetLabelsTxn(ctx context.Context, labelType Type, id string, labels map[string]string) error {
+	return setLabelsTxn(ctx, labelType, id, labels, h)
+}
+
 // Removes all labels on the entity
 //
 // DELETE /api/labels/:type/:id/:name
@@ -174,6 +179,10 @@ func (h *httpApplicator) RemoveLabel(labelType Type, id, name string) error {
 		return err
 	}
 	return nil
+}
+
+func (h *httpApplicator) RemoveLabelsTxn(ctx context.Context, labelType Type, id string, keysToRemove []string) error {
+	return removeLabelsTxn(ctx, labelType, id, keysToRemove, h)
 }
 
 // Removes all labels on the entity

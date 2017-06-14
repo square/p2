@@ -209,9 +209,23 @@ func (c *consulApplicator) mutateLabels(labelType Type, id string, labels map[st
 	return nil
 }
 
-// TODO: replace mutateLabels() with this transaction-using implementation
-func (c *consulApplicator) mutateLabelsTxn(ctx context.Context, labelType Type, id string, labels map[string]*string) error {
-	l, index, err := c.GetLabelsWithIndex(labelType, id)
+type LabelFetcher interface {
+	GetLabelsWithIndex(labelType Type, id string) (Labeled, uint64, error)
+}
+
+// mutateLabelsTxn adds operations to the transaction within the passed context
+// to safely make the label mutations requested. It's written as a package
+// global function to avoid obligating all "applicator" interface types from
+// providing it. For example it doesn't make sense for the "http applicator" to
+// provide a transaction function that doesn't actually make any http calls.
+func mutateLabelsTxn(
+	ctx context.Context,
+	labelType Type,
+	id string,
+	labels map[string]*string,
+	f LabelFetcher,
+) error {
+	l, index, err := f.GetLabelsWithIndex(labelType, id)
 	if err != nil {
 		return err
 	}
@@ -284,7 +298,7 @@ func (c *consulApplicator) SetLabel(labelType Type, id, label, value string) err
 }
 
 func (c *consulApplicator) SetLabelTxn(ctx context.Context, labelType Type, id, label, value string) error {
-	return c.mutateLabelsTxn(ctx, labelType, id, labelsFromKeyValue(label, &value))
+	return mutateLabelsTxn(ctx, labelType, id, labelsFromKeyValue(label, &value), c)
 }
 
 func (c *consulApplicator) SetLabels(labelType Type, id string, labels map[string]string) error {
@@ -302,6 +316,10 @@ func (c *consulApplicator) SetLabels(labelType Type, id string, labels map[strin
 // TODO: replace SetLabels() with this implementation. It's just separate right now to make
 // exploring solutions require less code churn
 func (c *consulApplicator) SetLabelsTxn(ctx context.Context, labelType Type, id string, labels map[string]string) error {
+	return setLabelsTxn(ctx, labelType, id, labels, c)
+}
+
+func setLabelsTxn(ctx context.Context, labelType Type, id string, labels map[string]string, f LabelFetcher) error {
 	labelsToPointers := make(map[string]*string)
 	for label, value := range labels {
 		// We can't just use &value because that would be a pointer to
@@ -311,7 +329,7 @@ func (c *consulApplicator) SetLabelsTxn(ctx context.Context, labelType Type, id 
 		labelsToPointers[label] = &valPtr
 	}
 
-	return c.mutateLabelsTxn(ctx, labelType, id, labelsToPointers)
+	return mutateLabelsTxn(ctx, labelType, id, labelsToPointers, f)
 }
 
 func (c *consulApplicator) RemoveLabel(labelType Type, id, label string) error {
@@ -319,15 +337,19 @@ func (c *consulApplicator) RemoveLabel(labelType Type, id, label string) error {
 }
 
 func (c *consulApplicator) RemoveLabelTxn(ctx context.Context, labelType Type, id, label string) error {
-	return c.mutateLabelsTxn(ctx, labelType, id, labelsFromKeyValue(label, nil))
+	return mutateLabelsTxn(ctx, labelType, id, labelsFromKeyValue(label, nil), c)
 }
 
 func (c *consulApplicator) RemoveLabelsTxn(ctx context.Context, labelType Type, id string, keysToRemove []string) error {
+	return removeLabelsTxn(ctx, labelType, id, keysToRemove, c)
+}
+
+func removeLabelsTxn(ctx context.Context, labelType Type, id string, keysToRemove []string, f LabelFetcher) error {
 	mutation := make(map[string]*string)
 	for _, keyToRemove := range keysToRemove {
 		mutation[keyToRemove] = nil
 	}
-	return c.mutateLabelsTxn(ctx, labelType, id, mutation)
+	return mutateLabelsTxn(ctx, labelType, id, mutation, f)
 }
 
 func (c *consulApplicator) RemoveAllLabels(labelType Type, id string) error {
