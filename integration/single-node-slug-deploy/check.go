@@ -212,7 +212,7 @@ func main() {
 			if ok {
 				t.logger.Fatal("Error channel not closed")
 			}
-		case <-time.After(1 * time.Minute):
+		case <-time.After(3 * time.Minute):
 			t.logger.Fatal("Timed out waiting for a result")
 		}
 
@@ -235,16 +235,23 @@ func verifyLegacyPod(errCh chan error, tempDir string, config *preparer.Preparer
 		errCh <- fmt.Errorf("Failed waiting for pods labeled with the given RC: %v", err)
 		return
 	}
+
+	logger.Infoln("RC successfully scheduled pod")
+
 	err = verifyHelloRunning("", logger)
 	if err != nil {
 		errCh <- fmt.Errorf("Couldn't get hello running: %s", err)
 		return
 	}
+
+	logger.Infoln("hello pod is running")
+
 	err = verifyHealthChecks(config, services)
 	if err != nil {
 		errCh <- fmt.Errorf("Could not get health check info from consul: %s", err)
 		return
 	}
+	logger.Infof("health checks for %s succeeded", services)
 }
 
 func verifyUUIDPod(errCh chan error, tempDir string, logger logging.Logger) {
