@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/square/p2/pkg/util"
 
@@ -133,6 +134,40 @@ func TxnErrorsToString(errors api.TxnErrors) string {
 	}
 
 	return str
+}
+
+// CommitWithRetries retries Commit() until the transaction is applied without
+// an error. It will not retry the transaction if there is no error but the
+// transaction was rolled back (and it wouldn't make sense to because it won't
+// succeed after that point)
+//
+// An exponential backoff strategy is used until the context is cancelled with
+// a max backoff time of 10 seconds
+func CommitWithRetries(ctx context.Context, txner Txner) (bool, *api.KVTxnResponse, error) {
+	var ok bool
+	var resp *api.KVTxnResponse
+	var err error
+	f := func() error {
+		ok, resp, err = Commit(ctx, txner)
+		return err
+	}
+
+	backoff := 100 * time.Millisecond
+	for err := f(); err != nil; err = f() {
+		select {
+		case <-ctx.Done():
+			break
+		default:
+		}
+
+		backoff = backoff * 2
+		if backoff > 10*time.Second {
+			backoff = 10 * time.Second
+		}
+		time.Sleep(backoff)
+	}
+
+	return ok, resp, err
 }
 
 func getTxnFromContext(ctx context.Context) (*tx, error) {
