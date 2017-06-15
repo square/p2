@@ -1,6 +1,7 @@
 package consultest
 
 import (
+	"context"
 	"sync"
 
 	"github.com/pborman/uuid"
@@ -82,6 +83,10 @@ func (f *fakeSession) Lock(key string) (consulutil.Unlocker, error) {
 		key:     key,
 		session: f,
 	}, nil
+}
+
+func (f *fakeSession) LockTxn(context.Context, context.Context, context.Context, string) error {
+	return util.Errorf("LockTxn not implemented in fakeSession. Use a real consul store with a real sesion via consulutil.NewFixture() if this functionality is desired")
 }
 
 // Not currently implemented

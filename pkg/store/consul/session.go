@@ -1,9 +1,8 @@
 package consul
 
 import (
+	"context"
 	"time"
-
-	"github.com/hashicorp/consul/api"
 
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/util"
@@ -14,53 +13,27 @@ import (
 // locks on multiple keys, and must be periodically renewed.
 type Session interface {
 	Lock(key string) (consulutil.Unlocker, error)
+	LockTxn(
+		lockCtx context.Context,
+		cleanupCtx context.Context,
+		checkLockedCtx context.Context,
+		key string,
+	) error
 	Renew() error
 	Destroy() error
 	Session() string
 }
 
 const (
-	lockTTL         = "15s"
-	renewalInterval = 10 * time.Second
-
-	// Consul's minimum lock delay is 1ms. Requesting a lock delay of 0 will be
-	// interpreted as "use the default," which is 15s at this time.
 	lockDelay = 1 * time.Millisecond
 )
 
 func (c consulStore) NewSession(name string, renewalCh <-chan time.Time) (Session, chan error, error) {
-	session, _, err := c.client.Session().CreateNoChecks(&api.SessionEntry{
-		Name:      name,
-		LockDelay: lockDelay,
-		// locks should only be used with ephemeral keys
-		Behavior: api.SessionBehaviorDelete,
-		TTL:      lockTTL,
-	}, nil)
-
-	if err != nil {
-		return consulutil.Session{}, nil, util.Errorf("Could not create session")
-	}
-
-	if renewalCh == nil {
-		renewalCh = time.NewTicker(renewalInterval).C
-	}
-
-	quitCh := make(chan struct{})
-	renewalErrCh := make(chan error, 1)
-	consulSession := consulutil.NewManagedSession(
-		c.client,
-		session,
-		name,
-		quitCh,
-		renewalErrCh,
-		renewalCh)
-
-	return consulSession, renewalErrCh, nil
+	return consulutil.NewSession(c.client, name, renewalCh)
 }
 
 func (c consulStore) NewUnmanagedSession(session, name string) Session {
 	return consulutil.NewUnmanagedSession(c.client, session, name)
-
 }
 
 // determine the name and ID of the session that is locking this key, if any
