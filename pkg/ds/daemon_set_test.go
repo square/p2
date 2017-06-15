@@ -155,6 +155,7 @@ func TestSchedule(t *testing.T) {
 	// Setup fixture and schedule a pod
 	//
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 
 	podID := types.PodID("testPod")
@@ -404,6 +405,7 @@ func TestPublishToReplication(t *testing.T) {
 	// Setup fixture and schedule a pod
 	//
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 
 	podID := types.PodID("testPod")

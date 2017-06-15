@@ -24,6 +24,7 @@ import (
 
 func TestCreate(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	store := newStore(fixture.Client.KV())
 	createDaemonSet(store, fixture.Client.KV(), t)
 
@@ -125,6 +126,7 @@ func createDaemonSet(store *ConsulStore, txner transaction.Txner, t *testing.T) 
 
 func TestDelete(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	store := newStore(fixture.Client.KV())
 	ds := createDaemonSet(store, fixture.Client.KV(), t)
 
@@ -147,6 +149,7 @@ func TestDelete(t *testing.T) {
 
 func TestGet(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	store := newStore(fixture.Client.KV())
 	//
 	// Create DaemonSet
@@ -223,6 +226,7 @@ func TestGet(t *testing.T) {
 
 func TestList(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	store := newStore(fixture.Client.KV())
 
 	// Create first DaemonSet
@@ -294,6 +298,7 @@ func TestList(t *testing.T) {
 
 func TestMutate(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	store := newStore(fixture.Client.KV())
 
 	podID := types.PodID("some_pod_id")
@@ -436,6 +441,7 @@ func TestMutate(t *testing.T) {
 
 func TestWatch(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	store := newStore(fixture.Client.KV())
 	//
 	// Create a new daemon set
@@ -572,6 +578,7 @@ func TestWatch(t *testing.T) {
 
 func TestWatchAll(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	store := newStore(fixture.Client.KV())
 	//
 	// Create a new daemon set

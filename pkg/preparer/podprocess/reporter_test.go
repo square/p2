@@ -50,6 +50,7 @@ func TestFullyConfigured(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	reporter, err := New(ReporterConfig{}, logging.DefaultLogger, podstatus.NewConsul(statusstoretest.NewFake(), consul.PreparerPodStatusNamespace), fixture.Client)
 	if reporter != nil || err == nil {
 		t.Errorf("Should have gotten a nil reporter and an error with empty config")
@@ -106,7 +107,8 @@ func TestRun(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	dbPath, quitCh, podStatusStore, _ := startReporter(t, tempDir)
+	dbPath, quitCh, podStatusStore, _, fixture := startReporter(t, tempDir)
+	defer fixture.Stop()
 	defer close(quitCh)
 
 	finishOutput1 := FinishOutput{
@@ -159,7 +161,8 @@ func TestRepairCorruptWorkspaceFile(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	dbPath, quitCh, podStatusStore, reporter := startReporter(t, tempDir)
+	dbPath, quitCh, podStatusStore, reporter, fixture := startReporter(t, tempDir)
+	defer fixture.Stop()
 	defer close(quitCh)
 
 	finishOutput1 := FinishOutput{
@@ -272,7 +275,7 @@ func assertStatusUpdated(t *testing.T, finish FinishOutput, podStatusStore testP
 	}
 }
 
-func startReporter(t *testing.T, tempDir string) (string, chan struct{}, testPodStatusStore, *Reporter) {
+func startReporter(t *testing.T, tempDir string) (string, chan struct{}, testPodStatusStore, *Reporter, consulutil.Fixture) {
 	dbPath := filepath.Join(tempDir, "finishes.db")
 
 	fixture := consulutil.NewFixture(t)
@@ -308,5 +311,5 @@ func startReporter(t *testing.T, tempDir string) (string, chan struct{}, testPod
 	if err != nil {
 		t.Fatalf("Unable to start reporter: %s", err)
 	}
-	return dbPath, quitCh, store, reporter
+	return dbPath, quitCh, store, reporter, fixture
 }

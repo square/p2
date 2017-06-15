@@ -426,6 +426,7 @@ func TestPodStatusResposeToPodStatus(t *testing.T) {
 
 func TestMarkPodFailed(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	statusStore := podstatus.NewConsul(statusstore.NewConsul(fixture.Client), consul.PreparerPodStatusNamespace)
 	server := store{
 		podStatusStore: statusStore,

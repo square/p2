@@ -24,6 +24,7 @@ import (
 
 func TestAuditLogCreation(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := labels.NewConsulApplicator(fixture.Client, 0)
 	logger := logging.TestLogger()
@@ -69,6 +70,7 @@ func TestAuditLogCreation(t *testing.T) {
 
 func TestCleanupOldRCHappy(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := labels.NewConsulApplicator(fixture.Client, 0)
 	rcStore := rcstore.NewConsul(fixture.Client, applicator, 0)
@@ -121,6 +123,7 @@ func (c errorOnceChannelAlerter) Alert(alerting.AlertInfo) error {
 
 func TestCleanupOldRCTooManyReplicas(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := labels.NewConsulApplicator(fixture.Client, 0)
 	rcStore := rcstore.NewConsul(fixture.Client, applicator, 0)

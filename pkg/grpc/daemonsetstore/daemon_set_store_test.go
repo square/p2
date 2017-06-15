@@ -25,6 +25,7 @@ import (
 
 func TestListDaemonSets(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	seedDS, err := createADaemonSet(dsStore, fixture.Client.KV())
 	if err != nil {
@@ -82,6 +83,7 @@ func TestListDaemonSets(t *testing.T) {
 
 func TestDisableDaemonSet(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	daemonSet, err := createADaemonSet(dsStore, fixture.Client.KV())
 	if err != nil {
@@ -113,6 +115,7 @@ func TestDisableDaemonSet(t *testing.T) {
 
 func TestDisableDaemonSetInvalidArgument(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	server := NewServer(dsStore)
 
@@ -130,6 +133,7 @@ func TestDisableDaemonSetInvalidArgument(t *testing.T) {
 
 func TestDisableDaemonSetNotFound(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	server := NewServer(dsStore)
 
@@ -213,6 +217,7 @@ func TestWatchDaemonSets(t *testing.T) {
 	}()
 
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	ds, err := createADaemonSet(dsStore, fixture.Client.KV())
 	if err != nil {

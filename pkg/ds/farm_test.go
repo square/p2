@@ -37,6 +37,7 @@ func TestContendNodes(t *testing.T) {
 	// Instantiate farm
 	//
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -163,6 +164,7 @@ func TestContendSelectors(t *testing.T) {
 	// Instantiate farm
 	//
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -330,6 +332,7 @@ func TestFarmSchedule(t *testing.T) {
 	// Instantiate farm
 	//
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -562,6 +565,7 @@ func TestFarmSchedule(t *testing.T) {
 
 func TestCleanupPods(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -652,6 +656,7 @@ func TestCleanupPods(t *testing.T) {
 
 func TestMultipleFarms(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -972,6 +977,7 @@ func TestMultipleFarms(t *testing.T) {
 
 func TestRelock(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -1065,6 +1071,7 @@ func TestRelock(t *testing.T) {
 
 func TestDieAndUpdate(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
