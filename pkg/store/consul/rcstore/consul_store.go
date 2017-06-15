@@ -904,6 +904,22 @@ func (s *ConsulStore) LockForMutation(rcID fields.ID, session consul.Session) (c
 	return session.Lock(mutationLockPath)
 }
 
+// LockForMutationTxn doesn't immediately lock the RC for mutation but instead
+// adds the necessary kv operations to the lockCtx's transaction to do so. It
+// also adds the operations required to unlock the RC to unlockCtx.
+func (s *ConsulStore) LockForMutationTxn(
+	lockCtx context.Context,
+	rcID fields.ID,
+	session consul.Session,
+) (consul.TxnUnlocker, error) {
+	mutationLockPath, err := s.mutationLockPath(rcID)
+	if err != nil {
+		return nil, err
+	}
+
+	return session.LockTxn(lockCtx, mutationLockPath)
+}
+
 // UpdateCreationLockPath computes the consul key that should be locked by callers
 // creating an RU that will operate on this RC. This function is exported so these
 // callers can perform operations on the lock during a consul transaction
