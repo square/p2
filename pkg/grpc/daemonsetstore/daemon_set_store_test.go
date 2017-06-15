@@ -352,5 +352,5 @@ func createADaemonSet(store *dsstore.ConsulStore, txner transaction.Txner) (fiel
 	if err != nil {
 		return fields.DaemonSet{}, err
 	}
-	return ds, transaction.Commit(ctx, cancel, txner)
+	return ds, transaction.MustCommit(ctx, txner)
 }

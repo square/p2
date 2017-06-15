@@ -133,5 +133,6 @@ func main() {
 		klabels.Everything(),
 		client.KV(),
 		roll.FarmConfig{},
+		alerter,
 	).Start(nil)
 }

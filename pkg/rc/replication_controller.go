@@ -241,9 +241,12 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 		// consul on transactions. This shouldn't be necessary after
 		// https://github.com/hashicorp/consul/issues/2921 is resolved
 		if i%5 == 0 && i > 0 {
-			err = txn.Commit(rc.txner)
-			if err != nil {
+			ok, resp, err := txn.Commit(rc.txner)
+			switch {
+			case err != nil:
 				return err
+			case !ok:
+				return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
 			}
 
 			cancelFunc()
@@ -260,9 +263,12 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 			}
 
 			// commit any queued operations
-			txnErr := txn.Commit(rc.txner)
-			if txnErr != nil {
+			ok, resp, txnErr := txn.Commit(rc.txner)
+			switch {
+			case txnErr != nil:
 				return txnErr
+			case !ok:
+				return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
 			}
 
 			return util.Errorf(errMsg)
@@ -275,7 +281,15 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 		}
 	}
 
-	return txn.Commit(rc.txner)
+	ok, resp, err := txn.Commit(rc.txner)
+	switch {
+	case err != nil:
+		return err
+	case !ok:
+		return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
+	}
+
+	return nil
 }
 
 // Generates an alerting.AlertInfo struct. Includes information relevant to
@@ -330,9 +344,12 @@ func (rc *replicationController) removePods(current types.PodLocations) error {
 		// consul on transactions. This shouldn't be necessary after
 		// https://github.com/hashicorp/consul/issues/2921 is resolved
 		if i%5 == 0 && i > 0 {
-			err = txn.Commit(rc.txner)
-			if err != nil {
+			ok, resp, err := txn.Commit(rc.txner)
+			switch {
+			case err != nil:
 				return err
+			case !ok:
+				return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
 			}
 
 			cancelFunc()
@@ -345,11 +362,13 @@ func (rc *replicationController) removePods(current types.PodLocations) error {
 			unscheduleFrom, ok = rest.PopAny()
 			if !ok {
 				// This should be mathematically impossible unless replicasDesired was negative
-
 				// commit any queued operations
-				txnErr := txn.Commit(rc.txner)
-				if txnErr != nil {
+				ok, resp, txnErr := txn.Commit(rc.txner)
+				switch {
+				case txnErr != nil:
 					return txnErr
+				case !ok:
+					return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
 				}
 
 				return util.Errorf(
@@ -358,14 +377,21 @@ func (rc *replicationController) removePods(current types.PodLocations) error {
 				)
 			}
 		}
-
 		err := rc.unschedule(txn, unscheduleFrom)
 		if err != nil {
 			return err
 		}
 	}
 
-	return txn.Commit(rc.txner)
+	ok, resp, err := txn.Commit(rc.txner)
+	switch {
+	case err != nil:
+		return err
+	case !ok:
+		return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
+	}
+
+	return nil
 }
 
 func (rc *replicationController) ensureConsistency(current types.PodLocations) error {
@@ -387,9 +413,12 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 		// consul on transactions. This shouldn't be necessary after
 		// https://github.com/hashicorp/consul/issues/2921 is resolved
 		if i%5 == 0 && i > 0 {
-			err = transaction.Commit(ctx, rc.txner)
-			if err != nil {
+			ok, resp, err := transaction.Commit(ctx, rc.txner)
+			switch {
+			case err != nil:
 				return err
+			case !ok:
+				return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
 			}
 
 			cancelFunc()
@@ -418,7 +447,15 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 		}
 	}
 
-	return transaction.Commit(ctx, rc.txner)
+	ok, resp, err := transaction.Commit(ctx, rc.txner)
+	switch {
+	case err != nil:
+		return err
+	case !ok:
+		return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
+	}
+
+	return nil
 }
 
 func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {

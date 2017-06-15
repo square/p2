@@ -152,10 +152,11 @@ func main() {
 			log.Fatalf("daemon set %q contends with the given selector, correct this before re-attempting", conflictingDS.ID)
 		}
 
-		err = transaction.Commit(ctx, client.KV())
+		err = transaction.MustCommit(ctx, client.KV())
 		if err != nil {
 			log.Fatalf("err: %v", err)
 		}
+
 		fmt.Printf("%v has been created in consul", newDS.ID)
 		fmt.Println()
 

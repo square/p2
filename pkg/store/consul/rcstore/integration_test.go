@@ -51,7 +51,7 @@ func TestCreateTxn(t *testing.T) {
 		t.Fatalf("expected there to be no labels for the RC before the transaction is committed")
 	}
 
-	err = transaction.Commit(ctx, fixture.Client.KV())
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unexpected error committing RC creation transaction: %s", err)
 	}

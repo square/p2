@@ -37,7 +37,7 @@ func TestCreate(t *testing.T) {
 	}
 
 	fakeTxner := &fakeTxner{}
-	err = transaction.Commit(ctx, fakeTxner)
+	err = transaction.MustCommit(ctx, fakeTxner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestDelete(t *testing.T) {
 	}
 
 	fakeTxner := &fakeTxner{}
-	err = transaction.Commit(ctx, fakeTxner)
+	err = transaction.MustCommit(ctx, fakeTxner)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -47,7 +47,7 @@ func TestList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = transaction.Commit(ctx, f.Client.KV())
+	err = transaction.MustCommit(ctx, f.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = transaction.Commit(ctx, f.Client.KV())
+	err = transaction.MustCommit(ctx, f.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = transaction.Commit(ctx, f.Client.KV())
+	err = transaction.MustCommit(ctx, f.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}

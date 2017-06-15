@@ -87,7 +87,7 @@ func createDaemonSet(store *ConsulStore, txner transaction.Txner, t *testing.T) 
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
 
-	err = transaction.Commit(ctx, txner)
+	err = transaction.MustCommit(ctx, txner)
 	if err != nil {
 		t.Fatalf("could not commit transaction to create daemon set: %s", err)
 	}
@@ -176,7 +176,7 @@ func TestGet(t *testing.T) {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
 
-	err = transaction.Commit(ctx, fixture.Client.KV())
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
@@ -252,7 +252,7 @@ func TestList(t *testing.T) {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
 
-	err = transaction.Commit(ctx, fixture.Client.KV())
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unable to commit daemon set: %s", err)
 	}
@@ -271,7 +271,7 @@ func TestList(t *testing.T) {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
 
-	err = transaction.Commit(ctx2, fixture.Client.KV())
+	err = transaction.MustCommit(ctx2, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unable to commit daemon set: %s", err)
 	}
@@ -322,7 +322,7 @@ func TestMutate(t *testing.T) {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
 
-	err = transaction.Commit(ctx, fixture.Client.KV())
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unable to commit daemon set: %s", err)
 	}
@@ -467,7 +467,7 @@ func TestWatch(t *testing.T) {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
 
-	err = transaction.Commit(ctx, fixture.Client.KV())
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("could not commit transaction to create daemon set: %s", err)
 	}
@@ -488,7 +488,7 @@ func TestWatch(t *testing.T) {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
 
-	err = transaction.Commit(ctx2, fixture.Client.KV())
+	err = transaction.MustCommit(ctx2, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("could not commit transaction to create daemon set: %s", err)
 	}
@@ -604,7 +604,7 @@ func TestWatchAll(t *testing.T) {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
 
-	err = transaction.Commit(ctx, fixture.Client.KV())
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("could not commit transaction to create daemon set: %s", err)
 	}
@@ -624,7 +624,7 @@ func TestWatchAll(t *testing.T) {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
 
-	err = transaction.Commit(ctx2, fixture.Client.KV())
+	err = transaction.MustCommit(ctx2, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("could not commit transaction to create daemon set: %s", err)
 	}
@@ -731,7 +731,7 @@ func TestEnableTxnAndDisableTxn(t *testing.T) {
 		t.Fatalf("Unable to create daemon set: %s", err)
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("could not commit transaction to create daemon set: %s", err)
 	}
@@ -743,7 +743,7 @@ func TestEnableTxnAndDisableTxn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("could not commit transaction to disable daemon set: %s", err)
 	}
@@ -764,7 +764,7 @@ func TestEnableTxnAndDisableTxn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("could not commit transaction to disable daemon set: %s", err)
 	}

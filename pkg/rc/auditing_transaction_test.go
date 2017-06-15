@@ -10,6 +10,7 @@ import (
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -37,9 +38,12 @@ func TestAuditingTransaction(t *testing.T) {
 	ctx.AddNode("node3")
 	ctx.RemoveNode("node2")
 
-	err := ctx.Commit(fixture.Client.KV())
+	ok, resp, err := ctx.Commit(fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("could not commit audit log record: %s", err)
+	}
+	if !ok {
+		t.Fatalf("could not commit audit log record: %s", transaction.TxnErrorsToString(resp.Errors))
 	}
 
 	records, err := auditLogStore.List()

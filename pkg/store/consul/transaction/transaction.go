@@ -60,37 +60,54 @@ type Txner interface {
 	Txn(txn api.KVTxnOps, q *api.QueryOptions) (bool, *api.KVTxnResponse, *api.QueryMeta, error)
 }
 
+// MustCommit is a convenience wrapper for Commit that returns a single error
+// if the transaction fails OR if the transaction is rolled back. If the caller
+// wishes to take different action depending on if the transaction failed or
+// was rolled back then Commit() should be used instead
+func MustCommit(ctx context.Context, txner Txner) error {
+	ok, resp, err := Commit(ctx, txner)
+	if err != nil {
+		return err
+	}
+
+	if !ok {
+		return util.Errorf("transaction was rolled back: %s", TxnErrorsToString(resp.Errors))
+	}
+
+	return nil
+}
+
 // Commit attempts to run all of the kv operations in the context's
 // transaction. The cancel function with which the context was created must
 // also be passed to guarantee that the transaction won't be applied twice
-func Commit(ctx context.Context, txner Txner) error {
+func Commit(ctx context.Context, txner Txner) (bool, *api.KVTxnResponse, error) {
 	txn, err := getTxnFromContext(ctx)
 	if err != nil {
-		return err
+		return false, nil, err
 	}
 
 	txn.committedMu.Lock()
 	defer txn.committedMu.Unlock()
 	if txn.committed {
-		return util.Errorf("transaction was already run")
+		return false, nil, util.Errorf("transaction was already run")
 	}
 
 	// make it more convenient for callers to call Commit() even if they're
 	// not sure if there are in fact any operations
 	if len(*txn.kvOps) == 0 {
 		txn.committed = true
-		return nil
+		return true, new(api.KVTxnResponse), nil
 	}
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return false, nil, ctx.Err()
 	default:
 	}
 
 	ok, resp, _, err := txner.Txn(*txn.kvOps, nil)
 	if err != nil {
-		return util.Errorf("transaction failed: %s", err)
+		return false, nil, util.Errorf("transaction failed: %s", err)
 	}
 
 	// we mark the transaction as completed. Any further Commit() calls
@@ -100,20 +117,10 @@ func Commit(ctx context.Context, txner Txner) error {
 	// temporary failures without rebuilding the whole transaction
 	txn.committed = true
 
-	if len(resp.Errors) != 0 {
-		return util.Errorf("some errors occurred when committing the transaction: %s", txnErrorsToString(resp.Errors))
-	}
-
-	// I think ok being false means there should be something in resp.Errors, so this
-	// should be impossible.
-	if !ok {
-		return util.Errorf("an unknown error occurred when applying the transaction")
-	}
-
-	return err
+	return ok, resp, err
 }
 
-func txnErrorsToString(errors api.TxnErrors) string {
+func TxnErrorsToString(errors api.TxnErrors) string {
 	str := ""
 	for _, err := range errors {
 		str = str + fmt.Sprintf("Op %d: %s\n", err.OpIndex, err.What)

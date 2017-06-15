@@ -288,7 +288,7 @@ func (r rctlParams) DeleteRollingUpdate(id string, txner transaction.Txner) {
 		r.logger.WithError(err).Fatalln("Could not delete RU. Consider a retry.")
 	}
 
-	err = transaction.Commit(ctx, txner)
+	err = transaction.MustCommit(ctx, txner)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not delete RU. Consider a retry.")
 	}
@@ -456,7 +456,7 @@ func (r rctlParams) ScheduleUpdate(oldID, newID string, want, need int, txner tr
 		r.logger.WithError(err).Fatalln("Could not create rolling update")
 	}
 
-	err = transaction.Commit(ctx, txner)
+	err = transaction.MustCommit(ctx, txner)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not create rolling update")
 	}

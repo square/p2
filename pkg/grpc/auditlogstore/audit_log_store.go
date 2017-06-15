@@ -74,7 +74,7 @@ func (s store) Delete(ctx grpccontext.Context, req *audit_log_protos.DeleteReque
 		}
 	}
 
-	err = transaction.Commit(ctx, s.txner)
+	err = transaction.MustCommit(ctx, s.txner)
 	if err != nil {
 		return nil, grpc.Errorf(codes.Unavailable, "error committing audit log deletion transaction: %s", err)
 	}

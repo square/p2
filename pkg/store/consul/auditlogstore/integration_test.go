@@ -36,7 +36,7 @@ func TestCreateListAndDelete(t *testing.T) {
 		t.Fatalf("could not create second audit record: %s", err)
 	}
 
-	err = transaction.Commit(ctx, f.Client.KV())
+	err = transaction.MustCommit(ctx, f.Client.KV())
 	if err != nil {
 		t.Fatalf("could not apply txn with two audit record creations: %s", err)
 	}
@@ -81,7 +81,7 @@ func TestCreateListAndDelete(t *testing.T) {
 		t.Fatalf("error deleting audit log record: %s", err)
 	}
 
-	err = transaction.Commit(ctx, f.Client.KV())
+	err = transaction.MustCommit(ctx, f.Client.KV())
 	if err != nil {
 		t.Fatalf("could not apply txn with a record deletion: %s", err)
 	}

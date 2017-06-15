@@ -256,7 +256,7 @@ func (s store) MarkPodFailed(ctx context.Context, req *podstore_protos.MarkPodFa
 	if err != nil {
 		return nil, grpc.Errorf(codes.Internal, "failed to construct a consul transaction to update pod %s to failed: %s", podUniqueKey, err)
 	}
-	err = transaction.Commit(trxctx, s.consulClient.KV())
+	err = transaction.MustCommit(trxctx, s.consulClient.KV())
 	if err != nil {
 		return nil, grpc.Errorf(codes.Unavailable, "could not update pod %s to failed: %s", podUniqueKey, err)
 	}

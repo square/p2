@@ -237,7 +237,7 @@ func TestWriteRealityIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = transaction.Commit(ctx, kv)
+	err = transaction.MustCommit(ctx, kv)
 	if err != nil {
 		t.Fatal(err)
 	}

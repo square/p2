@@ -47,7 +47,7 @@ func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
 		t.Fatalf("Unexpected error creating update: %s", err)
 	}
 
-	err = transaction.Commit(txn, fixture.Client.KV())
+	err = transaction.MustCommit(txn, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unexpected error committing update transaction: %s", err)
 	}
@@ -117,7 +117,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 		t.Fatalf("Unable to create rolling update: %s", err)
 	}
 
-	err = transaction.Commit(txn, fixture.Client.KV())
+	err = transaction.MustCommit(txn, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unexpected error committing update transaction: %s", err)
 	}
@@ -192,7 +192,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 		t.Fatalf("Unable to create conflicting update: %s", err)
 	}
 
-	err = transaction.Commit(txn, fixture.Client.KV())
+	err = transaction.MustCommit(txn, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unexpected error committing transaction: %s", err)
 	}
@@ -287,7 +287,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist
 		t.Fatalf("Shouldn't have failed to create update: %s", err)
 	}
 
-	err = transaction.Commit(txn, fixture.Client.KV())
+	err = transaction.MustCommit(txn, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unexpected error committing transaction: %s", err)
 	}
@@ -382,7 +382,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *t
 		t.Fatalf("Shouldn't have failed to create update: %s", err)
 	}
 
-	err = transaction.Commit(txn, fixture.Client.KV())
+	err = transaction.MustCommit(txn, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unexpected error committing update transaction: %s", err)
 	}
@@ -451,7 +451,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 		t.Fatalf("Should have succeeded in update creation: %s", err)
 	}
 
-	err = transaction.Commit(txn, fixture.Client.KV())
+	err = transaction.MustCommit(txn, fixture.Client.KV())
 	if err != nil {
 		t.Fatalf("unexpected error committing update transaction: %s", err)
 	}
