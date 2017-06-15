@@ -83,6 +83,7 @@ func TestCreateTxn(t *testing.T) {
 
 func TestDeleteTxnHappy(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
 	rcStore := NewConsul(fixture.Client, applicator, 0)
@@ -147,6 +148,7 @@ func TestDeleteTxnHappy(t *testing.T) {
 
 func TestDeleteTxnNonzeroReplicaCount(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
 	rcStore := NewConsul(fixture.Client, applicator, 0)
@@ -191,6 +193,7 @@ func TestDeleteTxnNonzeroReplicaCount(t *testing.T) {
 
 func TestTxnFailsIfRCChanged(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
 	rcStore := NewConsul(fixture.Client, applicator, 0)
@@ -219,6 +222,166 @@ func TestTxnFailsIfRCChanged(t *testing.T) {
 	}
 	if ok {
 		t.Fatal("expected an error committing RC deletion transaction when the RC changed since the delete operation was added to the transaction")
+	}
+}
+
+func TestDisableTxn(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+
+	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
+	rcStore := NewConsul(fixture.Client, applicator, 0)
+
+	rc, err := rcStore.Create(testManifest(), klabels.Everything(), "some_az", "some_cn", nil, nil, "some_strategy")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	err = rcStore.DisableTxn(ctx, rc.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rc, err = rcStore.Get(rc.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc.Disabled {
+		t.Fatal("rc was disabled before transaction was committed")
+	}
+
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rc, err = rcStore.Get(rc.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !rc.Disabled {
+		t.Fatal("rc should have been disabled but wasn't")
+	}
+}
+
+func TestDisableTxnFailsIfChanged(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+
+	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
+	rcStore := NewConsul(fixture.Client, applicator, 0)
+
+	rc, err := rcStore.Create(testManifest(), klabels.Everything(), "some_az", "some_cn", nil, nil, "some_strategy")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	err = rcStore.DisableTxn(ctx, rc.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rcStore.SetDesiredReplicas(rc.ID, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ok, _, err := transaction.Commit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("transaction should have failed since RC was changed before transaction was committed")
+	}
+}
+
+func TestEnableTxn(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+
+	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
+	rcStore := NewConsul(fixture.Client, applicator, 0)
+
+	rc, err := rcStore.Create(testManifest(), klabels.Everything(), "some_az", "some_cn", nil, nil, "some_strategy")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rcStore.Disable(rc.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	err = rcStore.EnableTxn(ctx, rc.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rc, err = rcStore.Get(rc.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rc.Disabled {
+		t.Fatal("rc was enabled before transaction was committed")
+	}
+
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rc, err = rcStore.Get(rc.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if rc.Disabled {
+		t.Fatal("rc should have been enabled but wasn't")
+	}
+}
+
+func TestEnableTxnFailsIfChanged(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+
+	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
+	rcStore := NewConsul(fixture.Client, applicator, 0)
+
+	rc, err := rcStore.Create(testManifest(), klabels.Everything(), "some_az", "some_cn", nil, nil, "strategy")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rcStore.Disable(rc.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	err = rcStore.EnableTxn(ctx, rc.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rcStore.SetDesiredReplicas(rc.ID, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ok, _, err := transaction.Commit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("transaction should have failed since RC was changed before transaction was committed")
 	}
 }
 
