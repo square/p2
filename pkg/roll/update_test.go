@@ -810,11 +810,7 @@ func transferNode(node types.NodeName, manifest manifest.Manifest, upd update) e
 }
 
 func assertRCUpdates(t *testing.T, rc *rc_fields.RC, upd <-chan struct{}, expect int, desc string, mu *sync.Mutex) {
-	select {
-	case <-upd:
-	case <-time.After(3 * time.Second):
-		t.Fatalf("%s didn't update after one second, was waiting for value %d", desc, expect)
-	}
+	<-upd
 	mu.Lock()
 	if rc.ReplicasDesired != expect {
 		t.Errorf("expected replicas desired count to be %d but was %d", expect, rc.ReplicasDesired)
