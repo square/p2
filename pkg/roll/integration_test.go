@@ -13,7 +13,9 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
@@ -92,11 +94,9 @@ func TestCleanupOldRCHappy(t *testing.T) {
 		rcStore: rcStore,
 	}
 
-	quit := make(chan struct{})
-	defer close(quit)
 	ctx, cancel := transaction.New(context.Background())
 	defer cancel()
-	update.cleanupOldRC(ctx, quit)
+	update.cleanupOldRC(ctx)
 	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatal(err)
@@ -159,20 +159,18 @@ func TestCleanupOldRCTooManyReplicas(t *testing.T) {
 		alerter: errorOnceChannelAlerter{out: alertOut},
 	}
 
-	quit := make(chan struct{})
-
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
 	errCh := make(chan error)
 	go func() {
-		ctx, cancel := transaction.New(context.Background())
-		defer cancel()
-		update.cleanupOldRC(ctx, quit)
+		update.cleanupOldRC(ctx)
 		errCh <- transaction.MustCommit(ctx, fixture.Client.KV())
 	}()
 
 	// the first attempt will error so make sure there are two attempts
 	<-alertOut
 	<-alertOut
-	close(quit)
+	cancel()
 
 	err = <-errCh
 	if err != nil {
@@ -188,5 +186,90 @@ func TestCleanupOldRCTooManyReplicas(t *testing.T) {
 		// good
 	default:
 		t.Fatalf("unexpected error when checking that old RC was not deleted: %s", err)
+	}
+}
+
+func TestLockRCs(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+
+	session, renewalErrCh, err := consul.NewSession(fixture.Client, "test-lock-rcs", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Destroy()
+
+	go func() {
+		for {
+			err, ok := <-renewalErrCh
+			if !ok {
+				return
+			}
+
+			if err != nil {
+				t.Error(err)
+			}
+		}
+	}()
+
+	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
+	update := NewUpdate(fields.Update{
+		NewRC: rc_fields.ID("new_rc"),
+		OldRC: rc_fields.ID("old_rc"),
+	},
+		nil,
+		rcstore.NewConsul(fixture.Client, applicator, 0),
+		nil,
+		nil,
+		fixture.Client.KV(),
+		nil,
+		nil,
+		logging.DefaultLogger,
+		session,
+		0,
+		nil,
+	).(*update)
+	lockCtx, lockCancel := transaction.New(context.Background())
+	defer lockCancel()
+	unlockCtx, unlockCancel := transaction.New(context.Background())
+	defer unlockCancel()
+	checkLockedCtx, checkLockedCancel := transaction.New(context.Background())
+	defer checkLockedCancel()
+
+	err = update.lockRCs(lockCtx, unlockCtx, checkLockedCtx)
+	if err != nil {
+		t.Errorf("unexpected error building RC locking transactions: %s", err)
+	}
+
+	// confirm we haven't locked yet (because we haven't committed) by trying the checkLockedCtx
+	err = transaction.MustCommit(checkLockedCtx, fixture.Client.KV())
+	if err == nil {
+		t.Fatal("expected checkLockCtx to fail before locking RCs")
+	}
+	// refresh the transaction so we can try it again
+	checkLockedCtx, checkLockedCancel = transaction.New(checkLockedCtx)
+	defer checkLockedCancel()
+
+	err = transaction.MustCommit(lockCtx, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("could not commit RC locking transaction: %s", err)
+	}
+
+	err = transaction.MustCommit(checkLockedCtx, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("expected checkLockCtx to succeed after locking RCs: %s", err)
+	}
+	// refresh the transaction so we can try it again
+	checkLockedCtx, checkLockedCancel = transaction.New(checkLockedCtx)
+	defer checkLockedCancel()
+
+	err = transaction.MustCommit(unlockCtx, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("unexpected error unlocking RCs: %s", err)
+	}
+
+	err = transaction.MustCommit(checkLockedCtx, fixture.Client.KV())
+	if err == nil {
+		t.Fatal("expected checkLockedCtx to fail after unlocking RCs")
 	}
 }

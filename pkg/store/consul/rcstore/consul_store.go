@@ -1029,7 +1029,7 @@ type TransferReplicaCountsRequest struct {
 // of two RCs in consul.  This is useful for rolling updates to transition
 // nodes from the old RC to the new one without risking the consul database
 // dying between updates and violating replica count invariants
-func (s *ConsulStore) TransferReplicaCounts(req TransferReplicaCountsRequest) error {
+func (s *ConsulStore) TransferReplicaCounts(ctx context.Context, req TransferReplicaCountsRequest) error {
 	if req.ToRCID == "" {
 		return util.Errorf("couldn't transfer replica counts: ToRCID was empty")
 	}
@@ -1090,31 +1090,26 @@ func (s *ConsulStore) TransferReplicaCounts(req TransferReplicaCountsRequest) er
 		return util.Errorf("couldn't transfer replica counts: %s", err)
 	}
 
-	ops := api.KVTxnOps{
-		{
-			Verb:  api.KVCAS,
-			Key:   fromRCPath,
-			Value: fromRCBytes,
-			Index: fromRCIndex,
-		},
-		{
-			Verb:  api.KVCAS,
-			Key:   toRCPath,
-			Value: toRCBytes,
-			Index: toRCIndex,
-		},
-	}
-
-	ok, resp, _, err := s.kv.Txn(ops, nil)
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb:  api.KVCAS,
+		Key:   fromRCPath,
+		Value: fromRCBytes,
+		Index: fromRCIndex,
+	})
 	if err != nil {
-		return util.Errorf("replica count transfer failed: %s", err)
+		return err
 	}
 
-	if !ok {
-		return util.Errorf("replica count transfer transaction was rolled back. errors: %s", formatTxnErrors(resp))
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb:  api.KVCAS,
+		Key:   toRCPath,
+		Value: toRCBytes,
+		Index: toRCIndex,
+	})
+	if err != nil {
+		return err
 	}
 
-	// we don't care what the response was if it worked
 	return nil
 }
 

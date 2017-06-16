@@ -35,8 +35,10 @@ type Factory interface {
 
 type UpdateFactory struct {
 	Store         Store
+	Txner         transaction.Txner
 	RCLocker      ReplicationControllerLocker
 	RCStore       ReplicationControllerStore
+	RollStore     RollingUpdateStore
 	HealthChecker checker.ConsulHealthChecker
 	Labeler       labeler
 	WatchDelay    time.Duration
@@ -50,8 +52,10 @@ type labeler interface {
 
 func NewUpdateFactory(
 	store Store,
+	txner transaction.Txner,
 	rcLocker ReplicationControllerLocker,
 	rcStore ReplicationControllerStore,
+	rollStore RollingUpdateStore,
 	healthChecker checker.ConsulHealthChecker,
 	labeler labeler,
 	watchDelay time.Duration,
@@ -59,8 +63,10 @@ func NewUpdateFactory(
 ) UpdateFactory {
 	return UpdateFactory{
 		Store:         store,
+		Txner:         txner,
 		RCLocker:      rcLocker,
 		RCStore:       rcStore,
+		RollStore:     rollStore,
 		HealthChecker: healthChecker,
 		Labeler:       labeler,
 		WatchDelay:    watchDelay,
@@ -74,6 +80,8 @@ func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consu
 		f.Store,
 		f.RCLocker,
 		f.RCStore,
+		f.RollStore,
+		f.Txner,
 		f.HealthChecker,
 		f.Labeler,
 		l,
@@ -125,7 +133,11 @@ type Farm struct {
 type childRU struct {
 	ru       Update
 	unlocker consul.Unlocker
-	quit     chan<- struct{}
+	cancel   context.CancelFunc
+}
+
+func (c childRU) Cancel() {
+	c.cancel()
 }
 
 // FarmConfig contains configuration options for the farm. All fields have safe
@@ -271,11 +283,11 @@ START_LOOP:
 				rlLogger.WithField("new_rc", rlField.ID()).Infof("Acquired lock on update %s -> %s, spawning", rlField.OldRC, rlField.ID())
 
 				newChild := rlf.factory.New(rlField, rlLogger, rlf.session)
-				childQuit := make(chan struct{})
+				childCtx, cancel := context.WithCancel(context.Background())
 				rlf.children[rlField.ID()] = childRU{
 					ru:       newChild,
-					quit:     childQuit,
 					unlocker: unlocker,
+					cancel:   cancel,
 				}
 				foundChildren[rlField.ID()] = struct{}{}
 
@@ -314,16 +326,15 @@ START_LOOP:
 							}
 						}
 					}()
-					ctx, cancel := transaction.New(context.Background())
-					defer cancel()
-					if !newChild.Run(ctx, childQuit) {
-						// returned false, farm must have asked us to quit
-						return
+					newChild.Run(childCtx)
+					// We don't know or care if Run() succeeded. If it succeeded, we should release the child since the RU
+					// no longer exists. If it failed (was canceled) we want to give another farm a chance to handle it
+					// and we're probably shutting down anyway
+					rlf.childMu.Lock()
+					defer rlf.childMu.Unlock()
+					if _, ok := rlf.children[id]; ok {
+						rlf.releaseChild(id)
 					}
-
-					// Block until the RU is deleted because the farm does not release locks until it detects an RU deletion
-					// our lock on this RU won't be released until it's deleted
-					rlf.mustDeleteRU(ctx, id, rlLogger)
 				}(rlField.ID()) // do not close over rlField, it's a loop variable
 			}
 
@@ -360,7 +371,7 @@ func (rlf *Farm) shouldWorkOn(rcID fields.ID) (bool, error) {
 // should only be called with rlf.childMu locked
 func (rlf *Farm) releaseChild(id roll_fields.ID) {
 	rlf.logger.WithField("ru", id).Infoln("Releasing update")
-	close(rlf.children[id].quit)
+	rlf.children[id].Cancel()
 
 	// if our lock is active, attempt to gracefully release it
 	if rlf.session != nil {

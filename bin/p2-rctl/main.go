@@ -235,6 +235,7 @@ type ReplicationControllerStore interface {
 type RollingUpdateStore interface {
 	Delete(ctx context.Context, id roll_fields.ID) error
 	CreateRollingUpdateFromExistingRCs(ctx context.Context, u roll_fields.Update, newRCLabels klabels.Set, rollLabels klabels.Set) (roll_fields.Update, error)
+	Watch(quit <-chan struct{}, jitterWindow time.Duration) (<-chan []roll_fields.Update, <-chan error)
 }
 
 // rctl is a struct for the data structures shared between commands
@@ -419,13 +420,15 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 			r.consuls,
 			r.rcLocker,
 			r.rollRCStore,
+			r.rls,
+			r.baseClient.KV(),
 			r.hcheck,
 			r.labeler,
 			r.logger,
 			session,
 			watchDelay,
 			alerting.NewNop(),
-		).Run(ctx, quit)
+		).Run(ctx)
 		close(result)
 	}()
 

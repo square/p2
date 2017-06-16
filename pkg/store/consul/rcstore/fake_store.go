@@ -131,6 +131,10 @@ func (s *fakeStore) Disable(id fields.ID) error {
 	return nil
 }
 
+func (s *fakeStore) DisableTxn(ctx context.Context, id fields.ID) error {
+	return util.Errorf("DisableTxn isn't implemented in fake RC store. use a real store if this functionality is needed")
+}
+
 func (s *fakeStore) Enable(id fields.ID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -144,6 +148,10 @@ func (s *fakeStore) Enable(id fields.ID) error {
 		channel <- struct{}{}
 	}
 	return nil
+}
+
+func (s *fakeStore) EnableTxn(ctx context.Context, id fields.ID) error {
+	return util.Errorf("EnableTxn isn't implemented in fake RC store. use a real store if this functionality is needed")
 }
 
 func (s *fakeStore) SetDesiredReplicas(id fields.ID, n int) error {
@@ -289,16 +297,6 @@ func (s *fakeStore) UpdateCreationLockPath(rcID fields.ID) (string, error) {
 	return fmt.Sprintf("%s/%s", rcID, "update_creation_lock"), nil
 }
 
-func (s *fakeStore) TransferReplicaCounts(req TransferReplicaCountsRequest) error {
-	err := s.AddDesiredReplicas(req.ToRCID, *req.ReplicasToAdd)
-	if err != nil {
-		return err
-	}
-
-	err = s.AddDesiredReplicas(req.FromRCID, -*req.ReplicasToRemove)
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (s *fakeStore) TransferReplicaCounts(ctx context.Context, req TransferReplicaCountsRequest) error {
+	return util.Errorf("TransferReplicaCounts not implemented in fake RC store, use a real consul store if you need this functionality")
 }

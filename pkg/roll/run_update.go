@@ -3,7 +3,6 @@ package roll
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -19,6 +18,7 @@ import (
 	"github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/rcstore"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -31,7 +31,11 @@ type Store interface {
 }
 
 type ReplicationControllerLocker interface {
-	LockForMutation(rcID rcf.ID, session consul.Session) (consul.Unlocker, error)
+	LockForMutationTxn(
+		lockCtx context.Context,
+		rcID rcf.ID,
+		session consul.Session,
+	) (consul.TxnUnlocker, error)
 }
 
 type ReplicationControllerStore interface {
@@ -39,26 +43,25 @@ type ReplicationControllerStore interface {
 	SetDesiredReplicas(id rcf.ID, n int) error
 	Delete(id rcf.ID, force bool) error
 	DeleteTxn(ctx context.Context, id rcf.ID, force bool) error
-	TransferReplicaCounts(rcstore.TransferReplicaCountsRequest) error
-	Disable(id rcf.ID) error
-	Enable(id rcf.ID) error
+	TransferReplicaCounts(ctx context.Context, req rcstore.TransferReplicaCountsRequest) error
+	DisableTxn(ctx context.Context, id rcf.ID) error
+	EnableTxn(ctx context.Context, id rcf.ID) error
 }
 
 type update struct {
 	fields.Update
 
-	consuls  Store
-	rcStore  ReplicationControllerStore
-	rcLocker ReplicationControllerLocker
-	hcheck   checker.ConsulHealthChecker
-	labeler  rc.LabelMatcher
+	consuls   Store
+	rcStore   ReplicationControllerStore
+	rollStore RollingUpdateStore
+	rcLocker  ReplicationControllerLocker
+	hcheck    checker.ConsulHealthChecker
+	labeler   rc.LabelMatcher
+	txner     transaction.Txner
 
 	logger logging.Logger
 
 	session consul.Session
-
-	oldRCUnlocker consul.Unlocker
-	newRCUnlocker consul.Unlocker
 
 	// watchDelay can be used to tune the QPS (and therefore bandwidth)
 	// footprint of the health watches performed by the update. A higher
@@ -80,6 +83,8 @@ func NewUpdate(
 	consuls Store,
 	rcLocker ReplicationControllerLocker,
 	rcStore ReplicationControllerStore,
+	rollStore RollingUpdateStore,
+	txner transaction.Txner,
 	hcheck checker.ConsulHealthChecker,
 	labeler rc.LabelMatcher,
 	logger logging.Logger,
@@ -96,6 +101,8 @@ func NewUpdate(
 		consuls:    consuls,
 		rcLocker:   rcLocker,
 		rcStore:    rcStore,
+		rollStore:  rollStore,
+		txner:      txner,
 		hcheck:     hcheck,
 		labeler:    labeler,
 		logger:     logger,
@@ -109,12 +116,14 @@ type Update interface {
 	// Run will execute the Update and modify the passed context such that
 	// its transaction removes the old RC upon completion. Run should claim
 	// exclusive ownership of both affected RCs, and release that
-	// exclusivity upon completion. Run is long-lived and blocking; close
-	// the quit channel to terminate it early. If an Update is interrupted,
-	// Run should leave the RCs in a state such that it can later be called
-	// again to resume. The return value indicates if the update completed
-	// (true) or if it was terminated early (false).
-	Run(ctx context.Context, quit <-chan struct{}) bool
+	// exclusivity upon completion. Run is long-lived and blocking;
+	// canceling the context causes it to terminate it early. If an Update
+	// is interrupted or encounters an unrecoverable error such as a
+	// transaction violation, Run should leave the RCs in a state such that
+	// it can later be called again to resume. The return value indicates
+	// if the update completed (true) or if it was terminated early
+	// (false).
+	Run(ctx context.Context) bool
 }
 
 // returned by shouldStop
@@ -129,11 +138,11 @@ const (
 // retries a given function until it returns a nil error or the quit channel is
 // closed. returns true if it exited in the former case, false in the latter.
 // errors are sent to the given logger with the given string as the message.
-func RetryOrQuit(f func() error, quit <-chan struct{}, logger logging.Logger, errtext string) bool {
+func RetryOrQuit(ctx context.Context, f func() error, logger logging.Logger, errtext string) bool {
 	for err := f(); err != nil; err = f() {
 		logger.WithError(err).Errorln(errtext)
 		select {
-		case <-quit:
+		case <-ctx.Done():
 			return false
 		case <-time.After(1 * time.Second):
 			// unblock the select and loop again
@@ -146,38 +155,111 @@ func RetryOrQuit(f func() error, quit <-chan struct{}, logger logging.Logger, er
 // cancelled via the passed quit channel. The passed context is expected to
 // have a consul transaction value stored in it and cleanup operations such as
 // deleting the old RC will be added to it when applicable.
-// TODO: replace the quit channel with context cancelation
-func (u *update) Run(ctx context.Context, quit <-chan struct{}) (ret bool) {
+func (u *update) Run(ctx context.Context) (ret bool) {
 	u.logger.NoFields().Debugln("Locking")
-	// TODO: implement API for blocking locks and use that instead of retrying
-	if !RetryOrQuit(
-		func() error { return u.lockRCs(quit) },
-		quit,
-		u.logger,
-		"Could not lock rcs",
-	) {
+
+	// create a transaction to lock the RCs with. This way we can't lock
+	// one and not the other
+	lockRCsCtx, cancelLockRCs := transaction.New(ctx)
+
+	// create a transaction to check that the RCs are locked. We're going
+	// to branch a lot of transactions off of this one to guarantee they
+	// only succeed if the locks are held
+	checkRCLocksCtx, cancelCheckRCLocksCtx := transaction.New(ctx)
+	defer cancelCheckRCLocksCtx()
+
+	// create a transaction for cleanup operations such as releasing locks
+	// and (if the update succeeds) deleting the RU and the old RC (when
+	// applicable).
+	cleanupCtx, cancelCleanup := transaction.New(ctx)
+	performCleanup := func() {
+		defer cancelCleanup()
+		ok, resp, err := transaction.CommitWithRetries(cleanupCtx, u.txner)
+		if err != nil {
+			// If we get here, it means the context was cancelled which
+			// probably means our consul session (and thus RC locks)
+			// disappeared.
+
+			// log the error, but this is otherwise okay because
+			// another farm will pick up the RU, notice that it's
+			// finished, and try to perform cleanup (e.g. deleting
+			// the old RC)
+			u.logger.WithError(err).Errorln("could not perform RU cleanup because transaction did not succeed before cancellation")
+
+			// set ret to false so that the farm does not delete the RU, giving another farma  chance to handle this cleanup
+			ret = false
+			return
+		}
+		if !ok {
+			// This probably means that the transaction was submitted to
+			// the server just before context cancellation, but we didn't
+			// have the RC locks (due to session dying). Log the error
+			// but otherwise another farm should pick up this RU and
+			// perform the necessary cleanup
+			err := util.Errorf("transaction errors: %s", transaction.TxnErrorsToString(resp.Errors))
+			u.logger.WithError(err).Errorln("could not perform RU cleanup due to transaction conflict")
+			ret = false
+			return
+		}
+
+		// leave ret set however it was before this function was called
 		return
 	}
-	defer u.unlockRCs(quit)
+	defer performCleanup()
+
+	// Pass ctx as the "unlock RCs" transaction. That way when the caller of Run() commits
+	// the transaction it will release the locks.
+	// TODO: we probably don't want to add unlocking operations to
+	// cleanupCtx until the Commit() succeeds, explore making a
+	// transaction.Merge() function and only performing the merge after the
+	// commit is successful
+	err := u.lockRCs(lockRCsCtx, cleanupCtx, checkRCLocksCtx)
+	if err != nil {
+		cancelLockRCs()
+		// this is a pageable error because it's only adding operations to
+		// transactions in memory. If it fails once it's never going to
+		// succeed and probably requires a code rollback
+		u.mustAlert(
+			ctx,
+			"could not build RC locking transaction",
+			"build-lock-"+u.ID().String(),
+			err,
+		)
+		return false
+	}
+
+	ok, resp, err := transaction.CommitWithRetries(lockRCsCtx, u.txner)
+	if err != nil {
+		// this will only happen if the context was canceled, so just stop processing the roll
+		return false
+	}
+	if !ok {
+		// another farm must have the locks, stop processng the roll
+		u.logger.Infof("could not lock RCs (transaction response %s). Exiting roll loop", transaction.TxnErrorsToString(resp.Errors))
+		return false
+	}
+	cancelLockRCs()
 
 	u.logger.NoFields().Debugln("Enabling")
-	if !RetryOrQuit(u.enable, quit, u.logger, "Could not enable/disable RCs") {
-		return
+	err = u.enable(checkRCLocksCtx)
+	if err != nil {
+		return false
 	}
 
 	u.logger.NoFields().Debugln("Launching health watch")
 	var newFields rcf.RC
-	var err error
-	if !RetryOrQuit(func() error {
-		newFields, err = u.rcStore.Get(u.NewRC)
-		if rcstore.IsNotExist(err) {
-			return util.Errorf("Replication controller %s is unexpectedly empty", u.NewRC)
-		} else if err != nil {
-			return err
-		}
+	if !RetryOrQuit(
+		ctx,
+		func() error {
+			newFields, err = u.rcStore.Get(u.NewRC)
+			if rcstore.IsNotExist(err) {
+				return util.Errorf("Replication controller %s is unexpectedly empty", u.NewRC)
+			} else if err != nil {
+				return err
+			}
 
-		return nil
-	}, quit, u.logger, "Could not read new RC") {
+			return nil
+		}, u.logger, "Could not read new RC") {
 		return
 	}
 
@@ -188,19 +270,35 @@ func (u *update) Run(ctx context.Context, quit <-chan struct{}) (ret bool) {
 	watchDelay := 1 * time.Second
 	go u.hcheck.WatchService(string(newFields.Manifest.ID()), hChecks, hErrs, hQuit, watchDelay)
 
-	if updateSucceeded := u.rollLoop(newFields.Manifest.ID(), hChecks, hErrs, quit); !updateSucceeded {
+	if updateSucceeded := u.rollLoop(checkRCLocksCtx, newFields.Manifest.ID(), hChecks, hErrs); !updateSucceeded {
 		// We were asked to quit. Do so without cleaning old RC.
 		return false
 	}
 
 	// rollout complete, clean up old RC if told to do so
 	if !u.LeaveOld {
-		u.cleanupOldRC(ctx, quit)
+		u.cleanupOldRC(cleanupCtx)
 	}
-	return true // finally if we make it here, we can return true
+
+	err = u.rollStore.Delete(cleanupCtx, u.ID())
+	if err != nil {
+		// this error is really bad because we can't recover from it
+		u.logger.WithError(err).Errorln("could not construct transaction to delete RU")
+		u.mustAlert(
+			context.Background(),
+			"could not build RU deletion transaction",
+			"ru-deletion-txn"+u.ID().String(),
+			err,
+		)
+		return false
+	}
+
+	// return true here, but note that it might become false because of the
+	// deferred performCleanup() function
+	return true
 }
 
-func (u *update) cleanupOldRC(ctx context.Context, quit <-chan struct{}) {
+func (u *update) cleanupOldRC(ctx context.Context) {
 	cleanupFunc := func() error {
 		oldRC, err := u.rcStore.Get(u.OldRC)
 		if err != nil {
@@ -234,37 +332,60 @@ func (u *update) cleanupOldRC(ctx context.Context, quit <-chan struct{}) {
 			if err != nil {
 				return err
 			}
-
 			// return nil to avoid looping, the alert
 			// should cause the issue to be fixed by a
 			// human operator
 			return nil
 		}
-
-		return u.rcStore.DeleteTxn(ctx, u.OldRC, false)
+		return nil
 	}
 
 	u.logger.NoFields().Infoln("Cleaning up old RC")
-	if !RetryOrQuit(cleanupFunc, quit, u.logger, "Could not delete old RC") {
+	if !RetryOrQuit(ctx, cleanupFunc, u.logger, "Could not delete old RC") {
 		return
+	}
+
+	err := u.rcStore.DeleteTxn(ctx, u.OldRC, false)
+	if err != nil {
+		alertContext, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go func() {
+			select {
+			case <-alertContext.Done():
+				// this means the alert was sent successfully, so exit the goroutine
+				return
+			case <-ctx.Done():
+				// this means we've been asked to shut down, so cancel the alert send
+				cancel()
+				return
+			}
+		}()
+		// this error is really bad because we can't recover from it
+		u.logger.WithError(err).Errorln("could not construct transaction to delete RU")
+		u.mustAlert(
+			alertContext,
+			"could not build RC deletion transaction",
+			"rc-deletion-txn"+u.ID().String(),
+			err,
+		)
 	}
 }
 
 // returns true if roll succeeded, false if asked to quit.
-func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]health.Result, hErrs <-chan error, quit <-chan struct{}) bool {
+func (u *update) rollLoop(ctx context.Context, podID types.PodID, hChecks <-chan map[types.NodeName]health.Result, hErrs <-chan error) bool {
 	for {
 		// Select on just the quit channel before entering the select with both quit and hChecks. This protects against a situation where
 		// hChecks and quit are both ready, and hChecks might be chosen due to the random choice semantics of select {}. If multiple
 		// iterations continue after quit is closed, a dangerous situation is created because multiple farm instances might end up
 		// handling the same RU.
 		select {
-		case <-quit:
+		case <-ctx.Done():
 			return false
 		default:
 		}
 
 		select {
-		case <-quit:
+		case <-ctx.Done():
 			return false
 		case err := <-hErrs:
 			u.logger.WithError(err).Errorln("Could not read health checks")
@@ -307,7 +428,7 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 
 					select {
 					case <-time.After(u.RollDelay):
-					case <-quit:
+					case <-ctx.Done():
 						return false
 					}
 
@@ -336,11 +457,36 @@ func (u *update) rollLoop(podID types.PodID, hChecks <-chan map[types.NodeName]h
 					StartingFromReplicas: &oldNodes.Desired,
 				}
 
-				err = u.rcStore.TransferReplicaCounts(transferReq)
+				// branch off of the passed ctx which implicitly ensures that RC locks are held
+				transferCtx, cancel := transaction.New(ctx)
+				err = u.rcStore.TransferReplicaCounts(transferCtx, transferReq)
 				if err != nil {
+					// this error is really bad because it means
+					// the transaction has exceeded 64
+					// operations. only a code change can fix
+					// this
+					cancel()
+					u.logger.WithError(err).Errorln("could not update RC replica counts")
+
+					// the panic will be caught by our recover()
+					panic(fmt.Sprintf("could not update RC replica counts: %s", err))
+				}
+
+				err := transaction.MustCommit(transferCtx, u.txner)
+				if err != nil {
+					// This can happen for a few reasons:
+					// 1) a CAS violation in the operations added
+					// to the context by TransferReplicaCounts().
+					// This can be fixed by starting this for
+					// loop over
+					// 2) a CAS violation due to not holding the RC locks anymore. That should only occur if our session died
+					// which should cause our context to be canceled which means we'll exit soon
+					// 3) a temporary consul unavailability issue. breaking and starting the loop again should be a natural
+					// retry
 					u.logger.WithError(err).Errorln("could not update RC replica counts")
 					break
 				}
+				cancel()
 			} else {
 				u.logger.WithFields(logrus.Fields{
 					"old": oldNodes.ToString(),
@@ -378,66 +524,52 @@ func (u *update) shouldStop(oldNodes, newNodes rcNodeCounts) ruStep {
 	return ruShouldBlock
 }
 
-func (u *update) lockRCs(done <-chan struct{}) error {
-	newUnlocker, err := u.rcLocker.LockForMutation(u.NewRC, u.session)
-	if _, ok := err.(consul.AlreadyLockedError); ok {
-		return fmt.Errorf("could not lock new %s", u.NewRC)
-	} else if err != nil {
-		return err
-	}
-	u.newRCUnlocker = newUnlocker
-
-	oldUnlocker, err := u.rcLocker.LockForMutation(u.OldRC, u.session)
+func (u *update) lockRCs(
+	lockCtx context.Context,
+	unlockCtx context.Context,
+	checkLockedCtx context.Context,
+) error {
+	newUnlocker, err := u.rcLocker.LockForMutationTxn(lockCtx, u.NewRC, u.session)
 	if err != nil {
-		// The second key couldn't be locked, so release the first key before retrying.
-		RetryOrQuit(
-			func() error { return newUnlocker.Unlock() },
-			done,
-			u.logger,
-			fmt.Sprintf("unlocking %s", newUnlocker.Key()),
-		)
-	}
-	if _, ok := err.(consul.AlreadyLockedError); ok {
-		return fmt.Errorf("could not lock old %s", u.OldRC)
-	} else if err != nil {
 		return err
 	}
-	u.oldRCUnlocker = oldUnlocker
+
+	oldUnlocker, err := u.rcLocker.LockForMutationTxn(lockCtx, u.OldRC, u.session)
+	if err != nil {
+		return err
+	}
+
+	// Add the operations to unlock both to unlockCtx transaction
+	err = newUnlocker.UnlockTxn(unlockCtx)
+	if err != nil {
+		return err
+	}
+
+	err = oldUnlocker.UnlockTxn(unlockCtx)
+	if err != nil {
+		return err
+	}
+
+	// Add the operations to check locks both to checkLockedCtx transaction
+	err = newUnlocker.CheckLockedTxn(checkLockedCtx)
+	if err != nil {
+		return err
+	}
+
+	err = oldUnlocker.CheckLockedTxn(checkLockedCtx)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
-// unlockRCs releases the locks on the old and new RCs. To avoid a system-wide deadlock in
-// RCs, this method ensures that the locks are always released, either by retrying until
-// individual releases are successful or until the session is reset.
-func (u *update) unlockRCs(done <-chan struct{}) {
-	wg := sync.WaitGroup{}
-	for _, unlocker := range []consul.Unlocker{u.newRCUnlocker, u.oldRCUnlocker} {
-		// unlockRCs is called whenever Run() exits, so we have to
-		// handle the case where we didn't lock anything yet
-		if unlocker != nil {
-			wg.Add(1)
-			go func(unlocker consul.Unlocker) {
-				defer wg.Done()
-				RetryOrQuit(
-					func() error {
-						return unlocker.Unlock()
-					},
-					done,
-					u.logger,
-					fmt.Sprintf("unlocking rc: %s", unlocker.Key()),
-				)
-			}(unlocker)
-		}
-	}
-	wg.Wait()
-}
-
 // enable sets the old & new RCs to a known-good state to start a rolling update:
 // the old RC should be disabled and the new RC should be enabled.
-func (u *update) enable() error {
+func (u *update) enable(checkLocksCtx context.Context) error {
 	newRC, err := u.rcStore.Get(u.NewRC)
 	if err != nil {
+		u.logger.WithError(err).Errorln("could not fetch new RC for enabling")
 		return err
 	}
 
@@ -472,18 +604,28 @@ func (u *update) enable() error {
 		}
 	}
 
-	// Disable the old RC first to make sure that the two RCs don't fight each other.
+	ctx, cancel := transaction.New(checkLocksCtx)
+	defer cancel()
 	// We do this AFTER the convergence check, because we don't want to reach this state:
 	// disabled, 1 desired, 2 labeled | disabled, 1 desired, 0 labeled.
 	// In this case, neither RC will act, so manual intervention is required.
-	err = u.rcStore.Disable(u.OldRC)
+	err = u.rcStore.DisableTxn(ctx, u.OldRC)
 	if err != nil {
 		return err
 	}
 
-	err = u.rcStore.Enable(u.NewRC)
+	err = u.rcStore.EnableTxn(ctx, u.NewRC)
 	if err != nil {
 		return err
+	}
+
+	ok, resp, err := transaction.CommitWithRetries(ctx, u.txner)
+	if err != nil {
+		return err
+	}
+
+	if !ok {
+		return util.Errorf("could not enable RCs due to transaction failure, likely due to losing RC locks: %s", transaction.TxnErrorsToString(resp.Errors))
 	}
 
 	return nil
@@ -609,6 +751,30 @@ func (u *update) rollAlgorithmParams(oldHealth, newHealth rcNodeCounts) (oldHeal
 	targetDesired = u.DesiredReplicas
 	minHealthy = u.MinimumReplicas
 	return
+}
+
+func (u *update) mustAlert(ctx context.Context, description string, incidentKey string, err error) {
+	f := func() error {
+		return u.alerter.Alert(alerting.AlertInfo{
+			Description: description,
+			IncidentKey: incidentKey,
+			Details: struct {
+				Error string `json:"error"`
+				RUID  string `json:"ru_id"`
+			}{
+				Error: err.Error(),
+				RUID:  u.ID().String(),
+			}}, alerting.LowUrgency)
+	}
+
+	if !RetryOrQuit(
+		ctx,
+		f,
+		u.logger,
+		"could not send alert",
+	) {
+		return
+	}
 }
 
 // the roll algorithm defines how to mutate RCs over time. it takes six args:
