@@ -86,6 +86,7 @@ func TestDelete(t *testing.T) {
 
 func TestMutateStatusNewKey(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	consulStore := statusstore.NewConsul(fixture.Client)
 	podStore := NewConsul(consulStore, "test_namespace")
 
@@ -117,6 +118,7 @@ func TestMutateStatusNewKey(t *testing.T) {
 
 func TestMutateStatusExistingKey(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	consulStore := statusstore.NewConsul(fixture.Client)
 	podStore := NewConsul(consulStore, "test_namespace")
 

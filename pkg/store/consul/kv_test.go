@@ -210,6 +210,7 @@ func TestPodUniqueKeyFromConsulPath(t *testing.T) {
 
 func TestAllPods(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	fakeConsulClient := fixture.Client
 
 	// we can't use store.podStatusStore here because we use functions for
