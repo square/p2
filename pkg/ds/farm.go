@@ -310,6 +310,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 					dsf.releaseLock(dsUnlocker)
 					continue
 				} else if err != nil {
+					dsf.logger.WithError(err).Errorf("Could not acquire lock on daemon set '%v'", dsFields.ID)
 					// The session probably either expired or there was probably a network
 					// error, so the rest will probably fail
 					dsf.handleSessionExpiry(*dsFields, dsLogger, err)

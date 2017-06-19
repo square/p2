@@ -39,8 +39,8 @@ func TestContendNodes(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
-	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
-	applicator := labels.NewFakeApplicator()
+	consulStore := consul.NewConsulStore(fixture.Client)
+	applicator := createAndSeedApplicator(fixture.Client, t)
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "contendNodes",
 	})
@@ -96,7 +96,10 @@ func TestContendNodes(t *testing.T) {
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
 	// Make a node and verify that it was scheduled
-	applicator.SetLabel(labels.NODE, "node1", pc_fields.AvailabilityZoneLabel, "az1")
+	err = applicator.SetLabel(labels.NODE, "node1", pc_fields.AvailabilityZoneLabel, "az1")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	labeled, err := waitForPodLabel(applicator, true, "node1/testPod")
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
@@ -166,8 +169,8 @@ func TestContendSelectors(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
-	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
-	applicator := labels.NewFakeApplicator()
+	consulStore := consul.NewConsulStore(fixture.Client)
+	applicator := createAndSeedApplicator(fixture.Client, t)
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "contendSelectors",
 	})
@@ -334,8 +337,8 @@ func TestFarmSchedule(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
-	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
-	applicator := labels.NewFakeApplicator()
+	consulStore := consul.NewConsulStore(fixture.Client)
+	applicator := createAndSeedApplicator(fixture.Client, t)
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "farmSchedule",
 	})
@@ -567,8 +570,8 @@ func TestCleanupPods(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
-	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
-	applicator := labels.NewFakeApplicator()
+	consulStore := consul.NewConsulStore(fixture.Client)
+	applicator := createAndSeedApplicator(fixture.Client, t)
 
 	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()
@@ -658,14 +661,24 @@ func TestMultipleFarms(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
-	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
-	applicator := labels.NewFakeApplicator()
+	consulStore := consul.NewConsulStore(fixture.Client)
+	applicator := createAndSeedApplicator(fixture.Client, t)
 
 	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()
 	defer preparer.Disable()
 
-	session := consultest.NewSession()
+	session, renewalErrCh, err := consulStore.NewSession("ds_test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		err, ok := <-renewalErrCh
+		if ok {
+			t.Error(err)
+		}
+	}()
+
 	firstLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "firstMultiple",
 	})
@@ -979,14 +992,23 @@ func TestRelock(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
-	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
-	applicator := labels.NewFakeApplicator()
+	consulStore := consul.NewConsulStore(fixture.Client)
+	applicator := createAndSeedApplicator(fixture.Client, t)
 
 	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()
 	defer preparer.Disable()
 
-	session := consultest.NewSession()
+	session, renewalErrCh, err := consulStore.NewSession("ds_test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		err, ok := <-renewalErrCh
+		if ok {
+			t.Error(err)
+		}
+	}()
 
 	allNodes := []types.NodeName{"node1", "node2", "node3"}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
@@ -1073,14 +1095,23 @@ func TestDieAndUpdate(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
-	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
-	applicator := labels.NewFakeApplicator()
+	consulStore := consul.NewConsulStore(fixture.Client)
+	applicator := createAndSeedApplicator(fixture.Client, t)
 
 	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()
 	defer preparer.Disable()
 
-	session := consultest.NewSession()
+	session, renewalErrCh, err := consulStore.NewSession("ds_test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		err, ok := <-renewalErrCh
+		if ok {
+			t.Error(err)
+		}
+	}()
 
 	allNodes := []types.NodeName{"node1", "node2", "node3"}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
@@ -1154,7 +1185,7 @@ func TestDieAndUpdate(t *testing.T) {
 	close(firstQuitCh)
 	<-farmHasQuit
 
-	_, err := dsStore.MutateDS(dsData.ID, func(ds ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
+	_, err = dsStore.MutateDS(dsData.ID, func(ds ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {
 		ds.Name = ds_fields.ClusterName("name_has_changed")
 		return ds, nil
 	})
@@ -1308,4 +1339,20 @@ func waitForMutateSelectorFarms(firstFarm *Farm, secondFarm *Farm, ds ds_fields.
 		return util.Errorf("Farm does not have daemon set id")
 	}
 	return waitForCondition(condition)
+}
+
+func createAndSeedApplicator(client consulutil.ConsulClient, t *testing.T) labels.Applicator {
+	applicator := labels.NewConsulApplicator(client, 0)
+	// seed the label trees that daemon set farm uses
+	err := applicator.SetLabel(labels.NODE, "key", "whatever", "whatever")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = applicator.SetLabel(labels.POD, "key", "whatever", "whatever")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return applicator
 }

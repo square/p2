@@ -5,7 +5,9 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/types"
 )
 
 const (
@@ -13,7 +15,7 @@ const (
 )
 
 type FakePreparer struct {
-	podStore *FakePodStore
+	podStore PodStore
 
 	enabled        bool
 	enableLock     sync.Mutex
@@ -21,7 +23,13 @@ type FakePreparer struct {
 	logger         logging.Logger
 }
 
-func NewFakePreparer(podStore *FakePodStore, logger logging.Logger) *FakePreparer {
+type PodStore interface {
+	AllPods(podPrefix consul.PodPrefix) ([]consul.ManifestResult, time.Duration, error)
+	SetPod(podPrefix consul.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
+	DeletePod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+}
+
+func NewFakePreparer(podStore PodStore, logger logging.Logger) *FakePreparer {
 	return &FakePreparer{
 		podStore: podStore,
 		enabled:  false,
