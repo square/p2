@@ -5,6 +5,7 @@ package ds
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -673,12 +674,28 @@ func TestMultipleFarms(t *testing.T) {
 	preparer.Enable()
 	defer preparer.Disable()
 
-	session, renewalErrCh, err := consulStore.NewSession("ds_test", nil)
+	session1, renewalErrCh1, err := consulStore.NewSession("firstFarm", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
-		err, ok := <-renewalErrCh
+		defer wg.Done()
+		err, ok := <-renewalErrCh1
+		if ok {
+			t.Error(err)
+		}
+	}()
+
+	session2, renewalErrCh2, err := consulStore.NewSession("secondFarm", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err, ok := <-renewalErrCh2
 		if ok {
 			t.Error(err)
 		}
@@ -708,7 +725,7 @@ func TestMultipleFarms(t *testing.T) {
 		watcher:               applicator,
 		labelsAggregationRate: 1 * time.Nanosecond,
 		children:              make(map[ds_fields.ID]*childDS),
-		session:               session,
+		session:               session1,
 		logger:                firstLogger,
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
@@ -736,7 +753,7 @@ func TestMultipleFarms(t *testing.T) {
 		watcher:               applicator,
 		labelsAggregationRate: 1 * time.Nanosecond,
 		children:              make(map[ds_fields.ID]*childDS),
-		session:               session,
+		session:               session2,
 		logger:                secondLogger,
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
@@ -748,7 +765,7 @@ func TestMultipleFarms(t *testing.T) {
 		secondFarm.mainLoop(secondQuitCh)
 	}()
 
-	// Make two daemon sets with difference node selectors
+	// Make two daemon sets with different node selectors
 	// First daemon set
 	podID := types.PodID("testPod")
 	minHealth := 0
@@ -824,6 +841,7 @@ func TestMultipleFarms(t *testing.T) {
 	}
 	anotherDSData, err = dsStore.MutateDS(anotherDSData.ID, mutator)
 	Assert(t).IsNil(err, "Expected no error mutating daemon set")
+
 	err = waitForMutateSelectorFarms(firstFarm, secondFarm, anotherDSData)
 	Assert(t).IsNil(err, "Expected daemon set to be mutated in farm")
 
@@ -868,7 +886,7 @@ func TestMultipleFarms(t *testing.T) {
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
-	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	anotherDSData, err = dsStore.MutateDS(anotherDSData.ID, mutator)
 	Assert(t).IsNil(err, "Expected no error mutating daemon set")
 	err = waitForMutateSelectorFarms(firstFarm, secondFarm, anotherDSData)
 	Assert(t).IsNil(err, "Expected daemon set to be mutated in farm")
@@ -975,7 +993,7 @@ func TestMultipleFarms(t *testing.T) {
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
-	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	anotherDSData, err = dsStore.MutateDS(anotherDSData.ID, mutator)
 	Assert(t).IsNil(err, "Expected no error mutating daemon set")
 	err = waitForMutateSelectorFarms(firstFarm, secondFarm, anotherDSData)
 	Assert(t).IsNil(err, "Expected daemon set to be mutated in farm")
@@ -993,6 +1011,11 @@ func TestMultipleFarms(t *testing.T) {
 	// behavior change: Daemon Set deletions do not delete their pods (for now)
 	labeled, err = waitForPodLabel(applicator, true, "node3/testPod")
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
+
+	session1.Destroy()
+	session2.Destroy()
+
+	wg.Wait()
 }
 
 func TestRelock(t *testing.T) {
