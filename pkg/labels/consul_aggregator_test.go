@@ -32,7 +32,7 @@ func TestTwoClients(t *testing.T) {
 		data:         fakeLabeledPods(),
 		watchTrigger: nil,
 	}
-	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry(), 0)
 	go aggreg.Aggregate()
 	defer aggreg.Quit()
 
@@ -74,7 +74,7 @@ func TestQuitAggregateAfterResults(t *testing.T) {
 		data:         fakeLabeledPods(),
 		watchTrigger: nil,
 	}
-	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry(), 0)
 	go aggreg.Aggregate()
 
 	quitCh := make(chan struct{})
@@ -106,7 +106,7 @@ func TestQuitAggregateBeforeResults(t *testing.T) {
 		data:         fakeLabeledPods(),
 		watchTrigger: trigger,
 	}
-	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry(), 0)
 	go aggreg.Aggregate()
 
 	quitCh := make(chan struct{})
@@ -131,7 +131,7 @@ func TestQuitIndividualWatch(t *testing.T) {
 		data:         fakeLabeledPods(),
 		watchTrigger: nil,
 	}
-	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry(), 0)
 	go aggreg.Aggregate()
 
 	quitCh1 := make(chan struct{})
@@ -183,7 +183,7 @@ func TestIgnoreIndividualWatch(t *testing.T) {
 		data:         fakeLabeledPods(),
 		watchTrigger: nil,
 	}
-	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry(), 0)
 	go aggreg.Aggregate()
 	defer aggreg.Quit()
 
@@ -224,7 +224,7 @@ func TestCachedValueImmediatelySent(t *testing.T) {
 		data:         fakeLabeledPods(),
 		watchTrigger: nil,
 	}
-	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry(), 0)
 	aggreg.labeledCache = []Labeled{
 		{
 			LabelType: POD,
@@ -277,7 +277,7 @@ func TestIdenticalSelectors(t *testing.T) {
 		data:         fakeLabeledPods(),
 		watchTrigger: nil,
 	}
-	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry())
+	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry(), 0)
 	go aggreg.Aggregate()
 	defer aggreg.Quit()
 

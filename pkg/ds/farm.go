@@ -62,8 +62,9 @@ type Farm struct {
 	healthChecker    *checker.ConsulHealthChecker
 	healthWatchDelay time.Duration
 
-	monitorHealth  bool
-	cachedPodMatch bool
+	monitorHealth         bool
+	cachedPodMatch        bool
+	labelsAggregationRate time.Duration
 }
 
 type childDS struct {
@@ -157,7 +158,12 @@ func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
 		dsIDLabelSelector := klabels.Everything().
 			Add(DSIDLabel, klabels.ExistsOperator, []string{})
 
-		allPods, err := dsf.labeler.GetMatches(dsIDLabelSelector, labels.POD, dsf.cachedPodMatch)
+		var allPods []labels.Labeled
+		if dsf.cachedPodMatch {
+			allPods, err = dsf.labeler.GetCachedMatches(dsIDLabelSelector, labels.POD, dsf.labelsAggregationRate)
+		} else {
+			allPods, err = dsf.labeler.GetMatches(dsIDLabelSelector, labels.POD)
+		}
 		if err != nil {
 			dsf.logger.Errorf("Unable to get matches for daemon sets in pod store: %v", err)
 			continue
@@ -616,6 +622,7 @@ func (dsf *Farm) spawnDaemonSet(
 		dsf.store,
 		dsf.labeler,
 		dsf.watcher,
+		dsf.labelsAggregationRate,
 		dsLogger,
 		dsf.healthChecker,
 		dsf.rateLimitInterval,

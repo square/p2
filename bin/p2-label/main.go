@@ -90,8 +90,7 @@ func main() {
 				break
 			}
 
-			cachedMatch := false
-			matches, err = applicator.GetMatches(subject, labelType, cachedMatch)
+			matches, err = applicator.GetMatches(subject, labelType)
 			if err != nil {
 				if labels.IsNoLabelsFound(err) {
 					fmt.Fprintf(os.Stderr, "No labels were found for the %s type", labelType)

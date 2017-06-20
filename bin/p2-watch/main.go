@@ -122,7 +122,7 @@ func watchPodClusters(client consulutil.ConsulClient, applicator labels.Applicat
 	logger := &logging.DefaultLogger
 	logger.Infoln("Beginning pod cluster watch")
 
-	pcStore := pcstore.NewConsul(client, applicator, labels.NewConsulApplicator(client, 0), logger)
+	pcStore := pcstore.NewConsul(client, applicator, labels.DefaultAggregationRate, labels.NewConsulApplicator(client, 0), logger)
 	quitCh := make(chan struct{})
 	go func() {
 		signalCh := make(chan os.Signal, 2)

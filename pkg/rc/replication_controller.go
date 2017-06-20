@@ -418,9 +418,7 @@ func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {
 func CurrentPods(rcid fields.ID, labeler LabelMatcher) (types.PodLocations, error) {
 	selector := klabels.Everything().Add(RCIDLabel, klabels.EqualsOperator, []string{rcid.String()})
 
-	// replication controllers can only pass cachedMatch = false because their operations for matching
-	// replica counts are not necessarily idempotent.
-	podMatches, err := labeler.GetMatches(selector, labels.POD, false)
+	podMatches, err := labeler.GetMatches(selector, labels.POD)
 	if err != nil {
 		return nil, err
 	}

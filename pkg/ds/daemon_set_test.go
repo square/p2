@@ -201,6 +201,7 @@ func TestSchedule(t *testing.T) {
 		consulStore,
 		applicator,
 		applicator,
+		1*time.Nanosecond,
 		logging.DefaultLogger,
 		&happyHealthChecker,
 		0,
@@ -447,6 +448,7 @@ func TestPublishToReplication(t *testing.T) {
 		consulStore,
 		applicator,
 		applicator,
+		1*time.Nanosecond,
 		logging.DefaultLogger,
 		&happyHealthChecker,
 		0,
@@ -579,7 +581,7 @@ func waitForSpecificPod(consulStore *consultest.FakePodStore, nodeName types.Nod
 
 func labeledPods(t *testing.T, ds *daemonSet) []labels.Labeled {
 	selector := klabels.Everything().Add(DSIDLabel, klabels.EqualsOperator, []string{ds.ID().String()})
-	labeled, err := ds.applicator.GetMatches(selector, labels.POD, false)
+	labeled, err := ds.applicator.GetMatches(selector, labels.POD)
 	Assert(t).IsNil(err, "expected no error matching pods")
 	return labeled
 }

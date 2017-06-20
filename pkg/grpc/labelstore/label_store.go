@@ -1,6 +1,8 @@
 package labelstore
 
 import (
+	"time"
+
 	label_protos "github.com/square/p2/pkg/grpc/labelstore/protos"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -11,7 +13,7 @@ import (
 )
 
 type MatchWatcher interface {
-	WatchMatches(selector klabels.Selector, labelType labels.Type, quitCh <-chan struct{}) (chan []labels.Labeled, error)
+	WatchMatches(selector klabels.Selector, labelType labels.Type, aggregationRate time.Duration, quitCh <-chan struct{}) (chan []labels.Labeled, error)
 }
 
 type labelStore struct {
@@ -44,7 +46,7 @@ func (l labelStore) WatchMatches(req *label_protos.WatchMatchesRequest, stream l
 
 	quitCh := make(chan struct{})
 	defer close(quitCh)
-	matchCh, err := l.matchWatcher.WatchMatches(selector, labelType, quitCh)
+	matchCh, err := l.matchWatcher.WatchMatches(selector, labelType, labels.DefaultAggregationRate, quitCh)
 	if err != nil {
 		return err
 	}
@@ -69,7 +71,7 @@ func (l labelStore) WatchMatches(req *label_protos.WatchMatchesRequest, stream l
 			} else {
 				// WatchMatches() can terminate without the quit
 				// channel being signaled, just start again
-				matchCh, err = l.matchWatcher.WatchMatches(selector, labelType, quitCh)
+				matchCh, err = l.matchWatcher.WatchMatches(selector, labelType, labels.DefaultAggregationRate, quitCh)
 				if err != nil {
 					return err
 				}

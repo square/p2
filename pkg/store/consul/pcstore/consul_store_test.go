@@ -186,7 +186,7 @@ func TestLabelsOnCreate(t *testing.T) {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
 
-	matches, err := store.labeler.GetMatches(selector, labels.PC, false)
+	matches, err := store.labeler.GetMatches(selector, labels.PC)
 	if err != nil {
 		t.Fatalf("Unable to check for label match on new pod cluster: %s", err)
 	}

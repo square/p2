@@ -32,7 +32,7 @@ func getMatches(t *testing.T, httpResponse string) ([]Labeled, error) {
 	applicator, err := NewHTTPApplicator(nil, url)
 	Assert(t).IsNil(err, "expected no error creating HTTP applicator")
 	selector := labels.Everything().Add("r1", labels.EqualsOperator, []string{"v1"}).Add("r2", labels.EqualsOperator, []string{"v2"})
-	return applicator.GetMatches(selector, NODE, true)
+	return applicator.GetCachedMatches(selector, NODE, 0)
 }
 
 func TestGetMatches(t *testing.T) {
@@ -113,7 +113,7 @@ func TestBatchRequests(t *testing.T) {
 				t.Errorf("Test setup error: %v", err)
 				return
 			}
-			res, err := applicator.GetMatches(selector, POD, false)
+			res, err := applicator.GetMatches(selector, POD)
 			if err != nil {
 				t.Errorf("Could not run applicator query: %v", err)
 				return
@@ -159,7 +159,7 @@ func TestMutateAndSelect(t *testing.T) {
 	podLabels, err := applicator.GetLabels(POD, podID)
 	Assert(t).IsNil(err, "Should not have erred getting labels for the pod")
 	Assert(t).AreEqual("red", podLabels.Labels.Get(colorLabel), "Should have seen red on the color label")
-	matches, err := applicator.GetMatches(labels.Everything().Add(colorLabel, labels.EqualsOperator, []string{"red"}), POD, false)
+	matches, err := applicator.GetMatches(labels.Everything().Add(colorLabel, labels.EqualsOperator, []string{"red"}), POD)
 	Assert(t).IsNil(err, "There should not have been an error running a selector")
 	Assert(t).AreEqual(1, len(matches), "Should have gotten a match")
 	Assert(t).AreEqual(podID, matches[0].ID, "Wrong pod returned")

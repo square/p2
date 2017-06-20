@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/square/p2/pkg/util"
 
@@ -53,18 +54,19 @@ func TestContendNodes(t *testing.T) {
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
 	dsf := &Farm{
-		dsStore:         dsStore,
-		dsLocker:        dsStore,
-		store:           consulStore,
-		scheduler:       scheduler.NewApplicatorScheduler(applicator),
-		labeler:         applicator,
-		watcher:         applicator,
-		children:        make(map[ds_fields.ID]*childDS),
-		session:         consultest.NewSession(),
-		logger:          logger,
-		alerter:         alerting.NewNop(),
-		healthChecker:   &happyHealthChecker,
-		dsRetryInterval: testFarmRetryInterval,
+		dsStore:               dsStore,
+		dsLocker:              dsStore,
+		store:                 consulStore,
+		scheduler:             scheduler.NewApplicatorScheduler(applicator),
+		labeler:               applicator,
+		watcher:               applicator,
+		labelsAggregationRate: 1 * time.Nanosecond,
+		children:              make(map[ds_fields.ID]*childDS),
+		session:               consultest.NewSession(),
+		logger:                logger,
+		alerter:               alerting.NewNop(),
+		healthChecker:         &happyHealthChecker,
+		dsRetryInterval:       testFarmRetryInterval,
 	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
@@ -182,18 +184,19 @@ func TestContendSelectors(t *testing.T) {
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
 	dsf := &Farm{
-		dsStore:         dsStore,
-		dsLocker:        dsStore,
-		store:           consulStore,
-		scheduler:       scheduler.NewApplicatorScheduler(applicator),
-		labeler:         applicator,
-		watcher:         applicator,
-		children:        make(map[ds_fields.ID]*childDS),
-		session:         consultest.NewSession(),
-		logger:          logger,
-		alerter:         alerting.NewNop(),
-		healthChecker:   &happyHealthChecker,
-		dsRetryInterval: testFarmRetryInterval,
+		dsStore:               dsStore,
+		dsLocker:              dsStore,
+		store:                 consulStore,
+		scheduler:             scheduler.NewApplicatorScheduler(applicator),
+		labeler:               applicator,
+		watcher:               applicator,
+		labelsAggregationRate: 1 * time.Nanosecond,
+		children:              make(map[ds_fields.ID]*childDS),
+		session:               consultest.NewSession(),
+		logger:                logger,
+		alerter:               alerting.NewNop(),
+		healthChecker:         &happyHealthChecker,
+		dsRetryInterval:       testFarmRetryInterval,
 	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
@@ -355,18 +358,19 @@ func TestFarmSchedule(t *testing.T) {
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
 	dsf := &Farm{
-		dsStore:         dsStore,
-		dsLocker:        dsStore,
-		store:           consulStore,
-		scheduler:       scheduler.NewApplicatorScheduler(applicator),
-		labeler:         applicator,
-		watcher:         applicator,
-		children:        make(map[ds_fields.ID]*childDS),
-		session:         consultest.NewSession(),
-		logger:          logger,
-		alerter:         alerting.NewNop(),
-		healthChecker:   &happyHealthChecker,
-		dsRetryInterval: testFarmRetryInterval,
+		dsStore:               dsStore,
+		dsLocker:              dsStore,
+		store:                 consulStore,
+		scheduler:             scheduler.NewApplicatorScheduler(applicator),
+		labeler:               applicator,
+		watcher:               applicator,
+		labelsAggregationRate: 1 * time.Nanosecond,
+		children:              make(map[ds_fields.ID]*childDS),
+		session:               consultest.NewSession(),
+		logger:                logger,
+		alerter:               alerting.NewNop(),
+		healthChecker:         &happyHealthChecker,
+		dsRetryInterval:       testFarmRetryInterval,
 	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
@@ -619,17 +623,18 @@ func TestCleanupPods(t *testing.T) {
 		"farm": "cleanupPods",
 	})
 	dsf := &Farm{
-		dsStore:         dsStore,
-		store:           consulStore,
-		scheduler:       scheduler.NewApplicatorScheduler(applicator),
-		labeler:         applicator,
-		watcher:         applicator,
-		children:        make(map[ds_fields.ID]*childDS),
-		session:         consultest.NewSession(),
-		logger:          logger,
-		alerter:         alerting.NewNop(),
-		healthChecker:   &happyHealthChecker,
-		dsRetryInterval: testFarmRetryInterval,
+		dsStore:               dsStore,
+		store:                 consulStore,
+		scheduler:             scheduler.NewApplicatorScheduler(applicator),
+		labeler:               applicator,
+		watcher:               applicator,
+		labelsAggregationRate: 1 * time.Nanosecond,
+		children:              make(map[ds_fields.ID]*childDS),
+		session:               consultest.NewSession(),
+		logger:                logger,
+		alerter:               alerting.NewNop(),
+		healthChecker:         &happyHealthChecker,
+		dsRetryInterval:       testFarmRetryInterval,
 	}
 	quitCh := make(chan struct{})
 	defer close(quitCh)
@@ -695,18 +700,19 @@ func TestMultipleFarms(t *testing.T) {
 	// Instantiate first farm
 	//
 	firstFarm := &Farm{
-		dsStore:         dsStore,
-		dsLocker:        dsStore,
-		store:           consulStore,
-		scheduler:       scheduler.NewApplicatorScheduler(applicator),
-		labeler:         applicator,
-		watcher:         applicator,
-		children:        make(map[ds_fields.ID]*childDS),
-		session:         session,
-		logger:          firstLogger,
-		alerter:         alerting.NewNop(),
-		healthChecker:   &happyHealthChecker,
-		dsRetryInterval: testFarmRetryInterval,
+		dsStore:               dsStore,
+		dsLocker:              dsStore,
+		store:                 consulStore,
+		scheduler:             scheduler.NewApplicatorScheduler(applicator),
+		labeler:               applicator,
+		watcher:               applicator,
+		labelsAggregationRate: 1 * time.Nanosecond,
+		children:              make(map[ds_fields.ID]*childDS),
+		session:               session,
+		logger:                firstLogger,
+		alerter:               alerting.NewNop(),
+		healthChecker:         &happyHealthChecker,
+		dsRetryInterval:       testFarmRetryInterval,
 	}
 	firstQuitCh := make(chan struct{})
 	defer close(firstQuitCh)
@@ -722,17 +728,18 @@ func TestMultipleFarms(t *testing.T) {
 		"farm": "secondMultiple",
 	})
 	secondFarm := &Farm{
-		dsStore:       dsStore,
-		dsLocker:      dsStore,
-		store:         consulStore,
-		scheduler:     scheduler.NewApplicatorScheduler(applicator),
-		labeler:       applicator,
-		watcher:       applicator,
-		children:      make(map[ds_fields.ID]*childDS),
-		session:       session,
-		logger:        secondLogger,
-		alerter:       alerting.NewNop(),
-		healthChecker: &happyHealthChecker,
+		dsStore:               dsStore,
+		dsLocker:              dsStore,
+		store:                 consulStore,
+		scheduler:             scheduler.NewApplicatorScheduler(applicator),
+		labeler:               applicator,
+		watcher:               applicator,
+		labelsAggregationRate: 1 * time.Nanosecond,
+		children:              make(map[ds_fields.ID]*childDS),
+		session:               session,
+		logger:                secondLogger,
+		alerter:               alerting.NewNop(),
+		healthChecker:         &happyHealthChecker,
 	}
 	secondQuitCh := make(chan struct{})
 	defer close(secondQuitCh)
@@ -1015,14 +1022,15 @@ func TestRelock(t *testing.T) {
 
 	mkFarm := func(logName string) (chan<- struct{}, <-chan struct{}) {
 		farm := &Farm{
-			dsStore:   dsStore,
-			dsLocker:  dsStore,
-			store:     consulStore,
-			scheduler: scheduler.NewApplicatorScheduler(applicator),
-			labeler:   applicator,
-			watcher:   applicator,
-			children:  make(map[ds_fields.ID]*childDS),
-			session:   session,
+			dsStore:               dsStore,
+			dsLocker:              dsStore,
+			store:                 consulStore,
+			scheduler:             scheduler.NewApplicatorScheduler(applicator),
+			labeler:               applicator,
+			watcher:               applicator,
+			labelsAggregationRate: 1 * time.Nanosecond,
+			children:              make(map[ds_fields.ID]*childDS),
+			session:               session,
 			logger: logging.DefaultLogger.SubLogger(logrus.Fields{
 				"farm": logName,
 			}),
@@ -1118,14 +1126,15 @@ func TestDieAndUpdate(t *testing.T) {
 
 	mkFarm := func(logName string) (chan<- struct{}, <-chan struct{}) {
 		farm := &Farm{
-			dsStore:   dsStore,
-			dsLocker:  dsStore,
-			store:     consulStore,
-			scheduler: scheduler.NewApplicatorScheduler(applicator),
-			labeler:   applicator,
-			watcher:   applicator,
-			children:  make(map[ds_fields.ID]*childDS),
-			session:   session,
+			dsStore:               dsStore,
+			dsLocker:              dsStore,
+			store:                 consulStore,
+			scheduler:             scheduler.NewApplicatorScheduler(applicator),
+			labeler:               applicator,
+			watcher:               applicator,
+			labelsAggregationRate: 1 * time.Nanosecond,
+			children:              make(map[ds_fields.ID]*childDS),
+			session:               session,
 			logger: logging.DefaultLogger.SubLogger(logrus.Fields{
 				"farm": logName,
 			}),

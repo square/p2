@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"k8s.io/kubernetes/pkg/labels"
 
@@ -220,7 +221,7 @@ func (h *httpApplicator) GetLabels(labelType Type, id string) (Labeled, error) {
 // Finds all matches for the given type and selector.
 //
 // GET /api/select?selector=:selector&type=:type&cachedMatch=:cachedMatch
-func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type, cachedMatch bool) ([]Labeled, error) {
+func (h *httpApplicator) getMatches(selector labels.Selector, labelType Type, cachedMatch bool) ([]Labeled, error) {
 	params := url.Values{}
 	params.Add("selector", selector.String())
 	params.Add("type", labelType.String())
@@ -287,4 +288,13 @@ func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type, ca
 	}
 
 	return labeled, nil
+}
+
+func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
+	return h.getMatches(selector, labelType, false)
+}
+
+// aggregationRate is ignored here because that is configured on the server.
+func (h *httpApplicator) GetCachedMatches(selector labels.Selector, labelType Type, aggregationRate time.Duration) ([]Labeled, error) {
+	return h.getMatches(selector, labelType, true)
 }

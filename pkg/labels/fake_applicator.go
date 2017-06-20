@@ -3,6 +3,7 @@ package labels
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/square/p2/pkg/logging"
 
@@ -104,7 +105,15 @@ func (app *fakeApplicator) GetLabels(labelType Type, id string) (Labeled, error)
 	}, nil
 }
 
-func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type, _ bool) ([]Labeled, error) {
+func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
+	return app.getMatches(selector, labelType)
+}
+
+func (app *fakeApplicator) GetCachedMatches(selector labels.Selector, labelType Type, aggregationRate time.Duration) ([]Labeled, error) {
+	return app.getMatches(selector, labelType)
+}
+
+func (app *fakeApplicator) getMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 	forType, ok := app.data[labelType]
@@ -127,7 +136,7 @@ func (app *fakeApplicator) GetMatches(selector labels.Selector, labelType Type, 
 	return results, nil
 }
 
-func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh <-chan struct{}) (chan []Labeled, error) {
+func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type, agregationRate time.Duration, quitCh <-chan struct{}) (chan []Labeled, error) {
 	ch := make(chan []Labeled)
 	go func() {
 		for {
@@ -137,7 +146,7 @@ func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type
 			default:
 			}
 
-			res, _ := app.GetMatches(selector, labelType, false)
+			res, _ := app.GetMatches(selector, labelType)
 
 			select {
 			case <-quitCh:
@@ -152,9 +161,10 @@ func (app *fakeApplicator) WatchMatches(selector labels.Selector, labelType Type
 func (app *fakeApplicator) WatchMatchDiff(
 	selector labels.Selector,
 	labelType Type,
+	aggregationRate time.Duration,
 	quitCh <-chan struct{},
 ) <-chan *LabeledChanges {
-	inCh, _ := app.WatchMatches(selector, labelType, quitCh)
+	inCh, _ := app.WatchMatches(selector, labelType, aggregationRate, quitCh)
 	return watchDiffLabels(inCh, quitCh, logging.DefaultLogger)
 }
 

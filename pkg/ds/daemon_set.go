@@ -77,7 +77,8 @@ type DaemonSet interface {
 type Labeler interface {
 	SetLabel(labelType labels.Type, id, name, value string) error
 	RemoveLabel(labelType labels.Type, id, name string) error
-	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
+	GetMatches(selector klabels.Selector, labelType labels.Type) ([]labels.Labeled, error)
+	GetCachedMatches(selector klabels.Selector, labelType labels.Type, aggregationRate time.Duration) ([]labels.Labeled, error)
 	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
 }
 
@@ -85,6 +86,7 @@ type LabelWatcher interface {
 	WatchMatchDiff(
 		selector klabels.Selector,
 		labelType labels.Type,
+		aggregationRate time.Duration,
 		quitCh <-chan struct{},
 	) <-chan *labels.LabeledChanges
 }
@@ -129,6 +131,10 @@ type daemonSet struct {
 	// allow stale reads of matching pods.  We allow stale matches for daemon
 	// set queries because the consequent operations are idempotent.
 	cachedPodMatch bool
+	// labelsAggregationRate determines the polling rate the labeler should use
+	// on the database when using cached matches. If zero, it will default
+	// to a sane value (see labels.DefaultAggregationRate)
+	labelsAggregationRate time.Duration
 
 	retryInterval time.Duration
 }
@@ -144,6 +150,7 @@ func New(
 	store store,
 	applicator Labeler,
 	watcher LabelWatcher,
+	labelsAggregationRate time.Duration,
 	logger logging.Logger,
 	healthChecker *checker.ConsulHealthChecker,
 	rateLimitInterval time.Duration,
@@ -159,18 +166,19 @@ func New(
 	return &daemonSet{
 		DaemonSet: fields,
 
-		dsStore:            dsStore,
-		store:              store,
-		logger:             logger,
-		applicator:         applicator,
-		watcher:            watcher,
-		scheduler:          scheduler.NewApplicatorScheduler(applicator),
-		healthChecker:      healthChecker,
-		healthWatchDelay:   healthWatchDelay,
-		currentReplication: nil,
-		rateLimitInterval:  rateLimitInterval,
-		cachedPodMatch:     cachedPodMatch,
-		retryInterval:      retryInterval,
+		dsStore:               dsStore,
+		store:                 store,
+		logger:                logger,
+		applicator:            applicator,
+		watcher:               watcher,
+		scheduler:             scheduler.NewApplicatorScheduler(applicator),
+		healthChecker:         healthChecker,
+		healthWatchDelay:      healthWatchDelay,
+		currentReplication:    nil,
+		rateLimitInterval:     rateLimitInterval,
+		cachedPodMatch:        cachedPodMatch,
+		labelsAggregationRate: labelsAggregationRate,
+		retryInterval:         retryInterval,
 	}
 }
 
@@ -231,7 +239,7 @@ func (ds *daemonSet) WatchDesires(
 	deletedCh <-chan *fields.DaemonSet,
 ) <-chan error {
 	errCh := make(chan error)
-	nodesChangedCh := ds.watcher.WatchMatchDiff(ds.NodeSelector, labels.NODE, quitCh)
+	nodesChangedCh := ds.watcher.WatchMatchDiff(ds.NodeSelector, labels.NODE, ds.labelsAggregationRate, quitCh)
 	// Do something whenever something is changed
 	go func() {
 		var err error
@@ -647,7 +655,13 @@ func (ds *daemonSet) CurrentPods() (types.PodLocations, error) {
 	dsID := ds.ID()
 	selector := klabels.Everything().Add(DSIDLabel, klabels.EqualsOperator, []string{dsID.String()})
 
-	podMatches, err := ds.applicator.GetMatches(selector, labels.POD, ds.cachedPodMatch)
+	var podMatches []labels.Labeled
+	var err error
+	if ds.cachedPodMatch {
+		podMatches, err = ds.applicator.GetCachedMatches(selector, labels.POD, ds.labelsAggregationRate)
+	} else {
+		podMatches, err = ds.applicator.GetMatches(selector, labels.POD)
+	}
 	if err != nil {
 		return nil, util.Errorf("Unable to get matches on pod tree: %v", err)
 	}

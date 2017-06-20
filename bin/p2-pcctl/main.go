@@ -99,7 +99,7 @@ func main() {
 	kv := consul.NewConsulStore(client)
 	logger := logging.NewLogger(logrus.Fields{})
 	applicator := labels.NewConsulApplicator(client, 0)
-	pcstore := pcstore.NewConsul(client, labeler, applicator, &logger)
+	pcstore := pcstore.NewConsul(client, labeler, labels.DefaultAggregationRate, applicator, &logger)
 
 	switch cmd {
 	case cmdCreateText:
@@ -296,16 +296,16 @@ func currentUserName() string {
 }
 
 type Matcher interface {
-	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
+	GetMatches(selector klabels.Selector, labelType labels.Type) ([]labels.Labeled, error)
 }
 
 func confirmDiff(oldSelector klabels.Selector, newSelector klabels.Selector, matcher Matcher) error {
-	oldPods, err := matcher.GetMatches(oldSelector, labels.POD, false)
+	oldPods, err := matcher.GetMatches(oldSelector, labels.POD)
 	if err != nil {
 		return fmt.Errorf("could not query pods using old selector: %s", err)
 	}
 
-	newPods, err := matcher.GetMatches(newSelector, labels.POD, false)
+	newPods, err := matcher.GetMatches(newSelector, labels.POD)
 	if err != nil {
 		return fmt.Errorf("could not query pods using new selector: %s", err)
 	}

@@ -147,11 +147,11 @@ func TestBasicMatch(t *testing.T) {
 
 	Assert(t).IsNil(c.SetLabel(POD, "object", "label", "value"), "should have had nil error when setting label")
 
-	matches, err := c.GetMatches(labels.Everything().Add("label", labels.EqualsOperator, []string{"value"}), POD, false)
+	matches, err := c.GetMatches(labels.Everything().Add("label", labels.EqualsOperator, []string{"value"}), POD)
 	Assert(t).IsNil(err, "should have had nil error fetching positive matches")
 	Assert(t).AreEqual(len(matches), 1, "should have had exactly one positive match")
 
-	matches, err = c.GetMatches(labels.Everything().Add("label", labels.EqualsOperator, []string{"value"}), NODE, false)
+	matches, err = c.GetMatches(labels.Everything().Add("label", labels.EqualsOperator, []string{"value"}), NODE)
 	switch err {
 	case nil:
 		t.Error("expected error when requesting matches for a label type for which there are no labels")
@@ -162,7 +162,7 @@ func TestBasicMatch(t *testing.T) {
 	}
 	Assert(t).AreEqual(len(matches), 0, "should have had exactly zero mistyped matches")
 
-	matches, err = c.GetMatches(labels.Everything().Add("label", labels.NotInOperator, []string{"value"}), POD, false)
+	matches, err = c.GetMatches(labels.Everything().Add("label", labels.NotInOperator, []string{"value"}), POD)
 	Assert(t).IsNil(err, "should have had nil error fetching negative matches")
 	Assert(t).AreEqual(len(matches), 0, "should have had exactly zero negative matches")
 }
@@ -175,7 +175,7 @@ func TestSetLabels(t *testing.T) {
 
 	Assert(t).IsNil(c.SetLabel(POD, "object", "label", "value"), "should have had nil error when setting label")
 
-	matches, err := c.GetMatches(labels.Everything().Add("label", labels.EqualsOperator, []string{"value"}), POD, false)
+	matches, err := c.GetMatches(labels.Everything().Add("label", labels.EqualsOperator, []string{"value"}), POD)
 	Assert(t).IsNil(err, "should have had nil error fetching positive matches")
 	Assert(t).AreEqual(len(matches), 1, "should have had exactly one positive match")
 
@@ -190,7 +190,7 @@ func TestSetLabels(t *testing.T) {
 		Add("label1", labels.EqualsOperator, []string{"value1"}).
 		Add("label2", labels.EqualsOperator, []string{"value2"})
 
-	matches, err = c.GetMatches(sel, POD, false)
+	matches, err = c.GetMatches(sel, POD)
 	Assert(t).IsNil(err, "should have had nil error fetching positive matches")
 	Assert(t).AreEqual(len(matches), 1, "should have had exactly one positive match")
 }
@@ -267,7 +267,7 @@ func TestWatchMatchDiff(t *testing.T) {
 
 	quitCh := make(chan struct{})
 	defer close(quitCh)
-	inCh := c.WatchMatchDiff(labels.Everything(), NODE, quitCh)
+	inCh := c.WatchMatchDiff(labels.Everything(), NODE, 0, quitCh)
 
 	var changes *LabeledChanges
 	select {

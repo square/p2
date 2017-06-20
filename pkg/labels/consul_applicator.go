@@ -8,6 +8,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/rcrowley/go-metrics"
@@ -110,12 +111,19 @@ func (c *consulApplicator) GetLabels(labelType Type, id string) (Labeled, error)
 	return l, err
 }
 
-func (c *consulApplicator) GetMatches(selector labels.Selector, labelType Type, cachedMatch bool) ([]Labeled, error) {
+func (c *consulApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
+	return c.getMatches(selector, labelType, 0, false)
+}
 
+func (c *consulApplicator) GetCachedMatches(selector labels.Selector, labelType Type, aggregationRate time.Duration) ([]Labeled, error) {
+	return c.getMatches(selector, labelType, aggregationRate, true)
+}
+
+func (c *consulApplicator) getMatches(selector labels.Selector, labelType Type, aggregationRate time.Duration, cachedMatch bool) ([]Labeled, error) {
 	var allLabeled []Labeled
 
 	if cachedMatch {
-		aggregator := c.initAggregator(labelType)
+		aggregator := c.initAggregator(labelType, aggregationRate)
 		cache, err := aggregator.getCache()
 		if err == nil {
 			allLabeled = cache
@@ -400,17 +408,17 @@ func convertLabeledToKVP(l Labeled) (*api.KVPair, error) {
 // to the cost of querying for this subtree on any sizeable fleet of machines. Instead, preparers should
 // use the httpApplicator from a server that exposes the results of this (or another)
 // implementation's watch.
-func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type, quitCh <-chan struct{}) (chan []Labeled, error) {
-	aggregator := c.initAggregator(labelType)
+func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type, aggregationRate time.Duration, quitCh <-chan struct{}) (chan []Labeled, error) {
+	aggregator := c.initAggregator(labelType, aggregationRate)
 	return aggregator.Watch(selector, quitCh), nil
 }
 
-func (c *consulApplicator) initAggregator(labelType Type) *consulAggregator {
+func (c *consulApplicator) initAggregator(labelType Type, aggregationRate time.Duration) *consulAggregator {
 	c.aggregatorMux.Lock()
 	defer c.aggregatorMux.Unlock()
 	aggregator, ok := c.aggregators[labelType]
 	if !ok {
-		aggregator = NewConsulAggregator(labelType, c.kv, c.logger, c.metReg)
+		aggregator = NewConsulAggregator(labelType, c.kv, c.logger, c.metReg, aggregationRate)
 		go aggregator.Aggregate()
 		c.aggregators[labelType] = aggregator
 	}
@@ -420,9 +428,10 @@ func (c *consulApplicator) initAggregator(labelType Type) *consulAggregator {
 func (c *consulApplicator) WatchMatchDiff(
 	selector labels.Selector,
 	labelType Type,
+	aggregationRate time.Duration,
 	quitCh <-chan struct{},
 ) <-chan *LabeledChanges {
-	inCh, _ := c.WatchMatches(selector, labelType, quitCh)
+	inCh, _ := c.WatchMatches(selector, labelType, aggregationRate, quitCh)
 	return watchDiffLabels(inCh, quitCh, c.logger)
 }
 

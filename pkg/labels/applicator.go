@@ -2,6 +2,7 @@ package labels
 
 import (
 	"errors"
+	"time"
 
 	"k8s.io/kubernetes/pkg/labels"
 )
@@ -88,9 +89,12 @@ type Applicator interface {
 	GetLabels(labelType Type, id string) (Labeled, error)
 
 	// Return all objects of the given type that match the given selector.
-	// When cachedMatch is enabled, Applicators may choose to use an internal cache of
-	// aggregated results to answer GetMatches queries.
-	GetMatches(selector labels.Selector, labelType Type, cachedMatch bool) ([]Labeled, error)
+	GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error)
+
+	// Return all objects of the given type that match the given selector
+	// out of a cache that is refreshed at a rate according to
+	// aggregationRate
+	GetCachedMatches(selector labels.Selector, labelType Type, aggregationRate time.Duration) ([]Labeled, error)
 
 	// Watch a label selector of a given type and see updates to that set
 	// of Labeled over time. If an error occurs, the Applicator implementation
@@ -100,13 +104,19 @@ type Applicator interface {
 	// the quit channel - this will be indicated by the closing of the result channel. For
 	// this reason, callers should **always** verify that the channel is closed by checking
 	// the "ok" boolean or using `range`.
-	WatchMatches(selector labels.Selector, labelType Type, quitCh <-chan struct{}) (chan []Labeled, error)
+	WatchMatches(
+		selector labels.Selector,
+		labelType Type,
+		aggregationRate time.Duration,
+		quitCh <-chan struct{},
+	) (chan []Labeled, error)
 
 	// WatchMatchDiff does a diff on top of the results form the WatchMatches and
 	// returns a LabeledChanges structure which contain changes
 	WatchMatchDiff(
 		selector labels.Selector,
 		labelType Type,
+		aggregationRate time.Duration,
 		quitCh <-chan struct{},
 	) <-chan *LabeledChanges
 }

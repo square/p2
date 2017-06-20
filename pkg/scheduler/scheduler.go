@@ -9,7 +9,7 @@ import (
 )
 
 type NodeLabeler interface {
-	GetMatches(klabels.Selector, labels.Type, bool) ([]labels.Labeled, error)
+	GetMatches(klabels.Selector, labels.Type) ([]labels.Labeled, error)
 }
 
 // A Scheduler decides what nodes are appropriate for a pod to run on.
@@ -30,7 +30,7 @@ func NewApplicatorScheduler(applicator NodeLabeler) *applicatorScheduler {
 }
 
 func (sel *applicatorScheduler) EligibleNodes(_ manifest.Manifest, selector klabels.Selector) ([]types.NodeName, error) {
-	nodes, err := sel.applicator.GetMatches(selector, labels.NODE, false)
+	nodes, err := sel.applicator.GetMatches(selector, labels.NODE)
 	if err != nil {
 		return nil, err
 	}
