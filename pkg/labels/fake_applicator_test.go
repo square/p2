@@ -60,7 +60,7 @@ func TestMatches(t *testing.T) {
 
 	selector := labels.Everything().Add("foo", labels.EqualsOperator, []string{"bar"})
 
-	labeled, err := app.GetMatches(selector, NODE, false)
+	labeled, err := app.GetMatches(selector, NODE)
 	Assert(t).IsNil(err, "expected no error getting matches")
 
 	Assert(t).AreEqual(len(labeled), 1, "expected one match")
@@ -104,7 +104,7 @@ func TestFakeWatchMatchDiff(t *testing.T) {
 
 	quitCh := make(chan struct{})
 	defer close(quitCh)
-	inCh := app.WatchMatchDiff(labels.Everything(), NODE, quitCh)
+	inCh := app.WatchMatchDiff(labels.Everything(), NODE, 0, quitCh)
 
 	var changes *LabeledChanges
 	changes = getBatchedChanges(t, inCh)

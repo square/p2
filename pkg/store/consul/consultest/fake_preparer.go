@@ -5,7 +5,9 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/types"
 )
 
 const (
@@ -13,7 +15,7 @@ const (
 )
 
 type FakePreparer struct {
-	podStore *FakePodStore
+	podStore PodStore
 
 	enabled        bool
 	enableLock     sync.Mutex
@@ -21,7 +23,13 @@ type FakePreparer struct {
 	logger         logging.Logger
 }
 
-func NewFakePreparer(podStore *FakePodStore, logger logging.Logger) *FakePreparer {
+type PodStore interface {
+	AllPods(podPrefix consul.PodPrefix) ([]consul.ManifestResult, time.Duration, error)
+	SetPod(podPrefix consul.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
+	DeletePod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+}
+
+func NewFakePreparer(podStore PodStore, logger logging.Logger) *FakePreparer {
 	return &FakePreparer{
 		podStore: podStore,
 		enabled:  false,
@@ -52,22 +60,49 @@ func (f *FakePreparer) Enable() {
 					continue
 				}
 
-				// Set pods that are in intent
-				for _, manifestResult := range allPods {
-					_, err = f.podStore.SetPod(
-						consul.REALITY_TREE,
-						manifestResult.PodLocation.Node,
-						manifestResult.Manifest,
-					)
-					if err != nil {
-						f.logger.Errorf("Error setting pod: %v", err)
-					}
+				intentPods := make(map[types.PodLocation]manifest.Manifest)
+				for _, pod := range allPods {
+					intentPods[pod.PodLocation] = pod.Manifest
 				}
 
 				allReality, _, err := f.podStore.AllPods(consul.REALITY_TREE)
 				if err != nil {
 					f.logger.Errorf("error getting all reality pods: %v", err)
 					continue
+				}
+
+				realityPods := make(map[types.PodLocation]manifest.Manifest)
+				for _, pod := range allReality {
+					realityPods[pod.PodLocation] = pod.Manifest
+				}
+
+				// Set pods that are in intent
+				for podLocation, intentManifest := range intentPods {
+					intentSHA, err := intentManifest.SHA()
+					if err != nil {
+						f.logger.Errorf("error computing intent sha: %v", err)
+						continue
+					}
+
+					var realitySHA string
+					if realityManifest, ok := realityPods[podLocation]; ok {
+						realitySHA, err = realityManifest.SHA()
+						if err != nil {
+							f.logger.Errorf("error computing reality sha: %v", err)
+							continue
+						}
+					}
+
+					if realitySHA != intentSHA {
+						_, err = f.podStore.SetPod(
+							consul.REALITY_TREE,
+							podLocation.Node,
+							intentManifest,
+						)
+						if err != nil {
+							f.logger.Errorf("Error setting pod: %v", err)
+						}
+					}
 				}
 
 				// Delete pods that are missing from intent

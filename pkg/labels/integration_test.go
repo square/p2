@@ -12,6 +12,7 @@ import (
 
 func TestRemoveAllLabelsTxn(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := NewConsulApplicator(fixture.Client, 0)
 
@@ -55,6 +56,7 @@ func TestRemoveAllLabelsTxn(t *testing.T) {
 
 func TestSetLabelTxn(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := NewConsulApplicator(fixture.Client, 0)
 
@@ -93,6 +95,7 @@ func TestSetLabelTxn(t *testing.T) {
 
 func TestSetLabelTxnFailsIfLabelsChange(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := NewConsulApplicator(fixture.Client, 0)
 
@@ -119,6 +122,7 @@ func TestSetLabelTxnFailsIfLabelsChange(t *testing.T) {
 
 func TestRemoveLabelTxn(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := NewConsulApplicator(fixture.Client, 0)
 
@@ -163,6 +167,7 @@ func TestRemoveLabelTxn(t *testing.T) {
 
 func TestRemoveLabelTxnFailsIfLabelsChange(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := NewConsulApplicator(fixture.Client, 0)
 
@@ -195,6 +200,7 @@ func TestRemoveLabelTxnFailsIfLabelsChange(t *testing.T) {
 
 func TestSetLabelsTxn(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := NewConsulApplicator(fixture.Client, 0)
 
@@ -233,6 +239,7 @@ func TestSetLabelsTxn(t *testing.T) {
 
 func TestSetLabelsTxnFailsIfLabelsChange(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := NewConsulApplicator(fixture.Client, 0)
 
@@ -259,6 +266,7 @@ func TestSetLabelsTxnFailsIfLabelsChange(t *testing.T) {
 
 func TestRemoveLabelsTxn(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := NewConsulApplicator(fixture.Client, 0)
 
@@ -303,6 +311,7 @@ func TestRemoveLabelsTxn(t *testing.T) {
 
 func TestRemoveLabelsTxnFailsIfLabelsChange(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 
 	applicator := NewConsulApplicator(fixture.Client, 0)
 

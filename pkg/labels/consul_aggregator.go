@@ -66,7 +66,16 @@ type consulAggregator struct {
 	metCacheSize metrics.Gauge
 }
 
-func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logging.Logger, metReg MetricsRegistry) *consulAggregator {
+func NewConsulAggregator(
+	labelType Type,
+	kv consulutil.ConsulLister,
+	logger logging.Logger,
+	metReg MetricsRegistry,
+	aggregationRate time.Duration,
+) *consulAggregator {
+	if aggregationRate == 0 {
+		aggregationRate = DefaultAggregationRate
+	}
 	if metReg == nil {
 		metReg = metrics.NewRegistry()
 	}
@@ -83,7 +92,7 @@ func NewConsulAggregator(labelType Type, kv consulutil.ConsulLister, logger logg
 		labelType:        labelType,
 		path:             typePath(labelType),
 		aggregatorQuit:   make(chan struct{}),
-		aggregationRate:  DefaultAggregationRate,
+		aggregationRate:  aggregationRate,
 		metReg:           metReg,
 		metWatchCount:    watchCount,
 		metWatchSendMiss: watchSendMiss,

@@ -56,7 +56,7 @@ type RollLabeler interface {
 	RemoveAllLabelsTxn(ctx context.Context, labelType labels.Type, id string) error
 	RemoveAllLabels(labelType labels.Type, id string) error
 	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
-	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
+	GetMatches(selector klabels.Selector, labelType labels.Type) ([]labels.Labeled, error)
 }
 
 type ReplicationControllerStore interface {
@@ -398,7 +398,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	}()
 
 	// Check if any RCs match the oldRCSelector
-	matches, err := s.labeler.GetMatches(oldRCSelector, labels.RC, false)
+	matches, err := s.labeler.GetMatches(oldRCSelector, labels.RC)
 	if err != nil && err != labels.NoLabelsFound {
 		return roll_fields.Update{}, err
 	}

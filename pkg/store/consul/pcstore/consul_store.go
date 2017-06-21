@@ -68,7 +68,11 @@ type consulKV interface {
 type ConsulStore struct {
 	kv      consulKV
 	labeler pcLabeler
-	watcher pcWatcher
+	// labelAggregationRate controls how often the store will query for
+	// labels when servicing selector watches. A zero-value will result in
+	// a sane default (see labels.DefaultAggregationRate)
+	labelAggregationRate time.Duration
+	watcher              pcWatcher
 
 	logger logging.Logger
 
@@ -80,14 +84,25 @@ type pcLabeler interface {
 	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
 	SetLabels(labelType labels.Type, id string, labels map[string]string) error
 	RemoveAllLabels(labelType labels.Type, id string) error
-	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
+	GetMatches(selector klabels.Selector, labelType labels.Type) ([]labels.Labeled, error)
 }
 
 type pcWatcher interface {
-	WatchMatches(selector klabels.Selector, labelType labels.Type, quitCh <-chan struct{}) (chan []labels.Labeled, error)
+	WatchMatches(
+		selector klabels.Selector,
+		labelType labels.Type,
+		aggregationRate time.Duration,
+		quitCh <-chan struct{},
+	) (chan []labels.Labeled, error)
 }
 
-func NewConsul(client consulutil.ConsulClient, labeler pcLabeler, watcher pcWatcher, logger *logging.Logger) *ConsulStore {
+func NewConsul(
+	client consulutil.ConsulClient,
+	labeler pcLabeler,
+	labelAggregationRate time.Duration,
+	watcher pcWatcher,
+	logger *logging.Logger,
+) *ConsulStore {
 	return &ConsulStore{
 		kv:      client.KV(),
 		logger:  *logger,
@@ -330,7 +345,7 @@ func (s *ConsulStore) FindWhereLabeled(podID types.PodID,
 		Add(fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{availabilityZone.String()}).
 		Add(fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
 
-	podClusters, err := s.labeler.GetMatches(sel, labels.PC, false)
+	podClusters, err := s.labeler.GetMatches(sel, labels.PC)
 	if err != nil {
 		return nil, err
 	}
@@ -697,7 +712,7 @@ func (s *ConsulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 					"pc_id":    change.current.ID,
 					"selector": change.current.PodSelector.String(),
 				}).Debugf("Starting pod selector watch for %v", change.current.ID)
-				podWatch, err = s.watcher.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
+				podWatch, err = s.watcher.WatchMatches(change.current.PodSelector, labels.POD, s.labelAggregationRate, podWatchQuit)
 				if err != nil {
 					s.logger.WithError(err).Errorln("Unable to start pod selector watch for %v", change.current.ID)
 				} else {
@@ -723,7 +738,7 @@ func (s *ConsulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 						"old_selector": change.previous.PodSelector.String(),
 						"new_selector": change.current.PodSelector.String(),
 					}).Debugf("Altering pod selector for %v", change.current.ID)
-					podWatch, err = s.watcher.WatchMatches(change.current.PodSelector, labels.POD, podWatchQuit)
+					podWatch, err = s.watcher.WatchMatches(change.current.PodSelector, labels.POD, s.labelAggregationRate, podWatchQuit)
 					if err != nil {
 						// TODO: retry this. Today it's not an issue because the applicator we're using doesn't actually error
 						s.logger.WithError(err).Errorln("Unable to alter pod selector watch for %v", change.current.ID)

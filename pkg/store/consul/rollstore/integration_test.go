@@ -24,6 +24,7 @@ import (
 // instance to run against.
 func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	rollstore, _ := newRollStoreWithRealConsul(t, fixture, nil)
 
 	newRCID := rc_fields.ID("new_rc")
@@ -83,6 +84,7 @@ func TestCreateRollingUpdateFromExistingRCs(t *testing.T) {
 
 func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	oldRCID := rc_fields.ID("old_rc")
 
 	rollstore, rcStore := newRollStoreWithRealConsul(t, fixture, nil)
@@ -153,6 +155,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 
 func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	rollstore, rcStore := newRollStoreWithRealConsul(t, fixture, nil)
 
 	// create the old RC
@@ -239,6 +242,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 
 func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	rollstore, rcStore := newRollStoreWithRealConsul(t, fixture, nil)
 
 	// Make a selector that won't match anything
@@ -315,6 +319,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist
 
 func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	rollstore, rcStore := newRollStoreWithRealConsul(t, fixture, nil)
 
 	// Put an RC in the rcstore that matches our label selector
@@ -377,6 +382,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *t
 
 func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConflict(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	rollstore, _ := newRollStoreWithRealConsul(t, fixture, nil)
 
 	// Put an RC in the rcstore that matches our label selector

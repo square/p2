@@ -1,6 +1,9 @@
+// +build !race
+
 package ds
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -13,8 +16,9 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul/consultest"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/dsstore"
-	"github.com/square/p2/pkg/store/consul/dsstore/dsstoretest"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -24,8 +28,20 @@ import (
 )
 
 const (
-	testDSRetryInterval = time.Duration(1000 * time.Millisecond)
+	testDSRetryInterval   = time.Duration(1000 * time.Millisecond)
+	replicationTimeout    = replication.NoTimeout
+	testFarmRetryInterval = time.Duration(1000 * time.Millisecond)
 )
+
+// Polls for a condition to happen. This should only be run with the -timeout
+// flag to go test set to avoid tests hanging forever if something goes wrong
+func waitForCondition(condition func() error) error {
+	for err := condition(); err != nil; err = condition() {
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return nil
+}
 
 func waitForNodes(
 	ds DaemonSet,
@@ -138,7 +154,9 @@ func TestSchedule(t *testing.T) {
 	//
 	// Setup fixture and schedule a pod
 	//
-	dsStore := dsstoretest.NewFake()
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 
 	podID := types.PodID("testPod")
 	minHealth := 0
@@ -151,8 +169,12 @@ func TestSchedule(t *testing.T) {
 	nodeSelector := klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"})
 	timeout := replication.NoTimeout
 
-	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	dsData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -179,6 +201,7 @@ func TestSchedule(t *testing.T) {
 		consulStore,
 		applicator,
 		applicator,
+		1*time.Nanosecond,
 		logging.DefaultLogger,
 		&happyHealthChecker,
 		0,
@@ -382,7 +405,9 @@ func TestPublishToReplication(t *testing.T) {
 	//
 	// Setup fixture and schedule a pod
 	//
-	dsStore := dsstoretest.NewFake()
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+	dsStore := dsstore.NewConsul(fixture.Client, 0, &logging.DefaultLogger)
 
 	podID := types.PodID("testPod")
 	minHealth := 1
@@ -395,8 +420,12 @@ func TestPublishToReplication(t *testing.T) {
 	nodeSelector := klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"})
 	timeout := replication.NoTimeout
 
-	dsData, err := dsStore.Create(podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	dsData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "expected no error creating request")
+	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	Assert(t).IsNil(err, "Expected no error committing transaction")
 
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
 	applicator := labels.NewFakeApplicator()
@@ -419,6 +448,7 @@ func TestPublishToReplication(t *testing.T) {
 		consulStore,
 		applicator,
 		applicator,
+		1*time.Nanosecond,
 		logging.DefaultLogger,
 		&happyHealthChecker,
 		0,
@@ -551,7 +581,7 @@ func waitForSpecificPod(consulStore *consultest.FakePodStore, nodeName types.Nod
 
 func labeledPods(t *testing.T, ds *daemonSet) []labels.Labeled {
 	selector := klabels.Everything().Add(DSIDLabel, klabels.EqualsOperator, []string{ds.ID().String()})
-	labeled, err := ds.applicator.GetMatches(selector, labels.POD, false)
+	labeled, err := ds.applicator.GetMatches(selector, labels.POD)
 	Assert(t).IsNil(err, "expected no error matching pods")
 	return labeled
 }

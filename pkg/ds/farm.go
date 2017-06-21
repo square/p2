@@ -62,8 +62,9 @@ type Farm struct {
 	healthChecker    *checker.ConsulHealthChecker
 	healthWatchDelay time.Duration
 
-	monitorHealth  bool
-	cachedPodMatch bool
+	monitorHealth         bool
+	cachedPodMatch        bool
+	labelsAggregationRate time.Duration
 }
 
 type childDS struct {
@@ -157,7 +158,12 @@ func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
 		dsIDLabelSelector := klabels.Everything().
 			Add(DSIDLabel, klabels.ExistsOperator, []string{})
 
-		allPods, err := dsf.labeler.GetMatches(dsIDLabelSelector, labels.POD, dsf.cachedPodMatch)
+		var allPods []labels.Labeled
+		if dsf.cachedPodMatch {
+			allPods, err = dsf.labeler.GetCachedMatches(dsIDLabelSelector, labels.POD, dsf.labelsAggregationRate)
+		} else {
+			allPods, err = dsf.labeler.GetMatches(dsIDLabelSelector, labels.POD)
+		}
 		if err != nil {
 			dsf.logger.Errorf("Unable to get matches for daemon sets in pod store: %v", err)
 			continue
@@ -209,7 +215,6 @@ func (dsf *Farm) mainLoop(quitCh <-chan struct{}) {
 	defer dsf.logger.NoFields().Infoln("Session expired, releasing daemon sets")
 
 	var changes dsstore.WatchedDaemonSets
-	var err error
 	var ok bool
 
 	for {
@@ -220,32 +225,8 @@ func (dsf *Farm) mainLoop(quitCh <-chan struct{}) {
 			if !ok {
 				return
 			}
+			dsf.handleDSChanges(changes, quitCh)
 		}
-
-		// This loop will check all the error channels of the children owned by this
-		// farm, if any child outputs an error, close the child.
-		// The quitCh here will also return if the caller to mainLoop closes it
-		dsf.childMu.Lock()
-		for dsID, child := range dsf.children {
-			select {
-			case <-quitCh:
-				dsf.childMu.Unlock()
-				return
-			case err, ok = <-child.errCh:
-				if err != nil {
-					dsf.logger.Errorf("An error has occurred in spawned ds '%v':, %v", child.ds.ID(), err)
-				}
-				if !ok {
-					// child error channel closed
-					dsf.logger.Errorf("Child ds '%v' error channel closed, removing ds now", child.ds.ID())
-					dsf.closeChild(dsID)
-				}
-				continue
-			default:
-			}
-		}
-		dsf.childMu.Unlock()
-		dsf.handleDSChanges(changes, quitCh)
 	}
 }
 
@@ -310,6 +291,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 					dsf.releaseLock(dsUnlocker)
 					continue
 				} else if err != nil {
+					dsf.logger.WithError(err).Errorf("Could not acquire lock on daemon set '%v'", dsFields.ID)
 					// The session probably either expired or there was probably a network
 					// error, so the rest will probably fail
 					dsf.handleSessionExpiry(*dsFields, dsLogger, err)
@@ -336,9 +318,9 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 					dsf.releaseLock(dsUnlocker)
 					continue
 				}
-				dsf.children[newDS.ID] = dsf.spawnDaemonSet(&newDS, dsUnlocker, dsLogger)
+				dsf.children[newDS.ID] = dsf.spawnDaemonSet(&newDS, dsUnlocker, dsLogger, quitCh)
 			} else {
-				dsf.children[dsFields.ID] = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger)
+				dsf.children[dsFields.ID] = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger, quitCh)
 			}
 		}
 	}
@@ -364,7 +346,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 				}
 				dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
 
-				dsf.children[dsFields.ID] = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger)
+				dsf.children[dsFields.ID] = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger, quitCh)
 				ds = dsf.children[dsFields.ID]
 			}
 
@@ -412,7 +394,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 			}
 			dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
 
-			dsf.children[dsFields.ID] = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger)
+			dsf.children[dsFields.ID] = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger, quitCh)
 		}
 	}
 
@@ -440,7 +422,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 				} else {
 					// We have to spawn the daemon set, so that it can act on its deletion.
 					// Otherwise, child is nil when we reach the below select.
-					child = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger)
+					child = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger, quitCh)
 					dsf.children[dsFields.ID] = child
 				}
 				dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
@@ -608,6 +590,7 @@ func (dsf *Farm) spawnDaemonSet(
 	dsFields *ds_fields.DaemonSet,
 	dsUnlocker consulutil.Unlocker,
 	dsLogger logging.Logger,
+	quitCh <-chan struct{},
 ) *childDS {
 	ds := New(
 		*dsFields,
@@ -615,6 +598,7 @@ func (dsf *Farm) spawnDaemonSet(
 		dsf.store,
 		dsf.labeler,
 		dsf.watcher,
+		dsf.labelsAggregationRate,
 		dsLogger,
 		dsf.healthChecker,
 		dsf.rateLimitInterval,
@@ -660,6 +644,30 @@ func (dsf *Farm) spawnDaemonSet(
 		}()
 	}
 
+	go func() {
+		// This loop will check the error channel of the child and if
+		// the child's error channel closes, close the child. The
+		// quitCh here will also return if the caller to mainLoop
+		// closes it
+		for {
+			select {
+			case <-quitCh:
+				return
+			case err, ok := <-desiresCh:
+				if err != nil {
+					dsf.logger.Errorf("An error has occurred in spawned ds '%v':, %v", ds.ID(), err)
+				}
+				if !ok {
+					// child error channel closed
+					dsf.logger.Errorf("Child ds '%v' error channel closed, removing ds now", ds.ID())
+					dsf.childMu.Lock()
+					dsf.closeChild(ds.ID())
+					dsf.childMu.Unlock()
+					return
+				}
+			}
+		}
+	}()
 	return &childDS{
 		ds:        ds,
 		quitCh:    quitSpawnCh,

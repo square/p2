@@ -25,7 +25,8 @@ type ApplicatorWithoutWatches interface {
 	RemoveAllLabels(labelType Type, id string) error
 	ListLabels(labelType Type) ([]Labeled, error)
 	GetLabels(labelType Type, id string) (Labeled, error)
-	GetMatches(selector klabels.Selector, labelType Type, cachedMatch bool) ([]Labeled, error)
+	GetMatches(selector klabels.Selector, labelType Type) ([]Labeled, error)
+	GetCachedMatches(selector klabels.Selector, labelType Type, aggregationRate time.Duration) ([]Labeled, error)
 }
 
 // A simple http server that operates on a given applicator and terminates all
@@ -177,7 +178,7 @@ func (l *labelHTTPServer) Select(resp http.ResponseWriter, req *http.Request) {
 				}
 			}
 		} else {
-			matches, err = l.applicator.GetMatches(selector, labelType, false)
+			matches, err = l.applicator.GetMatches(selector, labelType)
 			if IsNoLabelsFound(err) {
 				l.notFound(resp, endpoint, labelType, err)
 				return

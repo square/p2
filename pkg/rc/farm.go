@@ -29,13 +29,13 @@ type Labeler interface {
 	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, labels map[string]string) error
 	RemoveLabelsTxn(ctx context.Context, labelType labels.Type, id string, keysToRemove []string) error
 	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
-	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
+	GetMatches(selector klabels.Selector, labelType labels.Type) ([]labels.Labeled, error)
 }
 
 // LabelMatcher is a subset of Labeler, but its small size makes it easier to
 // call CurrentPods() in code where transactions are not available
 type LabelMatcher interface {
-	GetMatches(selector klabels.Selector, labelType labels.Type, cachedMatch bool) ([]labels.Labeled, error)
+	GetMatches(selector klabels.Selector, labelType labels.Type) ([]labels.Labeled, error)
 }
 
 type ReplicationControllerStore interface {

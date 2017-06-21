@@ -217,6 +217,7 @@ func TestWriteRealityIndex(t *testing.T) {
 	realityIndexPath := fmt.Sprintf("reality/%s/%s", node, key)
 
 	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
 	kv := fixture.Client.KV()
 	store := NewConsul(kv)
 
