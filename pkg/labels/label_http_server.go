@@ -27,6 +27,7 @@ type ApplicatorWithoutWatches interface {
 	GetLabels(labelType Type, id string) (Labeled, error)
 	GetMatches(selector klabels.Selector, labelType Type) ([]Labeled, error)
 	GetCachedMatches(selector klabels.Selector, labelType Type, aggregationRate time.Duration) ([]Labeled, error)
+	GetLabelsWithIndex(labelType Type, id string) (Labeled, uint64, error)
 }
 
 // A simple http server that operates on a given applicator and terminates all
@@ -193,6 +194,11 @@ func (l *labelHTTPServer) Select(resp http.ResponseWriter, req *http.Request) {
 	})
 }
 
+type LabeledWithIndex struct {
+	Labeled
+	Index uint64 `json:"index"`
+}
+
 func (l *labelHTTPServer) GetLabels(resp http.ResponseWriter, req *http.Request) {
 	endpoint := "get-labels"
 	labelType, id, err := getMuxLabelTypeAndID(req)
@@ -201,12 +207,15 @@ func (l *labelHTTPServer) GetLabels(resp http.ResponseWriter, req *http.Request)
 		return
 	}
 	timeHandler(endpoint, labelType, func(endpoint string) {
-		labeled, err := l.applicator.GetLabels(labelType, id)
+		labeled, index, err := l.applicator.GetLabelsWithIndex(labelType, id)
 		if err != nil {
 			l.unavailable(resp, endpoint, err)
 			return
 		}
-		l.respondWithJSON(labeled, endpoint, resp)
+		l.respondWithJSON(LabeledWithIndex{
+			Labeled: labeled,
+			Index:   index,
+		}, endpoint, resp)
 	})
 }
 

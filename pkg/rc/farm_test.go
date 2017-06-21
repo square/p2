@@ -1,9 +1,12 @@
 package rc
 
 import (
+	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/square/p2/pkg/alerting"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul/rcstore"
 
@@ -83,6 +86,18 @@ func TestRCsWithZeroCountsWillTriggerIncident(t *testing.T) {
 		Assert(t).AreEqual("zero_replicas_found", alerter.savedInfo.IncidentKey, "should have had a fired alert")
 	}()
 	rcf.initialFailsafe()
+}
+
+func TestHTTPApplicatorImplementsFunctionality(t *testing.T) {
+	// assign an http applicator to Labeler to make sure http applicator implements the
+	// functionality it needs to
+	var rcLabeler Labeler
+	var err error
+	rcLabeler, err = labels.NewHTTPApplicator(http.DefaultClient, new(url.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = rcLabeler
 }
 
 func testManifest() manifest.Manifest {
