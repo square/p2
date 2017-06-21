@@ -33,7 +33,9 @@ func NewClient(conn *grpc.ClientConn, logger logging.Logger) Client {
 // and passes each update on the output channel. Returns an error if the
 // initial gRPC call fails. Any further connection breakages will attempt to be
 // re-established in a loop.
-func (c Client) WatchMatches(selector klabels.Selector, labelType labels.Type, quitCh <-chan struct{}) (chan []labels.Labeled, error) {
+//
+// aggregationRate is unused because aggregation is handled by the server
+func (c Client) WatchMatches(selector klabels.Selector, labelType labels.Type, _ time.Duration, quitCh <-chan struct{}) (chan []labels.Labeled, error) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
 	go func() {

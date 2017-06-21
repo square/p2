@@ -910,7 +910,7 @@ func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
 	quitCh := make(chan struct{})
 	defer close(quitCh)
 
-	watchCh, err := grpcClient.WatchMatches(selector, labels.POD, quitCh)
+	watchCh, err := grpcClient.WatchMatches(selector, labels.POD, 0, quitCh)
 	if err != nil {
 		return fmt.Errorf("Could not initialize labels grpc client: %s", err)
 	}

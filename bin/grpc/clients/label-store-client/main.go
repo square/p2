@@ -63,7 +63,7 @@ func main() {
 }
 
 type matchWatcher interface {
-	WatchMatches(selector klabels.Selector, labelType labels.Type, quitCh <-chan struct{}) (chan []labels.Labeled, error)
+	WatchMatches(selector klabels.Selector, labelType labels.Type, aggregationRate time.Duration, quitCh <-chan struct{}) (chan []labels.Labeled, error)
 }
 
 func watchMatches(watcher matchWatcher) {
@@ -78,7 +78,7 @@ func watchMatches(watcher matchWatcher) {
 	}
 
 	quitCh := make(chan struct{})
-	outCh, err := watcher.WatchMatches(sel, lType, quitCh)
+	outCh, err := watcher.WatchMatches(sel, lType, 0, quitCh)
 	if err != nil {
 		logger.Fatal(err)
 	}
