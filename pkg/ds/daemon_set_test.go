@@ -37,6 +37,7 @@ const (
 // flag to go test set to avoid tests hanging forever if something goes wrong
 func waitForCondition(condition func() error) error {
 	for err := condition(); err != nil; err = condition() {
+		fmt.Printf("condition failed, will retry: %s\n", err)
 		time.Sleep(100 * time.Millisecond)
 	}
 
