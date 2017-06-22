@@ -83,6 +83,10 @@ func (app *fakeApplicator) RemoveLabel(labelType Type, id, name string) error {
 	return nil
 }
 
+func (app *fakeApplicator) RemoveLabelsTxn(ctx context.Context, labelType Type, id string, keysToRemove []string) error {
+	panic("not implemented")
+}
+
 func (app *fakeApplicator) ListLabels(labelType Type) ([]Labeled, error) {
 	res := []Labeled{}
 	for id, set := range app.data[labelType] {

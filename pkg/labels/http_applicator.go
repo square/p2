@@ -206,6 +206,10 @@ func (h *httpApplicator) RemoveAllLabels(labelType Type, id string) error {
 	return nil
 }
 
+func (h *httpApplicator) RemoveAllLabelsTxn(ctx context.Context, labelType Type, id string) error {
+	return removeAllLabelsTxn(ctx, labelType, id)
+}
+
 // Finds all labels assigned to all entities under a type
 //
 // GET /api/labels/:type

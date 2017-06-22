@@ -1,6 +1,7 @@
 package labels
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -21,8 +22,11 @@ import (
 type ApplicatorWithoutWatches interface {
 	SetLabel(labelType Type, id, name, value string) error
 	SetLabels(labelType Type, id string, labels map[string]string) error
+	SetLabelsTxn(ctx context.Context, labelType Type, id string, labels map[string]string) error
 	RemoveLabel(labelType Type, id, name string) error
 	RemoveAllLabels(labelType Type, id string) error
+	RemoveLabelsTxn(ctx context.Context, labelType Type, id string, keysToRemove []string) error
+	RemoveAllLabelsTxn(ctx context.Context, labelType Type, id string) error
 	ListLabels(labelType Type) ([]Labeled, error)
 	GetLabels(labelType Type, id string) (Labeled, error)
 	GetMatches(selector klabels.Selector, labelType Type) ([]Labeled, error)

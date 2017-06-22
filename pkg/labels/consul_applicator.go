@@ -365,6 +365,10 @@ func (c *consulApplicator) RemoveAllLabels(labelType Type, id string) error {
 // the passed transaction rather than synchronously making the requisite consul
 // call
 func (c *consulApplicator) RemoveAllLabelsTxn(ctx context.Context, labelType Type, id string) error {
+	return removeAllLabelsTxn(ctx, labelType, id)
+}
+
+func removeAllLabelsTxn(ctx context.Context, labelType Type, id string) error {
 	path, err := objectPath(labelType, id)
 	if err != nil {
 		return err

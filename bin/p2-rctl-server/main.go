@@ -16,7 +16,6 @@ import (
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/roll"
@@ -54,7 +53,7 @@ func SessionName() string {
 func main() {
 	// Parse custom flags + standard Consul routing options
 	kingpin.Version(version.VERSION)
-	_, opts, _ := flags.ParseWithConsulOptions()
+	_, opts, labeler := flags.ParseWithConsulOptions()
 
 	// Set up the logger
 	logger := logging.NewLogger(logrus.Fields{})
@@ -72,9 +71,6 @@ func main() {
 	httpClient := cleanhttp.DefaultClient()
 	client := consul.NewConsulClient(opts)
 	consulStore := consul.NewConsulStore(client)
-	// flags.ParseWithConsulOptions() because that interface doesn't
-	// support transactions which is now required by the RC store
-	labeler := labels.NewConsulApplicator(client, 0)
 	rcStore := rcstore.NewConsul(client, labeler, RetryCount)
 
 	rollStore := rollstore.NewConsul(client, labeler, nil)
