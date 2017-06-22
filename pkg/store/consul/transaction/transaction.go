@@ -48,6 +48,12 @@ func Add(ctx context.Context, op api.KVTxnOp) error {
 		return err
 	}
 
+	txn.committedMu.Lock()
+	defer txn.committedMu.Unlock()
+	if txn.committed {
+		return util.Errorf("transaction was already committed")
+	}
+
 	if len(*txn.kvOps) == maxAllowedOperations {
 		return ErrTooManyOperations
 	}

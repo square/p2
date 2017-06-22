@@ -141,3 +141,24 @@ func TestMustCommitTransactionWithNoOperations(t *testing.T) {
 		t.Error("no txn call should have been made to consul if there are no operations on the transaction")
 	}
 }
+
+func TestErrAddingToCommittedTransaction(t *testing.T) {
+	ctx, cancelFunc := New(context.Background())
+	defer cancelFunc()
+	txner := &testTxner{shouldOK: true}
+
+	err := Add(ctx, api.KVTxnOp{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = MustCommit(ctx, txner)
+	if err != nil {
+		t.Fatalf("unexpected error committing transaction: %s", err)
+	}
+
+	err = Add(ctx, api.KVTxnOp{})
+	if err == nil {
+		t.Fatal("expected an error adding an operation to a transaction that was already committed")
+	}
+}
