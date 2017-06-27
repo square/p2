@@ -5,6 +5,7 @@ package rc
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -527,4 +528,71 @@ func TestReservedLabels(t *testing.T) {
 
 	Assert(t).AreEqual(labeled.Labels[rcstore.PodIDLabel], "testPod", "Pod label not set as expected")
 	Assert(t).AreEqual(labeled.Labels[RCIDLabel], rc.ID().String(), "RC label not set as expected")
+}
+
+func TestScheduleMoreThan5(t *testing.T) {
+	rcStore, _, applicator, rc, _, closeFn := setup(t)
+	defer closeFn()
+
+	for i := 0; i < 7; i++ {
+		err := applicator.SetLabel(labels.NODE, fmt.Sprintf("node%d", i), "nodeQuality", "good")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	quit := make(chan struct{})
+	errors := rc.WatchDesires(quit)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for err := range errors {
+			t.Error(err)
+		}
+	}()
+
+	rcStore.SetDesiredReplicas(rc.ID(), 7)
+
+	numNodes := waitForNodes(t, rc, 7)
+	Assert(t).AreEqual(numNodes, 7, "took too long to schedule")
+
+	close(quit)
+	wg.Wait()
+}
+
+func TestUnscheduleMoreThan5(t *testing.T) {
+	rcStore, _, applicator, rc, _, closeFn := setup(t)
+	defer closeFn()
+
+	for i := 0; i < 7; i++ {
+		err := applicator.SetLabel(labels.NODE, fmt.Sprintf("node%d", i), "nodeQuality", "good")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	quit := make(chan struct{})
+	errors := rc.WatchDesires(quit)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for err := range errors {
+			t.Error(err)
+		}
+	}()
+
+	rcStore.SetDesiredReplicas(rc.ID(), 7)
+
+	numNodes := waitForNodes(t, rc, 7)
+	Assert(t).AreEqual(numNodes, 7, "took too long to schedule")
+
+	rcStore.SetDesiredReplicas(rc.ID(), 0)
+
+	numNodes = waitForNodes(t, rc, 0)
+	Assert(t).AreEqual(numNodes, 0, "took too long to unschedule")
+
+	close(quit)
+	wg.Wait()
 }
