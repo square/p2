@@ -56,8 +56,6 @@ func WatchKeys(
 				WaitIndex:  currentIndex,
 				AllowStale: true,
 			})
-			consulLatencyHistogram.Update(int64(queryMeta.RequestTime))
-			listLatencyHistogram.Update(int64(time.Since(listStart) / time.Millisecond))
 			// outputPairsHistogram.Update(int64(sizeInBytes(keys)))
 			if err == CanceledError {
 				return
@@ -72,6 +70,8 @@ func WatchKeys(
 				continue
 			}
 
+			consulLatencyHistogram.Update(int64(queryMeta.RequestTime))
+			listLatencyHistogram.Update(int64(time.Since(listStart) / time.Millisecond))
 			// This might happen if a watch expires on a node that was stale for a
 			// long time.  Not likely but good to be careful.
 			if queryMeta.LastIndex < currentIndex {
