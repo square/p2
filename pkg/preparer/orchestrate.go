@@ -420,7 +420,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 			}
 		} else {
 			backoff := 100 * time.Millisecond
-			for err := p.writeStatusRecord(pair, logger); err == nil; err = p.writeStatusRecord(pair, logger) {
+			for err := p.writeStatusRecord(pair, logger); err != nil; err = p.writeStatusRecord(pair, logger) {
 				time.Sleep(backoff)
 				backoff = 2 * backoff
 				if backoff > time.Minute {
