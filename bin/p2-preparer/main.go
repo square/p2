@@ -113,7 +113,7 @@ func waitForTermination(logger logging.Logger, quitMainUpdate chan struct{}, qui
 	received := <-signalCh
 	logger.WithField("signal", received.String()).Infoln("Stopping work")
 	for _, quitCh := range quitChans {
-		quitCh <- struct{}{}
+		close(quitCh)
 	}
 	quitMainUpdate <- struct{}{}
 	<-quitMainUpdate // acknowledgement
