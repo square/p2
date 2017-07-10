@@ -2,6 +2,7 @@ package rc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -10,6 +11,7 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
+	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	p2metrics "github.com/square/p2/pkg/metrics"
@@ -48,6 +50,14 @@ type ReplicationControllerLocker interface {
 	LockForOwnership(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error)
 }
 
+type AuditLogStore interface {
+	Create(
+		ctx context.Context,
+		eventType audit.EventType,
+		eventDetails json.RawMessage,
+	) error
+}
+
 // The Farm is responsible for spawning and reaping replication controllers
 // as they are added to and deleted from Consul. Multiple farms can exist
 // simultaneously, but each one must hold a different Consul session. This
@@ -60,13 +70,14 @@ type ReplicationControllerLocker interface {
 // farms to cooperatively schedule work.
 type Farm struct {
 	// constructor arguments for rcs created by this farm
-	store     consulStore
-	rcStore   ReplicationControllerStore
-	rcLocker  ReplicationControllerLocker
-	rcWatcher ReplicationControllerWatcher
-	scheduler scheduler.Scheduler
-	labeler   Labeler
-	txner     transaction.Txner
+	store         consulStore
+	auditLogStore AuditLogStore
+	rcStore       ReplicationControllerStore
+	rcLocker      ReplicationControllerLocker
+	rcWatcher     ReplicationControllerWatcher
+	scheduler     scheduler.Scheduler
+	labeler       Labeler
+	txner         transaction.Txner
 
 	// session stream for the rcs locked by this farm
 	sessions <-chan string
@@ -94,6 +105,7 @@ type childRC struct {
 
 func NewFarm(
 	store consulStore,
+	auditLogStore AuditLogStore,
 	rcs ReplicationControllerStore,
 	rcLocker ReplicationControllerLocker,
 	rcWatcher ReplicationControllerWatcher,
@@ -112,6 +124,7 @@ func NewFarm(
 
 	return &Farm{
 		store:            store,
+		auditLogStore:    auditLogStore,
 		rcStore:          rcs,
 		rcLocker:         rcLocker,
 		rcWatcher:        rcWatcher,
@@ -259,6 +272,7 @@ START_LOOP:
 				newChild := New(
 					rc,
 					rcf.store,
+					rcf.auditLogStore,
 					rcf.txner,
 					rcf.rcWatcher,
 					rcf.scheduler,

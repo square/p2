@@ -428,13 +428,13 @@ func verifyTransferReplicas(errCh chan<- error, tempdir string, logger logging.L
 	builder.SetID("some_pod")
 	man := builder.GetManifest()
 
-	fromRC, err := rcStore.Create(man, klabels.Everything(), nil, nil)
+	fromRC, err := rcStore.Create(man, klabels.Everything(), "some_az", "some_cn", nil, nil)
 	if err != nil {
 		errCh <- util.Errorf("could not create RC for replica transfer test: %s", err)
 		return
 	}
 
-	toRC, err := rcStore.Create(man, klabels.Everything(), nil, nil)
+	toRC, err := rcStore.Create(man, klabels.Everything(), "some_az", "some_cn", nil, nil)
 	if err != nil {
 		errCh <- util.Errorf("could not create second RC for replica transfer test: %s", err)
 		return
@@ -854,7 +854,19 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 		return "", err
 	}
 
-	cmd := exec.Command("p2-rctl", "--log-json", "create", "--manifest", signedManifestPath, "--node-selector", "test=yes")
+	cmd := exec.Command(
+		"p2-rctl",
+		"--log-json",
+		"create",
+		"--manifest",
+		signedManifestPath,
+		"--node-selector",
+		"test=yes",
+		"--availability-zone",
+		"some_az",
+		"--cluster-name",
+		"some_cn",
+	)
 	out := bytes.Buffer{}
 	cmd.Stdout = &out
 	cmd.Stderr = &out

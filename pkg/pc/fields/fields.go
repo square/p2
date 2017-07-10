@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"reflect"
 
-	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/types"
 
 	"k8s.io/kubernetes/pkg/labels"
@@ -18,9 +17,9 @@ type Annotations map[string]interface{}
 
 // label keys used by pod selector
 const (
-	AvailabilityZoneLabel = "availability_zone"
-	ClusterNameLabel      = "cluster_name"
-	PodIDLabel            = rcstore.PodIDLabel // TODO: put this in a different place now that multiple packages use it
+	AvailabilityZoneLabel = types.AvailabilityZoneLabel
+	ClusterNameLabel      = types.ClusterNameLabel
+	PodIDLabel            = types.PodIDLabel
 )
 
 func (id ID) String() string {

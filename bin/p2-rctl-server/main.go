@@ -16,12 +16,12 @@ import (
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/roll"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/flags"
 	"github.com/square/p2/pkg/store/consul/rcstore"
@@ -54,7 +54,7 @@ func SessionName() string {
 func main() {
 	// Parse custom flags + standard Consul routing options
 	kingpin.Version(version.VERSION)
-	_, opts, _ := flags.ParseWithConsulOptions()
+	_, opts, labeler := flags.ParseWithConsulOptions()
 
 	// Set up the logger
 	logger := logging.NewLogger(logrus.Fields{})
@@ -72,9 +72,6 @@ func main() {
 	httpClient := cleanhttp.DefaultClient()
 	client := consul.NewConsulClient(opts)
 	consulStore := consul.NewConsulStore(client)
-	// flags.ParseWithConsulOptions() because that interface doesn't
-	// support transactions which is now required by the RC store
-	labeler := labels.NewConsulApplicator(client, 0)
 	rcStore := rcstore.NewConsul(client, labeler, RetryCount)
 
 	rollStore := rollstore.NewConsul(client, labeler, nil)
@@ -102,9 +99,12 @@ func main() {
 		}
 	}
 
+	auditLogStore := auditlogstore.NewConsulStore(client.KV())
+
 	// Run the farms!
 	go rc.NewFarm(
 		consulStore,
+		auditLogStore,
 		rcStore,
 		rcStore,
 		rcStore,

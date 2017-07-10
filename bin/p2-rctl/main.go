@@ -22,6 +22,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	pc_fields "github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/rc/fields"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
@@ -54,11 +55,13 @@ var (
 	logLevel = kingpin.Flag("log", "Logging level to display.").String()
 	logJSON  = kingpin.Flag("log-json", "Log messages will be JSON formatted").Bool()
 
-	cmdCreate       = kingpin.Command(cmdCreateText, "Create a new replication controller")
-	createManifest  = cmdCreate.Flag("manifest", "manifest file to use for this replication controller").Short('m').Required().String()
-	createNodeSel   = cmdCreate.Flag("node-selector", "node selector that this replication controller should target").Short('n').Required().String()
-	createPodLabels = cmdCreate.Flag("pod-label", "a pod label, in LABEL=VALUE form, to add to this replication controller. Can be specified multiple times.").Short('p').StringMap()
-	createRCLabels  = cmdCreate.Flag("rc-label", "an RC label, in LABEL=VALUE form, to be applied to this replication controller. Can be specified multiple times.").Short('r').StringMap()
+	cmdCreate              = kingpin.Command(cmdCreateText, "Create a new replication controller")
+	createManifest         = cmdCreate.Flag("manifest", "manifest file to use for this replication controller").Short('m').Required().String()
+	createNodeSel          = cmdCreate.Flag("node-selector", "node selector that this replication controller should target").Short('n').Required().String()
+	createPodLabels        = cmdCreate.Flag("pod-label", "a pod label, in LABEL=VALUE form, to add to this replication controller. Can be specified multiple times.").Short('p').StringMap()
+	createRCLabels         = cmdCreate.Flag("rc-label", "an RC label, in LABEL=VALUE form, to be applied to this replication controller. Can be specified multiple times.").Short('r').StringMap()
+	createAvailabilityZone = cmdCreate.Flag("availability-zone", "availability zone that RC should belong to").Short('a').Required().String()
+	createClusterName      = cmdCreate.Flag("cluster-name", "availability zone that RC should belong to").Short('c').Required().String()
 
 	cmdDelete   = kingpin.Command(cmdDeleteText, "Delete a replication controller")
 	deleteID    = cmdDelete.Arg("id", "replication controller uuid to delete").Required().String()
@@ -153,7 +156,14 @@ func main() {
 
 	switch cmd {
 	case cmdCreateText:
-		rctl.Create(*createManifest, *createNodeSel, *createPodLabels, *createRCLabels)
+		rctl.Create(
+			*createManifest,
+			*createNodeSel,
+			pc_fields.AvailabilityZone(*createAvailabilityZone),
+			pc_fields.ClusterName(*createClusterName),
+			*createPodLabels,
+			*createRCLabels,
+		)
 	case cmdDeleteText:
 		rctl.Delete(*deleteID, *deleteForce)
 	case cmdReplicasText:
@@ -197,6 +207,8 @@ type ReplicationControllerStore interface {
 	Create(
 		manifest manifest.Manifest,
 		nodeSelector klabels.Selector,
+		availabilityZone pc_fields.AvailabilityZone,
+		clusterName pc_fields.ClusterName,
 		podLabels klabels.Set,
 		additionalLabels klabels.Set,
 	) (fields.RC, error)
@@ -231,7 +243,14 @@ type rctlParams struct {
 	logger      logging.Logger
 }
 
-func (r rctlParams) Create(manifestPath, nodeSelector string, podLabels map[string]string, rcLabels map[string]string) {
+func (r rctlParams) Create(
+	manifestPath string,
+	nodeSelector string,
+	availabilityZone pc_fields.AvailabilityZone,
+	clusterName pc_fields.ClusterName,
+	podLabels map[string]string,
+	rcLabels map[string]string,
+) {
 	manifest, err := manifest.FromPath(manifestPath)
 	if err != nil {
 		r.logger.WithErrorAndFields(err, logrus.Fields{
@@ -246,7 +265,7 @@ func (r rctlParams) Create(manifestPath, nodeSelector string, podLabels map[stri
 		}).Fatalln("Could not parse node selector")
 	}
 
-	newRC, err := r.rcs.Create(manifest, nodeSel, klabels.Set(podLabels), rcLabels)
+	newRC, err := r.rcs.Create(manifest, nodeSel, availabilityZone, clusterName, klabels.Set(podLabels), rcLabels)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Could not create replication controller in Consul")
 	}

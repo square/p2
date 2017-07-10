@@ -80,6 +80,7 @@ type replicationController struct {
 	logger logging.Logger
 
 	consulStore   consulStore
+	auditLogStore AuditLogStore
 	txner         transaction.Txner
 	rcWatcher     ReplicationControllerWatcher
 	scheduler     scheduler.Scheduler
@@ -94,6 +95,7 @@ type ReplicationControllerWatcher interface {
 func New(
 	fields fields.RC,
 	consulStore consulStore,
+	auditLogStore AuditLogStore,
 	txner transaction.Txner,
 	rcWatcher ReplicationControllerWatcher,
 	scheduler scheduler.Scheduler,
@@ -110,6 +112,7 @@ func New(
 
 		logger:        logger,
 		consulStore:   consulStore,
+		auditLogStore: auditLogStore,
 		txner:         txner,
 		rcWatcher:     rcWatcher,
 		scheduler:     scheduler,
@@ -226,19 +229,20 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 
 	rc.logger.NoFields().Infof("Need to schedule %d nodes out of %s", toSchedule, possible)
 
-	ctx, cancelFunc := transaction.New(context.Background())
+	txn, cancelFunc := rc.newAuditingTransaction(context.Background(), currentNodes)
 	for i := 0; i < toSchedule; i++ {
-		// create a new context for every 5 nodes. This is done to make sure
-		// we're safely under the 64 operation limit imposed by consul on
-		// transactions
+		// create a new context for every 5 nodes. This is done to make
+		// sure we're safely under the 64 operation limit imposed by
+		// consul on transactions. This shouldn't be necessary after
+		// https://github.com/hashicorp/consul/issues/2921 is resolved
 		if i%5 == 0 && i > 0 {
-			err = transaction.Commit(ctx, cancelFunc, rc.txner)
+			err = txn.Commit(cancelFunc, rc.txner)
 			if err != nil {
 				cancelFunc()
 				return err
 			}
 
-			ctx, cancelFunc = transaction.New(context.Background())
+			txn, cancelFunc = rc.newAuditingTransaction(context.Background(), txn.Nodes())
 		}
 		if len(possibleSorted) < i+1 {
 			errMsg := fmt.Sprintf(
@@ -251,7 +255,7 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 			}
 
 			// commit any queued operations
-			txnErr := transaction.Commit(ctx, cancelFunc, rc.txner)
+			txnErr := txn.Commit(cancelFunc, rc.txner)
 			if txnErr != nil {
 				return txnErr
 			}
@@ -260,14 +264,14 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 		}
 		scheduleOn := possibleSorted[i]
 
-		err := rc.schedule(ctx, scheduleOn)
+		err := rc.schedule(txn, scheduleOn)
 		if err != nil {
 			cancelFunc()
 			return err
 		}
 	}
 
-	return transaction.Commit(ctx, cancelFunc, rc.txner)
+	return txn.Commit(cancelFunc, rc.txner)
 }
 
 // Generates an alerting.AlertInfo struct. Includes information relevant to
@@ -312,19 +316,20 @@ func (rc *replicationController) removePods(current types.PodLocations) error {
 	toUnschedule := len(current) - rc.ReplicasDesired
 	rc.logger.NoFields().Infof("Need to unschedule %d nodes out of %s", toUnschedule, current)
 
-	ctx, cancelFunc := transaction.New(context.Background())
+	txn, cancelFunc := rc.newAuditingTransaction(context.Background(), currentNodes)
 	for i := 0; i < toUnschedule; i++ {
-		// create a new context for every 5 nodes. This is done to make sure
-		// we're safely under the 64 operation limit imposed by consul on
-		// transactions
+		// create a new context for every 5 nodes. This is done to make
+		// sure we're safely under the 64 operation limit imposed by
+		// consul on transactions. This shouldn't be necessary after
+		// https://github.com/hashicorp/consul/issues/2921 is resolved
 		if i%5 == 0 && i > 0 {
-			err = transaction.Commit(ctx, cancelFunc, rc.txner)
+			err = txn.Commit(cancelFunc, rc.txner)
 			if err != nil {
 				cancelFunc()
 				return err
 			}
 
-			ctx, cancelFunc = transaction.New(context.Background())
+			txn, cancelFunc = rc.newAuditingTransaction(context.Background(), txn.Nodes())
 		}
 
 		unscheduleFrom, ok := preferred.PopAny()
@@ -335,7 +340,7 @@ func (rc *replicationController) removePods(current types.PodLocations) error {
 				// This should be mathematically impossible unless replicasDesired was negative
 
 				// commit any queued operations
-				txnErr := transaction.Commit(ctx, cancelFunc, rc.txner)
+				txnErr := txn.Commit(cancelFunc, rc.txner)
 				if txnErr != nil {
 					return txnErr
 				}
@@ -347,13 +352,15 @@ func (rc *replicationController) removePods(current types.PodLocations) error {
 				)
 			}
 		}
-		err := rc.unschedule(ctx, unscheduleFrom)
+
+		err := rc.unschedule(txn, unscheduleFrom)
 		if err != nil {
 			cancelFunc()
 			return err
 		}
 	}
-	return transaction.Commit(ctx, cancelFunc, rc.txner)
+
+	return txn.Commit(cancelFunc, rc.txner)
 }
 
 func (rc *replicationController) ensureConsistency(current types.PodLocations) error {
@@ -367,9 +374,10 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 
 	ctx, cancelFunc := transaction.New(context.Background())
 	for i, pod := range current {
-		// create a new context for every 5 nodes. This is done to make sure
-		// we're safely under the 64 operation limit imposed by consul on
-		// transactions
+		// create a new context for every 5 nodes. This is done to make
+		// sure we're safely under the 64 operation limit imposed by
+		// consul on transactions. This shouldn't be necessary after
+		// https://github.com/hashicorp/consul/issues/2921 is resolved
 		if i%5 == 0 && i > 0 {
 			err = transaction.Commit(ctx, cancelFunc, rc.txner)
 			if err != nil {
@@ -396,7 +404,8 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 		}
 
 		rc.logger.WithField("node", pod.Node).WithField("intentManifestSHA", intentSHA).Info("Found inconsistency in scheduled manifest")
-		if err := rc.schedule(ctx, pod.Node); err != nil {
+
+		if err := rc.scheduleNoAudit(ctx, pod.Node); err != nil {
 			cancelFunc()
 			return err
 		}
@@ -462,7 +471,17 @@ func (rc *replicationController) computePodLabels() map[string]string {
 	return ret
 }
 
-func (rc *replicationController) schedule(ctx context.Context, node types.NodeName) error {
+func (rc *replicationController) schedule(txn *auditingTransaction, node types.NodeName) error {
+	err := rc.scheduleNoAudit(txn.Context(), node)
+	if err != nil {
+		return err
+	}
+
+	txn.AddNode(node)
+	return nil
+}
+
+func (rc *replicationController) scheduleNoAudit(ctx context.Context, node types.NodeName) error {
 	rc.logger.NoFields().Infof("Scheduling on %s", node)
 	rc.mu.Lock()
 	manifest := rc.Manifest
@@ -477,12 +496,12 @@ func (rc *replicationController) schedule(ctx context.Context, node types.NodeNa
 	return rc.consulStore.SetPodTxn(ctx, consul.INTENT_TREE, node, manifest)
 }
 
-func (rc *replicationController) unschedule(ctx context.Context, node types.NodeName) error {
+func (rc *replicationController) unschedule(txn *auditingTransaction, node types.NodeName) error {
 	rc.logger.NoFields().Infof("Unscheduling from %s", node)
 	rc.mu.Lock()
 	manifest := rc.Manifest
 	rc.mu.Unlock()
-	err := rc.consulStore.DeletePodTxn(ctx, consul.INTENT_TREE, node, manifest.ID())
+	err := rc.consulStore.DeletePodTxn(txn.Context(), consul.INTENT_TREE, node, manifest.ID())
 	if err != nil {
 		return err
 	}
@@ -494,5 +513,12 @@ func (rc *replicationController) unschedule(ctx context.Context, node types.Node
 	}
 
 	labelKey := labels.MakePodLabelKey(node, manifest.ID())
-	return rc.podApplicator.RemoveLabelsTxn(ctx, labels.POD, labelKey, keysToRemove)
+
+	err = rc.podApplicator.RemoveLabelsTxn(txn.Context(), labels.POD, labelKey, keysToRemove)
+	if err != nil {
+		return err
+	}
+
+	txn.RemoveNode(node)
+	return nil
 }

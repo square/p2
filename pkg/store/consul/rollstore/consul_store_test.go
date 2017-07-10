@@ -273,6 +273,8 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDFailsIfCantAcquireLock(t *tes
 		0,
 		false,
 		0,
+		"some_az",
+		"some_cn",
 		testManifest(),
 		testNodeSelector(),
 		nil,
@@ -310,6 +312,8 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenTwoMat
 	firstRC, err := rollstore.rcstore.Create(
 		testManifest(),
 		nil,
+		"some_az",
+		"some_cn",
 		nil,
 		nil,
 	)
@@ -325,6 +329,8 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenTwoMat
 	secondRC, err := rollstore.rcstore.Create(
 		testManifest(),
 		nil,
+		"some_az",
+		"some_cn",
 		nil,
 		nil,
 	)
@@ -348,6 +354,8 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenTwoMat
 		0,
 		false,
 		0,
+		"some_az",
+		"some_cn",
 		testManifest(),
 		testNodeSelector(),
 		nil,
@@ -371,6 +379,8 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenExisti
 	oldRC, err := rollstore.rcstore.Create(
 		testManifest(),
 		nil,
+		"some_az",
+		"some_cn",
 		nil,
 		nil,
 	)
@@ -407,6 +417,8 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenExisti
 		0,
 		false,
 		0,
+		"some_az",
+		"some_cn",
 		testManifest(),
 		testNodeSelector(),
 		nil,
@@ -438,6 +450,8 @@ func TestLeaveOldInvalidIfNoOldRC(t *testing.T) {
 		0,
 		true,
 		0,
+		"some_az",
+		"some_cn",
 		testManifest(),
 		testNodeSelector(),
 		nil,

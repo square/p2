@@ -16,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	pc_fields "github.com/square/p2/pkg/pc/fields"
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/store/consul"
@@ -65,6 +66,8 @@ type ReplicationControllerStore interface {
 		ctx context.Context,
 		manifest manifest.Manifest,
 		nodeSelector klabels.Selector,
+		availabilityZone pc_fields.AvailabilityZone,
+		clusterName pc_fields.ClusterName,
 		podLabels klabels.Set,
 		additionalLabels klabels.Set,
 	) (rc_fields.RC, error)
@@ -75,6 +78,8 @@ type ReplicationControllerStore interface {
 	Create(
 		manifest manifest.Manifest,
 		nodeSelector klabels.Selector,
+		availabilityZone pc_fields.AvailabilityZone,
+		clusterName pc_fields.ClusterName,
 		podLabels klabels.Set,
 		additionalLabels klabels.Set,
 	) (rc_fields.RC, error)
@@ -307,6 +312,8 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	minimumReplicas int,
 	leaveOld bool,
 	rollDelay time.Duration,
+	availabilityZone pc_fields.AvailabilityZone,
+	clusterName pc_fields.ClusterName,
 	newRCManifest manifest.Manifest,
 	newRCNodeSelector klabels.Selector,
 	newRCPodLabels klabels.Set,
@@ -334,7 +341,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 		return roll_fields.Update{}, err
 	}
 
-	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, newRCPodLabels, newRCLabels)
+	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, availabilityZone, clusterName, newRCPodLabels, newRCLabels)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -381,6 +388,8 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	minimumReplicas int,
 	leaveOld bool,
 	rollDelay time.Duration,
+	availabilityZone pc_fields.AvailabilityZone,
+	clusterName pc_fields.ClusterName,
 	newRCManifest manifest.Manifest,
 	newRCNodeSelector klabels.Selector,
 	newRCPodLabels klabels.Set,
@@ -418,7 +427,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 		// Create the old RC using the same info as the new RC, it'll be
 		// removed when the update completes anyway
-		rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, newRCPodLabels, newRCLabels)
+		rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, availabilityZone, clusterName, newRCPodLabels, newRCLabels)
 		if err != nil {
 			return roll_fields.Update{}, err
 		}
@@ -440,7 +449,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 	// Create the new RC
 	var newRCID rc_fields.ID
-	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, newRCPodLabels, newRCLabels)
+	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, availabilityZone, clusterName, newRCPodLabels, newRCLabels)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}

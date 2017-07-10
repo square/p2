@@ -10,6 +10,7 @@ import (
 	"k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/manifest"
+	pc_fields "github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
@@ -37,7 +38,14 @@ func NewFake() *fakeStore {
 	}
 }
 
-func (s *fakeStore) Create(manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set, additionalLabels labels.Set) (fields.RC, error) {
+func (s *fakeStore) Create(
+	manifest manifest.Manifest,
+	nodeSelector labels.Selector,
+	availabilityZone pc_fields.AvailabilityZone,
+	clusterName pc_fields.ClusterName,
+	podLabels labels.Set,
+	additionalLabels labels.Set,
+) (fields.RC, error) {
 	// A real replication controller will use a UUID.
 	// We'll just use a monotonically increasing counter for expedience.
 	s.creates += 1
@@ -66,7 +74,15 @@ func (s *fakeStore) Create(manifest manifest.Manifest, nodeSelector labels.Selec
 // If a test needs to use transactions, it should be using a real consul e.g.
 // via consulutil.NewFixture(). We won't be implementing transactions ourselves
 // in these fake storage structs
-func (s *fakeStore) CreateTxn(ctx context.Context, manifest manifest.Manifest, nodeSelector labels.Selector, podLabels labels.Set, additionalLabels labels.Set) (fields.RC, error) {
+func (s *fakeStore) CreateTxn(
+	ctx context.Context,
+	manifest manifest.Manifest,
+	nodeSelector labels.Selector,
+	availabilityZone pc_fields.AvailabilityZone,
+	clusterName pc_fields.ClusterName,
+	podLabels labels.Set,
+	additionalLabels labels.Set,
+) (fields.RC, error) {
 	panic("transactions not implemented in fake rc store")
 }
 
