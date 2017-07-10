@@ -231,9 +231,10 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 
 	txn, cancelFunc := rc.newAuditingTransaction(context.Background(), currentNodes)
 	for i := 0; i < toSchedule; i++ {
-		// create a new context for every 5 nodes. This is done to make sure
-		// we're safely under the 64 operation limit imposed by consul on
-		// transactions
+		// create a new context for every 5 nodes. This is done to make
+		// sure we're safely under the 64 operation limit imposed by
+		// consul on transactions. This shouldn't be necessary after
+		// https://github.com/hashicorp/consul/issues/2921 is resolved
 		if i%5 == 0 && i > 0 {
 			err = txn.Commit(cancelFunc, rc.txner)
 			if err != nil {
@@ -317,9 +318,10 @@ func (rc *replicationController) removePods(current types.PodLocations) error {
 
 	txn, cancelFunc := rc.newAuditingTransaction(context.Background(), currentNodes)
 	for i := 0; i < toUnschedule; i++ {
-		// create a new context for every 5 nodes. This is done to make sure
-		// we're safely under the 64 operation limit imposed by consul on
-		// transactions
+		// create a new context for every 5 nodes. This is done to make
+		// sure we're safely under the 64 operation limit imposed by
+		// consul on transactions. This shouldn't be necessary after
+		// https://github.com/hashicorp/consul/issues/2921 is resolved
 		if i%5 == 0 && i > 0 {
 			err = txn.Commit(cancelFunc, rc.txner)
 			if err != nil {
@@ -372,9 +374,10 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 
 	ctx, cancelFunc := transaction.New(context.Background())
 	for i, pod := range current {
-		// create a new context for every 5 nodes. This is done to make sure
-		// we're safely under the 64 operation limit imposed by consul on
-		// transactions
+		// create a new context for every 5 nodes. This is done to make
+		// sure we're safely under the 64 operation limit imposed by
+		// consul on transactions. This shouldn't be necessary after
+		// https://github.com/hashicorp/consul/issues/2921 is resolved
 		if i%5 == 0 && i > 0 {
 			err = transaction.Commit(ctx, cancelFunc, rc.txner)
 			if err != nil {
