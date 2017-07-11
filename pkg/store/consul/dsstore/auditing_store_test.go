@@ -99,6 +99,102 @@ func TestCreateWithAudit(t *testing.T) {
 	}
 }
 
+func TestDisableWithAudit(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+
+	logger := logging.TestLogger()
+	dsStore := NewConsul(fixture.Client, 0, &logger)
+	auditLogStore := auditlogstore.NewConsulStore(fixture.Client.KV())
+
+	auditingStore := NewAuditingStore(dsStore, auditLogStore)
+
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	ds, err := dsStore.Create(ctx, testManifest(), 1, "some_name", klabels.Everything(), "some_pod", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ds.Disabled {
+		t.Fatal("expected daemon set to start out disabled")
+	}
+
+	ctx, cancel = transaction.New(context.Background())
+	defer cancel()
+	_, err = auditingStore.Disable(ctx, ds.ID, "some_user")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ds.Disabled {
+		t.Fatal("daemon set should not have been disabled before the transaction was committed")
+	}
+
+	// confirm no audit log records exist yet
+	alMap, err := auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(alMap) != 0 {
+		t.Errorf("expected 0 audit logs before committing transaction but there were %d", len(alMap))
+	}
+
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ds, _, err = dsStore.Get(ds.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !ds.Disabled {
+		t.Fatal("daemon set should have been disabled after the transaction was committed")
+	}
+
+	alMap, err = auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(alMap) != 1 {
+		t.Errorf("expected 1 audit log after committing transaction but there were %d", len(alMap))
+	}
+
+	for _, v := range alMap {
+		if v.EventType != audit.DSDisabledEvent {
+			t.Errorf("expected audit log record with type %q but was %q", audit.DSDisabledEvent, v.EventType)
+		}
+
+		var details audit.DSEventDetails
+		err = json.Unmarshal([]byte(*v.EventDetails), &details)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if details.User != "some_user" {
+			t.Errorf("expected user name on audit record to be %q but was %q", "some_user", details.User)
+		}
+
+		// smoke test the ID matches the details
+		if details.DaemonSet.ID != ds.ID {
+			t.Errorf("expected daemon set in audit log record to have ID %s but was %s", ds.ID, details.DaemonSet.ID)
+		}
+
+		if !details.DaemonSet.Disabled {
+			t.Errorf("expected daemon set in audit log record to have been disabled (i.e. the daemon set AFTER the operation is what shows up in audit log)")
+		}
+	}
+}
+
 func testManifest() manifest.Manifest {
 	builder := manifest.NewBuilder()
 	builder.SetID("some_pod")

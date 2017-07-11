@@ -59,3 +59,25 @@ func (a AuditingStore) Create(
 
 	return ds, nil
 }
+
+func (a AuditingStore) Disable(
+	ctx context.Context,
+	id fields.ID,
+	user string,
+) (fields.DaemonSet, error) {
+	ds, err := a.innerStore.DisableTxn(ctx, id)
+	if err != nil {
+		return fields.DaemonSet{}, err
+	}
+
+	details, err := audit.NewDaemonSetDetails(ds, user)
+	if err != nil {
+		return fields.DaemonSet{}, err
+	}
+	err = a.auditLogStore.Create(ctx, audit.DSDisabledEvent, details)
+	if err != nil {
+		return fields.DaemonSet{}, util.Errorf("could not create audit log record for daemon set disable: %s", err)
+	}
+
+	return ds, nil
+}
