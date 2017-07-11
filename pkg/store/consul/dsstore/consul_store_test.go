@@ -766,7 +766,7 @@ func TestEnableTxnAndDisableTxn(t *testing.T) {
 
 	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	if err != nil {
-		t.Fatalf("could not commit transaction to disable daemon set: %s", err)
+		t.Fatalf("could not commit transaction to enable daemon set: %s", err)
 	}
 
 	ds, _, err = store.Get(ds.ID)
