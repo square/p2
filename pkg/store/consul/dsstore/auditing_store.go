@@ -220,3 +220,31 @@ func (a AuditingStore) UpdateMinHealth(
 
 	return ds, nil
 }
+
+func (a AuditingStore) UpdateTimeout(
+	ctx context.Context,
+	id fields.ID,
+	timeout time.Duration,
+	user string,
+) (fields.DaemonSet, error) {
+	mutator := func(ds fields.DaemonSet) (fields.DaemonSet, error) {
+		ds.Timeout = timeout
+		return ds, nil
+	}
+
+	ds, err := a.innerStore.MutateDSTxn(ctx, id, mutator)
+	if err != nil {
+		return fields.DaemonSet{}, err
+	}
+
+	details, err := audit.NewDaemonSetDetails(ds, user)
+	if err != nil {
+		return fields.DaemonSet{}, err
+	}
+	err = a.auditLogStore.Create(ctx, audit.DSModifiedEvent, details)
+	if err != nil {
+		return fields.DaemonSet{}, util.Errorf("could not create audit log record for daemon set timeout update: %s", err)
+	}
+
+	return ds, nil
+}
