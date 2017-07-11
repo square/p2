@@ -133,6 +133,27 @@ func (s *ConsulStore) Delete(id fields.ID) error {
 	if err != nil {
 		return consulutil.NewKVError("delete", dsPath, err)
 	}
+
+	return nil
+}
+
+// DeleteTxn adds a deletion operation to the passed transaction for the given
+// daemon set ID. The operation will not error if the id does not exist
+// TODO: replace all calls of Delete with DeleteTxn
+func (s *ConsulStore) DeleteTxn(ctx context.Context, id fields.ID) error {
+	dsPath, err := s.dsPath(id)
+	if err != nil {
+		return util.Errorf("Error getting daemon set path: %v", err)
+	}
+
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb: api.KVDelete,
+		Key:  dsPath,
+	})
+	if err != nil {
+		return err
+
+	}
 	return nil
 }
 
@@ -221,28 +242,96 @@ func (s *ConsulStore) MutateDS(
 	if err != nil {
 		return fields.DaemonSet{}, consulutil.NewKVError("cas", dsPath, err)
 	}
+
 	if !success {
 		return fields.DaemonSet{}, CASError(dsPath)
 	}
+
+	return ds, nil
+}
+
+// MutateDSTxn adds a check-and-set operation to the passed transaction to
+// perform the mutation requested via the mutator function.
+// TODO: replace all calls of MutateDS with this
+func (s *ConsulStore) MutateDSTxn(
+	ctx context.Context,
+	id fields.ID,
+	mutator func(fields.DaemonSet) (fields.DaemonSet, error),
+) (fields.DaemonSet, error) {
+	ds, metadata, err := s.Get(id)
+	if err != nil {
+		if err == NoDaemonSet {
+			// we need to pass this through so callers can distinguish this from other errors
+			return fields.DaemonSet{}, err
+		}
+
+		return fields.DaemonSet{}, util.Errorf("Error getting daemon set: %v", err)
+	}
+
+	ds, err = mutator(ds)
+	if err != nil {
+		return fields.DaemonSet{}, util.Errorf("Error mutating daemon set: %v", err)
+	}
+	if ds.ID != id {
+		// If the user wants a new uuid, they should delete it and create it
+		return fields.DaemonSet{},
+			util.Errorf("Explicitly changing daemon set ID is not permitted: Wanted '%s' got '%s'", id, ds.ID)
+	}
+	if err := checkManifestPodID(ds.PodID, ds.Manifest); err != nil {
+		return fields.DaemonSet{}, util.Errorf("Error verifying manifest pod id: %v", err)
+	}
+
+	rawDS, err := json.Marshal(ds)
+	if err != nil {
+		return fields.DaemonSet{}, util.Errorf("Could not marshal DS as json: %s", err)
+	}
+
+	dsPath, err := s.dsPath(id)
+	if err != nil {
+		return fields.DaemonSet{}, util.Errorf("Error getting daemon set path: %v", err)
+	}
+
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb:  api.KVCAS,
+		Key:   dsPath,
+		Index: metadata.LastIndex,
+		Value: rawDS,
+	})
+
+	if err != nil {
+		return fields.DaemonSet{}, err
+	}
+
 	return ds, nil
 }
 
 // Disable sets a flag on the daemon set to prevent it from operating.
 func (s *ConsulStore) Disable(id fields.ID) (fields.DaemonSet, error) {
-	s.logger.Infof("Attempting to disable '%s' in store now", id)
-
 	mutator := func(dsToUpdate fields.DaemonSet) (fields.DaemonSet, error) {
 		dsToUpdate.Disabled = true
 		return dsToUpdate, nil
 	}
 	newDS, err := s.MutateDS(id, mutator)
-
 	if err != nil {
-		s.logger.Errorf("Error occured when trying to disable daemon set in store")
+		s.logger.Errorf("Error occured when trying to create daemon set disabling transaction")
 		return fields.DaemonSet{}, err
 	}
 
-	s.logger.Infof("Daemon set '%s' was successfully disabled in store", id)
+	return newDS, nil
+}
+
+// DisableTxn adds an operation to the passed context to disable the daemon set
+func (s *ConsulStore) DisableTxn(ctx context.Context, id fields.ID) (fields.DaemonSet, error) {
+	mutator := func(dsToUpdate fields.DaemonSet) (fields.DaemonSet, error) {
+		dsToUpdate.Disabled = true
+		return dsToUpdate, nil
+	}
+	newDS, err := s.MutateDSTxn(ctx, id, mutator)
+	if err != nil {
+		s.logger.Errorf("Error occured when trying to create daemon set disabling transaction")
+		return fields.DaemonSet{}, err
+	}
+
 	return newDS, nil
 }
 
