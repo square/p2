@@ -703,6 +703,82 @@ func TestWatchAll(t *testing.T) {
 	Assert(t).AreEqual(ds.PodID, watched.DaemonSets[0].PodID, "Daemon sets should have equal pod ids")
 }
 
+func TestEnableTxnAndDisableTxn(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+	store := newStore(fixture.Client.KV())
+	//
+	// Create a new daemon set
+	//
+	podID := types.PodID("some_pod_id")
+	minHealth := 0
+	clusterName := ds_fields.ClusterName("some_name")
+
+	azLabel := pc_fields.AvailabilityZone("some_zone")
+	selector := klabels.Everything().
+		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{azLabel.String()})
+
+	manifestBuilder := manifest.NewBuilder()
+	manifestBuilder.SetID(podID)
+	podManifest := manifestBuilder.GetManifest()
+
+	timeout := replication.NoTimeout
+
+	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
+	ds, err := store.Create(ctx, podManifest, minHealth, clusterName, selector, podID, timeout)
+	if err != nil {
+		t.Fatalf("Unable to create daemon set: %s", err)
+	}
+
+	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("could not commit transaction to create daemon set: %s", err)
+	}
+
+	ctx, cancelFunc = transaction.New(context.Background())
+	defer cancelFunc()
+	_, err = store.DisableTxn(ctx, ds.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("could not commit transaction to disable daemon set: %s", err)
+	}
+
+	ds, _, err = store.Get(ds.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !ds.Disabled {
+		t.Fatal("daemon set should have been disabled")
+	}
+
+	ctx, cancelFunc = transaction.New(context.Background())
+	defer cancelFunc()
+	_, err = store.EnableTxn(ctx, ds.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("could not commit transaction to disable daemon set: %s", err)
+	}
+
+	ds, _, err = store.Get(ds.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ds.Disabled {
+		t.Fatal("daemon set should have been enabled")
+	}
+}
+
 func newStore(kv consulKV) *ConsulStore {
 	return &ConsulStore{
 		kv:      kv,

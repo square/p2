@@ -335,6 +335,21 @@ func (s *ConsulStore) DisableTxn(ctx context.Context, id fields.ID) (fields.Daem
 	return newDS, nil
 }
 
+// EnableTxn adds an operation to the passed context to enable the daemon set
+func (s *ConsulStore) EnableTxn(ctx context.Context, id fields.ID) (fields.DaemonSet, error) {
+	mutator := func(dsToUpdate fields.DaemonSet) (fields.DaemonSet, error) {
+		dsToUpdate.Disabled = false
+		return dsToUpdate, nil
+	}
+	newDS, err := s.MutateDSTxn(ctx, id, mutator)
+	if err != nil {
+		s.logger.Errorf("Error occured when trying to create daemon set enabling transaction")
+		return fields.DaemonSet{}, err
+	}
+
+	return newDS, nil
+}
+
 type WatchedDaemonSets struct {
 	Created []*fields.DaemonSet
 	Updated []*fields.DaemonSet
