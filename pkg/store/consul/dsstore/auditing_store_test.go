@@ -452,6 +452,106 @@ func TestUpdateManifest(t *testing.T) {
 	}
 }
 
+func TestUpdateNodeSelector(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+
+	logger := logging.TestLogger()
+	dsStore := NewConsul(fixture.Client, 0, &logger)
+	auditLogStore := auditlogstore.NewConsulStore(fixture.Client.KV())
+
+	auditingStore := NewAuditingStore(dsStore, auditLogStore)
+
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	ds, err := dsStore.Create(ctx, testManifest(), 1, "some_name", klabels.Everything(), "some_pod", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel = transaction.New(context.Background())
+	defer cancel()
+
+	newSelector := klabels.Everything().Add("whatever key", klabels.EqualsOperator, []string{"whatever value"})
+	_, err = auditingStore.UpdateNodeSelector(ctx, ds.ID, newSelector, "some_user")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm the node selector hasn't changed yet and also there's no audit log record
+	ds, _, err = dsStore.Get(ds.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ds.NodeSelector.String() != klabels.Everything().String() {
+		t.Error("the daemon set's node selector shouldn't have changed before committing the transaction")
+	}
+
+	alMap, err := auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(alMap) != 0 {
+		t.Errorf("expected 0 audit logs before committing transaction but there were %d", len(alMap))
+	}
+
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm the manifest has now changed
+	ds, _, err = dsStore.Get(ds.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ds.NodeSelector.String() != newSelector.String() {
+		t.Error("the daemon set's node selector should have changed after committing the transaction")
+	}
+
+	alMap, err = auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(alMap) != 1 {
+		t.Errorf("expected 1 audit log before committing transaction but there were %d", len(alMap))
+	}
+
+	for _, v := range alMap {
+		if v.EventType != audit.DSNodeSelectorUpdatedEvent {
+			t.Errorf("expected audit log record with type %q but was %q", audit.DSNodeSelectorUpdatedEvent, v.EventType)
+		}
+
+		var details audit.DSEventDetails
+		err = json.Unmarshal([]byte(*v.EventDetails), &details)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if details.User != "some_user" {
+			t.Errorf("expected user name on audit record to be %q but was %q", "some_user", details.User)
+		}
+
+		// smoke test the ID matches the details
+		if details.DaemonSet.ID != ds.ID {
+			t.Errorf("expected daemon set in audit log record to have ID %s but was %s", ds.ID, details.DaemonSet.ID)
+		}
+
+		if details.DaemonSet.NodeSelector.String() != newSelector.String() {
+			t.Errorf("expected the audit log record to have the selector changed to %q but was %q", newSelector, details.DaemonSet.NodeSelector)
+		}
+	}
+}
+
 func testManifest() manifest.Manifest {
 	builder := manifest.NewBuilder()
 	builder.SetID("some_pod")
