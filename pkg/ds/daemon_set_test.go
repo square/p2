@@ -37,6 +37,7 @@ const (
 // flag to go test set to avoid tests hanging forever if something goes wrong
 func waitForCondition(condition func() error) error {
 	for err := condition(); err != nil; err = condition() {
+		fmt.Printf("condition failed, will retry: %s\n", err)
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -173,7 +174,7 @@ func TestSchedule(t *testing.T) {
 	defer cancel()
 	dsData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "expected no error creating request")
-	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	Assert(t).IsNil(err, "Expected no error committing transaction")
 
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
@@ -424,7 +425,7 @@ func TestPublishToReplication(t *testing.T) {
 	defer cancel()
 	dsData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, nodeSelector, podID, timeout)
 	Assert(t).IsNil(err, "expected no error creating request")
-	err = transaction.Commit(ctx, cancel, fixture.Client.KV())
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	Assert(t).IsNil(err, "Expected no error committing transaction")
 
 	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))

@@ -462,8 +462,16 @@ func (p *Preparer) writeStatusRecord(pair ManifestPair, logger logging.Logger) e
 		logger.WithError(err).Errorln("Could not add 'update manifest in pod status' to transaction")
 		return err
 	}
-	err = transaction.Commit(ctx, cancelFunc, p.client.KV())
+	ok, resp, err := transaction.Commit(ctx, p.client.KV())
 	if err != nil {
+		// TODO: consider retries to handle temporary consul unavailability
+		logger.WithError(err).
+			Errorln("Could not write uuid index to reality store and update manifest in pod status")
+		return err
+	}
+	if !ok {
+		// TODO: consider rebuilding the transaction and trying again
+		err := util.Errorf("status record transaction rolled back: %s", transaction.TxnErrorsToString(resp.Errors))
 		logger.WithError(err).
 			Errorln("Could not write uuid index to reality store and update manifest in pod status")
 		return err
@@ -530,10 +538,18 @@ func (p *Preparer) markUninstalled(pair ManifestPair, pod Pod, logger logging.Lo
 			Errorln("Could not remove reality index for uninstalled pod")
 		return err
 	}
-	err = transaction.Commit(ctx, cancelFunc, p.client.KV())
+	ok, resp, err := transaction.Commit(ctx, p.client.KV())
 	if err != nil {
+		// TODO: consider retrying to handle temporary consul unavailability
 		logger.WithError(err).
 			Errorln("Could not update pod status to reflect removal and remove reality index for uninstalled pod")
+		return err
+	}
+	if !ok {
+		// TODO: consider rebuilding the transaction and trying again
+		err := util.Errorf("status record transaction rolled back: %s", transaction.TxnErrorsToString(resp.Errors))
+		logger.WithError(err).
+			Errorln("Could not mark pod as uninstalled in pod status")
 		return err
 	}
 	return nil

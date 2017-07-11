@@ -230,18 +230,26 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 	rc.logger.NoFields().Infof("Need to schedule %d nodes out of %s", toSchedule, possible)
 
 	txn, cancelFunc := rc.newAuditingTransaction(context.Background(), currentNodes)
+	defer func() {
+		// we write the defer this way so that reassignments to cancelFunc
+		// are noticed and the final value is called
+		cancelFunc()
+	}()
 	for i := 0; i < toSchedule; i++ {
 		// create a new context for every 5 nodes. This is done to make
 		// sure we're safely under the 64 operation limit imposed by
 		// consul on transactions. This shouldn't be necessary after
 		// https://github.com/hashicorp/consul/issues/2921 is resolved
 		if i%5 == 0 && i > 0 {
-			err = txn.Commit(cancelFunc, rc.txner)
-			if err != nil {
-				cancelFunc()
+			ok, resp, err := txn.Commit(rc.txner)
+			switch {
+			case err != nil:
 				return err
+			case !ok:
+				return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
 			}
 
+			cancelFunc()
 			txn, cancelFunc = rc.newAuditingTransaction(context.Background(), txn.Nodes())
 		}
 		if len(possibleSorted) < i+1 {
@@ -255,9 +263,12 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 			}
 
 			// commit any queued operations
-			txnErr := txn.Commit(cancelFunc, rc.txner)
-			if txnErr != nil {
+			ok, resp, txnErr := txn.Commit(rc.txner)
+			switch {
+			case txnErr != nil:
 				return txnErr
+			case !ok:
+				return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
 			}
 
 			return util.Errorf(errMsg)
@@ -266,12 +277,19 @@ func (rc *replicationController) addPods(current types.PodLocations) error {
 
 		err := rc.schedule(txn, scheduleOn)
 		if err != nil {
-			cancelFunc()
 			return err
 		}
 	}
 
-	return txn.Commit(cancelFunc, rc.txner)
+	ok, resp, err := txn.Commit(rc.txner)
+	switch {
+	case err != nil:
+		return err
+	case !ok:
+		return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
+	}
+
+	return nil
 }
 
 // Generates an alerting.AlertInfo struct. Includes information relevant to
@@ -317,18 +335,24 @@ func (rc *replicationController) removePods(current types.PodLocations) error {
 	rc.logger.NoFields().Infof("Need to unschedule %d nodes out of %s", toUnschedule, current)
 
 	txn, cancelFunc := rc.newAuditingTransaction(context.Background(), currentNodes)
+	defer func() {
+		cancelFunc()
+	}()
 	for i := 0; i < toUnschedule; i++ {
 		// create a new context for every 5 nodes. This is done to make
 		// sure we're safely under the 64 operation limit imposed by
 		// consul on transactions. This shouldn't be necessary after
 		// https://github.com/hashicorp/consul/issues/2921 is resolved
 		if i%5 == 0 && i > 0 {
-			err = txn.Commit(cancelFunc, rc.txner)
-			if err != nil {
-				cancelFunc()
+			ok, resp, err := txn.Commit(rc.txner)
+			switch {
+			case err != nil:
 				return err
+			case !ok:
+				return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
 			}
 
+			cancelFunc()
 			txn, cancelFunc = rc.newAuditingTransaction(context.Background(), txn.Nodes())
 		}
 
@@ -338,29 +362,36 @@ func (rc *replicationController) removePods(current types.PodLocations) error {
 			unscheduleFrom, ok = rest.PopAny()
 			if !ok {
 				// This should be mathematically impossible unless replicasDesired was negative
-
 				// commit any queued operations
-				txnErr := txn.Commit(cancelFunc, rc.txner)
-				if txnErr != nil {
+				ok, resp, txnErr := txn.Commit(rc.txner)
+				switch {
+				case txnErr != nil:
 					return txnErr
+				case !ok:
+					return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
 				}
 
-				cancelFunc()
 				return util.Errorf(
 					"Unable to unschedule enough nodes to meet replicas desired: %d replicas desired, %d current.",
 					rc.ReplicasDesired, len(current),
 				)
 			}
 		}
-
 		err := rc.unschedule(txn, unscheduleFrom)
 		if err != nil {
-			cancelFunc()
 			return err
 		}
 	}
 
-	return txn.Commit(cancelFunc, rc.txner)
+	ok, resp, err := txn.Commit(rc.txner)
+	switch {
+	case err != nil:
+		return err
+	case !ok:
+		return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
+	}
+
+	return nil
 }
 
 func (rc *replicationController) ensureConsistency(current types.PodLocations) error {
@@ -373,23 +404,28 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 	}
 
 	ctx, cancelFunc := transaction.New(context.Background())
+	defer func() {
+		cancelFunc()
+	}()
 	for i, pod := range current {
 		// create a new context for every 5 nodes. This is done to make
 		// sure we're safely under the 64 operation limit imposed by
 		// consul on transactions. This shouldn't be necessary after
 		// https://github.com/hashicorp/consul/issues/2921 is resolved
 		if i%5 == 0 && i > 0 {
-			err = transaction.Commit(ctx, cancelFunc, rc.txner)
-			if err != nil {
-				cancelFunc()
+			ok, resp, err := transaction.Commit(ctx, rc.txner)
+			switch {
+			case err != nil:
 				return err
+			case !ok:
+				return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
 			}
 
+			cancelFunc()
 			ctx, cancelFunc = transaction.New(context.Background())
 		}
 		intent, _, err := rc.consulStore.Pod(consul.INTENT_TREE, pod.Node, types.PodID(pod.PodID))
 		if err != nil && err != pods.NoCurrentManifest {
-			cancelFunc()
 			return err
 		}
 		var intentSHA string
@@ -411,7 +447,15 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 		}
 	}
 
-	return transaction.Commit(ctx, cancelFunc, rc.txner)
+	ok, resp, err := transaction.Commit(ctx, rc.txner)
+	switch {
+	case err != nil:
+		return err
+	case !ok:
+		return util.Errorf("could not schedule pods due to transaction violation: %s", transaction.TxnErrorsToString(resp.Errors))
+	}
+
+	return nil
 }
 
 func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {

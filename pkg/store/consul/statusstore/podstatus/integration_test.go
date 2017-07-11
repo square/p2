@@ -28,7 +28,7 @@ func TestMutateStatusNewKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestMutateStatusExistingKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transaction.Commit(ctx, cancelFunc, fixture.Client.KV())
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -102,6 +102,7 @@ func TestMutate(t *testing.T) {
 	}
 
 	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
 
 	err = f.Store.MutatePod(ctx, []types.NodeName{"node1", "node2"}, "pod", func(m manifest.Manifest) (manifest.Manifest, error) {
 		builder := m.GetBuilder()
@@ -112,7 +113,7 @@ func TestMutate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = transaction.Commit(ctx, cancel, f.Client.KV())
+	err = transaction.MustCommit(ctx, f.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +238,7 @@ func TestAllPods(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = transaction.Commit(ctx, cancelFunc, store.client.KV())
+	err = transaction.MustCommit(ctx, store.client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,7 +380,7 @@ func TestSetPodTxn(t *testing.T) {
 		t.Fatalf("unexpected error %q, expected %q", err, pods.NoCurrentManifest)
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, f.Client.KV())
+	err = transaction.MustCommit(ctx, f.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -427,7 +428,7 @@ func TestDeletePodTxn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, f.Client.KV())
+	err = transaction.MustCommit(ctx, f.Client.KV())
 	if err != nil {
 		t.Fatal(err)
 	}

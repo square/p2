@@ -46,8 +46,9 @@ func (t *testTxner) Txn(txn api.KVTxnOps, q *api.QueryOptions) (bool, *api.KVTxn
 	return t.shouldOK, &api.KVTxnResponse{Errors: t.errors}, nil, nil
 }
 
-func TestCommitHappy(t *testing.T) {
+func TestMustCommitHappy(t *testing.T) {
 	ctx, cancelFunc := New(context.Background())
+	defer cancelFunc()
 	for i := 0; i < 10; i++ {
 		err := Add(ctx, api.KVTxnOp{
 			Verb:  string(api.KVSet),
@@ -61,7 +62,7 @@ func TestCommitHappy(t *testing.T) {
 
 	txner := &testTxner{shouldOK: true}
 
-	err := Commit(ctx, cancelFunc, txner)
+	err := MustCommit(ctx, txner)
 	if err != nil {
 		t.Fatalf("unexpected error committing transaction: %s", err)
 	}
@@ -91,21 +92,22 @@ func TestCommitHappy(t *testing.T) {
 	}
 }
 
-func TesetErrAlreadyCommitted(t *testing.T) {
+func TesetErrAlreadyMustCommitted(t *testing.T) {
 	ctx, cancelFunc := New(context.Background())
+	defer cancelFunc()
 	err := Add(ctx, api.KVTxnOp{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	txner := &testTxner{shouldOK: true}
-	err = Commit(ctx, cancelFunc, txner)
+	err = MustCommit(ctx, txner)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	txner.recordedCall = nil
-	err = Commit(ctx, cancelFunc, txner)
+	err = MustCommit(ctx, txner)
 	if err == nil {
 		t.Error("should have failed to commit a transaction twice")
 	}
@@ -119,22 +121,44 @@ func TesetErrAlreadyCommitted(t *testing.T) {
 	}
 }
 
-func TestCommitErrNoTransaction(t *testing.T) {
-	err := Commit(context.Background(), func() {}, &testTxner{})
+func TestMustCommitErrNoTransaction(t *testing.T) {
+	err := MustCommit(context.Background(), &testTxner{})
 	if err == nil {
 		t.Fatal("should have gotten an error committing using a context that does not have a transaction")
 	}
 }
 
-func TestCommitTransactionWithNoOperations(t *testing.T) {
+func TestMustCommitTransactionWithNoOperations(t *testing.T) {
 	ctx, cancelFunc := New(context.Background())
+	defer cancelFunc()
 	txner := &testTxner{shouldOK: true}
-	err := Commit(ctx, cancelFunc, txner)
+	err := MustCommit(ctx, txner)
 	if err != nil {
 		t.Fatalf("unexpected error committing transaction: %s", err)
 	}
 
 	if txner.recordedCall != nil {
 		t.Error("no txn call should have been made to consul if there are no operations on the transaction")
+	}
+}
+
+func TestErrAddingToCommittedTransaction(t *testing.T) {
+	ctx, cancelFunc := New(context.Background())
+	defer cancelFunc()
+	txner := &testTxner{shouldOK: true}
+
+	err := Add(ctx, api.KVTxnOp{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = MustCommit(ctx, txner)
+	if err != nil {
+		t.Fatalf("unexpected error committing transaction: %s", err)
+	}
+
+	err = Add(ctx, api.KVTxnOp{})
+	if err == nil {
+		t.Fatal("expected an error adding an operation to a transaction that was already committed")
 	}
 }

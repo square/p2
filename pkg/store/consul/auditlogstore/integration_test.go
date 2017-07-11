@@ -23,6 +23,7 @@ func TestCreateListAndDelete(t *testing.T) {
 	// First create two records to confirm Create() works as well as our
 	// transaction pattern
 	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
 	var eventType1, eventType2 audit.EventType = "event_type_1", "event_type_2"
 	details1, details2 := json.RawMessage(`{"some":"details"}`), json.RawMessage(`{"some":"details2"}`)
 	err := consulStore.Create(ctx, eventType1, details1)
@@ -35,7 +36,7 @@ func TestCreateListAndDelete(t *testing.T) {
 		t.Fatalf("could not create second audit record: %s", err)
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, f.Client.KV())
+	err = transaction.MustCommit(ctx, f.Client.KV())
 	if err != nil {
 		t.Fatalf("could not apply txn with two audit record creations: %s", err)
 	}
@@ -74,12 +75,13 @@ func TestCreateListAndDelete(t *testing.T) {
 
 	// Now delete a record to confirm that works
 	ctx, cancelFunc = transaction.New(context.Background())
+	defer cancelFunc()
 	err = consulStore.Delete(ctx, firstID)
 	if err != nil {
 		t.Fatalf("error deleting audit log record: %s", err)
 	}
 
-	err = transaction.Commit(ctx, cancelFunc, f.Client.KV())
+	err = transaction.MustCommit(ctx, f.Client.KV())
 	if err != nil {
 		t.Fatalf("could not apply txn with a record deletion: %s", err)
 	}

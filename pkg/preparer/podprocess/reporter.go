@@ -379,7 +379,6 @@ func (r *Reporter) reportLatestExits() {
 		}
 
 		ctx, cancelFunc := transaction.New(context.Background())
-		defer cancelFunc()
 		err = r.podStatusStore.SetLastExit(ctx, finish.PodUniqueKey, finish.LaunchableID, finish.EntryPoint, podstatus.ExitStatus{
 			ExitTime:   finish.ExitTime,
 			ExitCode:   finish.ExitCode,
@@ -388,11 +387,20 @@ func (r *Reporter) reportLatestExits() {
 		if err != nil {
 			subLogger.WithError(err).Errorln("Failed to add 'record status' to transaction'")
 		}
-		err = transaction.Commit(ctx, cancelFunc, r.client.KV())
-		if err != nil {
-			subLogger.WithError(err).Errorln("Failed to record status")
+		ok, resp, err := transaction.Commit(ctx, r.client.KV())
+		switch {
+		case err != nil:
+			// this means there was an error talking to consul and the
+			// transaction was not even attempted.
+			// TODO: consider retrying transaction.Commit()
+			subLogger.WithError(err).Errorln("Failed to record status due to intermittent error")
 			return
+		case !ok:
+			// this means the transaction was rolled back, probably because something else about the status record changed.
+			// TODO: consider calling SetLastExit again with a new transaction
+			subLogger.WithError(util.Errorf("%s", transaction.TxnErrorsToString(resp.Errors))).Errorln("Failed to record status due to transaction violation")
 		}
+		cancelFunc()
 
 		subLogger.Debugln("Successfully recorded status")
 		lastID = finish.ID

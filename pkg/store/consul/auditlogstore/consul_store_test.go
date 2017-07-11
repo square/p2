@@ -29,6 +29,7 @@ func TestCreate(t *testing.T) {
 	now := time.Now()
 
 	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
 	details := json.RawMessage(`{"some":"details"}`)
 	err := ConsulStore{}.Create(ctx, "some_event", details)
 	if err != nil {
@@ -36,7 +37,7 @@ func TestCreate(t *testing.T) {
 	}
 
 	fakeTxner := &fakeTxner{}
-	err = transaction.Commit(ctx, cancelFunc, fakeTxner)
+	err = transaction.MustCommit(ctx, fakeTxner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +74,7 @@ func TestCreate(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	ctx, cancelFunc := transaction.New(context.Background())
+	defer cancelFunc()
 	id := audit.ID(uuid.New())
 	err := ConsulStore{}.Delete(ctx, id)
 	if err != nil {
@@ -80,7 +82,7 @@ func TestDelete(t *testing.T) {
 	}
 
 	fakeTxner := &fakeTxner{}
-	err = transaction.Commit(ctx, cancelFunc, fakeTxner)
+	err = transaction.MustCommit(ctx, fakeTxner)
 	if err != nil {
 		t.Fatal(err)
 	}

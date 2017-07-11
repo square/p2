@@ -8,6 +8,8 @@ import (
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
+
+	"github.com/hashicorp/consul/api"
 )
 
 type auditingTransaction struct {
@@ -71,7 +73,7 @@ func (a *auditingTransaction) RemoveNode(node types.NodeName) {
 // create an audit log record with the set of nodes that already have been
 // scheduled and nodes that will be scheduled as a part of this transaction by
 // the RC. Then it commits the transaction
-func (a *auditingTransaction) Commit(cancelFunc func(), txner transaction.Txner) error {
+func (a *auditingTransaction) Commit(txner transaction.Txner) (bool, *api.KVTxnResponse, error) {
 	details, err := audit.NewRCRetargetingEventDetails(
 		a.podID,
 		a.az,
@@ -79,7 +81,7 @@ func (a *auditingTransaction) Commit(cancelFunc func(), txner transaction.Txner)
 		a.Nodes(),
 	)
 	if err != nil {
-		return err
+		return false, nil, err
 	}
 
 	err = a.auditLogStore.Create(
@@ -88,8 +90,8 @@ func (a *auditingTransaction) Commit(cancelFunc func(), txner transaction.Txner)
 		details,
 	)
 	if err != nil {
-		return util.Errorf("could not add rc retargeting audit log to context: %s", err)
+		return false, nil, util.Errorf("could not add rc retargeting audit log to context: %s", err)
 	}
 
-	return transaction.Commit(a.ctx, cancelFunc, txner)
+	return transaction.Commit(a.ctx, txner)
 }

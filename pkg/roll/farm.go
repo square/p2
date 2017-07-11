@@ -6,9 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sirupsen/logrus"
-	"github.com/rcrowley/go-metrics"
-
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/health/checker"
@@ -26,6 +23,9 @@ import (
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/util"
 
+	"github.com/Sirupsen/logrus"
+	"github.com/hashicorp/consul/api"
+	"github.com/rcrowley/go-metrics"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -119,6 +119,7 @@ type Farm struct {
 	txner         transaction.Txner
 	auditLogStore auditlogstore.ConsulStore
 	config        FarmConfig
+	alerter       alerting.Alerter
 }
 
 type childRU struct {
@@ -147,6 +148,7 @@ func NewFarm(
 	rcSelector klabels.Selector,
 	txner transaction.Txner,
 	config FarmConfig,
+	alerter alerting.Alerter,
 ) *Farm {
 	return &Farm{
 		factory:    factory,
@@ -160,6 +162,7 @@ func NewFarm(
 		rcSelector: rcSelector,
 		txner:      txner,
 		config:     config,
+		alerter:    alerter,
 	}
 }
 
@@ -405,7 +408,7 @@ func (rlf *Farm) validateRoll(update roll_fields.Update, logger logging.Logger) 
 // Tries to delete the given RU every second until it succeeds
 func (rlf *Farm) mustDeleteRU(id roll_fields.ID, logger logging.Logger) {
 	ctx, cancelFunc := transaction.New(context.Background())
-	defer cancelFunc() // technically not necessary once Commit() succeeds
+	defer cancelFunc()
 	err := rlf.rls.Delete(ctx, id)
 	if err != nil {
 		// this error is really bad because we can't recover from it
@@ -429,8 +432,40 @@ func (rlf *Farm) mustDeleteRU(id roll_fields.ID, logger logging.Logger) {
 		}
 	}
 
-	for err = transaction.Commit(ctx, cancelFunc, rlf.txner); err != nil; err = transaction.Commit(ctx, cancelFunc, rlf.txner) {
+	var ok bool
+	var resp *api.KVTxnResponse
+	f := func() error {
+		ok, resp, err = transaction.Commit(ctx, rlf.txner)
+		return err
+	}
+
+	for err = f(); err != nil; err = f() {
 		logger.WithError(err).Errorln("Could not delete update")
+		time.Sleep(1 * time.Second)
+	}
+
+	if ok {
+		return
+	}
+
+	// the transaction was rolled back which shouldn't happen because it
+	// doesn't contain any conditional operations, just deleting the RU and
+	// creating an audit log record. something really weird is going on if
+	// we get here so send an alert for manual intervention
+	f2 := func() error {
+		return rlf.alerter.Alert(alerting.AlertInfo{
+			Description: "could not commit RU deletion transaction",
+			IncidentKey: "roll-deletion-" + id.String(),
+			Details: struct {
+				Errors api.TxnErrors `json:"error"`
+			}{
+				Errors: resp.Errors,
+			},
+		})
+	}
+
+	for err = f2(); err != nil; err = f2() {
+		logger.WithError(err).Errorln("Could not send alert about RU deletion failure")
 		time.Sleep(1 * time.Second)
 	}
 }
