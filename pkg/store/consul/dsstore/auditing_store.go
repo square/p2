@@ -159,3 +159,36 @@ func (a AuditingStore) UpdateNodeSelector(
 
 	return ds, nil
 }
+
+func (a AuditingStore) Delete(
+	ctx context.Context,
+	id fields.ID,
+	user string,
+) error {
+	// fetch the daemon set first for auditing purposes
+	ds, _, err := a.innerStore.Get(id)
+	if err != nil {
+		// this is breaking a bit from the way the inner store does things; it
+		// allows you to delete a daemon set that doesn't exist without error.
+		// Here we make a different decision because the user might expect an audit
+		// log record to be created if there was no error, so instead we forbid
+		// deleting a daemon set that does not exist
+		return util.Errorf("couldn't delete daemon set: could not fetch daemon set for auditing purposes: %s", err)
+	}
+
+	err = a.innerStore.DeleteTxn(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	details, err := audit.NewDaemonSetDetails(ds, user)
+	if err != nil {
+		return err
+	}
+	err = a.auditLogStore.Create(ctx, audit.DSDeletedEvent, details)
+	if err != nil {
+		return util.Errorf("could not create audit log record for daemon set deletion: %s", err)
+	}
+
+	return nil
+}
