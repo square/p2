@@ -314,6 +314,144 @@ func TestEnableWithAudit(t *testing.T) {
 	}
 }
 
+func TestUpdateManifest(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+
+	logger := logging.TestLogger()
+	dsStore := NewConsul(fixture.Client, 0, &logger)
+	auditLogStore := auditlogstore.NewConsulStore(fixture.Client.KV())
+
+	auditingStore := NewAuditingStore(dsStore, auditLogStore)
+
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	ds, err := dsStore.Create(ctx, testManifest(), 1, "some_name", klabels.Everything(), "some_pod", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	builder := manifest.NewBuilder()
+	builder.SetID("some_other_pod_id")
+	podManifestWithDifferentPodID := builder.GetManifest()
+
+	ctx, cancel = transaction.New(context.Background())
+	defer cancel()
+	_, err = auditingStore.UpdateManifest(ctx, ds.ID, podManifestWithDifferentPodID, "some_user")
+	if err == nil {
+		t.Error("expected an error when changing the pod ID of the manifest")
+	}
+
+	ctx, cancel = transaction.New(context.Background())
+	defer cancel()
+	builder.SetID("some_pod")
+	err = builder.SetConfig(map[interface{}]interface{}{"foo": "bar"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newManifest := builder.GetManifest()
+
+	_, err = auditingStore.UpdateManifest(ctx, ds.ID, newManifest, "some_user")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm the manifest hasn't changed yet and also there's no audit log record
+	ds, _, err = dsStore.Get(ds.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dsSHA, err := ds.Manifest.SHA()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testSHA, err := testManifest().SHA()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if testSHA != dsSHA {
+		t.Error("the daemon set's manifest shouldn't have changed before committing the transaction")
+	}
+
+	alMap, err := auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(alMap) != 0 {
+		t.Errorf("expected 0 audit logs before committing transaction but there were %d", len(alMap))
+	}
+
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm the manifest has now changed
+	ds, _, err = dsStore.Get(ds.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dsSHA, err = ds.Manifest.SHA()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newManifestSHA, err := newManifest.SHA()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	alMap, err = auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(alMap) != 1 {
+		t.Errorf("expected 1 audit log before committing transaction but there were %d", len(alMap))
+	}
+
+	for _, v := range alMap {
+		if v.EventType != audit.DSManifestUpdatedEvent {
+			t.Errorf("expected audit log record with type %q but was %q", audit.DSManifestUpdatedEvent, v.EventType)
+		}
+
+		var details audit.DSEventDetails
+		err = json.Unmarshal([]byte(*v.EventDetails), &details)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if details.User != "some_user" {
+			t.Errorf("expected user name on audit record to be %q but was %q", "some_user", details.User)
+		}
+
+		// smoke test the ID matches the details
+		if details.DaemonSet.ID != ds.ID {
+			t.Errorf("expected daemon set in audit log record to have ID %s but was %s", ds.ID, details.DaemonSet.ID)
+		}
+
+		manifestSHA, err := details.DaemonSet.Manifest.SHA()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if manifestSHA != newManifestSHA {
+			t.Error("the manifest in the audit log record didn't reflect the manifest change")
+		}
+	}
+}
+
 func testManifest() manifest.Manifest {
 	builder := manifest.NewBuilder()
 	builder.SetID("some_pod")
