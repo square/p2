@@ -660,6 +660,105 @@ func TestCantDeleteMissingDaemonSetWithAudit(t *testing.T) {
 	}
 }
 
+func TestUpdateMinHealth(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+
+	logger := logging.TestLogger()
+	dsStore := NewConsul(fixture.Client, 0, &logger)
+	auditLogStore := auditlogstore.NewConsulStore(fixture.Client.KV())
+
+	auditingStore := NewAuditingStore(dsStore, auditLogStore)
+
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	ds, err := dsStore.Create(ctx, testManifest(), 1, "some_name", klabels.Everything(), "some_pod", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel = transaction.New(context.Background())
+	defer cancel()
+
+	_, err = auditingStore.UpdateMinHealth(ctx, ds.ID, 23, "some_user")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm he daemon set didn't have its min health changed yet
+	ds, _, err = dsStore.Get(ds.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ds.MinHealth != 1 {
+		t.Fatal("min health shouldn't have changed prior to committing the transaction")
+	}
+
+	alMap, err := auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(alMap) != 0 {
+		t.Errorf("expected 0 audit logs before committing transaction but there were %d", len(alMap))
+	}
+
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm the daemon set was deleted
+	ds, _, err = dsStore.Get(ds.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ds.MinHealth != 23 {
+		t.Fatal("min health should have been updated after comitting the transaction")
+	}
+
+	alMap, err = auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(alMap) != 1 {
+		t.Errorf("expected 1 audit log before committing transaction but there were %d", len(alMap))
+	}
+
+	for _, v := range alMap {
+		if v.EventType != audit.DSModifiedEvent {
+			t.Errorf("expected audit log record with type %q but was %q", audit.DSModifiedEvent, v.EventType)
+		}
+
+		var details audit.DSEventDetails
+		err = json.Unmarshal([]byte(*v.EventDetails), &details)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if details.User != "some_user" {
+			t.Errorf("expected user name on audit record to be %q but was %q", "some_user", details.User)
+		}
+
+		// smoke test that the details have the daemon set prior to deletion by checking the ID
+		if details.DaemonSet.ID != ds.ID {
+			t.Errorf("expected daemon set in audit log record to have ID %s but was %s", ds.ID, details.DaemonSet.ID)
+		}
+
+		if details.DaemonSet.MinHealth != 23 {
+			t.Errorf("expected daemon set in audit log record to have %d min health but was %d", 23, details.DaemonSet.MinHealth)
+		}
+	}
+}
+
 func testManifest() manifest.Manifest {
 	builder := manifest.NewBuilder()
 	builder.SetID("some_pod")
