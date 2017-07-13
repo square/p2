@@ -278,7 +278,6 @@ func (h *httpApplicator) getMatches(selector labels.Selector, labelType Type, ca
 	if err == nil {
 		return labeled, nil
 	}
-	h.logger.Warnln(err)
 
 	// fallback to a list of IDs
 	matches := []string{}
