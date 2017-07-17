@@ -29,7 +29,10 @@ func (kv *FakeConsulKV) List(prefix string, opts *api.QueryOptions) (api.KVPairs
 }
 
 func (kv *FakeConsulKV) Get(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
-	bs := kv.config[ID(prefix)]
+	bs, ok := kv.config[ID(prefix)]
+	if !ok {
+		return nil, nil, nil
+	}
 	return api.KVPairs{&api.KVPair{Value: bs}}, &api.QueryMeta{LastIndex: 1}, nil
 }
 
@@ -43,7 +46,10 @@ func (kv *FakeConsulKV) CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.Writ
 }
 
 func (kv *FakeConsulKV) DeleteCAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
-	return false, nil, nil
+	id := ID(p.Key)
+	delete(kv.config, id)
+
+	return true, nil, nil
 }
 
 func yamlMarshal(m map[interface{}]interface{}) string {
@@ -128,5 +134,30 @@ func TestPutConfig(t *testing.T) {
 		if fields.Config[k] != v {
 			t.Errorf("Fields do not match on key %s. Wanted: %v have: %v", k, v, fields.Config[k])
 		}
+	}
+}
+
+func TestDeleteConfig(t *testing.T) {
+	fakeConsulKV := FakeConsulKV{}
+	consulStore := NewConsulStore(&fakeConsulKV)
+
+	id := ID("foo")
+	m := make(map[interface{}]interface{})
+	m["configuration"] = "hell yeah"
+	f := Fields{
+		ID:     id,
+		Config: m,
+	}
+
+	consulStore.PutConfig(context.TODO(), f, version(1))
+
+	err := consulStore.DeleteConfig(context.TODO(), id, version(1))
+	if err != nil {
+		t.Fatalf("Error when deleting configuration from store: %v", err)
+	}
+
+	fields, _, err := consulStore.FetchConfig(id)
+	if err == nil {
+		t.Errorf("Expected to receive an error when fetching deleted configuration. Got: %v", fields)
 	}
 }

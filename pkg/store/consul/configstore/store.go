@@ -51,6 +51,8 @@ type ConsulStore struct {
 	consulKV ConsulKV
 }
 
+var _ Storer = &ConsulStore{}
+
 func NewConsulStore(consulKV ConsulKV) *ConsulStore {
 	return &ConsulStore{consulKV: consulKV}
 }
@@ -61,7 +63,7 @@ func (cs *ConsulStore) FetchConfig(id ID) (Fields, *Version, error) {
 		return Fields{}, nil, util.Errorf("Unable to read config at %v", err)
 	}
 	if len(config) != 1 {
-		return Fields{}, nil, util.Errorf("Unexpected number of configs stored at ID: %s", id)
+		return Fields{}, nil, util.Errorf("Unexpected number of configs stored at ID: %s. Got: %d", id, len(config))
 	}
 	c := config[0]
 	env := &envelope{}
@@ -80,11 +82,11 @@ func (cs *ConsulStore) FetchConfig(id ID) (Fields, *Version, error) {
 }
 
 func (cs *ConsulStore) PutConfig(ctx context.Context, config Fields, v *Version) error {
-	shyaml, err := yaml.Marshal(config.Config)
+	yamlConfig, err := yaml.Marshal(config.Config)
 	if err != nil {
 		return err
 	}
-	env := envelope{Config: string(shyaml)}
+	env := envelope{Config: string(yamlConfig)}
 
 	bs, err := json.Marshal(env)
 	kvPair := &api.KVPair{
@@ -97,9 +99,25 @@ func (cs *ConsulStore) PutConfig(ctx context.Context, config Fields, v *Version)
 		return util.Errorf("CAS Failed! Consider retry")
 	}
 	if err != nil {
-		return util.Errorf("Cas Failed: %v", err)
+		return util.Errorf("CAS Failed: %v", err)
 	}
 	return nil
 }
 
-func (cs *ConsulStore) DeleteConfig(context.Context, ID, Version) error { return nil }
+func (cs *ConsulStore) DeleteConfig(_ context.Context, id ID, v *Version) error {
+	kvPair := &api.KVPair{
+		Key:         id.String(),
+		ModifyIndex: v.uint64(),
+	}
+
+	ok, _, err := cs.consulKV.DeleteCAS(kvPair, nil)
+	if !ok {
+		return util.Errorf("CAS Delete Failed! Consider retry")
+	}
+	if err != nil {
+		return util.Errorf("CAS Delete Failed: %", err)
+	}
+
+	return nil
+
+}
