@@ -1,6 +1,7 @@
 package configstore
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -11,7 +12,16 @@ import (
 )
 
 type FakeConsulKV struct {
-	config map[ID]map[interface{}]interface{}
+	config map[ID][]byte
+}
+
+func (kv *FakeConsulKV) insertConfig(id ID, m map[interface{}]interface{}) {
+	if kv.config == nil {
+		kv.config = make(map[ID][]byte)
+	}
+	yaml := yamlMarshal(m)
+	j := envelope{Config: yaml}
+	kv.config[id] = jsonMarshal(j)
 }
 
 func (kv *FakeConsulKV) List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
@@ -19,17 +29,19 @@ func (kv *FakeConsulKV) List(prefix string, opts *api.QueryOptions) (api.KVPairs
 }
 
 func (kv *FakeConsulKV) Get(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
-	m := make(map[interface{}]interface{})
-	m["foo"] = "bar"
-	yaml := yamlMarshal(m)
-	j := envelope{Config: yaml}
-
-	return api.KVPairs{&api.KVPair{Value: jsonMarshal(j)}}, &api.QueryMeta{LastIndex: 1}, nil
+	bs := kv.config[ID(prefix)]
+	return api.KVPairs{&api.KVPair{Value: bs}}, &api.QueryMeta{LastIndex: 1}, nil
 }
 
+// /config/deadbeef
 func (kv *FakeConsulKV) CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
-	return false, nil, nil
+	if kv.config == nil {
+		kv.config = make(map[ID][]byte)
+	}
+	kv.config[ID(p.Key)] = p.Value
+	return true, nil, nil
 }
+
 func (kv *FakeConsulKV) DeleteCAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
 	return false, nil, nil
 }
@@ -55,11 +67,61 @@ func TestFetchConfig(t *testing.T) {
 	fakeConsulKV := FakeConsulKV{}
 	consulStore := NewConsulStore(&fakeConsulKV)
 
-	fields, _, err := consulStore.FetchConfig("id doesn't matter for this test... yet")
+	m := make(map[interface{}]interface{})
+	m["configuration"] = "hell yeah"
+	id := ID("foo")
+	fakeConsulKV.insertConfig(id, m)
+
+	fields, _, err := consulStore.FetchConfig(id)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Printf("%+v", fields)
+	if fields.ID != id {
+		t.Errorf("Returned id is not correct. Want: %s, have: %s", id, fields.ID)
+	}
 
+	if len(fields.Config) != len(m) {
+		t.Errorf("Size of configuration does not match.")
+	}
+
+	for k, v := range m {
+		if fields.Config[k] != v {
+			t.Errorf("Fields do not match on key %s. Wanted: %v have: %v", k, v, fields.Config[k])
+		}
+	}
+}
+
+func TestPutConfig(t *testing.T) {
+	fakeConsulKV := FakeConsulKV{}
+	consulStore := NewConsulStore(&fakeConsulKV)
+
+	id := ID("foo")
+	m := make(map[interface{}]interface{})
+	m["configuration"] = "hell yeah"
+	f := Fields{
+		ID:     id,
+		Config: m,
+	}
+
+	consulStore.PutConfig(context.TODO(), f, Version("1"))
+
+	fields, _, err := consulStore.FetchConfig(id)
+	if err != nil {
+		t.Errorf("Could not read config out of datastore")
+	}
+
+	if fields.ID != id {
+		t.Errorf("Returned id is not correct. Want: %s, have: %s", id, fields.ID)
+	}
+
+	if len(fields.Config) != len(m) {
+		t.Errorf("Size of configuration does not match.")
+	}
+
+	for k, v := range m {
+		if fields.Config[k] != v {
+			t.Errorf("Fields do not match on key %s. Wanted: %v have: %v", k, v, fields.Config[k])
+		}
+	}
 }
