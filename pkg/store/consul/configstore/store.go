@@ -116,10 +116,10 @@ func (cs *ConsulStore) DeleteConfig(_ context.Context, id ID, v *Version) error 
 
 	ok, _, err := cs.consulKV.DeleteCAS(kvPair, nil)
 	if !ok {
-		return util.Errorf("CAS Delete Failed! Consider retry")
+		return util.Errorf("CAS Delete Failed! Consider retry.")
 	}
 	if err != nil {
-		return util.Errorf("CAS Delete Failed: %", err)
+		return util.Errorf("CAS Delete Failed: %v", err)
 	}
 
 	return nil
