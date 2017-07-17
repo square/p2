@@ -5,11 +5,10 @@ import (
 
 	"github.com/square/p2/pkg/util" // TODO this is wrong
 
-	"gopkg.in/v1/yaml"
-
 	"encoding/json"
 
 	"github.com/hashicorp/consul/api"
+	"gopkg.in/yaml.v2"
 )
 
 type ID string

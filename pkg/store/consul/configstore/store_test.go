@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"gopkg.in/v1/yaml"
+	"gopkg.in/yaml.v2"
 
 	"github.com/hashicorp/consul/api"
 )
