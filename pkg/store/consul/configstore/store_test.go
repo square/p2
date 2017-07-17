@@ -9,6 +9,8 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/hashicorp/consul/api"
+	"github.com/square/p2/pkg/labels"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 type FakeConsulKV struct {
@@ -71,7 +73,7 @@ func jsonMarshal(j envelope) []byte {
 
 func TestFetchConfig(t *testing.T) {
 	fakeConsulKV := FakeConsulKV{}
-	consulStore := NewConsulStore(&fakeConsulKV)
+	consulStore := NewConsulStore(&fakeConsulKV, labels.NewFakeApplicator())
 
 	m := make(map[interface{}]interface{})
 	m["configuration"] = "hell yeah"
@@ -105,7 +107,7 @@ func version(i uint64) *Version {
 
 func TestPutConfig(t *testing.T) {
 	fakeConsulKV := FakeConsulKV{}
-	consulStore := NewConsulStore(&fakeConsulKV)
+	consulStore := NewConsulStore(&fakeConsulKV, labels.NewFakeApplicator())
 
 	id := ID("foo")
 	m := make(map[interface{}]interface{})
@@ -139,7 +141,7 @@ func TestPutConfig(t *testing.T) {
 
 func TestDeleteConfig(t *testing.T) {
 	fakeConsulKV := FakeConsulKV{}
-	consulStore := NewConsulStore(&fakeConsulKV)
+	consulStore := NewConsulStore(&fakeConsulKV, labels.NewFakeApplicator())
 
 	id := ID("foo")
 	m := make(map[interface{}]interface{})
@@ -159,5 +161,40 @@ func TestDeleteConfig(t *testing.T) {
 	fields, _, err := consulStore.FetchConfig(id)
 	if err == nil {
 		t.Errorf("Expected to receive an error when fetching deleted configuration. Got: %v", fields)
+	}
+}
+
+func TestLabels(t *testing.T) {
+	fakeConsulKV := FakeConsulKV{}
+	consulStore := NewConsulStore(&fakeConsulKV, labels.NewFakeApplicator())
+
+	id := ID("foo")
+	m := make(map[interface{}]interface{})
+	m["configuration"] = "hell yeah"
+	f := Fields{
+		ID:     id,
+		Config: m,
+	}
+
+	consulStore.PutConfig(context.TODO(), f, version(1))
+
+	labelsToApply := make(map[string]string)
+	labelsToApply["a"] = "b"
+	labelsToApply["eh"] = "bee"
+	err := consulStore.LabelConfig(context.TODO(), id, labelsToApply)
+	if err != nil {
+		t.Errorf("Could not label the new config: %v", err)
+	}
+
+	sel := klabels.Everything().Add("a", klabels.EqualsOperator, []string{"b"})
+	labeled, err := consulStore.FindWhereLabeled(sel)
+	if len(labeled) != 1 {
+		t.Errorf("Found wrong number of configs. expected: %d got: %d", 1, len(labeled))
+	}
+
+	sel = klabels.Everything().Add("eh", klabels.EqualsOperator, []string{"bee"})
+	labeled, err = consulStore.FindWhereLabeled(sel)
+	if len(labeled) != 1 {
+		t.Errorf("Found wrong number of configs. expected: %d got: %d", 1, len(labeled))
 	}
 }
