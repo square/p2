@@ -152,7 +152,7 @@ config:
 	}
 	Assert(t).IsTrue(len(launchables) > 0, "Test setup error: no launchables from launchable stanzas")
 
-	err = pod.setupConfig(manifest, launchables)
+	err = pod.setupConfig(manifest, launchables, nil, nil)
 	Assert(t).IsNil(err, "There shouldn't have been an error setting up config")
 
 	configFileName, err := manifest.ConfigFileName()
