@@ -318,13 +318,17 @@ func (manifest *manifest) Marshal() ([]byte, error) {
 }
 
 func (manifest *manifest) WriteConfig(out io.Writer) error {
-	bytes, err := yaml.Marshal(manifest.Config)
+	return writeConfig(manifest.ID(), manifest.Config, out)
+}
+
+func writeConfig(id types.PodID, config map[interface{}]interface{}, out io.Writer) error {
+	bytes, err := yaml.Marshal(config)
 	if err != nil {
-		return util.Errorf("Could not write config for %s: %s", manifest.ID(), err)
+		return util.Errorf("Could not write config for %s: %s", id, err)
 	}
 	_, err = out.Write(bytes)
 	if err != nil {
-		return util.Errorf("Could not write config for %s: %s", manifest.ID(), err)
+		return util.Errorf("Could not write config for %s: %s", id, err)
 	}
 	return nil
 }
