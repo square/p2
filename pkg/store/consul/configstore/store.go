@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 
 	"github.com/hashicorp/consul/api"
+	"github.com/square/p2/pkg/labels"
 	"gopkg.in/yaml.v2"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 type ID string
@@ -33,6 +35,8 @@ type Storer interface {
 	PutConfig(context.Context, Fields, *Version) error
 	// FetchConfigsForPodClusters([]pcfields.ID) (map[pcfields.ID]Fields, error)
 	DeleteConfig(context.Context, ID, *Version) error
+	LabelConfig(context.Context, ID, map[string]string) error
+	FindWhereLabeled(klabels.Selector) ([]*Fields, error)
 }
 
 type ConsulKV interface {
@@ -47,13 +51,14 @@ type envelope struct {
 }
 
 type ConsulStore struct {
-	consulKV ConsulKV
+	consulKV   ConsulKV
+	applicator labels.Applicator
 }
 
 var _ Storer = &ConsulStore{}
 
-func NewConsulStore(consulKV ConsulKV) *ConsulStore {
-	return &ConsulStore{consulKV: consulKV}
+func NewConsulStore(consulKV ConsulKV, applicator labels.Applicator) *ConsulStore {
+	return &ConsulStore{consulKV: consulKV, applicator: applicator}
 }
 
 func (cs *ConsulStore) FetchConfig(id ID) (Fields, *Version, error) {
@@ -118,5 +123,24 @@ func (cs *ConsulStore) DeleteConfig(_ context.Context, id ID, v *Version) error 
 	}
 
 	return nil
+}
 
+func (cs *ConsulStore) LabelConfig(_ context.Context, id ID, labelsToApply map[string]string) error {
+	return cs.applicator.SetLabels(labels.Config, id.String(), labelsToApply)
+}
+
+func (cs *ConsulStore) FindWhereLabeled(label klabels.Selector) ([]*Fields, error) {
+	labeled, err := cs.applicator.GetMatches(label, labels.Config)
+	if err != nil {
+		return nil, util.Errorf("Could not query labels for %s, error was: %v", label.String(), err)
+	}
+	fields := make([]*Fields, 0, len(labeled))
+	for _, l := range labeled {
+		f, _, err := cs.FetchConfig(ID(l.ID))
+		if err != nil {
+			return nil, util.Errorf("Failed fetching config id %s: %v", l.ID, err)
+		}
+		fields = append(fields, &f)
+	}
+	return fields, nil
 }
