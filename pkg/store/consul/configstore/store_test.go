@@ -92,6 +92,11 @@ func TestFetchConfig(t *testing.T) {
 	}
 }
 
+func version(i uint64) *Version {
+	v := Version(i)
+	return &v
+}
+
 func TestPutConfig(t *testing.T) {
 	fakeConsulKV := FakeConsulKV{}
 	consulStore := NewConsulStore(&fakeConsulKV)
@@ -104,7 +109,7 @@ func TestPutConfig(t *testing.T) {
 		Config: m,
 	}
 
-	consulStore.PutConfig(context.TODO(), f, Version("1"))
+	consulStore.PutConfig(context.TODO(), f, version(1))
 
 	fields, _, err := consulStore.FetchConfig(id)
 	if err != nil {
