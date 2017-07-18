@@ -2,13 +2,13 @@ package configstore
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/square/p2/pkg/util" // TODO this is wrong
 
-	"encoding/json"
-
 	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/labels"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"gopkg.in/yaml.v2"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
@@ -32,16 +32,18 @@ type Fields struct {
 // Storer should also have the ability to look things up by pod cluster type things (such as the holy trinity of thingies)
 type Storer interface {
 	FetchConfig(ID) (Fields, *Version, error)
-	PutConfig(context.Context, Fields, *Version) error
+	PutConfig(Fields, *Version) error
 	// FetchConfigsForPodClusters([]pcfields.ID) (map[pcfields.ID]Fields, error)
-	DeleteConfig(context.Context, ID, *Version) error
-	LabelConfig(context.Context, ID, map[string]string) error
+	DeleteConfig(ID, *Version) error
+	PutConfigTxn(context.Context, Fields, *Version) error
+	DeleteConfigTxn(context.Context, ID, *Version) error
+	LabelConfig(ID, map[string]string) error
 	FindWhereLabeled(klabels.Selector) ([]*Fields, error)
 }
 
 type ConsulKV interface {
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
-	Get(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
+	Get(prefix string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
 	CAS(*api.KVPair, *api.WriteOptions) (bool, *api.WriteMeta, error)
 	DeleteCAS(*api.KVPair, *api.WriteOptions) (bool, *api.WriteMeta, error)
 }
@@ -63,15 +65,11 @@ func NewConsulStore(consulKV ConsulKV, applicator labels.Applicator) *ConsulStor
 
 func (cs *ConsulStore) FetchConfig(id ID) (Fields, *Version, error) {
 	config, consulMetadata, err := cs.consulKV.Get(id.String(), nil)
-	if err != nil {
+	if config == nil || err != nil {
 		return Fields{}, nil, util.Errorf("Unable to read config at %v", err)
 	}
-	if len(config) != 1 {
-		return Fields{}, nil, util.Errorf("Unexpected number of configs stored at ID: %s. Got: %d", id, len(config))
-	}
-	c := config[0]
 	env := &envelope{}
-	err = json.Unmarshal(c.Value, env)
+	err = json.Unmarshal(config.Value, env)
 	if err != nil {
 		return Fields{}, nil, nil
 	}
@@ -85,7 +83,7 @@ func (cs *ConsulStore) FetchConfig(id ID) (Fields, *Version, error) {
 	return Fields{Config: parsedConfig, ID: id}, &v, nil
 }
 
-func (cs *ConsulStore) PutConfig(ctx context.Context, config Fields, v *Version) error {
+func (cs *ConsulStore) PutConfig(config Fields, v *Version) error {
 	yamlConfig, err := yaml.Marshal(config.Config)
 	if err != nil {
 		return err
@@ -93,12 +91,12 @@ func (cs *ConsulStore) PutConfig(ctx context.Context, config Fields, v *Version)
 	env := envelope{Config: string(yamlConfig)}
 
 	bs, err := json.Marshal(env)
-	kvPair := &api.KVPair{
-		Key:         config.ID.String(),
-		Value:       bs,
-		ModifyIndex: v.uint64(),
-	}
-	ok, _, err := cs.consulKV.CAS(kvPair, nil)
+	ok, _, err := cs.consulKV.CAS(
+		&api.KVPair{
+			Key:         config.ID.String(),
+			Value:       bs,
+			ModifyIndex: v.uint64(),
+		}, nil)
 	if !ok {
 		return util.Errorf("CAS Failed! Consider retry")
 	}
@@ -108,24 +106,53 @@ func (cs *ConsulStore) PutConfig(ctx context.Context, config Fields, v *Version)
 	return nil
 }
 
-func (cs *ConsulStore) DeleteConfig(_ context.Context, id ID, v *Version) error {
-	kvPair := &api.KVPair{
+func (cs *ConsulStore) PutConfigTxn(ctx context.Context, config Fields, v *Version) error {
+	yamlConfig, err := yaml.Marshal(config.Config)
+	if err != nil {
+		return err
+	}
+	env := envelope{Config: string(yamlConfig)}
+
+	bs, err := json.Marshal(env)
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb:  string(api.KVSet),
+		Key:   config.ID.String(),
+		Value: bs,
+		Index: v.uint64(),
+	})
+	if err != nil {
+		return util.Errorf("Failed to add PutConfig operation to the transaction: %v", err)
+	}
+	return nil
+}
+
+func (cs *ConsulStore) DeleteConfig(id ID, v *Version) error {
+	ok, _, err := cs.consulKV.DeleteCAS(&api.KVPair{
 		Key:         id.String(),
 		ModifyIndex: v.uint64(),
-	}
-
-	ok, _, err := cs.consulKV.DeleteCAS(kvPair, nil)
+	}, nil)
 	if !ok {
 		return util.Errorf("CAS Delete Failed! Consider retry.")
 	}
 	if err != nil {
 		return util.Errorf("CAS Delete Failed: %v", err)
 	}
-
 	return nil
 }
 
-func (cs *ConsulStore) LabelConfig(_ context.Context, id ID, labelsToApply map[string]string) error {
+func (cs *ConsulStore) DeleteConfigTxn(ctx context.Context, id ID, v *Version) error {
+	err := transaction.Add(ctx, api.KVTxnOp{
+		Verb:  string(api.KVDeleteCAS),
+		Key:   id.String(),
+		Index: v.uint64(),
+	})
+	if err != nil {
+		return util.Errorf("Failed to add DeleteConfig operation to the transaction: %v", err)
+	}
+	return nil
+}
+
+func (cs *ConsulStore) LabelConfig(id ID, labelsToApply map[string]string) error {
 	return cs.applicator.SetLabels(labels.Config, id.String(), labelsToApply)
 }
 

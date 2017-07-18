@@ -1,15 +1,18 @@
 package configstore
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
 
 	"gopkg.in/yaml.v2"
 
+	"context"
+
 	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/labels"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -30,12 +33,12 @@ func (kv *FakeConsulKV) List(prefix string, opts *api.QueryOptions) (api.KVPairs
 	return nil, nil, nil
 }
 
-func (kv *FakeConsulKV) Get(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
+func (kv *FakeConsulKV) Get(prefix string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
 	bs, ok := kv.config[ID(prefix)]
 	if !ok {
 		return nil, nil, nil
 	}
-	return api.KVPairs{&api.KVPair{Value: bs}}, &api.QueryMeta{LastIndex: 1}, nil
+	return &api.KVPair{Value: bs}, &api.QueryMeta{LastIndex: 1}, nil
 }
 
 // /config/deadbeef
@@ -117,7 +120,7 @@ func TestPutConfig(t *testing.T) {
 		Config: m,
 	}
 
-	consulStore.PutConfig(context.TODO(), f, version(1))
+	consulStore.PutConfig(f, version(1))
 
 	fields, _, err := consulStore.FetchConfig(id)
 	if err != nil {
@@ -151,9 +154,9 @@ func TestDeleteConfig(t *testing.T) {
 		Config: m,
 	}
 
-	consulStore.PutConfig(context.TODO(), f, version(1))
+	consulStore.PutConfig(f, version(1))
 
-	err := consulStore.DeleteConfig(context.TODO(), id, version(1))
+	err := consulStore.DeleteConfig(id, version(1))
 	if err != nil {
 		t.Fatalf("Error when deleting configuration from store: %v", err)
 	}
@@ -176,12 +179,12 @@ func TestLabels(t *testing.T) {
 		Config: m,
 	}
 
-	consulStore.PutConfig(context.TODO(), f, version(1))
+	consulStore.PutConfig(f, version(1))
 
 	labelsToApply := make(map[string]string)
 	labelsToApply["a"] = "b"
 	labelsToApply["eh"] = "bee"
-	err := consulStore.LabelConfig(context.TODO(), id, labelsToApply)
+	err := consulStore.LabelConfig(id, labelsToApply)
 	if err != nil {
 		t.Errorf("Could not label the new config: %v", err)
 	}
@@ -196,5 +199,78 @@ func TestLabels(t *testing.T) {
 	labeled, err = consulStore.FindWhereLabeled(sel)
 	if len(labeled) != 1 {
 		t.Errorf("Found wrong number of configs. expected: %d got: %d", 1, len(labeled))
+	}
+}
+
+func TestPutConfigTxn(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+	consulStore := NewConsulStore(fixture.Client.KV(), labels.NewFakeApplicator())
+
+	id := ID("foo")
+	m := make(map[string]interface{})
+	m["configuration"] = "hell yeah"
+	f := Fields{
+		ID:     id,
+		Config: m,
+	}
+
+	ctx, _ := transaction.New(context.Background())
+	consulStore.PutConfigTxn(ctx, f, version(1))
+
+	ok, resp, err := transaction.Commit(ctx, fixture.Client.KV())
+	if !ok || err != nil {
+		t.Errorf("Could not successfully commit transaction.\nOk: %t\nerr: %v\nresp: %+v", ok, err, resp)
+	}
+
+	fields, _, err := consulStore.FetchConfig(id)
+	if err != nil {
+		t.Errorf("Could not read config out of datastore")
+	}
+
+	if fields.ID != id {
+		t.Errorf("Returned id is not correct. Want: %s, have: %s", id, fields.ID)
+	}
+
+	if len(fields.Config) != len(m) {
+		t.Errorf("Size of configuration does not match.")
+	}
+
+	for k, v := range m {
+		if fields.Config[k] != v {
+			t.Errorf("Fields do not match on key %s. Wanted: %v have: %v", k, v, fields.Config[k])
+		}
+	}
+}
+
+func TestDeleteConfigTxn(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+	consulStore := NewConsulStore(fixture.Client.KV(), labels.NewFakeApplicator())
+
+	id := ID("foo")
+	m := make(map[string]interface{})
+	m["configuration"] = "hell yeah"
+	f := Fields{
+		ID:     id,
+		Config: m,
+	}
+
+	consulStore.PutConfig(f, version(1))
+
+	ctx, _ := transaction.New(context.Background())
+	err := consulStore.DeleteConfigTxn(ctx, id, version(1))
+	if err != nil {
+		t.Fatalf("Error when deleting configuration from store: %v", err)
+	}
+
+	ok, resp, err := transaction.Commit(ctx, fixture.Client.KV())
+	if !ok || err != nil {
+		t.Errorf("Could not successfully commit transaction.\nOk: %t\nerr: %v\nresp: %+v", ok, err, resp)
+	}
+
+	fields, _, err := consulStore.FetchConfig(id)
+	if err == nil {
+		t.Errorf("Expected to receive an error when fetching deleted configuration. Got: %v", fields)
 	}
 }
