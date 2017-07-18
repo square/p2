@@ -549,11 +549,60 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 	if err != nil {
 		return util.Errorf("Could not determine pod UID/GID: %s", err)
 	}
+
 	var configData bytes.Buffer
-	err = manifest.WriteConfig(&configData)
-	if err != nil {
-		return err
+	if labeler != nil && configStore != nil {
+		// Merge config from pod cluster
+		labeled, err := labeler.GetLabels(labels.POD, labels.MakePodLabelKey(pod.node, pod.Id))
+		if err != nil {
+			// A bit unfortunate that setupConfig (and thus pod installation) now requires a working label store,
+			// but the alternative is potentially letting a pod come up with incorrect config, which seems worse.
+			// So, return the error.
+			return err
+		}
+
+		pcLabels := []string{
+			types.AvailabilityZoneLabel,
+			types.ClusterNameLabel,
+			types.PodIDLabel,
+		}
+		sel := klabels.Everything()
+		hadLabels := false
+		for _, pcLabel := range pcLabels {
+			if val := labeled.Labels.Get(pcLabel); val != "" {
+				sel = sel.Add(pcLabel, klabels.EqualsOperator, []string{val})
+				hadLabels = true
+			}
+		}
+
+		var configToUse map[interface{}]interface{}
+
+		if hadLabels {
+			configs, err := configStore.FindWhereLabeled(sel)
+			if err != nil && !labels.IsNoLabelsFound(err) {
+				return err
+			}
+			if len(configs) > 1 {
+				return util.Errorf("Ambiguous configs for %s: %+v", sel, configs)
+			}
+			// Nonexistent is OK, just use what's in the manifest.
+			// Unique is OK, merge it with the manifest.
+			if len(configs) == 1 {
+				configToUse = configs[0].Config
+			}
+		}
+
+		err = manifest.WriteMergedConfig(&configData, configToUse)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = manifest.WriteConfig(&configData)
+		if err != nil {
+			return err
+		}
 	}
+
 	var platConfigData bytes.Buffer
 	err = manifest.WritePlatformConfig(&platConfigData)
 	if err != nil {
