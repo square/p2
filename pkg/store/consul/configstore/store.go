@@ -25,7 +25,7 @@ func (v *Version) uint64() uint64 {
 }
 
 type Fields struct {
-	Config map[interface{}]interface{}
+	Config map[string]interface{}
 	ID     ID
 }
 
@@ -75,7 +75,7 @@ func (cs *ConsulStore) FetchConfig(id ID) (Fields, *Version, error) {
 	if err != nil {
 		return Fields{}, nil, nil
 	}
-	parsedConfig := make(map[interface{}]interface{})
+	parsedConfig := make(map[string]interface{})
 	err = yaml.Unmarshal([]byte(env.Config), &parsedConfig)
 	if err != nil {
 		return Fields{}, nil, util.Errorf("Config did not unmarshal as YAML! %v", err)
