@@ -1,7 +1,6 @@
 package configstore
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -117,7 +116,7 @@ func TestPutConfig(t *testing.T) {
 		Config: m,
 	}
 
-	consulStore.PutConfig(context.TODO(), f, version(1))
+	consulStore.PutConfig(f, version(1))
 
 	fields, _, err := consulStore.FetchConfig(id)
 	if err != nil {
@@ -151,9 +150,9 @@ func TestDeleteConfig(t *testing.T) {
 		Config: m,
 	}
 
-	consulStore.PutConfig(context.TODO(), f, version(1))
+	consulStore.PutConfig(f, version(1))
 
-	err := consulStore.DeleteConfig(context.TODO(), id, version(1))
+	err := consulStore.DeleteConfig(id, version(1))
 	if err != nil {
 		t.Fatalf("Error when deleting configuration from store: %v", err)
 	}
@@ -176,12 +175,12 @@ func TestLabels(t *testing.T) {
 		Config: m,
 	}
 
-	consulStore.PutConfig(context.TODO(), f, version(1))
+	consulStore.PutConfig(f, version(1))
 
 	labelsToApply := make(map[string]string)
 	labelsToApply["a"] = "b"
 	labelsToApply["eh"] = "bee"
-	err := consulStore.LabelConfig(context.TODO(), id, labelsToApply)
+	err := consulStore.LabelConfig(id, labelsToApply)
 	if err != nil {
 		t.Errorf("Could not label the new config: %v", err)
 	}
