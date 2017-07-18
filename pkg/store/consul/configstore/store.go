@@ -109,11 +109,14 @@ func (cs *ConsulStore) PutConfig(config Fields, v *Version) error {
 func (cs *ConsulStore) PutConfigTxn(ctx context.Context, config Fields, v *Version) error {
 	yamlConfig, err := yaml.Marshal(config.Config)
 	if err != nil {
-		return err
+		return util.Errorf("Failed to marshal configuration into YAML: %v", err)
 	}
 	env := envelope{Config: string(yamlConfig)}
 
 	bs, err := json.Marshal(env)
+	if err != nil {
+		return util.Errorf("Failed to marshal configuration and id into JSON: %v", err)
+	}
 	err = transaction.Add(ctx, api.KVTxnOp{
 		Verb:  string(api.KVSet),
 		Key:   config.ID.String(),
@@ -131,11 +134,11 @@ func (cs *ConsulStore) DeleteConfig(id ID, v *Version) error {
 		Key:         id.String(),
 		ModifyIndex: v.uint64(),
 	}, nil)
-	if !ok {
-		return util.Errorf("CAS Delete Failed! Consider retry.")
-	}
 	if err != nil {
 		return util.Errorf("CAS Delete Failed: %v", err)
+	}
+	if !ok {
+		return util.Errorf("CAS Delete Failed! Consider retry.")
 	}
 	return nil
 }
