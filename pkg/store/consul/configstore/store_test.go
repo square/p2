@@ -20,7 +20,7 @@ type FakeConsulKV struct {
 	config map[ID][]byte
 }
 
-func (kv *FakeConsulKV) insertConfig(id ID, m map[string]interface{}) {
+func (kv *FakeConsulKV) insertConfig(id ID, m map[interface{}]interface{}) {
 	if kv.config == nil {
 		kv.config = make(map[ID][]byte)
 	}
@@ -57,7 +57,7 @@ func (kv *FakeConsulKV) DeleteCAS(p *api.KVPair, q *api.WriteOptions) (bool, *ap
 	return true, nil, nil
 }
 
-func yamlMarshal(m map[string]interface{}) string {
+func yamlMarshal(m map[interface{}]interface{}) string {
 	bs, err := yaml.Marshal(m)
 	if err != nil {
 		panic(fmt.Sprintf("I need better YAML, y'all: %v", err))
@@ -78,7 +78,7 @@ func TestFetchConfig(t *testing.T) {
 	fakeConsulKV := FakeConsulKV{}
 	consulStore := NewConsulStore(&fakeConsulKV, labels.NewFakeApplicator())
 
-	m := make(map[string]interface{})
+	m := make(map[interface{}]interface{})
 	m["configuration"] = "hell yeah"
 	id := ID("foo")
 	fakeConsulKV.insertConfig(id, m)
@@ -113,7 +113,7 @@ func TestPutConfig(t *testing.T) {
 	consulStore := NewConsulStore(&fakeConsulKV, labels.NewFakeApplicator())
 
 	id := ID("foo")
-	m := make(map[string]interface{})
+	m := make(map[interface{}]interface{})
 	m["configuration"] = "hell yeah"
 	f := Fields{
 		ID:     id,
@@ -147,7 +147,7 @@ func TestDeleteConfig(t *testing.T) {
 	consulStore := NewConsulStore(&fakeConsulKV, labels.NewFakeApplicator())
 
 	id := ID("foo")
-	m := make(map[string]interface{})
+	m := make(map[interface{}]interface{})
 	m["configuration"] = "hell yeah"
 	f := Fields{
 		ID:     id,
@@ -172,7 +172,7 @@ func TestLabels(t *testing.T) {
 	consulStore := NewConsulStore(&fakeConsulKV, labels.NewFakeApplicator())
 
 	id := ID("foo")
-	m := make(map[string]interface{})
+	m := make(map[interface{}]interface{})
 	m["configuration"] = "hell yeah"
 	f := Fields{
 		ID:     id,
@@ -208,7 +208,7 @@ func TestPutConfigTxn(t *testing.T) {
 	consulStore := NewConsulStore(fixture.Client.KV(), labels.NewFakeApplicator())
 
 	id := ID("foo")
-	m := make(map[string]interface{})
+	m := make(map[interface{}]interface{})
 	m["configuration"] = "hell yeah"
 	f := Fields{
 		ID:     id,
@@ -249,7 +249,7 @@ func TestDeleteConfigTxn(t *testing.T) {
 	consulStore := NewConsulStore(fixture.Client.KV(), labels.NewFakeApplicator())
 
 	id := ID("foo")
-	m := make(map[string]interface{})
+	m := make(map[interface{}]interface{})
 	m["configuration"] = "hell yeah"
 	f := Fields{
 		ID:     id,
