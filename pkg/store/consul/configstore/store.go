@@ -2,10 +2,9 @@ package configstore
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/square/p2/pkg/util" // TODO this is wrong
-
-	"encoding/json"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/labels"
@@ -44,7 +43,7 @@ type Storer interface {
 
 type ConsulKV interface {
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
-	Get(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
+	Get(prefix string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
 	CAS(*api.KVPair, *api.WriteOptions) (bool, *api.WriteMeta, error)
 	DeleteCAS(*api.KVPair, *api.WriteOptions) (bool, *api.WriteMeta, error)
 }
@@ -66,15 +65,11 @@ func NewConsulStore(consulKV ConsulKV, applicator labels.Applicator) *ConsulStor
 
 func (cs *ConsulStore) FetchConfig(id ID) (Fields, *Version, error) {
 	config, consulMetadata, err := cs.consulKV.Get(id.String(), nil)
-	if err != nil {
+	if config == nil || err != nil {
 		return Fields{}, nil, util.Errorf("Unable to read config at %v", err)
 	}
-	if len(config) != 1 {
-		return Fields{}, nil, util.Errorf("Unexpected number of configs stored at ID: %s. Got: %d", id, len(config))
-	}
-	c := config[0]
 	env := &envelope{}
-	err = json.Unmarshal(c.Value, env)
+	err = json.Unmarshal(config.Value, env)
 	if err != nil {
 		return Fields{}, nil, nil
 	}
