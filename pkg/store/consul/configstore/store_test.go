@@ -29,12 +29,12 @@ func (kv *FakeConsulKV) List(prefix string, opts *api.QueryOptions) (api.KVPairs
 	return nil, nil, nil
 }
 
-func (kv *FakeConsulKV) Get(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
+func (kv *FakeConsulKV) Get(prefix string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
 	bs, ok := kv.config[ID(prefix)]
 	if !ok {
 		return nil, nil, nil
 	}
-	return api.KVPairs{&api.KVPair{Value: bs}}, &api.QueryMeta{LastIndex: 1}, nil
+	return &api.KVPair{Value: bs}, &api.QueryMeta{LastIndex: 1}, nil
 }
 
 // /config/deadbeef
