@@ -199,7 +199,7 @@ func (cs *ConsulStore) LabelConfig(id ID, labelsToApply map[string]string) error
 func (cs *ConsulStore) FindWhereLabeled(label klabels.Selector) ([]*Fields, error) {
 	labeled, err := cs.labeler.GetMatches(label, labels.Config)
 	if err != nil {
-		return nil, util.Errorf("Could not query labels for %s, error was: %v", label.String(), err)
+		return nil, err
 	}
 	fields := make([]*Fields, 0, len(labeled))
 	for _, l := range labeled {
