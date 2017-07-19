@@ -19,16 +19,20 @@ import (
 )
 
 type FakeConsulKV struct {
-	config map[ID][]byte
+	config map[string][]byte
 }
 
 func (kv *FakeConsulKV) insertConfig(id ID, m map[interface{}]interface{}) {
+	path, err := configPath(id)
+	if err != nil {
+		panic(err)
+	}
 	if kv.config == nil {
-		kv.config = make(map[ID][]byte)
+		kv.config = make(map[string][]byte)
 	}
 	yaml := yamlMarshal(m)
 	j := envelope{Config: yaml}
-	kv.config[id] = jsonMarshal(j)
+	kv.config[path] = jsonMarshal(j)
 }
 
 func (kv *FakeConsulKV) List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error) {
@@ -36,7 +40,7 @@ func (kv *FakeConsulKV) List(prefix string, opts *api.QueryOptions) (api.KVPairs
 }
 
 func (kv *FakeConsulKV) Get(prefix string, opts *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error) {
-	bs, ok := kv.config[ID(prefix)]
+	bs, ok := kv.config[prefix]
 	if !ok {
 		return nil, nil, nil
 	}
@@ -46,15 +50,14 @@ func (kv *FakeConsulKV) Get(prefix string, opts *api.QueryOptions) (*api.KVPair,
 // /config/deadbeef
 func (kv *FakeConsulKV) CAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
 	if kv.config == nil {
-		kv.config = make(map[ID][]byte)
+		kv.config = make(map[string][]byte)
 	}
-	kv.config[ID(p.Key)] = p.Value
+	kv.config[p.Key] = p.Value
 	return true, nil, nil
 }
 
 func (kv *FakeConsulKV) DeleteCAS(p *api.KVPair, q *api.WriteOptions) (bool, *api.WriteMeta, error) {
-	id := ID(p.Key)
-	delete(kv.config, id)
+	delete(kv.config, p.Key)
 
 	return true, nil, nil
 }
@@ -218,11 +221,11 @@ func TestPutConfigTxn(t *testing.T) {
 	}
 
 	ctx, _ := transaction.New(context.Background())
-	consulStore.PutConfigTxn(ctx, f, version(1))
+	consulStore.PutConfigTxn(ctx, f, version(0))
 
 	ok, resp, err := transaction.Commit(ctx, fixture.Client.KV())
 	if !ok || err != nil {
-		t.Errorf("Could not successfully commit transaction.\nOk: %t\nerr: %v\nresp: %+v", ok, err, resp)
+		t.Errorf("Could not successfully commit transaction.\nOk: %t\nerr: %v\nresp: %+v", ok, err, transaction.TxnErrorsToString(resp.Errors))
 	}
 
 	fields, _, err := consulStore.FetchConfig(id)

@@ -3,6 +3,7 @@ package configstore
 import (
 	"context"
 	"encoding/json"
+	"path"
 
 	"github.com/square/p2/pkg/util" // TODO this is wrong
 
@@ -12,6 +13,8 @@ import (
 	"gopkg.in/yaml.v2"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
+
+const configTree string = "configs"
 
 type ID string
 type Version uint64
@@ -52,19 +55,29 @@ type envelope struct {
 	Config string `json:"config"`
 }
 
+type Labeler interface {
+	GetMatches(selector klabels.Selector, labelType labels.Type) ([]labels.Labeled, error)
+	SetLabels(labelType labels.Type, id string, labels map[string]string) error
+}
+
 type ConsulStore struct {
-	consulKV   ConsulKV
-	applicator labels.Applicator
+	consulKV ConsulKV
+	labeler  Labeler
 }
 
 var _ Storer = &ConsulStore{}
 
-func NewConsulStore(consulKV ConsulKV, applicator labels.Applicator) *ConsulStore {
-	return &ConsulStore{consulKV: consulKV, applicator: applicator}
+func NewConsulStore(consulKV ConsulKV, labeler Labeler) *ConsulStore {
+	return &ConsulStore{consulKV: consulKV, labeler: labeler}
 }
 
 func (cs *ConsulStore) FetchConfig(id ID) (Fields, *Version, error) {
-	config, consulMetadata, err := cs.consulKV.Get(id.String(), nil)
+	path, err := configPath(id)
+	if err != nil {
+		return Fields{}, nil, err
+	}
+
+	config, consulMetadata, err := cs.consulKV.Get(path, nil)
 	if config == nil || err != nil {
 		return Fields{}, nil, util.Errorf("Unable to read config at %v", err)
 	}
@@ -91,9 +104,18 @@ func (cs *ConsulStore) PutConfig(config Fields, v *Version) error {
 	env := envelope{Config: string(yamlConfig)}
 
 	bs, err := json.Marshal(env)
+	if err != nil {
+		return util.Errorf("could not marshal config as JSON: %s", err)
+	}
+
+	path, err := configPath(config.ID)
+	if err != nil {
+		return err
+	}
+
 	ok, _, err := cs.consulKV.CAS(
 		&api.KVPair{
-			Key:         config.ID.String(),
+			Key:         path,
 			Value:       bs,
 			ModifyIndex: v.uint64(),
 		}, nil)
@@ -117,9 +139,14 @@ func (cs *ConsulStore) PutConfigTxn(ctx context.Context, config Fields, v *Versi
 	if err != nil {
 		return util.Errorf("Failed to marshal configuration and id into JSON: %v", err)
 	}
+	key, err := configPath(config.ID)
+	if err != nil {
+		return err
+	}
+
 	err = transaction.Add(ctx, api.KVTxnOp{
-		Verb:  string(api.KVSet),
-		Key:   config.ID.String(),
+		Verb:  api.KVCAS,
+		Key:   key,
 		Value: bs,
 		Index: v.uint64(),
 	})
@@ -130,8 +157,13 @@ func (cs *ConsulStore) PutConfigTxn(ctx context.Context, config Fields, v *Versi
 }
 
 func (cs *ConsulStore) DeleteConfig(id ID, v *Version) error {
+	key, err := configPath(id)
+	if err != nil {
+		return err
+	}
+
 	ok, _, err := cs.consulKV.DeleteCAS(&api.KVPair{
-		Key:         id.String(),
+		Key:         key,
 		ModifyIndex: v.uint64(),
 	}, nil)
 	if err != nil {
@@ -144,9 +176,14 @@ func (cs *ConsulStore) DeleteConfig(id ID, v *Version) error {
 }
 
 func (cs *ConsulStore) DeleteConfigTxn(ctx context.Context, id ID, v *Version) error {
-	err := transaction.Add(ctx, api.KVTxnOp{
-		Verb:  string(api.KVDeleteCAS),
-		Key:   id.String(),
+	key, err := configPath(id)
+	if err != nil {
+		return err
+	}
+
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb:  api.KVDeleteCAS,
+		Key:   key,
 		Index: v.uint64(),
 	})
 	if err != nil {
@@ -156,11 +193,11 @@ func (cs *ConsulStore) DeleteConfigTxn(ctx context.Context, id ID, v *Version) e
 }
 
 func (cs *ConsulStore) LabelConfig(id ID, labelsToApply map[string]string) error {
-	return cs.applicator.SetLabels(labels.Config, id.String(), labelsToApply)
+	return cs.labeler.SetLabels(labels.Config, id.String(), labelsToApply)
 }
 
 func (cs *ConsulStore) FindWhereLabeled(label klabels.Selector) ([]*Fields, error) {
-	labeled, err := cs.applicator.GetMatches(label, labels.Config)
+	labeled, err := cs.labeler.GetMatches(label, labels.Config)
 	if err != nil {
 		return nil, util.Errorf("Could not query labels for %s, error was: %v", label.String(), err)
 	}
@@ -173,4 +210,12 @@ func (cs *ConsulStore) FindWhereLabeled(label klabels.Selector) ([]*Fields, erro
 		fields = append(fields, &f)
 	}
 	return fields, nil
+}
+
+func configPath(id ID) (string, error) {
+	if id == "" {
+		return "", util.Errorf("path requested with empty config ID")
+	}
+
+	return path.Join(configTree, id.String()), nil
 }
