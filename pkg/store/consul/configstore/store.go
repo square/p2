@@ -3,6 +3,7 @@ package configstore
 import (
 	"context"
 	"encoding/json"
+	"path"
 
 	"github.com/square/p2/pkg/util" // TODO this is wrong
 
@@ -12,6 +13,8 @@ import (
 	"gopkg.in/yaml.v2"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
+
+const configTree string = "configs"
 
 type ID string
 type Version uint64
@@ -64,7 +67,12 @@ func NewConsulStore(consulKV ConsulKV, applicator labels.Applicator) *ConsulStor
 }
 
 func (cs *ConsulStore) FetchConfig(id ID) (Fields, *Version, error) {
-	config, consulMetadata, err := cs.consulKV.Get(id.String(), nil)
+	path, err := configPath(id)
+	if err != nil {
+		return Fields{}, nil, err
+	}
+
+	config, consulMetadata, err := cs.consulKV.Get(path, nil)
 	if config == nil || err != nil {
 		return Fields{}, nil, util.Errorf("Unable to read config at %v", err)
 	}
@@ -91,9 +99,18 @@ func (cs *ConsulStore) PutConfig(config Fields, v *Version) error {
 	env := envelope{Config: string(yamlConfig)}
 
 	bs, err := json.Marshal(env)
+	if err != nil {
+		return util.Errorf("could not marshal config as JSON: %s", err)
+	}
+
+	path, err := configPath(config.ID)
+	if err != nil {
+		return err
+	}
+
 	ok, _, err := cs.consulKV.CAS(
 		&api.KVPair{
-			Key:         config.ID.String(),
+			Key:         path,
 			Value:       bs,
 			ModifyIndex: v.uint64(),
 		}, nil)
@@ -117,9 +134,14 @@ func (cs *ConsulStore) PutConfigTxn(ctx context.Context, config Fields, v *Versi
 	if err != nil {
 		return util.Errorf("Failed to marshal configuration and id into JSON: %v", err)
 	}
+	key, err := configPath(config.ID)
+	if err != nil {
+		return err
+	}
+
 	err = transaction.Add(ctx, api.KVTxnOp{
 		Verb:  api.KVCAS,
-		Key:   config.ID.String(),
+		Key:   key,
 		Value: bs,
 		Index: v.uint64(),
 	})
@@ -130,8 +152,13 @@ func (cs *ConsulStore) PutConfigTxn(ctx context.Context, config Fields, v *Versi
 }
 
 func (cs *ConsulStore) DeleteConfig(id ID, v *Version) error {
+	key, err := configPath(id)
+	if err != nil {
+		return err
+	}
+
 	ok, _, err := cs.consulKV.DeleteCAS(&api.KVPair{
-		Key:         id.String(),
+		Key:         key,
 		ModifyIndex: v.uint64(),
 	}, nil)
 	if err != nil {
@@ -144,9 +171,14 @@ func (cs *ConsulStore) DeleteConfig(id ID, v *Version) error {
 }
 
 func (cs *ConsulStore) DeleteConfigTxn(ctx context.Context, id ID, v *Version) error {
-	err := transaction.Add(ctx, api.KVTxnOp{
-		Verb:  string(api.KVDeleteCAS),
-		Key:   id.String(),
+	key, err := configPath(id)
+	if err != nil {
+		return err
+	}
+
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb:  api.KVDeleteCAS,
+		Key:   key,
 		Index: v.uint64(),
 	})
 	if err != nil {
@@ -173,4 +205,12 @@ func (cs *ConsulStore) FindWhereLabeled(label klabels.Selector) ([]*Fields, erro
 		fields = append(fields, &f)
 	}
 	return fields, nil
+}
+
+func configPath(id ID) (string, error) {
+	if id == "" {
+		return "", util.Errorf("path requested with empty config ID")
+	}
+
+	return path.Join(configTree, id.String()), nil
 }
