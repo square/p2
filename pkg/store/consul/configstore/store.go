@@ -55,15 +55,20 @@ type envelope struct {
 	Config string `json:"config"`
 }
 
+type Labeler interface {
+	GetMatches(selector klabels.Selector, labelType labels.Type) ([]labels.Labeled, error)
+	SetLabels(labelType labels.Type, id string, labels map[string]string) error
+}
+
 type ConsulStore struct {
-	consulKV   ConsulKV
-	applicator labels.Applicator
+	consulKV ConsulKV
+	labeler  Labeler
 }
 
 var _ Storer = &ConsulStore{}
 
-func NewConsulStore(consulKV ConsulKV, applicator labels.Applicator) *ConsulStore {
-	return &ConsulStore{consulKV: consulKV, applicator: applicator}
+func NewConsulStore(consulKV ConsulKV, labeler Labeler) *ConsulStore {
+	return &ConsulStore{consulKV: consulKV, labeler: labeler}
 }
 
 func (cs *ConsulStore) FetchConfig(id ID) (Fields, *Version, error) {
@@ -188,11 +193,11 @@ func (cs *ConsulStore) DeleteConfigTxn(ctx context.Context, id ID, v *Version) e
 }
 
 func (cs *ConsulStore) LabelConfig(id ID, labelsToApply map[string]string) error {
-	return cs.applicator.SetLabels(labels.Config, id.String(), labelsToApply)
+	return cs.labeler.SetLabels(labels.Config, id.String(), labelsToApply)
 }
 
 func (cs *ConsulStore) FindWhereLabeled(label klabels.Selector) ([]*Fields, error) {
-	labeled, err := cs.applicator.GetMatches(label, labels.Config)
+	labeled, err := cs.labeler.GetMatches(label, labels.Config)
 	if err != nil {
 		return nil, util.Errorf("Could not query labels for %s, error was: %v", label.String(), err)
 	}
