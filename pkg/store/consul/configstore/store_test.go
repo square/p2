@@ -218,11 +218,11 @@ func TestPutConfigTxn(t *testing.T) {
 	}
 
 	ctx, _ := transaction.New(context.Background())
-	consulStore.PutConfigTxn(ctx, f, version(1))
+	consulStore.PutConfigTxn(ctx, f, version(0))
 
 	ok, resp, err := transaction.Commit(ctx, fixture.Client.KV())
 	if !ok || err != nil {
-		t.Errorf("Could not successfully commit transaction.\nOk: %t\nerr: %v\nresp: %+v", ok, err, resp)
+		t.Errorf("Could not successfully commit transaction.\nOk: %t\nerr: %v\nresp: %+v", ok, err, transaction.TxnErrorsToString(resp.Errors))
 	}
 
 	fields, _, err := consulStore.FetchConfig(id)
