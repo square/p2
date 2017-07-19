@@ -118,7 +118,7 @@ func (cs *ConsulStore) PutConfigTxn(ctx context.Context, config Fields, v *Versi
 		return util.Errorf("Failed to marshal configuration and id into JSON: %v", err)
 	}
 	err = transaction.Add(ctx, api.KVTxnOp{
-		Verb:  string(api.KVSet),
+		Verb:  api.KVCAS,
 		Key:   config.ID.String(),
 		Value: bs,
 		Index: v.uint64(),
