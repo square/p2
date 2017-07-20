@@ -8,11 +8,13 @@ import (
 	"path"
 	"time"
 
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	pfields "github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/configstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -24,7 +26,7 @@ import (
 type ConfigStore interface {
 	FindWhereLabeled(klabels.Selector) ([]*configstore.Fields, error)
 	PutConfigTxn(context.Context, configstore.Fields, *configstore.Version) error
-	LabelConfig(configstore.ID, map[string]string) error
+	LabelConfigTxn(context.Context, configstore.ID, map[string]string) error
 }
 
 type SessionManager interface {
@@ -36,6 +38,18 @@ type PodClusterConfigStore struct {
 	logger         logging.Logger
 	consulClient   consulutil.ConsulClient
 	sessionManager SessionManager
+	txner          transaction.Txner
+}
+
+func NewPodClusterConfigStore(consulClient consulutil.ConsulClient, logger logging.Logger) PodClusterConfigStore {
+	labeler := labels.NewConsulApplicator(consulClient, 0)
+	return PodClusterConfigStore{
+		configStore:    configstore.NewConsulStore(consulClient.KV(), labeler),
+		logger:         logger,
+		consulClient:   consulClient,
+		sessionManager: consul.NewConsulStore(consulClient),
+		txner:          consulClient.KV(),
+	}
 }
 
 func (pccs *PodClusterConfigStore) CreateOrUpdateConfigForPodCluster(
@@ -53,7 +67,6 @@ func (pccs *PodClusterConfigStore) CreateOrUpdateConfigForPodCluster(
 
 	sessions := make(chan string)
 	quit := make(chan struct{})
-	defer close(quit)
 	name := fmt.Sprintf("pod-cluster-config-lock-%s", uuid.New())
 	go consulutil.SessionManager(api.SessionEntry{
 		Name:      name,
@@ -63,6 +76,7 @@ func (pccs *PodClusterConfigStore) CreateOrUpdateConfigForPodCluster(
 	}, pccs.consulClient, sessions, quit, pccs.logger)
 	sessionID := <-sessions
 	if sessionID == "" {
+		close(quit)
 		return nil, util.Errorf("could not create session")
 	}
 	session := pccs.sessionManager.NewUnmanagedSession(sessionID, name)
@@ -70,9 +84,16 @@ func (pccs *PodClusterConfigStore) CreateOrUpdateConfigForPodCluster(
 	lockPath := lockPath(podID, az, cn)
 	unlocker, err := session.Lock(lockPath)
 	if err != nil {
+		close(quit)
 		return nil, util.Errorf("could not acquire pod cluster config creation lock: %s", err)
 	}
-	defer unlocker.Unlock()
+
+	go func() {
+		<-ctx.Done()
+		// if this fails it's not a huge deal because the session will die when it is not renewed
+		_ = unlocker.Unlock()
+		close(quit)
+	}()
 
 	// TODO: grab a per-pod-cluster lock here to make sure two concurrent writes don't result in two configs for the same pod cluster
 	labeled, err := pccs.configStore.FindWhereLabeled(sel)
@@ -83,6 +104,7 @@ func (pccs *PodClusterConfigStore) CreateOrUpdateConfigForPodCluster(
 		fields.ID = labeled[0].ID
 		return nil, util.Errorf("More than one pod cluster found for given selectors")
 	}
+
 	if len(labeled) == 0 {
 		fields.ID = configstore.ID(uuid.New())
 		labelsMap := make(map[string]string)
@@ -90,12 +112,21 @@ func (pccs *PodClusterConfigStore) CreateOrUpdateConfigForPodCluster(
 		labelsMap[pfields.AvailabilityZoneLabel] = az.String()
 		labelsMap[pfields.ClusterNameLabel] = cn.String()
 
-		if err := pccs.configStore.LabelConfig(fields.ID, labelsMap); err != nil {
+		if err := pccs.configStore.LabelConfigTxn(ctx, fields.ID, labelsMap); err != nil {
 			return nil, err
 		}
 	}
 
 	if err := pccs.configStore.PutConfigTxn(ctx, fields, version); err != nil {
+		return nil, err
+	}
+
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb:    api.KVCheckSession,
+		Key:     lockPath,
+		Session: sessionID,
+	})
+	if err != nil {
 		return nil, err
 	}
 
