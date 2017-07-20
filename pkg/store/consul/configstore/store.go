@@ -14,7 +14,7 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
-const configTree string = "configs"
+const ConfigTree string = "configs"
 
 type ID string
 type Version uint64
@@ -217,5 +217,5 @@ func configPath(id ID) (string, error) {
 		return "", util.Errorf("path requested with empty config ID")
 	}
 
-	return path.Join(configTree, id.String()), nil
+	return path.Join(ConfigTree, id.String()), nil
 }
