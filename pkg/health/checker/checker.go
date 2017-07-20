@@ -202,7 +202,11 @@ func (c consulHealthChecker) WatchService(
 				WaitIndex: curIndex,
 			})
 			if err != nil {
-				errCh <- consulutil.NewKVError("list", consul.HealthPath(serviceID, "/"), err)
+				select {
+				case <-quitCh:
+					return
+				case errCh <- consulutil.NewKVError("list", consul.HealthPath(serviceID, "/"), err):
+				}
 			} else {
 				curIndex = queryMeta.LastIndex
 				out := make(map[types.NodeName]health.Result)
@@ -210,12 +214,20 @@ func (c consulHealthChecker) WatchService(
 					var next consul.WatchResult
 					err = json.Unmarshal(result.Value, &next)
 					if err != nil {
-						errCh <- err
+						select {
+						case <-quitCh:
+							return
+						case errCh <- err:
+						}
 					} else {
 						out[next.Node] = consulWatchToResult(next)
 					}
 				}
-				resultCh <- out
+				select {
+				case <-quitCh:
+					return
+				case resultCh <- out:
+				}
 			}
 		}
 	}
