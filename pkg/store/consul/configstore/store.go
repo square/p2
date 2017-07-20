@@ -58,6 +58,7 @@ type envelope struct {
 type Labeler interface {
 	GetMatches(selector klabels.Selector, labelType labels.Type) ([]labels.Labeled, error)
 	SetLabels(labelType labels.Type, id string, labels map[string]string) error
+	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, labels map[string]string) error
 }
 
 type ConsulStore struct {
@@ -194,6 +195,10 @@ func (cs *ConsulStore) DeleteConfigTxn(ctx context.Context, id ID, v *Version) e
 
 func (cs *ConsulStore) LabelConfig(id ID, labelsToApply map[string]string) error {
 	return cs.labeler.SetLabels(labels.Config, id.String(), labelsToApply)
+}
+
+func (cs *ConsulStore) LabelConfigTxn(ctx context.Context, id ID, labelsToApply map[string]string) error {
+	return cs.labeler.SetLabelsTxn(ctx, labels.Config, id.String(), labelsToApply)
 }
 
 func (cs *ConsulStore) FindWhereLabeled(label klabels.Selector) ([]*Fields, error) {
