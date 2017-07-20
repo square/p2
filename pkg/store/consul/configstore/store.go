@@ -78,7 +78,10 @@ func (cs *ConsulStore) FetchConfig(id ID) (Fields, *Version, error) {
 	}
 
 	config, consulMetadata, err := cs.consulKV.Get(path, nil)
-	if config == nil || err != nil {
+	if config == nil {
+		return Fields{}, nil, nil
+	}
+	if err != nil {
 		return Fields{}, nil, util.Errorf("Unable to read config at %v", err)
 	}
 	env := &envelope{}
