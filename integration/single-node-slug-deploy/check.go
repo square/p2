@@ -355,7 +355,7 @@ func verifyProcessExit(errCh chan error, tempDir string, logger logging.Logger) 
 		select {
 		case <-timeout:
 			// Try to manually run the finish script in order to make debugging the test failure easier
-			output, debugErr := exec.Command("sudo", fmt.Sprintf("/var/service/hello-%s__hello__launch/finish", podUniqueKey), "1", "2").CombinedOutput()
+			output, debugErr := exec.Command("sudo", fmt.Sprintf("/var/service/hello-%s__hello__bin__launch/finish", podUniqueKey), "1", "2").CombinedOutput()
 			if err != nil {
 				logger.WithError(debugErr).Infoln("DEBUG: Debug attempt to run finish script failed")
 			}
