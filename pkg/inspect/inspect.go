@@ -37,6 +37,10 @@ type NodePodStatus struct {
 }
 
 func AddKVPToMap(result consul.ManifestResult, source int, filterNode types.NodeName, filterPod types.PodID, statuses map[types.PodID]map[types.NodeName]NodePodStatus) error {
+	if result.PodUniqueKey != "" {
+		// for now, p2-inspect won't show uuid pods
+		return nil
+	}
 	nodeName := result.PodLocation.Node
 	podId := result.Manifest.ID()
 
