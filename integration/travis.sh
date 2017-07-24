@@ -15,6 +15,13 @@ sudo mkdir -p /etc/servicebuilder.d /var/service-stage /var/service
 sudo cp $GOPATH/bin/p2-exec /usr/local/bin
 PATH=$PATH:$GOPATH/bin
 
+# At some point travis changed so that directories have 750 permissions, but we
+# need +x so we can traverse to the files underneath
+sudo chmod 755 /home
+sudo chmod 755 /home/travis
+sudo chmod 755 $GOPATH
+sudo chmod 755 $GOPATH/bin
+
 # make ssl certs
 subj="
 C=US

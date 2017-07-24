@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -354,9 +355,9 @@ func verifyProcessExit(errCh chan error, tempDir string, logger logging.Logger) 
 		select {
 		case <-timeout:
 			// Try to manually run the finish script in order to make debugging the test failure easier
-			output, err := exec.Command("sudo", fmt.Sprintf("/var/service/hello-%s__hello__launch/finish", podUniqueKey), "1", "2").CombinedOutput()
+			output, debugErr := exec.Command("sudo", fmt.Sprintf("/var/service/hello-%s__hello__bin__launch/finish", podUniqueKey), "1", "2").CombinedOutput()
 			if err != nil {
-				logger.WithError(err).Infoln("DEBUG: Debug attempt to run finish script failed")
+				logger.WithError(debugErr).Infoln("DEBUG: Debug attempt to run finish script failed")
 			}
 
 			logger.Infof("DEBUG: Output of direct execution of finish script: %s", string(output))
@@ -722,10 +723,21 @@ func getConsulManifest(dir string) (string, error) {
 		}
 	}
 
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return "", util.Errorf("could not list host interfaces to find which to bind consul to: %s", err)
+	}
+	addrs, err := interfaces[0].Addrs()
+	if err != nil {
+		return "", util.Errorf("could not list addresses to find one to bind consul to: %s", err)
+	}
+	ip := strings.Split(addrs[0].String(), "/")[0]
+
 	rubyBin := filepath.Join(dir, "launch")
 	cmds := `#!/usr/bin/env ruby
 
-exec "/usr/bin/consul agent -server -bootstrap-expect 1 -data-dir /tmp/consul"`
+exec "/usr/bin/consul agent -server -bootstrap-expect 1 -data-dir /tmp/consul -bind %%%%"`
+	cmds = strings.Replace(cmds, "%%%%", ip, -1)
 	err = ioutil.WriteFile(rubyBin, []byte(cmds), 0777)
 	if err != nil {
 		return "", util.Errorf("could not write consul exec script: %s", err)
