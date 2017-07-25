@@ -15,17 +15,21 @@ import (
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hoist"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/store/consul/configstore"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 	"gopkg.in/yaml.v2"
 
 	"github.com/Sirupsen/logrus"
 	. "github.com/anthonybishopric/gotcha"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 func getTestPod() *Pod {
@@ -152,7 +156,7 @@ config:
 	}
 	Assert(t).IsTrue(len(launchables) > 0, "Test setup error: no launchables from launchable stanzas")
 
-	err = pod.setupConfig(manifest, launchables)
+	err = pod.setupConfig(manifest, launchables, nil, nil)
 	Assert(t).IsNil(err, "There shouldn't have been an error setting up config")
 
 	configFileName, err := manifest.ConfigFileName()
@@ -199,6 +203,104 @@ config:
 		Assert(t).IsNil(err, "should not have erred reading custom env var")
 		Assert(t).AreEqual("5", string(enableBlamSetting), "The user-supplied custom env var was wrong")
 	}
+}
+
+type configEntry struct {
+	labels klabels.Set
+	configstore.Fields
+}
+
+type fakeConfigStore struct {
+	configs []configEntry
+}
+
+func (s *fakeConfigStore) FindWhereLabeled(sel klabels.Selector) ([]*configstore.Fields, error) {
+	var r []*configstore.Fields
+	for _, config := range s.configs {
+		if sel.Matches(config.labels) {
+			r = append(r, &config.Fields)
+		}
+	}
+	if len(r) == 0 {
+		return nil, labels.NoLabelsFound
+	}
+	return r, nil
+}
+
+func TestPodSetupConfigMergesConfig(t *testing.T) {
+	manifestStr := `id: thepod
+launchables:
+  my-app:
+    launchable_type: hoist
+    location: https://localhost:4444/foo/bar/baz_3c021aff048ca8117593f9c71e03b87cf72fd440.tar.gz
+    cgroup:
+      cpus: 4
+      memory: 4G
+config:
+  left_only: ll
+  both: bl
+  deep:
+    deep_left_only: dll
+    deep_both: dbl
+`
+	currUser, err := user.Current()
+	Assert(t).IsNil(err, "Could not get the current user")
+	manifestStr += fmt.Sprintf("run_as: %s", currUser.Username)
+	manifest, err := manifest.FromBytes(bytes.NewBufferString(manifestStr).Bytes())
+	Assert(t).IsNil(err, "should not have erred reading the manifest")
+
+	podTemp, _ := ioutil.TempDir("", "pod")
+
+	podFactory := NewFactory(podTemp, "testNode", uri.DefaultFetcher, "")
+	pod := podFactory.NewLegacyPod(manifest.ID())
+
+	launchables := make([]launch.Launchable, 0)
+	for launchableID, stanza := range manifest.GetLaunchableStanzas() {
+		launchable, err := pod.getLaunchable(launchableID, stanza, manifest.RunAsUser())
+		Assert(t).IsNil(err, "There shouldn't have been an error getting launchable")
+		launchables = append(launchables, launchable)
+	}
+	Assert(t).IsTrue(len(launchables) > 0, "Test setup error: no launchables from launchable stanzas")
+
+	pcLabels := map[string]string{
+		types.AvailabilityZoneLabel: "us-north",
+		types.ClusterNameLabel:      "production",
+		types.PodIDLabel:            "thepod",
+	}
+
+	applicator := labels.NewFakeApplicator()
+	applicator.SetLabels(labels.POD, labels.MakePodLabelKey(pod.node, pod.Id), pcLabels)
+
+	err = pod.setupConfig(manifest, launchables, applicator, &fakeConfigStore{
+		configs: []configEntry{{
+			labels: pcLabels,
+			Fields: configstore.Fields{
+				Config: map[interface{}]interface{}{
+					"right_only": "rr",
+					"both":       "br",
+					"deep": map[interface{}]interface{}{
+						"deep_right_only": "drr",
+						"deep_both":       "dbr",
+					},
+				},
+			},
+		}},
+	})
+	Assert(t).IsNil(err, "There shouldn't have been an error setting up config")
+
+	configFileName, err := manifest.ConfigFileName()
+	Assert(t).IsNil(err, "Couldn't generate config filename")
+	configPath := filepath.Join(pod.ConfigDir(), configFileName)
+	config, err := ioutil.ReadFile(configPath)
+	Assert(t).IsNil(err, "should not have erred reading the config")
+	Assert(t).AreEqual(`both: br
+deep:
+  deep_both: dbr
+  deep_left_only: dll
+  deep_right_only: drr
+left_only: ll
+right_only: rr
+`, string(config), "the config didn't match")
 }
 
 func TestLogLaunchableError(t *testing.T) {

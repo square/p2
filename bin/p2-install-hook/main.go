@@ -53,6 +53,7 @@ func main() {
 	pod := hookFactory.NewHookPod(manifest.ID())
 
 	// for now use noop verifier in this CLI
+	// OK to not merge config for hooks, which are not part of a pod cluster.
 	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(*registryURI, uri.DefaultFetcher, osversion.DefaultDetector))
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)

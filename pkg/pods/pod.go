@@ -15,12 +15,14 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/digest"
 	"github.com/square/p2/pkg/hoist"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/opencontainer"
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/store/consul/configstore"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/user"
@@ -29,6 +31,7 @@ import (
 	"github.com/square/p2/pkg/util/size"
 
 	"github.com/Sirupsen/logrus"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 var (
@@ -75,6 +78,14 @@ type Pod struct {
 
 	// Pod will not start if file is not present
 	RequireFile string
+}
+
+type Labeler interface {
+	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
+}
+
+type ConfigStore interface {
+	FindWhereLabeled(klabels.Selector) ([]*configstore.Fields, error)
 }
 
 var NoCurrentManifest error = fmt.Errorf("No current manifest for this pod")
@@ -396,6 +407,16 @@ func (pod *Pod) Uninstall() error {
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
 func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifier, artifactRegistry artifact.Registry) error {
+	return pod.install(manifest, verifier, artifactRegistry, nil, nil)
+}
+
+// InstallWithConfig merges the pod's manifest config with the config found in the config store,
+// then installs.
+func (pod *Pod) InstallWithConfig(manifest manifest.Manifest, verifier auth.ArtifactVerifier, artifactRegistry artifact.Registry, labeler Labeler, configStore ConfigStore) error {
+	return pod.install(manifest, verifier, artifactRegistry, labeler, configStore)
+}
+
+func (pod *Pod) install(manifest manifest.Manifest, verifier auth.ArtifactVerifier, artifactRegistry artifact.Registry, labeler Labeler, configStore ConfigStore) error {
 	podHome := pod.home
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
@@ -448,7 +469,7 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 
 	// we may need to write config files to a unique directory per pod version, depending on restart semantics. Need
 	// to think about this more.
-	err = pod.setupConfig(manifest, launchables)
+	err = pod.setupConfig(manifest, launchables, labeler, configStore)
 	if err != nil {
 		pod.logError(err, "Could not setup config")
 		return util.Errorf("Could not setup config: %s", err)
@@ -523,16 +544,65 @@ func (pod *Pod) Verify(manifest manifest.Manifest, authPolicy auth.Policy) error
 //
 // We may wish to provide a "config" directory per launchable at some point as
 // well, so that launchables can have different config namespaces
-func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Launchable) error {
+func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Launchable, labeler Labeler, configStore ConfigStore) error {
 	uid, gid, err := user.IDs(manifest.RunAsUser())
 	if err != nil {
 		return util.Errorf("Could not determine pod UID/GID: %s", err)
 	}
+
 	var configData bytes.Buffer
-	err = manifest.WriteConfig(&configData)
-	if err != nil {
-		return err
+	if labeler != nil && configStore != nil {
+		// Merge config from pod cluster
+		labeled, err := labeler.GetLabels(labels.POD, labels.MakePodLabelKey(pod.node, pod.Id))
+		if err != nil {
+			// A bit unfortunate that setupConfig (and thus pod installation) now requires a working label store,
+			// but the alternative is potentially letting a pod come up with incorrect config, which seems worse.
+			// So, return the error.
+			return err
+		}
+
+		pcLabels := []string{
+			types.AvailabilityZoneLabel,
+			types.ClusterNameLabel,
+			types.PodIDLabel,
+		}
+		sel := klabels.Everything()
+		hadLabels := false
+		for _, pcLabel := range pcLabels {
+			if val := labeled.Labels.Get(pcLabel); val != "" {
+				sel = sel.Add(pcLabel, klabels.EqualsOperator, []string{val})
+				hadLabels = true
+			}
+		}
+
+		var configToUse map[interface{}]interface{}
+
+		if hadLabels {
+			configs, err := configStore.FindWhereLabeled(sel)
+			if err != nil && !labels.IsNoLabelsFound(err) {
+				return err
+			}
+			if len(configs) > 1 {
+				return util.Errorf("Ambiguous configs for %s: %+v", sel, configs)
+			}
+			// Nonexistent is OK, just use what's in the manifest.
+			// Unique is OK, merge it with the manifest.
+			if len(configs) == 1 {
+				configToUse = configs[0].Config
+			}
+		}
+
+		err = manifest.WriteMergedConfig(&configData, configToUse)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = manifest.WriteConfig(&configData)
+		if err != nil {
+			return err
+		}
 	}
+
 	var platConfigData bytes.Buffer
 	err = manifest.WritePlatformConfig(&platConfigData)
 	if err != nil {

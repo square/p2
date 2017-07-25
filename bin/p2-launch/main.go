@@ -88,6 +88,7 @@ func main() {
 	podFactory := pods.NewFactory(*podRoot, types.NodeName(*nodeName), fetcher, "")
 	pod := podFactory.NewLegacyPod(manifest.ID())
 
+	// OK to not merge config for launched pods, which are not part of a pod cluster.
 	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(*artifactRegistryURL, fetcher, osversion.DefaultDetector))
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)

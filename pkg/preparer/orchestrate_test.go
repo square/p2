@@ -16,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -50,6 +51,11 @@ func (t *TestPod) Launch(manifest manifest.Manifest) (bool, error) {
 }
 
 func (t *TestPod) Install(manifest manifest.Manifest, _ auth.ArtifactVerifier, _ artifact.Registry) error {
+	t.installed = true
+	return t.installErr
+}
+
+func (t *TestPod) InstallWithConfig(manifest manifest.Manifest, _ auth.ArtifactVerifier, _ artifact.Registry, _ pods.Labeler, _ pods.ConfigStore) error {
 	t.installed = true
 	return t.installErr
 }

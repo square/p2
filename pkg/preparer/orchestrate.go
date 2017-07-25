@@ -35,6 +35,7 @@ type Pod interface {
 	hooks.Pod
 	Launch(manifest.Manifest) (bool, error)
 	Install(manifest.Manifest, auth.ArtifactVerifier, artifact.Registry) error
+	InstallWithConfig(manifest.Manifest, auth.ArtifactVerifier, artifact.Registry, pods.Labeler, pods.ConfigStore) error
 	Uninstall() error
 	Verify(manifest.Manifest, auth.Policy) error
 	Halt(manifest.Manifest) (bool, error)
@@ -373,7 +374,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 
 	logger.NoFields().Infoln("Installing pod and launchables")
 
-	err := pod.Install(pair.Intent, p.artifactVerifier, p.artifactRegistry)
+	err := pod.InstallWithConfig(pair.Intent, p.artifactVerifier, p.artifactRegistry, p.labeler, p.configStore)
 	if err != nil {
 		// install failed, abort and retry
 		logger.WithError(err).Errorln("Install failed")

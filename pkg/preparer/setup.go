@@ -24,6 +24,7 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/hooks"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -32,6 +33,7 @@ import (
 	"github.com/square/p2/pkg/preparer/podprocess"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/configstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/podstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
@@ -84,6 +86,8 @@ type Preparer struct {
 	logBridgeBlacklist     []string
 	artifactVerifier       auth.ArtifactVerifier
 	artifactRegistry       artifact.Registry
+	labeler                pods.Labeler
+	configStore            pods.ConfigStore
 
 	// Exported so it can be checked for nil (it only runs if configured)
 	// and quit channel conditially created
@@ -509,6 +513,8 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		Client: httpClient,
 	}
 
+	applicator := labels.NewConsulApplicator(client, 1)
+
 	return &Preparer{
 		node:                   preparerConfig.NodeName,
 		store:                  store,
@@ -529,6 +535,8 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		hooksManifest:          hooksManifest,
 		hooksPod:               hooksPod,
 		hooksExecDir:           preparerConfig.HooksDirectory,
+		labeler:                applicator,
+		configStore:            configstore.NewConsulStore(client.KV(), applicator),
 	}, nil
 }
 
@@ -655,6 +663,7 @@ func (p *Preparer) InstallHooks() error {
 	})
 
 	p.Logger.Infoln("Installing hook manifest")
+	// OK not to merge config when installing hooks; they are not part of a pod cluster.
 	err := p.hooksPod.Install(p.hooksManifest, p.artifactVerifier, p.artifactRegistry)
 	if err != nil {
 		sub.WithError(err).Errorln("Could not install hook")
