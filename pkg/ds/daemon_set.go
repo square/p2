@@ -434,11 +434,12 @@ func (ds *daemonSet) addPods() error {
 	// Get the difference in nodes that we need to schedule on and then sort them
 	// for deterministic ordering
 	toScheduleSorted := types.NewNodeSet(eligible...).Difference(types.NewNodeSet(currentNodes...)).ListNodes()
-	ds.logger.NoFields().Infof("Need to label %d nodes", len(toScheduleSorted))
+	ds.logger.Infof("Need to label %d nodes: %s", len(toScheduleSorted), toScheduleSorted)
 
 	for _, node := range toScheduleSorted {
 		err := ds.labelPod(node)
 		if err != nil {
+			ds.logger.WithError(err).Errorf("Error labeling pod for node %s", node)
 			return util.Errorf("Error labeling node: %v", err)
 		}
 	}
