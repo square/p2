@@ -14,7 +14,7 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
-const configTree string = "configs"
+const ConfigTree string = "configs"
 
 type ID string
 type Version uint64
@@ -58,6 +58,7 @@ type envelope struct {
 type Labeler interface {
 	GetMatches(selector klabels.Selector, labelType labels.Type) ([]labels.Labeled, error)
 	SetLabels(labelType labels.Type, id string, labels map[string]string) error
+	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, labels map[string]string) error
 }
 
 type ConsulStore struct {
@@ -196,6 +197,10 @@ func (cs *ConsulStore) LabelConfig(id ID, labelsToApply map[string]string) error
 	return cs.labeler.SetLabels(labels.Config, id.String(), labelsToApply)
 }
 
+func (cs *ConsulStore) LabelConfigTxn(ctx context.Context, id ID, labelsToApply map[string]string) error {
+	return cs.labeler.SetLabelsTxn(ctx, labels.Config, id.String(), labelsToApply)
+}
+
 func (cs *ConsulStore) FindWhereLabeled(label klabels.Selector) ([]*Fields, error) {
 	labeled, err := cs.labeler.GetMatches(label, labels.Config)
 	if err != nil {
@@ -217,5 +222,5 @@ func configPath(id ID) (string, error) {
 		return "", util.Errorf("path requested with empty config ID")
 	}
 
-	return path.Join(configTree, id.String()), nil
+	return path.Join(ConfigTree, id.String()), nil
 }
