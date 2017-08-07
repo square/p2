@@ -53,8 +53,7 @@ func WatchKeys(
 			timer.Reset(pause)
 			listStart = time.Now()
 			keys, queryMeta, err := SafeKeys(clientKV, done, prefix, &api.QueryOptions{
-				WaitIndex:  currentIndex,
-				AllowStale: true,
+				WaitIndex: currentIndex,
 			})
 			// outputPairsHistogram.Update(int64(sizeInBytes(keys)))
 			if err == CanceledError {
@@ -153,8 +152,7 @@ func WatchPrefix(
 		timer.Reset(pause) // upper bound on request rate
 		safeListStart = time.Now()
 		pairs, queryMeta, err := List(clientKV, done, prefix, &api.QueryOptions{
-			WaitIndex:  currentIndex,
-			AllowStale: true,
+			WaitIndex: currentIndex,
 		})
 		listLatencyHistogram.Update(int64(time.Since(safeListStart) / time.Millisecond))
 		switch err {
@@ -410,8 +408,7 @@ func WatchDiff(
 
 			safeListStart = time.Now()
 			pairs, queryMeta, err := List(clientKV, quitCh, prefix, &api.QueryOptions{
-				WaitIndex:  currentIndex,
-				AllowStale: initialized, // do a consistent fetch on the first list so that subsequent WatchDiff calls don't travel backward in time
+				WaitIndex: currentIndex,
 			})
 			listLatencyHistogram.Update(int64(time.Since(safeListStart) / time.Millisecond))
 
