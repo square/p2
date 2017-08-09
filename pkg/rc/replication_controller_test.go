@@ -679,3 +679,137 @@ func TestUnscheduleMoreThan5(t *testing.T) {
 	close(quit)
 	wg.Wait()
 }
+
+func TestAlertIfNodeBecomesIneligible(t *testing.T) {
+	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	defer closeFn()
+
+	for i := 0; i < 7; i++ {
+		err := applicator.SetLabel(labels.NODE, fmt.Sprintf("node%d", i), "nodeQuality", "good")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rc.ReplicasDesired = 7
+
+	err := rc.meetDesires()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	current, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(current) != 7 {
+		t.Fatalf("rc should have scheduled 7 pods but found %d", len(current))
+	}
+
+	if len(alerter.Alerts) != 0 {
+		t.Fatalf("there shouldn't have been any alerts yet but there were %d", len(alerter.Alerts))
+	}
+
+	// now make one of the nodes ineligible, creating a situation where the
+	// RC has 7 "current" nodes and 7 desired recplicas, but only 6 of
+	// those nodes meet the node selector's criteria
+	err = applicator.SetLabel(labels.NODE, "node3", "nodeQuality", "bad")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rc.meetDesires()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	current, err = rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should still be 7 pods by design, we want to be paranoid about
+	// unscheduling. The operator should decrease the replica count if they
+	// want an unschedule to happen
+	if len(current) != 7 {
+		t.Fatalf("rc should still have 7 pods (even though only 6 are eligible) but found %d", len(current))
+	}
+
+	if len(alerter.Alerts) != 1 {
+		t.Fatalf("the RC should have alerted since replicas desired is greater than the number of eligible nodes, but there were %d alerts", len(alerter.Alerts))
+	}
+}
+
+// Tests that an RC will not do any scheduling/unscheduling if the only thing
+// that changes is the set of nodes that match the node selector. This might be
+// counter-intuitive but we don't want an RC to risk an outage by swapping
+// pods. For example imagine there is a single node in an RC, and that node
+// becomes ineligible and another node becomes eligible. We require that the
+// operator increase the RC replica count to 2 to deploy the eligible node, and
+// then (likely after some time has passed or some application-specific
+// conditions have been met) decrease the replica count back to 1 to unschedule
+// the ineligible node.
+func TestRCDoesNotFixMembership(t *testing.T) {
+	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	defer closeFn()
+
+	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rc.ReplicasDesired = 1
+
+	err = rc.meetDesires()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	current, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(current) != 1 {
+		t.Fatalf("rc should have scheduled 1 pods but found %d", len(current))
+	}
+
+	if len(alerter.Alerts) != 0 {
+		t.Fatalf("there shouldn't have been any alerts yet but there were %d", len(alerter.Alerts))
+	}
+
+	// now mark node1 as ineligible and node2 as eligible. We want to test
+	// that the RC does not take any action because replicas desired ==
+	// len(current nodes)
+	err = applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = applicator.SetLabel(labels.NODE, "node2", "nodeQuality", "good")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rc.meetDesires()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	current, err = rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(current) != 1 {
+		t.Fatalf("RC should have still only had 1 node but it had %d", len(current))
+	}
+
+	if current[0].Node != "node1" {
+		t.Fatalf("expected the RC to still consider node1 to be current, but the single node was %s", current[0].Node)
+	}
+
+	if len(alerter.Alerts) != 1 {
+		t.Fatalf("the RC should have alerted since it has some current nodes that aren't eligible and is unable to correct this. There were %d alerts", len(alerter.Alerts))
+	}
+}
