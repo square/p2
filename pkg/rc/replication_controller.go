@@ -181,23 +181,28 @@ func (rc *replicationController) meetDesires() error {
 	if err != nil {
 		return err
 	}
+	eligible, err := rc.eligibleNodes()
+	if err != nil {
+		return err
+	}
 
 	rc.logger.NoFields().Infof("Currently on nodes %s", current)
 
 	nodesChanged := false
-	if rc.ReplicasDesired > len(current) {
-		err := rc.addPods(current)
+	switch {
+	case rc.ReplicasDesired > len(current):
+		err := rc.addPods(current, eligible)
 		if err != nil {
 			return err
 		}
 		nodesChanged = true
-	} else if len(current) > rc.ReplicasDesired {
-		err := rc.removePods(current)
+	case len(current) > rc.ReplicasDesired:
+		err := rc.removePods(current, eligible)
 		if err != nil {
 			return err
 		}
 		nodesChanged = true
-	} else {
+	default:
 		rc.logger.NoFields().Debugln("Taking no action")
 	}
 
@@ -208,15 +213,13 @@ func (rc *replicationController) meetDesires() error {
 		}
 	}
 
+	rc.checkForIneligible(current, eligible)
+
 	return rc.ensureConsistency(current)
 }
 
-func (rc *replicationController) addPods(current types.PodLocations) error {
+func (rc *replicationController) addPods(current types.PodLocations, eligible []types.NodeName) error {
 	currentNodes := current.Nodes()
-	eligible, err := rc.eligibleNodes()
-	if err != nil {
-		return err
-	}
 
 	// TODO: With Docker or runc we would not be constrained to running only once per node.
 	// So it may be the case that we need to make the Scheduler interface smarter and use it here.
@@ -320,12 +323,8 @@ func (rc *replicationController) alertInfo(msg string) alerting.AlertInfo {
 	}
 }
 
-func (rc *replicationController) removePods(current types.PodLocations) error {
+func (rc *replicationController) removePods(current types.PodLocations, eligible []types.NodeName) error {
 	currentNodes := current.Nodes()
-	eligible, err := rc.eligibleNodes()
-	if err != nil {
-		return err
-	}
 
 	// If we need to downsize the number of nodes, prefer any in current that are not eligible anymore.
 	// TODO: evaluate changes to 'eligible' more frequently
@@ -456,6 +455,32 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 	}
 
 	return nil
+}
+
+func (rc *replicationController) checkForIneligible(current types.PodLocations, eligible []types.NodeName) {
+	// Check that the RC doesn't have any current nodes that are ineligible.
+	var ineligibleCurrent []types.NodeName
+	for _, currentPod := range current {
+		found := false
+		for _, eligibleNode := range eligible {
+			if eligibleNode == currentPod.Node {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			ineligibleCurrent = append(ineligibleCurrent, currentPod.Node)
+		}
+	}
+
+	if len(ineligibleCurrent) > 0 {
+		errMsg := fmt.Sprintf("RC has scheduled %d ineligible nodes: %s", len(ineligibleCurrent), ineligibleCurrent)
+		err := rc.alerter.Alert(rc.alertInfo(errMsg))
+		if err != nil {
+			rc.logger.WithError(err).Errorln("Unable to send alert")
+		}
+	}
 }
 
 func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {
