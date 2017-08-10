@@ -634,10 +634,30 @@ func (dsf *Farm) spawnDaemonSet(
 						dsLogger.WithError(err).Warnf("Error finding eligible nodes; can't count healthy nodes")
 						continue
 					}
+
 					numHealthy := aggregateHealth.NumHealthyOf(eligible)
+					numUnhealthy := aggregateHealth.NumUnhealthyOf(eligible)
+					numUnknownHealth := aggregateHealth.NumUnknownHealthOf(eligible)
+					numWarningHealth := aggregateHealth.NumWarningHealthOf(eligible)
+
 					for _, name := range ds.MetricNames("healthy") {
 						gauge := metrics.GetOrRegisterGauge(name, p2metrics.Registry)
 						gauge.Update(int64(numHealthy))
+					}
+
+					for _, name := range ds.MetricNames("critical") {
+						gauge := metrics.GetOrRegisterGauge(name, p2metrics.Registry)
+						gauge.Update(int64(numUnhealthy))
+					}
+
+					for _, name := range ds.MetricNames("unknown") {
+						gauge := metrics.GetOrRegisterGauge(name, p2metrics.Registry)
+						gauge.Update(int64(numUnknownHealth))
+					}
+
+					for _, name := range ds.MetricNames("warning") {
+						gauge := metrics.GetOrRegisterGauge(name, p2metrics.Registry)
+						gauge.Update(int64(numWarningHealth))
 					}
 				}
 			}
