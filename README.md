@@ -77,6 +77,10 @@ your computer, launch Consul and our preparer and then launch an application.
 If you see a success message, you can `vagrant up` the halted box to check out
 the setup without needing to do any work yourself.
 
+Ensure that [Vagrant](https://www.vagrantup.com/downloads.html) and
+[VirtualBox](https://www.virtualbox.org/wiki/Downloads) are installed if
+`rake integration` does not work.
+
 ## Dependencies
 
 P2 is based on existing deployment tools at Square. The following list reflects
@@ -95,7 +99,7 @@ We provide one possible implementation at `p2-finish-env-extractor`.
 
 ## Desirable Features
 
-Adding Docker support is a big next step, but will ultimately help us migrate to using Docker (or equally excellent RunC implementation) at Square. 
+Adding Docker support is a big next step, but will ultimately help us migrate to using Docker (or equally excellent RunC implementation) at Square.
 
 P2 also lacks a native job admission / scheduling system, so all pod scheduling is currently done manually by client using either a label selector or simply a hostname. Solutions to this are to be determined.
 
