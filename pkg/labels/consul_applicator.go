@@ -337,7 +337,7 @@ func (c *consulApplicator) RemoveLabel(labelType Type, id, label string) error {
 }
 
 func (c *consulApplicator) RemoveLabelTxn(ctx context.Context, labelType Type, id, label string) error {
-	return mutateLabelsTxn(ctx, labelType, id, labelsFromKeyValue(label, nil), c)
+	return removeLabelsTxn(ctx, labelType, id, []string{label}, c)
 }
 
 func (c *consulApplicator) RemoveLabelsTxn(ctx context.Context, labelType Type, id string, keysToRemove []string) error {

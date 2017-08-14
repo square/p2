@@ -24,6 +24,7 @@ type ApplicatorWithoutWatches interface {
 	SetLabels(labelType Type, id string, labels map[string]string) error
 	SetLabelsTxn(ctx context.Context, labelType Type, id string, labels map[string]string) error
 	RemoveLabel(labelType Type, id, name string) error
+	RemoveLabelTxn(ctx context.Context, labelType Type, id, name string) error
 	RemoveAllLabels(labelType Type, id string) error
 	RemoveLabelsTxn(ctx context.Context, labelType Type, id string, keysToRemove []string) error
 	RemoveAllLabelsTxn(ctx context.Context, labelType Type, id string) error

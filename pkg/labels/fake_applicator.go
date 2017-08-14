@@ -83,6 +83,10 @@ func (app *fakeApplicator) RemoveLabel(labelType Type, id, name string) error {
 	return nil
 }
 
+func (app *fakeApplicator) RemoveLabelTxn(ctx context.Context, labelType Type, id string, name string) error {
+	return util.Errorf("RemoveLabelTxn not implemented in fake applicator. use a real applicator")
+}
+
 func (app *fakeApplicator) RemoveLabelsTxn(ctx context.Context, labelType Type, id string, keysToRemove []string) error {
 	panic("not implemented")
 }
