@@ -20,6 +20,7 @@ import (
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/dsstore"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -41,6 +42,7 @@ type DaemonSetLocker interface {
 type Farm struct {
 	// constructor arguments
 	store     store
+	txner     transaction.Txner
 	dsStore   DaemonSetStore
 	dsLocker  DaemonSetLocker
 	scheduler scheduler.Scheduler
@@ -78,6 +80,7 @@ type childDS struct {
 
 func NewFarm(
 	store store,
+	txner transaction.Txner,
 	dsStore DaemonSetStore,
 	dsLocker DaemonSetLocker,
 	labeler Labeler,
@@ -98,6 +101,7 @@ func NewFarm(
 
 	return &Farm{
 		store:             store,
+		txner:             txner,
 		dsStore:           dsStore,
 		dsLocker:          dsLocker,
 		scheduler:         scheduler.NewApplicatorScheduler(labeler),
@@ -596,6 +600,7 @@ func (dsf *Farm) spawnDaemonSet(
 		*dsFields,
 		dsf.dsStore,
 		dsf.store,
+		dsf.txner,
 		dsf.labeler,
 		dsf.watcher,
 		dsf.labelsAggregationRate,

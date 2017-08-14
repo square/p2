@@ -56,6 +56,7 @@ func main() {
 
 	dsf := ds_farm.NewFarm(
 		consulStore,
+		client.KV(),
 		dsStore,
 		dsStore,
 		labeler,

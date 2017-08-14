@@ -18,6 +18,7 @@ import (
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/dsstore"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -117,6 +118,7 @@ type daemonSet struct {
 	store            store
 	scheduler        scheduler.Scheduler
 	dsStore          DaemonSetStore
+	txner            transaction.Txner
 	applicator       Labeler
 	watcher          LabelWatcher
 	healthChecker    *checker.ConsulHealthChecker
@@ -148,6 +150,7 @@ func New(
 	fields fields.DaemonSet,
 	dsStore DaemonSetStore,
 	store store,
+	txner transaction.Txner,
 	applicator Labeler,
 	watcher LabelWatcher,
 	labelsAggregationRate time.Duration,
@@ -168,6 +171,7 @@ func New(
 
 		dsStore:               dsStore,
 		store:                 store,
+		txner:                 txner,
 		logger:                logger,
 		applicator:            applicator,
 		watcher:               watcher,
@@ -584,6 +588,7 @@ func (ds *daemonSet) PublishToReplication() error {
 		nodes,
 		len(nodes)-ds.DaemonSet.MinHealth,
 		ds.store,
+		ds.txner,
 		ds.applicator,
 		*ds.healthChecker,
 		health.HealthState(health.Passing),

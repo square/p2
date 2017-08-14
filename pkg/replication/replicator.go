@@ -10,6 +10,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -54,6 +55,7 @@ type replicator struct {
 	nodes            []types.NodeName
 	active           int // maximum number of nodes to update concurrently
 	store            Store
+	txner            transaction.Txner
 	labeler          Labeler
 	health           checker.ConsulHealthChecker
 	threshold        health.HealthState // minimum state to treat as "healthy"
@@ -71,6 +73,7 @@ func NewReplicator(
 	nodes []types.NodeName,
 	active int,
 	store Store,
+	txner transaction.Txner,
 	labeler Labeler,
 	health checker.ConsulHealthChecker,
 	threshold health.HealthState,
@@ -91,6 +94,7 @@ func NewReplicator(
 		nodes:            nodes,
 		active:           active,
 		store:            store,
+		txner:            txner,
 		labeler:          labeler,
 		health:           health,
 		threshold:        threshold,
@@ -164,6 +168,7 @@ func (r replicator) initializeReplicationWithCheck(
 		active:                 r.active,
 		nodes:                  r.nodes,
 		store:                  r.store,
+		txner:                  r.txner,
 		labeler:                r.labeler,
 		manifest:               r.manifest,
 		health:                 r.health,

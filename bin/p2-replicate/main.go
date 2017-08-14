@@ -88,6 +88,7 @@ func main() {
 		nodes,
 		len(*hosts)-*minNodes,
 		store,
+		client.KV(),
 		labeler,
 		healthChecker,
 		health.HealthState(*threshold),

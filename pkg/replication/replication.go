@@ -1,6 +1,7 @@
 package replication
 
 import (
+	"context"
 	"path"
 	"sort"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
@@ -71,7 +73,12 @@ type Replication interface {
 }
 
 type Store interface {
-	SetPod(podPrefix consul.PodPrefix, nodename types.NodeName, manifest manifest.Manifest) (time.Duration, error)
+	SetPodTxn(
+		ctx context.Context,
+		podPrefix consul.PodPrefix,
+		nodename types.NodeName,
+		manifest manifest.Manifest,
+	) error
 	Pod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error)
 	NewSession(name string, renewalCh <-chan time.Time) (consul.Session, chan error, error)
 	LockHolder(key string) (string, string, error)
@@ -83,6 +90,7 @@ type replication struct {
 	active    int
 	nodes     []types.NodeName
 	store     Store
+	txner     transaction.Txner
 	labeler   Labeler
 	manifest  manifest.Manifest
 	health    checker.ConsulHealthChecker
@@ -255,11 +263,16 @@ func (r *replication) Enact() {
 			defer updatePool.Done()
 			for node := range nodeQueue {
 				exitCh := make(chan struct{})
-				timeoutCh := make(chan struct{})
+				ctx, cancel := context.WithCancel(context.Background())
+				if r.timeout != NoTimeout {
+					ctx, cancel = context.WithTimeout(ctx, r.timeout)
+				}
+				ctx, _ = transaction.New(ctx)
 
 				go func() {
+					defer cancel()
 					defer close(exitCh)
-					err := r.updateOne(node, timeoutCh, aggregateHealth)
+					err := r.updateOne(ctx, node, aggregateHealth)
 					if err == nil {
 						r.logger.Infof("The host '%v' successfully replicated the pod '%v'", node, r.manifest.ID())
 						atomic.AddInt32(&completedCount, 1)
@@ -280,22 +293,11 @@ func (r *replication) Enact() {
 					}
 				}()
 
-				if r.timeout == NoTimeout {
-					select {
-					case <-exitCh:
-					case <-r.quitCh:
-						return
-					}
-				} else {
-					select {
-					case <-exitCh:
-					case <-time.After(r.timeout):
-						close(timeoutCh)
-					case <-r.quitCh:
-						return
-					}
+				select {
+				case <-ctx.Done():
+				case <-r.quitCh:
+					return
 				}
-
 			}
 		}()
 	}
@@ -415,8 +417,8 @@ func (r *replication) shouldScheduleForNode(node types.NodeName, logger logging.
 }
 
 func (r *replication) updateOne(
+	ctx context.Context,
 	node types.NodeName,
-	timeoutCh <-chan struct{},
 	aggregateHealth *podHealth,
 ) error {
 	nodeLogger := r.logger.SubLogger(logrus.Fields{"node": node})
@@ -427,43 +429,36 @@ func (r *replication) updateOne(
 
 	targetSHA, _ := r.manifest.SHA()
 	nodeLogger.WithField("sha", targetSHA).Infoln("Updating node")
-	_, err := r.store.SetPod(
+	err := r.store.SetPodTxn(
+		ctx,
 		consul.INTENT_TREE,
 		node,
 		r.manifest,
 	)
-
-	exponentialBackoff := time.Duration(1 * time.Second)
-	timer := time.NewTimer(exponentialBackoff)
-	for err != nil {
-		nodeLogger.WithError(err).Errorln("Could not write intent store")
-
-		select {
-		case r.errCh <- err:
-		case <-r.quitCh:
-			r.logger.Infoln("Caught quit signal during updateOne")
-			return errQuit
-		case <-timeoutCh:
-			r.logger.Infoln("Caught timeout signal during updateOne")
-			return errTimeout
-		case <-r.replicationCancelledCh:
-			r.logger.Infoln("Caught cancellation signal during updateOne")
-			return errCancelled
-		case <-timer.C:
-			_, err = r.store.SetPod(
-				consul.INTENT_TREE,
-				node,
-				r.manifest,
-			)
-			exponentialBackoff = exponentialBackoff * 2
-			timer.Reset(exponentialBackoff)
-		}
+	if err != nil {
+		// this is bad because it means we couldn't even build the transaction
+		return err
 	}
-	err = r.ensureInReality(node, timeoutCh, nodeLogger, targetSHA)
+
+	ok, resp, err := transaction.CommitWithRetries(ctx, r.txner)
+	if err != nil {
+		nodeLogger.WithError(err).Errorln("Could not write intent store")
+		// this means we hit the timeout before getting a successful result
+		return errTimeout
+	}
+
+	if !ok {
+		// this means we got a transaction conflict of some sort
+		err = util.Errorf("got transaction conflict writing intent store for %s: %s", node, transaction.TxnErrorsToString(resp.Errors))
+		nodeLogger.WithError(err).Errorln("Could not write intent store")
+		return err
+	}
+
+	err = r.ensureInReality(ctx, node, nodeLogger, targetSHA)
 	if err != nil {
 		return err
 	}
-	return r.ensureHealthy(node, timeoutCh, nodeLogger, aggregateHealth)
+	return r.ensureHealthy(ctx, node, nodeLogger, aggregateHealth)
 }
 
 func (r *replication) queryReality(node types.NodeName) (manifest.Manifest, error) {
@@ -484,8 +479,8 @@ func (r *replication) queryReality(node types.NodeName) (manifest.Manifest, erro
 }
 
 func (r *replication) ensureInReality(
+	ctx context.Context,
 	node types.NodeName,
-	timeoutCh <-chan struct{},
 	nodeLogger logging.Logger,
 	targetSHA string,
 ) error {
@@ -494,7 +489,7 @@ func (r *replication) ensureInReality(
 		case <-r.quitCh:
 			r.logger.Infoln("Caught quit signal during ensureInReality")
 			return errQuit
-		case <-timeoutCh:
+		case <-ctx.Done():
 			r.logger.Infoln("Caught timeout signal during ensureInReality")
 			return errTimeout
 		case <-r.replicationCancelledCh:
@@ -522,8 +517,8 @@ func (r *replication) ensureInReality(
 }
 
 func (r *replication) ensureHealthy(
+	ctx context.Context,
 	node types.NodeName,
-	timeoutCh <-chan struct{},
 	nodeLogger logging.Logger,
 	aggregateHealth *podHealth,
 ) error {
@@ -532,7 +527,7 @@ func (r *replication) ensureHealthy(
 		case <-r.quitCh:
 			r.logger.Infoln("Caught quit signal during ensureHealthy")
 			return errQuit
-		case <-timeoutCh:
+		case <-ctx.Done():
 			r.logger.Infoln("Caught node timeout signal during ensureHealthy")
 			return errTimeout
 		case <-r.replicationCancelledCh:

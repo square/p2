@@ -1,3 +1,5 @@
+// +build !race
+
 package replication
 
 import (
@@ -12,6 +14,7 @@ import (
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consultest"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -21,9 +24,11 @@ func TestEnactHappyPath(t *testing.T) {
 	go proccessErrors(errCh, t)
 	defer close(errCh)
 
-	r, podStore := newTestReplication(errCh)
+	r, fixture := newTestReplication(t, errCh)
+	defer fixture.Stop()
 	r.Enact()
 
+	podStore := consul.NewConsulStore(fixture.Client)
 	intent, _, err := podStore.AllPods(consul.INTENT_TREE)
 	if err != nil {
 		t.Fatalf("Encountered error while fetching intent: %v\n", err)
@@ -38,7 +43,6 @@ func TestEnactHappyPath(t *testing.T) {
 	}
 	if len(reality) != 2 {
 		t.Errorf("Expected to have 2 reality records scheduled but got %d.\n%v", len(reality), reality)
-
 	}
 }
 
@@ -46,7 +50,10 @@ func TestEnactCancellation(t *testing.T) {
 	errCh := make(chan error)
 	go proccessErrors(errCh, t)
 	defer close(errCh)
-	r, podStore := newTestReplication(errCh)
+	r, fixture := newTestReplication(t, errCh)
+	defer fixture.Stop()
+
+	podStore := consul.NewConsulStore(fixture.Client)
 	r.active = 1
 	r.rateLimiter = time.NewTicker(2 * time.Second) // we need time to cancel
 
@@ -85,14 +92,15 @@ func TestEnactCancellation(t *testing.T) {
 // podStore is passed via secondary returv value so it can be used to read
 // intent,reality. An alternative is to expand the replication.Store type to
 // implement AllPods()
-func newTestReplication(errCh chan error) (*replication, *consultest.FakePodStore) {
+func newTestReplication(t *testing.T, errCh chan error) (*replication, consulutil.Fixture) {
 	podID := types.PodID("testPod")
 	mb := manifest.NewBuilder()
 	mb.SetID(podID)
 	nodes := []types.NodeName{"abc123.example.com", "def456.example.com"}
-	podStore := consultest.NewFakePodStore(nil, nil)
 
 	logger := logging.TestLogger()
+	fixture := consulutil.NewFixture(t)
+	podStore := consul.NewConsulStore(fixture.Client)
 	preparer := consultest.NewFakePreparer(podStore, logger)
 	preparer.Enable()
 
@@ -107,6 +115,7 @@ func newTestReplication(errCh chan error) (*replication, *consultest.FakePodStor
 		active:      2,
 		nodes:       nodes,
 		store:       podStore,
+		txner:       fixture.Client.KV(),
 		labeler:     nil,
 		manifest:    mb.GetManifest(),
 		health:      test.HappyHealthChecker(nodes),
@@ -120,7 +129,7 @@ func newTestReplication(errCh chan error) (*replication, *consultest.FakePodStor
 		quitCh:                 quitCh,
 		concurrentRealityRequests: concurrentRealityRequests,
 		timeout:                   timeout,
-	}, podStore
+	}, fixture
 
 }
 
