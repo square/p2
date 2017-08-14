@@ -1,6 +1,7 @@
 package ds
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/user"
@@ -77,7 +78,12 @@ type DaemonSet interface {
 
 type Labeler interface {
 	SetLabel(labelType labels.Type, id, name, value string) error
-	RemoveLabel(labelType labels.Type, id, name string) error
+	RemoveLabelTxn(
+		ctx context.Context,
+		labelType labels.Type,
+		id string,
+		name string,
+	) error
 	GetMatches(selector klabels.Selector, labelType labels.Type) ([]labels.Labeled, error)
 	GetCachedMatches(selector klabels.Selector, labelType labels.Type, aggregationRate time.Duration) ([]labels.Labeled, error)
 	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
@@ -93,7 +99,7 @@ type LabelWatcher interface {
 }
 
 type store interface {
-	DeletePod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	DeletePodTxn(ctx context.Context, podPrefix consul.PodPrefix, nodename types.NodeName, podID types.PodID) error
 	NewUnmanagedSession(session, name string) consul.Session
 
 	// For passing to the replication package:
@@ -540,19 +546,27 @@ func (ds *daemonSet) labelPod(node types.NodeName) error {
 func (ds *daemonSet) unschedule(node types.NodeName) error {
 	ds.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest.ID(), node, ds.ID())
 
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+
 	// Will remove the following key:
 	// <consul.INTENT_TREE>/<node>/<ds.Manifest.ID()>
-	_, err := ds.store.DeletePod(consul.INTENT_TREE, node, ds.Manifest.ID())
+	err := ds.store.DeletePodTxn(ctx, consul.INTENT_TREE, node, ds.Manifest.ID())
 	if err != nil {
-		return util.Errorf("Unable to delete pod id '%v' in node '%v', from intent tree: %v", ds.Manifest.ID(), node, err)
+		return util.Errorf("unable to form pod deletion transaction for pod id '%v' from node '%v': %v", ds.Manifest.ID(), node, err)
 	}
 
 	// Will remove the following label on the key <labels.POD>/<node>/<ds.Manifest.ID()>: DSIDLabel
 	// This is for indicating that this pod path no longer belongs to this daemon set
 	id := labels.MakePodLabelKey(node, ds.Manifest.ID())
-	err = ds.applicator.RemoveLabel(labels.POD, id, DSIDLabel)
+	err = ds.applicator.RemoveLabelTxn(ctx, labels.POD, id, DSIDLabel)
 	if err != nil {
-		return util.Errorf("Error removing label: %v", err)
+		return util.Errorf("error adding label removal to transaction: %v", err)
+	}
+
+	err = transaction.MustCommit(ctx, ds.txner)
+	if err != nil {
+		return util.Errorf("error unscheduling %s from %s: %s", ds.Manifest.ID(), node, err)
 	}
 
 	return nil

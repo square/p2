@@ -1,6 +1,7 @@
 package ds
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -192,16 +193,27 @@ func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
 			// We should find a nice way to couple them together
 			dsf.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with dangling daemon set uuid '%v'", podID, nodeName, dsID)
 
-			_, err = dsf.store.DeletePod(consul.INTENT_TREE, nodeName, podID)
+			ctx, cancel := transaction.New(context.Background())
+			err = dsf.store.DeletePodTxn(ctx, consul.INTENT_TREE, nodeName, podID)
 			if err != nil {
 				dsf.logger.NoFields().Errorf("Unable to delete pod id '%v' in node '%v', from intent tree: %v", podID, nodeName, err)
+				cancel()
 				continue
 			}
 
 			id := labels.MakePodLabelKey(nodeName, podID)
-			err = dsf.labeler.RemoveLabel(labels.POD, id, DSIDLabel)
+			err = dsf.labeler.RemoveLabelTxn(ctx, labels.POD, id, DSIDLabel)
 			if err != nil {
 				dsf.logger.NoFields().Errorf("Error removing ds pod id label '%v': %v", id, err)
+				cancel()
+				continue
+			}
+
+			err = transaction.MustCommit(ctx, dsf.txner)
+			if err != nil {
+				dsf.logger.Errorf("could not remove %s from %s: %s", podID, nodeName, err)
+				cancel()
+				continue
 			}
 		}
 	}

@@ -178,7 +178,13 @@ func TestSchedule(t *testing.T) {
 	Assert(t).IsNil(err, "Expected no error committing transaction")
 
 	consulStore := consul.NewConsulStore(fixture.Client)
-	applicator := labels.NewFakeApplicator()
+	applicator := labels.NewConsulApplicator(fixture.Client, 0)
+
+	// seed the applicator so the "no labels" failsafe isn't triggered
+	err = applicator.SetLabel(labels.POD, "some_untouched_pod", "foo", "bar")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()
