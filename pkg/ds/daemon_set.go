@@ -77,7 +77,7 @@ type DaemonSet interface {
 }
 
 type Labeler interface {
-	SetLabel(labelType labels.Type, id, name, value string) error
+	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, labels map[string]string) error
 	RemoveLabelTxn(
 		ctx context.Context,
 		labelType labels.Type,
@@ -444,15 +444,7 @@ func (ds *daemonSet) addPods() error {
 	// Get the difference in nodes that we need to schedule on and then sort them
 	// for deterministic ordering
 	toScheduleSorted := types.NewNodeSet(eligible...).Difference(types.NewNodeSet(currentNodes...)).ListNodes()
-	ds.logger.Infof("Need to label %d nodes: %s", len(toScheduleSorted), toScheduleSorted)
-
-	for _, node := range toScheduleSorted {
-		err := ds.labelPod(node)
-		if err != nil {
-			ds.logger.WithError(err).Errorf("Error labeling pod for node %s", node)
-			return util.Errorf("Error labeling node: %v", err)
-		}
-	}
+	ds.logger.Infof("Need to schedule %d nodes: %s", len(toScheduleSorted), toScheduleSorted)
 
 	if len(currentNodes) > 0 || len(toScheduleSorted) > 0 {
 		return ds.PublishToReplication()
@@ -528,21 +520,6 @@ func (ds *daemonSet) clearPods() error {
 	return nil
 }
 
-func (ds *daemonSet) labelPod(node types.NodeName) error {
-	ds.logger.NoFields().Infof("Labelling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest.ID(), node, ds.ID())
-
-	// Will apply the following label on the key <labels.POD>/<node>/<ds.Manifest.ID()>:
-	// 	{ DSIDLabel : ds.ID() }
-	// eg node/127.0.0.1/test_pod[daemon_set_id] := test_ds_id
-	// This is for indicating that this pod path belongs to this daemon set
-	id := labels.MakePodLabelKey(node, ds.Manifest.ID())
-	err := ds.applicator.SetLabel(labels.POD, id, DSIDLabel, ds.ID().String())
-	if err != nil {
-		return util.Errorf("Error setting label: %v", err)
-	}
-	return nil
-}
-
 func (ds *daemonSet) unschedule(node types.NodeName) error {
 	ds.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest.ID(), node, ds.ID())
 
@@ -577,11 +554,10 @@ func (ds *daemonSet) PublishToReplication() error {
 	// InitializeReplicationWithCheck, we will get an error
 	ds.cancelReplication()
 
-	podLocations, err := ds.CurrentPods()
+	nodes, err := ds.EligibleNodes()
 	if err != nil {
-		return util.Errorf("Error retrieving pod locations from daemon set: %v", err)
+		return util.Errorf("Error retrieving eligible nodes for daemon set: %v", err)
 	}
-	nodes := podLocations.Nodes()
 
 	ds.logger.Infof("Preparing to publish the following nodes: %v", nodes)
 
@@ -617,6 +593,10 @@ func (ds *daemonSet) PublishToReplication() error {
 
 	ds.logger.Info("New replicator was made")
 
+	podLabels := map[string]string{
+		DSIDLabel: ds.ID().String(),
+	}
+
 	// Replication locks are designed to make sure that two replications to
 	// the same nodes cannot occur at the same time. The granularity is
 	// pod-wide as an optimization for consul performance (only need to
@@ -632,6 +612,7 @@ func (ds *daemonSet) PublishToReplication() error {
 	currentReplication, errCh, err := repl.InitializeDaemonSetReplication(
 		replication.DefaultConcurrentReality,
 		ds.rateLimitInterval,
+		podLabels,
 	)
 	if err != nil {
 		ds.logger.Errorf("Unable to initialize replication: %s", err)

@@ -436,7 +436,13 @@ func TestPublishToReplication(t *testing.T) {
 	Assert(t).IsNil(err, "Expected no error committing transaction")
 
 	consulStore := consul.NewConsulStore(fixture.Client)
-	applicator := labels.NewFakeApplicator()
+	applicator := labels.NewConsulApplicator(fixture.Client, 0)
+
+	// seed applicator with unrelated labels so we don't trigger "no labels" failsave
+	err = applicator.SetLabel(labels.POD, "some_unrelated_pod", "foo", "bar")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()

@@ -28,6 +28,7 @@ import (
 
 type Labeler interface {
 	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
+	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, labels map[string]string) error
 }
 
 var (
@@ -96,6 +97,10 @@ type replication struct {
 	health    checker.ConsulHealthChecker
 	threshold health.HealthState // minimum state to treat as "healthy"
 	logger    logging.Logger
+
+	// podLabels is a set of labels that should be applied to any pod
+	// scheduled by the replication
+	podLabels map[string]string
 
 	// Used to rate limit node updates. A node will not be updated
 	// until a value can be read off of the channel.
@@ -438,6 +443,19 @@ func (r *replication) updateOne(
 	if err != nil {
 		// this is bad because it means we couldn't even build the transaction
 		return err
+	}
+
+	if len(r.podLabels) > 0 {
+		id := labels.MakePodLabelKey(node, r.manifest.ID())
+		err = r.labeler.SetLabelsTxn(
+			ctx,
+			labels.POD,
+			id,
+			r.podLabels,
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	ok, resp, err := transaction.CommitWithRetries(ctx, r.txner)

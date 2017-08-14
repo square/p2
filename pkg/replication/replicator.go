@@ -35,6 +35,7 @@ type Replicator interface {
 		ignoreControllers bool,
 		concurrentRealityNodes int,
 		rateLimitInterval time.Duration,
+		podLabels map[string]string,
 	) (Replication, chan error, error)
 
 	// InitializeDaemonSetReplication creates a Replication with parameters suitable for a daemon set.
@@ -45,6 +46,7 @@ type Replicator interface {
 	InitializeDaemonSetReplication(
 		concurrentRealityRequests int,
 		rateLimitInterval time.Duration,
+		podLabels map[string]string,
 	) (Replication, chan error, error)
 }
 
@@ -112,6 +114,7 @@ func (r replicator) InitializeReplication(
 	ignoreControllers bool,
 	concurrentRealityRequests int,
 	rateLimitInterval time.Duration,
+	podLabels map[string]string,
 ) (Replication, chan error, error) {
 	return r.initializeReplicationWithCheck(
 		overrideLock,
@@ -120,12 +123,14 @@ func (r replicator) InitializeReplication(
 		true,
 		false,
 		rateLimitInterval,
+		podLabels,
 	)
 }
 
 func (r replicator) InitializeDaemonSetReplication(
 	concurrentRealityRequests int,
 	rateLimitInterval time.Duration,
+	podLabels map[string]string,
 ) (Replication, chan error, error) {
 	return r.initializeReplicationWithCheck(
 		true, // override locks (irrelevant; they're being skipped)
@@ -134,6 +139,7 @@ func (r replicator) InitializeDaemonSetReplication(
 		false, // Ignore missing preparers by writing intent/ anyway
 		true,  // skip locking
 		rateLimitInterval,
+		podLabels,
 	)
 }
 
@@ -144,6 +150,7 @@ func (r replicator) initializeReplicationWithCheck(
 	checkPreparers bool,
 	skipLocking bool,
 	rateLimitInterval time.Duration,
+	podLabels map[string]string,
 ) (Replication, chan error, error) {
 	var err error
 
@@ -170,6 +177,7 @@ func (r replicator) initializeReplicationWithCheck(
 		store:                  r.store,
 		txner:                  r.txner,
 		labeler:                r.labeler,
+		podLabels:              podLabels,
 		manifest:               r.manifest,
 		health:                 r.health,
 		threshold:              r.threshold,

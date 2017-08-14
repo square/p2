@@ -11,6 +11,7 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker/test"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consultest"
@@ -43,6 +44,21 @@ func TestEnactHappyPath(t *testing.T) {
 	}
 	if len(reality) != 2 {
 		t.Errorf("Expected to have 2 reality records scheduled but got %d.\n%v", len(reality), reality)
+	}
+
+	allLabels, err := labels.NewConsulApplicator(fixture.Client, 0).ListLabels(labels.POD)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(allLabels) != 2 {
+		t.Fatalf("expected 2 pods to be labeled after replication but %d were", len(allLabels))
+	}
+
+	for _, v := range allLabels {
+		if v.Labels["foo"] != "bar" {
+			t.Fatal("expected each pod to have label foo=bar after replication")
+		}
 	}
 }
 
@@ -113,10 +129,11 @@ func newTestReplication(t *testing.T, errCh chan error) (*replication, consuluti
 	timeout := 10 * time.Second
 	return &replication{
 		active:      2,
+		podLabels:   map[string]string{"foo": "bar"},
 		nodes:       nodes,
 		store:       podStore,
 		txner:       fixture.Client.KV(),
-		labeler:     nil,
+		labeler:     labels.NewConsulApplicator(fixture.Client, 0),
 		manifest:    mb.GetManifest(),
 		health:      test.HappyHealthChecker(nodes),
 		threshold:   health.Passing,

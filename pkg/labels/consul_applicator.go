@@ -225,6 +225,10 @@ func mutateLabelsTxn(
 	labels map[string]*string,
 	f LabelFetcher,
 ) error {
+	if len(labels) == 0 {
+		return nil
+	}
+
 	l, index, err := f.GetLabelsWithIndex(labelType, id)
 	if err != nil {
 		return err
