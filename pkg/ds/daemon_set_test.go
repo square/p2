@@ -177,8 +177,14 @@ func TestSchedule(t *testing.T) {
 	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	Assert(t).IsNil(err, "Expected no error committing transaction")
 
-	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
-	applicator := labels.NewFakeApplicator()
+	consulStore := consul.NewConsulStore(fixture.Client)
+	applicator := labels.NewConsulApplicator(fixture.Client, 0)
+
+	// seed the applicator so the "no labels" failsafe isn't triggered
+	err = applicator.SetLabel(labels.POD, "some_untouched_pod", "foo", "bar")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()
@@ -200,6 +206,7 @@ func TestSchedule(t *testing.T) {
 		dsData,
 		dsStore,
 		consulStore,
+		fixture.Client.KV(),
 		applicator,
 		applicator,
 		1*time.Nanosecond,
@@ -428,8 +435,14 @@ func TestPublishToReplication(t *testing.T) {
 	err = transaction.MustCommit(ctx, fixture.Client.KV())
 	Assert(t).IsNil(err, "Expected no error committing transaction")
 
-	consulStore := consultest.NewFakePodStore(make(map[consultest.FakePodStoreKey]manifest.Manifest), make(map[string]consul.WatchResult))
-	applicator := labels.NewFakeApplicator()
+	consulStore := consul.NewConsulStore(fixture.Client)
+	applicator := labels.NewConsulApplicator(fixture.Client, 0)
+
+	// seed applicator with unrelated labels so we don't trigger "no labels" failsave
+	err = applicator.SetLabel(labels.POD, "some_unrelated_pod", "foo", "bar")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	preparer := consultest.NewFakePreparer(consulStore, logging.DefaultLogger)
 	preparer.Enable()
@@ -447,6 +460,7 @@ func TestPublishToReplication(t *testing.T) {
 		dsData,
 		dsStore,
 		consulStore,
+		fixture.Client.KV(),
 		applicator,
 		applicator,
 		1*time.Nanosecond,
@@ -537,10 +551,14 @@ func TestPublishToReplication(t *testing.T) {
 	Assert(t).IsNil(err, "unexpectedly unlabeled")
 }
 
+type testStore interface {
+	AllPods(podPrefix consul.PodPrefix) ([]consul.ManifestResult, time.Duration, error)
+}
+
 // Polls for the store to have the same number of pods as the argument
-func waitForPodsInIntent(consulStore *consultest.FakePodStore, numPodsExpected int) error {
+func waitForPodsInIntent(consulStore store, numPodsExpected int) error {
 	condition := func() error {
-		manifestResults, _, err := consulStore.AllPods(consul.INTENT_TREE)
+		manifestResults, _, err := consulStore.(testStore).AllPods(consul.INTENT_TREE)
 		if err != nil {
 			return util.Errorf("Unable to get all pods from pod store: %v", err)
 		}
@@ -557,9 +575,9 @@ func waitForPodsInIntent(consulStore *consultest.FakePodStore, numPodsExpected i
 }
 
 // Polls for the store to have a pod with the same pod id and node name
-func waitForSpecificPod(consulStore *consultest.FakePodStore, nodeName types.NodeName, podID types.PodID) error {
+func waitForSpecificPod(consulStore store, nodeName types.NodeName, podID types.PodID) error {
 	condition := func() error {
-		manifestResults, _, err := consulStore.AllPods(consul.INTENT_TREE)
+		manifestResults, _, err := consulStore.(testStore).AllPods(consul.INTENT_TREE)
 		if err != nil {
 			return util.Errorf("Unable to get all pods from pod store: %v", err)
 		}

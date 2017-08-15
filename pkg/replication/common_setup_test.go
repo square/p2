@@ -38,6 +38,7 @@ func testReplicatorAndServer(t *testing.T) (Replicator, Store, consulutil.Fixtur
 		testNodes,
 		active,
 		store,
+		f.Client.KV(),
 		labels.NewConsulApplicator(f.Client, 1),
 		healthChecker,
 		threshold,

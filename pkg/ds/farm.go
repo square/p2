@@ -1,6 +1,7 @@
 package ds
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/dsstore"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -41,6 +43,7 @@ type DaemonSetLocker interface {
 type Farm struct {
 	// constructor arguments
 	store     store
+	txner     transaction.Txner
 	dsStore   DaemonSetStore
 	dsLocker  DaemonSetLocker
 	scheduler scheduler.Scheduler
@@ -78,6 +81,7 @@ type childDS struct {
 
 func NewFarm(
 	store store,
+	txner transaction.Txner,
 	dsStore DaemonSetStore,
 	dsLocker DaemonSetLocker,
 	labeler Labeler,
@@ -98,6 +102,7 @@ func NewFarm(
 
 	return &Farm{
 		store:             store,
+		txner:             txner,
 		dsStore:           dsStore,
 		dsLocker:          dsLocker,
 		scheduler:         scheduler.NewApplicatorScheduler(labeler),
@@ -188,16 +193,27 @@ func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
 			// We should find a nice way to couple them together
 			dsf.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with dangling daemon set uuid '%v'", podID, nodeName, dsID)
 
-			_, err = dsf.store.DeletePod(consul.INTENT_TREE, nodeName, podID)
+			ctx, cancel := transaction.New(context.Background())
+			err = dsf.store.DeletePodTxn(ctx, consul.INTENT_TREE, nodeName, podID)
 			if err != nil {
 				dsf.logger.NoFields().Errorf("Unable to delete pod id '%v' in node '%v', from intent tree: %v", podID, nodeName, err)
+				cancel()
 				continue
 			}
 
 			id := labels.MakePodLabelKey(nodeName, podID)
-			err = dsf.labeler.RemoveLabel(labels.POD, id, DSIDLabel)
+			err = dsf.labeler.RemoveLabelTxn(ctx, labels.POD, id, DSIDLabel)
 			if err != nil {
 				dsf.logger.NoFields().Errorf("Error removing ds pod id label '%v': %v", id, err)
+				cancel()
+				continue
+			}
+
+			err = transaction.MustCommit(ctx, dsf.txner)
+			if err != nil {
+				dsf.logger.Errorf("could not remove %s from %s: %s", podID, nodeName, err)
+				cancel()
+				continue
 			}
 		}
 	}
@@ -596,6 +612,7 @@ func (dsf *Farm) spawnDaemonSet(
 		*dsFields,
 		dsf.dsStore,
 		dsf.store,
+		dsf.txner,
 		dsf.labeler,
 		dsf.watcher,
 		dsf.labelsAggregationRate,

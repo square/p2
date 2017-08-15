@@ -59,7 +59,7 @@ func (app *fakeApplicator) SetLabels(labelType Type, id string, labels map[strin
 }
 
 func (app *fakeApplicator) SetLabelsTxn(ctx context.Context, labelType Type, id string, labels map[string]string) error {
-	panic("not implemented")
+	return util.Errorf("SetLabelsTxn not implemented in fake applicator. Use a real applicator")
 }
 
 func (app *fakeApplicator) RemoveAllLabels(labelType Type, id string) error {
@@ -81,6 +81,10 @@ func (app *fakeApplicator) RemoveLabel(labelType Type, id, name string) error {
 	entry := app.entry(labelType, id)
 	delete(entry, name)
 	return nil
+}
+
+func (app *fakeApplicator) RemoveLabelTxn(ctx context.Context, labelType Type, id string, name string) error {
+	return util.Errorf("RemoveLabelTxn not implemented in fake applicator. use a real applicator")
 }
 
 func (app *fakeApplicator) RemoveLabelsTxn(ctx context.Context, labelType Type, id string, keysToRemove []string) error {

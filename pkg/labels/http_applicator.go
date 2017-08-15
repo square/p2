@@ -181,6 +181,10 @@ func (h *httpApplicator) RemoveLabel(labelType Type, id, name string) error {
 	return nil
 }
 
+func (h *httpApplicator) RemoveLabelTxn(ctx context.Context, labelType Type, id string, keyToRemove string) error {
+	return removeLabelsTxn(ctx, labelType, id, []string{keyToRemove}, h)
+}
+
 func (h *httpApplicator) RemoveLabelsTxn(ctx context.Context, labelType Type, id string, keysToRemove []string) error {
 	return removeLabelsTxn(ctx, labelType, id, keysToRemove, h)
 }

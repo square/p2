@@ -52,7 +52,7 @@ type consulKV interface {
 	Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
 }
 
-type consulApplicator struct {
+type ConsulApplicator struct {
 	kv            consulKV
 	logger        logging.Logger
 	retries       int
@@ -62,8 +62,8 @@ type consulApplicator struct {
 	retryMetric   metrics.Gauge
 }
 
-func NewConsulApplicator(client consulutil.ConsulClient, retries int) *consulApplicator {
-	return &consulApplicator{
+func NewConsulApplicator(client consulutil.ConsulClient, retries int) *ConsulApplicator {
+	return &ConsulApplicator{
 		logger:      logging.DefaultLogger,
 		kv:          client.KV(),
 		retries:     retries,
@@ -72,7 +72,7 @@ func NewConsulApplicator(client consulutil.ConsulClient, retries int) *consulApp
 	}
 }
 
-func (c *consulApplicator) SetMetricsRegistry(metReg MetricsRegistry) {
+func (c *ConsulApplicator) SetMetricsRegistry(metReg MetricsRegistry) {
 	c.metReg = metReg
 	c.retryMetric = metrics.NewGauge()
 	_ = c.metReg.Register("label_mutation_retries", c.retryMetric)
@@ -89,7 +89,7 @@ func objectPath(labelType Type, id string) (string, error) {
 	return path.Join(typePath(labelType), id), nil
 }
 
-func (c *consulApplicator) GetLabelsWithIndex(labelType Type, id string) (Labeled, uint64, error) {
+func (c *ConsulApplicator) GetLabelsWithIndex(labelType Type, id string) (Labeled, uint64, error) {
 	path, err := objectPath(labelType, id)
 	if err != nil {
 		return Labeled{}, 0, err
@@ -107,20 +107,20 @@ func (c *consulApplicator) GetLabelsWithIndex(labelType Type, id string) (Labele
 	return l, kvp.ModifyIndex, err
 }
 
-func (c *consulApplicator) GetLabels(labelType Type, id string) (Labeled, error) {
+func (c *ConsulApplicator) GetLabels(labelType Type, id string) (Labeled, error) {
 	l, _, err := c.GetLabelsWithIndex(labelType, id)
 	return l, err
 }
 
-func (c *consulApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
+func (c *ConsulApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
 	return c.getMatches(selector, labelType, 0, false)
 }
 
-func (c *consulApplicator) GetCachedMatches(selector labels.Selector, labelType Type, aggregationRate time.Duration) ([]Labeled, error) {
+func (c *ConsulApplicator) GetCachedMatches(selector labels.Selector, labelType Type, aggregationRate time.Duration) ([]Labeled, error) {
 	return c.getMatches(selector, labelType, aggregationRate, true)
 }
 
-func (c *consulApplicator) getMatches(selector labels.Selector, labelType Type, aggregationRate time.Duration, cachedMatch bool) ([]Labeled, error) {
+func (c *ConsulApplicator) getMatches(selector labels.Selector, labelType Type, aggregationRate time.Duration, cachedMatch bool) ([]Labeled, error) {
 	var allLabeled []Labeled
 
 	if cachedMatch {
@@ -149,7 +149,7 @@ func (c *consulApplicator) getMatches(selector labels.Selector, labelType Type, 
 	return res, nil
 }
 
-func (c *consulApplicator) ListLabels(labelType Type) ([]Labeled, error) {
+func (c *ConsulApplicator) ListLabels(labelType Type) ([]Labeled, error) {
 	allLabeled := []Labeled{}
 	allKV, _, err := c.kv.List(typePath(labelType)+"/", nil)
 	if err != nil {
@@ -170,7 +170,7 @@ func (c *consulApplicator) ListLabels(labelType Type) ([]Labeled, error) {
 }
 
 // generalized label mutator function - pass nil value for any label to delete it
-func (c *consulApplicator) mutateLabels(labelType Type, id string, labels map[string]*string) error {
+func (c *ConsulApplicator) mutateLabels(labelType Type, id string, labels map[string]*string) error {
 	l, index, err := c.GetLabelsWithIndex(labelType, id)
 	if err != nil {
 		return err
@@ -225,6 +225,10 @@ func mutateLabelsTxn(
 	labels map[string]*string,
 	f LabelFetcher,
 ) error {
+	if len(labels) == 0 {
+		return nil
+	}
+
 	l, index, err := f.GetLabelsWithIndex(labelType, id)
 	if err != nil {
 		return err
@@ -276,7 +280,7 @@ func labelsFromKeyValue(label string, value *string) map[string]*string {
 
 // this function will attempt to mutateLabel. if it gets a CAS error, then it
 // will retry up to the number of attempts specified in c.Retries
-func (c *consulApplicator) retryMutate(labelType Type, id string, labels map[string]*string) error {
+func (c *ConsulApplicator) retryMutate(labelType Type, id string, labels map[string]*string) error {
 	err := c.mutateLabels(labelType, id, labels)
 	for i := 0; i < c.retries; i++ {
 		if _, ok := err.(CASError); ok {
@@ -289,19 +293,19 @@ func (c *consulApplicator) retryMutate(labelType Type, id string, labels map[str
 	return err
 }
 
-func (c *consulApplicator) updateRetryCount(retryMetric int) {
+func (c *ConsulApplicator) updateRetryCount(retryMetric int) {
 	c.retryMetric.Update(int64(retryMetric))
 }
 
-func (c *consulApplicator) SetLabel(labelType Type, id, label, value string) error {
+func (c *ConsulApplicator) SetLabel(labelType Type, id, label, value string) error {
 	return c.retryMutate(labelType, id, labelsFromKeyValue(label, &value))
 }
 
-func (c *consulApplicator) SetLabelTxn(ctx context.Context, labelType Type, id, label, value string) error {
+func (c *ConsulApplicator) SetLabelTxn(ctx context.Context, labelType Type, id, label, value string) error {
 	return mutateLabelsTxn(ctx, labelType, id, labelsFromKeyValue(label, &value), c)
 }
 
-func (c *consulApplicator) SetLabels(labelType Type, id string, labels map[string]string) error {
+func (c *ConsulApplicator) SetLabels(labelType Type, id string, labels map[string]string) error {
 	labelsToPointers := make(map[string]*string)
 	for label, value := range labels {
 		// We can't just use &value because that would be a pointer to
@@ -315,7 +319,7 @@ func (c *consulApplicator) SetLabels(labelType Type, id string, labels map[strin
 
 // TODO: replace SetLabels() with this implementation. It's just separate right now to make
 // exploring solutions require less code churn
-func (c *consulApplicator) SetLabelsTxn(ctx context.Context, labelType Type, id string, labels map[string]string) error {
+func (c *ConsulApplicator) SetLabelsTxn(ctx context.Context, labelType Type, id string, labels map[string]string) error {
 	return setLabelsTxn(ctx, labelType, id, labels, c)
 }
 
@@ -332,15 +336,15 @@ func setLabelsTxn(ctx context.Context, labelType Type, id string, labels map[str
 	return mutateLabelsTxn(ctx, labelType, id, labelsToPointers, f)
 }
 
-func (c *consulApplicator) RemoveLabel(labelType Type, id, label string) error {
+func (c *ConsulApplicator) RemoveLabel(labelType Type, id, label string) error {
 	return c.retryMutate(labelType, id, labelsFromKeyValue(label, nil))
 }
 
-func (c *consulApplicator) RemoveLabelTxn(ctx context.Context, labelType Type, id, label string) error {
-	return mutateLabelsTxn(ctx, labelType, id, labelsFromKeyValue(label, nil), c)
+func (c *ConsulApplicator) RemoveLabelTxn(ctx context.Context, labelType Type, id, label string) error {
+	return removeLabelsTxn(ctx, labelType, id, []string{label}, c)
 }
 
-func (c *consulApplicator) RemoveLabelsTxn(ctx context.Context, labelType Type, id string, keysToRemove []string) error {
+func (c *ConsulApplicator) RemoveLabelsTxn(ctx context.Context, labelType Type, id string, keysToRemove []string) error {
 	return removeLabelsTxn(ctx, labelType, id, keysToRemove, c)
 }
 
@@ -352,7 +356,7 @@ func removeLabelsTxn(ctx context.Context, labelType Type, id string, keysToRemov
 	return mutateLabelsTxn(ctx, labelType, id, mutation, f)
 }
 
-func (c *consulApplicator) RemoveAllLabels(labelType Type, id string) error {
+func (c *ConsulApplicator) RemoveAllLabels(labelType Type, id string) error {
 	path, err := objectPath(labelType, id)
 	if err != nil {
 		return err
@@ -364,7 +368,7 @@ func (c *consulApplicator) RemoveAllLabels(labelType Type, id string) error {
 // RemoveAllLabelsTxn is the same as RemoveAllLabels but adds the operation to
 // the passed transaction rather than synchronously making the requisite consul
 // call
-func (c *consulApplicator) RemoveAllLabelsTxn(ctx context.Context, labelType Type, id string) error {
+func (c *ConsulApplicator) RemoveAllLabelsTxn(ctx context.Context, labelType Type, id string) error {
 	return removeAllLabelsTxn(ctx, labelType, id)
 }
 
@@ -435,12 +439,12 @@ func convertLabeledToKVP(l Labeled) (*api.KVPair, error) {
 // to the cost of querying for this subtree on any sizeable fleet of machines. Instead, preparers should
 // use the httpApplicator from a server that exposes the results of this (or another)
 // implementation's watch.
-func (c *consulApplicator) WatchMatches(selector labels.Selector, labelType Type, aggregationRate time.Duration, quitCh <-chan struct{}) (chan []Labeled, error) {
+func (c *ConsulApplicator) WatchMatches(selector labels.Selector, labelType Type, aggregationRate time.Duration, quitCh <-chan struct{}) (chan []Labeled, error) {
 	aggregator := c.initAggregator(labelType, aggregationRate)
 	return aggregator.Watch(selector, quitCh), nil
 }
 
-func (c *consulApplicator) initAggregator(labelType Type, aggregationRate time.Duration) *consulAggregator {
+func (c *ConsulApplicator) initAggregator(labelType Type, aggregationRate time.Duration) *consulAggregator {
 	c.aggregatorMux.Lock()
 	defer c.aggregatorMux.Unlock()
 	aggregator, ok := c.aggregators[labelType]
@@ -452,7 +456,7 @@ func (c *consulApplicator) initAggregator(labelType Type, aggregationRate time.D
 	return aggregator
 }
 
-func (c *consulApplicator) WatchMatchDiff(
+func (c *ConsulApplicator) WatchMatchDiff(
 	selector labels.Selector,
 	labelType Type,
 	aggregationRate time.Duration,
@@ -542,4 +546,4 @@ func NodeAndPodIDFromPodLabel(labeled Labeled) (types.NodeName, types.PodID, err
 }
 
 // confirm at compile time that consulApplicator is an implementation of the Applicator interface
-var _ Applicator = &consulApplicator{}
+var _ Applicator = &ConsulApplicator{}

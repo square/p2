@@ -80,7 +80,7 @@ func (f *fakeLabelStore) Get(key string, q *api.QueryOptions) (*api.KVPair, *api
 }
 
 func TestBasicSetGetRemove(t *testing.T) {
-	c := &consulApplicator{
+	c := &ConsulApplicator{
 		kv:     &fakeLabelStore{data: map[string][]byte{}},
 		logger: logging.DefaultLogger,
 	}
@@ -101,7 +101,7 @@ func TestBasicSetGetRemove(t *testing.T) {
 }
 
 func TestSetGetRemoveAll(t *testing.T) {
-	c := &consulApplicator{
+	c := &ConsulApplicator{
 		kv:     &fakeLabelStore{data: map[string][]byte{}},
 		logger: logging.DefaultLogger,
 	}
@@ -127,7 +127,7 @@ func TestSetGetRemoveAll(t *testing.T) {
 }
 
 func TestEmptyGetRemove(t *testing.T) {
-	c := &consulApplicator{
+	c := &ConsulApplicator{
 		kv:     &fakeLabelStore{data: map[string][]byte{}},
 		logger: logging.DefaultLogger,
 	}
@@ -140,7 +140,7 @@ func TestEmptyGetRemove(t *testing.T) {
 }
 
 func TestBasicMatch(t *testing.T) {
-	c := &consulApplicator{
+	c := &ConsulApplicator{
 		kv:     &fakeLabelStore{data: map[string][]byte{}},
 		logger: logging.DefaultLogger,
 	}
@@ -168,7 +168,7 @@ func TestBasicMatch(t *testing.T) {
 }
 
 func TestSetLabels(t *testing.T) {
-	c := &consulApplicator{
+	c := &ConsulApplicator{
 		kv:     &fakeLabelStore{data: map[string][]byte{}},
 		logger: logging.DefaultLogger,
 	}
@@ -229,7 +229,7 @@ func (f *failOnceLabelStore) Get(key string, q *api.QueryOptions) (*api.KVPair, 
 }
 
 func TestCASRetries(t *testing.T) {
-	c := &consulApplicator{
+	c := &ConsulApplicator{
 		kv:          &failOnceLabelStore{inner: &fakeLabelStore{data: map[string][]byte{}}},
 		logger:      logging.DefaultLogger,
 		retries:     3,
@@ -241,7 +241,7 @@ func TestCASRetries(t *testing.T) {
 }
 
 func TestCASNoRetries(t *testing.T) {
-	c := &consulApplicator{
+	c := &ConsulApplicator{
 		kv:      &failOnceLabelStore{inner: &fakeLabelStore{data: map[string][]byte{}}},
 		logger:  logging.DefaultLogger,
 		retries: 0,
@@ -255,7 +255,7 @@ func TestCASNoRetries(t *testing.T) {
 
 func TestWatchMatchDiff(t *testing.T) {
 	DefaultAggregationRate = 0
-	c := &consulApplicator{
+	c := &ConsulApplicator{
 		logger: logging.DefaultLogger,
 		kv: &fakeLabelStore{data: map[string][]byte{
 			"labels/node/blah": []byte("{\"sentinel_value\":\"yes\"}"), // Otherwise empty label fail safe will fire
@@ -356,7 +356,7 @@ func TestWatchMatchDiff(t *testing.T) {
 }
 
 func TestListLabels(t *testing.T) {
-	c := &consulApplicator{
+	c := &ConsulApplicator{
 		kv: &fakeLabelStore{data: map[string][]byte{
 			"labels/replication_controller/some_key": []byte("{\"some_key\":\"some_value\"}"),
 			"labels/rolls/some_other_key":            []byte("{\"some_key\":\"some_other_value\"}"),
@@ -387,7 +387,7 @@ func TestListLabels(t *testing.T) {
 }
 
 func TestListLabels404(t *testing.T) {
-	c := &consulApplicator{
+	c := &ConsulApplicator{
 		kv: &fakeLabelStore{data: map[string][]byte{
 			"labels/replication_controller/some_key": []byte("{\"some_key\":\"some_value\"}"),
 			"labels/rolls/some_other_key":            []byte("{\"some_key\":\"some_other_value\"}"),

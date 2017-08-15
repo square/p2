@@ -425,3 +425,65 @@ func TestMutateAndSelectHTTPApplicator(t *testing.T) {
 	Assert(t).IsNil(err, "Should not have erred getting labels for the pod")
 	Assert(t).AreEqual(0, len(podLabels.Labels), "Should have only had one label")
 }
+
+func TestRemoveLabelTxnHTTPApplicator(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+	labelServer := NewHTTPLabelServer(NewConsulApplicator(fixture.Client, 0), 0, logging.TestLogger())
+	server := httptest.NewServer(labelServer.Handler())
+	defer server.Close()
+
+	url, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	applicator, err := NewHTTPApplicator(nil, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = applicator.SetLabel(POD, "def-456", "foo", "blue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = applicator.SetLabel(POD, "def-456", "bar", "blue")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	err = applicator.RemoveLabelTxn(ctx, POD, "def-456", "bar")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm nothing was removed before committing transaction
+	labels, err := applicator.GetLabels(POD, "def-456")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(labels.Labels) != 2 {
+		t.Fatalf("expected 2 labels before committing transaction but there were %d", len(labels.Labels))
+	}
+
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	labels, err = applicator.GetLabels(POD, "def-456")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(labels.Labels) != 1 {
+		t.Fatalf("expected 2 label after committing transaction but there were %d", len(labels.Labels))
+	}
+
+	if _, ok := labels.Labels["foo"]; !ok {
+		t.Fatal("foo label should have still existed")
+	}
+}

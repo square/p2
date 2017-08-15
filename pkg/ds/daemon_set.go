@@ -1,6 +1,7 @@
 package ds
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/user"
@@ -18,6 +19,7 @@ import (
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/dsstore"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -75,8 +77,13 @@ type DaemonSet interface {
 }
 
 type Labeler interface {
-	SetLabel(labelType labels.Type, id, name, value string) error
-	RemoveLabel(labelType labels.Type, id, name string) error
+	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, labels map[string]string) error
+	RemoveLabelTxn(
+		ctx context.Context,
+		labelType labels.Type,
+		id string,
+		name string,
+	) error
 	GetMatches(selector klabels.Selector, labelType labels.Type) ([]labels.Labeled, error)
 	GetCachedMatches(selector klabels.Selector, labelType labels.Type, aggregationRate time.Duration) ([]labels.Labeled, error)
 	GetLabels(labelType labels.Type, id string) (labels.Labeled, error)
@@ -92,7 +99,7 @@ type LabelWatcher interface {
 }
 
 type store interface {
-	DeletePod(podPrefix consul.PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error)
+	DeletePodTxn(ctx context.Context, podPrefix consul.PodPrefix, nodename types.NodeName, podID types.PodID) error
 	NewUnmanagedSession(session, name string) consul.Session
 
 	// For passing to the replication package:
@@ -117,6 +124,7 @@ type daemonSet struct {
 	store            store
 	scheduler        scheduler.Scheduler
 	dsStore          DaemonSetStore
+	txner            transaction.Txner
 	applicator       Labeler
 	watcher          LabelWatcher
 	healthChecker    *checker.ConsulHealthChecker
@@ -148,6 +156,7 @@ func New(
 	fields fields.DaemonSet,
 	dsStore DaemonSetStore,
 	store store,
+	txner transaction.Txner,
 	applicator Labeler,
 	watcher LabelWatcher,
 	labelsAggregationRate time.Duration,
@@ -168,6 +177,7 @@ func New(
 
 		dsStore:               dsStore,
 		store:                 store,
+		txner:                 txner,
 		logger:                logger,
 		applicator:            applicator,
 		watcher:               watcher,
@@ -434,15 +444,7 @@ func (ds *daemonSet) addPods() error {
 	// Get the difference in nodes that we need to schedule on and then sort them
 	// for deterministic ordering
 	toScheduleSorted := types.NewNodeSet(eligible...).Difference(types.NewNodeSet(currentNodes...)).ListNodes()
-	ds.logger.Infof("Need to label %d nodes: %s", len(toScheduleSorted), toScheduleSorted)
-
-	for _, node := range toScheduleSorted {
-		err := ds.labelPod(node)
-		if err != nil {
-			ds.logger.WithError(err).Errorf("Error labeling pod for node %s", node)
-			return util.Errorf("Error labeling node: %v", err)
-		}
-	}
+	ds.logger.Infof("Need to schedule %d nodes: %s", len(toScheduleSorted), toScheduleSorted)
 
 	if len(currentNodes) > 0 || len(toScheduleSorted) > 0 {
 		return ds.PublishToReplication()
@@ -518,37 +520,30 @@ func (ds *daemonSet) clearPods() error {
 	return nil
 }
 
-func (ds *daemonSet) labelPod(node types.NodeName) error {
-	ds.logger.NoFields().Infof("Labelling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest.ID(), node, ds.ID())
-
-	// Will apply the following label on the key <labels.POD>/<node>/<ds.Manifest.ID()>:
-	// 	{ DSIDLabel : ds.ID() }
-	// eg node/127.0.0.1/test_pod[daemon_set_id] := test_ds_id
-	// This is for indicating that this pod path belongs to this daemon set
-	id := labels.MakePodLabelKey(node, ds.Manifest.ID())
-	err := ds.applicator.SetLabel(labels.POD, id, DSIDLabel, ds.ID().String())
-	if err != nil {
-		return util.Errorf("Error setting label: %v", err)
-	}
-	return nil
-}
-
 func (ds *daemonSet) unschedule(node types.NodeName) error {
 	ds.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest.ID(), node, ds.ID())
 
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+
 	// Will remove the following key:
 	// <consul.INTENT_TREE>/<node>/<ds.Manifest.ID()>
-	_, err := ds.store.DeletePod(consul.INTENT_TREE, node, ds.Manifest.ID())
+	err := ds.store.DeletePodTxn(ctx, consul.INTENT_TREE, node, ds.Manifest.ID())
 	if err != nil {
-		return util.Errorf("Unable to delete pod id '%v' in node '%v', from intent tree: %v", ds.Manifest.ID(), node, err)
+		return util.Errorf("unable to form pod deletion transaction for pod id '%v' from node '%v': %v", ds.Manifest.ID(), node, err)
 	}
 
 	// Will remove the following label on the key <labels.POD>/<node>/<ds.Manifest.ID()>: DSIDLabel
 	// This is for indicating that this pod path no longer belongs to this daemon set
 	id := labels.MakePodLabelKey(node, ds.Manifest.ID())
-	err = ds.applicator.RemoveLabel(labels.POD, id, DSIDLabel)
+	err = ds.applicator.RemoveLabelTxn(ctx, labels.POD, id, DSIDLabel)
 	if err != nil {
-		return util.Errorf("Error removing label: %v", err)
+		return util.Errorf("error adding label removal to transaction: %v", err)
+	}
+
+	err = transaction.MustCommit(ctx, ds.txner)
+	if err != nil {
+		return util.Errorf("error unscheduling %s from %s: %s", ds.Manifest.ID(), node, err)
 	}
 
 	return nil
@@ -559,11 +554,10 @@ func (ds *daemonSet) PublishToReplication() error {
 	// InitializeReplicationWithCheck, we will get an error
 	ds.cancelReplication()
 
-	podLocations, err := ds.CurrentPods()
+	nodes, err := ds.EligibleNodes()
 	if err != nil {
-		return util.Errorf("Error retrieving pod locations from daemon set: %v", err)
+		return util.Errorf("Error retrieving eligible nodes for daemon set: %v", err)
 	}
-	nodes := podLocations.Nodes()
 
 	ds.logger.Infof("Preparing to publish the following nodes: %v", nodes)
 
@@ -584,6 +578,7 @@ func (ds *daemonSet) PublishToReplication() error {
 		nodes,
 		len(nodes)-ds.DaemonSet.MinHealth,
 		ds.store,
+		ds.txner,
 		ds.applicator,
 		*ds.healthChecker,
 		health.HealthState(health.Passing),
@@ -597,6 +592,10 @@ func (ds *daemonSet) PublishToReplication() error {
 	}
 
 	ds.logger.Info("New replicator was made")
+
+	podLabels := map[string]string{
+		DSIDLabel: ds.ID().String(),
+	}
 
 	// Replication locks are designed to make sure that two replications to
 	// the same nodes cannot occur at the same time. The granularity is
@@ -613,6 +612,7 @@ func (ds *daemonSet) PublishToReplication() error {
 	currentReplication, errCh, err := repl.InitializeDaemonSetReplication(
 		replication.DefaultConcurrentReality,
 		ds.rateLimitInterval,
+		podLabels,
 	)
 	if err != nil {
 		ds.logger.Errorf("Unable to initialize replication: %s", err)

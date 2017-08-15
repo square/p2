@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/consul/api"
 )
@@ -160,5 +162,139 @@ func TestErrAddingToCommittedTransaction(t *testing.T) {
 	err = Add(ctx, api.KVTxnOp{})
 	if err == nil {
 		t.Fatal("expected an error adding an operation to a transaction that was already committed")
+	}
+}
+
+// signalingTxner has a channel that it passes a value on whenever Txn() is called. This is useful for testing the behavior of CommitWithRetries()
+type signalingTxner struct {
+	shouldErr      bool
+	shouldRollback bool
+	calls          chan<- struct{}
+}
+
+func (s signalingTxner) Txn(txn api.KVTxnOps, q *api.QueryOptions) (bool, *api.KVTxnResponse, *api.QueryMeta, error) {
+	s.calls <- struct{}{}
+	if s.shouldErr {
+		return false, nil, nil, errors.New("a test error occurred")
+	}
+
+	if s.shouldRollback {
+		return false, new(api.KVTxnResponse), nil, nil
+	}
+
+	return true, new(api.KVTxnResponse), nil, nil
+}
+
+func TestCommitWithRetriesHappy(t *testing.T) {
+	ctx, cancel := New(context.Background())
+	defer cancel()
+
+	callsCh := make(chan struct{})
+	txner := signalingTxner{
+		calls: callsCh,
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer close(callsCh)
+		CommitWithRetries(ctx, txner)
+	}()
+
+	select {
+	case <-callsCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("took too long for Txn() to be called")
+	}
+
+	select {
+	case _, ok := <-callsCh:
+		if ok {
+			t.Fatal("CommitWithRetries() called Txn() again after a successful commit")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("CommitWithRetries() didn't exit quickly enough after a successful commit")
+	}
+}
+
+func TestCommitWithRetriesDoesntRetryRollback(t *testing.T) {
+	ctx, cancel := New(context.Background())
+	defer cancel()
+
+	callsCh := make(chan struct{})
+	txner := signalingTxner{
+		calls:          callsCh,
+		shouldRollback: true,
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer close(callsCh)
+		CommitWithRetries(ctx, txner)
+	}()
+
+	select {
+	case <-callsCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("took too long for Txn() to be called")
+	}
+
+	select {
+	case _, ok := <-callsCh:
+		if ok {
+			t.Fatal("CommitWithRetries() called Txn() again after a rolled back commit")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("CommitWithRetries() didn't exit quickly enough after a successful commit")
+	}
+}
+
+func TestCommitWithRetriesRetriesErrorsUntilCanceled(t *testing.T) {
+	ctx, cancel := New(context.Background())
+	defer cancel()
+
+	callsCh := make(chan struct{})
+	txner := signalingTxner{
+		calls:          callsCh,
+		shouldRollback: true,
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer close(callsCh)
+		CommitWithRetries(ctx, txner)
+	}()
+
+	// make sure this gets called at least twice
+	select {
+	case <-callsCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("took too long for Txn() to be called")
+	}
+
+	select {
+	case <-callsCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("took too long for Txn() to be called")
+	}
+
+	// now cancel the context, which means we should get at most one more Txn() call
+	cancel()
+	select {
+	case _, ok := <-callsCh:
+		if ok {
+			select {
+			case _, ok := <-callsCh:
+				if ok {
+					t.Fatal("CommitWithRetries() called Txn() twice after being canceled")
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("CommitWithRetries() didn't exit quickly enough after being canceled")
+			}
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("CommitWithRetries() didn't exit quickly enough after being canceled")
 	}
 }

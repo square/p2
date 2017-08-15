@@ -23,7 +23,7 @@ func TestInitializeReplication(t *testing.T) {
 
 	// err being nil ensures that checking preparers and locking the hosts
 	// succeeded
-	replication, _, err := replicator.InitializeReplication(false, false, 0, 0)
+	replication, _, err := replicator.InitializeReplication(false, false, 0, 0, nil)
 	if err != nil {
 		t.Fatalf("Error initializing replication: %s", err)
 	}
@@ -52,7 +52,7 @@ func TestInitializeReplicationFailsIfNoPreparers(t *testing.T) {
 	// We expect an error here because the reality keys for the preparer
 	// have no data, which in production would mean that the preparer is
 	// not installed on the hosts being replicated to
-	_, _, testErr := replicator.InitializeReplication(false, false, 0, 0)
+	_, _, testErr := replicator.InitializeReplication(false, false, 0, 0, nil)
 	if testErr == nil {
 		t.Fatalf("Expected error due to preparer not existing in reality, but no error occurred")
 	}
@@ -94,7 +94,7 @@ func TestInitializeReplicationFailsIfLockExists(t *testing.T) {
 		t.Fatalf("Unable to acquire lock with competing session: %s", err)
 	}
 
-	_, _, testErr := replicator.InitializeReplication(false, false, 0, 0)
+	_, _, testErr := replicator.InitializeReplication(false, false, 0, 0, nil)
 	if testErr == nil {
 		t.Fatalf("Expected error due to competing lock, but no error occurred")
 	}
@@ -131,7 +131,7 @@ func TestInitializeReplicationReleasesLocks(t *testing.T) {
 
 	// Replication should start acquiring locks but fail to complete because of the lock
 	// on test node 1
-	_, _, testErr := replicator.InitializeReplication(false, false, 0, 0)
+	_, _, testErr := replicator.InitializeReplication(false, false, 0, 0, nil)
 	if testErr == nil {
 		t.Fatalf("Expected error due to competing lock, but no error occurred")
 	}
@@ -180,7 +180,7 @@ func TestInitializeReplicationCanOverrideLocks(t *testing.T) {
 		t.Fatalf("Unable to set up competing lock: %s", err)
 	}
 
-	replication, _, err := replicator.InitializeReplication(true, false, 0, 0)
+	replication, _, err := replicator.InitializeReplication(true, false, 0, 0, nil)
 	if err != nil {
 		t.Fatalf("Expected InitializeReplication to override competing lock, but error occurred: %s", err)
 	}
@@ -204,7 +204,7 @@ func TestInitializeReplicationWithManaged(t *testing.T) {
 	}
 
 	// Replication should fail because one node is managed
-	replication, _, err := replicator.InitializeReplication(false, false, 0, 0)
+	replication, _, err := replicator.InitializeReplication(false, false, 0, 0, nil)
 	if err == nil {
 		t.Errorf("replication did not reject managed node")
 		replication.Cancel()
@@ -212,7 +212,7 @@ func TestInitializeReplicationWithManaged(t *testing.T) {
 
 	// Replication should succeed when explicitly ignoring the controllers
 	time.Sleep(50 * time.Millisecond)
-	replication, _, err = replicator.InitializeReplication(false, true, 0, 0)
+	replication, _, err = replicator.InitializeReplication(false, true, 0, 0, nil)
 	if err != nil {
 		t.Fatal("replication could not ignore managed node:", err)
 	}

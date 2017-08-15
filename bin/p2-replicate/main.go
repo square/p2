@@ -88,6 +88,7 @@ func main() {
 		nodes,
 		len(*hosts)-*minNodes,
 		store,
+		client.KV(),
 		labeler,
 		healthChecker,
 		health.HealthState(*threshold),
@@ -104,6 +105,7 @@ func main() {
 		*ignoreControllers,
 		*concurrentRealityChecks,
 		0,
+		nil,
 	)
 	if err != nil {
 		log.Fatalf("Unable to initialize replication: %s", err)
