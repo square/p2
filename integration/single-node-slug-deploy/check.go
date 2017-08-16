@@ -52,6 +52,16 @@ const (
 	sqliteFinishDatabasePath = "/data/pods/p2-preparer/finish_data/finish.db"
 )
 
+var noAddUser = false
+
+func parseOptions(args []string) {
+	for _, arg := range args {
+		if arg == "--no-add-user" {
+			noAddUser = true
+		}
+	}
+}
+
 func main() {
 	// 1. Generate pod for preparer in this code version (`rake artifact:prepare`)
 	// 2. Locate manifests for preparer pod, premade consul pod
@@ -67,6 +77,8 @@ func main() {
 	// 10. Verify that the uuid hello pod is running by curling its HTTP port.
 	// Health is not checked for uuid pods so checking health cannot be used.
 
+	parseOptions(os.Args[1:])
+
 	// list of services running on integration test host
 	services := []string{"p2-preparer", "hello"}
 	tempdir, err := ioutil.TempDir("", "single-node-check")
@@ -80,7 +92,7 @@ func main() {
 		log.Fatalln("Could not create temp require file, bailing: %s", err)
 	}
 
-	userHookManifest, err := userCreationHookManifest(tempdir)
+	userHookManifest, err := userCreationHookManifest(tempdir, noAddUser)
 	if err != nil {
 		log.Fatalf("Couldn't schedule the user creation hook: %s", err)
 	}
@@ -639,13 +651,19 @@ func waitForStatus(statusPort int, pod string, waitTime time.Duration) error {
 	}
 }
 
-func userCreationHookManifest(tmpdir string) (manifest.Manifest, error) {
+func userCreationHookManifest(tmpdir string, noAddUser bool) (manifest.Manifest, error) {
 	createUserPath := path.Join(tmpdir, "create_user")
 	script := `#!/usr/bin/env bash
 set -e
 mkdir -p $HOOKED_POD_HOME
 /sbin/adduser $HOOKED_POD_ID -d $HOOKED_POD_HOME
 `
+
+	if noAddUser {
+		// effectively disable the hook
+		script = "#!/usr/bin/env bash\n"
+	}
+
 	err := ioutil.WriteFile(createUserPath, []byte(script), 0744)
 	if err != nil {
 		return nil, err

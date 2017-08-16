@@ -2,12 +2,12 @@ package hooks
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
-	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/logging"
@@ -48,22 +48,18 @@ func (h *hookContext) runDirectory(hookEnv *HookExecutionEnvironment) error {
 		}
 
 		err := hec.RunWithTimeout()
-		if htErr, ok := err.(ErrHookTimeout); ok {
-			h.auditLogger.LogFailure(hec, err)
-			h.logger.WithErrorAndFields(htErr, logrus.Fields{
-				"path":      hec.Path,
-				"hook_name": hec.Name,
-				"timeout":   hec.Timeout,
-			}).Warnln(htErr.Error())
-			// we intentionally swallow timeout HookTimeoutErrors
-			continue
-		} else if err != nil {
-			h.auditLogger.LogFailure(hec, err)
-			h.logger.WithErrorAndFields(err, logrus.Fields{
-				"path":      hec.Path,
-				"hook_name": hec.Name,
-			}).Warningf("Unknown error in hook %s: %s", hec.Name, err)
-			continue
+		if err != nil {
+			if htErr, ok := err.(ErrHookTimeout); ok {
+				h.auditLogger.LogFailure(hec, err)
+				h.logger.WithErrorAndFields(htErr, logrus.Fields{
+					"path":      hec.Path,
+					"hook_name": hec.Name,
+					"timeout":   hec.Timeout,
+				}).Warnln(htErr.Error())
+			}
+
+			// we don't need to log anything for non-timeout errors because they're already logged from Run()
+			return err
 		}
 		h.auditLogger.LogSuccess(hec)
 	}
@@ -81,23 +77,29 @@ func (h *hookContext) Close() error {
 //
 // NB: in the event of a timeout this will leak descriptors
 func (h *HookExecContext) RunWithTimeout() error {
-	finished := make(chan struct{})
+	ctx, cancel := context.WithTimeout(context.Background(), h.Timeout)
+	defer cancel()
+	finished := make(chan error)
 	go func() {
-		h.Run()
-		close(finished)
+		defer close(finished)
+		select {
+		case finished <- h.Run():
+		case <-ctx.Done():
+			// This means the hook timed out and therefore nothing is listening
+			// to the finished channel
+		}
 	}()
 
 	select {
-	case <-finished:
-	case <-time.After(h.Timeout):
+	case err := <-finished:
+		return err
+	case <-ctx.Done():
 		return ErrHookTimeout{*h}
 	}
-
-	return nil
 }
 
 // Run executes the hook in the context of its environment and logs the output
-func (h *HookExecContext) Run() {
+func (h *HookExecContext) Run() error {
 	h.logger.WithField("path", h.Path).Infof("Executing hook %s", h.Name)
 	cmd := exec.Command(h.Path)
 	hookOut := &bytes.Buffer{}
@@ -110,12 +112,14 @@ func (h *HookExecContext) Run() {
 			"path":   h.Path,
 			"output": hookOut.String(),
 		}).Warnf("Could not execute hook %s", h.Name)
-	} else {
-		h.logger.WithFields(logrus.Fields{
-			"path":   h.Path,
-			"output": hookOut.String(),
-		}).Debugln("Executed hook")
+		return err
 	}
+	h.logger.WithFields(logrus.Fields{
+		"path":   h.Path,
+		"output": hookOut.String(),
+	}).Debugln("Executed hook")
+
+	return nil
 }
 
 func (h *hookContext) runHooks(dirpath string, hType HookType, pod Pod, podManifest manifest.Manifest, logger logging.Logger) error {

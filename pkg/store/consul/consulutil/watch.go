@@ -377,11 +377,6 @@ func WatchDiff(
 	outCh := make(chan *WatchedChanges)
 	outErrors := make(chan error)
 
-	// initialized tracks whether we've done a loop iteration yet. For the first iteration, we don't want to
-	// do a stale query of consul to ensure the caller of WatchDiff() doesn't get a more stale result
-	// than in a previous watch. Once we've initialized state with the last index from a consistent query
-	// we can then rely on stale queries and discard values which have a lower index.
-	initialized := false
 	go func() {
 		defer close(outCh)
 		defer close(outErrors)
@@ -434,7 +429,6 @@ func WatchDiff(
 			}
 			consulLatencyHistogram.Update(int64(queryMeta.RequestTime))
 			currentIndex = queryMeta.LastIndex
-			initialized = true
 			// A copy used to keep track of what was deleted
 			mapCopy := make(map[string]*api.KVPair)
 			for key, val := range keys {
