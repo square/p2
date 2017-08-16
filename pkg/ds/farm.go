@@ -72,7 +72,7 @@ type Farm struct {
 
 type childDS struct {
 	ds        DaemonSet
-	quitCh    chan<- struct{}
+	cancel    context.CancelFunc
 	updatedCh chan<- *ds_fields.DaemonSet
 	deletedCh chan<- *ds_fields.DaemonSet
 	errCh     <-chan error
@@ -125,8 +125,18 @@ func (dsf *Farm) Start(quitCh <-chan struct{}) {
 	consulutil.WithSession(quitCh, dsf.sessions, func(sessionQuit <-chan struct{}, sessionID string) {
 		dsf.logger.WithField("session", sessionID).Infoln("Acquired new session for ds farm")
 		dsf.session = dsf.store.NewUnmanagedSession(sessionID, "")
-		go dsf.cleanupDaemonSetPods(sessionQuit)
-		dsf.mainLoop(sessionQuit)
+
+		// TODO: make consulutil.WithSession use a context instead of
+		// cancellation channel. Here we're just translating from that
+		// channel to a context cancellation
+		farmCtx, cancel := context.WithCancel(context.TODO())
+		go func() {
+			<-sessionQuit
+			cancel()
+		}()
+
+		go dsf.cleanupDaemonSetPods(farmCtx)
+		dsf.mainLoop(farmCtx)
 	})
 }
 
@@ -135,12 +145,12 @@ const cleanupInterval = 60 * time.Second
 // This function removes all pods with a DSIDLabel where the daemon set id does
 // not exist in the store at every interval specified because it is possible
 // that the farm will unexpectedly crash or someone deletes or modifies a node
-func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
+func (dsf *Farm) cleanupDaemonSetPods(ctx context.Context) {
 	timer := time.NewTimer(time.Duration(0))
 
 	for {
 		select {
-		case <-quitCh:
+		case <-ctx.Done():
 			return
 		case <-timer.C:
 		}
@@ -219,7 +229,8 @@ func (dsf *Farm) cleanupDaemonSetPods(quitCh <-chan struct{}) {
 	}
 }
 
-func (dsf *Farm) mainLoop(quitCh <-chan struct{}) {
+func (dsf *Farm) mainLoop(ctx context.Context) {
+	// TODO: use a context here instead of cancellation channel
 	subQuit := make(chan struct{})
 	defer close(subQuit)
 	dsWatch := dsf.dsStore.Watch(subQuit)
@@ -235,13 +246,13 @@ func (dsf *Farm) mainLoop(quitCh <-chan struct{}) {
 
 	for {
 		select {
-		case <-quitCh:
+		case <-ctx.Done():
 			return
 		case changes, ok = <-dsWatch:
 			if !ok {
 				return
 			}
-			dsf.handleDSChanges(changes, quitCh)
+			dsf.handleDSChanges(ctx, changes)
 		}
 	}
 }
@@ -258,7 +269,7 @@ func (dsf *Farm) closeAllChildren() {
 func (dsf *Farm) closeChild(dsID fields.ID) {
 	if child, ok := dsf.children[dsID]; ok {
 		dsf.logger.WithField("ds", dsID).Infoln("Releasing daemon set")
-		close(child.quitCh)
+		child.cancel()
 		close(child.updatedCh)
 		close(child.deletedCh)
 
@@ -278,7 +289,7 @@ func (dsf *Farm) closeChild(dsID fields.ID) {
 	}
 }
 
-func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-chan struct{}) {
+func (dsf *Farm) handleDSChanges(ctx context.Context, changes dsstore.WatchedDaemonSets) {
 	if changes.Err != nil {
 		dsf.logger.Infof("An error has occurred while watching daemon sets: %v", changes.Err)
 		return
@@ -334,9 +345,9 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 					dsf.releaseLock(dsUnlocker)
 					continue
 				}
-				dsf.children[newDS.ID] = dsf.spawnDaemonSet(&newDS, dsUnlocker, dsLogger, quitCh)
+				dsf.children[newDS.ID] = dsf.spawnDaemonSet(ctx, &newDS, dsUnlocker, dsLogger)
 			} else {
-				dsf.children[dsFields.ID] = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger, quitCh)
+				dsf.children[dsFields.ID] = dsf.spawnDaemonSet(ctx, dsFields, dsUnlocker, dsLogger)
 			}
 		}
 	}
@@ -362,7 +373,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 				}
 				dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
 
-				dsf.children[dsFields.ID] = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger, quitCh)
+				dsf.children[dsFields.ID] = dsf.spawnDaemonSet(ctx, dsFields, dsUnlocker, dsLogger)
 				ds = dsf.children[dsFields.ID]
 			}
 
@@ -410,7 +421,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 			}
 			dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
 
-			dsf.children[dsFields.ID] = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger, quitCh)
+			dsf.children[dsFields.ID] = dsf.spawnDaemonSet(ctx, dsFields, dsUnlocker, dsLogger)
 		}
 	}
 
@@ -438,14 +449,14 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 				} else {
 					// We have to spawn the daemon set, so that it can act on its deletion.
 					// Otherwise, child is nil when we reach the below select.
-					child = dsf.spawnDaemonSet(dsFields, dsUnlocker, dsLogger, quitCh)
+					child = dsf.spawnDaemonSet(ctx, dsFields, dsUnlocker, dsLogger)
 					dsf.children[dsFields.ID] = child
 				}
 				dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
 			}
 
 			select {
-			case <-quitCh:
+			case <-ctx.Done():
 				return
 			case err := <-child.errCh:
 				if err != nil {
@@ -603,10 +614,10 @@ func (dsf *Farm) raiseContentionAlert(oldDS ds_fields.DaemonSet, newDS ds_fields
 
 // Creates a functioning daemon set that will watch and write to the pod tree
 func (dsf *Farm) spawnDaemonSet(
+	ctx context.Context,
 	dsFields *ds_fields.DaemonSet,
 	dsUnlocker consul.Unlocker,
 	dsLogger logging.Logger,
-	quitCh <-chan struct{},
 ) *childDS {
 	ds := New(
 		*dsFields,
@@ -624,11 +635,11 @@ func (dsf *Farm) spawnDaemonSet(
 		dsf.dsRetryInterval,
 	)
 
-	quitSpawnCh := make(chan struct{})
 	updatedCh := make(chan *ds_fields.DaemonSet)
 	deletedCh := make(chan *ds_fields.DaemonSet)
+	ctx, cancel := context.WithCancel(ctx)
 
-	desiresCh := ds.WatchDesires(quitSpawnCh, updatedCh, deletedCh)
+	desiresCh := ds.WatchDesires(ctx, updatedCh, deletedCh)
 
 	if dsf.monitorHealth {
 		go func() {
@@ -643,7 +654,7 @@ func (dsf *Farm) spawnDaemonSet(
 
 			for {
 				select {
-				case <-quitSpawnCh:
+				case <-ctx.Done():
 					return
 				case <-ticks.C:
 					eligible, err := ds.EligibleNodes()
@@ -683,12 +694,10 @@ func (dsf *Farm) spawnDaemonSet(
 
 	go func() {
 		// This loop will check the error channel of the child and if
-		// the child's error channel closes, close the child. The
-		// quitCh here will also return if the caller to mainLoop
-		// closes it
+		// the child's error channel closes, close the child.
 		for {
 			select {
-			case <-quitCh:
+			case <-ctx.Done():
 				return
 			case err, ok := <-desiresCh:
 				if err != nil {
@@ -707,7 +716,7 @@ func (dsf *Farm) spawnDaemonSet(
 	}()
 	return &childDS{
 		ds:        ds,
-		quitCh:    quitSpawnCh,
+		cancel:    cancel,
 		updatedCh: updatedCh,
 		deletedCh: deletedCh,
 		errCh:     desiresCh,
