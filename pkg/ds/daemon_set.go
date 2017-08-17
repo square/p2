@@ -64,8 +64,8 @@ type DaemonSet interface {
 	// The caller is responsible for sending signals when something has been changed
 	WatchDesires(
 		ctx context.Context,
-		updatedCh <-chan *fields.DaemonSet,
-		deletedCh <-chan *fields.DaemonSet,
+		updatedCh <-chan fields.DaemonSet,
+		deletedCh <-chan fields.DaemonSet,
 	) <-chan error
 
 	// CurrentPods() returns all nodes that are scheduled by this daemon set
@@ -245,8 +245,8 @@ func (ds *daemonSet) MetricNames(suffix string) []string {
 
 func (ds *daemonSet) WatchDesires(
 	ctx context.Context,
-	updatedCh <-chan *fields.DaemonSet,
-	deletedCh <-chan *fields.DaemonSet,
+	updatedCh <-chan fields.DaemonSet,
+	deletedCh <-chan fields.DaemonSet,
 ) <-chan error {
 	errCh := make(chan error)
 	// TODO: make WatchMatchDiff take a context instead of a quit channel
@@ -305,17 +305,13 @@ func (ds *daemonSet) WatchDesires(
 					return
 				}
 				ds.logger.NoFields().Infof("Received daemon set update signal: %v", newDS)
-				if newDS == nil {
-					ds.logger.Errorf("Unexpected nil daemon set during update")
-					return
-				}
 				if ds.ID() != newDS.ID {
 					err = util.Errorf("Expected uuid to be the same, expected '%v', got '%v'", ds.ID(), newDS.ID)
 					continue
 				}
 
 				ds.mu.Lock()
-				ds.DaemonSet = *newDS
+				ds.DaemonSet = newDS
 				ds.mu.Unlock()
 
 				if reportErr := ds.reportEligible(); reportErr != nil {

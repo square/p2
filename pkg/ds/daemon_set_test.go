@@ -98,8 +98,8 @@ func watchDSChanges(
 	ctx context.Context,
 	ds *daemonSet,
 	dsStore DaemonSetStore,
-	updatedCh chan<- *ds_fields.DaemonSet,
-	deletedCh chan<- *ds_fields.DaemonSet,
+	updatedCh chan<- ds_fields.DaemonSet,
+	deletedCh chan<- ds_fields.DaemonSet,
 ) <-chan error {
 	errCh := make(chan error)
 	quitCh := make(chan struct{})
@@ -131,14 +131,14 @@ func watchDSChanges(
 			// creations are handled when WatchDesires is called, so ignore them here
 			for _, changedDS := range watched.Updated {
 				if dsID == changedDS.ID {
-					ds.logger.NoFields().Infof("Watched daemon set was updated: %v", *changedDS)
-					updatedCh <- changedDS
+					ds.logger.NoFields().Infof("Watched daemon set was updated: %v", changedDS)
+					updatedCh <- *changedDS
 				}
 			}
 			for _, changedDS := range watched.Deleted {
 				if dsID == changedDS.ID {
-					ds.logger.NoFields().Infof("Watched daemon set was deleted: %v", *changedDS)
-					deletedCh <- changedDS
+					ds.logger.NoFields().Infof("Watched daemon set was deleted: %v", changedDS)
+					deletedCh <- *changedDS
 				}
 			}
 		}
@@ -238,8 +238,8 @@ func TestSchedule(t *testing.T) {
 	// Adds a watch that will automatically send a signal when a change was made
 	// to the daemon set
 	//
-	updatedCh := make(chan *ds_fields.DaemonSet)
-	deletedCh := make(chan *ds_fields.DaemonSet)
+	updatedCh := make(chan ds_fields.DaemonSet)
+	deletedCh := make(chan ds_fields.DaemonSet)
 	desiresErrCh := ds.WatchDesires(ctx, updatedCh, deletedCh)
 	dsChangesErrCh := watchDSChanges(ctx, ds, dsStore, updatedCh, deletedCh)
 
@@ -490,8 +490,8 @@ func TestPublishToReplication(t *testing.T) {
 	// Adds a watch that will automatically send a signal when a change was made
 	// to the daemon set
 	//
-	updatedCh := make(chan *ds_fields.DaemonSet)
-	deletedCh := make(chan *ds_fields.DaemonSet)
+	updatedCh := make(chan ds_fields.DaemonSet)
+	deletedCh := make(chan ds_fields.DaemonSet)
 	desiresErrCh := ds.WatchDesires(ctx, updatedCh, deletedCh)
 	dsChangesErrCh := watchDSChanges(ctx, ds, dsStore, updatedCh, deletedCh)
 
