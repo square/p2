@@ -47,7 +47,7 @@ type ReplicationControllerStore interface {
 }
 
 type ReplicationControllerLocker interface {
-	LockForOwnership(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error)
+	LockForOwnership(rcID fields.ID, session consul.Session) (consul.Unlocker, error)
 }
 
 type AuditLogStore interface {
@@ -99,7 +99,7 @@ type Farm struct {
 
 type childRC struct {
 	rc       ReplicationController
-	unlocker consulutil.Unlocker
+	unlocker consul.Unlocker
 	quit     chan<- struct{}
 }
 
@@ -235,7 +235,7 @@ START_LOOP:
 				}
 
 				rcUnlocker, err := rcf.rcLocker.LockForOwnership(rcKey.ID, rcf.session)
-				if _, ok := err.(consulutil.AlreadyLockedError); ok {
+				if _, ok := err.(consul.AlreadyLockedError); ok {
 					// someone else must have gotten it first - log and move to
 					// the next one
 					rcLogger.NoFields().Debugln("Lock on replication controller was denied")

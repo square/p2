@@ -17,7 +17,6 @@ import (
 	rcf "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/store/consul"
-	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -31,7 +30,7 @@ type Store interface {
 }
 
 type ReplicationControllerLocker interface {
-	LockForMutation(rcID rcf.ID, session consul.Session) (consulutil.Unlocker, error)
+	LockForMutation(rcID rcf.ID, session consul.Session) (consul.Unlocker, error)
 }
 
 type ReplicationControllerStore interface {
@@ -56,8 +55,8 @@ type update struct {
 
 	session consul.Session
 
-	oldRCUnlocker consulutil.Unlocker
-	newRCUnlocker consulutil.Unlocker
+	oldRCUnlocker consul.Unlocker
+	newRCUnlocker consul.Unlocker
 
 	// watchDelay can be used to tune the QPS (and therefore bandwidth)
 	// footprint of the health watches performed by the update. A higher
@@ -374,7 +373,7 @@ func (u *update) shouldStop(oldNodes, newNodes rcNodeCounts) ruStep {
 
 func (u *update) lockRCs(done <-chan struct{}) error {
 	newUnlocker, err := u.rcLocker.LockForMutation(u.NewRC, u.session)
-	if _, ok := err.(consulutil.AlreadyLockedError); ok {
+	if _, ok := err.(consul.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock new %s", u.NewRC)
 	} else if err != nil {
 		return err
@@ -391,7 +390,7 @@ func (u *update) lockRCs(done <-chan struct{}) error {
 			fmt.Sprintf("unlocking %s", newUnlocker.Key()),
 		)
 	}
-	if _, ok := err.(consulutil.AlreadyLockedError); ok {
+	if _, ok := err.(consul.AlreadyLockedError); ok {
 		return fmt.Errorf("could not lock old %s", u.OldRC)
 	} else if err != nil {
 		return err
@@ -406,12 +405,12 @@ func (u *update) lockRCs(done <-chan struct{}) error {
 // individual releases are successful or until the session is reset.
 func (u *update) unlockRCs(done <-chan struct{}) {
 	wg := sync.WaitGroup{}
-	for _, unlocker := range []consulutil.Unlocker{u.newRCUnlocker, u.oldRCUnlocker} {
+	for _, unlocker := range []consul.Unlocker{u.newRCUnlocker, u.oldRCUnlocker} {
 		// unlockRCs is called whenever Run() exits, so we have to
 		// handle the case where we didn't lock anything yet
 		if unlocker != nil {
 			wg.Add(1)
-			go func(unlocker consulutil.Unlocker) {
+			go func(unlocker consul.Unlocker) {
 				defer wg.Done()
 				RetryOrQuit(
 					func() error {

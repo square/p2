@@ -3,7 +3,6 @@ package consul
 import (
 	"path"
 
-	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
@@ -18,6 +17,7 @@ const (
 	INTENT_TREE  PodPrefix = "intent"
 	REALITY_TREE PodPrefix = "reality"
 	HOOK_TREE    PodPrefix = "hooks"
+	LOCK_TREE              = "lock"
 )
 
 func nodePath(podPrefix PodPrefix, nodeName types.NodeName) (string, error) {
@@ -57,11 +57,11 @@ func PodLockPath(podPrefix PodPrefix, nodeName types.NodeName, podId types.PodID
 		return "", err
 	}
 
-	return path.Join(consulutil.LOCK_TREE, subPodPath), nil
+	return path.Join(LOCK_TREE, subPodPath), nil
 }
 
 // Returns the consul path to use when locking out any other pkg/replication-based deploys
 // for a given pod ID
 func ReplicationLockPath(podId types.PodID) string {
-	return path.Join(consulutil.LOCK_TREE, "replication", podId.String())
+	return path.Join(LOCK_TREE, "replication", podId.String())
 }

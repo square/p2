@@ -36,7 +36,7 @@ import (
 // NOTE: this interface is separate from DaemonSetStore because it is specifically
 // tied to consul semantics by requiring a consul session.
 type DaemonSetLocker interface {
-	LockForOwnership(dsID fields.ID, session consul.Session) (consulutil.Unlocker, error)
+	LockForOwnership(dsID fields.ID, session consul.Session) (consul.Unlocker, error)
 }
 
 // Farm instatiates and deletes daemon sets as needed
@@ -76,7 +76,7 @@ type childDS struct {
 	updatedCh chan<- *ds_fields.DaemonSet
 	deletedCh chan<- *ds_fields.DaemonSet
 	errCh     <-chan error
-	unlocker  consulutil.Unlocker
+	unlocker  consul.Unlocker
 }
 
 func NewFarm(
@@ -289,7 +289,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 	if len(changes.Created) > 0 {
 		dsf.logger.Infof("The following %d daemon sets have been created: %s", len(changes.Created), dsIDs(changes.Created))
 		for _, dsFields := range changes.Created {
-			var dsUnlocker consulutil.Unlocker
+			var dsUnlocker consul.Unlocker
 			var err error
 			dsLogger := dsf.makeDSLogger(*dsFields)
 
@@ -297,7 +297,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 			_, ok := dsf.children[dsFields.ID]
 			if !ok {
 				dsUnlocker, err = dsf.dsLocker.LockForOwnership(dsFields.ID, dsf.session)
-				if _, ok := err.(consulutil.AlreadyLockedError); ok {
+				if _, ok := err.(consul.AlreadyLockedError); ok {
 					// Lock was either already acquired by another farm or it was Acquired
 					// by this farm
 					dsf.logger.Infof("Lock on daemon set '%v' was already acquired by another ds farm", dsFields.ID)
@@ -349,7 +349,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 			ds, ok := dsf.children[dsFields.ID]
 			if !ok {
 				dsUnlocker, err := dsf.dsLocker.LockForOwnership(dsFields.ID, dsf.session)
-				if _, ok := err.(consulutil.AlreadyLockedError); ok {
+				if _, ok := err.(consul.AlreadyLockedError); ok {
 					dsf.logger.Infof("Lock on daemon set '%v' was already acquired by another farm", dsFields.ID)
 					if err != nil {
 						dsf.logger.Infof("Additional ds farm lock errors: %v", err)
@@ -398,7 +398,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 
 			dsLogger := dsf.makeDSLogger(*dsFields)
 			dsUnlocker, err := dsf.dsLocker.LockForOwnership(dsFields.ID, dsf.session)
-			if _, ok := err.(consulutil.AlreadyLockedError); ok {
+			if _, ok := err.(consul.AlreadyLockedError); ok {
 				dsf.logger.Infof("Lock on daemon set '%v' was already acquired by another farm", dsFields.ID)
 				if err != nil {
 					dsf.logger.Infof("Additional ds farm lock errors: %v", err)
@@ -425,7 +425,7 @@ func (dsf *Farm) handleDSChanges(changes dsstore.WatchedDaemonSets, quitCh <-cha
 
 			if child, ok = dsf.children[dsFields.ID]; !ok {
 				dsUnlocker, err := dsf.dsLocker.LockForOwnership(dsFields.ID, dsf.session)
-				if _, ok := err.(consulutil.AlreadyLockedError); ok {
+				if _, ok := err.(consul.AlreadyLockedError); ok {
 					dsf.logger.Infof("Lock on daemon set '%v' was already acquired by another farm", dsFields.ID)
 					if err != nil {
 						dsf.logger.Infof("Additional ds farm lock errors: %v", err)
@@ -484,7 +484,7 @@ func (dsf *Farm) handleSessionExpiry(dsFields ds_fields.DaemonSet, dsLogger logg
 	}).WithError(err).Errorln("Got error while locking daemon set in ds farm - session may be expired")
 }
 
-func (dsf *Farm) releaseLock(unlocker consulutil.Unlocker) {
+func (dsf *Farm) releaseLock(unlocker consul.Unlocker) {
 	if unlocker == nil {
 		return
 	}
@@ -604,7 +604,7 @@ func (dsf *Farm) raiseContentionAlert(oldDS ds_fields.DaemonSet, newDS ds_fields
 // Creates a functioning daemon set that will watch and write to the pod tree
 func (dsf *Farm) spawnDaemonSet(
 	dsFields *ds_fields.DaemonSet,
-	dsUnlocker consulutil.Unlocker,
+	dsUnlocker consul.Unlocker,
 	dsLogger logging.Logger,
 	quitCh <-chan struct{},
 ) *childDS {

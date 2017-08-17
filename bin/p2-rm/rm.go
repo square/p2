@@ -23,7 +23,7 @@ type store interface {
 }
 
 type ReplicationControllerLocker interface {
-	LockForMutation(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error)
+	LockForMutation(rcID fields.ID, session consul.Session) (consul.Unlocker, error)
 }
 
 type ReplicationControllerStore interface {

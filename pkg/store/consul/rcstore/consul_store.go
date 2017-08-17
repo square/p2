@@ -798,7 +798,7 @@ func (s *ConsulStore) Watch(rc *fields.RC, mu *sync.Mutex, quit <-chan struct{})
 }
 
 func (s *ConsulStore) rcLockRoot() string {
-	return path.Join(consulutil.LOCK_TREE, rcTree)
+	return path.Join(consul.LOCK_TREE, rcTree)
 }
 
 func (s *ConsulStore) rcPath(rcID fields.ID) (string, error) {
@@ -815,7 +815,7 @@ func (s *ConsulStore) rcLockPath(rcID fields.ID) (string, error) {
 		return "", err
 	}
 
-	return path.Join(consulutil.LOCK_TREE, rcPath), nil
+	return path.Join(consul.LOCK_TREE, rcPath), nil
 }
 
 // The path for an ownership lock is simply the base path
@@ -825,7 +825,7 @@ func (s *ConsulStore) ownershipLockPath(rcID fields.ID) (string, error) {
 
 // LockForOwnership qcquires a lock on the RC that should be used by RC farm
 // goroutines, whose job it is to carry out the intent of the RC
-func (s *ConsulStore) LockForOwnership(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
+func (s *ConsulStore) LockForOwnership(rcID fields.ID, session consul.Session) (consul.Unlocker, error) {
 	lockPath, err := s.rcLockPath(rcID)
 	if err != nil {
 		return nil, err
@@ -846,7 +846,7 @@ func (s *ConsulStore) mutationLockPath(rcID fields.ID) (string, error) {
 // LockForMutation acquires a lock on the RC with the intent of mutating it.
 // Must be held by goroutines in the rolling update farm as well as any other
 // tool that may mutate an RC
-func (s *ConsulStore) LockForMutation(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
+func (s *ConsulStore) LockForMutation(rcID fields.ID, session consul.Session) (consul.Unlocker, error) {
 	mutationLockPath, err := s.mutationLockPath(rcID)
 	if err != nil {
 		return nil, err
@@ -871,7 +871,7 @@ func (s *ConsulStore) UpdateCreationLockPath(rcID fields.ID) (string, error) {
 // rolling updates are created that operate on the same replication
 // controllers. A lock on both the intended "new" and "old" replication
 // controllers should be held before the update is created.
-func (s *ConsulStore) LockForUpdateCreation(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
+func (s *ConsulStore) LockForUpdateCreation(rcID fields.ID, session consul.Session) (consul.Unlocker, error) {
 	updateCreationLockPath, err := s.UpdateCreationLockPath(rcID)
 	if err != nil {
 		return nil, err
@@ -1059,7 +1059,7 @@ func (s *ConsulStore) lockTypeFromKey(key string) (fields.ID, LockType, error) {
 		return "", UnknownLockType, util.Errorf("Key '%s' does not resemble an RC lock", key)
 	}
 
-	if keyParts[0] != consulutil.LOCK_TREE {
+	if keyParts[0] != consul.LOCK_TREE {
 		return "", UnknownLockType, util.Errorf("Key '%s' does not resemble an RC lock", key)
 	}
 
