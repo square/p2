@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consultest"
-	"github.com/square/p2/pkg/store/consul/consulutil"
 )
 
 const testRCId = fields.ID("abcd-1234")
@@ -25,7 +25,7 @@ func TestLockForOwnership(t *testing.T) {
 		t.Fatalf("Unable to lock rc for ownership: %s", err)
 	}
 
-	expectedKey := fmt.Sprintf("%s/%s/%s", consulutil.LOCK_TREE, rcTree, testRCId)
+	expectedKey := fmt.Sprintf("%s/%s/%s", consul.LOCK_TREE, rcTree, testRCId)
 	if unlocker.Key() != expectedKey {
 		t.Errorf("Key did not match expected: wanted '%s' but got '%s'", expectedKey, unlocker.Key())
 	}
@@ -45,7 +45,7 @@ func TestLockForMutation(t *testing.T) {
 		t.Fatalf("Unable to lock rc for mutation: %s", err)
 	}
 
-	expectedKey := fmt.Sprintf("%s/%s/%s/%s", consulutil.LOCK_TREE, rcTree, testRCId, mutationSuffix)
+	expectedKey := fmt.Sprintf("%s/%s/%s/%s", consul.LOCK_TREE, rcTree, testRCId, mutationSuffix)
 	if unlocker.Key() != expectedKey {
 		t.Errorf("Key did not match expected: wanted '%s' but got '%s'", expectedKey, unlocker.Key())
 	}
@@ -65,7 +65,7 @@ func TestLockForUpdateCreation(t *testing.T) {
 		t.Fatalf("Unable to lock rc for update creation: %s", err)
 	}
 
-	expectedKey := fmt.Sprintf("%s/%s/%s/%s", consulutil.LOCK_TREE, rcTree, testRCId, updateCreationSuffix)
+	expectedKey := fmt.Sprintf("%s/%s/%s/%s", consul.LOCK_TREE, rcTree, testRCId, updateCreationSuffix)
 	if unlocker.Key() != expectedKey {
 		t.Errorf("Key did not match expected: wanted '%s' but got '%s'", expectedKey, unlocker.Key())
 	}

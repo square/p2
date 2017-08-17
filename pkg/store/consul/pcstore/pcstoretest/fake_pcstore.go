@@ -5,7 +5,7 @@ import (
 
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pc/fields"
-	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/pcstore"
 	"github.com/square/p2/pkg/types"
 
@@ -166,7 +166,7 @@ func (p *FakePCStore) WatchPodCluster(id fields.ID, quit <-chan struct{}) <-chan
 	return p.watchers[id]
 }
 
-func (p *FakePCStore) LockForSync(id fields.ID, syncerType pcstore.ConcreteSyncerType, session pcstore.Session) (consulutil.Unlocker, error) {
+func (p *FakePCStore) LockForSync(id fields.ID, syncerType pcstore.ConcreteSyncerType, session pcstore.Session) (consul.Unlocker, error) {
 	key := fmt.Sprintf("%s/%s", id, syncerType)
 	return session.Lock(key)
 }

@@ -542,12 +542,12 @@ func (s *ConsulStore) dsLockPath(dsID fields.ID) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return path.Join(consulutil.LOCK_TREE, dsPath), nil
+	return path.Join(consul.LOCK_TREE, dsPath), nil
 }
 
 // LockForOwnership qcquires a lock on the DS that should be used by DS farm goroutines, whose
 // job it is to carry out the intent of the DS.
-func (s *ConsulStore) LockForOwnership(dsID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
+func (s *ConsulStore) LockForOwnership(dsID fields.ID, session consul.Session) (consul.Unlocker, error) {
 	lockPath, err := s.dsLockPath(dsID)
 	if err != nil {
 		return nil, err

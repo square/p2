@@ -9,6 +9,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pc/fields"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consultest"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/types"
@@ -870,7 +871,7 @@ func TestLockForSync(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected an error locking the same cluster for the same syncer type, but there wasn't one")
 	} else {
-		if !consulutil.IsAlreadyLocked(err) {
+		if !consul.IsAlreadyLocked(err) {
 			t.Errorf("Expected error to be an already locked error, was %s", err)
 		}
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pc/fields"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -30,7 +31,7 @@ var (
 )
 
 type Session interface {
-	Lock(key string) (consulutil.Unlocker, error)
+	Lock(key string) (consul.Unlocker, error)
 }
 
 // WatchedPodCluster is an Either type: it will have 1 one of pc xor err
@@ -317,18 +318,18 @@ func pcPath(pcID fields.ID) (string, error) {
 func (s *ConsulStore) lockForCreation(podID types.PodID,
 	availabilityZone fields.AvailabilityZone,
 	clusterName fields.ClusterName,
-	session Session) (consulutil.Unlocker, error) {
+	session Session) (consul.Unlocker, error) {
 	return session.Lock(pcCreateLockPath(podID, availabilityZone, clusterName))
 }
 
 func pcCreateLockPath(podID types.PodID,
 	availabilityZone fields.AvailabilityZone,
 	clusterName fields.ClusterName) string {
-	return path.Join(consulutil.LOCK_TREE, podID.String(), availabilityZone.String(), clusterName.String())
+	return path.Join(consul.LOCK_TREE, podID.String(), availabilityZone.String(), clusterName.String())
 }
 
 func pcSyncLockPath(id fields.ID, syncerType ConcreteSyncerType) string {
-	return path.Join(consulutil.LOCK_TREE, podClusterTree, id.String(), syncerType.String())
+	return path.Join(consul.LOCK_TREE, podClusterTree, id.String(), syncerType.String())
 }
 
 // FindWhereLabeled returns a slice of pod clusters that are labeled
@@ -760,7 +761,7 @@ func labeledEqual(left, right []labels.Labeled) bool {
 	return leftSet.Equal(rightSet)
 }
 
-func (s *ConsulStore) LockForSync(id fields.ID, syncerType ConcreteSyncerType, session Session) (consulutil.Unlocker, error) {
+func (s *ConsulStore) LockForSync(id fields.ID, syncerType ConcreteSyncerType, session Session) (consul.Unlocker, error) {
 	return session.Lock(pcSyncLockPath(id, syncerType))
 }
 

@@ -73,7 +73,7 @@ func TestRollLockPath(t *testing.T) {
 		t.Fatalf("Unable to compute roll lock path: %s", err)
 	}
 
-	expected := fmt.Sprintf("%s/%s/%s", consulutil.LOCK_TREE, rollTree, testRCId)
+	expected := fmt.Sprintf("%s/%s/%s", consul.LOCK_TREE, rollTree, testRCId)
 	if rollLockPath != expected {
 		t.Errorf("Unexpected value for rollLockPath, wanted '%s' got '%s'",
 			expected,

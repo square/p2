@@ -13,7 +13,6 @@ import (
 	pc_fields "github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul"
-	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -261,17 +260,17 @@ func (s *fakeStore) Watch(rc *fields.RC, mu *sync.Mutex, quit <-chan struct{}) (
 	return updatesOut, errors
 }
 
-func (s *fakeStore) LockForMutation(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
+func (s *fakeStore) LockForMutation(rcID fields.ID, session consul.Session) (consul.Unlocker, error) {
 	key := fmt.Sprintf("%s/%s", rcID, "mutation_lock")
 	return session.Lock(key)
 }
 
-func (s *fakeStore) LockForOwnership(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
+func (s *fakeStore) LockForOwnership(rcID fields.ID, session consul.Session) (consul.Unlocker, error) {
 	key := fmt.Sprintf("%s/%s", rcID, "ownership_lock")
 	return session.Lock(key)
 }
 
-func (s *fakeStore) LockForUpdateCreation(rcID fields.ID, session consul.Session) (consulutil.Unlocker, error) {
+func (s *fakeStore) LockForUpdateCreation(rcID fields.ID, session consul.Session) (consul.Unlocker, error) {
 	key := fmt.Sprintf("%s/%s", rcID, "update_creation_lock")
 	return session.Lock(key)
 }

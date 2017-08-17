@@ -35,10 +35,20 @@ type tx struct {
 	committedMu sync.Mutex
 }
 
+// New() returns a new context derived from the one passed as an argument and
+// its cancel function with the context containing metadata used to build a
+// consul transaction. If the passed context already has consul operations
+// defined, the new context will inherit those operations defined but in a
+// separate transaction.
 func New(ctx context.Context) (context.Context, context.CancelFunc) {
 	ctx, cancelFunc := context.WithCancel(ctx)
+	kvOps := new(api.KVTxnOps)
+	txn, err := getTxnFromContext(ctx)
+	if err == nil {
+		*kvOps = *txn.kvOps
+	}
 	ctx = context.WithValue(ctx, contextKey, &tx{
-		kvOps: new(api.KVTxnOps),
+		kvOps: kvOps,
 	})
 	return ctx, cancelFunc
 }

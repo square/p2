@@ -1,11 +1,11 @@
 package consultest
 
 import (
+	"context"
 	"sync"
 
 	"github.com/pborman/uuid"
 	"github.com/square/p2/pkg/store/consul"
-	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -62,7 +62,7 @@ func (u *fakeUnlocker) Key() string {
 	return u.key
 }
 
-func (f *fakeSession) Lock(key string) (consulutil.Unlocker, error) {
+func (f *fakeSession) Lock(key string) (consul.Unlocker, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -71,7 +71,7 @@ func (f *fakeSession) Lock(key string) (consulutil.Unlocker, error) {
 	}
 
 	if f.locks[key] {
-		return nil, consulutil.AlreadyLockedError{
+		return nil, consul.AlreadyLockedError{
 			Key: key,
 		}
 	}
@@ -82,6 +82,10 @@ func (f *fakeSession) Lock(key string) (consulutil.Unlocker, error) {
 		key:     key,
 		session: f,
 	}, nil
+}
+
+func (f *fakeSession) LockTxn(context.Context, context.Context, context.Context, string) error {
+	return util.Errorf("LockTxn not implemented in fakeSession. Use a real consul store with a real sesion via consulutil.NewFixture() if this functionality is desired")
 }
 
 // Not currently implemented

@@ -61,7 +61,7 @@ type RollLabeler interface {
 }
 
 type ReplicationControllerStore interface {
-	LockForUpdateCreation(rcID rc_fields.ID, session consul.Session) (consulutil.Unlocker, error)
+	LockForUpdateCreation(rcID rc_fields.ID, session consul.Session) (consul.Unlocker, error)
 	CreateTxn(
 		ctx context.Context,
 		manifest manifest.Manifest,
@@ -627,7 +627,7 @@ func RollLockPath(id roll_fields.ID) (string, error) {
 		return "", err
 	}
 
-	return path.Join(consulutil.LOCK_TREE, subRollPath), nil
+	return path.Join(consul.LOCK_TREE, subRollPath), nil
 }
 
 func kvpToRU(kvp *api.KVPair) (roll_fields.Update, error) {

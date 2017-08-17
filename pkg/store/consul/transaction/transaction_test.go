@@ -298,3 +298,60 @@ func TestCommitWithRetriesRetriesErrorsUntilCanceled(t *testing.T) {
 		t.Fatal("CommitWithRetries() didn't exit quickly enough after being canceled")
 	}
 }
+
+func TestContextInheritsOperations(t *testing.T) {
+	ctx, cancel := New(context.Background())
+	defer cancel()
+
+	err := Add(ctx, api.KVTxnOp{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx2, cancel2 := New(ctx)
+	defer cancel2()
+
+	// check that ctx2 inherited the operation that was added to ctx
+	txn2, err := getTxnFromContext(ctx2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(*txn2.kvOps) != 1 {
+		t.Errorf("expected ctx2 to inherit kv ops from ctx but there were %d", len(*txn2.kvOps))
+	}
+
+	// now add an operation to ctx2 and make sure it doesn't appear in ctx
+	err = Add(ctx2, api.KVTxnOp{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(*txn2.kvOps) != 2 {
+		t.Errorf("expected ctx2 to inherit kv ops from ctx")
+	}
+
+	txn, err := getTxnFromContext(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(*txn.kvOps) != 1 {
+		t.Error("the original ctx inherited operations from the 2nd one")
+	}
+
+	err = Add(ctx, api.KVTxnOp{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = Add(ctx, api.KVTxnOp{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(*txn.kvOps) != 3 {
+		t.Errorf("expected 3 operations on original tx but there were %d", len(*txn.kvOps))
+	}
+
+	if len(*txn2.kvOps) != 2 {
+		t.Errorf("expected 2 operations on original tx but there were %d", len(*txn2.kvOps))
+	}
+}
