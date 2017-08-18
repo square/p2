@@ -70,11 +70,12 @@ func TestContendNodes(t *testing.T) {
 		healthChecker:         &happyHealthChecker,
 		dsRetryInterval:       testFarmRetryInterval,
 	}
-	quitCh := make(chan struct{})
-	defer close(quitCh)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		go dsf.cleanupDaemonSetPods(quitCh)
-		dsf.mainLoop(quitCh)
+		go dsf.cleanupDaemonSetPods(ctx)
+		dsf.mainLoop(ctx)
 	}()
 
 	//
@@ -90,7 +91,7 @@ func TestContendNodes(t *testing.T) {
 	podManifest := manifestBuilder.GetManifest()
 
 	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
-	ctx, cancel := transaction.New(context.Background())
+	ctx, cancel = transaction.New(ctx)
 	defer cancel()
 	dsData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
@@ -201,11 +202,11 @@ func TestContendSelectors(t *testing.T) {
 		healthChecker:         &happyHealthChecker,
 		dsRetryInterval:       testFarmRetryInterval,
 	}
-	quitCh := make(chan struct{})
-	defer close(quitCh)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		go dsf.cleanupDaemonSetPods(quitCh)
-		dsf.mainLoop(quitCh)
+		go dsf.cleanupDaemonSetPods(ctx)
+		dsf.mainLoop(ctx)
 	}()
 
 	//
@@ -222,7 +223,7 @@ func TestContendSelectors(t *testing.T) {
 	podManifest := manifestBuilder.GetManifest()
 
 	everythingSelector := klabels.Everything()
-	ctx, cancel := transaction.New(context.Background())
+	ctx, cancel = transaction.New(context.Background())
 	defer cancel()
 	firstDSData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, everythingSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
@@ -376,11 +377,11 @@ func TestFarmSchedule(t *testing.T) {
 		healthChecker:         &happyHealthChecker,
 		dsRetryInterval:       testFarmRetryInterval,
 	}
-	quitCh := make(chan struct{})
-	defer close(quitCh)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		go dsf.cleanupDaemonSetPods(quitCh)
-		dsf.mainLoop(quitCh)
+		go dsf.cleanupDaemonSetPods(ctx)
+		dsf.mainLoop(ctx)
 	}()
 
 	// Make two daemon sets with difference node selectors
@@ -394,7 +395,7 @@ func TestFarmSchedule(t *testing.T) {
 	podManifest := manifestBuilder.GetManifest()
 
 	nodeSelector := klabels.Everything().Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{"az1"})
-	ctx, cancel := transaction.New(context.Background())
+	ctx, cancel = transaction.New(context.Background())
 	defer cancel()
 	dsData, err := dsStore.Create(ctx, podManifest, minHealth, clusterName, nodeSelector, podID, replicationTimeout)
 	Assert(t).IsNil(err, "Expected no error creating request")
@@ -641,11 +642,11 @@ func TestCleanupPods(t *testing.T) {
 		healthChecker:         &happyHealthChecker,
 		dsRetryInterval:       testFarmRetryInterval,
 	}
-	quitCh := make(chan struct{})
-	defer close(quitCh)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		go dsf.cleanupDaemonSetPods(quitCh)
-		dsf.mainLoop(quitCh)
+		go dsf.cleanupDaemonSetPods(ctx)
+		dsf.mainLoop(ctx)
 	}()
 
 	// Make there are no nodes left
@@ -736,11 +737,11 @@ func TestMultipleFarms(t *testing.T) {
 		healthChecker:         &happyHealthChecker,
 		dsRetryInterval:       testFarmRetryInterval,
 	}
-	firstQuitCh := make(chan struct{})
-	defer close(firstQuitCh)
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	defer cancel1()
 	go func() {
-		go firstFarm.cleanupDaemonSetPods(firstQuitCh)
-		firstFarm.mainLoop(firstQuitCh)
+		go firstFarm.cleanupDaemonSetPods(ctx1)
+		firstFarm.mainLoop(ctx1)
 	}()
 
 	//
@@ -764,11 +765,11 @@ func TestMultipleFarms(t *testing.T) {
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
 	}
-	secondQuitCh := make(chan struct{})
-	defer close(secondQuitCh)
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
 	go func() {
-		go secondFarm.cleanupDaemonSetPods(secondQuitCh)
-		secondFarm.mainLoop(secondQuitCh)
+		go secondFarm.cleanupDaemonSetPods(ctx2)
+		secondFarm.mainLoop(ctx2)
 	}()
 
 	// Make two daemon sets with different node selectors
@@ -1049,7 +1050,7 @@ func TestRelock(t *testing.T) {
 	allNodes := []types.NodeName{"node1", "node2", "node3"}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
-	mkFarm := func(logName string) (chan<- struct{}, <-chan struct{}) {
+	mkFarm := func(ctx context.Context, logName string) <-chan struct{} {
 		farm := &Farm{
 			dsStore:               dsStore,
 			dsLocker:              dsStore,
@@ -1068,18 +1069,18 @@ func TestRelock(t *testing.T) {
 			healthChecker:   &happyHealthChecker,
 			dsRetryInterval: testFarmRetryInterval,
 		}
-		quitCh := make(chan struct{})
 		farmHasQuit := make(chan struct{})
 		go func() {
-			go farm.cleanupDaemonSetPods(quitCh)
-			farm.mainLoop(quitCh)
+			go farm.cleanupDaemonSetPods(ctx)
+			farm.mainLoop(ctx)
 			close(farmHasQuit)
 		}()
 
-		return quitCh, farmHasQuit
+		return farmHasQuit
 	}
 
-	firstQuitCh, farmHasQuit := mkFarm("firstRelock")
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	farmHasQuit := mkFarm(ctx1, "firstRelock")
 
 	mkds := func(zone string) ds_fields.DaemonSet {
 		podID := types.PodID("testPod")
@@ -1112,12 +1113,13 @@ func TestRelock(t *testing.T) {
 
 	assertLabel("node1", "one farm")
 
-	secondQuitCh, _ := mkFarm("secondRelock")
-	defer close(secondQuitCh)
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	_ = mkFarm(ctx2, "secondRelock")
+	defer cancel2()
 
 	assertLabel("node2", "second farm created, first farm still active")
 
-	close(firstQuitCh)
+	cancel1()
 	<-farmHasQuit
 
 	// Create a DS to make the watch fire.
@@ -1154,7 +1156,7 @@ func TestDieAndUpdate(t *testing.T) {
 	allNodes := []types.NodeName{"node1", "node2", "node3"}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
-	mkFarm := func(logName string) (chan<- struct{}, <-chan struct{}) {
+	mkFarm := func(ctx context.Context, logName string) <-chan struct{} {
 		farm := &Farm{
 			dsStore:               dsStore,
 			dsLocker:              dsStore,
@@ -1173,18 +1175,18 @@ func TestDieAndUpdate(t *testing.T) {
 			healthChecker:   &happyHealthChecker,
 			dsRetryInterval: testFarmRetryInterval,
 		}
-		quitCh := make(chan struct{})
 		farmHasQuit := make(chan struct{})
 		go func() {
-			go farm.cleanupDaemonSetPods(quitCh)
-			farm.mainLoop(quitCh)
+			go farm.cleanupDaemonSetPods(ctx)
+			farm.mainLoop(ctx)
 			close(farmHasQuit)
 		}()
 
-		return quitCh, farmHasQuit
+		return farmHasQuit
 	}
 
-	firstQuitCh, farmHasQuit := mkFarm("firstUpdateCrash")
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	farmHasQuit := mkFarm(ctx1, "firstUpdateCrash")
 
 	mkds := func(zone string) ds_fields.DaemonSet {
 		podID := types.PodID("testPod")
@@ -1217,12 +1219,13 @@ func TestDieAndUpdate(t *testing.T) {
 
 	assertLabel("node1", "one farm")
 
-	secondQuitCh, _ := mkFarm("secondUpdateCrash")
-	defer close(secondQuitCh)
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	_ = mkFarm(ctx2, "secondUpdateCrash")
 
 	assertLabel("node2", "second farm created, first farm still active")
 
-	close(firstQuitCh)
+	cancel1()
 	<-farmHasQuit
 
 	_, err = dsStore.MutateDS(dsData.ID, func(ds ds_fields.DaemonSet) (ds_fields.DaemonSet, error) {

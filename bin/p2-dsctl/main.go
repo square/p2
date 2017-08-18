@@ -143,7 +143,7 @@ func main() {
 
 		fmt.Fprintf(os.Stderr, "checking that that the given selector doesn't overlap nodes with other %s daemon sets\n", manifest.ID())
 
-		conflictingDS, isContending, err := ds.DSContends(&newDS, scheduler.NewApplicatorScheduler(applicator), dsstore)
+		conflictingDS, isContending, err := ds.DSContends(newDS, scheduler.NewApplicatorScheduler(applicator), dsstore)
 		if err != nil {
 			log.Fatalf("failed to check for daemon set overlap: %s", err)
 		}

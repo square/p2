@@ -63,9 +63,9 @@ type DaemonSet interface {
 	//
 	// The caller is responsible for sending signals when something has been changed
 	WatchDesires(
-		quitCh <-chan struct{},
-		updatedCh <-chan *fields.DaemonSet,
-		deletedCh <-chan *fields.DaemonSet,
+		ctx context.Context,
+		updatedCh <-chan fields.DaemonSet,
+		deletedCh <-chan fields.DaemonSet,
 	) <-chan error
 
 	// CurrentPods() returns all nodes that are scheduled by this daemon set
@@ -244,12 +244,19 @@ func (ds *daemonSet) MetricNames(suffix string) []string {
 }
 
 func (ds *daemonSet) WatchDesires(
-	quitCh <-chan struct{},
-	updatedCh <-chan *fields.DaemonSet,
-	deletedCh <-chan *fields.DaemonSet,
+	ctx context.Context,
+	updatedCh <-chan fields.DaemonSet,
+	deletedCh <-chan fields.DaemonSet,
 ) <-chan error {
 	errCh := make(chan error)
-	nodesChangedCh := ds.watcher.WatchMatchDiff(ds.NodeSelector, labels.NODE, ds.labelsAggregationRate, quitCh)
+	// TODO: make WatchMatchDiff take a context instead of a quit channel
+	watchMatchQuitCh := make(chan struct{})
+	go func() {
+		<-ctx.Done()
+		close(watchMatchQuitCh)
+	}()
+
+	nodesChangedCh := ds.watcher.WatchMatchDiff(ds.NodeSelector, labels.NODE, ds.labelsAggregationRate, watchMatchQuitCh)
 	// Do something whenever something is changed
 	go func() {
 		var err error
@@ -280,7 +287,7 @@ func (ds *daemonSet) WatchDesires(
 					// This is required in case the user disables the daemon set
 					// so that the timer would be stopped after
 					err = nil
-				case <-quitCh:
+				case <-ctx.Done():
 					return
 				}
 			} else {
@@ -298,17 +305,13 @@ func (ds *daemonSet) WatchDesires(
 					return
 				}
 				ds.logger.NoFields().Infof("Received daemon set update signal: %v", newDS)
-				if newDS == nil {
-					ds.logger.Errorf("Unexpected nil daemon set during update")
-					return
-				}
 				if ds.ID() != newDS.ID {
 					err = util.Errorf("Expected uuid to be the same, expected '%v', got '%v'", ds.ID(), newDS.ID)
 					continue
 				}
 
 				ds.mu.Lock()
-				ds.DaemonSet = *newDS
+				ds.DaemonSet = newDS
 				ds.mu.Unlock()
 
 				if reportErr := ds.reportEligible(); reportErr != nil {
@@ -371,7 +374,7 @@ func (ds *daemonSet) WatchDesires(
 					continue
 				}
 
-			case <-quitCh:
+			case <-ctx.Done():
 				return
 			}
 		}

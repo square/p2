@@ -95,13 +95,18 @@ func waitForNodes(
 // since these are unit tests and have little daemon sets, we will watch
 // the entire tree for each daemon set for now
 func watchDSChanges(
+	ctx context.Context,
 	ds *daemonSet,
 	dsStore DaemonSetStore,
-	quitCh <-chan struct{},
-	updatedCh chan<- *ds_fields.DaemonSet,
-	deletedCh chan<- *ds_fields.DaemonSet,
+	updatedCh chan<- ds_fields.DaemonSet,
+	deletedCh chan<- ds_fields.DaemonSet,
 ) <-chan error {
 	errCh := make(chan error)
+	quitCh := make(chan struct{})
+	go func() {
+		<-ctx.Done()
+		close(quitCh)
+	}()
 	changesCh := dsStore.Watch(quitCh)
 
 	go func() {
@@ -113,7 +118,7 @@ func watchDSChanges(
 			// Get some changes
 			select {
 			case watched = <-changesCh:
-			case <-quitCh:
+			case <-ctx.Done():
 				return
 			}
 
@@ -126,14 +131,14 @@ func watchDSChanges(
 			// creations are handled when WatchDesires is called, so ignore them here
 			for _, changedDS := range watched.Updated {
 				if dsID == changedDS.ID {
-					ds.logger.NoFields().Infof("Watched daemon set was updated: %v", *changedDS)
-					updatedCh <- changedDS
+					ds.logger.NoFields().Infof("Watched daemon set was updated: %v", changedDS)
+					updatedCh <- *changedDS
 				}
 			}
 			for _, changedDS := range watched.Deleted {
 				if dsID == changedDS.ID {
-					ds.logger.NoFields().Infof("Watched daemon set was deleted: %v", *changedDS)
-					deletedCh <- changedDS
+					ds.logger.NoFields().Infof("Watched daemon set was deleted: %v", changedDS)
+					deletedCh <- *changedDS
 				}
 			}
 		}
@@ -233,11 +238,10 @@ func TestSchedule(t *testing.T) {
 	// Adds a watch that will automatically send a signal when a change was made
 	// to the daemon set
 	//
-	quitCh := make(chan struct{})
-	updatedCh := make(chan *ds_fields.DaemonSet)
-	deletedCh := make(chan *ds_fields.DaemonSet)
-	desiresErrCh := ds.WatchDesires(quitCh, updatedCh, deletedCh)
-	dsChangesErrCh := watchDSChanges(ds, dsStore, quitCh, updatedCh, deletedCh)
+	updatedCh := make(chan ds_fields.DaemonSet)
+	deletedCh := make(chan ds_fields.DaemonSet)
+	desiresErrCh := ds.WatchDesires(ctx, updatedCh, deletedCh)
+	dsChangesErrCh := watchDSChanges(ctx, ds, dsStore, updatedCh, deletedCh)
 
 	// We need to be careful when shutting down in order to avoid data
 	// races, since updatedCh and deletedCh are shared between two
@@ -246,7 +250,7 @@ func TestSchedule(t *testing.T) {
 	// respective output channels have closed which indicates that they
 	// won't try to send any more values
 	defer func() {
-		close(quitCh)
+		cancel()
 		desiresErrChClosed := false
 		dsChangesErrChClosed := false
 		for !dsChangesErrChClosed || !desiresErrChClosed {
@@ -486,11 +490,10 @@ func TestPublishToReplication(t *testing.T) {
 	// Adds a watch that will automatically send a signal when a change was made
 	// to the daemon set
 	//
-	quitCh := make(chan struct{})
-	updatedCh := make(chan *ds_fields.DaemonSet)
-	deletedCh := make(chan *ds_fields.DaemonSet)
-	desiresErrCh := ds.WatchDesires(quitCh, updatedCh, deletedCh)
-	dsChangesErrCh := watchDSChanges(ds, dsStore, quitCh, updatedCh, deletedCh)
+	updatedCh := make(chan ds_fields.DaemonSet)
+	deletedCh := make(chan ds_fields.DaemonSet)
+	desiresErrCh := ds.WatchDesires(ctx, updatedCh, deletedCh)
+	dsChangesErrCh := watchDSChanges(ctx, ds, dsStore, updatedCh, deletedCh)
 
 	// We need to be careful when shutting down in order to avoid data
 	// races, since updatedCh and deletedCh are shared between two
@@ -499,7 +502,7 @@ func TestPublishToReplication(t *testing.T) {
 	// respective output channels have closed which indicates that they
 	// won't try to send any more values
 	defer func() {
-		close(quitCh)
+		cancel()
 		desiresErrChClosed := false
 		dsChangesErrChClosed := false
 		for !dsChangesErrChClosed || !desiresErrChClosed {
@@ -515,7 +518,7 @@ func TestPublishToReplication(t *testing.T) {
 			case <-deletedCh:
 			case <-updatedCh:
 			case <-time.After(1 * time.Second):
-				t.Fatal("watchDSChanges or WatchDesires did not exit promptly after closing quitCh")
+				t.Fatal("watchDSChanges or WatchDesires did not exit promptly after canceling context")
 			}
 		}
 		close(updatedCh)
