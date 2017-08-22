@@ -27,6 +27,7 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/hashicorp/consul/api"
+	"github.com/pborman/uuid"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	fake_checker "github.com/square/p2/pkg/health/checker/test"
 	pc_fields "github.com/square/p2/pkg/pc/fields"
@@ -64,7 +65,7 @@ func TestContendNodes(t *testing.T) {
 		watcher:               applicator,
 		labelsAggregationRate: 1 * time.Nanosecond,
 		children:              make(map[ds_fields.ID]*childDS),
-		session:               consultest.NewSession(),
+		session:               newTestSession(t, consulStore),
 		logger:                logger,
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
@@ -196,7 +197,7 @@ func TestContendSelectors(t *testing.T) {
 		watcher:               applicator,
 		labelsAggregationRate: 1 * time.Nanosecond,
 		children:              make(map[ds_fields.ID]*childDS),
-		session:               consultest.NewSession(),
+		session:               newTestSession(t, consulStore),
 		logger:                logger,
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
@@ -371,7 +372,7 @@ func TestFarmSchedule(t *testing.T) {
 		watcher:               applicator,
 		labelsAggregationRate: 1 * time.Nanosecond,
 		children:              make(map[ds_fields.ID]*childDS),
-		session:               consultest.NewSession(),
+		session:               newTestSession(t, consulStore),
 		logger:                logger,
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
@@ -636,7 +637,7 @@ func TestCleanupPods(t *testing.T) {
 		watcher:               applicator,
 		labelsAggregationRate: 1 * time.Nanosecond,
 		children:              make(map[ds_fields.ID]*childDS),
-		session:               consultest.NewSession(),
+		session:               newTestSession(t, consulStore),
 		logger:                logger,
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
@@ -1452,4 +1453,24 @@ func createAndSeedApplicator(client consulutil.ConsulClient, t *testing.T) *labe
 	}
 
 	return applicator
+}
+
+type sessionStore interface {
+	NewSession(name string, renewalCh <-chan time.Time) (consul.Session, chan error, error)
+}
+
+func newTestSession(t *testing.T, consulStore sessionStore) consul.Session {
+	session, errCh, err := consulStore.NewSession(fmt.Sprintf("test-%s", uuid.New()), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		err := <-errCh
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	return session
 }

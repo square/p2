@@ -31,12 +31,18 @@ import (
 // DaemonSetLocker is necessary to allow coordination between multiple daemon
 // set farm instances. Before processing a daemon set, each farm instance will
 // attempt to acquire a distributed lock and will only proceed if the
-// acquisition was successful.
+// acquisition was successful. All subsequent consul operations performed as
+// part of servicing the daemon set will ensure that the lock is held within a
+// transaction.
 //
 // NOTE: this interface is separate from DaemonSetStore because it is specifically
 // tied to consul semantics by requiring a consul session.
 type DaemonSetLocker interface {
-	LockForOwnership(dsID fields.ID, session consul.Session) (consul.Unlocker, error)
+	LockForOwnershipTxn(
+		lockCtx context.Context,
+		dsID fields.ID,
+		session consul.Session,
+	) (consul.TxnUnlocker, error)
 }
 
 // Farm instatiates and deletes daemon sets as needed
@@ -73,12 +79,14 @@ type Farm struct {
 }
 
 type childDS struct {
-	ds        DaemonSet
-	cancel    context.CancelFunc
-	updatedCh chan<- ds_fields.DaemonSet
-	deletedCh chan<- ds_fields.DaemonSet
-	errCh     <-chan error
-	unlocker  consul.Unlocker
+	ds              DaemonSet
+	cancel          context.CancelFunc
+	unlockCancel    context.CancelFunc
+	checkLockCancel context.CancelFunc
+	updatedCh       chan<- ds_fields.DaemonSet
+	deletedCh       chan<- ds_fields.DaemonSet
+	errCh           <-chan error
+	unlocker        consul.TxnUnlocker
 }
 
 // TODO: move other config options in here to reduce the number of arguments to NewFarm()
@@ -295,7 +303,10 @@ func (dsf *Farm) closeChild(dsID fields.ID) {
 		if dsf.session != nil {
 			unlocker := dsf.children[dsID].unlocker
 			if unlocker != nil {
-				err := unlocker.Unlock()
+				ctx, cancel := transaction.New(context.Background())
+				defer cancel()
+
+				err := transaction.MustCommit(ctx, dsf.txner)
 				if err != nil {
 					dsf.logger.WithField("ds", dsID).Warnln("Could not release daemon set lock")
 				} else {
@@ -394,11 +405,11 @@ func (dsf *Farm) handleSessionExpiry(dsFields ds_fields.DaemonSet, dsLogger logg
 	}).WithError(err).Errorln("Got error while locking daemon set in ds farm - session may be expired")
 }
 
-func (dsf *Farm) releaseLock(unlocker consul.Unlocker) {
-	if unlocker == nil {
-		return
-	}
-	err := unlocker.Unlock()
+func (dsf *Farm) releaseLock(unlocker consul.TxnUnlocker) {
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+
+	err := transaction.MustCommit(ctx, dsf.txner)
 	if err != nil {
 		dsf.logger.Errorf("Error releasing lock on ds farm: %v", err)
 	}
@@ -514,8 +525,8 @@ func (dsf *Farm) raiseContentionAlert(oldDS ds_fields.DaemonSet, newDS ds_fields
 // Creates a functioning daemon set that will watch and write to the pod tree
 func (dsf *Farm) spawnDaemonSet(
 	ctx context.Context,
+	unlocker consul.TxnUnlocker,
 	dsFields ds_fields.DaemonSet,
-	dsUnlocker consul.Unlocker,
 	dsLogger logging.Logger,
 ) *childDS {
 	ds := New(
@@ -619,7 +630,7 @@ func (dsf *Farm) spawnDaemonSet(
 		updatedCh: updatedCh,
 		deletedCh: deletedCh,
 		errCh:     desiresCh,
-		unlocker:  dsUnlocker,
+		unlocker:  unlocker,
 	}
 }
 
@@ -632,7 +643,6 @@ func (dsf *Farm) spawnDaemonSet(
 // 3) If applicable, ensures the worker for this daemon set has the latest copy of the daemon
 // set
 func (dsf *Farm) lockAndSpawn(ctx context.Context, dsFields ds_fields.DaemonSet) bool {
-	var dsUnlocker consul.Unlocker
 	var err error
 	dsLogger := dsf.makeDSLogger(dsFields)
 
@@ -640,25 +650,34 @@ func (dsf *Farm) lockAndSpawn(ctx context.Context, dsFields ds_fields.DaemonSet)
 		return false
 	}
 
+	var unlocker consul.TxnUnlocker
+
 	// If it is not in our map, then try to acquire the lock
 	child, ok := dsf.children[dsFields.ID]
 	if !ok {
-		dsUnlocker, err := dsf.dsLocker.LockForOwnership(dsFields.ID, dsf.session)
-		if _, ok := err.(consul.AlreadyLockedError); ok {
-			// Lock was either already acquired by another farm or it was Acquired
-			// by this farm
-			dsf.logger.Infof("Lock on daemon set '%v' was already acquired by another ds farm", dsFields.ID)
-			if err != nil {
-				dsf.logger.Infof("Additional ds farm lock errors: %v", err)
-			}
-			dsf.releaseLock(dsUnlocker)
+		lockCtx, lockCancel := transaction.New(ctx)
+		defer lockCancel()
+		unlocker, err = dsf.dsLocker.LockForOwnershipTxn(lockCtx, dsFields.ID, dsf.session)
+		if err != nil {
+			dsf.logger.WithError(err).Errorln("could not build daemon set locking transaction")
 			return false
-		} else if err != nil {
+		}
+
+		ok, resp, err := transaction.Commit(lockCtx, dsf.txner)
+		if err != nil {
 			dsf.logger.WithError(err).Errorf("Could not acquire lock on daemon set '%v'", dsFields.ID)
 			// The session probably either expired or there was probably a network
 			// error, so the rest will probably fail
 			dsf.handleSessionExpiry(dsFields, dsLogger, err)
-			dsf.releaseLock(dsUnlocker)
+			return false
+		}
+		if !ok {
+			// Lock was either already acquired by another farm or it was Acquired
+			// by this farm
+			dsf.logger.Infof("Lock on daemon set '%v' was already acquired by another ds farm: %s", dsFields.ID, transaction.TxnErrorsToString(resp.Errors))
+			if err != nil {
+				dsf.logger.Infof("Additional ds farm lock errors: %v", err)
+			}
 			return false
 		}
 		dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
@@ -668,7 +687,7 @@ func (dsf *Farm) lockAndSpawn(ctx context.Context, dsFields ds_fields.DaemonSet)
 	dsContended, isContended, err := DSContends(dsFields, dsf.scheduler, dsf.dsStore)
 	if err != nil {
 		dsf.logger.Errorf("Error occurred when trying to check for daemon set contention: %v", err)
-		dsf.releaseLock(dsUnlocker)
+		dsf.releaseLock(unlocker)
 		return false
 	}
 
@@ -678,7 +697,7 @@ func (dsf *Farm) lockAndSpawn(ctx context.Context, dsFields ds_fields.DaemonSet)
 		dsFields, err = dsf.dsStore.Disable(dsFields.ID)
 		if err != nil {
 			dsf.logger.Errorf("Error occurred when trying to disable daemon set: %v", err)
-			dsf.releaseLock(dsUnlocker)
+			dsf.releaseLock(unlocker)
 			return false
 		}
 	}
@@ -687,7 +706,12 @@ func (dsf *Farm) lockAndSpawn(ctx context.Context, dsFields ds_fields.DaemonSet)
 	if ok {
 		child.updatedCh <- dsFields
 	} else {
-		dsf.children[dsFields.ID] = dsf.spawnDaemonSet(ctx, dsFields, dsUnlocker, dsLogger)
+		dsf.children[dsFields.ID] = dsf.spawnDaemonSet(
+			ctx,
+			unlocker,
+			dsFields,
+			dsLogger,
+		)
 	}
 
 	return true
