@@ -29,10 +29,8 @@ type Session interface {
 	Lock(key string) (Unlocker, error)
 	LockTxn(
 		lockCtx context.Context,
-		unlockCtx context.Context,
-		checkLockedCtx context.Context,
 		key string,
-	) error
+	) (TxnUnlocker, error)
 	Renew() error
 	Destroy() error
 	Session() string
@@ -90,23 +88,17 @@ func (s session) Lock(key string) (Unlocker, error) {
 	return nil, AlreadyLockedError{Key: key}
 }
 
-// LockTxn takes three contexts and a key to lock as arguments. It will do the
+// LockTxn takes a context and a key to lock as arguments. It will do the
 // following:
 // 1) Add the KV operations required to lock key to lockCtx. The caller must
 // commit the transaction with transaction.Commit() before any locks are
 // acquired
-// 2) Add the KV operations required to UNLOCK key to unlockCtx. The operations
-// guarantee that the lock is still held by the session otherwise the transaction
-// will fail
-// 3) Add the KV operations required to check that the key is still locked to
-// checkLockedCtx. This is useful for callers that want to take actions only
-// while they hold certain locks.
+// 2) return an TxnUnlocker which allows for building consul transactions for both
+// unlocking the key and checking that the lock is held
 func (s session) LockTxn(
 	lockCtx context.Context,
-	unlockCtx context.Context,
-	checkLockedCtx context.Context,
 	key string,
-) error {
+) (TxnUnlocker, error) {
 	err := transaction.Add(lockCtx, api.KVTxnOp{
 		Verb:    api.KVLock,
 		Key:     key,
@@ -114,40 +106,13 @@ func (s session) LockTxn(
 		Value:   []byte(s.name),
 	})
 	if err != nil {
-		return util.Errorf("could not build key locking transaction: %s", err)
+		return nil, util.Errorf("could not build key locking transaction: %s", err)
 	}
 
-	// check that this session still holds the lock
-	err = transaction.Add(checkLockedCtx, api.KVTxnOp{
-		Verb:    api.KVCheckSession,
-		Key:     key,
-		Session: s.session,
-	})
-	if err != nil {
-		return util.Errorf("could not build lock checking transaction: %s", err)
-	}
-
-	// check that this session still holds the lock
-	err = transaction.Add(unlockCtx, api.KVTxnOp{
-		Verb:    api.KVCheckSession,
-		Key:     key,
-		Session: s.session,
-	})
-	if err != nil {
-		return util.Errorf("could not build key unlocking transaction: %s", err)
-	}
-
-	// delete the lock (which will fail if we're not still holding it
-	// thanks to the check-session operation
-	err = transaction.Add(unlockCtx, api.KVTxnOp{
-		Verb: api.KVDelete,
-		Key:  key,
-	})
-	if err != nil {
-		return util.Errorf("could not build key unlocking transaction: %s", err)
-	}
-
-	return nil
+	return &txnUnlocker{
+		session: s.session,
+		key:     key,
+	}, nil
 }
 
 // attempts to unlock the targeted key - since lock keys are ephemeral, this
@@ -209,6 +174,65 @@ type unlocker struct {
 	session session
 
 	key string
+}
+
+// TxnUnlocker represents a lock that is held in consul, with convenience
+// functions for operating with the lock
+type TxnUnlocker interface {
+	// UnlockTxn adds consul operations to the transaction within the passed
+	// context to unlock the lock. The caller must call transaction.Commit() with
+	// the passed context for the lock to actually be released
+	UnlockTxn(ctx context.Context) error
+
+	// CheckLockedTxn adds consul operations to the transaction within the passed
+	// context to check that the lock is still held. This is useful for callers
+	// that wish for the operations they are attempting to fail if the lock is no
+	// longer held for any reason
+	CheckLockedTxn(ctx context.Context) error
+}
+
+type txnUnlocker struct {
+	session string
+
+	key string
+}
+
+func (t *txnUnlocker) UnlockTxn(unlockCtx context.Context) error {
+	// check that this session still holds the lock
+	err := transaction.Add(unlockCtx, api.KVTxnOp{
+		Verb:    api.KVCheckSession,
+		Key:     t.key,
+		Session: t.session,
+	})
+	if err != nil {
+		return util.Errorf("could not build key unlocking transaction: %s", err)
+	}
+
+	// delete the lock (which will fail if we're not still holding it
+	// thanks to the check-session operation
+	err = transaction.Add(unlockCtx, api.KVTxnOp{
+		Verb: api.KVDelete,
+		Key:  t.key,
+	})
+	if err != nil {
+		return util.Errorf("could not build key unlocking transaction: %s", err)
+	}
+
+	return nil
+}
+
+func (t *txnUnlocker) CheckLockedTxn(checkLockedCtx context.Context) error {
+	// check that this session still holds the lock
+	err := transaction.Add(checkLockedCtx, api.KVTxnOp{
+		Verb:    api.KVCheckSession,
+		Key:     t.key,
+		Session: t.session,
+	})
+	if err != nil {
+		return util.Errorf("could not build lock checking transaction: %s", err)
+	}
+
+	return nil
 }
 
 // Wraps a consul client and consul session, and provides coordination for
