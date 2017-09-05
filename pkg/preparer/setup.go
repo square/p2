@@ -465,6 +465,14 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		finishExec = preparerConfig.PodProcessReporterConfig.FinishExec()
 	}
 
+	httpClient, err := preparerConfig.GetClient(30 * time.Second)
+	if err != nil {
+		return nil, err
+	}
+	fetcher := uri.BasicFetcher{
+		Client: httpClient,
+	}
+
 	var hooksManifest manifest.Manifest
 	var hooksPod *pods.Pod
 	var auditLogger hooks.AuditLogger
@@ -478,7 +486,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		if err != nil {
 			return nil, util.Errorf("Could not parse configured hooks manifest: %s", err)
 		}
-		hooksPodFactory := pods.NewHookFactory(filepath.Join(preparerConfig.PodRoot, "hooks"), preparerConfig.NodeName)
+		hooksPodFactory := pods.NewHookFactory(filepath.Join(preparerConfig.PodRoot, "hooks"), preparerConfig.NodeName, fetcher)
 		hooksPod = hooksPodFactory.NewHookPod(hooksManifest.ID())
 		hooksSqlite, ok := hooksManifest.GetConfig()["sqlite_path"]
 		if ok {
@@ -499,14 +507,6 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 			}
 
 		}
-	}
-
-	httpClient, err := preparerConfig.GetClient(30 * time.Second)
-	if err != nil {
-		return nil, err
-	}
-	fetcher := uri.BasicFetcher{
-		Client: httpClient,
 	}
 
 	return &Preparer{
