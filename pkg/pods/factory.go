@@ -92,24 +92,29 @@ func (f *factory) NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod
 		return nil, util.Errorf("uniqueKey cannot be empty")
 	}
 	home := filepath.Join(f.podRoot, computeUniqueName(id, uniqueKey))
-	return newPodWithHome(id, uniqueKey, home, f.node, f.requireFile), nil
+	return newPodWithHome(id, uniqueKey, home, f.node, f.requireFile, f.fetcher), nil
 }
 
 func (f *factory) NewLegacyPod(id types.PodID) *Pod {
 	home := filepath.Join(f.podRoot, id.String())
-	return newPodWithHome(id, "", home, f.node, f.requireFile)
+	return newPodWithHome(id, "", home, f.node, f.requireFile, f.fetcher)
 }
 
 func (f *hookFactory) NewHookPod(id types.PodID) *Pod {
 	home := filepath.Join(f.hookRoot, id.String())
 
 	// Hooks can't have a UUID
-	return newPodWithHome(id, "", home, f.node, "")
+	// TODO: Shouldn't the Fetcher be configured? but NewHookFactory doesn't take/store a fetcher.
+	return newPodWithHome(id, "", home, f.node, "", nil)
 }
 
-func newPodWithHome(id types.PodID, uniqueKey types.PodUniqueKey, podHome string, node types.NodeName, requireFile string) *Pod {
+func newPodWithHome(id types.PodID, uniqueKey types.PodUniqueKey, podHome string, node types.NodeName, requireFile string, fetcher uri.Fetcher) *Pod {
 	var logger logging.Logger
 	logger = Log.SubLogger(logrus.Fields{"pod": id, "uuid": uniqueKey})
+
+	if fetcher == nil {
+		fetcher = uri.DefaultFetcher
+	}
 
 	return &Pod{
 		Id:             id,
@@ -123,7 +128,7 @@ func newPodWithHome(id types.PodID, uniqueKey types.PodUniqueKey, podHome string
 		DefaultTimeout: 60 * time.Second,
 		LogExec:        runit.DefaultLogExec(),
 		FinishExec:     NopFinishExec,
-		Fetcher:        uri.DefaultFetcher,
+		Fetcher:        fetcher,
 		RequireFile:    requireFile,
 	}
 }
@@ -155,5 +160,6 @@ func PodFromPodHomeWithReqFile(node types.NodeName, home string, requireFile str
 		return nil, err
 	}
 
-	return newPodWithHome(manifest.ID(), uniqueKey, home, node, requireFile), nil
+	// TODO: Shouldn't the Fetcher be configured? So one should get passed in, right?
+	return newPodWithHome(manifest.ID(), uniqueKey, home, node, requireFile, nil), nil
 }

@@ -262,7 +262,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 
 	poddir, err := ioutil.TempDir("", "poddir")
 	Assert(t).IsNil(err, "couldn't create tempdir")
-	pod := newPodWithHome("testPod", "", poddir, "testNode", "")
+	pod := newPodWithHome("testPod", "", poddir, "testNode", "", nil)
 
 	// set the RunAs user to the user running the test, because when we
 	// write files we need an owner.
