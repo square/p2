@@ -157,10 +157,7 @@ func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest 
 			"hooks": hookType}).Errorln("Encountered a hook error")
 	}
 
-	// Ignore hook errors if the preparer itself is being deployed. The preparer
-	// needs to be resilient to hook failures to make it easier to address issues
-	// that come up
-	return err == nil || manifest.ID() == constants.PreparerPodID
+	return err == nil
 }
 
 // no return value, no output channels. This should do everything it needs to do
