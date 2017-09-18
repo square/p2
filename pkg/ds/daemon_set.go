@@ -14,6 +14,7 @@ import (
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/scheduler"
@@ -224,12 +225,24 @@ func (ds *daemonSet) GetNodeSelector() klabels.Selector {
 	return ds.DaemonSet.NodeSelector
 }
 
+func (ds *daemonSet) Manifest() manifest.Manifest {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	return ds.DaemonSet.Manifest
+}
+
+func (ds *daemonSet) MinHealth() int {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	return ds.DaemonSet.MinHealth
+}
+
 func (ds *daemonSet) EligibleNodes() ([]types.NodeName, error) {
 	ds.mu.Lock()
-	manifest := ds.Manifest
-	nodeSelector := ds.NodeSelector
+	m := ds.DaemonSet.Manifest
+	nodeSelector := ds.DaemonSet.NodeSelector
 	ds.mu.Unlock()
-	return ds.scheduler.EligibleNodes(manifest, nodeSelector)
+	return ds.scheduler.EligibleNodes(m, nodeSelector)
 }
 
 func (ds *daemonSet) MetricNames(suffix string) []string {
@@ -526,21 +539,21 @@ func (ds *daemonSet) clearPods() error {
 }
 
 func (ds *daemonSet) unschedule(node types.NodeName) error {
-	ds.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest.ID(), node, ds.ID())
+	ds.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest().ID(), node, ds.ID())
 
 	ctx, cancel := transaction.New(context.Background())
 	defer cancel()
 
 	// Will remove the following key:
 	// <consul.INTENT_TREE>/<node>/<ds.Manifest.ID()>
-	err := ds.store.DeletePodTxn(ctx, consul.INTENT_TREE, node, ds.Manifest.ID())
+	err := ds.store.DeletePodTxn(ctx, consul.INTENT_TREE, node, ds.Manifest().ID())
 	if err != nil {
-		return util.Errorf("unable to form pod deletion transaction for pod id '%v' from node '%v': %v", ds.Manifest.ID(), node, err)
+		return util.Errorf("unable to form pod deletion transaction for pod id '%v' from node '%v': %v", ds.Manifest().ID(), node, err)
 	}
 
 	// Will remove the following label on the key <labels.POD>/<node>/<ds.Manifest.ID()>: DSIDLabel
 	// This is for indicating that this pod path no longer belongs to this daemon set
-	id := labels.MakePodLabelKey(node, ds.Manifest.ID())
+	id := labels.MakePodLabelKey(node, ds.Manifest().ID())
 	err = ds.applicator.RemoveLabelTxn(ctx, labels.POD, id, DSIDLabel)
 	if err != nil {
 		return util.Errorf("error adding label removal to transaction: %v", err)
@@ -548,7 +561,7 @@ func (ds *daemonSet) unschedule(node types.NodeName) error {
 
 	err = transaction.MustCommit(ctx, ds.txner)
 	if err != nil {
-		return util.Errorf("error unscheduling %s from %s: %s", ds.Manifest.ID(), node, err)
+		return util.Errorf("error unscheduling %s from %s: %s", ds.Manifest().ID(), node, err)
 	}
 
 	return nil
@@ -578,10 +591,10 @@ func (ds *daemonSet) PublishToReplication() error {
 	}
 	lockMessage := fmt.Sprintf("%q from %q at %q", thisUser.Username, thisHost, time.Now())
 	repl, err := replication.NewReplicator(
-		ds.DaemonSet.Manifest,
+		ds.Manifest(),
 		ds.logger,
 		nodes,
-		len(nodes)-ds.DaemonSet.MinHealth,
+		len(nodes)-ds.MinHealth(),
 		ds.store,
 		ds.txner,
 		ds.applicator,
