@@ -150,17 +150,12 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	}
 }
 
-func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest manifest.Manifest, logger logging.Logger) bool {
+func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest manifest.Manifest, logger logging.Logger) {
 	err := p.hooks.RunHookType(hookType, pod, manifest)
 	if err != nil {
 		logger.WithErrorAndFields(err, logrus.Fields{
-			"hooks": hookType}).Errorln("Encountered a hook error")
+			"hooks": hookType}).Warnln("Could not run hooks")
 	}
-
-	// Ignore hook errors if the preparer itself is being deployed. The preparer
-	// needs to be resilient to hook failures to make it easier to address issues
-	// that come up
-	return err == nil || manifest.ID() == constants.PreparerPodID
 }
 
 // no return value, no output channels. This should do everything it needs to do
@@ -334,12 +329,14 @@ func (p *Preparer) resolvePair(pair ManifestPair, pod Pod, logger logging.Logger
 		logger.NoFields().Infoln("manifest is new, will update")
 		authorized := p.authorize(pair.Intent, logger)
 		if !authorized {
-			return p.tryRunHooks(
+			p.tryRunHooks(
 				hooks.AfterAuthFail,
 				pod,
 				pair.Intent,
 				logger,
 			)
+			// prevent future unnecessary loops, we don't need to check again.
+			return true
 		}
 		return p.installAndLaunchPod(pair, pod, logger)
 	}
@@ -356,12 +353,14 @@ func (p *Preparer) resolvePair(pair ManifestPair, pod Pod, logger logging.Logger
 
 	authorized := p.authorize(pair.Intent, logger)
 	if !authorized {
-		return p.tryRunHooks(
+		p.tryRunHooks(
 			hooks.AfterAuthFail,
 			pod,
 			pair.Intent,
 			logger,
 		)
+		// prevent future unnecessary loops, we don't need to check again.
+		return true
 	}
 
 	logger.WithField("old_sha", oldSHA).Infoln("manifest SHA has changed, will update")
@@ -370,10 +369,7 @@ func (p *Preparer) resolvePair(pair ManifestPair, pod Pod, logger logging.Logger
 }
 
 func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger logging.Logger) bool {
-	ok := p.tryRunHooks(hooks.BeforeInstall, pod, pair.Intent, logger)
-	if !ok {
-		return false
-	}
+	p.tryRunHooks(hooks.BeforeInstall, pod, pair.Intent, logger)
 
 	logger.NoFields().Infoln("Installing pod and launchables")
 
@@ -388,14 +384,11 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 	if err != nil {
 		logger.WithError(err).
 			Errorln("Pod digest verification failed")
-		_ = p.tryRunHooks(hooks.AfterAuthFail, pod, pair.Intent, logger)
+		p.tryRunHooks(hooks.AfterAuthFail, pod, pair.Intent, logger)
 		return false
 	}
 
-	ok = p.tryRunHooks(hooks.AfterInstall, pod, pair.Intent, logger)
-	if !ok {
-		return false
-	}
+	p.tryRunHooks(hooks.AfterInstall, pod, pair.Intent, logger)
 
 	if pair.Reality != nil {
 		logger.NoFields().Infoln("Invoking the disable hook and halting runit services")
@@ -408,14 +401,11 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 		}
 	}
 
-	ok = p.tryRunHooks(hooks.BeforeLaunch, pod, pair.Intent, logger)
-	if !ok {
-		return false
-	}
+	p.tryRunHooks(hooks.BeforeLaunch, pod, pair.Intent, logger)
 
 	logger.NoFields().Infoln("Setting up new runit services and running the enable hook")
 
-	ok, err = pod.Launch(pair.Intent)
+	ok, err := pod.Launch(pair.Intent)
 	if err != nil {
 		logger.WithError(err).
 			Errorln("Launch failed")
@@ -439,10 +429,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 			}
 		}
 
-		ok = p.tryRunHooks(hooks.AfterLaunch, pod, pair.Intent, logger)
-		if !ok {
-			return false
-		}
+		p.tryRunHooks(hooks.AfterLaunch, pod, pair.Intent, logger)
 
 		pod.Prune(p.maxLaunchableDiskUsage, pair.Intent) // errors are logged internally
 	}
@@ -500,10 +487,7 @@ func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger loggin
 		logger.NoFields().Warnln("One or more launchables did not halt successfully")
 	}
 
-	ok := p.tryRunHooks(hooks.BeforeUninstall, pod, pair.Reality, logger)
-	if !ok {
-		return false
-	}
+	p.tryRunHooks(hooks.BeforeUninstall, pod, pair.Reality, logger)
 
 	err = pod.Uninstall()
 	if err != nil {
