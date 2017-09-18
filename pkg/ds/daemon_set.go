@@ -130,8 +130,10 @@ type daemonSet struct {
 	healthChecker    *checker.ConsulHealthChecker
 	healthWatchDelay time.Duration
 
-	// This is the current replication enact go routine that is running
-	currentReplication replication.Replication
+	// This is the current replication enact go routine that is running.
+	// Access to it is protected by currentReplicationMu
+	currentReplication   replication.Replication
+	currentReplicationMu sync.Mutex
 
 	// Indicates how long to wait between updating each node during a replication
 	rateLimitInterval time.Duration
@@ -632,7 +634,7 @@ func (ds *daemonSet) PublishToReplication() error {
 	}()
 
 	// Set a new replication
-	ds.currentReplication = currentReplication
+	ds.setCurrentReplication(currentReplication)
 
 	go currentReplication.Enact()
 
@@ -644,12 +646,20 @@ func (ds *daemonSet) PublishToReplication() error {
 // It is also okay to call this multiple times because it keeps track of when
 // it has been cancelled by checking whether ds.currentReplication == nil
 func (ds *daemonSet) cancelReplication() {
+	ds.currentReplicationMu.Lock()
+	defer ds.currentReplicationMu.Unlock()
 	if ds.currentReplication != nil {
 		ds.currentReplication.Cancel()
 		ds.currentReplication.WaitForReplication()
 		ds.logger.Info("Replication cancelled")
 		ds.currentReplication = nil
 	}
+}
+
+func (ds *daemonSet) setCurrentReplication(rep replication.Replication) {
+	ds.currentReplicationMu.Lock()
+	defer ds.currentReplicationMu.Unlock()
+	ds.currentReplication = rep
 }
 
 func (ds *daemonSet) CurrentPods() (types.PodLocations, error) {
