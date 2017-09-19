@@ -55,6 +55,9 @@ func TestContendNodes(t *testing.T) {
 	allNodes = append(allNodes, "node1")
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
+	session := newTestSession(t, consulStore)
+	defer session.Destroy()
+
 	dsf := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
@@ -65,7 +68,7 @@ func TestContendNodes(t *testing.T) {
 		watcher:               applicator,
 		labelsAggregationRate: 1 * time.Nanosecond,
 		children:              make(map[ds_fields.ID]*childDS),
-		session:               newTestSession(t, consulStore),
+		session:               session,
 		logger:                logger,
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
@@ -187,6 +190,8 @@ func TestContendSelectors(t *testing.T) {
 	var allNodes []types.NodeName
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
+	session := newTestSession(t, consulStore)
+	defer session.Destroy()
 	dsf := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
@@ -197,7 +202,7 @@ func TestContendSelectors(t *testing.T) {
 		watcher:               applicator,
 		labelsAggregationRate: 1 * time.Nanosecond,
 		children:              make(map[ds_fields.ID]*childDS),
-		session:               newTestSession(t, consulStore),
+		session:               session,
 		logger:                logger,
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
@@ -362,6 +367,8 @@ func TestFarmSchedule(t *testing.T) {
 	}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
+	session := newTestSession(t, consulStore)
+	defer session.Destroy()
 	dsf := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
@@ -372,7 +379,7 @@ func TestFarmSchedule(t *testing.T) {
 		watcher:               applicator,
 		labelsAggregationRate: 1 * time.Nanosecond,
 		children:              make(map[ds_fields.ID]*childDS),
-		session:               newTestSession(t, consulStore),
+		session:               session,
 		logger:                logger,
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
@@ -628,6 +635,8 @@ func TestCleanupPods(t *testing.T) {
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "cleanupPods",
 	})
+	session := newTestSession(t, consulStore)
+	defer session.Destroy()
 	dsf := &Farm{
 		dsStore:               dsStore,
 		store:                 consulStore,
@@ -637,7 +646,7 @@ func TestCleanupPods(t *testing.T) {
 		watcher:               applicator,
 		labelsAggregationRate: 1 * time.Nanosecond,
 		children:              make(map[ds_fields.ID]*childDS),
-		session:               newTestSession(t, consulStore),
+		session:               session,
 		logger:                logger,
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
