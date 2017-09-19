@@ -330,7 +330,6 @@ func (r *replication) Enact() {
 	}()
 
 	updatePool.Wait()
-	r.logger.Info("Replication is over")
 }
 
 // Cancels all goroutines (e.g. replication and lock renewal)
@@ -370,7 +369,9 @@ func (r *replication) handleReplicationEnd(session consul.Session, renewalErrCh 
 
 	select {
 	case <-r.replicationDoneCh:
+		r.logger.Info("Replication completed successfully")
 	case <-r.replicationCancelledCh:
+		r.logger.Info("Replication was canceled")
 		// If the replication is enacted, wait for it to exit
 		r.enactedChMu.Lock()
 		enactedCh := r.enactedCh
@@ -379,6 +380,7 @@ func (r *replication) handleReplicationEnd(session consul.Session, renewalErrCh 
 			<-r.enactedCh
 		}
 	case err := <-renewalErrCh:
+		r.logger.Info("Replication session was lost")
 		// communicate the error to the caller.
 		r.errCh <- replicationError{
 			err:     err,
