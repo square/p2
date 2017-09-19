@@ -22,6 +22,8 @@ import (
 	"github.com/square/p2/pkg/store/consul/consultest"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/dsstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/daemonsetstatus"
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
@@ -59,7 +61,7 @@ func TestContendNodes(t *testing.T) {
 	defer session.Destroy()
 
 	rawStatusStore := statusstore.NewConsul(fixture.Client)
-	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_contend_nodes")
 	dsf := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
@@ -196,7 +198,7 @@ func TestContendSelectors(t *testing.T) {
 	session := newTestSession(t, consulStore)
 	defer session.Destroy()
 	rawStatusStore := statusstore.NewConsul(fixture.Client)
-	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_contend_selectors")
 	dsf := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
@@ -376,7 +378,7 @@ func TestFarmSchedule(t *testing.T) {
 	session := newTestSession(t, consulStore)
 	defer session.Destroy()
 	rawStatusStore := statusstore.NewConsul(fixture.Client)
-	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_farm_schedule")
 	dsf := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
@@ -647,7 +649,7 @@ func TestCleanupPods(t *testing.T) {
 	session := newTestSession(t, consulStore)
 	defer session.Destroy()
 	rawStatusStore := statusstore.NewConsul(fixture.Client)
-	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_cleanup_pods")
 	dsf := &Farm{
 		dsStore:               dsStore,
 		store:                 consulStore,
@@ -744,7 +746,7 @@ func TestMultipleFarms(t *testing.T) {
 	// Instantiate first farm
 	//
 	rawStatusStore := statusstore.NewConsul(fixture.Client)
-	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_multiple_farms")
 	firstFarm := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
@@ -1077,7 +1079,7 @@ func TestRelock(t *testing.T) {
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
 	rawStatusStore := statusstore.NewConsul(fixture.Client)
-	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_relock")
 	mkFarm := func(ctx context.Context, logName string) <-chan struct{} {
 		farm := &Farm{
 			dsStore:               dsStore,
@@ -1186,7 +1188,7 @@ func TestDieAndUpdate(t *testing.T) {
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
 	rawStatusStore := statusstore.NewConsul(fixture.Client)
-	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_die_and_update")
 	mkFarm := func(ctx context.Context, logName string) <-chan struct{} {
 		farm := &Farm{
 			dsStore:               dsStore,

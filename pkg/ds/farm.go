@@ -28,6 +28,10 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
+const (
+	DefaultStatusWritingInterval = 15 * time.Second
+)
+
 // DaemonSetLocker is necessary to allow coordination between multiple daemon
 // set farm instances. Before processing a daemon set, each farm instance will
 // attempt to acquire a distributed lock and will only proceed if the
@@ -59,8 +63,9 @@ type Farm struct {
 	// session stream for the daemon sets locked by this farm
 	sessions <-chan string
 	// The time to wait between node updates for each replication
-	rateLimitInterval time.Duration
-	dsRetryInterval   time.Duration
+	rateLimitInterval     time.Duration
+	dsRetryInterval       time.Duration
+	statusWritingInterval time.Duration
 
 	children map[fields.ID]*childDS
 	childMu  sync.Mutex
@@ -102,6 +107,8 @@ type DSFarmConfig struct {
 	// IDs other than the ones included in the whitelist will be ignored by this
 	// farm
 	PodWhitelist []types.PodID `yaml:"pod_whitelist" json:"pod_whitelist"`
+
+	StatusWritingInterval time.Duration
 }
 
 func NewFarm(
@@ -127,26 +134,32 @@ func NewFarm(
 		alerter = alerting.NewNop()
 	}
 
+	statusWritingInterval := farmConfig.StatusWritingInterval
+	if statusWritingInterval == 0 {
+		statusWritingInterval = DefaultStatusWritingInterval
+	}
+
 	return &Farm{
-		store:             store,
-		txner:             txner,
-		dsStore:           dsStore,
-		dsLocker:          dsLocker,
-		statusStore:       statusStore,
-		scheduler:         scheduler.NewApplicatorScheduler(labeler),
-		labeler:           labeler,
-		watcher:           watcher,
-		sessions:          sessions,
-		children:          make(map[fields.ID]*childDS),
-		logger:            logger,
-		alerter:           alerter,
-		healthChecker:     healthChecker,
-		healthWatchDelay:  healthWatchDelay,
-		rateLimitInterval: rateLimitInterval,
-		monitorHealth:     monitorHealth,
-		cachedPodMatch:    cachedPodMatch,
-		dsRetryInterval:   dsRetryInterval,
-		config:            farmConfig,
+		store:                 store,
+		txner:                 txner,
+		dsStore:               dsStore,
+		dsLocker:              dsLocker,
+		statusStore:           statusStore,
+		scheduler:             scheduler.NewApplicatorScheduler(labeler),
+		labeler:               labeler,
+		watcher:               watcher,
+		sessions:              sessions,
+		children:              make(map[fields.ID]*childDS),
+		logger:                logger,
+		alerter:               alerter,
+		healthChecker:         healthChecker,
+		healthWatchDelay:      healthWatchDelay,
+		rateLimitInterval:     rateLimitInterval,
+		monitorHealth:         monitorHealth,
+		cachedPodMatch:        cachedPodMatch,
+		dsRetryInterval:       dsRetryInterval,
+		statusWritingInterval: statusWritingInterval,
+		config:                farmConfig,
 	}
 }
 
@@ -548,6 +561,7 @@ func (dsf *Farm) spawnDaemonSet(
 		dsf.dsRetryInterval,
 		unlocker,
 		dsf.statusStore,
+		dsf.statusWritingInterval,
 	)
 
 	updatedCh := make(chan ds_fields.DaemonSet)

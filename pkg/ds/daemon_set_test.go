@@ -228,6 +228,7 @@ func TestSchedule(t *testing.T) {
 		testFarmRetryInterval,
 		nil,
 		statusStore,
+		DefaultStatusWritingInterval,
 	).(*daemonSet)
 
 	labeled := labeledPods(t, ds)
@@ -485,6 +486,7 @@ func TestPublishToReplication(t *testing.T) {
 		testFarmRetryInterval,
 		nil,
 		statusStore,
+		DefaultStatusWritingInterval,
 	).(*daemonSet)
 
 	labeled := labeledPods(t, ds)

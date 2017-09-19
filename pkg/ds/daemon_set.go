@@ -38,8 +38,7 @@ const (
 )
 
 var (
-	DefaultRetryInterval  = 5 * time.Minute
-	statusWritingInterval = 15 * time.Second
+	DefaultRetryInterval = 5 * time.Minute
 )
 
 type DaemonSet interface {
@@ -130,17 +129,18 @@ type daemonSet struct {
 	fields.DaemonSet
 	mu sync.Mutex
 
-	contention       dsContention
-	logger           logging.Logger
-	store            store
-	statusStore      StatusStore
-	scheduler        scheduler.Scheduler
-	dsStore          DaemonSetStore
-	txner            transaction.Txner
-	applicator       Labeler
-	watcher          LabelWatcher
-	healthChecker    *checker.ConsulHealthChecker
-	healthWatchDelay time.Duration
+	contention            dsContention
+	logger                logging.Logger
+	store                 store
+	statusStore           StatusStore
+	scheduler             scheduler.Scheduler
+	dsStore               DaemonSetStore
+	txner                 transaction.Txner
+	applicator            Labeler
+	watcher               LabelWatcher
+	healthChecker         *checker.ConsulHealthChecker
+	healthWatchDelay      time.Duration
+	statusWritingInterval time.Duration
 
 	// unlocker is useful to ensure that certain operations only succeed if
 	// the farm that spawned this daemon set still holds the lock
@@ -186,6 +186,7 @@ func New(
 	retryInterval time.Duration,
 	unlocker consul.TxnUnlocker,
 	statusStore StatusStore,
+	statusWritingInterval time.Duration,
 ) DaemonSet {
 
 	if retryInterval == 0 {
@@ -210,6 +211,7 @@ func New(
 		labelsAggregationRate: labelsAggregationRate,
 		retryInterval:         retryInterval,
 		unlocker:              unlocker,
+		statusWritingInterval: statusWritingInterval,
 		statusStore:           statusStore,
 	}
 }
@@ -743,7 +745,7 @@ func (ds *daemonSet) publishStatus(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(statusWritingInterval):
+		case <-time.After(ds.statusWritingInterval):
 		}
 
 		// seed lastStatus if it's still the zero value
