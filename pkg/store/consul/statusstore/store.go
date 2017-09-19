@@ -19,6 +19,7 @@ func (t ResourceType) String() string { return string(t) }
 const (
 	PC  = ResourceType("pod_clusters")
 	POD = ResourceType("pods")
+	DS  = ResourceType("daemon_sets")
 )
 
 // Unfortunately each ResourceType will carry along with it a different "ID"
