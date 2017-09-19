@@ -70,6 +70,8 @@ type Replication interface {
 	// Will block until the r.quitCh is closed
 	// this is used to synchronize updates which quickly cancel and re-enact the replicaton
 	WaitForReplication()
+
+	CompletedCount() int32
 }
 
 type Store interface {

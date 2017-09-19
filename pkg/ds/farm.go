@@ -48,13 +48,14 @@ type DaemonSetLocker interface {
 // Farm instatiates and deletes daemon sets as needed
 type Farm struct {
 	// constructor arguments
-	store     store
-	txner     transaction.Txner
-	dsStore   DaemonSetStore
-	dsLocker  DaemonSetLocker
-	scheduler scheduler.Scheduler
-	labeler   Labeler
-	watcher   LabelWatcher
+	store       store
+	txner       transaction.Txner
+	dsStore     DaemonSetStore
+	dsLocker    DaemonSetLocker
+	statusStore StatusStore
+	scheduler   scheduler.Scheduler
+	labeler     Labeler
+	watcher     LabelWatcher
 	// session stream for the daemon sets locked by this farm
 	sessions <-chan string
 	// The time to wait between node updates for each replication
@@ -108,6 +109,7 @@ func NewFarm(
 	txner transaction.Txner,
 	dsStore DaemonSetStore,
 	dsLocker DaemonSetLocker,
+	statusStore StatusStore,
 	labeler Labeler,
 	watcher LabelWatcher,
 	sessions <-chan string,
@@ -130,6 +132,7 @@ func NewFarm(
 		txner:             txner,
 		dsStore:           dsStore,
 		dsLocker:          dsLocker,
+		statusStore:       statusStore,
 		scheduler:         scheduler.NewApplicatorScheduler(labeler),
 		labeler:           labeler,
 		watcher:           watcher,
@@ -543,6 +546,8 @@ func (dsf *Farm) spawnDaemonSet(
 		dsf.cachedPodMatch,
 		dsf.healthWatchDelay,
 		dsf.dsRetryInterval,
+		unlocker,
+		dsf.statusStore,
 	)
 
 	updatedCh := make(chan ds_fields.DaemonSet)

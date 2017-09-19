@@ -20,21 +20,26 @@ import (
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/dsstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/daemonsetstatus"
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
+	"github.com/hashicorp/consul/api"
 	"github.com/rcrowley/go-metrics"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 const (
 	// This label is applied to pods owned by a DS.
-	DSIDLabel = "daemon_set_id"
+	DSIDLabel                = "daemon_set_id"
+	DaemonSetStatusNamespace = statusstore.Namespace("daemon_set_farm")
 )
 
 var (
-	DefaultRetryInterval = 5 * time.Minute
+	DefaultRetryInterval  = 5 * time.Minute
+	statusWritingInterval = 15 * time.Second
 )
 
 type DaemonSet interface {
@@ -113,6 +118,11 @@ type DaemonSetStore interface {
 	Disable(id fields.ID) (fields.DaemonSet, error)
 }
 
+type StatusStore interface {
+	Get(dsID fields.ID) (daemonsetstatus.Status, *api.QueryMeta, error)
+	SetTxn(ctx context.Context, dsID fields.ID, status daemonsetstatus.Status) error
+}
+
 // daemonSet wraps a daemon set struct with information required to manage it.
 // Note: the inner fields.DaemonSet set may be modified during the lifetime of
 // this struct, necessitating access synchronization with a mute
@@ -123,6 +133,7 @@ type daemonSet struct {
 	contention       dsContention
 	logger           logging.Logger
 	store            store
+	statusStore      StatusStore
 	scheduler        scheduler.Scheduler
 	dsStore          DaemonSetStore
 	txner            transaction.Txner
@@ -130,6 +141,10 @@ type daemonSet struct {
 	watcher          LabelWatcher
 	healthChecker    *checker.ConsulHealthChecker
 	healthWatchDelay time.Duration
+
+	// unlocker is useful to ensure that certain operations only succeed if
+	// the farm that spawned this daemon set still holds the lock
+	unlocker consul.TxnUnlocker
 
 	// This is the current replication enact go routine that is running.
 	// Access to it is protected by currentReplicationMu
@@ -169,6 +184,8 @@ func New(
 	cachedPodMatch bool,
 	healthWatchDelay time.Duration,
 	retryInterval time.Duration,
+	unlocker consul.TxnUnlocker,
+	statusStore StatusStore,
 ) DaemonSet {
 
 	if retryInterval == 0 {
@@ -192,6 +209,8 @@ func New(
 		cachedPodMatch:        cachedPodMatch,
 		labelsAggregationRate: labelsAggregationRate,
 		retryInterval:         retryInterval,
+		unlocker:              unlocker,
+		statusStore:           statusStore,
 	}
 }
 
@@ -269,6 +288,10 @@ func (ds *daemonSet) WatchDesires(
 	go func() {
 		<-ctx.Done()
 		close(watchMatchQuitCh)
+	}()
+
+	go func() {
+		ds.publishStatus(ctx)
 	}()
 
 	nodesChangedCh := ds.watcher.WatchMatchDiff(ds.NodeSelector, labels.NODE, ds.labelsAggregationRate, watchMatchQuitCh)
@@ -675,6 +698,12 @@ func (ds *daemonSet) setCurrentReplication(rep replication.Replication) {
 	ds.currentReplication = rep
 }
 
+func (ds *daemonSet) getCurrentReplication() replication.Replication {
+	ds.currentReplicationMu.Lock()
+	defer ds.currentReplicationMu.Unlock()
+	return ds.currentReplication
+}
+
 func (ds *daemonSet) CurrentPods() (types.PodLocations, error) {
 	// Changing DaemonSet.ID is not permitted, so as long as there is no uuid
 	// collision, this will always get the current pod path that this daemon set
@@ -705,4 +734,92 @@ func (ds *daemonSet) CurrentPods() (types.PodLocations, error) {
 	}
 
 	return result, nil
+}
+
+func (ds *daemonSet) publishStatus(ctx context.Context) {
+	var lastStatus daemonsetstatus.Status
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(statusWritingInterval):
+		}
+
+		// seed lastStatus if it's still the zero value
+		if lastStatus.ManifestSHA == "" {
+			var err error
+			lastStatus, _, err = ds.statusStore.Get(ds.ID())
+			switch {
+			case statusstore.IsNoStatus(err):
+			case err != nil:
+				ds.logger.WithError(err).Errorln("could not write daemon set status")
+				continue
+			}
+		}
+
+		written, err := ds.writeNewestStatus(ctx, lastStatus)
+		if err != nil {
+			ds.logger.WithError(err).Errorln("could not write daemon set status")
+			continue
+		}
+
+		lastStatus = written
+	}
+}
+
+// writeNewestStatus writes the latest status for the daemon set to consul if
+// it differs from the most recently written one. It handles the case where
+// lastStatus is the zero status which might be the case the first time the
+// daemon set's status is written
+func (ds *daemonSet) writeNewestStatus(ctx context.Context, lastStatus daemonsetstatus.Status) (daemonsetstatus.Status, error) {
+	var toWrite daemonsetstatus.Status
+	manifestSHA, err := ds.Manifest().SHA()
+	if err != nil {
+		return daemonsetstatus.Status{}, err
+	}
+
+	toWrite.ManifestSHA = manifestSHA
+	toWrite.NodesDeployed = lastStatus.NodesDeployed
+	if toWrite.ManifestSHA != lastStatus.ManifestSHA {
+		// reset the deployed count if the manifest has changed
+		toWrite.NodesDeployed = 0
+	}
+
+	currentReplication := ds.getCurrentReplication()
+	if currentReplication == nil {
+		toWrite.ReplicationInProgress = false
+	} else {
+		toWrite.ReplicationInProgress = true
+
+		// ensure that NodesDeployed doesn't backtrack (which it might if the replication was restarted)
+		if int(currentReplication.CompletedCount()) > toWrite.NodesDeployed {
+			toWrite.NodesDeployed = int(currentReplication.CompletedCount())
+		}
+	}
+
+	if toWrite == lastStatus {
+		// nothing to do
+		return lastStatus, nil
+	}
+
+	writeCtx, cancel := transaction.New(ctx)
+	defer cancel()
+
+	err = ds.unlocker.CheckLockedTxn(writeCtx)
+	if err != nil {
+		return daemonsetstatus.Status{}, err
+	}
+
+	err = ds.statusStore.SetTxn(writeCtx, ds.ID(), toWrite)
+	if err != nil {
+		return daemonsetstatus.Status{}, err
+	}
+
+	err = transaction.MustCommit(writeCtx, ds.txner)
+	if err != nil {
+		return daemonsetstatus.Status{}, err
+	}
+
+	return toWrite, nil
 }

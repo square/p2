@@ -58,9 +58,12 @@ func TestContendNodes(t *testing.T) {
 	session := newTestSession(t, consulStore)
 	defer session.Destroy()
 
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
 	dsf := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
+		statusStore:           statusStore,
 		store:                 consulStore,
 		txner:                 fixture.Client.KV(),
 		scheduler:             scheduler.NewApplicatorScheduler(applicator),
@@ -192,9 +195,12 @@ func TestContendSelectors(t *testing.T) {
 
 	session := newTestSession(t, consulStore)
 	defer session.Destroy()
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
 	dsf := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
+		statusStore:           statusStore,
 		store:                 consulStore,
 		txner:                 fixture.Client.KV(),
 		scheduler:             scheduler.NewApplicatorScheduler(applicator),
@@ -369,9 +375,12 @@ func TestFarmSchedule(t *testing.T) {
 
 	session := newTestSession(t, consulStore)
 	defer session.Destroy()
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
 	dsf := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
+		statusStore:           statusStore,
 		store:                 consulStore,
 		txner:                 fixture.Client.KV(),
 		scheduler:             scheduler.NewApplicatorScheduler(applicator),
@@ -637,9 +646,12 @@ func TestCleanupPods(t *testing.T) {
 	})
 	session := newTestSession(t, consulStore)
 	defer session.Destroy()
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
 	dsf := &Farm{
 		dsStore:               dsStore,
 		store:                 consulStore,
+		statusStore:           statusStore,
 		txner:                 fixture.Client.KV(),
 		scheduler:             scheduler.NewApplicatorScheduler(applicator),
 		labeler:               applicator,
@@ -731,9 +743,12 @@ func TestMultipleFarms(t *testing.T) {
 	//
 	// Instantiate first farm
 	//
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
 	firstFarm := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
+		statusStore:           statusStore,
 		store:                 consulStore,
 		txner:                 fixture.Client.KV(),
 		scheduler:             scheduler.NewApplicatorScheduler(applicator),
@@ -763,6 +778,7 @@ func TestMultipleFarms(t *testing.T) {
 	secondFarm := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
+		statusStore:           statusStore,
 		store:                 consulStore,
 		txner:                 fixture.Client.KV(),
 		scheduler:             scheduler.NewApplicatorScheduler(applicator),
@@ -1060,10 +1076,13 @@ func TestRelock(t *testing.T) {
 	allNodes := []types.NodeName{"node1", "node2", "node3"}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
 	mkFarm := func(ctx context.Context, logName string) <-chan struct{} {
 		farm := &Farm{
 			dsStore:               dsStore,
 			dsLocker:              dsStore,
+			statusStore:           statusStore,
 			store:                 consulStore,
 			txner:                 fixture.Client.KV(),
 			scheduler:             scheduler.NewApplicatorScheduler(applicator),
@@ -1166,10 +1185,13 @@ func TestDieAndUpdate(t *testing.T) {
 	allNodes := []types.NodeName{"node1", "node2", "node3"}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
 	mkFarm := func(ctx context.Context, logName string) <-chan struct{} {
 		farm := &Farm{
 			dsStore:               dsStore,
 			dsLocker:              dsStore,
+			statusStore:           statusStore,
 			store:                 consulStore,
 			txner:                 fixture.Client.KV(),
 			scheduler:             scheduler.NewApplicatorScheduler(applicator),
