@@ -45,7 +45,8 @@ func main() {
 		log.Fatalf("%s", err)
 	}
 
-	hookFactory := pods.NewHookFactory(filepath.Join(*podRoot, "hooks", *hookType), types.NodeName(*nodeName))
+	// TODO: Configure fetcher?
+	hookFactory := pods.NewHookFactory(filepath.Join(*podRoot, "hooks", *hookType), types.NodeName(*nodeName), uri.DefaultFetcher)
 
 	// /data/pods/hooks/<event>/<id>
 	// if the event is the empty string (global hook), then that path segment

@@ -49,6 +49,7 @@ type factory struct {
 type hookFactory struct {
 	hookRoot string
 	node     types.NodeName
+	fetcher  uri.Fetcher
 }
 
 func NewFactory(podRoot string, node types.NodeName, fetcher uri.Fetcher, requireFile string) Factory {
@@ -64,7 +65,7 @@ func NewFactory(podRoot string, node types.NodeName, fetcher uri.Fetcher, requir
 	}
 }
 
-func NewHookFactory(hookRoot string, node types.NodeName) HookFactory {
+func NewHookFactory(hookRoot string, node types.NodeName, fetcher uri.Fetcher) HookFactory {
 	if hookRoot == "" {
 		hookRoot = filepath.Join(DefaultPath, "hooks")
 	}
@@ -72,6 +73,7 @@ func NewHookFactory(hookRoot string, node types.NodeName) HookFactory {
 	return &hookFactory{
 		hookRoot: hookRoot,
 		node:     node,
+		fetcher:  fetcher,
 	}
 }
 
@@ -104,8 +106,7 @@ func (f *hookFactory) NewHookPod(id types.PodID) *Pod {
 	home := filepath.Join(f.hookRoot, id.String())
 
 	// Hooks can't have a UUID
-	// TODO: Shouldn't the Fetcher be configured? but NewHookFactory doesn't take/store a fetcher.
-	return newPodWithHome(id, "", home, f.node, "", nil)
+	return newPodWithHome(id, "", home, f.node, "", f.fetcher)
 }
 
 func newPodWithHome(id types.PodID, uniqueKey types.PodUniqueKey, podHome string, node types.NodeName, requireFile string, fetcher uri.Fetcher) *Pod {

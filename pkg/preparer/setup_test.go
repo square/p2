@@ -60,7 +60,7 @@ func TestInstallHooks(t *testing.T) {
 
 	podManifest := builder.GetManifest()
 
-	hookFactory := pods.NewHookFactory(destDir, "testNode")
+	hookFactory := pods.NewHookFactory(destDir, "testNode", uri.DefaultFetcher)
 	hooksPod := hookFactory.NewHookPod(podManifest.ID())
 
 	preparer := Preparer{
