@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -194,8 +193,6 @@ func TestCommitWithRetriesHappy(t *testing.T) {
 		calls: callsCh,
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
 	go func() {
 		defer close(callsCh)
 		CommitWithRetries(ctx, txner)
@@ -227,8 +224,6 @@ func TestCommitWithRetriesDoesntRetryRollback(t *testing.T) {
 		shouldRollback: true,
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
 	go func() {
 		defer close(callsCh)
 		CommitWithRetries(ctx, txner)
