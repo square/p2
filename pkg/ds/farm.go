@@ -68,6 +68,8 @@ type Farm struct {
 	monitorHealth         bool
 	cachedPodMatch        bool
 	labelsAggregationRate time.Duration
+
+	config DSFarmConfig
 }
 
 type childDS struct {
@@ -77,6 +79,20 @@ type childDS struct {
 	deletedCh chan<- ds_fields.DaemonSet
 	errCh     <-chan error
 	unlocker  consul.Unlocker
+}
+
+// TODO: move other config options in here to reduce the number of arguments to NewFarm()
+type DSFarmConfig struct {
+	// PodBlacklist represents pod IDs that the farm should skip over. In other
+	// words, if the daemon set's pod ID matches one of these the farm will
+	// refuse to service it
+	PodBlacklist []types.PodID
+
+	// PodWhitelist contains the set of pod IDs that the farm should exclusively
+	// service. If there is at least one entry in here, all daemon sets with pod
+	// IDs other than the ones included in the whitelist will be ignored by this
+	// farm
+	PodWhitelist []types.PodID
 }
 
 func NewFarm(
@@ -95,6 +111,7 @@ func NewFarm(
 	cachedPodMatch bool,
 	healthWatchDelay time.Duration,
 	dsRetryInterval time.Duration,
+	farmConfig DSFarmConfig,
 ) *Farm {
 	if alerter == nil {
 		alerter = alerting.NewNop()
@@ -118,6 +135,7 @@ func NewFarm(
 		monitorHealth:     monitorHealth,
 		cachedPodMatch:    cachedPodMatch,
 		dsRetryInterval:   dsRetryInterval,
+		config:            farmConfig,
 	}
 }
 
@@ -605,7 +623,7 @@ func (dsf *Farm) spawnDaemonSet(
 	}
 }
 
-// handleDSUpdate does the following
+// lockAndSpawn does the following
 // 1) checks if the daemon set is "owned" by this farm, and if not tries to
 // acquire the lock and spawn a worker
 // 2) if the daemon set is owned after step 1), it will check for contention
@@ -665,7 +683,37 @@ func (dsf *Farm) lockAndSpawn(ctx context.Context, dsFields ds_fields.DaemonSet)
 	if ok {
 		child.updatedCh <- dsFields
 	} else {
+		if !dsf.shouldWorkOn(dsFields.Manifest.ID()) {
+			return false
+		}
+
 		dsf.children[dsFields.ID] = dsf.spawnDaemonSet(ctx, dsFields, dsUnlocker, dsLogger)
+	}
+
+	return true
+}
+
+// shouldWorkOn determines if the given pod ID should have its daemon sets
+// serviced based on the configured blacklist and whitelist in the farm's
+// config.
+// If the white list has at least one pod ID in it, it will return true if and
+// only if the given pod ID is in the white list. Otherwise, it will return
+// true as long as the pod ID isn't in the blacklist.
+func (dsf *Farm) shouldWorkOn(podID types.PodID) bool {
+	if len(dsf.config.PodWhitelist) > 0 {
+		for _, whiteListed := range dsf.config.PodWhitelist {
+			if podID == whiteListed {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	for _, blackListed := range dsf.config.PodBlacklist {
+		if podID == blackListed {
+			return false
+		}
 	}
 
 	return true
