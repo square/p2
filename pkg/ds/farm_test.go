@@ -553,7 +553,7 @@ func TestFarmSchedule(t *testing.T) {
 		dsToUpdate.NodeSelector = someSelector
 		return dsToUpdate, nil
 	}
-	_, err = dsStore.MutateDS(anotherDSData.ID, mutator)
+	anotherDSData, err = dsStore.MutateDS(anotherDSData.ID, mutator)
 	Assert(t).IsNil(err, "Expected no error mutating daemon set")
 	err = waitForMutateSelector(dsf, anotherDSData)
 	Assert(t).IsNil(err, "Expected daemon set to be mutated in farm")
