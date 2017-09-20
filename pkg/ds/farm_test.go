@@ -82,10 +82,10 @@ func TestContendNodes(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() {
+	go func(ctx context.Context) {
 		go dsf.cleanupDaemonSetPods(ctx)
 		dsf.mainLoop(ctx)
-	}()
+	}(ctx)
 
 	//
 	// Check for contention between two daemon sets among their nodes
@@ -218,10 +218,10 @@ func TestContendSelectors(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() {
+	go func(ctx context.Context) {
 		go dsf.cleanupDaemonSetPods(ctx)
 		dsf.mainLoop(ctx)
-	}()
+	}(ctx)
 
 	//
 	// Make two daemon sets with a everything selector and verify that they trivially
@@ -398,10 +398,10 @@ func TestFarmSchedule(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() {
+	go func(ctx context.Context) {
 		go dsf.cleanupDaemonSetPods(ctx)
 		dsf.mainLoop(ctx)
-	}()
+	}(ctx)
 
 	// Make two daemon sets with difference node selectors
 	// First daemon set
@@ -668,10 +668,10 @@ func TestCleanupPods(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() {
+	go func(ctx context.Context) {
 		go dsf.cleanupDaemonSetPods(ctx)
 		dsf.mainLoop(ctx)
-	}()
+	}(ctx)
 
 	// Make there are no nodes left
 	for i := 0; i < 10; i++ {
@@ -766,10 +766,10 @@ func TestMultipleFarms(t *testing.T) {
 	}
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	defer cancel1()
-	go func() {
-		go firstFarm.cleanupDaemonSetPods(ctx1)
-		firstFarm.mainLoop(ctx1)
-	}()
+	go func(ctx context.Context) {
+		go firstFarm.cleanupDaemonSetPods(ctx)
+		firstFarm.mainLoop(ctx)
+	}(ctx1)
 
 	//
 	// Instantiate second farm
@@ -795,10 +795,10 @@ func TestMultipleFarms(t *testing.T) {
 	}
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
-	go func() {
-		go secondFarm.cleanupDaemonSetPods(ctx2)
-		secondFarm.mainLoop(ctx2)
-	}()
+	go func(ctx context.Context) {
+		go secondFarm.cleanupDaemonSetPods(ctx)
+		secondFarm.mainLoop(ctx)
+	}(ctx2)
 
 	// Make two daemon sets with different node selectors
 	// First daemon set
@@ -1101,11 +1101,11 @@ func TestRelock(t *testing.T) {
 			dsRetryInterval: testFarmRetryInterval,
 		}
 		farmHasQuit := make(chan struct{})
-		go func() {
+		go func(ctx context.Context) {
 			go farm.cleanupDaemonSetPods(ctx)
 			farm.mainLoop(ctx)
 			close(farmHasQuit)
-		}()
+		}(ctx)
 
 		return farmHasQuit
 	}
@@ -1210,11 +1210,11 @@ func TestDieAndUpdate(t *testing.T) {
 			dsRetryInterval: testFarmRetryInterval,
 		}
 		farmHasQuit := make(chan struct{})
-		go func() {
+		go func(ctx context.Context) {
 			go farm.cleanupDaemonSetPods(ctx)
 			farm.mainLoop(ctx)
 			close(farmHasQuit)
-		}()
+		}(ctx)
 
 		return farmHasQuit
 	}
