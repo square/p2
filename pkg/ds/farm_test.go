@@ -1238,6 +1238,60 @@ func TestDieAndUpdate(t *testing.T) {
 	assertLabel("node3", "first farm quit")
 }
 
+func TestBlacklistAndWhitelist(t *testing.T) {
+	type testCase struct {
+		blacklist    []types.PodID
+		whitelist    []types.PodID
+		podID        types.PodID
+		shouldWorkOn bool
+	}
+
+	testCases := []testCase{
+		// nothing in black or whitelist
+		{
+			podID:        "foo",
+			shouldWorkOn: true,
+		},
+		// pod is blacklisted
+		{
+			podID:        "foo",
+			blacklist:    []types.PodID{"foo"},
+			shouldWorkOn: false,
+		},
+		// pod is whitelisted
+		{
+			podID:        "foo",
+			whitelist:    []types.PodID{"foo"},
+			shouldWorkOn: true,
+		},
+		// pod is whitelisted along with another
+		{
+			podID:        "foo",
+			whitelist:    []types.PodID{"foo", "bar"},
+			shouldWorkOn: true,
+		},
+		// another pod is whitelisted
+		{
+			podID:        "foo",
+			whitelist:    []types.PodID{"bar"},
+			shouldWorkOn: false,
+		},
+	}
+
+	for i, testCase := range testCases {
+		farm := &Farm{
+			config: DSFarmConfig{
+				PodWhitelist: testCase.whitelist,
+				PodBlacklist: testCase.blacklist,
+			},
+		}
+
+		if farm.shouldWorkOn(testCase.podID) != testCase.shouldWorkOn {
+			t.Errorf("case %d: expected %t got %t: %+v", i, testCase.shouldWorkOn, farm.shouldWorkOn(testCase.podID), testCase)
+		}
+	}
+}
+
 func waitForPodLabel(applicator labels.Applicator, hasDSIDLabel bool, podPath string) (labels.Labeled, error) {
 	var labeled labels.Labeled
 	var err error

@@ -70,6 +70,7 @@ func main() {
 		*useCachePodMatches,
 		1*time.Second,
 		ds_farm.DefaultRetryInterval,
+		ds_farm.DSFarmConfig{},
 	)
 
 	go func() {
