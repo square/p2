@@ -26,6 +26,7 @@ var (
 	verbose      = kingpin.Flag("verbose", "Print debugging information").Short('v').Bool()
 	dryRun       = kingpin.Flag("dry", "Dry run: do not stop any pods").Short('d').Bool()
 	shutdownPods = kingpin.Flag("pods", "The list of pods to shutdown. Leave empty for all").Short('p').Strings()
+	excludePods  = kingpin.Flag("exclude-pods", "The list of pods to exclude from shutdown.").Short('e').Strings()
 	podRoot      = kingpin.Flag("pod-root", "The base directory for pods").Default(pods.DefaultPath).String()
 )
 
@@ -47,6 +48,9 @@ func main() {
 
 	podsToShutdown := make([]types.PodID, 0, len(*shutdownPods))
 	for _, pod := range *shutdownPods {
+		if listInclude(pod, *excludePods) {
+			continue
+		}
 		podsToShutdown = append(podsToShutdown, types.PodID(pod))
 	}
 
@@ -86,6 +90,15 @@ func shutdownPod(podID types.PodID, podsToShutdown []types.PodID) bool {
 	}
 	for _, pod := range podsToShutdown {
 		if pod == podID {
+			return true
+		}
+	}
+	return false
+}
+
+func listInclude(pod string, pods []string) bool {
+	for _, p := range pods {
+		if p == pod {
 			return true
 		}
 	}
