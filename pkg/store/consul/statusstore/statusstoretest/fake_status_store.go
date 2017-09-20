@@ -69,6 +69,16 @@ func (s *FakeStatusStore) CASStatus(
 	return errors.New("CASStatus uses transactions which requires a real consul instance")
 }
 
+func (s *FakeStatusStore) SetTxn(
+	ctx context.Context,
+	t statusstore.ResourceType,
+	id statusstore.ResourceID,
+	namespace statusstore.Namespace,
+	status statusstore.Status,
+) error {
+	return errors.New("SetTxn uses transactions which requires a real consul instance")
+}
+
 func (s *FakeStatusStore) GetStatus(
 	t statusstore.ResourceType,
 	id statusstore.ResourceID,

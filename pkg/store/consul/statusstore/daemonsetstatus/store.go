@@ -55,6 +55,15 @@ func (c ConsulStore) CASTxn(ctx context.Context, dsID dsfields.ID, modifyIndex u
 	return c.statusStore.CASStatus(ctx, statusstore.DS, statusstore.ResourceID(dsID), c.namespace, rawStatus, modifyIndex)
 }
 
+func (c ConsulStore) SetTxn(ctx context.Context, dsID dsfields.ID, status Status) error {
+	rawStatus, err := dsStatusToStatus(status)
+	if err != nil {
+		return err
+	}
+
+	return c.statusStore.SetTxn(ctx, statusstore.DS, statusstore.ResourceID(dsID), c.namespace, rawStatus)
+}
+
 func statusToDSStatus(rawStatus statusstore.Status) (Status, error) {
 	var dsStatus Status
 
