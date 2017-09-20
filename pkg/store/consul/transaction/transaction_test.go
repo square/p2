@@ -254,17 +254,30 @@ func TestCommitWithRetriesRetriesErrorsUntilCanceled(t *testing.T) {
 	ctx, cancel := New(context.Background())
 	defer cancel()
 
-	callsCh := make(chan struct{})
-	txner := signalingTxner{
-		calls:          callsCh,
-		shouldRollback: true,
+	err := Add(ctx, api.KVTxnOp{Verb: api.KVCAS})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	callsCh := make(chan struct{})
+	defer close(callsCh)
+	txner := signalingTxner{
+		calls:     callsCh,
+		shouldErr: true,
+	}
+
+	type commitResult struct {
+		OK  bool
+		Err error
+	}
+	resultCh := make(chan commitResult)
 	go func() {
-		defer close(callsCh)
-		CommitWithRetries(ctx, txner)
+		defer close(resultCh)
+		ok, _, err := CommitWithRetries(ctx, txner)
+		resultCh <- commitResult{
+			OK:  ok,
+			Err: err,
+		}
 	}()
 
 	// make sure this gets called at least twice
@@ -282,17 +295,16 @@ func TestCommitWithRetriesRetriesErrorsUntilCanceled(t *testing.T) {
 
 	// now cancel the context, which means we should get at most one more Txn() call
 	cancel()
+
 	select {
-	case _, ok := <-callsCh:
-		if ok {
-			select {
-			case _, ok := <-callsCh:
-				if ok {
-					t.Fatal("CommitWithRetries() called Txn() twice after being canceled")
-				}
-			case <-time.After(5 * time.Second):
-				t.Fatal("CommitWithRetries() didn't exit quickly enough after being canceled")
-			}
+	case result := <-resultCh:
+		// verify we got the result that we expect from CommitWithRetries
+		if result.OK {
+			t.Error("should have gotten false value for OK")
+		}
+
+		if result.Err == nil {
+			t.Error("should have gotten an error")
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("CommitWithRetries() didn't exit quickly enough after being canceled")
