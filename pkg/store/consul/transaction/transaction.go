@@ -162,20 +162,24 @@ func CommitWithRetries(ctx context.Context, txner Txner) (bool, *api.KVTxnRespon
 		return err
 	}
 
-	backoff := 100 * time.Millisecond
-	for err := f(); err != nil; err = f() {
-		select {
-		case <-ctx.Done():
-			break
-		default:
-		}
+	// Need this anonymous function because you can't use "break" in a
+	// select, you have to return :(
+	func() {
+		backoff := 100 * time.Millisecond
+		for err := f(); err != nil; err = f() {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 
-		backoff = backoff * 2
-		if backoff > 10*time.Second {
-			backoff = 10 * time.Second
+			backoff = backoff * 2
+			if backoff > 10*time.Second {
+				backoff = 10 * time.Second
+			}
+			time.Sleep(backoff)
 		}
-		time.Sleep(backoff)
-	}
+	}()
 
 	return ok, resp, err
 }

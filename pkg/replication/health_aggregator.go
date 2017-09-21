@@ -46,7 +46,10 @@ func (p *podHealth) beginWatch(watchDelay time.Duration) {
 	}()
 
 	resultCh := make(chan map[types.NodeName]health.Result)
-	go p.checker.WatchService(p.podId.String(), resultCh, errCh, p.quit, watchDelay)
+	go func() {
+		p.checker.WatchService(p.podId.String(), resultCh, errCh, p.quit, watchDelay)
+		close(errCh)
+	}()
 
 	// Always unblock AggregateHealth()
 	defer func() {

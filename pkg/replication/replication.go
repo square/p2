@@ -273,7 +273,7 @@ func (r *replication) Enact() {
 				}
 				ctx, _ = transaction.New(ctx)
 
-				go func() {
+				go func(ctx context.Context, cancel context.CancelFunc) {
 					defer cancel()
 					defer close(exitCh)
 					err := r.updateOne(ctx, node, aggregateHealth)
@@ -295,7 +295,7 @@ func (r *replication) Enact() {
 					default:
 						r.logger.Errorf("An unexpected error has occurred: %v", err)
 					}
-				}()
+				}(ctx, cancel)
 
 				select {
 				case <-ctx.Done():
