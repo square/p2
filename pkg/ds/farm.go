@@ -86,13 +86,13 @@ type DSFarmConfig struct {
 	// PodBlacklist represents pod IDs that the farm should skip over. In other
 	// words, if the daemon set's pod ID matches one of these the farm will
 	// refuse to service it
-	PodBlacklist []types.PodID
+	PodBlacklist []types.PodID `yaml:"pod_blacklist" json:"pod_blacklist"`
 
 	// PodWhitelist contains the set of pod IDs that the farm should exclusively
 	// service. If there is at least one entry in here, all daemon sets with pod
 	// IDs other than the ones included in the whitelist will be ignored by this
 	// farm
-	PodWhitelist []types.PodID
+	PodWhitelist []types.PodID `yaml:"pod_whitelist" json:"pod_whitelist"`
 }
 
 func NewFarm(
