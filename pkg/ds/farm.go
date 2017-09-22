@@ -636,6 +636,10 @@ func (dsf *Farm) lockAndSpawn(ctx context.Context, dsFields ds_fields.DaemonSet)
 	var err error
 	dsLogger := dsf.makeDSLogger(dsFields)
 
+	if !dsf.shouldWorkOn(dsFields.Manifest.ID()) {
+		return false
+	}
+
 	// If it is not in our map, then try to acquire the lock
 	child, ok := dsf.children[dsFields.ID]
 	if !ok {
@@ -683,10 +687,6 @@ func (dsf *Farm) lockAndSpawn(ctx context.Context, dsFields ds_fields.DaemonSet)
 	if ok {
 		child.updatedCh <- dsFields
 	} else {
-		if !dsf.shouldWorkOn(dsFields.Manifest.ID()) {
-			return false
-		}
-
 		dsf.children[dsFields.ID] = dsf.spawnDaemonSet(ctx, dsFields, dsUnlocker, dsLogger)
 	}
 
