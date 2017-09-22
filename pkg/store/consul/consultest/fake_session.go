@@ -84,8 +84,8 @@ func (f *fakeSession) Lock(key string) (consul.Unlocker, error) {
 	}, nil
 }
 
-func (f *fakeSession) LockTxn(context.Context, context.Context, context.Context, string) error {
-	return util.Errorf("LockTxn not implemented in fakeSession. Use a real consul store with a real sesion via consulutil.NewFixture() if this functionality is desired")
+func (f *fakeSession) LockTxn(context.Context, string) (consul.TxnUnlocker, error) {
+	return nil, util.Errorf("LockTxn not implemented in fakeSession. Use a real consul store with a real sesion via consulutil.NewFixture() if this functionality is desired")
 }
 
 // Not currently implemented

@@ -110,14 +110,17 @@ func TestLockTxn(t *testing.T) {
 
 		lockCtx, lockCtxCancel := transaction.New(context.Background())
 		defer lockCtxCancel()
-		unlockCtx, unlockCtxCancel := transaction.New(context.Background())
-		defer unlockCtxCancel()
-		checkLockedCtx, checkLockedCtxCancel := transaction.New(context.Background())
-		defer checkLockedCtxCancel()
-		err := session.LockTxn(lockCtx, unlockCtx, checkLockedCtx, "some_key")
+		unlocker, err := session.LockTxn(lockCtx, "some_key")
 		if err != nil {
 			errCh <- err
 			return
+		}
+
+		checkLockedCtx, checkLockedCtxCancel := transaction.New(context.Background())
+		defer checkLockedCtxCancel()
+		err = unlocker.CheckLockedTxn(checkLockedCtx)
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		// confirm that the checkLockedCtx transaction fails to apply
@@ -131,6 +134,14 @@ func TestLockTxn(t *testing.T) {
 		if ok {
 			errCh <- util.Errorf("checkLockedCtx transaction should have been rolled back since the locks aren't held yet")
 			return
+		}
+
+		unlockCtx, unlockCtxCancel := transaction.New(context.Background())
+		defer unlockCtxCancel()
+
+		err = unlocker.UnlockTxn(unlockCtx)
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		// confirm that the unlockCtx transaction fails to apply because we don't hold the locks yet
@@ -178,7 +189,7 @@ func TestLockTxn(t *testing.T) {
 			return
 		}
 		if ok {
-			errCh <- util.Errorf("checkLockedCtx transaction should have been rolled back since the locks aren't held yet")
+			errCh <- util.Errorf("checkLockedCtx transaction should have been rolled back since the locks were released")
 			return
 		}
 	}()
