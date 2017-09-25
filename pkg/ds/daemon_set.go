@@ -792,7 +792,7 @@ func (ds *daemonSet) writeNewestStatus(ctx context.Context, lastStatus daemonset
 	if currentReplication == nil {
 		toWrite.ReplicationInProgress = false
 	} else {
-		toWrite.ReplicationInProgress = true
+		toWrite.ReplicationInProgress = currentReplication.InProgress()
 
 		// ensure that NodesDeployed doesn't backtrack (which it might if the replication was restarted)
 		if int(currentReplication.CompletedCount()) > toWrite.NodesDeployed {

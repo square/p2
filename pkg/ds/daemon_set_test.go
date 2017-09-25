@@ -579,14 +579,16 @@ func (nullUnlocker) CheckLockedTxn(ctx context.Context) error {
 	return nil
 }
 
-func fakeReplication(completedCount int32) nullReplication {
+func fakeReplication(completedCount int32, inProgress bool) nullReplication {
 	return nullReplication{
 		completedCount: completedCount,
+		inProgress:     inProgress,
 	}
 }
 
 type nullReplication struct {
 	completedCount int32
+	inProgress     bool
 }
 
 func (nullReplication) Enact() {
@@ -605,11 +607,16 @@ func (n nullReplication) CompletedCount() int32 {
 	return n.completedCount
 }
 
+func (n nullReplication) InProgress() bool {
+	return n.inProgress
+}
+
 func TestWriteNewestStatus(t *testing.T) {
 	type writeStatusTestCase struct {
 		lastStatus         daemonsetstatus.Status
 		expectedStatus     daemonsetstatus.Status
 		nodeCompletedCount int32
+		inProgress         bool
 	}
 
 	fixture := consulutil.NewFixture(t)
@@ -634,6 +641,7 @@ func TestWriteNewestStatus(t *testing.T) {
 				ReplicationInProgress: true,
 			},
 			nodeCompletedCount: 38,
+			inProgress:         true,
 		},
 		// same manifest sha, more nodes, so we expect the node count to be updated
 		{
@@ -647,6 +655,7 @@ func TestWriteNewestStatus(t *testing.T) {
 				ReplicationInProgress: true,
 			},
 			nodeCompletedCount: 38,
+			inProgress:         true,
 		},
 		// same manifest sha, fewer nodes, so we don't expect the node count to be updated
 		{
@@ -660,6 +669,7 @@ func TestWriteNewestStatus(t *testing.T) {
 				ReplicationInProgress: true,
 			},
 			nodeCompletedCount: 38,
+			inProgress:         true,
 		},
 		// different manifest sha, fewer nodes, so we expect the node count to be updated
 		{
@@ -673,6 +683,7 @@ func TestWriteNewestStatus(t *testing.T) {
 				ReplicationInProgress: true,
 			},
 			nodeCompletedCount: 38,
+			inProgress:         true,
 		},
 		// different manifest sha but no replication in progress, so node count should be reset
 		{
@@ -686,6 +697,21 @@ func TestWriteNewestStatus(t *testing.T) {
 				ReplicationInProgress: false,
 			},
 			nodeCompletedCount: -1,
+			inProgress:         false,
+		},
+		// same manifest sha, more nodes, no replication in progress
+		{
+			lastStatus: daemonsetstatus.Status{
+				ManifestSHA:   manifestSHA,
+				NodesDeployed: 14,
+			},
+			expectedStatus: daemonsetstatus.Status{
+				ManifestSHA:           manifestSHA,
+				NodesDeployed:         38,
+				ReplicationInProgress: false,
+			},
+			nodeCompletedCount: 38,
+			inProgress:         false,
 		},
 	}
 
@@ -703,7 +729,7 @@ func TestWriteNewestStatus(t *testing.T) {
 		ds.DaemonSet.ID = ds_fields.ID(uuid.New())
 		ds.cancelReplication()
 		if testCase.nodeCompletedCount >= 0 {
-			ds.setCurrentReplication(fakeReplication(testCase.nodeCompletedCount))
+			ds.setCurrentReplication(fakeReplication(testCase.nodeCompletedCount, testCase.inProgress))
 		}
 		if testCase.lastStatus.ManifestSHA != "" {
 			writeCtx, writeCancel := transaction.New(context.Background())

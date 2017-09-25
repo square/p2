@@ -72,6 +72,8 @@ type Replication interface {
 	WaitForReplication()
 
 	CompletedCount() int32
+
+	InProgress() bool
 }
 
 type Store interface {
@@ -582,4 +584,13 @@ func (r *replication) ensureHealthy(
 
 func (r *replication) CompletedCount() int32 {
 	return atomic.LoadInt32(&r.completedCount)
+}
+
+func (r *replication) InProgress() bool {
+	select {
+	case <-r.quitCh:
+		return false
+	default:
+		return true
+	}
 }
