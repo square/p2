@@ -15,6 +15,8 @@ import (
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/dsstore"
 	"github.com/square/p2/pkg/store/consul/flags"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/daemonsetstatus"
 
 	ds_farm "github.com/square/p2/pkg/ds"
 
@@ -46,6 +48,9 @@ func main() {
 	consulStore := consul.NewConsulStore(client)
 	healthChecker := checker.NewConsulHealthChecker(client)
 
+	rawStatusStore := statusstore.NewConsul(client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, ds_farm.DaemonSetStatusNamespace)
+
 	sessions := make(chan string)
 	go consulutil.SessionManager(api.SessionEntry{
 		Name:      SessionName(),
@@ -59,6 +64,7 @@ func main() {
 		client.KV(),
 		dsStore,
 		dsStore,
+		statusStore,
 		labeler,
 		labels.NewConsulApplicator(client, 0),
 		sessions,

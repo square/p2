@@ -22,11 +22,14 @@ import (
 	"github.com/square/p2/pkg/store/consul/consultest"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/dsstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/daemonsetstatus"
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/hashicorp/consul/api"
+	"github.com/pborman/uuid"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	fake_checker "github.com/square/p2/pkg/health/checker/test"
 	pc_fields "github.com/square/p2/pkg/pc/fields"
@@ -54,9 +57,15 @@ func TestContendNodes(t *testing.T) {
 	allNodes = append(allNodes, "node1")
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
+	session := newTestSession(t, consulStore)
+	defer session.Destroy()
+
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_contend_nodes")
 	dsf := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
+		statusStore:           statusStore,
 		store:                 consulStore,
 		txner:                 fixture.Client.KV(),
 		scheduler:             scheduler.NewApplicatorScheduler(applicator),
@@ -64,7 +73,7 @@ func TestContendNodes(t *testing.T) {
 		watcher:               applicator,
 		labelsAggregationRate: 1 * time.Nanosecond,
 		children:              make(map[ds_fields.ID]*childDS),
-		session:               consultest.NewSession(),
+		session:               session,
 		logger:                logger,
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
@@ -73,10 +82,10 @@ func TestContendNodes(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() {
+	go func(ctx context.Context) {
 		go dsf.cleanupDaemonSetPods(ctx)
 		dsf.mainLoop(ctx)
-	}()
+	}(ctx)
 
 	//
 	// Check for contention between two daemon sets among their nodes
@@ -186,9 +195,14 @@ func TestContendSelectors(t *testing.T) {
 	var allNodes []types.NodeName
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
+	session := newTestSession(t, consulStore)
+	defer session.Destroy()
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_contend_selectors")
 	dsf := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
+		statusStore:           statusStore,
 		store:                 consulStore,
 		txner:                 fixture.Client.KV(),
 		scheduler:             scheduler.NewApplicatorScheduler(applicator),
@@ -196,7 +210,7 @@ func TestContendSelectors(t *testing.T) {
 		watcher:               applicator,
 		labelsAggregationRate: 1 * time.Nanosecond,
 		children:              make(map[ds_fields.ID]*childDS),
-		session:               consultest.NewSession(),
+		session:               session,
 		logger:                logger,
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
@@ -204,10 +218,10 @@ func TestContendSelectors(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() {
+	go func(ctx context.Context) {
 		go dsf.cleanupDaemonSetPods(ctx)
 		dsf.mainLoop(ctx)
-	}()
+	}(ctx)
 
 	//
 	// Make two daemon sets with a everything selector and verify that they trivially
@@ -361,9 +375,14 @@ func TestFarmSchedule(t *testing.T) {
 	}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
+	session := newTestSession(t, consulStore)
+	defer session.Destroy()
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_farm_schedule")
 	dsf := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
+		statusStore:           statusStore,
 		store:                 consulStore,
 		txner:                 fixture.Client.KV(),
 		scheduler:             scheduler.NewApplicatorScheduler(applicator),
@@ -371,7 +390,7 @@ func TestFarmSchedule(t *testing.T) {
 		watcher:               applicator,
 		labelsAggregationRate: 1 * time.Nanosecond,
 		children:              make(map[ds_fields.ID]*childDS),
-		session:               consultest.NewSession(),
+		session:               session,
 		logger:                logger,
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
@@ -379,10 +398,10 @@ func TestFarmSchedule(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() {
+	go func(ctx context.Context) {
 		go dsf.cleanupDaemonSetPods(ctx)
 		dsf.mainLoop(ctx)
-	}()
+	}(ctx)
 
 	// Make two daemon sets with difference node selectors
 	// First daemon set
@@ -627,16 +646,21 @@ func TestCleanupPods(t *testing.T) {
 	logger := logging.DefaultLogger.SubLogger(logrus.Fields{
 		"farm": "cleanupPods",
 	})
+	session := newTestSession(t, consulStore)
+	defer session.Destroy()
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_cleanup_pods")
 	dsf := &Farm{
 		dsStore:               dsStore,
 		store:                 consulStore,
+		statusStore:           statusStore,
 		txner:                 fixture.Client.KV(),
 		scheduler:             scheduler.NewApplicatorScheduler(applicator),
 		labeler:               applicator,
 		watcher:               applicator,
 		labelsAggregationRate: 1 * time.Nanosecond,
 		children:              make(map[ds_fields.ID]*childDS),
-		session:               consultest.NewSession(),
+		session:               session,
 		logger:                logger,
 		alerter:               alerting.NewNop(),
 		healthChecker:         &happyHealthChecker,
@@ -644,10 +668,10 @@ func TestCleanupPods(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() {
+	go func(ctx context.Context) {
 		go dsf.cleanupDaemonSetPods(ctx)
 		dsf.mainLoop(ctx)
-	}()
+	}(ctx)
 
 	// Make there are no nodes left
 	for i := 0; i < 10; i++ {
@@ -721,9 +745,12 @@ func TestMultipleFarms(t *testing.T) {
 	//
 	// Instantiate first farm
 	//
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_multiple_farms")
 	firstFarm := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
+		statusStore:           statusStore,
 		store:                 consulStore,
 		txner:                 fixture.Client.KV(),
 		scheduler:             scheduler.NewApplicatorScheduler(applicator),
@@ -739,10 +766,10 @@ func TestMultipleFarms(t *testing.T) {
 	}
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	defer cancel1()
-	go func() {
-		go firstFarm.cleanupDaemonSetPods(ctx1)
-		firstFarm.mainLoop(ctx1)
-	}()
+	go func(ctx context.Context) {
+		go firstFarm.cleanupDaemonSetPods(ctx)
+		firstFarm.mainLoop(ctx)
+	}(ctx1)
 
 	//
 	// Instantiate second farm
@@ -753,6 +780,7 @@ func TestMultipleFarms(t *testing.T) {
 	secondFarm := &Farm{
 		dsStore:               dsStore,
 		dsLocker:              dsStore,
+		statusStore:           statusStore,
 		store:                 consulStore,
 		txner:                 fixture.Client.KV(),
 		scheduler:             scheduler.NewApplicatorScheduler(applicator),
@@ -767,10 +795,10 @@ func TestMultipleFarms(t *testing.T) {
 	}
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
-	go func() {
-		go secondFarm.cleanupDaemonSetPods(ctx2)
-		secondFarm.mainLoop(ctx2)
-	}()
+	go func(ctx context.Context) {
+		go secondFarm.cleanupDaemonSetPods(ctx)
+		secondFarm.mainLoop(ctx)
+	}(ctx2)
 
 	// Make two daemon sets with different node selectors
 	// First daemon set
@@ -1050,10 +1078,13 @@ func TestRelock(t *testing.T) {
 	allNodes := []types.NodeName{"node1", "node2", "node3"}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_relock")
 	mkFarm := func(ctx context.Context, logName string) <-chan struct{} {
 		farm := &Farm{
 			dsStore:               dsStore,
 			dsLocker:              dsStore,
+			statusStore:           statusStore,
 			store:                 consulStore,
 			txner:                 fixture.Client.KV(),
 			scheduler:             scheduler.NewApplicatorScheduler(applicator),
@@ -1070,11 +1101,11 @@ func TestRelock(t *testing.T) {
 			dsRetryInterval: testFarmRetryInterval,
 		}
 		farmHasQuit := make(chan struct{})
-		go func() {
+		go func(ctx context.Context) {
 			go farm.cleanupDaemonSetPods(ctx)
 			farm.mainLoop(ctx)
 			close(farmHasQuit)
-		}()
+		}(ctx)
 
 		return farmHasQuit
 	}
@@ -1156,10 +1187,13 @@ func TestDieAndUpdate(t *testing.T) {
 	allNodes := []types.NodeName{"node1", "node2", "node3"}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_die_and_update")
 	mkFarm := func(ctx context.Context, logName string) <-chan struct{} {
 		farm := &Farm{
 			dsStore:               dsStore,
 			dsLocker:              dsStore,
+			statusStore:           statusStore,
 			store:                 consulStore,
 			txner:                 fixture.Client.KV(),
 			scheduler:             scheduler.NewApplicatorScheduler(applicator),
@@ -1176,11 +1210,11 @@ func TestDieAndUpdate(t *testing.T) {
 			dsRetryInterval: testFarmRetryInterval,
 		}
 		farmHasQuit := make(chan struct{})
-		go func() {
+		go func(ctx context.Context) {
 			go farm.cleanupDaemonSetPods(ctx)
 			farm.mainLoop(ctx)
 			close(farmHasQuit)
-		}()
+		}(ctx)
 
 		return farmHasQuit
 	}
@@ -1452,4 +1486,24 @@ func createAndSeedApplicator(client consulutil.ConsulClient, t *testing.T) *labe
 	}
 
 	return applicator
+}
+
+type sessionStore interface {
+	NewSession(name string, renewalCh <-chan time.Time) (consul.Session, chan error, error)
+}
+
+func newTestSession(t *testing.T, consulStore sessionStore) consul.Session {
+	session, errCh, err := consulStore.NewSession(fmt.Sprintf("test-%s", uuid.New()), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		err := <-errCh
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	return session
 }

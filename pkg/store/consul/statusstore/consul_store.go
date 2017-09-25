@@ -100,6 +100,19 @@ func (s *consulStore) CASStatus(ctx context.Context, t ResourceType, id Resource
 	})
 }
 
+func (s *consulStore) SetTxn(ctx context.Context, t ResourceType, id ResourceID, namespace Namespace, status Status) error {
+	key, err := namespacedResourcePath(t, id, namespace)
+	if err != nil {
+		return err
+	}
+
+	return transaction.Add(ctx, api.KVTxnOp{
+		Verb:  string(api.KVSet),
+		Key:   key,
+		Value: status.Bytes(),
+	})
+}
+
 func (s *consulStore) GetStatus(t ResourceType, id ResourceID, namespace Namespace) (Status, *api.QueryMeta, error) {
 	return s.getStatus(t, id, namespace, nil)
 }

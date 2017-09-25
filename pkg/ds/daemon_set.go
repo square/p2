@@ -14,22 +14,27 @@ import (
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/replication"
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/dsstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/daemonsetstatus"
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
+	"github.com/hashicorp/consul/api"
 	"github.com/rcrowley/go-metrics"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 const (
 	// This label is applied to pods owned by a DS.
-	DSIDLabel = "daemon_set_id"
+	DSIDLabel                = "daemon_set_id"
+	DaemonSetStatusNamespace = statusstore.Namespace("daemon_set_farm")
 )
 
 var (
@@ -112,6 +117,11 @@ type DaemonSetStore interface {
 	Disable(id fields.ID) (fields.DaemonSet, error)
 }
 
+type StatusStore interface {
+	Get(dsID fields.ID) (daemonsetstatus.Status, *api.QueryMeta, error)
+	SetTxn(ctx context.Context, dsID fields.ID, status daemonsetstatus.Status) error
+}
+
 // daemonSet wraps a daemon set struct with information required to manage it.
 // Note: the inner fields.DaemonSet set may be modified during the lifetime of
 // this struct, necessitating access synchronization with a mute
@@ -119,19 +129,27 @@ type daemonSet struct {
 	fields.DaemonSet
 	mu sync.Mutex
 
-	contention       dsContention
-	logger           logging.Logger
-	store            store
-	scheduler        scheduler.Scheduler
-	dsStore          DaemonSetStore
-	txner            transaction.Txner
-	applicator       Labeler
-	watcher          LabelWatcher
-	healthChecker    *checker.ConsulHealthChecker
-	healthWatchDelay time.Duration
+	contention            dsContention
+	logger                logging.Logger
+	store                 store
+	statusStore           StatusStore
+	scheduler             scheduler.Scheduler
+	dsStore               DaemonSetStore
+	txner                 transaction.Txner
+	applicator            Labeler
+	watcher               LabelWatcher
+	healthChecker         *checker.ConsulHealthChecker
+	healthWatchDelay      time.Duration
+	statusWritingInterval time.Duration
 
-	// This is the current replication enact go routine that is running
-	currentReplication replication.Replication
+	// unlocker is useful to ensure that certain operations only succeed if
+	// the farm that spawned this daemon set still holds the lock
+	unlocker consul.TxnUnlocker
+
+	// This is the current replication enact go routine that is running.
+	// Access to it is protected by currentReplicationMu
+	currentReplication   replication.Replication
+	currentReplicationMu sync.Mutex
 
 	// Indicates how long to wait between updating each node during a replication
 	rateLimitInterval time.Duration
@@ -166,6 +184,9 @@ func New(
 	cachedPodMatch bool,
 	healthWatchDelay time.Duration,
 	retryInterval time.Duration,
+	unlocker consul.TxnUnlocker,
+	statusStore StatusStore,
+	statusWritingInterval time.Duration,
 ) DaemonSet {
 
 	if retryInterval == 0 {
@@ -189,6 +210,9 @@ func New(
 		cachedPodMatch:        cachedPodMatch,
 		labelsAggregationRate: labelsAggregationRate,
 		retryInterval:         retryInterval,
+		unlocker:              unlocker,
+		statusWritingInterval: statusWritingInterval,
+		statusStore:           statusStore,
 	}
 }
 
@@ -222,12 +246,24 @@ func (ds *daemonSet) GetNodeSelector() klabels.Selector {
 	return ds.DaemonSet.NodeSelector
 }
 
+func (ds *daemonSet) Manifest() manifest.Manifest {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	return ds.DaemonSet.Manifest
+}
+
+func (ds *daemonSet) MinHealth() int {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	return ds.DaemonSet.MinHealth
+}
+
 func (ds *daemonSet) EligibleNodes() ([]types.NodeName, error) {
 	ds.mu.Lock()
-	manifest := ds.Manifest
-	nodeSelector := ds.NodeSelector
+	m := ds.DaemonSet.Manifest
+	nodeSelector := ds.DaemonSet.NodeSelector
 	ds.mu.Unlock()
-	return ds.scheduler.EligibleNodes(manifest, nodeSelector)
+	return ds.scheduler.EligibleNodes(m, nodeSelector)
 }
 
 func (ds *daemonSet) MetricNames(suffix string) []string {
@@ -254,6 +290,10 @@ func (ds *daemonSet) WatchDesires(
 	go func() {
 		<-ctx.Done()
 		close(watchMatchQuitCh)
+	}()
+
+	go func() {
+		ds.publishStatus(ctx)
 	}()
 
 	nodesChangedCh := ds.watcher.WatchMatchDiff(ds.NodeSelector, labels.NODE, ds.labelsAggregationRate, watchMatchQuitCh)
@@ -524,21 +564,21 @@ func (ds *daemonSet) clearPods() error {
 }
 
 func (ds *daemonSet) unschedule(node types.NodeName) error {
-	ds.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest.ID(), node, ds.ID())
+	ds.logger.NoFields().Infof("Unscheduling '%v' in node '%v' with daemon set uuid '%v'", ds.Manifest().ID(), node, ds.ID())
 
 	ctx, cancel := transaction.New(context.Background())
 	defer cancel()
 
 	// Will remove the following key:
 	// <consul.INTENT_TREE>/<node>/<ds.Manifest.ID()>
-	err := ds.store.DeletePodTxn(ctx, consul.INTENT_TREE, node, ds.Manifest.ID())
+	err := ds.store.DeletePodTxn(ctx, consul.INTENT_TREE, node, ds.Manifest().ID())
 	if err != nil {
-		return util.Errorf("unable to form pod deletion transaction for pod id '%v' from node '%v': %v", ds.Manifest.ID(), node, err)
+		return util.Errorf("unable to form pod deletion transaction for pod id '%v' from node '%v': %v", ds.Manifest().ID(), node, err)
 	}
 
 	// Will remove the following label on the key <labels.POD>/<node>/<ds.Manifest.ID()>: DSIDLabel
 	// This is for indicating that this pod path no longer belongs to this daemon set
-	id := labels.MakePodLabelKey(node, ds.Manifest.ID())
+	id := labels.MakePodLabelKey(node, ds.Manifest().ID())
 	err = ds.applicator.RemoveLabelTxn(ctx, labels.POD, id, DSIDLabel)
 	if err != nil {
 		return util.Errorf("error adding label removal to transaction: %v", err)
@@ -546,7 +586,7 @@ func (ds *daemonSet) unschedule(node types.NodeName) error {
 
 	err = transaction.MustCommit(ctx, ds.txner)
 	if err != nil {
-		return util.Errorf("error unscheduling %s from %s: %s", ds.Manifest.ID(), node, err)
+		return util.Errorf("error unscheduling %s from %s: %s", ds.Manifest().ID(), node, err)
 	}
 
 	return nil
@@ -576,10 +616,10 @@ func (ds *daemonSet) PublishToReplication() error {
 	}
 	lockMessage := fmt.Sprintf("%q from %q at %q", thisUser.Username, thisHost, time.Now())
 	repl, err := replication.NewReplicator(
-		ds.DaemonSet.Manifest,
+		ds.Manifest(),
 		ds.logger,
 		nodes,
-		len(nodes)-ds.DaemonSet.MinHealth,
+		len(nodes)-ds.MinHealth(),
 		ds.store,
 		ds.txner,
 		ds.applicator,
@@ -632,7 +672,7 @@ func (ds *daemonSet) PublishToReplication() error {
 	}()
 
 	// Set a new replication
-	ds.currentReplication = currentReplication
+	ds.setCurrentReplication(currentReplication)
 
 	go currentReplication.Enact()
 
@@ -644,12 +684,26 @@ func (ds *daemonSet) PublishToReplication() error {
 // It is also okay to call this multiple times because it keeps track of when
 // it has been cancelled by checking whether ds.currentReplication == nil
 func (ds *daemonSet) cancelReplication() {
+	ds.currentReplicationMu.Lock()
+	defer ds.currentReplicationMu.Unlock()
 	if ds.currentReplication != nil {
 		ds.currentReplication.Cancel()
 		ds.currentReplication.WaitForReplication()
 		ds.logger.Info("Replication cancelled")
 		ds.currentReplication = nil
 	}
+}
+
+func (ds *daemonSet) setCurrentReplication(rep replication.Replication) {
+	ds.currentReplicationMu.Lock()
+	defer ds.currentReplicationMu.Unlock()
+	ds.currentReplication = rep
+}
+
+func (ds *daemonSet) getCurrentReplication() replication.Replication {
+	ds.currentReplicationMu.Lock()
+	defer ds.currentReplicationMu.Unlock()
+	return ds.currentReplication
 }
 
 func (ds *daemonSet) CurrentPods() (types.PodLocations, error) {
@@ -682,4 +736,92 @@ func (ds *daemonSet) CurrentPods() (types.PodLocations, error) {
 	}
 
 	return result, nil
+}
+
+func (ds *daemonSet) publishStatus(ctx context.Context) {
+	var lastStatus daemonsetstatus.Status
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(ds.statusWritingInterval):
+		}
+
+		// seed lastStatus if it's still the zero value
+		if lastStatus.ManifestSHA == "" {
+			var err error
+			lastStatus, _, err = ds.statusStore.Get(ds.ID())
+			switch {
+			case statusstore.IsNoStatus(err):
+			case err != nil:
+				ds.logger.WithError(err).Errorln("could not write daemon set status")
+				continue
+			}
+		}
+
+		written, err := ds.writeNewestStatus(ctx, lastStatus)
+		if err != nil {
+			ds.logger.WithError(err).Errorln("could not write daemon set status")
+			continue
+		}
+
+		lastStatus = written
+	}
+}
+
+// writeNewestStatus writes the latest status for the daemon set to consul if
+// it differs from the most recently written one. It handles the case where
+// lastStatus is the zero status which might be the case the first time the
+// daemon set's status is written
+func (ds *daemonSet) writeNewestStatus(ctx context.Context, lastStatus daemonsetstatus.Status) (daemonsetstatus.Status, error) {
+	var toWrite daemonsetstatus.Status
+	manifestSHA, err := ds.Manifest().SHA()
+	if err != nil {
+		return daemonsetstatus.Status{}, err
+	}
+
+	toWrite.ManifestSHA = manifestSHA
+	toWrite.NodesDeployed = lastStatus.NodesDeployed
+	if toWrite.ManifestSHA != lastStatus.ManifestSHA {
+		// reset the deployed count if the manifest has changed
+		toWrite.NodesDeployed = 0
+	}
+
+	currentReplication := ds.getCurrentReplication()
+	if currentReplication == nil {
+		toWrite.ReplicationInProgress = false
+	} else {
+		toWrite.ReplicationInProgress = currentReplication.InProgress()
+
+		// ensure that NodesDeployed doesn't backtrack (which it might if the replication was restarted)
+		if int(currentReplication.CompletedCount()) > toWrite.NodesDeployed {
+			toWrite.NodesDeployed = int(currentReplication.CompletedCount())
+		}
+	}
+
+	if toWrite == lastStatus {
+		// nothing to do
+		return lastStatus, nil
+	}
+
+	writeCtx, cancel := transaction.New(ctx)
+	defer cancel()
+
+	err = ds.unlocker.CheckLockedTxn(writeCtx)
+	if err != nil {
+		return daemonsetstatus.Status{}, err
+	}
+
+	err = ds.statusStore.SetTxn(writeCtx, ds.ID(), toWrite)
+	if err != nil {
+		return daemonsetstatus.Status{}, err
+	}
+
+	err = transaction.MustCommit(writeCtx, ds.txner)
+	if err != nil {
+		return daemonsetstatus.Status{}, err
+	}
+
+	return toWrite, nil
 }

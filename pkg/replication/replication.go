@@ -70,6 +70,10 @@ type Replication interface {
 	// Will block until the r.quitCh is closed
 	// this is used to synchronize updates which quickly cancel and re-enact the replicaton
 	WaitForReplication()
+
+	CompletedCount() int32
+
+	InProgress() bool
 }
 
 type Store interface {
@@ -87,15 +91,16 @@ type Store interface {
 
 // A replication contains the information required to do a single replication (deploy).
 type replication struct {
-	active    int
-	nodes     []types.NodeName
-	store     Store
-	txner     transaction.Txner
-	labeler   Labeler
-	manifest  manifest.Manifest
-	health    checker.ConsulHealthChecker
-	threshold health.HealthState // minimum state to treat as "healthy"
-	logger    logging.Logger
+	active         int
+	nodes          []types.NodeName
+	completedCount int32
+	store          Store
+	txner          transaction.Txner
+	labeler        Labeler
+	manifest       manifest.Manifest
+	health         checker.ConsulHealthChecker
+	threshold      health.HealthState // minimum state to treat as "healthy"
+	logger         logging.Logger
 
 	// podLabels is a set of labels that should be applied to any pod
 	// scheduled by the replication
@@ -259,7 +264,6 @@ func (r *replication) Enact() {
 	// this loop multiplexes the node queue across some goroutines
 
 	var updatePool sync.WaitGroup
-	var completedCount int32
 	for i := 0; i < r.active; i++ {
 		updatePool.Add(1)
 		go func() {
@@ -279,8 +283,8 @@ func (r *replication) Enact() {
 					err := r.updateOne(ctx, node, aggregateHealth)
 					if err == nil {
 						r.logger.Infof("The host '%v' successfully replicated the pod '%v'", node, r.manifest.ID())
-						atomic.AddInt32(&completedCount, 1)
-						r.logger.Infof("Completed %d of %d", atomic.LoadInt32(&completedCount), len(r.nodes))
+						atomic.AddInt32(&r.completedCount, 1)
+						r.logger.Infof("Completed %d of %d", atomic.LoadInt32(&r.completedCount), len(r.nodes))
 						return
 					}
 
@@ -575,5 +579,18 @@ func (r *replication) ensureHealthy(
 				return nil
 			}
 		}
+	}
+}
+
+func (r *replication) CompletedCount() int32 {
+	return atomic.LoadInt32(&r.completedCount)
+}
+
+func (r *replication) InProgress() bool {
+	select {
+	case <-r.quitCh:
+		return false
+	default:
+		return true
 	}
 }

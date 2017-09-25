@@ -555,6 +555,28 @@ func (s *ConsulStore) LockForOwnership(dsID fields.ID, session consul.Session) (
 	return session.Lock(lockPath)
 }
 
+// LockForOwnershipTxn is should be called when taking "ownership" of a daemon set. Holding the ownership lock before taking action for a daemon set is used
+// to guarantee that no two processes are doing the same work (and potentially conflicting). This function:
+// 1) adds the necessary consul operations to LOCK the daemon set to the transaction context `lockCtx`
+// 2) adds the necessary consul operations to UNLOCK the daemon set to `unlockCtx`
+// 3) adds the necessary consul operations to CHECK that the lock is held to
+// `checkLockedCtx`. It is good practice to branch any consul transactions that
+// will write to consul off of this transaction to make sure that the lock is
+// still held or othwerwise roll back the transaction
+func (s *ConsulStore) LockForOwnershipTxn(
+	lockCtx context.Context,
+	dsID fields.ID,
+	session consul.Session,
+) (consul.TxnUnlocker, error) {
+
+	lockPath, err := s.dsLockPath(dsID)
+	if err != nil {
+		return nil, err
+	}
+
+	return session.LockTxn(lockCtx, lockPath)
+}
+
 func kvpToDS(kvp *api.KVPair) (fields.DaemonSet, error) {
 	ds := fields.DaemonSet{}
 	// Unmarshals kvp.Value into ds using overloaded UnmarshalJSON

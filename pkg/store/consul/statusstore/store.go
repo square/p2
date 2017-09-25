@@ -19,6 +19,7 @@ func (t ResourceType) String() string { return string(t) }
 const (
 	PC  = ResourceType("pod_clusters")
 	POD = ResourceType("pods")
+	DS  = ResourceType("daemon_sets")
 )
 
 // Unfortunately each ResourceType will carry along with it a different "ID"
@@ -47,6 +48,8 @@ type Store interface {
 	// Set the status for a particular resource specified by ResourceType and ID,
 	// namespaced by a Namespace string
 	SetStatus(t ResourceType, id ResourceID, namespace Namespace, status Status) error
+
+	SetTxn(ctx context.Context, t ResourceType, id ResourceID, namespace Namespace, status Status) error
 
 	// Like SetStatus(), but compare-and-swap value at a specified ModifyIndex (see consul docs)
 	CASStatus(ctx context.Context, t ResourceType, id ResourceID, namespace Namespace, status Status, modifyIndex uint64) error

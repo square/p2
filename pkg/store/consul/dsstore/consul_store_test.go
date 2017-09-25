@@ -15,6 +15,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	pc_fields "github.com/square/p2/pkg/pc/fields"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
@@ -776,6 +777,138 @@ func TestEnableTxnAndDisableTxn(t *testing.T) {
 
 	if ds.Disabled {
 		t.Fatal("daemon set should have been enabled")
+	}
+}
+
+func TestLockForOwnershipTxn(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+
+	rootCtx, rootCancel := context.WithCancel(context.Background())
+	defer rootCancel()
+
+	dsStore := newStore(fixture.Client.KV())
+	kvStore := consul.NewConsulStore(fixture.Client)
+
+	lockCtx, lockCancel := transaction.New(rootCtx)
+	defer lockCancel()
+
+	checkLockCtx, checkLockCancel := transaction.New(rootCtx)
+	defer checkLockCancel()
+
+	ds := createDaemonSet(dsStore, fixture.Client.KV(), t)
+
+	session, errCh, err := kvStore.NewSession("ds-test-lock-for-ownership", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Destroy()
+	go func() {
+		select {
+		case <-rootCtx.Done():
+		case err, ok := <-errCh:
+			if ok {
+				t.Error(err)
+			}
+		}
+	}()
+
+	unlocker, err := dsStore.LockForOwnershipTxn(lockCtx, ds.ID, session)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unlockCtx, unlockCancel := transaction.New(rootCtx)
+	defer unlockCancel()
+
+	err = unlocker.UnlockTxn(unlockCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm that unlocking doesn't work prior to commiting the lock transaction
+	ok, _, err := transaction.Commit(unlockCtx, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("unexpected error submitting unlock transaction (even though expected a conflict): %s", err)
+	}
+	if ok {
+		t.Fatal("expected a transaction conflict when trying to unlock a lock we don't hold yet")
+	}
+
+	// refresh unlockCtx so we can use it again later
+	unlockCtx, unlockCancel = transaction.New(unlockCtx)
+	defer unlockCancel()
+
+	err = unlocker.CheckLockedTxn(checkLockCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// confirm that checking for the lock fails in the same way as unlocking
+	ok, _, err = transaction.Commit(checkLockCtx, fixture.Client.KV())
+	if err != nil {
+		t.Fatalf("unexpected error submitting check-lock transaction (even though expected a conflict): %s", err)
+	}
+	if ok {
+		t.Fatal("expected a transaction conflict when trying to check a lock we don't hold yet")
+	}
+
+	// refresh checkLockCtx so we can use it again later
+	checkLockCtx, checkLockCancel = transaction.New(checkLockCtx)
+	defer checkLockCancel()
+
+	// now acquire the lock
+	err = transaction.MustCommit(lockCtx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now make sure checking the lock succeeds
+	err = transaction.MustCommit(checkLockCtx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// make sure another lock can't be acquired
+	newLockCtx, newLockCancel := transaction.New(rootCtx)
+	defer newLockCancel()
+
+	newSession, newErrCh, err := kvStore.NewSession("ds-test-lock-for-ownership2", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		select {
+		case <-rootCtx.Done():
+			newSession.Destroy()
+		case err := <-newErrCh:
+			t.Error(err)
+		}
+	}()
+
+	_, err = dsStore.LockForOwnershipTxn(newLockCtx, ds.ID, newSession)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now we expect a failure because the lock is held by a different session
+	err = transaction.MustCommit(newLockCtx, fixture.Client.KV())
+	if err == nil {
+		t.Fatal("expected a lock failure since the lock is already held")
+	}
+
+	// now unlock it
+	err = transaction.MustCommit(unlockCtx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now we should be able to acquire again, (but first refresh newLockCtx)
+	newLockCtx, newLockCancel = transaction.New(rootCtx)
+	defer newLockCancel()
+	err = transaction.MustCommit(newLockCtx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

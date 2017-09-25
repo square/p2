@@ -18,10 +18,13 @@ import (
 	"github.com/square/p2/pkg/store/consul/consultest"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/dsstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/daemonsetstatus"
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/pborman/uuid"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	fake_checker "github.com/square/p2/pkg/health/checker/test"
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -207,6 +210,8 @@ func TestSchedule(t *testing.T) {
 	}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_schedule")
 	ds := New(
 		dsData,
 		dsStore,
@@ -221,6 +226,9 @@ func TestSchedule(t *testing.T) {
 		false,
 		0,
 		testFarmRetryInterval,
+		nil,
+		statusStore,
+		DefaultStatusWritingInterval,
 	).(*daemonSet)
 
 	labeled := labeledPods(t, ds)
@@ -460,6 +468,8 @@ func TestPublishToReplication(t *testing.T) {
 	}
 	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
 
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_publish_to_replication")
 	ds := New(
 		dsData,
 		dsStore,
@@ -474,6 +484,9 @@ func TestPublishToReplication(t *testing.T) {
 		false,
 		0,
 		testFarmRetryInterval,
+		nil,
+		statusStore,
+		DefaultStatusWritingInterval,
 	).(*daemonSet)
 
 	labeled := labeledPods(t, ds)
@@ -554,6 +567,198 @@ func TestPublishToReplication(t *testing.T) {
 	Assert(t).IsNil(err, "unexpectedly unlabeled")
 }
 
+// nullUnlocker satisfies consul.TxnUnlocker to avoid npe in tests but it doesn't actually do anything
+type nullUnlocker struct {
+}
+
+func (nullUnlocker) UnlockTxn(ctx context.Context) error {
+	return nil
+}
+
+func (nullUnlocker) CheckLockedTxn(ctx context.Context) error {
+	return nil
+}
+
+func fakeReplication(completedCount int32, inProgress bool) nullReplication {
+	return nullReplication{
+		completedCount: completedCount,
+		inProgress:     inProgress,
+	}
+}
+
+type nullReplication struct {
+	completedCount int32
+	inProgress     bool
+}
+
+func (nullReplication) Enact() {
+	panic("Enact() not implemented on nullReplication")
+}
+
+func (nullReplication) Cancel() {
+	return
+}
+
+func (nullReplication) WaitForReplication() {
+	return
+}
+
+func (n nullReplication) CompletedCount() int32 {
+	return n.completedCount
+}
+
+func (n nullReplication) InProgress() bool {
+	return n.inProgress
+}
+
+func TestWriteNewestStatus(t *testing.T) {
+	type writeStatusTestCase struct {
+		lastStatus         daemonsetstatus.Status
+		expectedStatus     daemonsetstatus.Status
+		nodeCompletedCount int32
+		inProgress         bool
+	}
+
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+
+	rawStatusStore := statusstore.NewConsul(fixture.Client)
+
+	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_write_newest_status")
+
+	manifest := testManifest("some_pod")
+	manifestSHA, err := manifest.SHA()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testCases := []writeStatusTestCase{
+		// no previous status
+		{
+			expectedStatus: daemonsetstatus.Status{
+				ManifestSHA:           manifestSHA,
+				NodesDeployed:         38,
+				ReplicationInProgress: true,
+			},
+			nodeCompletedCount: 38,
+			inProgress:         true,
+		},
+		// same manifest sha, more nodes, so we expect the node count to be updated
+		{
+			lastStatus: daemonsetstatus.Status{
+				ManifestSHA:   manifestSHA,
+				NodesDeployed: 14,
+			},
+			expectedStatus: daemonsetstatus.Status{
+				ManifestSHA:           manifestSHA,
+				NodesDeployed:         38,
+				ReplicationInProgress: true,
+			},
+			nodeCompletedCount: 38,
+			inProgress:         true,
+		},
+		// same manifest sha, fewer nodes, so we don't expect the node count to be updated
+		{
+			lastStatus: daemonsetstatus.Status{
+				ManifestSHA:   manifestSHA,
+				NodesDeployed: 82,
+			},
+			expectedStatus: daemonsetstatus.Status{
+				ManifestSHA:           manifestSHA,
+				NodesDeployed:         82,
+				ReplicationInProgress: true,
+			},
+			nodeCompletedCount: 38,
+			inProgress:         true,
+		},
+		// different manifest sha, fewer nodes, so we expect the node count to be updated
+		{
+			lastStatus: daemonsetstatus.Status{
+				ManifestSHA:   "some_other_sha",
+				NodesDeployed: 82,
+			},
+			expectedStatus: daemonsetstatus.Status{
+				ManifestSHA:           manifestSHA,
+				NodesDeployed:         38,
+				ReplicationInProgress: true,
+			},
+			nodeCompletedCount: 38,
+			inProgress:         true,
+		},
+		// different manifest sha but no replication in progress, so node count should be reset
+		{
+			lastStatus: daemonsetstatus.Status{
+				ManifestSHA:   "some_other_sha",
+				NodesDeployed: 82,
+			},
+			expectedStatus: daemonsetstatus.Status{
+				ManifestSHA:           manifestSHA,
+				NodesDeployed:         0,
+				ReplicationInProgress: false,
+			},
+			nodeCompletedCount: -1,
+			inProgress:         false,
+		},
+		// same manifest sha, more nodes, no replication in progress
+		{
+			lastStatus: daemonsetstatus.Status{
+				ManifestSHA:   manifestSHA,
+				NodesDeployed: 14,
+			},
+			expectedStatus: daemonsetstatus.Status{
+				ManifestSHA:           manifestSHA,
+				NodesDeployed:         38,
+				ReplicationInProgress: false,
+			},
+			nodeCompletedCount: 38,
+			inProgress:         false,
+		},
+	}
+
+	ds := daemonSet{
+		DaemonSet: ds_fields.DaemonSet{
+			Manifest: manifest,
+		},
+		unlocker:    nullUnlocker{},
+		statusStore: statusStore,
+		logger:      logging.TestLogger(),
+		txner:       fixture.Client.KV(),
+	}
+
+	for i, testCase := range testCases {
+		ds.DaemonSet.ID = ds_fields.ID(uuid.New())
+		ds.cancelReplication()
+		if testCase.nodeCompletedCount >= 0 {
+			ds.setCurrentReplication(fakeReplication(testCase.nodeCompletedCount, testCase.inProgress))
+		}
+		if testCase.lastStatus.ManifestSHA != "" {
+			writeCtx, writeCancel := transaction.New(context.Background())
+			defer writeCancel()
+
+			err := statusStore.CASTxn(writeCtx, ds.ID(), 0, testCase.lastStatus)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = transaction.MustCommit(writeCtx, fixture.Client.KV())
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		ds.writeNewestStatus(context.Background(), testCase.lastStatus)
+
+		newStatus, _, err := ds.statusStore.Get(ds.ID())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if newStatus != testCase.expectedStatus {
+			t.Errorf("test case %d: expected %+v got %+v", i, testCase.expectedStatus, newStatus)
+		}
+	}
+}
+
 type testStore interface {
 	AllPods(podPrefix consul.PodPrefix) ([]consul.ManifestResult, time.Duration, error)
 }
@@ -610,4 +815,10 @@ func labeledPods(t *testing.T, ds *daemonSet) []labels.Labeled {
 
 func scheduledPods(consulStore *consultest.FakePodStore) ([]consul.ManifestResult, time.Duration, error) {
 	return consulStore.AllPods(consul.INTENT_TREE)
+}
+
+func testManifest(podID types.PodID) manifest.Manifest {
+	builder := manifest.NewBuilder()
+	builder.SetID(podID)
+	return builder.GetManifest()
 }
