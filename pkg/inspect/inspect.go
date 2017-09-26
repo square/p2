@@ -16,8 +16,8 @@ const (
 )
 
 type LaunchableVersion struct {
-	Location string                    `json:"location,omitempty"`
-	Version  *launch.LaunchableVersion `json:"version,omitempty"`
+	Location string                   `json:"location,omitempty"`
+	Version  launch.LaunchableVersion `json:"version,omitempty"`
 }
 
 type NodePodStatus struct {
@@ -70,9 +70,9 @@ func AddKVPToMap(result consul.ManifestResult, source int, filterNode types.Node
 		}
 		old.IntentManifestSHA = manifestSHA
 		for launchableID, launchable := range result.Manifest.GetLaunchableStanzas() {
-			var version *launch.LaunchableVersion
+			var version launch.LaunchableVersion
 			if launchable.Version.ID != "" {
-				version = &launchable.Version
+				version = launchable.Version
 			}
 
 			old.IntentVersions[launchableID] = LaunchableVersion{
@@ -88,10 +88,10 @@ func AddKVPToMap(result consul.ManifestResult, source int, filterNode types.Node
 		}
 		old.RealityManifestSHA = manifestSHA
 		for launchableID, launchable := range result.Manifest.GetLaunchableStanzas() {
-			var version *launch.LaunchableVersion
+			var version launch.LaunchableVersion
 
 			if launchable.Version.ID != "" {
-				version = &launchable.Version
+				version = launchable.Version
 			}
 			old.RealityVersions[launchableID] = LaunchableVersion{
 				Location: launchable.Location,
