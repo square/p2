@@ -46,11 +46,13 @@ func main() {
 		log.Fatalf("caught fatal error while querying datastore: %v", err)
 	}
 
+	podsToExclude := make([]types.PodID, 0, len(*excludePods))
+	for _, s := range *excludePods {
+		podsToExclude = append(podsToExclude, types.PodID(s))
+	}
+
 	podsToShutdown := make([]types.PodID, 0, len(*shutdownPods))
 	for _, pod := range *shutdownPods {
-		if listInclude(pod, *excludePods) {
-			continue
-		}
 		podsToShutdown = append(podsToShutdown, types.PodID(pod))
 	}
 
@@ -59,12 +61,12 @@ func main() {
 	var haltWG sync.WaitGroup
 	for _, realityEntry := range reality {
 		pod := podFactory.NewLegacyPod(realityEntry.Manifest.ID())
-		if *dryRun {
-			log.Printf("dry run, skipping this pod: %s", pod.Id)
+		if !shouldShutdownPod(pod.Id, podsToShutdown, podsToExclude) {
+			log.Printf("pod %s not in set of pods to shutdown, skipping", pod.Id)
 			continue
 		}
-		if !shutdownPod(pod.Id, podsToShutdown) {
-			log.Printf("pod %s not in set of pods to shutdown, skipping", pod.Id)
+		if *dryRun {
+			log.Printf("dry run, skipping this pod: %s", pod.Id)
 			continue
 		}
 
@@ -84,23 +86,22 @@ func main() {
 	haltWG.Wait()
 }
 
-func shutdownPod(podID types.PodID, podsToShutdown []types.PodID) bool {
-	if len(podsToShutdown) == 0 {
-		return true
+// returns true if the pod should be shutdown
+func shouldShutdownPod(podID types.PodID, podsToShutdown []types.PodID, podsToExcludeFromShutdown []types.PodID) bool {
+	for _, excludedPod := range podsToExcludeFromShutdown {
+		if excludedPod == podID {
+			return false
+		}
 	}
 	for _, pod := range podsToShutdown {
 		if pod == podID {
 			return true
 		}
 	}
-	return false
-}
 
-func listInclude(pod string, pods []string) bool {
-	for _, p := range pods {
-		if p == pod {
-			return true
-		}
+	if len(podsToShutdown) > 0 {
+		return false
 	}
-	return false
+
+	return true
 }
