@@ -20,7 +20,7 @@ func TestRemoveAllLabelsTxn(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 
-	applicator := NewConsulApplicator(fixture.Client, 0)
+	applicator := NewConsulApplicator(fixture.Client, 0, 0)
 
 	// set some labels
 	err := applicator.SetLabels(RU, "some_id", map[string]string{"foo": "bar"})
@@ -64,7 +64,7 @@ func TestSetLabelTxn(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 
-	applicator := NewConsulApplicator(fixture.Client, 0)
+	applicator := NewConsulApplicator(fixture.Client, 0, 0)
 
 	ctx, cancelFunc := transaction.New(context.Background())
 	defer cancelFunc()
@@ -103,7 +103,7 @@ func TestSetLabelTxnFailsIfLabelsChange(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 
-	applicator := NewConsulApplicator(fixture.Client, 0)
+	applicator := NewConsulApplicator(fixture.Client, 0, 0)
 
 	ctx, cancelFunc := transaction.New(context.Background())
 	defer cancelFunc()
@@ -134,7 +134,7 @@ func TestRemoveLabelTxn(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 
-	applicator := NewConsulApplicator(fixture.Client, 0)
+	applicator := NewConsulApplicator(fixture.Client, 0, 0)
 
 	// set some labels
 	err := applicator.SetLabel(RU, "some_id", "some_key", "some_value")
@@ -179,7 +179,7 @@ func TestRemoveLabelTxnFailsIfLabelsChange(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 
-	applicator := NewConsulApplicator(fixture.Client, 0)
+	applicator := NewConsulApplicator(fixture.Client, 0, 0)
 
 	// set some labels
 	err := applicator.SetLabel(RU, "some_id", "some_key", "some_value")
@@ -215,7 +215,7 @@ func TestSetLabelsTxn(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 
-	applicator := NewConsulApplicator(fixture.Client, 0)
+	applicator := NewConsulApplicator(fixture.Client, 0, 0)
 
 	ctx, cancelFunc := transaction.New(context.Background())
 	defer cancelFunc()
@@ -254,7 +254,7 @@ func TestSetLabelsTxnFailsIfLabelsChange(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 
-	applicator := NewConsulApplicator(fixture.Client, 0)
+	applicator := NewConsulApplicator(fixture.Client, 0, 0)
 
 	ctx, cancelFunc := transaction.New(context.Background())
 	defer cancelFunc()
@@ -284,7 +284,7 @@ func TestRemoveLabelsTxn(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 
-	applicator := NewConsulApplicator(fixture.Client, 0)
+	applicator := NewConsulApplicator(fixture.Client, 0, 0)
 
 	// set some labels
 	err := applicator.SetLabel(RU, "some_id", "some_key", "some_value")
@@ -329,7 +329,7 @@ func TestRemoveLabelsTxnFailsIfLabelsChange(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 
-	applicator := NewConsulApplicator(fixture.Client, 0)
+	applicator := NewConsulApplicator(fixture.Client, 0, 0)
 
 	// set some labels
 	err := applicator.SetLabel(RU, "some_id", "some_key", "some_value")
@@ -365,7 +365,7 @@ func TestRemoveLabelsTxnFailsIfLabelsChange(t *testing.T) {
 func TestMutateAndSelectHTTPApplicator(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
-	labelServer := NewHTTPLabelServer(NewConsulApplicator(fixture.Client, 0), 0, logging.TestLogger())
+	labelServer := NewHTTPLabelServer(NewConsulApplicator(fixture.Client, 0, 0), 0, logging.TestLogger())
 	server := httptest.NewServer(labelServer.Handler())
 	defer server.Close()
 	url, err := url.Parse(server.URL)
@@ -429,7 +429,7 @@ func TestMutateAndSelectHTTPApplicator(t *testing.T) {
 func TestRemoveLabelTxnHTTPApplicator(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
-	labelServer := NewHTTPLabelServer(NewConsulApplicator(fixture.Client, 0), 0, logging.TestLogger())
+	labelServer := NewHTTPLabelServer(NewConsulApplicator(fixture.Client, 0, 0), 0, logging.TestLogger())
 	server := httptest.NewServer(labelServer.Handler())
 	defer server.Close()
 

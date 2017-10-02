@@ -46,7 +46,7 @@ func TestEnactHappyPath(t *testing.T) {
 		t.Errorf("Expected to have 2 reality records scheduled but got %d.\n%v", len(reality), reality)
 	}
 
-	allLabels, err := labels.NewConsulApplicator(fixture.Client, 0).ListLabels(labels.POD)
+	allLabels, err := labels.NewConsulApplicator(fixture.Client, 0, 0).ListLabels(labels.POD)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func newTestReplication(t *testing.T, errCh chan error) (*replication, consuluti
 		nodes:       nodes,
 		store:       podStore,
 		txner:       fixture.Client.KV(),
-		labeler:     labels.NewConsulApplicator(fixture.Client, 0),
+		labeler:     labels.NewConsulApplicator(fixture.Client, 0, 0),
 		manifest:    mb.GetManifest(),
 		health:      test.HappyHealthChecker(nodes),
 		threshold:   health.Passing,

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/store/consul"
@@ -72,7 +73,8 @@ func ParseWithConsulOptions() (string, consul.Options, labels.ApplicatorWithoutW
 			log.Fatalln(err)
 		}
 	} else {
-		applicator = labels.NewConsulApplicator(consul.NewConsulClient(consulOpts), 0)
+		jitterWindow := 0 * time.Second // we don't initiate watches in CLIs so this doesn't matter
+		applicator = labels.NewConsulApplicator(consul.NewConsulClient(consulOpts), 0, jitterWindow)
 	}
 	return cmd, consulOpts, applicator
 }

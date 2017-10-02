@@ -39,7 +39,7 @@ func testReplicatorAndServer(t *testing.T) (Replicator, Store, consulutil.Fixtur
 		active,
 		store,
 		f.Client.KV(),
-		labels.NewConsulApplicator(f.Client, 1),
+		labels.NewConsulApplicator(f.Client, 1, 0),
 		healthChecker,
 		threshold,
 		testLockMessage,
@@ -127,7 +127,9 @@ func (h channelBasedHealthChecker) WatchService(
 func (h channelBasedHealthChecker) WatchHealth(
 	resultCh chan []*health.Result,
 	errCh chan<- error,
-	quitCh <-chan struct{}) {
+	quitCh <-chan struct{},
+	_ time.Duration,
+) {
 	panic("not implemented")
 }
 

@@ -33,7 +33,7 @@ func TestTwoClients(t *testing.T) {
 		watchTrigger: nil,
 	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry(), 0)
-	go aggreg.Aggregate()
+	go aggreg.Aggregate(0)
 	defer aggreg.Quit()
 
 	quitCh := make(chan struct{})
@@ -75,7 +75,7 @@ func TestQuitAggregateAfterResults(t *testing.T) {
 		watchTrigger: nil,
 	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry(), 0)
-	go aggreg.Aggregate()
+	go aggreg.Aggregate(0)
 
 	quitCh := make(chan struct{})
 	res := aggreg.Watch(labels.Everything().Add("color", labels.EqualsOperator, []string{"green"}), quitCh)
@@ -107,7 +107,7 @@ func TestQuitAggregateBeforeResults(t *testing.T) {
 		watchTrigger: trigger,
 	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry(), 0)
-	go aggreg.Aggregate()
+	go aggreg.Aggregate(0)
 
 	quitCh := make(chan struct{})
 	res := aggreg.Watch(labels.Everything().Add("color", labels.EqualsOperator, []string{"green"}), quitCh)
@@ -132,7 +132,7 @@ func TestQuitIndividualWatch(t *testing.T) {
 		watchTrigger: nil,
 	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry(), 0)
-	go aggreg.Aggregate()
+	go aggreg.Aggregate(0)
 
 	quitCh1 := make(chan struct{})
 	labeledChannel1 := aggreg.Watch(labels.Everything().Add("color", labels.EqualsOperator, []string{"green"}), quitCh1)
@@ -184,7 +184,7 @@ func TestIgnoreIndividualWatch(t *testing.T) {
 		watchTrigger: nil,
 	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry(), 0)
-	go aggreg.Aggregate()
+	go aggreg.Aggregate(0)
 	defer aggreg.Quit()
 
 	quitCh1 := make(chan struct{})
@@ -240,7 +240,7 @@ func TestCachedValueImmediatelySent(t *testing.T) {
 	defer close(quitCh)
 	watch := aggreg.Watch(selector, quitCh)
 
-	// even though we have not called Aggregate() on the aggregator, we expect
+	// even though we have not called Aggregate(0) on the aggregator, we expect
 	// that the cached value we have added will be present on the result channel.
 
 	select {
@@ -278,7 +278,7 @@ func TestIdenticalSelectors(t *testing.T) {
 		watchTrigger: nil,
 	}
 	aggreg := NewConsulAggregator(POD, fakeKV, logging.DefaultLogger, metrics.NewRegistry(), 0)
-	go aggreg.Aggregate()
+	go aggreg.Aggregate(0)
 	defer aggreg.Quit()
 
 	quitCh := make(chan struct{})

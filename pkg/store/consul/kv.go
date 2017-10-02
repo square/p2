@@ -443,7 +443,7 @@ func (c consulStore) WatchPods(
 	}
 
 	kvPairsChan := make(chan api.KVPairs)
-	go consulutil.WatchPrefix(keyPrefix, c.client.KV(), kvPairsChan, quitChan, errChan, 0)
+	go consulutil.WatchPrefix(keyPrefix, c.client.KV(), kvPairsChan, quitChan, errChan, 0, 1*time.Minute)
 	for kvPairs := range kvPairsChan {
 		manifests := make([]ManifestResult, 0, len(kvPairs))
 		for _, pair := range kvPairs {
@@ -477,7 +477,7 @@ func (c consulStore) WatchAllPods(
 	defer close(podChan)
 
 	kvPairsChan := make(chan api.KVPairs)
-	go consulutil.WatchPrefix(string(podPrefix), c.client.KV(), kvPairsChan, quitChan, errChan, pauseTime)
+	go consulutil.WatchPrefix(string(podPrefix), c.client.KV(), kvPairsChan, quitChan, errChan, pauseTime, 1*time.Minute)
 	for kvPairs := range kvPairsChan {
 		manifests := make([]ManifestResult, 0, len(kvPairs))
 		for _, pair := range kvPairs {

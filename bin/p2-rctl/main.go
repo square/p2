@@ -130,14 +130,14 @@ func main() {
 	// flags.ParseWithConsulOptions() gives you because that interface
 	// doesn't support transactions which is required by the rc store. so
 	// we just set up a labeler that directly accesses consul
-	labeler := labels.NewConsulApplicator(client, 0)
+	labeler := labels.NewConsulApplicator(client, 0, 0)
 
 	rcStore := rcstore.NewConsul(client, labeler, 3)
 
 	// The roll labeler CANT be an http applicator because it uses consul
 	// transactions, so this might be different from labeler returned by
 	// flags.ParseWithConsulOptions()
-	rollLabeler := labels.NewConsulApplicator(client, 0)
+	rollLabeler := labels.NewConsulApplicator(client, 0, 0)
 	rctl := rctlParams{
 		httpClient: httpClient,
 		baseClient: client,

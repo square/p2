@@ -521,7 +521,7 @@ func newRollStoreWithRealConsul(t *testing.T, fixture consulutil.Fixture, entrie
 			t.Fatalf("could not seed consul with RC: %s", err)
 		}
 	}
-	applicator := labels.NewConsulApplicator(fixture.Client, 0)
+	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
 	rcStore := rcstore.NewConsul(fixture.Client, applicator, 0)
 	return &ConsulStore{
 		kv:      fixture.Client.KV(),

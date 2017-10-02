@@ -88,7 +88,7 @@ type RCGetter interface {
 }
 
 type RollingUpdateStore interface {
-	Watch(quit <-chan struct{}) (<-chan []roll_fields.Update, <-chan error)
+	Watch(quit <-chan struct{}, jitterWindow time.Duration) (<-chan []roll_fields.Update, <-chan error)
 	Delete(ctx context.Context, id roll_fields.ID) error
 }
 
@@ -184,7 +184,7 @@ func (rlf *Farm) Start(quit <-chan struct{}) {
 func (rlf *Farm) mainLoop(quit <-chan struct{}) {
 	subQuit := make(chan struct{})
 	defer close(subQuit)
-	rlWatch, rlErr := rlf.rls.Watch(subQuit)
+	rlWatch, rlErr := rlf.rls.Watch(subQuit, 1*time.Minute)
 
 START_LOOP:
 	for {

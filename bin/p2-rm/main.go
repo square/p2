@@ -34,7 +34,7 @@ func main() {
 	// we ignore the labels.ApplicatorWithoutWatches that
 	// ParseWithConsulOptions() gives us because the RC store now requires
 	// transactions which that interface does not provide
-	labeler := labels.NewConsulApplicator(consulClient, 0)
+	labeler := labels.NewConsulApplicator(consulClient, 0, 0)
 
 	err := handlePodRemoval(consulClient, labeler)
 	if err != nil {

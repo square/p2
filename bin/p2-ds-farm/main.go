@@ -66,7 +66,7 @@ func main() {
 		dsStore,
 		statusStore,
 		labeler,
-		labels.NewConsulApplicator(client, 0),
+		labels.NewConsulApplicator(client, 0, 1*time.Minute),
 		sessions,
 		logger,
 		nil,

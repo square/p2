@@ -60,15 +60,23 @@ type ConsulApplicator struct {
 	aggregatorMux sync.Mutex
 	metReg        MetricsRegistry
 	retryMetric   metrics.Gauge
+
+	// watchJitterWindow is the "jitter window" that will be used when
+	// initiating watches on consul. A random amount of time between 0 and
+	// the jitter window will be slept when an error occurs, which is
+	// useful to avoid putting too much pressure on consul when it becomes
+	// available after a period of unavailability
+	watchJitterWindow time.Duration
 }
 
-func NewConsulApplicator(client consulutil.ConsulClient, retries int) *ConsulApplicator {
+func NewConsulApplicator(client consulutil.ConsulClient, retries int, watchJitterWindow time.Duration) *ConsulApplicator {
 	return &ConsulApplicator{
-		logger:      logging.DefaultLogger,
-		kv:          client.KV(),
-		retries:     retries,
-		aggregators: map[Type]*consulAggregator{},
-		retryMetric: metrics.NewGauge(),
+		logger:            logging.DefaultLogger,
+		kv:                client.KV(),
+		retries:           retries,
+		aggregators:       map[Type]*consulAggregator{},
+		retryMetric:       metrics.NewGauge(),
+		watchJitterWindow: watchJitterWindow,
 	}
 }
 
@@ -450,7 +458,7 @@ func (c *ConsulApplicator) initAggregator(labelType Type, aggregationRate time.D
 	aggregator, ok := c.aggregators[labelType]
 	if !ok {
 		aggregator = NewConsulAggregator(labelType, c.kv, c.logger, c.metReg, aggregationRate)
-		go aggregator.Aggregate()
+		go aggregator.Aggregate(c.watchJitterWindow)
 		c.aggregators[labelType] = aggregator
 	}
 	return aggregator

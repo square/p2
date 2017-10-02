@@ -1473,7 +1473,7 @@ func waitForMutateSelectorFarms(firstFarm *Farm, secondFarm *Farm, ds ds_fields.
 }
 
 func createAndSeedApplicator(client consulutil.ConsulClient, t *testing.T) *labels.ConsulApplicator {
-	applicator := labels.NewConsulApplicator(client, 0)
+	applicator := labels.NewConsulApplicator(client, 0, 0)
 	// seed the label trees that daemon set farm uses
 	err := applicator.SetLabel(labels.NODE, "key", "whatever", "whatever")
 	if err != nil {

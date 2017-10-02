@@ -434,7 +434,7 @@ func verifyProcessExit(errCh chan error, tempDir string, logger logging.Logger) 
 func verifyTransferReplicas(errCh chan<- error, tempdir string, logger logging.Logger, consulClient consulutil.ConsulClient) {
 	defer close(errCh)
 
-	applicator := labels.NewConsulApplicator(consulClient, 1)
+	applicator := labels.NewConsulApplicator(consulClient, 1, 0)
 	rcStore := rcstore.NewConsul(consulClient, applicator, 2)
 
 	builder := manifest.NewBuilder()
@@ -935,7 +935,7 @@ func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
 	}
 
 	client := consul.NewConsulClient(consul.Options{})
-	applicator := labels.NewConsulApplicator(client, 1)
+	applicator := labels.NewConsulApplicator(client, 1, 0)
 
 	err = applicator.SetLabel(labels.NODE, host, "test", "yes")
 	if err != nil {

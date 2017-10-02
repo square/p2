@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/user"
+	"time"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
@@ -98,7 +99,7 @@ func main() {
 	client := consul.NewConsulClient(consulOpts)
 	kv := consul.NewConsulStore(client)
 	logger := logging.NewLogger(logrus.Fields{})
-	applicator := labels.NewConsulApplicator(client, 0)
+	applicator := labels.NewConsulApplicator(client, 0, 1*time.Minute)
 	pcstore := pcstore.NewConsul(client, labeler, labels.DefaultAggregationRate, applicator, &logger)
 
 	switch cmd {

@@ -26,7 +26,7 @@ func TestAuditLogCreation(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 
-	applicator := labels.NewConsulApplicator(fixture.Client, 0)
+	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
 	logger := logging.TestLogger()
 	rollStore := rollstore.NewConsul(fixture.Client, applicator, &logger)
 
@@ -72,7 +72,7 @@ func TestCleanupOldRCHappy(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 
-	applicator := labels.NewConsulApplicator(fixture.Client, 0)
+	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
 	rcStore := rcstore.NewConsul(fixture.Client, applicator, 0)
 
 	builder := manifest.NewBuilder()
@@ -125,7 +125,7 @@ func TestCleanupOldRCTooManyReplicas(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 
-	applicator := labels.NewConsulApplicator(fixture.Client, 0)
+	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
 	rcStore := rcstore.NewConsul(fixture.Client, applicator, 0)
 
 	builder := manifest.NewBuilder()

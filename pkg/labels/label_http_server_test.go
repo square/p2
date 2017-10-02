@@ -18,7 +18,7 @@ import (
 func TestGetLabels(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 
-	applicator := NewConsulApplicator(fixture.Client, 0)
+	applicator := NewConsulApplicator(fixture.Client, 0, 0)
 	server := NewHTTPLabelServer(applicator, 0, logging.TestLogger())
 	router := mux.NewRouter()
 	server.AddRoutes(router)

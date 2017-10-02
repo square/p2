@@ -73,7 +73,7 @@ func setup(t *testing.T) (
 ) {
 	fixture := consulutil.NewFixture(t)
 	closeFn = fixture.Stop
-	applicator = labels.NewConsulApplicator(fixture.Client, 0)
+	applicator = labels.NewConsulApplicator(fixture.Client, 0, 0)
 
 	// set a bogus label so we don't get "no labels" errors
 	err := applicator.SetLabel(labels.POD, "some_id", "some_key", "some_value")

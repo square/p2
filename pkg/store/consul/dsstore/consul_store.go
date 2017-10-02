@@ -471,7 +471,7 @@ func (s *ConsulStore) WatchAll(quitCh <-chan struct{}, pauseTime time.Duration) 
 	errCh := make(chan error, 1)
 
 	// Watch for changes in the dsTree and deletedDSTree
-	go consulutil.WatchPrefix(dsTree, s.kv, inCh, quitCh, errCh, pauseTime)
+	go consulutil.WatchPrefix(dsTree, s.kv, inCh, quitCh, errCh, pauseTime, 1*time.Minute)
 
 	go func() {
 		defer close(outCh)
