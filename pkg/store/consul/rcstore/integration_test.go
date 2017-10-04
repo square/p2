@@ -27,7 +27,7 @@ func TestCreateTxn(t *testing.T) {
 
 	ctx, cancelFunc := transaction.New(context.Background())
 	defer cancelFunc()
-	rc, err := store.CreateTxn(ctx, testManifest(), klabels.Everything(), "some_az", "some_cn", nil, rcLabelsToSet)
+	rc, err := store.CreateTxn(ctx, testManifest(), klabels.Everything(), "some_az", "some_cn", nil, rcLabelsToSet, "some_strategy")
 	if err != nil {
 		t.Fatal(err)
 	}

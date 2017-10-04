@@ -11,9 +11,20 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
+const (
+	// CattleStrategy is used for dynamic node allocation to one of many
+	// replaceable nodes i.e. cattle, while PetStrategy is used when a manifest
+	// must be scheduled on specific nodes i.e. pets
+	CattleStrategy = Strategy("cattle_strategy")
+	PetStrategy    = Strategy("pet_strategy")
+)
+
 // ID is a named type alias for Resource Controller IDs. This is preferred to the raw
 // string format so that Go will typecheck its uses.
 type ID string
+
+// Strategy is a type alias used for node allocation strategies.
+type Strategy string
 
 // String implements fmt.Stringer
 func (id ID) String() string {
@@ -49,6 +60,10 @@ type RC struct {
 
 	// When disabled, this controller will not make any scheduling changes
 	Disabled bool
+
+	// Distinguishes between dynamic, static or other strategies for allocating
+	// nodes on which the rc can schedule the manifest.
+	AllocationStrategy Strategy
 }
 
 // RawRC defines the JSON format used to store data into Consul. It should only be used
@@ -63,8 +78,9 @@ type RawRC struct {
 	// zero-count indicating the RC handler should remove any and all pods
 	// from a case (for instance if the json key was changed) where golang
 	// is defaulting to the 0 value
-	ReplicasDesired *int `json:"replicas_desired"`
-	Disabled        bool `json:"disabled"`
+	ReplicasDesired    *int     `json:"replicas_desired"`
+	Disabled           bool     `json:"disabled"`
+	AllocationStrategy Strategy `json:"allocation_strategy"`
 }
 
 // MarshalJSON implements the json.Marshaler interface for serializing the RC to JSON
@@ -102,12 +118,13 @@ func (rc RC) ToRaw() (RawRC, error) {
 	}
 
 	return RawRC{
-		ID:              rc.ID,
-		Manifest:        string(manifest),
-		NodeSelector:    nodeSel,
-		PodLabels:       rc.PodLabels,
-		ReplicasDesired: &rc.ReplicasDesired,
-		Disabled:        rc.Disabled,
+		ID:                 rc.ID,
+		Manifest:           string(manifest),
+		NodeSelector:       nodeSel,
+		PodLabels:          rc.PodLabels,
+		ReplicasDesired:    &rc.ReplicasDesired,
+		Disabled:           rc.Disabled,
+		AllocationStrategy: rc.AllocationStrategy,
 	}, nil
 }
 
@@ -140,12 +157,13 @@ func (rc *RC) UnmarshalJSON(b []byte) error {
 	}
 
 	*rc = RC{
-		ID:              rawRC.ID,
-		Manifest:        m,
-		NodeSelector:    nodeSel,
-		PodLabels:       rawRC.PodLabels,
-		ReplicasDesired: *rawRC.ReplicasDesired,
-		Disabled:        rawRC.Disabled,
+		ID:                 rawRC.ID,
+		Manifest:           m,
+		NodeSelector:       nodeSel,
+		PodLabels:          rawRC.PodLabels,
+		ReplicasDesired:    *rawRC.ReplicasDesired,
+		Disabled:           rawRC.Disabled,
+		AllocationStrategy: rawRC.AllocationStrategy,
 	}
 	return nil
 }

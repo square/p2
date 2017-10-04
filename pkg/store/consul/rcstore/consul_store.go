@@ -115,6 +115,7 @@ func (s *ConsulStore) Create(
 	clusterName pc_fields.ClusterName,
 	podLabels klabels.Set,
 	additionalLabels klabels.Set,
+	allocationStrategy fields.Strategy,
 ) (fields.RC, error) {
 
 	if podLabels == nil {
@@ -123,12 +124,12 @@ func (s *ConsulStore) Create(
 	podLabels[types.ClusterNameLabel] = clusterName.String()
 	podLabels[types.AvailabilityZoneLabel] = availabilityZone.String()
 
-	rc, err := s.innerCreate(manifest, nodeSelector, podLabels)
+	rc, err := s.innerCreate(manifest, nodeSelector, podLabels, allocationStrategy)
 
 	// TODO: measure whether retries are is important in practice
 	for i := 0; i < s.retries; i++ {
 		if _, ok := err.(CASError); ok {
-			rc, err = s.innerCreate(manifest, nodeSelector, podLabels)
+			rc, err = s.innerCreate(manifest, nodeSelector, podLabels, allocationStrategy)
 		} else {
 			break
 		}
@@ -156,8 +157,9 @@ func (s *ConsulStore) CreateTxn(
 	clusterName pc_fields.ClusterName,
 	podLabels klabels.Set,
 	additionalLabels klabels.Set,
+	allocationStrategy fields.Strategy,
 ) (fields.RC, error) {
-	rc, err := s.innerCreateTxn(ctx, manifest, nodeSelector, podLabels)
+	rc, err := s.innerCreateTxn(ctx, manifest, nodeSelector, podLabels, allocationStrategy)
 	if err != nil {
 		return fields.RC{}, err
 	}
@@ -173,7 +175,7 @@ func (s *ConsulStore) CreateTxn(
 }
 
 // these parts of Create may require a retry
-func (s *ConsulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
+func (s *ConsulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set, allocationStrategy fields.Strategy) (fields.RC, error) {
 	id := fields.ID(uuid.New())
 	rcp, err := s.rcPath(id)
 	if err != nil {
@@ -181,12 +183,13 @@ func (s *ConsulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabe
 	}
 
 	rc := fields.RC{
-		ID:              id,
-		Manifest:        manifest,
-		NodeSelector:    nodeSelector,
-		PodLabels:       podLabels,
-		ReplicasDesired: 0,
-		Disabled:        false,
+		ID:                 id,
+		Manifest:           manifest,
+		NodeSelector:       nodeSelector,
+		PodLabels:          podLabels,
+		ReplicasDesired:    0,
+		Disabled:           false,
+		AllocationStrategy: allocationStrategy,
 	}
 
 	jsonRC, err := json.Marshal(rc)
@@ -212,7 +215,7 @@ func (s *ConsulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabe
 }
 
 // TODO: replace innerCreate() with this function
-func (s *ConsulStore) innerCreateTxn(ctx context.Context, manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set) (fields.RC, error) {
+func (s *ConsulStore) innerCreateTxn(ctx context.Context, manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set, allocationStrategy fields.Strategy) (fields.RC, error) {
 	id := fields.ID(uuid.New())
 	rcp, err := s.rcPath(id)
 	if err != nil {
@@ -220,12 +223,13 @@ func (s *ConsulStore) innerCreateTxn(ctx context.Context, manifest manifest.Mani
 	}
 
 	rc := fields.RC{
-		ID:              id,
-		Manifest:        manifest,
-		NodeSelector:    nodeSelector,
-		PodLabels:       podLabels,
-		ReplicasDesired: 0,
-		Disabled:        false,
+		ID:                 id,
+		Manifest:           manifest,
+		NodeSelector:       nodeSelector,
+		PodLabels:          podLabels,
+		ReplicasDesired:    0,
+		Disabled:           false,
+		AllocationStrategy: allocationStrategy,
 	}
 
 	jsonRC, err := json.Marshal(rc)

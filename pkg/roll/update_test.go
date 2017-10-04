@@ -384,6 +384,7 @@ type testRCCreator interface {
 		clusterName pc_fields.ClusterName,
 		podLabels klabels.Set,
 		additionalLabels klabels.Set,
+		allocationStrategy rc_fields.Strategy,
 	) (rc_fields.RC, error)
 	SetDesiredReplicas(id rc_fields.ID, n int) error
 }
@@ -395,7 +396,7 @@ func createRC(
 	desired int,
 	nodes map[types.NodeName]bool,
 ) (rc_fields.RC, error) {
-	created, err := rcs.Create(manifest, nil, "some_az", "some_cn", nil, nil)
+	created, err := rcs.Create(manifest, nil, "some_az", "some_cn", nil, nil, "some_strategy")
 	if err != nil {
 		return rc_fields.RC{}, fmt.Errorf("Error creating RC: %s", err)
 	}

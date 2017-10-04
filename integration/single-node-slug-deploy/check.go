@@ -441,13 +441,13 @@ func verifyTransferReplicas(errCh chan<- error, tempdir string, logger logging.L
 	builder.SetID("some_pod")
 	man := builder.GetManifest()
 
-	fromRC, err := rcStore.Create(man, klabels.Everything(), "some_az", "some_cn", nil, nil)
+	fromRC, err := rcStore.Create(man, klabels.Everything(), "some_az", "some_cn", nil, nil, "some_strategy")
 	if err != nil {
 		errCh <- util.Errorf("could not create RC for replica transfer test: %s", err)
 		return
 	}
 
-	toRC, err := rcStore.Create(man, klabels.Everything(), "some_az", "some_cn", nil, nil)
+	toRC, err := rcStore.Create(man, klabels.Everything(), "some_az", "some_cn", nil, nil, "some_strategy")
 	if err != nil {
 		errCh <- util.Errorf("could not create second RC for replica transfer test: %s", err)
 		return
@@ -896,6 +896,8 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 		"some_az",
 		"--cluster-name",
 		"some_cn",
+		"--allocation-strategy",
+		"some_strategy",
 	)
 	out := bytes.Buffer{}
 	cmd.Stdout = &out

@@ -280,6 +280,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDFailsIfCantAcquireLock(t *tes
 		nil,
 		nil,
 		nil,
+		"some_strategy",
 	)
 
 	if err == nil {
@@ -316,6 +317,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenTwoMat
 		"some_cn",
 		nil,
 		nil,
+		"some_strategy",
 	)
 	if err != nil {
 		t.Fatalf("Unable to create first fake rc for test")
@@ -333,6 +335,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenTwoMat
 		"some_cn",
 		nil,
 		nil,
+		"some_strategy",
 	)
 	if err != nil {
 		t.Fatalf("Unable to create second rc for test")
@@ -361,6 +364,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenTwoMat
 		nil,
 		nil,
 		nil,
+		"some_strategy",
 	)
 
 	if err == nil {
@@ -383,6 +387,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenExisti
 		"some_cn",
 		nil,
 		nil,
+		"some_strategy",
 	)
 	if err != nil {
 		t.Fatalf("Unable to create fake rc for test")
@@ -424,6 +429,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenExisti
 		nil,
 		nil,
 		nil,
+		"some_strategy",
 	)
 
 	if err == nil {
@@ -457,6 +463,7 @@ func TestLeaveOldInvalidIfNoOldRC(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		"some_strategy",
 	)
 
 	if err == nil {

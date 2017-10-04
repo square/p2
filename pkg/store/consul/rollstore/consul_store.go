@@ -70,6 +70,7 @@ type ReplicationControllerStore interface {
 		clusterName pc_fields.ClusterName,
 		podLabels klabels.Set,
 		additionalLabels klabels.Set,
+		allocationStrategy rc_fields.Strategy,
 	) (rc_fields.RC, error)
 	Delete(id rc_fields.ID, force bool) error
 	UpdateCreationLockPath(rcID rc_fields.ID) (string, error)
@@ -82,6 +83,7 @@ type ReplicationControllerStore interface {
 		clusterName pc_fields.ClusterName,
 		podLabels klabels.Set,
 		additionalLabels klabels.Set,
+		allocationStrategy rc_fields.Strategy,
 	) (rc_fields.RC, error)
 }
 
@@ -319,6 +321,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 	newRCPodLabels klabels.Set,
 	newRCLabels klabels.Set,
 	rollLabels klabels.Set,
+	newAllocationStrategy rc_fields.Strategy,
 ) (roll_fields.Update, error) {
 	session, err := s.newRUCreationSession()
 	if err != nil {
@@ -341,7 +344,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 		return roll_fields.Update{}, err
 	}
 
-	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, availabilityZone, clusterName, newRCPodLabels, newRCLabels)
+	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, availabilityZone, clusterName, newRCPodLabels, newRCLabels, newAllocationStrategy)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}
@@ -395,6 +398,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 	newRCPodLabels klabels.Set,
 	newRCLabels klabels.Set,
 	rollLabels klabels.Set,
+	newAllocationStrategy rc_fields.Strategy,
 ) (roll_fields.Update, error) {
 
 	session, err := s.newRUCreationSession()
@@ -427,7 +431,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 		// Create the old RC using the same info as the new RC, it'll be
 		// removed when the update completes anyway
-		rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, availabilityZone, clusterName, newRCPodLabels, newRCLabels)
+		rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, availabilityZone, clusterName, newRCPodLabels, newRCLabels, newAllocationStrategy)
 		if err != nil {
 			return roll_fields.Update{}, err
 		}
@@ -449,7 +453,7 @@ func (s ConsulStore) CreateRollingUpdateFromOneMaybeExistingWithLabelSelector(
 
 	// Create the new RC
 	var newRCID rc_fields.ID
-	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, availabilityZone, clusterName, newRCPodLabels, newRCLabels)
+	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, availabilityZone, clusterName, newRCPodLabels, newRCLabels, newAllocationStrategy)
 	if err != nil {
 		return roll_fields.Update{}, err
 	}

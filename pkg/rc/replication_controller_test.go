@@ -39,6 +39,7 @@ type testRCStore interface {
 		clusterName pc_fields.ClusterName,
 		podLabels klabels.Set,
 		additionalLabels klabels.Set,
+		allocationStrategy fields.Strategy,
 	) (fields.RC, error)
 	SetDesiredReplicas(id fields.ID, n int) error
 }
@@ -94,7 +95,7 @@ func setup(t *testing.T) (
 	nodeSelector := klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"})
 	podLabels := map[string]string{"podTest": "successful"}
 
-	rcData, err := rcStore.Create(podManifest, nodeSelector, "some_az", "some_cn", podLabels, nil)
+	rcData, err := rcStore.Create(podManifest, nodeSelector, "some_az", "some_cn", podLabels, nil, "some_strategy")
 	Assert(t).IsNil(err, "expected no error creating request")
 
 	alerter = alertingtest.NewRecorder()

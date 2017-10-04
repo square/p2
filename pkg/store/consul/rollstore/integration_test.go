@@ -112,6 +112,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithID(t *testing.T) {
 		nil,
 		newRCLabels,
 		newRCLabels,
+		"some_strategy",
 	)
 	if err != nil {
 		t.Fatalf("Unable to create rolling update: %s", err)
@@ -166,7 +167,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 	rollstore, rcStore := newRollStoreWithRealConsul(t, fixture, nil)
 
 	// create the old RC
-	oldRC, err := rollstore.rcstore.Create(testManifest(), nil, "some_az", "some_cn", podLabels(), nil)
+	oldRC, err := rollstore.rcstore.Create(testManifest(), nil, "some_az", "some_cn", podLabels(), nil, "some_strategy")
 	if err != nil {
 		t.Fatalf("Failed to create old rc: %s", err)
 	}
@@ -187,6 +188,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 		nil,
 		nil,
 		nil,
+		"some_strategy",
 	)
 	if err != nil {
 		t.Fatalf("Unable to create conflicting update: %s", err)
@@ -217,6 +219,7 @@ func TestCreateRollingUpdateFromOneExistingRCWithIDMutualExclusion(t *testing.T)
 		nil,
 		nil,
 		nil,
+		"some_strategy",
 	)
 	if err == nil {
 		t.Fatal("Should have erred creating conflicting update")
@@ -282,6 +285,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenDoesntExist
 		nil,
 		newRCLabels,
 		newRCLabels,
+		"some_strategy",
 	)
 	if err != nil {
 		t.Fatalf("Shouldn't have failed to create update: %s", err)
@@ -347,6 +351,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *t
 		"some_cn",
 		nil,
 		nil,
+		"some_strategy",
 	)
 	if err != nil {
 		t.Fatalf("Unable to create fake rc for test")
@@ -376,6 +381,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorWhenExists(t *t
 		nil,
 		nil,
 		nil,
+		"some_strategy",
 	)
 
 	if err != nil {
@@ -416,6 +422,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 		"some_cn",
 		nil,
 		nil,
+		"some_strategy",
 	)
 	if err != nil {
 		t.Fatalf("Unable to create fake rc for test")
@@ -446,6 +453,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 		nil,
 		nil,
 		nil,
+		"some_strategy",
 	)
 	if err != nil {
 		t.Fatalf("Should have succeeded in update creation: %s", err)
@@ -482,6 +490,7 @@ func TestCreateRollingUpdateFromOneMaybeExistingWithLabelSelectorFailsWhenConfli
 		nil,
 		nil,
 		nil,
+		"some_strategy",
 	)
 	if err == nil {
 		t.Fatal("Second update creation should have failed due to using the same old RC")
