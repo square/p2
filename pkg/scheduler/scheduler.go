@@ -6,6 +6,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/util"
 )
 
 type NodeLabeler interface {
@@ -33,4 +34,8 @@ func (sel *ApplicatorScheduler) EligibleNodes(_ manifest.Manifest, selector klab
 		result[i] = types.NodeName(node.ID)
 	}
 	return result, nil
+}
+
+func (sel *ApplicatorScheduler) AllocateNodes(manifest.Manifest, klabels.Selector, int) ([]types.NodeName, error) {
+	return nil, util.Errorf("AllocateNodes() not yet implemented")
 }

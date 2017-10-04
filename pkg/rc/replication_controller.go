@@ -51,6 +51,12 @@ type ReplicationController interface {
 type Scheduler interface {
 	// EligibleNodes returns the nodes that this RC may schedule the manifest on
 	EligibleNodes(manifest.Manifest, klabels.Selector) ([]types.NodeName, error)
+
+	// AllocateNodes() can be called by the RC when it needs more nodes to
+	// schedule on than EligibleNodes() returns. It will return the newly
+	// allocated nodes which will also appear in subsequent EligibleNodes()
+	// calls
+	AllocateNodes(manifest manifest.Manifest, nodeSelector klabels.Selector, allocationCount int) ([]types.NodeName, error)
 }
 
 var _ Scheduler = &scheduler.ApplicatorScheduler{}
