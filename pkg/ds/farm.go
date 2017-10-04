@@ -57,7 +57,7 @@ type Farm struct {
 	dsStore     DaemonSetStore
 	dsLocker    DaemonSetLocker
 	statusStore StatusStore
-	scheduler   scheduler.Scheduler
+	scheduler   Scheduler
 	labeler     Labeler
 	watcher     LabelWatcher
 	// session stream for the daemon sets locked by this farm
@@ -439,7 +439,7 @@ func (dsf *Farm) releaseLock(unlocker consul.TxnUnlocker) {
 // if two label selectors are labels.Everything()
 //
 // Returns [ daemon set contended, contention exists, error ]
-func DSContends(dsFields ds_fields.DaemonSet, scheduler scheduler.Scheduler, dsStore DaemonSetStore) (ds_fields.DaemonSet, bool, error) {
+func DSContends(dsFields ds_fields.DaemonSet, scheduler Scheduler, dsStore DaemonSetStore) (ds_fields.DaemonSet, bool, error) {
 	// This daemon set does not contend if it is disabled
 	if dsFields.Disabled {
 		return ds_fields.DaemonSet{}, false, nil

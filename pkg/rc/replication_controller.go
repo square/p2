@@ -45,6 +45,16 @@ type ReplicationController interface {
 	CurrentPods() (types.PodLocations, error)
 }
 
+// A Scheduler decides what nodes are appropriate for a pod to run on.
+// It potentially takes into account considerations such as existing load on the nodes,
+// label selectors, and more.
+type Scheduler interface {
+	// EligibleNodes returns the nodes that this RC may schedule the manifest on
+	EligibleNodes(manifest.Manifest, klabels.Selector) ([]types.NodeName, error)
+}
+
+var _ Scheduler = &scheduler.ApplicatorScheduler{}
+
 // These methods are the same as the methods of the same name in consul.Store.
 // Replication controllers have no need of any methods other than these.
 type consulStore interface {
@@ -83,7 +93,7 @@ type replicationController struct {
 	auditLogStore AuditLogStore
 	txner         transaction.Txner
 	rcWatcher     ReplicationControllerWatcher
-	scheduler     scheduler.Scheduler
+	scheduler     Scheduler
 	podApplicator Labeler
 	alerter       alerting.Alerter
 }
@@ -98,7 +108,7 @@ func New(
 	auditLogStore AuditLogStore,
 	txner transaction.Txner,
 	rcWatcher ReplicationControllerWatcher,
-	scheduler scheduler.Scheduler,
+	scheduler Scheduler,
 	podApplicator Labeler,
 	logger logging.Logger,
 	alerter alerting.Alerter,
