@@ -57,6 +57,11 @@ type Scheduler interface {
 	// allocated nodes which will also appear in subsequent EligibleNodes()
 	// calls
 	AllocateNodes(manifest manifest.Manifest, nodeSelector klabels.Selector, allocationCount int) ([]types.NodeName, error)
+
+	// DeallocateNodes() indicates to the scheduler that the RC has unscheduled
+	// the pod from these nodes, meaning the scheduler can free the
+	// resource reservations
+	DeallocateNodes(nodes []types.NodeName) error
 }
 
 var _ Scheduler = &scheduler.ApplicatorScheduler{}

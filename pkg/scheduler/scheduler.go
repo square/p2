@@ -39,3 +39,7 @@ func (sel *ApplicatorScheduler) EligibleNodes(_ manifest.Manifest, selector klab
 func (sel *ApplicatorScheduler) AllocateNodes(manifest.Manifest, klabels.Selector, int) ([]types.NodeName, error) {
 	return nil, util.Errorf("AllocateNodes() not yet implemented")
 }
+
+func (sel *ApplicatorScheduler) DeallocateNodes([]types.NodeName) error {
+	return util.Errorf("DelallocateNodes() not yet implemented")
+}
