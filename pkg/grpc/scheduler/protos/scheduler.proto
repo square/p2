@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package scheduler_protos;
+
+service P2Scheduler {
+  rpc AllocateNodes (AllocateNodesRequest) returns (AllocateNodesResponse) {}
+  rpc ReleaseNodes (ReleaseNodesRequest) returns (ReleaseNodesResponse) {}
+}
+
+message AllocateNodesRequest {
+  string manifest = 1;
+  string node_selector = 2;
+  int64 nodes_requested = 3;
+}
+
+message AllocateNodesResponse {
+  repeated string allocated_nodes = 1;
+}
+
+message ReleaseNodesRequest {
+  repeated string nodes_released = 1;
+  string node_selector = 2;
+}
+
+message ReleaseNodesResponse {}

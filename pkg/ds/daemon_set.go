@@ -122,6 +122,10 @@ type StatusStore interface {
 	SetTxn(ctx context.Context, dsID fields.ID, status daemonsetstatus.Status) error
 }
 
+type Scheduler interface {
+	EligibleNodes(manifest.Manifest, klabels.Selector) ([]types.NodeName, error)
+}
+
 // daemonSet wraps a daemon set struct with information required to manage it.
 // Note: the inner fields.DaemonSet set may be modified during the lifetime of
 // this struct, necessitating access synchronization with a mute
@@ -133,7 +137,7 @@ type daemonSet struct {
 	logger                logging.Logger
 	store                 store
 	statusStore           StatusStore
-	scheduler             scheduler.Scheduler
+	scheduler             Scheduler
 	dsStore               DaemonSetStore
 	txner                 transaction.Txner
 	applicator            Labeler

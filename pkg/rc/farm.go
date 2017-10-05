@@ -16,7 +16,6 @@ import (
 	"github.com/square/p2/pkg/logging"
 	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/rc/fields"
-	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
@@ -75,7 +74,7 @@ type Farm struct {
 	rcStore       ReplicationControllerStore
 	rcLocker      ReplicationControllerLocker
 	rcWatcher     ReplicationControllerWatcher
-	scheduler     scheduler.Scheduler
+	scheduler     Scheduler
 	labeler       Labeler
 	txner         transaction.Txner
 
@@ -110,7 +109,7 @@ func NewFarm(
 	rcLocker ReplicationControllerLocker,
 	rcWatcher ReplicationControllerWatcher,
 	txner transaction.Txner,
-	scheduler scheduler.Scheduler,
+	scheduler Scheduler,
 	labeler Labeler,
 	sessions <-chan string,
 	logger logging.Logger,
