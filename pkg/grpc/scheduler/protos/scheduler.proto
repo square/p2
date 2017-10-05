@@ -4,7 +4,7 @@ package scheduler_protos;
 
 service P2Scheduler {
   rpc AllocateNodes (AllocateNodesRequest) returns (AllocateNodesResponse) {}
-  rpc ReleaseNodes (ReleaseNodesRequest) returns (ReleaseNodesResponse) {}
+  rpc DeallocateNodes (DeallocateNodesRequest) returns (DeallocateNodesResponse) {}
 }
 
 message AllocateNodesRequest {
@@ -17,9 +17,9 @@ message AllocateNodesResponse {
   repeated string allocated_nodes = 1;
 }
 
-message ReleaseNodesRequest {
+message DeallocateNodesRequest {
   repeated string nodes_released = 1;
   string node_selector = 2;
 }
 
-message ReleaseNodesResponse {}
+message DeallocateNodesResponse {}
