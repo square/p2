@@ -44,6 +44,7 @@ func (s *fakeStore) Create(
 	clusterName pc_fields.ClusterName,
 	podLabels labels.Set,
 	additionalLabels labels.Set,
+	allocationStrategy fields.Strategy,
 ) (fields.RC, error) {
 	// A real replication controller will use a UUID.
 	// We'll just use a monotonically increasing counter for expedience.
@@ -81,6 +82,7 @@ func (s *fakeStore) CreateTxn(
 	clusterName pc_fields.ClusterName,
 	podLabels labels.Set,
 	additionalLabels labels.Set,
+	allocationStrategy fields.Strategy,
 ) (fields.RC, error) {
 	panic("transactions not implemented in fake rc store")
 }
