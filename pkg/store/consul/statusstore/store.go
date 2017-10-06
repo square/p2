@@ -20,6 +20,7 @@ const (
 	PC  = ResourceType("pod_clusters")
 	POD = ResourceType("pods")
 	DS  = ResourceType("daemon_sets")
+	RC  = ResourceType("replication_controllers")
 )
 
 // Unfortunately each ResourceType will carry along with it a different "ID"
