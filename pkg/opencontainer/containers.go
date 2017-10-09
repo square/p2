@@ -312,3 +312,7 @@ func (l *Launchable) Prune(max size.ByteCount) error {
 func (l *Launchable) RestartPolicy() runit.RestartPolicy {
 	return l.RestartPolicy_
 }
+
+func (l *Launchable) GetRestartTimeout() time.Duration {
+	return l.RestartTimeout
+}
