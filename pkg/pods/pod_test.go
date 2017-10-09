@@ -195,6 +195,10 @@ config:
 		Assert(t).IsNil(err, "should not have erred reading the launchable root env file")
 		Assert(t).AreEqual(launchable.InstallDir(), string(launchableRootEnv), "The launchable root path did not match expected")
 
+		launchableRestartTimeout, err := ioutil.ReadFile(filepath.Join(launchable.EnvDir(), "RESTART_TIMEOUT"))
+		Assert(t).IsNil(err, "should not have erred reading the launchable root env file")
+		Assert(t).AreEqual("60", string(launchableRestartTimeout), "The restart timeout did not match expected")
+
 		enableBlamSetting, err := ioutil.ReadFile(filepath.Join(launchable.EnvDir(), "ENABLED_BLAMS"))
 		Assert(t).IsNil(err, "should not have erred reading custom env var")
 		Assert(t).AreEqual("5", string(enableBlamSetting), "The user-supplied custom env var was wrong")
