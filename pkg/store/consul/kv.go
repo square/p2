@@ -28,8 +28,9 @@ import (
 const (
 	TTL = 60 * time.Second
 
-	// Don't change this, it affects where pod status keys are read and written from
+	// Don't change this, it affects where status keys are read and written from
 	PreparerPodStatusNamespace statusstore.Namespace = "preparer"
+	RCStatusNamespace          statusstore.Namespace = "replication_controller"
 )
 
 type ManifestResult struct {
