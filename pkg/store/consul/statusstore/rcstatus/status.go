@@ -8,8 +8,8 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-type RCStatus struct {
-	NodeTransfer NodeTransfer `json:"node_transfer"`
+type Status struct {
+	NodeTransfer *NodeTransfer `json:"node_transfer"`
 }
 
 type NodeTransfer struct {
@@ -17,19 +17,19 @@ type NodeTransfer struct {
 	NewNode types.NodeName `json:"new_node"`
 }
 
-func statusToRCStatus(rawStatus statusstore.Status) (RCStatus, error) {
-	var rcStatus RCStatus
+func rawStatusToStatus(rawStatus statusstore.Status) (Status, error) {
+	var status Status
 
-	err := json.Unmarshal(rawStatus.Bytes(), &rcStatus)
+	err := json.Unmarshal(rawStatus.Bytes(), &status)
 	if err != nil {
-		return RCStatus{}, util.Errorf("Could not unmarshal raw status as rc status: %s", err)
+		return Status{}, util.Errorf("Could not unmarshal raw status as rc status: %s", err)
 	}
 
-	return rcStatus, nil
+	return status, nil
 }
 
-func rcStatusToStatus(rcStatus RCStatus) (statusstore.Status, error) {
-	bytes, err := json.Marshal(rcStatus)
+func statusToRawStatus(status Status) (statusstore.Status, error) {
+	bytes, err := json.Marshal(status)
 	if err != nil {
 		return statusstore.Status{}, util.Errorf("Could not marshal rc status as json bytes: %s", err)
 	}
