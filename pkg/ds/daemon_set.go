@@ -310,7 +310,6 @@ func (ds *daemonSet) WatchDesires(
 		// Make a timer and stop it so the receieve from channel does not occur
 		// until a reset happens
 		timer := time.NewTimer(time.Duration(0))
-		timer.Stop()
 
 		// Try to schedule pods when this begins watching
 		if !ds.IsDisabled() {
@@ -327,6 +326,12 @@ func (ds *daemonSet) WatchDesires(
 				select {
 				case errCh <- err:
 					// Retry the replication in the RetryInterval's duration
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
 					timer.Reset(ds.retryInterval)
 					// This is required in case the user disables the daemon set
 					// so that the timer would be stopped after
@@ -336,7 +341,12 @@ func (ds *daemonSet) WatchDesires(
 				}
 			} else {
 				// If err == nil, stop the timer because there is no need to retry
-				timer.Stop()
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
 			}
 
 			// Precondition: err == nil
@@ -406,6 +416,7 @@ func (ds *daemonSet) WatchDesires(
 				}
 
 			case <-timer.C:
+				ds.logger.Infoln("retrying after error timeout")
 				// Account for any operations that could have failed and retry the replication
 				err = ds.removePods()
 				if err != nil {

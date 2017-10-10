@@ -226,7 +226,7 @@ func TestSchedule(t *testing.T) {
 		false,
 		0,
 		testFarmRetryInterval,
-		nil,
+		nullUnlocker{},
 		statusStore,
 		DefaultStatusWritingInterval,
 	).(*daemonSet)
@@ -257,7 +257,7 @@ func TestSchedule(t *testing.T) {
 	// sure that we don't close updatedCh or deletedCh until their
 	// respective output channels have closed which indicates that they
 	// won't try to send any more values
-	defer func() {
+	defer func(cancel context.CancelFunc) {
 		cancel()
 		desiresErrChClosed := false
 		dsChangesErrChClosed := false
@@ -279,7 +279,7 @@ func TestSchedule(t *testing.T) {
 		}
 		close(updatedCh)
 		close(deletedCh)
-	}()
+	}(cancel)
 
 	//
 	// Verify that the pod has been labeled
@@ -299,19 +299,28 @@ func TestSchedule(t *testing.T) {
 	err = waitForSpecificPod(consulStore, "node2", types.PodID("testPod"))
 	Assert(t).IsNil(err, "Unexpected pod labeled")
 
+	ds.getCurrentReplication().WaitForReplication()
+
 	//
 	// Add 10 good nodes and 10 bad nodes then verify
 	//
+
+	txnCtx, cancel := transaction.New(context.Background())
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("good_node%v", i)
-		err := applicator.SetLabel(labels.NODE, nodeName, "nodeQuality", "good")
+		err := applicator.SetLabelTxn(txnCtx, labels.NODE, nodeName, "nodeQuality", "good")
 		Assert(t).IsNil(err, "expected no error labeling node")
 	}
 
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("bad_node%v", i)
-		err := applicator.SetLabel(labels.NODE, nodeName, "nodeQuality", "bad")
+		err := applicator.SetLabelTxn(txnCtx, labels.NODE, nodeName, "nodeQuality", "bad")
 		Assert(t).IsNil(err, "expected no error labeling node")
+	}
+
+	err = transaction.MustCommit(txnCtx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// The node watch should automatically notice a change
@@ -484,7 +493,7 @@ func TestPublishToReplication(t *testing.T) {
 		false,
 		0,
 		testFarmRetryInterval,
-		nil,
+		nullUnlocker{},
 		statusStore,
 		DefaultStatusWritingInterval,
 	).(*daemonSet)
