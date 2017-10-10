@@ -19,6 +19,10 @@ type recordingClient struct {
 	// eligibleNodes is the canned return value for EligibleNodes() calls
 	eligibleNodes      []types.NodeName
 	eligibleNodesCalls []*scheduler_protos.EligibleNodesRequest
+
+	// allocatedNodes is the canned return value for EligibleNodes() calls
+	allocatedNodes     []types.NodeName
+	allocateNodesCalls []*scheduler_protos.AllocateNodesRequest
 }
 
 func (r *recordingClient) EligibleNodes(ctx context.Context, in *scheduler_protos.EligibleNodesRequest, opts ...grpc.CallOption) (*scheduler_protos.EligibleNodesResponse, error) {
@@ -36,7 +40,17 @@ func (r *recordingClient) EligibleNodes(ctx context.Context, in *scheduler_proto
 }
 
 func (r *recordingClient) AllocateNodes(ctx context.Context, in *scheduler_protos.AllocateNodesRequest, opts ...grpc.CallOption) (*scheduler_protos.AllocateNodesResponse, error) {
-	return nil, util.Errorf("not implemented")
+	r.allocateNodesCalls = append(r.allocateNodesCalls, in)
+	if r.shouldErr {
+		return new(scheduler_protos.AllocateNodesResponse), util.Errorf("i had a programmed error")
+	}
+
+	resp := new(scheduler_protos.AllocateNodesResponse)
+	for _, node := range r.allocatedNodes {
+		resp.AllocatedNodes = append(resp.AllocatedNodes, node.String())
+	}
+
+	return resp, nil
 }
 func (r *recordingClient) DeallocateNodes(ctx context.Context, in *scheduler_protos.DeallocateNodesRequest, opts ...grpc.CallOption) (*scheduler_protos.DeallocateNodesResponse, error) {
 	return nil, util.Errorf("not implemented")
@@ -107,6 +121,74 @@ func TestEligibleNodesServerError(t *testing.T) {
 	}
 }
 
+func TestAllocateNodesHappy(t *testing.T) {
+	programmedNodes := []types.NodeName{
+		"node1",
+		"node5000",
+	}
+	inner := &recordingClient{
+		shouldErr:      false,
+		allocatedNodes: programmedNodes,
+	}
+	client := Client{
+		schedulerClient: inner,
+	}
+
+	selector := klabels.Everything().Add("foo", klabels.EqualsOperator, []string{"bar"})
+	nodes, err := client.AllocateNodes(testManifest(), selector, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(nodes, programmedNodes) {
+		t.Fatalf("expected node list to be %s but was %s", programmedNodes, nodes)
+	}
+
+	if len(inner.allocateNodesCalls) != 1 {
+		t.Fatalf("expected AllocateNodes() to be called once but was called %d times", len(inner.allocateNodesCalls))
+	}
+
+	call := inner.allocateNodesCalls[0]
+	manifest, err := manifest.FromBytes([]byte(call.Manifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manifestSHA, err := manifest.SHA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedSHA, err := testManifest().SHA()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if expectedSHA != manifestSHA {
+		t.Errorf("expected manifest in call to have sha %q but was %q", expectedSHA, manifestSHA)
+	}
+
+	if call.NodeSelector != selector.String() {
+		t.Errorf("expected node selector in call to be %q but was %q", selector, call.NodeSelector)
+	}
+
+	if call.NodesRequested != 2 {
+		t.Errorf("expected nodes requested count in call to be %d but was %d", 2, call.NodesRequested)
+	}
+}
+
+func TestAllocatedNodesServerError(t *testing.T) {
+	inner := &recordingClient{
+		shouldErr: true,
+	}
+	client := Client{
+		schedulerClient: inner,
+	}
+
+	_, err := client.AllocateNodes(testManifest(), klabels.Everything().Add("foo", klabels.EqualsOperator, []string{"bar"}), 3)
+	if err == nil {
+		t.Fatal("expected an error when the server fails")
+	}
+}
 func testManifest() manifest.Manifest {
 	builder := manifest.NewBuilder()
 	builder.SetID("some_pod_id")

@@ -45,8 +45,28 @@ func (c *Client) EligibleNodes(man manifest.Manifest, sel klabels.Selector) ([]t
 	return ret, nil
 }
 
-func (c *Client) AllocateNodes(manifest manifest.Manifest, nodeSelector klabels.Selector, nodesRequested int) ([]types.NodeName, error) {
-	return nil, util.Errorf("AllocateNodes() not yet implemented")
+func (c *Client) AllocateNodes(man manifest.Manifest, nodeSelector klabels.Selector, nodesRequested int) ([]types.NodeName, error) {
+	manifestStr, err := man.Marshal()
+	if err != nil {
+		return nil, util.Errorf("could not marshal manifest for AllocateNodes gRPC request: %s", err)
+	}
+	req := &scheduler_protos.AllocateNodesRequest{
+		Manifest:       string(manifestStr),
+		NodeSelector:   nodeSelector.String(),
+		NodesRequested: int64(nodesRequested),
+	}
+
+	resp, err := c.schedulerClient.AllocateNodes(context.TODO(), req)
+	if err != nil {
+		return nil, util.Errorf("AllocateNodes gRPC call failed: %s", err)
+	}
+
+	ret := make([]types.NodeName, len(resp.AllocatedNodes))
+	for i, node := range resp.AllocatedNodes {
+		ret[i] = types.NodeName(node)
+	}
+
+	return ret, nil
 }
 
 func (c *Client) DeallocateNodes(nodes []types.NodeName) error {
