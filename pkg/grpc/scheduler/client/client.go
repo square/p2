@@ -70,5 +70,20 @@ func (c *Client) AllocateNodes(man manifest.Manifest, nodeSelector klabels.Selec
 }
 
 func (c *Client) DeallocateNodes(selector klabels.Selector, nodes []types.NodeName) error {
-	return util.Errorf("DeallocateNodes() not yet implemented")
+	nodeStrings := make([]string, len(nodes))
+	for i, nodeName := range nodes {
+		nodeStrings[i] = nodeName.String()
+	}
+
+	req := &scheduler_protos.DeallocateNodesRequest{
+		NodeSelector:  selector.String(),
+		NodesReleased: nodeStrings,
+	}
+
+	_, err := c.schedulerClient.DeallocateNodes(context.TODO(), req)
+	if err != nil {
+		return util.Errorf("DeallocateNodes gRPC call failed: %s", err)
+	}
+
+	return nil
 }

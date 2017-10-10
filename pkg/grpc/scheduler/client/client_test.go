@@ -20,9 +20,13 @@ type recordingClient struct {
 	eligibleNodes      []types.NodeName
 	eligibleNodesCalls []*scheduler_protos.EligibleNodesRequest
 
-	// allocatedNodes is the canned return value for EligibleNodes() calls
+	// allocatedNodes is the canned return value for AllocateNodes() calls
 	allocatedNodes     []types.NodeName
 	allocateNodesCalls []*scheduler_protos.AllocateNodesRequest
+
+	// deallocatedNodes is the canned return value for DeallocateNodes() calls
+	deallocatedNodes     []types.NodeName
+	deallocateNodesCalls []*scheduler_protos.DeallocateNodesRequest
 }
 
 func (r *recordingClient) EligibleNodes(ctx context.Context, in *scheduler_protos.EligibleNodesRequest, opts ...grpc.CallOption) (*scheduler_protos.EligibleNodesResponse, error) {
@@ -52,8 +56,14 @@ func (r *recordingClient) AllocateNodes(ctx context.Context, in *scheduler_proto
 
 	return resp, nil
 }
+
 func (r *recordingClient) DeallocateNodes(ctx context.Context, in *scheduler_protos.DeallocateNodesRequest, opts ...grpc.CallOption) (*scheduler_protos.DeallocateNodesResponse, error) {
-	return nil, util.Errorf("not implemented")
+	r.deallocateNodesCalls = append(r.deallocateNodesCalls, in)
+	if r.shouldErr {
+		return new(scheduler_protos.DeallocateNodesResponse), util.Errorf("i had a programmed error")
+	}
+
+	return new(scheduler_protos.DeallocateNodesResponse), nil
 }
 
 func TestEligibleNodesHappy(t *testing.T) {
@@ -177,6 +187,58 @@ func TestAllocateNodesHappy(t *testing.T) {
 }
 
 func TestAllocatedNodesServerError(t *testing.T) {
+	inner := &recordingClient{
+		shouldErr: true,
+	}
+	client := Client{
+		schedulerClient: inner,
+	}
+
+	_, err := client.AllocateNodes(testManifest(), klabels.Everything().Add("foo", klabels.EqualsOperator, []string{"bar"}), 3)
+	if err == nil {
+		t.Fatal("expected an error when the server fails")
+	}
+}
+
+func TestDeallocateNodesHappy(t *testing.T) {
+	nodesReleased := []types.NodeName{
+		"node1",
+		"node5000",
+	}
+	inner := &recordingClient{
+		shouldErr: false,
+	}
+	client := Client{
+		schedulerClient: inner,
+	}
+
+	selector := klabels.Everything().Add("foo", klabels.EqualsOperator, []string{"bar"})
+	err := client.DeallocateNodes(selector, nodesReleased)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(inner.deallocateNodesCalls) != 1 {
+		t.Fatalf("expected AllocateNodes() to be called once but was called %d times", len(inner.deallocateNodesCalls))
+	}
+
+	call := inner.deallocateNodesCalls[0]
+
+	if call.NodeSelector != selector.String() {
+		t.Errorf("expected node selector in call to be %q but was %q", selector, call.NodeSelector)
+	}
+
+	nodesReleasedString := make([]string, len(nodesReleased))
+	for i, nodeName := range nodesReleased {
+		nodesReleasedString[i] = nodeName.String()
+	}
+
+	if !reflect.DeepEqual(call.NodesReleased, nodesReleasedString) {
+		t.Errorf("expected nodes released in call to be %s but was %s", nodesReleased, call.NodesReleased)
+	}
+}
+
+func TestDeallocateNodesServerError(t *testing.T) {
 	inner := &recordingClient{
 		shouldErr: true,
 	}
