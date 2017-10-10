@@ -5,6 +5,7 @@ package scheduler_protos;
 service P2Scheduler {
   rpc AllocateNodes (AllocateNodesRequest) returns (AllocateNodesResponse) {}
   rpc DeallocateNodes (DeallocateNodesRequest) returns (DeallocateNodesResponse) {}
+  rpc EligibleNodes (EligibleNodesRequest) returns (EligibleNodesResponse) {}
 }
 
 message AllocateNodesRequest {
@@ -23,3 +24,12 @@ message DeallocateNodesRequest {
 }
 
 message DeallocateNodesResponse {}
+
+message EligibleNodesRequest {
+  string manifest = 1;
+  string node_selector = 2;
+}
+
+message EligibleNodesResponse {
+  repeated string eligible_nodes = 1;
+}
