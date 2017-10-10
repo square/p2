@@ -1,6 +1,8 @@
 package rcstatus
 
 import (
+	"context"
+
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/util"
@@ -25,30 +27,30 @@ func NewConsul(statusStore statusstore.Store, namespace statusstore.Namespace) C
 	}
 }
 
-func (c ConsulStore) Get(rcID fields.ID) (RCStatus, *api.QueryMeta, error) {
+func (c ConsulStore) Get(rcID fields.ID) (Status, *api.QueryMeta, error) {
 	if rcID == "" {
-		return RCStatus{}, nil, util.Errorf("Provided replication controller ID was empty")
+		return Status{}, nil, util.Errorf("Provided replication controller ID was empty")
 	}
 
-	status, queryMeta, err := c.statusStore.GetStatus(statusstore.RC, statusstore.ResourceID(rcID), c.namespace)
+	rawStatus, queryMeta, err := c.statusStore.GetStatus(statusstore.RC, statusstore.ResourceID(rcID), c.namespace)
 	if err != nil {
-		return RCStatus{}, queryMeta, err
+		return Status{}, queryMeta, err
 	}
 
-	rcStatus, err := statusToRCStatus(status)
+	status, err := rawStatusToStatus(rawStatus)
 	if err != nil {
-		return RCStatus{}, queryMeta, err
+		return Status{}, queryMeta, err
 	}
 
-	return rcStatus, queryMeta, nil
+	return status, queryMeta, nil
 }
 
-func (c ConsulStore) Set(rcID fields.ID, status RCStatus) error {
+func (c ConsulStore) Set(rcID fields.ID, status Status) error {
 	if rcID == "" {
 		return util.Errorf("Provided replication controller ID was empty")
 	}
 
-	rawStatus, err := rcStatusToStatus(status)
+	rawStatus, err := statusToRawStatus(status)
 	if err != nil {
 		return err
 	}
@@ -56,10 +58,15 @@ func (c ConsulStore) Set(rcID fields.ID, status RCStatus) error {
 	return c.statusStore.SetStatus(statusstore.RC, statusstore.ResourceID(rcID), c.namespace, rawStatus)
 }
 
-func (c ConsulStore) Delete(rcID fields.ID) error {
+func (c ConsulStore) CASTxn(ctx context.Context, rcID fields.ID, modifyIndex uint64, status Status) error {
 	if rcID == "" {
 		return util.Errorf("Provided replication controller ID was empty")
 	}
 
-	return c.statusStore.DeleteStatus(statusstore.RC, statusstore.ResourceID(rcID.String()), c.namespace)
+	rawStatus, err := statusToRawStatus(status)
+	if err != nil {
+		return err
+	}
+
+	return c.statusStore.CASStatus(ctx, statusstore.RC, statusstore.ResourceID(rcID), c.namespace, rawStatus, modifyIndex)
 }
