@@ -62,7 +62,7 @@ type Scheduler interface {
 	// DeallocateNodes() indicates to the scheduler that the RC has unscheduled
 	// the pod from these nodes, meaning the scheduler can free the
 	// resource reservations
-	DeallocateNodes(nodes []types.NodeName) error
+	DeallocateNodes(nodeSelector klabels.Selector, nodes []types.NodeName) error
 }
 
 var _ Scheduler = &scheduler.ApplicatorScheduler{}

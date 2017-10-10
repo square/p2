@@ -40,6 +40,6 @@ func (sel *ApplicatorScheduler) AllocateNodes(manifest.Manifest, klabels.Selecto
 	return nil, util.Errorf("AllocateNodes() not yet implemented")
 }
 
-func (sel *ApplicatorScheduler) DeallocateNodes([]types.NodeName) error {
+func (sel *ApplicatorScheduler) DeallocateNodes(klabels.Selector, []types.NodeName) error {
 	return util.Errorf("DelallocateNodes() not yet implemented")
 }

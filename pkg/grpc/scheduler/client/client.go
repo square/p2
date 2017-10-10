@@ -69,6 +69,6 @@ func (c *Client) AllocateNodes(man manifest.Manifest, nodeSelector klabels.Selec
 	return ret, nil
 }
 
-func (c *Client) DeallocateNodes(nodes []types.NodeName) error {
+func (c *Client) DeallocateNodes(selector klabels.Selector, nodes []types.NodeName) error {
 	return util.Errorf("DeallocateNodes() not yet implemented")
 }
