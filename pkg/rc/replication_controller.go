@@ -19,6 +19,8 @@ import (
 	"github.com/square/p2/pkg/scheduler"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/rcstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -103,6 +105,7 @@ type replicationController struct {
 	logger logging.Logger
 
 	consulStore   consulStore
+	rcStatusStore rcstatus.ConsulStore
 	auditLogStore AuditLogStore
 	txner         transaction.Txner
 	rcWatcher     ReplicationControllerWatcher
@@ -118,6 +121,7 @@ type ReplicationControllerWatcher interface {
 func New(
 	fields fields.RC,
 	consulStore consulStore,
+	rcStatusStore rcstatus.ConsulStore,
 	auditLogStore AuditLogStore,
 	txner transaction.Txner,
 	rcWatcher ReplicationControllerWatcher,
@@ -135,6 +139,7 @@ func New(
 
 		logger:        logger,
 		consulStore:   consulStore,
+		rcStatusStore: rcStatusStore,
 		auditLogStore: auditLogStore,
 		txner:         txner,
 		rcWatcher:     rcWatcher,
@@ -498,11 +503,7 @@ func (rc *replicationController) checkForIneligible(current types.PodLocations, 
 	}
 
 	if len(ineligibleCurrent) > 0 {
-		errMsg := fmt.Sprintf("RC has scheduled %d ineligible nodes: %s", len(ineligibleCurrent), ineligibleCurrent)
-		err := rc.alerter.Alert(rc.alertInfo(errMsg))
-		if err != nil {
-			rc.logger.WithError(err).Errorln("Unable to send alert")
-		}
+		rc.transferNodes(ineligibleCurrent)
 	}
 }
 
@@ -613,4 +614,83 @@ func (rc *replicationController) unschedule(txn *auditingTransaction, node types
 
 	txn.RemoveNode(node)
 	return nil
+}
+
+func (rc *replicationController) transferNodes(ineligibleCurrent []types.NodeName) error {
+	var err error
+	if rc.AllocationStrategy == fields.CattleStrategy {
+		err = rc.transferCattleNodes(ineligibleCurrent)
+	} else {
+		err = rc.transferPetNodes(ineligibleCurrent)
+	}
+	if err != nil {
+		return util.Errorf("Unable to transfer nodes: %s", err)
+	}
+
+	return nil
+}
+
+func (rc *replicationController) transferCattleNodes(ineligibleCurrent []types.NodeName) error {
+	if len(ineligibleCurrent) < 1 {
+		return util.Errorf("Need at least one ineligible node to transfer from")
+	}
+
+	status, queryMeta, err := rc.rcStatusStore.Get(rc.ID())
+	if err != nil && !statusstore.IsNoStatus(err) {
+		return util.Errorf("Unable to get rc status: %s", err)
+	}
+
+	if status.NodeTransfer != nil {
+		// Node transfer already in progress
+		return nil
+	}
+
+	nodesRequested := 1 // We only support one node transfer at a time right now
+	rc.mu.Lock()
+	newNodes, err := rc.scheduler.AllocateNodes(rc.Manifest, rc.NodeSelector, nodesRequested)
+	rc.mu.Unlock()
+	if err != nil || len(newNodes) < 1 {
+		errMsg := fmt.Sprintf("Unable to allocate nodes over grpc: %s", err)
+		err := rc.alerter.Alert(rc.alertInfo(errMsg))
+		if err != nil {
+			rc.logger.WithError(err).Errorln("Unable to send alert")
+		}
+
+		return util.Errorf(errMsg)
+	}
+
+	var modifyIndex uint64
+	if err != nil && statusstore.IsNoStatus(err) {
+		modifyIndex = 0
+	} else {
+		modifyIndex = queryMeta.LastIndex
+	}
+
+	status.NodeTransfer = &rcstatus.NodeTransfer{
+		// Again, we only support one node transfer at a time so just take the first old and new
+		OldNode: ineligibleCurrent[0],
+		NewNode: newNodes[0],
+	}
+	writeCtx, writeCancel := transaction.New(context.Background())
+	defer writeCancel()
+	err = rc.rcStatusStore.CASTxn(writeCtx, rc.ID(), modifyIndex, status)
+	if err != nil {
+		return util.Errorf("Could not write new node to store: %s", err)
+	}
+
+	err = transaction.MustCommit(writeCtx, rc.txner)
+	if err != nil {
+		return util.Errorf("Could not commit CASTxn: %s", err)
+	}
+
+	return nil
+}
+
+func (rc *replicationController) transferPetNodes(ineligibleCurrent []types.NodeName) error {
+	errMsg := fmt.Sprintf("RC has scheduled %d ineligible nodes: %s", len(ineligibleCurrent), ineligibleCurrent)
+	err := rc.alerter.Alert(rc.alertInfo(errMsg))
+	if err != nil {
+		rc.logger.WithError(err).Errorln("Unable to send alert")
+	}
+	return err
 }

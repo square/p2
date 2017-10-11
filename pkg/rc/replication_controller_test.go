@@ -23,6 +23,8 @@ import (
 	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -88,6 +90,9 @@ func setup(t *testing.T) (
 	rcStore = rcstore.NewConsul(fixture.Client, applicator, 0)
 	consulStore = consul.NewConsulStore(fixture.Client)
 
+	statusStore := statusstore.NewConsul(fixture.Client)
+	rcStatusStore := rcstatus.NewConsul(statusStore, consul.RCStatusNamespace)
+
 	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID("testPod")
 	podManifest := manifestBuilder.GetManifest()
@@ -104,6 +109,7 @@ func setup(t *testing.T) (
 	rc = New(
 		rcData,
 		consulStore,
+		rcStatusStore,
 		auditLogStore,
 		fixture.Client.KV(),
 		rcStore,

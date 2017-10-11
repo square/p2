@@ -26,6 +26,8 @@ import (
 	"github.com/square/p2/pkg/store/consul/flags"
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/store/consul/rollstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
 	"github.com/square/p2/pkg/util/stream"
 	"github.com/square/p2/pkg/version"
 )
@@ -71,8 +73,10 @@ func main() {
 	// Initialize the myriad of different storage components
 	httpClient := cleanhttp.DefaultClient()
 	client := consul.NewConsulClient(opts)
+	statusStoreClient := statusstore.NewConsul(client)
 	consulStore := consul.NewConsulStore(client)
 	rcStore := rcstore.NewConsul(client, labeler, RetryCount)
+	rcStatusStore := rcstatus.NewConsul(statusStoreClient, consul.RCStatusNamespace)
 
 	rollStore := rollstore.NewConsul(client, labeler, nil)
 	healthChecker := checker.NewConsulHealthChecker(client)
@@ -104,6 +108,7 @@ func main() {
 	// Run the farms!
 	go rc.NewFarm(
 		consulStore,
+		rcStatusStore,
 		auditLogStore,
 		rcStore,
 		rcStore,
