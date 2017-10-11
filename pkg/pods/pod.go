@@ -562,6 +562,10 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 		return util.Errorf("Error writing platform config file for pod %s: %s", manifest.ID(), err)
 	}
 
+	err = os.RemoveAll(pod.EnvDir())
+	if err != nil {
+		return util.Errorf("Unable to remove existing environment dir for pod %s: %s", manifest.ID(), err)
+	}
 	err = util.MkdirChownAll(pod.EnvDir(), uid, gid, 0755)
 	if err != nil {
 		return util.Errorf("Could not create the environment dir for pod %s: %s", manifest.ID(), err)
