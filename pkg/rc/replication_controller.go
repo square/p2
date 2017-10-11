@@ -10,6 +10,7 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
+	grpc_scheduler "github.com/square/p2/pkg/grpc/scheduler/client"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -61,10 +62,11 @@ type Scheduler interface {
 	// DeallocateNodes() indicates to the scheduler that the RC has unscheduled
 	// the pod from these nodes, meaning the scheduler can free the
 	// resource reservations
-	DeallocateNodes(nodes []types.NodeName) error
+	DeallocateNodes(nodeSelector klabels.Selector, nodes []types.NodeName) error
 }
 
 var _ Scheduler = &scheduler.ApplicatorScheduler{}
+var _ Scheduler = &grpc_scheduler.Client{}
 
 // These methods are the same as the methods of the same name in consul.Store.
 // Replication controllers have no need of any methods other than these.
