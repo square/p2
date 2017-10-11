@@ -32,7 +32,7 @@ func (c *Client) EligibleNodes(man manifest.Manifest, sel klabels.Selector) ([]t
 		NodeSelector: sel.String(),
 	}
 
-	resp, err := c.schedulerClient.EligibleNodes(context.TODO(), req)
+	resp, err := c.schedulerClient.EligibleNodes(context.Background(), req)
 	if err != nil {
 		return nil, util.Errorf("EligibleNodes gRPC call failed: %s", err)
 	}
@@ -56,7 +56,7 @@ func (c *Client) AllocateNodes(man manifest.Manifest, nodeSelector klabels.Selec
 		NodesRequested: int64(nodesRequested),
 	}
 
-	resp, err := c.schedulerClient.AllocateNodes(context.TODO(), req)
+	resp, err := c.schedulerClient.AllocateNodes(context.Background(), req)
 	if err != nil {
 		return nil, util.Errorf("AllocateNodes gRPC call failed: %s", err)
 	}
@@ -80,7 +80,7 @@ func (c *Client) DeallocateNodes(selector klabels.Selector, nodes []types.NodeNa
 		NodesReleased: nodeStrings,
 	}
 
-	_, err := c.schedulerClient.DeallocateNodes(context.TODO(), req)
+	_, err := c.schedulerClient.DeallocateNodes(context.Background(), req)
 	if err != nil {
 		return util.Errorf("DeallocateNodes gRPC call failed: %s", err)
 	}
