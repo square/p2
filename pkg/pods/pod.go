@@ -42,13 +42,14 @@ var (
 )
 
 const (
-	ConfigPathEnvVar         = "CONFIG_PATH"
-	LaunchableIDEnvVar       = "LAUNCHABLE_ID"
-	LaunchableRootEnvVar     = "LAUNCHABLE_ROOT"
-	PodIDEnvVar              = "POD_ID"
-	PodHomeEnvVar            = "POD_HOME"
-	PodUniqueKeyEnvVar       = "POD_UNIQUE_KEY"
-	PlatformConfigPathEnvVar = "PLATFORM_CONFIG_PATH"
+	ConfigPathEnvVar               = "CONFIG_PATH"
+	LaunchableIDEnvVar             = "LAUNCHABLE_ID"
+	LaunchableRootEnvVar           = "LAUNCHABLE_ROOT"
+	PodIDEnvVar                    = "POD_ID"
+	PodHomeEnvVar                  = "POD_HOME"
+	PodUniqueKeyEnvVar             = "POD_UNIQUE_KEY"
+	PlatformConfigPathEnvVar       = "PLATFORM_CONFIG_PATH"
+	LaunchableRestartTimeoutEnvVar = "RESTART_TIMEOUT"
 )
 
 type Pod struct {
@@ -602,7 +603,11 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 		if err != nil {
 			return err
 		}
-		err = writeEnvFile(launchable.EnvDir(), "LAUNCHABLE_ROOT", launchable.InstallDir(), uid, gid)
+		err = writeEnvFile(launchable.EnvDir(), LaunchableRootEnvVar, launchable.InstallDir(), uid, gid)
+		if err != nil {
+			return err
+		}
+		err = writeEnvFile(launchable.EnvDir(), LaunchableRestartTimeoutEnvVar, fmt.Sprintf("%d", int64(launchable.GetRestartTimeout().Seconds())), uid, gid)
 		if err != nil {
 			return err
 		}

@@ -499,3 +499,7 @@ func (hl *Launchable) EnvVars() map[string]string {
 func (hl *Launchable) RestartPolicy() runit.RestartPolicy {
 	return hl.RestartPolicy_
 }
+
+func (hl *Launchable) GetRestartTimeout() time.Duration {
+	return hl.RestartTimeout
+}

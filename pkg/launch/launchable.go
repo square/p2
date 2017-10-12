@@ -6,6 +6,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/runit"
@@ -156,6 +157,9 @@ type Launchable interface {
 	// be necessary. The provided argument is guidance for how many bytes on disk a particular
 	// launchable should consume
 	Prune(size.ByteCount) error
+
+	// RestartTimeout returns the RestartTimeout
+	GetRestartTimeout() time.Duration
 
 	// Env vars that will be exported to the launchable for its launch script and other hooks.
 	EnvVars() map[string]string
