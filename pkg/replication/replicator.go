@@ -171,26 +171,26 @@ func (r replicator) initializeReplicationWithCheck(
 	}
 
 	errCh := make(chan error)
-	replication := &replication{
-		active:                 r.active,
-		nodes:                  r.nodes,
-		store:                  r.store,
-		txner:                  r.txner,
-		labeler:                r.labeler,
-		podLabels:              podLabels,
-		manifest:               r.manifest,
-		health:                 r.health,
-		threshold:              r.threshold,
-		logger:                 r.logger,
-		rateLimiter:            ticker,
-		errCh:                  errCh,
-		healthWatchDelay:       r.healthWatchDelay,
-		replicationCancelledCh: make(chan struct{}),
-		replicationDoneCh:      make(chan struct{}),
-		quitCh:                 make(chan struct{}),
-		concurrentRealityRequests: make(chan struct{}, concurrentRealityRequests),
-		timeout:                   r.timeout,
-	}
+	replication := newReplication(
+		r.active,
+		r.nodes,
+		r.store,
+		r.txner,
+		r.labeler,
+		podLabels,
+		r.manifest,
+		r.health,
+		r.threshold,
+		r.logger,
+		ticker,
+		errCh,
+		r.healthWatchDelay,
+		make(chan struct{}),
+		make(chan struct{}),
+		make(chan struct{}),
+		make(chan struct{}, concurrentRealityRequests),
+		r.timeout,
+	)
 
 	var session consul.Session
 	var renewalErrCh chan error

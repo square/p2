@@ -144,6 +144,48 @@ type replication struct {
 	enactedChMu sync.Mutex
 }
 
+func newReplication(
+	active int,
+	nodes []types.NodeName,
+	store Store,
+	txner transaction.Txner,
+	labeler Labeler,
+	podLabels map[string]string,
+	manifest manifest.Manifest,
+	health checker.ConsulHealthChecker,
+	threshold health.HealthState,
+	logger logging.Logger,
+	rateLimiter *time.Ticker,
+	errCh chan<- error,
+	healthWatchDelay time.Duration,
+	replicationCancelledCh chan struct{},
+	replicationDoneCh chan struct{},
+	quitCh chan struct{},
+	concurrentRealityRequests chan struct{},
+	timeout time.Duration,
+) *replication {
+	return &replication{
+		active:                 active,
+		nodes:                  nodes,
+		store:                  store,
+		txner:                  txner,
+		labeler:                labeler,
+		podLabels:              podLabels,
+		manifest:               manifest,
+		health:                 health,
+		threshold:              threshold,
+		logger:                 logger,
+		rateLimiter:            rateLimiter,
+		errCh:                  errCh,
+		healthWatchDelay:       healthWatchDelay,
+		replicationCancelledCh: replicationCancelledCh,
+		replicationDoneCh:      replicationDoneCh,
+		quitCh:                 quitCh,
+		concurrentRealityRequests: concurrentRealityRequests,
+		timeout:                   timeout,
+	}
+}
+
 // Attempts to claim a lock on replicating this pod. Other pkg/replication
 // operations for this pod ID will not be able to take place.
 // if overrideLock is true, will destroy any session holding any of the keys we
