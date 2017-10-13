@@ -739,8 +739,9 @@ func TestAllocateOnIneligibleIfCattleStrategy(t *testing.T) {
 		t.Fatalf("the RC should not have alerted since it allocated cattle nodes, but there were %d alerts", len(alerter.Alerts))
 	}
 
-	if _, _, err := rc.rcStatusStore.Get(rc.ID()); !statusstore.IsNoStatus(err) {
-		t.Fatalf("the rc should not have written a status but it did")
+	status, _, _ := rc.rcStatusStore.Get(rc.ID())
+	if status.NodeTransfer.NewNode != types.NodeName("new.789") {
+		t.Fatalf("the rc failed to update the node transfer status new node to new.789 from %s", status.NodeTransfer.NewNode)
 	}
 }
 
@@ -770,6 +771,11 @@ func TestNoOpIfNodeTransferInProgress(t *testing.T) {
 	if len(alerter.Alerts) != 0 {
 		t.Fatalf("the RC should not have alerted since a transfer was in progress, but there were %d alerts", len(alerter.Alerts))
 	}
+
+	status, _, _ := rc.rcStatusStore.Get(rc.ID())
+	if *(status.NodeTransfer) != *(testStatus.NodeTransfer) {
+		t.Fatalf("the rc should not have updated the status from %v to %v", testStatus, status)
+	}
 }
 
 func TestAlertIfCannotAllocateNodes(t *testing.T) {
@@ -785,8 +791,8 @@ func TestAlertIfCannotAllocateNodes(t *testing.T) {
 	rc.scheduler = testScheduler{applicator, true}
 
 	err := testIneligibleNodesCommon(applicator, rc, alerter)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatalf("Expected intentional error but there was none")
 	}
 
 	if len(alerter.Alerts) != 1 {

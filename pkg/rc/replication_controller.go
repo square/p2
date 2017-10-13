@@ -241,7 +241,10 @@ func (rc *replicationController) meetDesires() error {
 		}
 	}
 
-	rc.checkForIneligible(current, eligible)
+	err = rc.checkForIneligible(current, eligible)
+	if err != nil {
+		return util.Errorf("Error handling ineligible nodes: %s", err)
+	}
 
 	return rc.ensureConsistency(current)
 }
@@ -485,7 +488,7 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 	return nil
 }
 
-func (rc *replicationController) checkForIneligible(current types.PodLocations, eligible []types.NodeName) {
+func (rc *replicationController) checkForIneligible(current types.PodLocations, eligible []types.NodeName) error {
 	// Check that the RC doesn't have any current nodes that are ineligible.
 	var ineligibleCurrent []types.NodeName
 	for _, currentPod := range current {
@@ -503,8 +506,13 @@ func (rc *replicationController) checkForIneligible(current types.PodLocations, 
 	}
 
 	if len(ineligibleCurrent) > 0 {
-		rc.transferNodes(ineligibleCurrent)
+		err := rc.transferNodes(ineligibleCurrent)
+		if err != nil {
+			return util.Errorf("Error transferring nodes: %s", err)
+		}
 	}
+
+	return nil
 }
 
 func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {
@@ -635,9 +643,9 @@ func (rc *replicationController) transferCattleNodes(ineligibleCurrent []types.N
 		return util.Errorf("Need at least one ineligible node to transfer from")
 	}
 
-	status, queryMeta, err := rc.rcStatusStore.Get(rc.ID())
-	if err != nil && !statusstore.IsNoStatus(err) {
-		return util.Errorf("Unable to get rc status: %s", err)
+	status, queryMeta, statusErr := rc.rcStatusStore.Get(rc.ID())
+	if statusErr != nil && !statusstore.IsNoStatus(statusErr) {
+		return util.Errorf("Unable to get rc status: %s", statusErr)
 	}
 
 	if status.NodeTransfer != nil {
@@ -660,7 +668,7 @@ func (rc *replicationController) transferCattleNodes(ineligibleCurrent []types.N
 	}
 
 	var modifyIndex uint64
-	if err != nil && statusstore.IsNoStatus(err) {
+	if statusErr != nil && statusstore.IsNoStatus(statusErr) {
 		modifyIndex = 0
 	} else {
 		modifyIndex = queryMeta.LastIndex
