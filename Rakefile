@@ -22,7 +22,7 @@ end
 
 desc 'Build all projects'
 task :build do
-  e "go build -ldflags -s -v ./..."
+  e "go build -i -ldflags -s -v ./..."
 end
 
 desc 'Test all projects (short only)'
