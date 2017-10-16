@@ -44,6 +44,7 @@ type Replicator interface {
 	// * replication controllers are ignored
 	// * and preparers are not checked.
 	InitializeDaemonSetReplication(
+		nodeQueue chan types.NodeName,
 		concurrentRealityRequests int,
 		rateLimitInterval time.Duration,
 		podLabels map[string]string,
@@ -124,10 +125,12 @@ func (r replicator) InitializeReplication(
 		false,
 		rateLimitInterval,
 		podLabels,
+		nil,
 	)
 }
 
 func (r replicator) InitializeDaemonSetReplication(
+	nodeQueue chan types.NodeName,
 	concurrentRealityRequests int,
 	rateLimitInterval time.Duration,
 	podLabels map[string]string,
@@ -140,6 +143,7 @@ func (r replicator) InitializeDaemonSetReplication(
 		true,  // skip locking
 		rateLimitInterval,
 		podLabels,
+		nodeQueue,
 	)
 }
 
@@ -151,6 +155,7 @@ func (r replicator) initializeReplicationWithCheck(
 	skipLocking bool,
 	rateLimitInterval time.Duration,
 	podLabels map[string]string,
+	nodeQueue chan types.NodeName,
 ) (Replication, chan error, error) {
 	var err error
 
@@ -190,6 +195,7 @@ func (r replicator) initializeReplicationWithCheck(
 		make(chan struct{}),
 		make(chan struct{}, concurrentRealityRequests),
 		r.timeout,
+		nodeQueue,
 	)
 
 	var session consul.Session

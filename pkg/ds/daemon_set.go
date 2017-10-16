@@ -76,9 +76,7 @@ type DaemonSet interface {
 	// CurrentPods() returns all nodes that are scheduled by this daemon set
 	CurrentPods() (types.PodLocations, error)
 
-	// Schedules pods by using replication, this will automatically
-	// cancel any current replications and re-enact
-	PublishToReplication() error
+	Replicate(context.Context, <-chan []types.NodeName, <-chan struct{}, <-chan struct{}, <-chan manifest.Manifest)
 }
 
 type Labeler interface {
@@ -150,10 +148,10 @@ type daemonSet struct {
 	// the farm that spawned this daemon set still holds the lock
 	unlocker consul.TxnUnlocker
 
-	// This is the current replication enact go routine that is running.
-	// Access to it is protected by currentReplicationMu
-	currentReplication   replication.Replication
-	currentReplicationMu sync.Mutex
+	// This is the replication that the enact go routine that is running.
+	// Access to it is protected by dsReplicationMu
+	dsReplication   *dsReplication
+	dsReplicationMu sync.Mutex
 
 	// Indicates how long to wait between updating each node during a replication
 	rateLimitInterval time.Duration
@@ -167,6 +165,11 @@ type daemonSet struct {
 	labelsAggregationRate time.Duration
 
 	retryInterval time.Duration
+}
+
+type dsReplication struct {
+	replication replication.Replication
+	nodeQueue   chan<- types.NodeName
 }
 
 type dsContention struct {
@@ -209,7 +212,7 @@ func New(
 		scheduler:             scheduler.NewApplicatorScheduler(applicator),
 		healthChecker:         healthChecker,
 		healthWatchDelay:      healthWatchDelay,
-		currentReplication:    nil,
+		dsReplication:         nil,
 		rateLimitInterval:     rateLimitInterval,
 		cachedPodMatch:        cachedPodMatch,
 		labelsAggregationRate: labelsAggregationRate,
@@ -300,24 +303,50 @@ func (ds *daemonSet) WatchDesires(
 		ds.publishStatus(ctx)
 	}()
 
+	// buffer this channel so we don't block the WatchDesires() loop on
+	// replications being slow. In steady state we expect the rate of nodes
+	// being added to a daemon set to be much smaller than the speed at
+	// which they're deployed, but there might be temporary bursts when the
+	// daemon set's manifest is changed which causes all nodes to be
+	// deployed (i.e. it might take hours to process just a single slice
+	// off this channel). Buffering with a size of 1000 should be plenty
+	// big to ride out storms of full deploys without blocking
+	// responsiveness of WatchDesires()
+	nodesToAdd := make(chan []types.NodeName, 1000)
+	pauseReplication := make(chan struct{})
+	unpauseReplication := make(chan struct{})
+	manifestChange := make(chan manifest.Manifest)
+	go ds.Replicate(ctx, nodesToAdd, pauseReplication, unpauseReplication, manifestChange)
+
 	nodesChangedCh := ds.watcher.WatchMatchDiff(ds.NodeSelector, labels.NODE, ds.labelsAggregationRate, watchMatchQuitCh)
 	// Do something whenever something is changed
 	go func() {
 		var err error
+		var addedNodes []types.NodeName
+		var eligibleNodes []types.NodeName
 		defer close(errCh)
-		defer ds.cancelReplication()
+		defer func() {
+			close(nodesToAdd)
+			close(pauseReplication)
+			close(unpauseReplication)
+			close(manifestChange)
+		}()
 
 		// Make a timer and stop it so the receieve from channel does not occur
 		// until a reset happens
 		timer := time.NewTimer(time.Duration(0))
 
-		// Try to schedule pods when this begins watching
+		paused := true
+
+		// Schedule all the pods when we first start watching
 		if !ds.IsDisabled() {
 			ds.logger.NoFields().Infof("Received new daemon set: %s", ds.ID)
-			err = ds.addPods()
+			eligibleNodes, err = ds.EligibleNodes()
 			if err != nil {
-				err = util.Errorf("Unable to add pods to intent tree: %v", err)
+				err = util.Errorf("Unable to compute eligible nodes: %v", err)
 			}
+			nodesToAdd <- eligibleNodes
+			paused = false
 		}
 
 		for {
@@ -364,6 +393,21 @@ func (ds *daemonSet) WatchDesires(
 					continue
 				}
 
+				var oldManifestSHA, newManifestSHA string
+				oldManifestSHA, err = ds.Manifest().SHA()
+				if err != nil {
+					err = util.Errorf("could not compute sha of old manifest: %s", err)
+					continue
+				}
+
+				newManifestSHA, err = newDS.Manifest.SHA()
+				if err != nil {
+					err = util.Errorf("could not compute sha of new manifest: %s", err)
+					continue
+				}
+
+				manifestChanged := newManifestSHA != oldManifestSHA
+
 				ds.mu.Lock()
 				ds.DaemonSet = newDS
 				ds.mu.Unlock()
@@ -375,19 +419,39 @@ func (ds *daemonSet) WatchDesires(
 				}
 
 				if ds.Disabled {
-					ds.cancelReplication()
+					pauseReplication <- struct{}{}
+					paused = true
 					continue
 				}
+
+				if paused || manifestChanged {
+					unpauseReplication <- struct{}{}
+					manifestChange <- ds.Manifest()
+					// schedule all the nodes again cuz the manifest changed or we unpaused
+					eligibleNodes, err = ds.EligibleNodes()
+					if err != nil {
+						err = util.Errorf("Unable to compute eligible nodes: %v", err)
+						continue
+					}
+
+					// only mark as unpaused after we've successfully computed the full node set
+					paused = false
+
+					nodesToAdd <- eligibleNodes
+				}
+
 				err = ds.removePods()
 				if err != nil {
 					err = util.Errorf("Unable to remove pods from intent tree: %v", err)
 					continue
 				}
-				err = ds.addPods()
+				addedNodes, err = ds.computeNodesToAdd()
 				if err != nil {
 					err = util.Errorf("Unable to add pods to intent tree: %v", err)
 					continue
 				}
+
+				nodesToAdd <- addedNodes
 
 			case deleteDS, ok := <-deletedCh:
 				if !ok {
@@ -397,7 +461,7 @@ func (ds *daemonSet) WatchDesires(
 				ds.logger.WithFields(logrus.Fields{"id": deleteDS, "node_selector": ds.NodeSelector.String()}).Infof("Daemon Set Deletion is disabled and has no effect. You may want to clean this up manually.")
 				return
 
-			case labeledChanges, ok := <-nodesChangedCh:
+			case _, ok := <-nodesChangedCh:
 				if !ok {
 					// channel closed
 					return
@@ -410,12 +474,40 @@ func (ds *daemonSet) WatchDesires(
 				if ds.Disabled {
 					continue
 				}
-				err = ds.handleNodeChanges(labeledChanges)
+
+				err = ds.removePods()
 				if err != nil {
+					err = util.Errorf("Unable to remove pods from intent tree: %v", err)
+					continue
+				}
+				addedNodes, err = ds.computeNodesToAdd()
+				if err != nil {
+					err = util.Errorf("Unable to add pods to intent tree: %v", err)
+					continue
+				}
+				nodesToAdd <- addedNodes
+
+			case <-timer.C:
+				if ds.Disabled {
+					paused = true
 					continue
 				}
 
-			case <-timer.C:
+				if paused {
+					unpauseReplication <- struct{}{}
+					// schedule all the nodes again because we might have been paused for a while
+					eligibleNodes, err = ds.EligibleNodes()
+					if err != nil {
+						err = util.Errorf("Unable to compute eligible nodes: %v", err)
+						continue
+					}
+
+					// only mark as unpaused after we've successfully computed the full node set
+					paused = false
+
+					nodesToAdd <- eligibleNodes
+				}
+
 				ds.logger.Infoln("retrying after error timeout")
 				// Account for any operations that could have failed and retry the replication
 				err = ds.removePods()
@@ -423,11 +515,12 @@ func (ds *daemonSet) WatchDesires(
 					err = util.Errorf("Unable to remove pods from intent tree: %v", err)
 					continue
 				}
-				err = ds.addPods()
+				addedNodes, err = ds.computeNodesToAdd()
 				if err != nil {
 					err = util.Errorf("Unable to add pods to intent tree: %v", err)
 					continue
 				}
+				nodesToAdd <- addedNodes
 
 			case <-ctx.Done():
 				return
@@ -450,51 +543,17 @@ func (ds *daemonSet) reportEligible() error {
 	return nil
 }
 
-// Watch for changes to nodes and sends update and delete signals
-func (ds *daemonSet) handleNodeChanges(changes *labels.LabeledChanges) error {
-	if len(changes.Updated) > 0 {
-		ds.logger.NoFields().Infof("Received node change signal")
-		err := ds.removePods()
-		if err != nil {
-			return util.Errorf("Unable to remove pods from intent tree: %v", err)
-		}
-		err = ds.addPods()
-		if err != nil {
-			return util.Errorf("Unable to add pods to intent tree: %v", err)
-		}
-		return nil
-	}
-
-	if len(changes.Created) > 0 {
-		ds.logger.NoFields().Infof("Received node create signal")
-		err := ds.addPods()
-		if err != nil {
-			return util.Errorf("Unable to add pods to intent tree: %v", err)
-		}
-	}
-
-	if len(changes.Deleted) > 0 {
-		ds.logger.NoFields().Infof("Received node delete signal")
-		err := ds.removePods()
-		if err != nil {
-			return util.Errorf("Unable to remove pods from intent tree: %v", err)
-		}
-	}
-
-	return nil
-}
-
-// addPods schedules pods for all unscheduled nodes selected by ds.nodeSelector
-func (ds *daemonSet) addPods() error {
+// computeNodesToAdd schedules pods for all unscheduled nodes selected by ds.nodeSelector
+func (ds *daemonSet) computeNodesToAdd() ([]types.NodeName, error) {
 	podLocations, err := ds.CurrentPods()
 	if err != nil {
-		return util.Errorf("Error retrieving pod locations from daemon set: %v", err)
+		return nil, util.Errorf("Error retrieving pod locations from daemon set: %v", err)
 	}
 	currentNodes := podLocations.Nodes()
 
 	eligible, err := ds.EligibleNodes()
 	if err != nil {
-		return util.Errorf("Error retrieving eligible nodes for daemon set: %v", err)
+		return nil, util.Errorf("Error retrieving eligible nodes for daemon set: %v", err)
 	}
 	// TODO: Grab a lock here for the pod_id before adding something to check
 	// contention and then disable
@@ -504,11 +563,7 @@ func (ds *daemonSet) addPods() error {
 	toScheduleSorted := types.NewNodeSet(eligible...).Difference(types.NewNodeSet(currentNodes...)).ListNodes()
 	ds.logger.Infof("Need to schedule %d nodes: %s", len(toScheduleSorted), toScheduleSorted)
 
-	if len(currentNodes) > 0 || len(toScheduleSorted) > 0 {
-		return ds.PublishToReplication()
-	}
-
-	return nil
+	return toScheduleSorted, nil
 }
 
 // removePods unschedules pods for all scheduled nodes not selected
@@ -534,40 +589,9 @@ func (ds *daemonSet) removePods() error {
 	toUnscheduleSorted := types.NewNodeSet(currentNodes...).Difference(types.NewNodeSet(eligible...)).ListNodes()
 	ds.logger.NoFields().Infof("Need to unschedule %d nodes, remaining on %d nodes", len(toUnscheduleSorted), len(eligible))
 
-	ds.cancelReplication()
-
-	for _, node := range toUnscheduleSorted {
-		err := ds.unschedule(node)
-		if err != nil {
-			return util.Errorf("Error unscheduling node: %v", err)
-		}
-	}
-
-	ds.logger.Infof("Need to schedule %v nodes", len(currentNodes))
-	if len(currentNodes)-len(toUnscheduleSorted) > 0 {
-		return ds.PublishToReplication()
-	}
-
-	return nil
-}
-
-// clearPods unschedules pods for all the nodes that have been scheduled by
-// this daemon set by using CurrentPods()
-// This should only be used when a daemon set is deleted
-func (ds *daemonSet) clearPods() error {
-	podLocations, err := ds.CurrentPods()
-	if err != nil {
-		return util.Errorf("Error retrieving pod locations from daemon set: %v", err)
-	}
-	currentNodes := podLocations.Nodes()
-
-	// Get the difference in nodes that we need to unschedule on and then sort them
-	// for deterministic ordering
-	toUnscheduleSorted := types.NewNodeSet(currentNodes...).ListNodes()
-	ds.logger.NoFields().Infof("Deleted: Need to unschedule %d nodes", len(toUnscheduleSorted))
-
-	ds.cancelReplication()
-
+	// NOTE: there's it's possible that this node is in the replication's
+	// nodeQueue still and therefore it will be scheduled again, but for
+	// now we're willing to deal with that tradeoff
 	for _, node := range toUnscheduleSorted {
 		err := ds.unschedule(node)
 		if err != nil {
@@ -607,118 +631,175 @@ func (ds *daemonSet) unschedule(node types.NodeName) error {
 	return nil
 }
 
-func (ds *daemonSet) PublishToReplication() error {
-	// We must cancel the replication because if we try to call
-	// InitializeReplicationWithCheck, we will get an error
-	ds.cancelReplication()
+func (ds *daemonSet) Replicate(
+	ctx context.Context,
+	nodesToAdd <-chan []types.NodeName,
+	pauseReplication <-chan struct{},
+	unpauseReplication <-chan struct{},
+	manifestChange <-chan manifest.Manifest,
+) {
+	nodeQueue := make(chan types.NodeName)
 
-	nodes, err := ds.EligibleNodes()
-	if err != nil {
-		return util.Errorf("Error retrieving eligible nodes for daemon set: %v", err)
-	}
-
-	ds.logger.Infof("Preparing to publish the following nodes: %v", nodes)
-
-	thisHost, err := os.Hostname()
-	if err != nil {
-		ds.logger.Errorf("Could not retrieve hostname: %s", err)
-		thisHost = ""
-	}
-	thisUser, err := user.Current()
-	if err != nil {
-		ds.logger.Errorf("Could not retrieve user: %s", err)
-		thisUser = &user.User{}
-	}
-	lockMessage := fmt.Sprintf("%q from %q at %q", thisUser.Username, thisHost, time.Now())
-	repl, err := replication.NewReplicator(
-		ds.Manifest(),
-		ds.logger,
-		nodes,
-		len(nodes)-ds.MinHealth(),
-		ds.store,
-		ds.txner,
-		ds.applicator,
-		*ds.healthChecker,
-		health.HealthState(health.Passing),
-		lockMessage,
-		ds.Timeout,
-		ds.healthWatchDelay,
-	)
-	if err != nil {
-		ds.logger.Errorf("Could not initialize replicator: %s", err)
-		return err
-	}
-
-	ds.logger.Info("New replicator was made")
-
-	podLabels := map[string]string{
-		DSIDLabel: ds.ID().String(),
-	}
-
-	// Replication locks are designed to make sure that two replications to
-	// the same nodes cannot occur at the same time. The granularity is
-	// pod-wide as an optimization for consul performance (only need to
-	// lock a single key) with limited downside when human operators are
-	// executing deploys, because the likelihood of a lock collision is
-	// low. With daemon sets, locking is not necessary because the node
-	// sets should not overlap when they are managed properly. Even when
-	// there is a node overlap between two daemon sets, a simple mutual
-	// exclusion lock around replication will not prevent the pod manifest
-	// on an overlapped node from thrashing. Therefore, it makes sense for
-	// daemon sets to ignore this locking mechanism and always try to
-	// converge nodes to the specified manifest
-	currentReplication, errCh, err := repl.InitializeDaemonSetReplication(
-		replication.DefaultConcurrentReality,
-		ds.rateLimitInterval,
-		podLabels,
-	)
-	if err != nil {
-		ds.logger.Errorf("Unable to initialize replication: %s", err)
-		return err
-	}
-
-	ds.logger.Info("Replication initialized")
-
-	// auto-drain this channel
-	go func() {
-		for err := range errCh {
-			ds.logger.Errorf("Error occurred in replication: '%v'", err)
+	// retry starting the replication until there are no errors
+	for {
+		nodes, err := ds.EligibleNodes()
+		if err != nil {
+			ds.logger.WithError(err).Errorln("error retrieving eligible nodes for daemon set")
+			continue
 		}
-	}()
 
-	// Set a new replication
-	ds.setCurrentReplication(currentReplication)
+		ds.logger.Infof("Preparing to publish the following nodes: %v", nodes)
 
-	go currentReplication.Enact()
+		thisHost, err := os.Hostname()
+		if err != nil {
+			ds.logger.Errorf("Could not retrieve hostname: %s", err)
+			thisHost = ""
+		}
+		thisUser, err := user.Current()
+		if err != nil {
+			ds.logger.Errorf("Could not retrieve user: %s", err)
+			thisUser = &user.User{}
+		}
+
+		lockMessage := fmt.Sprintf("%q from %q at %q", thisUser.Username, thisHost, time.Now())
+		repl, err := replication.NewReplicator(
+			ds.Manifest(),
+			ds.logger,
+			nodes,
+			50, // always use max parallelism for daemon set deploys
+			ds.store,
+			ds.txner,
+			ds.applicator,
+			*ds.healthChecker,
+			health.HealthState(health.Passing),
+			lockMessage,
+			ds.Timeout,
+			ds.healthWatchDelay,
+		)
+		if err != nil {
+			ds.logger.WithError(err).Errorln("Could not initialize replicator")
+			continue
+		}
+
+		ds.logger.Info("New replicator was made")
+
+		podLabels := map[string]string{
+			DSIDLabel: ds.ID().String(),
+		}
+
+		// Replication locks are designed to make sure that two replications to
+		// the same nodes cannot occur at the same time. The granularity is
+		// pod-wide as an optimization for consul performance (only need to
+		// lock a single key) with limited downside when human operators are
+		// executing deploys, because the likelihood of a lock collision is
+		// low. With daemon sets, locking is not necessary because the node
+		// sets should not overlap when they are managed properly. Even when
+		// there is a node overlap between two daemon sets, a simple mutual
+		// exclusion lock around replication will not prevent the pod manifest
+		// on an overlapped node from thrashing. Therefore, it makes sense for
+		// daemon sets to ignore this locking mechanism and always try to
+		// converge nodes to the specified manifest
+		replication, errCh, err := repl.InitializeDaemonSetReplication(
+			nodeQueue,
+			replication.DefaultConcurrentReality,
+			ds.rateLimitInterval,
+			podLabels,
+		)
+		if err != nil {
+			ds.logger.WithError(err).Errorf("Unable to initialize replication: %s", err)
+			continue
+		}
+
+		ds.logger.Info("Replication initialized")
+
+		// auto-drain this channel
+		go func() {
+			for err := range errCh {
+				ds.logger.Errorf("Error occurred in replication: '%v'", err)
+			}
+		}()
+
+		// Set a new replication
+		dsReplication := &dsReplication{
+			replication: replication,
+			nodeQueue:   nodeQueue,
+		}
+		ds.setDSReplication(dsReplication)
+
+		go replication.Enact()
+
+		break
+	}
 
 	ds.logger.Info("Replication enacted")
 
-	return nil
-}
+	paused := false
+	addMoreNodes := func(moreNodes []types.NodeName) {
+		if paused {
+			return
+		}
 
-// It is also okay to call this multiple times because it keeps track of when
-// it has been cancelled by checking whether ds.currentReplication == nil
-func (ds *daemonSet) cancelReplication() {
-	ds.currentReplicationMu.Lock()
-	defer ds.currentReplicationMu.Unlock()
-	if ds.currentReplication != nil {
-		ds.currentReplication.Cancel()
-		ds.currentReplication.WaitForReplication()
-		ds.logger.Info("Replication cancelled")
-		ds.currentReplication = nil
+		for _, node := range moreNodes {
+			// prioritize pauses and manifest changes
+			select {
+			case <-pauseReplication:
+				paused = true
+				// throw away the rest of the nodes and wait
+				// for unpause
+				return
+			case man := <-manifestChange:
+				if man != nil {
+					ds.getDSReplication().replication.SetManifest(man)
+				}
+			default:
+			}
+
+			select {
+			case nodeQueue <- node:
+			case <-ctx.Done():
+				return
+			case <-pauseReplication:
+				paused = true
+				return
+			case <-unpauseReplication:
+				paused = false
+			}
+		}
+	}
+
+	for {
+		select {
+		case moreNodes, ok := <-nodesToAdd:
+			if !ok {
+				// upstream closed the channel
+				return
+			}
+
+			addMoreNodes(moreNodes)
+		case man := <-manifestChange:
+			if man != nil {
+				ds.getDSReplication().replication.SetManifest(man)
+			}
+		case <-pauseReplication:
+			paused = true
+		case <-unpauseReplication:
+			paused = false
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
-func (ds *daemonSet) setCurrentReplication(rep replication.Replication) {
-	ds.currentReplicationMu.Lock()
-	defer ds.currentReplicationMu.Unlock()
-	ds.currentReplication = rep
+func (ds *daemonSet) setDSReplication(rep *dsReplication) {
+	ds.dsReplicationMu.Lock()
+	defer ds.dsReplicationMu.Unlock()
+	ds.dsReplication = rep
 }
 
-func (ds *daemonSet) getCurrentReplication() replication.Replication {
-	ds.currentReplicationMu.Lock()
-	defer ds.currentReplicationMu.Unlock()
-	return ds.currentReplication
+func (ds *daemonSet) getDSReplication() *dsReplication {
+	ds.dsReplicationMu.Lock()
+	defer ds.dsReplicationMu.Unlock()
+	return ds.dsReplication
 }
 
 func (ds *daemonSet) CurrentPods() (types.PodLocations, error) {
@@ -803,15 +884,16 @@ func (ds *daemonSet) writeNewestStatus(ctx context.Context, lastStatus daemonset
 		toWrite.NodesDeployed = 0
 	}
 
-	currentReplication := ds.getCurrentReplication()
-	if currentReplication == nil {
+	dsReplication := ds.getDSReplication()
+	if dsReplication == nil {
 		toWrite.ReplicationInProgress = false
 	} else {
-		toWrite.ReplicationInProgress = currentReplication.InProgress()
+		// NOTE: it's always in progress now so we should probably get rid of this key
+		toWrite.ReplicationInProgress = dsReplication.replication.InProgress()
 
 		// ensure that NodesDeployed doesn't backtrack (which it might if the replication was restarted)
-		if int(currentReplication.CompletedCount()) > toWrite.NodesDeployed {
-			toWrite.NodesDeployed = int(currentReplication.CompletedCount())
+		if int(dsReplication.replication.CompletedCount()) > toWrite.NodesDeployed {
+			toWrite.NodesDeployed = int(dsReplication.replication.CompletedCount())
 		}
 	}
 

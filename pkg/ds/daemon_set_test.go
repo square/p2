@@ -299,8 +299,6 @@ func TestSchedule(t *testing.T) {
 	err = waitForSpecificPod(consulStore, "node2", types.PodID("testPod"))
 	Assert(t).IsNil(err, "Unexpected pod labeled")
 
-	ds.getCurrentReplication().WaitForReplication()
-
 	//
 	// Add 10 good nodes and 10 bad nodes then verify
 	//
@@ -620,6 +618,10 @@ func (n nullReplication) InProgress() bool {
 	return n.inProgress
 }
 
+func (n nullReplication) SetManifest(manifest.Manifest) {
+	panic("SetManifest() not implemented on nullReplication")
+}
+
 func TestWriteNewestStatus(t *testing.T) {
 	type writeStatusTestCase struct {
 		lastStatus         daemonsetstatus.Status
@@ -736,9 +738,12 @@ func TestWriteNewestStatus(t *testing.T) {
 
 	for i, testCase := range testCases {
 		ds.DaemonSet.ID = ds_fields.ID(uuid.New())
-		ds.cancelReplication()
+
+		ds.setDSReplication(nil)
 		if testCase.nodeCompletedCount >= 0 {
-			ds.setCurrentReplication(fakeReplication(testCase.nodeCompletedCount, testCase.inProgress))
+			ds.setDSReplication(&dsReplication{
+				replication: fakeReplication(testCase.nodeCompletedCount, testCase.inProgress),
+			})
 		}
 		if testCase.lastStatus.ManifestSHA != "" {
 			writeCtx, writeCancel := transaction.New(context.Background())
