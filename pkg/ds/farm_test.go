@@ -1071,6 +1071,7 @@ func TestRelock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer session.Destroy()
 	go func() {
 		err, ok := <-renewalErrCh
 		if ok {
@@ -1180,6 +1181,7 @@ func TestDieAndUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer session.Destroy()
 	go func() {
 		err, ok := <-renewalErrCh
 		if ok {
