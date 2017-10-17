@@ -418,6 +418,7 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 				MinimumReplicas: need,
 			},
 			r.consuls,
+			r.baseClient,
 			r.rcLocker,
 			r.rollRCStore,
 			r.rls,

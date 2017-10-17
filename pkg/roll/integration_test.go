@@ -218,6 +218,7 @@ func TestLockRCs(t *testing.T) {
 		OldRC: rc_fields.ID("old_rc"),
 	},
 		nil,
+		nil,
 		rcstore.NewConsul(fixture.Client, applicator, 0),
 		nil,
 		nil,
@@ -236,7 +237,7 @@ func TestLockRCs(t *testing.T) {
 	checkLockedCtx, checkLockedCancel := transaction.New(context.Background())
 	defer checkLockedCancel()
 
-	err = update.lockRCs(lockCtx, unlockCtx, checkLockedCtx)
+	err = update.lockRCs(lockCtx, unlockCtx, checkLockedCtx, session)
 	if err != nil {
 		t.Errorf("unexpected error building RC locking transactions: %s", err)
 	}

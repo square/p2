@@ -3,6 +3,7 @@ package roll
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -17,6 +18,7 @@ import (
 	rcf "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
@@ -51,17 +53,16 @@ type ReplicationControllerStore interface {
 type update struct {
 	fields.Update
 
-	consuls   Store
-	rcStore   ReplicationControllerStore
-	rollStore RollingUpdateStore
-	rcLocker  ReplicationControllerLocker
-	hcheck    checker.ConsulHealthChecker
-	labeler   rc.LabelMatcher
-	txner     transaction.Txner
+	consuls      Store
+	consulClient consulutil.ConsulClient
+	rcStore      ReplicationControllerStore
+	rollStore    RollingUpdateStore
+	rcLocker     ReplicationControllerLocker
+	hcheck       checker.ConsulHealthChecker
+	labeler      rc.LabelMatcher
+	txner        transaction.Txner
 
 	logger logging.Logger
-
-	session consul.Session
 
 	// watchDelay can be used to tune the QPS (and therefore bandwidth)
 	// footprint of the health watches performed by the update. A higher
@@ -81,6 +82,7 @@ type update struct {
 func NewUpdate(
 	f fields.Update,
 	consuls Store,
+	consulClient consulutil.ConsulClient,
 	rcLocker ReplicationControllerLocker,
 	rcStore ReplicationControllerStore,
 	rollStore RollingUpdateStore,
@@ -97,18 +99,18 @@ func NewUpdate(
 		"minimum_replicas": f.MinimumReplicas,
 	})
 	return &update{
-		Update:     f,
-		consuls:    consuls,
-		rcLocker:   rcLocker,
-		rcStore:    rcStore,
-		rollStore:  rollStore,
-		txner:      txner,
-		hcheck:     hcheck,
-		labeler:    labeler,
-		logger:     logger,
-		session:    session,
-		watchDelay: watchDelay,
-		alerter:    alerter,
+		Update:       f,
+		consuls:      consuls,
+		rcLocker:     rcLocker,
+		rcStore:      rcStore,
+		rollStore:    rollStore,
+		txner:        txner,
+		hcheck:       hcheck,
+		labeler:      labeler,
+		logger:       logger,
+		watchDelay:   watchDelay,
+		alerter:      alerter,
+		consulClient: consulClient,
 	}
 }
 
@@ -156,22 +158,34 @@ func RetryOrQuit(ctx context.Context, f func() error, logger logging.Logger, err
 // have a consul transaction value stored in it and cleanup operations such as
 // deleting the old RC will be added to it when applicable.
 func (u *update) Run(ctx context.Context) (ret bool) {
-	u.logger.NoFields().Debugln("Locking")
+	u.logger.Infoln("creating a session for this RU")
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "(unknown)"
+	}
+	sessionRenewalCtx, sessionRenewalCancel := context.WithCancel(ctx)
+	defer sessionRenewalCancel()
+
+	sessionCtx, session, err := consul.SessionContext(sessionRenewalCtx, u.consulClient, fmt.Sprintf("ru-farm:%s:%s", hostname, u.ID()))
+	if err != nil {
+		u.logger.WithError(err).Errorln("could not create session")
+		return false
+	}
 
 	// create a transaction to lock the RCs with. This way we can't lock
 	// one and not the other
-	lockRCsCtx, cancelLockRCs := transaction.New(ctx)
+	lockRCsCtx, cancelLockRCs := transaction.New(sessionCtx)
 
 	// create a transaction to check that the RCs are locked. We're going
 	// to branch a lot of transactions off of this one to guarantee they
 	// only succeed if the locks are held
-	checkRCLocksCtx, cancelCheckRCLocksCtx := transaction.New(ctx)
+	checkRCLocksCtx, cancelCheckRCLocksCtx := transaction.New(sessionCtx)
 	defer cancelCheckRCLocksCtx()
 
 	// create a transaction for cleanup operations such as releasing locks
 	// and (if the update succeeds) deleting the RU and the old RC (when
 	// applicable).
-	cleanupCtx, cancelCleanup := transaction.New(ctx)
+	cleanupCtx, cancelCleanup := transaction.New(sessionCtx)
 	performCleanup := func() {
 		defer cancelCleanup()
 		ok, resp, err := transaction.CommitWithRetries(cleanupCtx, u.txner)
@@ -186,7 +200,7 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 			// the old RC)
 			u.logger.WithError(err).Errorln("could not perform RU cleanup because transaction did not succeed before cancellation")
 
-			// set ret to false so that the farm does not delete the RU, giving another farma  chance to handle this cleanup
+			// set ret to false so that the farm does not delete the RU, giving another farm a chance to handle this cleanup
 			ret = false
 			return
 		}
@@ -213,7 +227,7 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 	// cleanupCtx until the Commit() succeeds, explore making a
 	// transaction.Merge() function and only performing the merge after the
 	// commit is successful
-	err := u.lockRCs(lockRCsCtx, cleanupCtx, checkRCLocksCtx)
+	err = u.lockRCs(lockRCsCtx, cleanupCtx, checkRCLocksCtx, session)
 	if err != nil {
 		cancelLockRCs()
 		// this is a pageable error because it's only adding operations to
@@ -249,7 +263,7 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 	u.logger.NoFields().Debugln("Launching health watch")
 	var newFields rcf.RC
 	if !RetryOrQuit(
-		ctx,
+		sessionCtx,
 		func() error {
 			newFields, err = u.rcStore.Get(u.NewRC)
 			if rcstore.IsNotExist(err) {
@@ -528,13 +542,14 @@ func (u *update) lockRCs(
 	lockCtx context.Context,
 	unlockCtx context.Context,
 	checkLockedCtx context.Context,
+	session consul.Session,
 ) error {
-	newUnlocker, err := u.rcLocker.LockForMutationTxn(lockCtx, u.NewRC, u.session)
+	newUnlocker, err := u.rcLocker.LockForMutationTxn(lockCtx, u.NewRC, session)
 	if err != nil {
 		return err
 	}
 
-	oldUnlocker, err := u.rcLocker.LockForMutationTxn(lockCtx, u.OldRC, u.session)
+	oldUnlocker, err := u.rcLocker.LockForMutationTxn(lockCtx, u.OldRC, session)
 	if err != nil {
 		return err
 	}

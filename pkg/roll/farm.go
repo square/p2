@@ -35,6 +35,7 @@ type Factory interface {
 
 type UpdateFactory struct {
 	Store         Store
+	Client        consulutil.ConsulClient
 	Txner         transaction.Txner
 	RCLocker      ReplicationControllerLocker
 	RCStore       ReplicationControllerStore
@@ -52,6 +53,7 @@ type labeler interface {
 
 func NewUpdateFactory(
 	store Store,
+	consulClient consulutil.ConsulClient,
 	txner transaction.Txner,
 	rcLocker ReplicationControllerLocker,
 	rcStore ReplicationControllerStore,
@@ -63,6 +65,7 @@ func NewUpdateFactory(
 ) UpdateFactory {
 	return UpdateFactory{
 		Store:         store,
+		Client:        consulClient,
 		Txner:         txner,
 		RCLocker:      rcLocker,
 		RCStore:       rcStore,
@@ -78,6 +81,7 @@ func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consu
 	return NewUpdate(
 		u,
 		f.Store,
+		f.Client,
 		f.RCLocker,
 		f.RCStore,
 		f.RollStore,
