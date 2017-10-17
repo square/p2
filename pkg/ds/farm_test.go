@@ -435,7 +435,10 @@ func TestFarmSchedule(t *testing.T) {
 	Assert(t).IsNil(err, "Expected daemon set to be created")
 
 	// Make a node and verify that it was scheduled by the first daemon set
-	applicator.SetLabel(labels.NODE, "node1", pc_fields.AvailabilityZoneLabel, "az1")
+	err = applicator.SetLabel(labels.NODE, "node1", pc_fields.AvailabilityZoneLabel, "az1")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	labeled, err := waitForPodLabel(applicator, true, "node1/testPod")
 	Assert(t).IsNil(err, "Expected pod to have a dsID label")
@@ -1068,6 +1071,7 @@ func TestRelock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer session.Destroy()
 	go func() {
 		err, ok := <-renewalErrCh
 		if ok {
@@ -1177,6 +1181,7 @@ func TestDieAndUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer session.Destroy()
 	go func() {
 		err, ok := <-renewalErrCh
 		if ok {

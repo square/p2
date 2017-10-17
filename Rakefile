@@ -22,7 +22,7 @@ end
 
 desc 'Build all projects'
 task :build do
-  e "go build -ldflags -s -v ./..."
+  e "go build -i -ldflags -s -v ./..."
 end
 
 desc 'Test all projects (short only)'
@@ -34,7 +34,7 @@ desc 'Test all projects'
 task :test_all => [:build] do
   # due to https://github.com/square/p2/issues/832, some tests are excluded from -race
   # So, we run once with the race detector and one without. See .travis.yml for setting ENV['RACE']
-  e "go test -ldflags -s -timeout 120s #{ENV['RACE']} ./..."
+  e "go test -ldflags -s -timeout 300s #{ENV['RACE']} ./..."
 end
 
 desc 'Update all dependencies'

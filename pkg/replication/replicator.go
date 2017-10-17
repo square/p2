@@ -44,6 +44,7 @@ type Replicator interface {
 	// * replication controllers are ignored
 	// * and preparers are not checked.
 	InitializeDaemonSetReplication(
+		nodeQueue chan types.NodeName,
 		concurrentRealityRequests int,
 		rateLimitInterval time.Duration,
 		podLabels map[string]string,
@@ -124,10 +125,12 @@ func (r replicator) InitializeReplication(
 		false,
 		rateLimitInterval,
 		podLabels,
+		nil,
 	)
 }
 
 func (r replicator) InitializeDaemonSetReplication(
+	nodeQueue chan types.NodeName,
 	concurrentRealityRequests int,
 	rateLimitInterval time.Duration,
 	podLabels map[string]string,
@@ -140,6 +143,7 @@ func (r replicator) InitializeDaemonSetReplication(
 		true,  // skip locking
 		rateLimitInterval,
 		podLabels,
+		nodeQueue,
 	)
 }
 
@@ -151,6 +155,7 @@ func (r replicator) initializeReplicationWithCheck(
 	skipLocking bool,
 	rateLimitInterval time.Duration,
 	podLabels map[string]string,
+	nodeQueue chan types.NodeName,
 ) (Replication, chan error, error) {
 	var err error
 
@@ -171,26 +176,27 @@ func (r replicator) initializeReplicationWithCheck(
 	}
 
 	errCh := make(chan error)
-	replication := &replication{
-		active:                 r.active,
-		nodes:                  r.nodes,
-		store:                  r.store,
-		txner:                  r.txner,
-		labeler:                r.labeler,
-		podLabels:              podLabels,
-		manifest:               r.manifest,
-		health:                 r.health,
-		threshold:              r.threshold,
-		logger:                 r.logger,
-		rateLimiter:            ticker,
-		errCh:                  errCh,
-		healthWatchDelay:       r.healthWatchDelay,
-		replicationCancelledCh: make(chan struct{}),
-		replicationDoneCh:      make(chan struct{}),
-		quitCh:                 make(chan struct{}),
-		concurrentRealityRequests: make(chan struct{}, concurrentRealityRequests),
-		timeout:                   r.timeout,
-	}
+	replication := newReplication(
+		r.active,
+		r.nodes,
+		r.store,
+		r.txner,
+		r.labeler,
+		podLabels,
+		r.manifest,
+		r.health,
+		r.threshold,
+		r.logger,
+		ticker,
+		errCh,
+		r.healthWatchDelay,
+		make(chan struct{}),
+		make(chan struct{}),
+		make(chan struct{}),
+		make(chan struct{}, concurrentRealityRequests),
+		r.timeout,
+		nodeQueue,
+	)
 
 	var session consul.Session
 	var renewalErrCh chan error

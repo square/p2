@@ -74,6 +74,9 @@ type Replication interface {
 	CompletedCount() int32
 
 	InProgress() bool
+
+	// SetManifest() can be used to change the manifest while a replication is in progress
+	SetManifest(manifest.Manifest)
 }
 
 type Store interface {
@@ -98,6 +101,7 @@ type replication struct {
 	txner          transaction.Txner
 	labeler        Labeler
 	manifest       manifest.Manifest
+	manifestMu     sync.RWMutex
 	health         checker.ConsulHealthChecker
 	threshold      health.HealthState // minimum state to treat as "healthy"
 	logger         logging.Logger
@@ -142,6 +146,60 @@ type replication struct {
 	enactedCh chan struct{}
 	// enactedChMu synchronizes access to enactedCh
 	enactedChMu sync.Mutex
+
+	// nodeQueue is an alternative to the "nodes" field for callers that do
+	// not know the full set of nodes that should be deployed up front. If
+	// this is not initialized before Enact() is called, Enact() will
+	// initialize it and pass the contents of the "nodes" slice on the
+	// channel to the replication goroutines
+	//
+	// If provided, the replication will not exit until the caller closes
+	// the channel
+	nodeQueue <-chan types.NodeName
+}
+
+func newReplication(
+	active int,
+	nodes []types.NodeName,
+	store Store,
+	txner transaction.Txner,
+	labeler Labeler,
+	podLabels map[string]string,
+	manifest manifest.Manifest,
+	health checker.ConsulHealthChecker,
+	threshold health.HealthState,
+	logger logging.Logger,
+	rateLimiter *time.Ticker,
+	errCh chan<- error,
+	healthWatchDelay time.Duration,
+	replicationCancelledCh chan struct{},
+	replicationDoneCh chan struct{},
+	quitCh chan struct{},
+	concurrentRealityRequests chan struct{},
+	timeout time.Duration,
+	nodeQueue chan types.NodeName,
+) *replication {
+	return &replication{
+		active:                 active,
+		nodes:                  nodes,
+		store:                  store,
+		txner:                  txner,
+		labeler:                labeler,
+		podLabels:              podLabels,
+		manifest:               manifest,
+		health:                 health,
+		threshold:              threshold,
+		logger:                 logger,
+		rateLimiter:            rateLimiter,
+		errCh:                  errCh,
+		healthWatchDelay:       healthWatchDelay,
+		replicationCancelledCh: replicationCancelledCh,
+		replicationDoneCh:      replicationDoneCh,
+		quitCh:                 quitCh,
+		concurrentRealityRequests: concurrentRealityRequests,
+		timeout:                   timeout,
+		nodeQueue:                 nodeQueue,
+	}
 }
 
 // Attempts to claim a lock on replicating this pod. Other pkg/replication
@@ -154,7 +212,7 @@ func (r *replication) lockHosts(overrideLock bool, lockMessage string) (consul.S
 		return nil, nil, err
 	}
 
-	lockPath := consul.ReplicationLockPath(r.manifest.ID())
+	lockPath := consul.ReplicationLockPath(r.GetManifest().ID())
 
 	// We don't keep a reference to the consul.Unlocker, because we just destroy
 	// the session at the end of the replication anyway
@@ -206,7 +264,7 @@ func (r *replication) lock(session consul.Session, lockPath string, overrideLock
 func (r *replication) checkForManaged() error {
 	var badNodes []string
 	for _, node := range r.nodes {
-		podID := path.Join(node.String(), string(r.manifest.ID()))
+		podID := path.Join(node.String(), string(r.GetManifest().ID()))
 		labels, err := r.labeler.GetLabels(labels.POD, podID)
 		if err != nil {
 			return err
@@ -236,7 +294,7 @@ func (r *replication) Enact() {
 
 	// Sort nodes from least healthy to most healthy to maximize overall
 	// cluster health
-	healthResults, err := r.health.Service(string(r.manifest.ID()))
+	healthResults, err := r.health.Service(string(r.GetManifest().ID()))
 	if err != nil {
 		err = replicationError{
 			err:     err,
@@ -257,9 +315,36 @@ func (r *replication) Enact() {
 	}
 	sort.Sort(order)
 
-	nodeQueue := make(chan types.NodeName)
+	nodeQueue := r.nodeQueue
+	if nodeQueue == nil {
+		nodeChan := make(chan types.NodeName)
+		nodeQueue = nodeChan
 
-	aggregateHealth := AggregateHealth(r.manifest.ID(), r.health, r.healthWatchDelay)
+		// this goroutine populates the node queue with respect to the rate limiter
+		go func() {
+			defer close(nodeChan)
+			for _, node := range r.nodes {
+				if r.rateLimiter != nil {
+					select {
+					case <-r.replicationCancelledCh:
+						return
+					case <-r.quitCh:
+						return
+					case <-r.rateLimiter.C:
+					}
+				}
+				select {
+				case <-r.replicationCancelledCh:
+					return
+				case <-r.quitCh:
+					return
+				case nodeChan <- node:
+				}
+			}
+		}()
+	}
+
+	aggregateHealth := AggregateHealth(r.GetManifest().ID(), r.health, r.healthWatchDelay)
 	defer aggregateHealth.Stop()
 	// this loop multiplexes the node queue across some goroutines
 
@@ -282,9 +367,7 @@ func (r *replication) Enact() {
 					defer close(exitCh)
 					err := r.updateOne(ctx, node, aggregateHealth)
 					if err == nil {
-						r.logger.Infof("The host '%v' successfully replicated the pod '%v'", node, r.manifest.ID())
-						atomic.AddInt32(&r.completedCount, 1)
-						r.logger.Infof("Completed %d of %d", atomic.LoadInt32(&r.completedCount), len(r.nodes))
+						r.logger.Infof("The host '%v' successfully replicated the pod '%v'", node, r.GetManifest().ID())
 						return
 					}
 
@@ -293,9 +376,9 @@ func (r *replication) Enact() {
 						r.timedOutReplicationsMutex.Lock()
 						r.timedOutReplications = append(r.timedOutReplications, node)
 						r.timedOutReplicationsMutex.Unlock()
-						r.logger.Errorf("The host '%v' timed out during replication for pod '%v'", node, r.manifest.ID())
+						r.logger.Errorf("The host '%v' timed out during replication for pod '%v'", node, r.GetManifest().ID())
 					case errCancelled:
-						r.logger.Errorf("The host '%v' was cancelled (probably due to an update) during replication for pod '%v'", node, r.manifest.ID())
+						r.logger.Errorf("The host '%v' was cancelled (probably due to an update) during replication for pod '%v'", node, r.GetManifest().ID())
 					default:
 						r.logger.Errorf("An unexpected error has occurred: %v", err)
 					}
@@ -310,39 +393,42 @@ func (r *replication) Enact() {
 		}()
 	}
 
-	// this goroutine populates the node queue with respect to the rate limiter
-	go func() {
-		defer close(nodeQueue)
-		for _, node := range r.nodes {
-			if r.rateLimiter != nil {
-				select {
-				case <-r.replicationCancelledCh:
-					return
-				case <-r.quitCh:
-					return
-				case <-r.rateLimiter.C:
-				}
-			}
-			select {
-			case <-r.replicationCancelledCh:
-				return
-			case <-r.quitCh:
-				return
-			case nodeQueue <- node:
-			}
-		}
-	}()
-
 	updatePool.Wait()
 }
 
 // Cancels all goroutines (e.g. replication and lock renewal)
+// NOTE: Cancel() should only be called on replications that were initialized
+// with a nil nodeQueue, otherwise nothing will be listening on this channel
+// being closed!
+//
+// If a nodeQueue was provided, that channel should be closed to cancel the
+// replication
 func (r *replication) Cancel() {
-	close(r.replicationCancelledCh)
+	if r.nodeQueue == nil {
+		close(r.replicationCancelledCh)
+	}
 }
 
 func (r *replication) WaitForReplication() {
 	<-r.quitCh
+}
+
+func (r *replication) SetManifest(man manifest.Manifest) {
+	r.manifestMu.Lock()
+	defer r.manifestMu.Unlock()
+	oldSHA, _ := r.manifest.SHA()
+	newSHA, _ := man.SHA()
+	if oldSHA != newSHA {
+		// reset the completed count to 0 because we changed the manifest
+		atomic.StoreInt32(&r.completedCount, 0)
+	}
+	r.manifest = man
+}
+
+func (r *replication) GetManifest() manifest.Manifest {
+	r.manifestMu.RLock()
+	defer r.manifestMu.RUnlock()
+	return r.manifest
 }
 
 // handleReplicationEnd listens for various events that can cause the replication to end.
@@ -411,7 +497,7 @@ func (r *replication) shouldScheduleForNode(node types.NodeName, logger logging.
 			logger.WithError(err).Errorln("Unable to compute manifest SHA for this node. Attempting to schedule anyway")
 			return true
 		}
-		replicationRealitySHA, err := r.manifest.SHA()
+		replicationRealitySHA, err := r.GetManifest().SHA()
 		if err != nil {
 			logger.WithError(err).Errorln("Unable to compute manifest SHA for this daemon set. Attempting to schedule anyway")
 			return true
@@ -431,19 +517,24 @@ func (r *replication) updateOne(
 	node types.NodeName,
 	aggregateHealth *podHealth,
 ) error {
+	manifest := r.GetManifest()
+
 	nodeLogger := r.logger.SubLogger(logrus.Fields{"node": node})
 
 	if !r.shouldScheduleForNode(node, nodeLogger) {
 		return nil
 	}
 
-	targetSHA, _ := r.manifest.SHA()
+	// only add if we actually intend to schedule it
+	defer atomic.AddInt32(&r.completedCount, 1)
+
+	targetSHA, _ := manifest.SHA()
 	nodeLogger.WithField("sha", targetSHA).Infoln("Updating node")
 	err := r.store.SetPodTxn(
 		ctx,
 		consul.INTENT_TREE,
 		node,
-		r.manifest,
+		manifest,
 	)
 	if err != nil {
 		// this is bad because it means we couldn't even build the transaction
@@ -451,7 +542,7 @@ func (r *replication) updateOne(
 	}
 
 	if len(r.podLabels) > 0 {
-		id := labels.MakePodLabelKey(node, r.manifest.ID())
+		id := labels.MakePodLabelKey(node, manifest.ID())
 		err = r.labeler.SetLabelsTxn(
 			ctx,
 			labels.POD,
@@ -488,11 +579,11 @@ func (r *replication) queryReality(node types.NodeName) (manifest.Manifest, erro
 	for {
 		select {
 		case r.concurrentRealityRequests <- struct{}{}:
-			man, _, err := r.store.Pod(consul.REALITY_TREE, node, r.manifest.ID())
+			man, _, err := r.store.Pod(consul.REALITY_TREE, node, r.GetManifest().ID())
 			<-r.concurrentRealityRequests
 			return man, err
 		case <-time.After(5 * time.Second):
-			r.logger.Infof("Waiting on concurrentRealityRequests for pod: %s/%s", node.String(), r.manifest.ID())
+			r.logger.Infof("Waiting on concurrentRealityRequests for pod: %s/%s", node.String(), r.GetManifest().ID())
 		case <-time.After(1 * time.Minute):
 			err := util.Errorf("Timed out while waiting for reality query rate limit")
 			r.logger.Error(err)
