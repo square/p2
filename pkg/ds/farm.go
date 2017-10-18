@@ -531,7 +531,7 @@ func (dsf *Farm) raiseContentionAlert(oldDS ds_fields.DaemonSet, newDS ds_fields
 			NewdPodID:       newDS.PodID,
 			NewDisabled:     newDS.Disabled,
 		},
-	}); alertErr != nil {
+	}, alerting.LowUrgency); alertErr != nil {
 		dsf.logger.WithError(alertErr).Errorln("Unable to deliver alert!")
 	}
 }

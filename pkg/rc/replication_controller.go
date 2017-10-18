@@ -291,7 +291,7 @@ func (rc *replicationController) addPods(current types.PodLocations, eligible []
 				"Not enough nodes to meet desire: %d replicas desired, %d currentNodes, %d eligible. Scheduled on %d nodes instead.",
 				rc.ReplicasDesired, len(currentNodes), len(eligible), i,
 			)
-			err := rc.alerter.Alert(rc.alertInfo(errMsg))
+			err := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
 			if err != nil {
 				rc.logger.WithError(err).Errorln("Unable to send alert")
 			}
@@ -659,7 +659,7 @@ func (rc *replicationController) transferCattleNodes(ineligibleCurrent []types.N
 	rc.mu.Unlock()
 	if err != nil || len(newNodes) < 1 {
 		errMsg := fmt.Sprintf("Unable to allocate nodes over grpc: %s", err)
-		err := rc.alerter.Alert(rc.alertInfo(errMsg))
+		err := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
 		if err != nil {
 			rc.logger.WithError(err).Errorln("Unable to send alert")
 		}
@@ -696,7 +696,7 @@ func (rc *replicationController) transferCattleNodes(ineligibleCurrent []types.N
 
 func (rc *replicationController) transferPetNodes(ineligibleCurrent []types.NodeName) error {
 	errMsg := fmt.Sprintf("RC has scheduled %d ineligible nodes: %s", len(ineligibleCurrent), ineligibleCurrent)
-	err := rc.alerter.Alert(rc.alertInfo(errMsg))
+	err := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
 	if err != nil {
 		rc.logger.WithError(err).Errorln("Unable to send alert")
 	}

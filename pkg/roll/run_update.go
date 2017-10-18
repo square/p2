@@ -222,8 +222,7 @@ func (u *update) cleanupOldRC(quit <-chan struct{}) {
 					RUID:        u.ID().String(),
 					NumReplicas: oldRC.ReplicasDesired,
 				},
-			},
-			)
+			}, alerting.LowUrgency)
 			if err != nil {
 				return err
 			}

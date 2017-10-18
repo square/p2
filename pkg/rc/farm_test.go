@@ -18,7 +18,7 @@ type failsafeAlerter struct {
 	savedInfo alerting.AlertInfo
 }
 
-func (f *failsafeAlerter) Alert(info alerting.AlertInfo) error {
+func (f *failsafeAlerter) Alert(info alerting.AlertInfo, urgency alerting.Urgency) error {
 	f.savedInfo = info
 	return nil
 }

@@ -112,7 +112,7 @@ type errorOnceChannelAlerter struct {
 	ranOnce bool
 }
 
-func (c errorOnceChannelAlerter) Alert(alerting.AlertInfo) error {
+func (c errorOnceChannelAlerter) Alert(_ alerting.AlertInfo, _ alerting.Urgency) error {
 	c.out <- struct{}{}
 	if c.ranOnce {
 		return nil

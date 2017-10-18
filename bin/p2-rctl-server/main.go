@@ -95,7 +95,9 @@ func main() {
 	alerter := alerting.NewNop()
 	if *pagerdutyServiceKey != "" {
 		var err error
-		alerter, err = alerting.NewPagerduty(*pagerdutyServiceKey, httpClient)
+		// just use the same key for high and low urgency
+		// TODO: support both high and low urgency keys
+		alerter, err = alerting.NewPagerduty(*pagerdutyServiceKey, *pagerdutyServiceKey, httpClient)
 		if err != nil {
 			logger.WithError(err).Fatalln(
 				"Unable to initialize pagerduty alerter",

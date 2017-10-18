@@ -351,7 +351,7 @@ func (rcf *Farm) initialFailsafe() {
 		if err := rcf.alerter.Alert(alerting.AlertInfo{
 			Description: "No RCs have been scheduled",
 			IncidentKey: "no_rcs_found",
-		}); err != nil {
+		}, alerting.HighUrgency); err != nil {
 			rcf.logger.WithError(err).Errorln("Unable to deliver alert!")
 		}
 		panic("No RCs are scheduled at all. Create one RC to enable the farm. Panicking to escape a potentially bad situation.")
@@ -367,7 +367,7 @@ func (rcf *Farm) initialFailsafe() {
 	if err := rcf.alerter.Alert(alerting.AlertInfo{
 		Description: "All RCs have zero replicas requested",
 		IncidentKey: "zero_replicas_found",
-	}); err != nil {
+	}, alerting.HighUrgency); err != nil {
 		rcf.logger.WithError(err).Errorln("Unable to deliver alert!")
 	}
 	panic("The sum of all replicas is 0. Panicking to escape a potentially bad situation")
@@ -381,7 +381,7 @@ func (rcf *Farm) failsafe(rcs []rcstore.RCLockResult) {
 		if err := rcf.alerter.Alert(alerting.AlertInfo{
 			Description: "No RCs have been scheduled",
 			IncidentKey: "no_rcs_found",
-		}); err != nil {
+		}, alerting.HighUrgency); err != nil {
 			rcf.logger.WithError(err).Errorln("Unable to deliver alert!")
 		}
 		panic("No RCs are scheduled at all. Create one RC to enable the farm. Panicking to escape a potentially bad situation.")

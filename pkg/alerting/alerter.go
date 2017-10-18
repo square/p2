@@ -18,12 +18,16 @@ type AlertInfo struct {
 }
 
 type Alerter interface {
-	Alert(alertInfo AlertInfo) error
+	Alert(alertInfo AlertInfo, urgency Urgency) error
 }
 
-func NewPagerduty(serviceKey string, client *http.Client) (Alerter, error) {
-	if serviceKey == "" {
-		return nil, util.Errorf("serviceKey must be provided for pagerduty alerters")
+func NewPagerduty(highUrgencyServiceKey string, lowUrgencyServiceKey string, client *http.Client) (Alerter, error) {
+	if highUrgencyServiceKey == "" {
+		return nil, util.Errorf("high urgency service key must be provided for pagerduty alerters")
+	}
+
+	if lowUrgencyServiceKey == "" {
+		return nil, util.Errorf("low urgency service key must be provided for pagerduty alerters")
 	}
 
 	if client == nil {
@@ -31,8 +35,9 @@ func NewPagerduty(serviceKey string, client *http.Client) (Alerter, error) {
 	}
 
 	return &pagerdutyAlerter{
-		ServiceKey: serviceKey,
-		Client:     client,
+		HighUrgencyServiceKey: highUrgencyServiceKey,
+		LowUrgencyServiceKey:  lowUrgencyServiceKey,
+		Client:                client,
 	}, nil
 }
 
