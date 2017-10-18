@@ -72,6 +72,23 @@ func Find() (Subsystems, error) {
 	return ret, nil
 }
 
+func FindWithParentGroup(parentGroupName string) (Subsystems, error) {
+	subsys, err := Find()
+	if err != nil {
+		return Subsystems{}, err
+	}
+
+	subsys.CPU = filepath.Join(subsys.CPU, parentGroupName)
+	subsys.Memory = filepath.Join(subsys.Memory, parentGroupName)
+
+	if stat, err := os.Stat(subsys.CPU); err == nil && stat.IsDir() {
+		if stat, err := os.Stat(subsys.Memory); err == nil && stat.IsDir() {
+			return subsys, nil
+		}
+	}
+	return Subsystems{}, UnsupportedError(parentGroupName)
+}
+
 // set the number of logical CPUs in a given cgroup, 0 to unrestrict
 // https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
 func (subsys Subsystems) SetCPU(name string, cpus int) error {

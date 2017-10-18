@@ -39,6 +39,7 @@ var (
 	workDir        = kingpin.Flag("workdir", "Set working directory.").Short('w').String()
 	umask          = kingpin.Flag("umask", "Set the process umask. Use octal notation ex. 0022").Short('m').Default(umaskDefault).String()
 	umaskDefault   = ""
+	podID          = kingpin.Flag("pod-cgroup", "Nest this launchable cgroup beneath a pod level cgroup. Looks in $CONFIG_PATH for parameters").Short('p').String()
 
 	cmd = kingpin.Arg("command", "the command to execute").Required().Strings()
 )
@@ -80,6 +81,37 @@ func main() {
 		}
 	}
 
+	cgroupPath := ""
+	if *podID != "" {
+		cgConfig, err := cgGetConfig("CONFIG_PATH", *podID)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = cgCreate("p2", cgroupPath, cgConfig)
+		if err != nil {
+			log.Fatalf("Could not create p2 cgroup %v\n", err)
+		}
+		cgroupPath = "p2"
+
+		node, err := os.Hostname()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = cgCreate(node, cgroupPath, cgConfig)
+		if err != nil {
+			log.Fatalf("Could not create cgroup for node %v %v\n", node, err)
+		}
+		cgroupPath = cgroupPath + "/" + node
+
+		err = cgCreate(*podID, cgroupPath, cgConfig)
+		if err != nil {
+			log.Fatalf("Could not create pod %v cgroup %v\n", *podID, err)
+		}
+		cgroupPath = cgroupPath + "/" + *podID
+	}
+
 	if *launchableName == "" && *cgroupName != "" {
 		log.Fatalf("Specified cgroup name %q, but no launchable name was specified", *cgroupName)
 	}
@@ -87,13 +119,14 @@ func main() {
 		log.Fatalf("Specified launchable name %q, but no cgroup name was specified", *launchableName)
 	}
 	if *launchableName != "" && *cgroupName != "" {
-		if platconf := os.Getenv("PLATFORM_CONFIG_PATH"); platconf != "" {
-			err := cgEnter(platconf, *launchableName, *cgroupName)
-			if err != nil {
-				log.Fatal(err)
-			}
-		} else {
-			log.Fatal("No PLATFORM_CONFIG_PATH, cannot determine cgroup")
+		cgPlatConfig, err := cgGetConfig("PLATFORM_CONFIG_PATH", *launchableName)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = cgCreate(*cgroupName, cgroupPath, cgPlatConfig)
+		if err != nil {
+			log.Fatal(err)
 		}
 	}
 
@@ -214,31 +247,22 @@ func loadEnvDir(dir string) error {
 // a cgroup with the name <cgroupname> will be created, using the parameters for
 // <launchablename> found in the platform configuration
 // then, the current PID will be added to that cgroup
-func cgEnter(platconf, launchableName, cgroupName string) error {
-	platconfBuf, err := ioutil.ReadFile(platconf)
-	if err != nil {
-		return err
-	}
-	cgMap := make(map[string]map[string]cgroups.Config)
-	err = yaml.Unmarshal(platconfBuf, cgMap)
-	if err != nil {
-		return err
+func cgCreate(cgroupName string, targetDirectory string, config cgroups.Config) error {
+	config.Name = cgroupName
+
+	var cg cgroups.Subsystems
+	var err error
+	if targetDirectory != "" {
+		cg, err = cgroups.FindWithParentGroup(targetDirectory)
+	} else {
+		cg, err = cgroups.Find()
 	}
 
-	if _, ok := cgMap[launchableName]; !ok {
-		return util.Errorf("Unknown launchable %q in PLATFORM_CONFIG_PATH", launchableName)
-	}
-	if _, ok := cgMap[launchableName]["cgroup"]; !ok {
-		return util.Errorf("Launchable %q has malformed PLATFORM_CONFIG_PATH", launchableName)
-	}
-	cgConfig := cgMap[launchableName]["cgroup"]
-	cgConfig.Name = cgroupName
-
-	cg, err := cgroups.Find()
 	if err != nil {
 		return util.Errorf("Could not find cgroupfs mount point: %s", err)
 	}
-	err = cg.Write(cgConfig)
+
+	err = cg.Write(config)
 	if _, ok := err.(cgroups.UnsupportedError); ok {
 		// if a subsystem is not supported, just log
 		// and carry on
@@ -247,7 +271,33 @@ func cgEnter(platconf, launchableName, cgroupName string) error {
 	} else if err != nil {
 		return util.Errorf("Could not set cgroup parameters: %s", err)
 	}
-	return cg.AddPID(cgConfig.Name, 0)
+	return cg.AddPID(config.Name, 0)
+}
+
+// given ENV variable "configPath" return parameters for the new cgroup being created
+func cgGetConfig(configPath string, configKey string) (cgroups.Config, error) {
+	if config := os.Getenv(configPath); config != "" {
+		confBuf, err := ioutil.ReadFile(config)
+		if err != nil {
+			return cgroups.Config{}, err
+		}
+		cgMap := make(map[string]map[string]cgroups.Config)
+		err = yaml.Unmarshal(confBuf, cgMap)
+		if err != nil {
+			return cgroups.Config{}, err
+		}
+
+		if _, ok := cgMap[configKey]; !ok {
+			return cgroups.Config{}, util.Errorf("Key %q not found in %s", configKey, configPath)
+		}
+		if _, ok := cgMap[configKey]["cgroup"]; !ok {
+			return cgroups.Config{}, util.Errorf("Key %q in %s does not contain cgroup parameters\n", configKey, configPath)
+		}
+		cgConfig := cgMap[configKey]["cgroup"]
+		return cgConfig, nil
+	} else {
+		return cgroups.Config{}, util.Errorf("No %s found in environment", configPath)
+	}
 }
 
 // generalized code to remove rlimits on both darwin and linux
