@@ -924,9 +924,15 @@ func createHelloReplicationController(dir string) (fields.ID, error) {
 }
 
 func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
-	conn, err := grpc.Dial("localhost:3000", grpc.WithBlock(), grpc.WithTimeout(5*time.Second), grpc.WithInsecure())
+	conn, err := grpc.Dial(
+		"localhost:3000",
+		grpc.WithBlock(),
+		grpc.WithTimeout(30*time.Second),
+		grpc.WithInsecure(),
+		grpc.WithBackoffMaxDelay(time.Second),
+	)
 	if err != nil {
-		return fmt.Errorf("Could not connect to grpc server: %s", err)
+		return util.Errorf("Could not connect to grpc server: %s", err)
 	}
 	grpcClient := label_grpc_client.NewClient(conn, logging.DefaultLogger)
 
@@ -1145,11 +1151,17 @@ func startLabelStoreServer(dir string) error {
 	}
 
 	// Test connection
-	conn, err := grpc.Dial("localhost:3000", grpc.WithBlock(), grpc.WithInsecure(), grpc.WithTimeout(15*time.Second))
+	conn, err := grpc.Dial(
+		"localhost:3000",
+		grpc.WithBlock(),
+		grpc.WithInsecure(),
+		grpc.WithTimeout(30*time.Second),
+		grpc.WithBackoffMaxDelay(time.Second),
+	)
 	if err != nil {
 		fmt.Println(targetLogs("label-store-server"))
 		fmt.Println(targetLogs("p2-preparer"))
-		return err
+		return util.Errorf("could not connect to label store server with grpc: %s", err)
 	}
 	conn.Close()
 
