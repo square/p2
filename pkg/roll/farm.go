@@ -461,7 +461,7 @@ func (rlf *Farm) mustDeleteRU(id roll_fields.ID, logger logging.Logger) {
 			}{
 				Errors: resp.Errors,
 			},
-		})
+		}, alerting.LowUrgency)
 	}
 
 	for err = f2(); err != nil; err = f2() {

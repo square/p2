@@ -10,9 +10,14 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
+type Urgency string
+
 const (
 	pagerdutyURI = "https://events.pagerduty.com/generic/2010-04-15/create_event.json"
 	eventType    = "trigger"
+
+	HighUrgency Urgency = "high_urgency"
+	LowUrgency  Urgency = "low_urgency"
 )
 
 // Subset of *http.Client functionality, useful for testing
@@ -21,8 +26,18 @@ type Poster interface {
 }
 
 type pagerdutyAlerter struct {
-	ServiceKey string
-	Client     Poster
+	Client Poster
+
+	// HighUrgencyServiceKey should be the service key for a pagerduty
+	// service that uses high-urgency escalation rules. Incidents sent by
+	// P2 using this service indicate serious problems that should be
+	// addressed as quickly as possible
+	HighUrgencyServiceKey string
+
+	// LowUrgencyServiceKey should be the pagerduty service key for a
+	// service that uses low-urgency rules. Incidents sent here should be
+	// addressed at some point but do not represent immediate threats
+	LowUrgencyServiceKey string
 }
 
 var _ Alerter = &pagerdutyAlerter{}
@@ -42,7 +57,7 @@ type pagerdutyBody struct {
 	EventType  string `json:"event_type"`
 }
 
-func (p *pagerdutyAlerter) Alert(alertInfo AlertInfo) error {
+func (p *pagerdutyAlerter) Alert(alertInfo AlertInfo, urgency Urgency) error {
 	// IncidentKey is not actually required by the PD API, but it's good
 	// practice to set it and is useful in error messages
 	if alertInfo.IncidentKey == "" {
@@ -52,8 +67,13 @@ func (p *pagerdutyAlerter) Alert(alertInfo AlertInfo) error {
 	if alertInfo.Description == "" {
 		return util.Errorf("A description was not provided for alert '%s", alertInfo.IncidentKey)
 	}
+
+	serviceKey := p.HighUrgencyServiceKey
+	if urgency == LowUrgency {
+		serviceKey = p.LowUrgencyServiceKey
+	}
 	body := pagerdutyBody{
-		ServiceKey:  p.ServiceKey,
+		ServiceKey:  serviceKey,
 		Description: alertInfo.Description,
 		IncidentKey: alertInfo.IncidentKey,
 		Details:     alertInfo.Details,

@@ -4,6 +4,6 @@ type nopAlerter struct{}
 
 var _ Alerter = &nopAlerter{}
 
-func (*nopAlerter) Alert(alertInfo AlertInfo) error {
+func (*nopAlerter) Alert(alertInfo AlertInfo, urgency Urgency) error {
 	return nil
 }
