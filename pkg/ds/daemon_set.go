@@ -131,7 +131,6 @@ type daemonSet struct {
 	fields.DaemonSet
 	mu sync.Mutex
 
-	contention            dsContention
 	logger                logging.Logger
 	store                 store
 	statusStore           StatusStore
@@ -170,11 +169,6 @@ type daemonSet struct {
 type dsReplication struct {
 	replication replication.Replication
 	nodeQueue   chan<- types.NodeName
-}
-
-type dsContention struct {
-	contendedWith fields.ID
-	isContended   bool
 }
 
 func New(

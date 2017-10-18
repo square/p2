@@ -85,14 +85,12 @@ type Farm struct {
 }
 
 type childDS struct {
-	ds              DaemonSet
-	cancel          context.CancelFunc
-	unlockCancel    context.CancelFunc
-	checkLockCancel context.CancelFunc
-	updatedCh       chan<- ds_fields.DaemonSet
-	deletedCh       chan<- ds_fields.DaemonSet
-	errCh           <-chan error
-	unlocker        consul.TxnUnlocker
+	ds        DaemonSet
+	cancel    context.CancelFunc
+	updatedCh chan<- ds_fields.DaemonSet
+	deletedCh chan<- ds_fields.DaemonSet
+	errCh     <-chan error
+	unlocker  consul.TxnUnlocker
 }
 
 // TODO: move other config options in here to reduce the number of arguments to NewFarm()
