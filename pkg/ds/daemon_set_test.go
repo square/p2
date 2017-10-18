@@ -31,7 +31,6 @@ import (
 )
 
 const (
-	testDSRetryInterval   = time.Duration(1000 * time.Millisecond)
 	replicationTimeout    = replication.NoTimeout
 	testFarmRetryInterval = time.Duration(1000 * time.Millisecond)
 )
@@ -825,10 +824,6 @@ func labeledPods(t *testing.T, ds *daemonSet) []labels.Labeled {
 	labeled, err := ds.applicator.GetMatches(selector, labels.POD)
 	Assert(t).IsNil(err, "expected no error matching pods")
 	return labeled
-}
-
-func scheduledPods(consulStore *consultest.FakePodStore) ([]consul.ManifestResult, time.Duration, error) {
-	return consulStore.AllPods(consul.INTENT_TREE)
 }
 
 func testManifest(podID types.PodID) manifest.Manifest {
