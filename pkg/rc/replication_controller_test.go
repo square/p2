@@ -787,7 +787,7 @@ func TestAlertIfCannotAllocateNodes(t *testing.T) {
 	// Force an allocate nodes failure
 	fixture := consulutil.NewFixture(t)
 	closeFn = fixture.Stop
-	applicator = labels.NewConsulApplicator(fixture.Client, 0)
+	applicator = labels.NewConsulApplicator(fixture.Client, 0, 0)
 	rc.scheduler = testScheduler{applicator, true}
 
 	err := testIneligibleNodesCommon(applicator, rc, alerter)

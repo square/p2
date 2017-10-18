@@ -70,3 +70,11 @@ func (c ConsulStore) CASTxn(ctx context.Context, rcID fields.ID, modifyIndex uin
 
 	return c.statusStore.CASStatus(ctx, statusstore.RC, statusstore.ResourceID(rcID), c.namespace, rawStatus, modifyIndex)
 }
+
+func (c ConsulStore) Delete(rcID fields.ID) error {
+	if rcID == "" {
+		return util.Errorf("Provided replication controller ID was empty")
+	}
+
+	return c.statusStore.DeleteStatus(statusstore.RC, statusstore.ResourceID(rcID.String()), c.namespace)
+}
