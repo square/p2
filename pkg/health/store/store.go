@@ -2,6 +2,7 @@ package store
 
 import (
 	"sync"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 
@@ -14,7 +15,7 @@ import (
 // HealthStore can answer questions about the health of a particular pod on a node
 // It performs this by watching the health tree of consul and caching the result
 type HealthStore interface {
-	StartWatch(quitCh <-chan struct{})
+	StartWatch(quitCh <-chan struct{}, jitterWindow time.Duration)
 	Fetch(types.PodID, types.NodeName) *health.Result
 }
 
@@ -35,13 +36,13 @@ func NewHealthStore(healthChecker checker.ConsulHealthChecker) HealthStore {
 	}
 }
 
-func (hs *healthStore) StartWatch(quitCh <-chan struct{}) {
+func (hs *healthStore) StartWatch(quitCh <-chan struct{}, jitterWindow time.Duration) {
 	healthUpdates := make(chan []*health.Result, 1)
 	defer close(healthUpdates)
 	errCh := make(chan error)
 	defer close(errCh)
 
-	go func() { hs.healthChecker.WatchHealth(healthUpdates, errCh, quitCh) }()
+	go func() { hs.healthChecker.WatchHealth(healthUpdates, errCh, quitCh, jitterWindow) }()
 
 	for {
 		select {

@@ -41,7 +41,7 @@ func main() {
 		logrusLogger.Logger.Level = logrus.DebugLevel
 	}
 	client := consul.NewConsulClient(opts)
-	applicator := labels.NewConsulApplicator(client, 1)
+	applicator := labels.NewConsulApplicator(client, 1, 0)
 
 	port := getPort()
 

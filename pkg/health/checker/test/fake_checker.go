@@ -33,7 +33,7 @@ func (s singleServiceChecker) WatchService(serviceID string, resultCh chan<- map
 
 }
 
-func (s singleServiceChecker) WatchHealth(_ chan []*health.Result, errCh chan<- error, quitCh <-chan struct{}) {
+func (s singleServiceChecker) WatchHealth(_ chan []*health.Result, errCh chan<- error, quitCh <-chan struct{}, jitterWindow time.Duration) {
 	panic("WatchHealth not implemented")
 }
 
@@ -108,8 +108,11 @@ func (h AlwaysHappyHealthChecker) WatchService(
 	}
 }
 
-func (h AlwaysHappyHealthChecker) WatchHealth(_ chan []*health.Result,
+func (h AlwaysHappyHealthChecker) WatchHealth(
+	_ chan []*health.Result,
 	errCh chan<- error,
-	quitCh <-chan struct{}) {
+	quitCh <-chan struct{},
+	jitterWindow time.Duration,
+) {
 	panic("not implemented")
 }

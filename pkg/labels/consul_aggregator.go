@@ -174,11 +174,11 @@ func (c *consulAggregator) Quit() {
 // watcher's output channel respectively.
 // Aggregate will loop forever, constantly sending matches to each watcher
 // until Quit() has been invoked.
-func (c *consulAggregator) Aggregate() {
+func (c *consulAggregator) Aggregate(jitterWindow time.Duration) {
 	outPairs := make(chan api.KVPairs)
 	done := make(chan struct{})
 	outErrors := make(chan error)
-	go consulutil.WatchPrefix(c.path+"/", c.kv, outPairs, done, outErrors, 0)
+	go consulutil.WatchPrefix(c.path+"/", c.kv, outPairs, done, outErrors, 0, jitterWindow)
 	for {
 		missedSends := 0
 		loopTime := time.After(c.aggregationRate)

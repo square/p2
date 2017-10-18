@@ -18,7 +18,7 @@ func TestCreateTxn(t *testing.T) {
 	fixture := consulutil.NewFixture(t)
 	defer fixture.Stop()
 
-	applicator := labels.NewConsulApplicator(fixture.Client, 0)
+	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
 	store := NewConsul(fixture.Client, applicator, 0)
 
 	rcLabelsToSet := klabels.Set{

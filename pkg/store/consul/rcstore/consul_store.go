@@ -305,7 +305,7 @@ func (s *ConsulStore) WatchNew(quit <-chan struct{}) (<-chan []fields.RC, <-chan
 	inCh := make(chan api.KVPairs)
 
 	outCh, errCh := publishLatestRCs(inCh, quit)
-	go consulutil.WatchPrefix(rcTree+"/", s.kv, inCh, quit, errCh, 1*time.Second)
+	go consulutil.WatchPrefix(rcTree+"/", s.kv, inCh, quit, errCh, 1*time.Second, 1*time.Minute)
 
 	return outCh, errCh
 }

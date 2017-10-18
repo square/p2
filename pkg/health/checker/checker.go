@@ -31,7 +31,9 @@ type ConsulHealthChecker interface {
 	WatchHealth(
 		resultCh chan []*health.Result,
 		errCh chan<- error,
-		quitCh <-chan struct{})
+		quitCh <-chan struct{},
+		jitterWindow time.Duration,
+	)
 	Service(serviceID string) (map[types.NodeName]health.Result, error)
 }
 
@@ -148,11 +150,12 @@ func (c consulHealthChecker) WatchHealth(
 	resultCh chan []*health.Result,
 	errCh chan<- error,
 	quitCh <-chan struct{},
+	jitterWindow time.Duration,
 ) {
 	// closed by watchPrefix when we close quitWatch
 	inCh := make(chan api.KVPairs)
 	watchErrCh := make(chan error)
-	go consulutil.WatchPrefix("health/", c.kv, inCh, quitCh, watchErrCh, 1*time.Second)
+	go consulutil.WatchPrefix("health/", c.kv, inCh, quitCh, watchErrCh, 1*time.Second, jitterWindow)
 	publishErrCh := publishLatestHealth(inCh, quitCh, resultCh)
 
 	for {

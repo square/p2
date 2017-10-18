@@ -3,6 +3,7 @@ package consulutil
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/hashicorp/consul/api"
@@ -117,6 +118,11 @@ func WatchKeys(
 // it when the function ends. This function will run until explicitly canceled by closing
 // the "done" channel. Data is written to the output channel synchronously, so readers
 // must consume the data or this method will block.
+//
+// jitterWindow is used to add randomized jitter between consul requests which can help
+// mitigate a flood of requests to a server when it because available after a period of
+// unavailability. A sleep time will be chosen between 0 and the jitterWindow setting
+// with a uniform probability over that range
 func WatchPrefix(
 	prefix string,
 	clientKV ConsulLister,
@@ -124,6 +130,7 @@ func WatchPrefix(
 	done <-chan struct{},
 	outErrors chan<- error,
 	pause time.Duration,
+	jitterWindow time.Duration,
 ) {
 	defer close(outPairs)
 	var currentIndex uint64
@@ -178,8 +185,10 @@ func WatchPrefix(
 			case <-done:
 			case outErrors <- err:
 			}
-			timer.Reset(2*time.Second + pause) // backoff
+
+			timer.Reset(pause + time.Duration(rand.Float64()*float64(jitterWindow)))
 		}
+
 	}
 }
 

@@ -31,7 +31,7 @@ func (hc *FakeHealthChecker) Service(serviceID string) (map[types.NodeName]healt
 	panic("not implemented")
 }
 
-func (hc *FakeHealthChecker) WatchHealth(resultCh chan []*health.Result, errCh chan<- error, quitCh <-chan struct{}) {
+func (hc *FakeHealthChecker) WatchHealth(resultCh chan []*health.Result, errCh chan<- error, quitCh <-chan struct{}, _ time.Duration) {
 	hc.results = resultCh
 	close(hc.ready)
 	<-quitCh
@@ -56,7 +56,7 @@ func TestStartWatchBasic(t *testing.T) {
 	quitCh := make(chan struct{})
 	defer close(quitCh)
 	hs, checker := NewFakeHealthStore()
-	go hs.StartWatch(quitCh)
+	go hs.StartWatch(quitCh, 0)
 
 	node := types.NodeName("abc01.sjc1")
 	podID1 := types.PodID("podID1")

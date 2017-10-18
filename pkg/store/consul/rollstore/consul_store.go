@@ -531,11 +531,11 @@ func (s ConsulStore) Lock(id roll_fields.ID, session string) (bool, error) {
 
 // Watch wtches for changes to the store and generate a list of Updates for each
 // change. This function does not block.
-func (s ConsulStore) Watch(quit <-chan struct{}) (<-chan []roll_fields.Update, <-chan error) {
+func (s ConsulStore) Watch(quit <-chan struct{}, jitterWindow time.Duration) (<-chan []roll_fields.Update, <-chan error) {
 	inCh := make(chan api.KVPairs)
 
 	outCh, errCh := publishLatestRolls(inCh, quit)
-	go consulutil.WatchPrefix(rollTree+"/", s.kv, inCh, quit, errCh, 0)
+	go consulutil.WatchPrefix(rollTree+"/", s.kv, inCh, quit, errCh, 0, jitterWindow)
 
 	return outCh, errCh
 }

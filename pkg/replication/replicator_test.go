@@ -193,7 +193,7 @@ func TestInitializeReplicationWithManaged(t *testing.T) {
 	setupPreparers(f)
 
 	// Make one node appear to be managed by a replication controller
-	err := labels.NewConsulApplicator(f.Client, 1).SetLabel(
+	err := labels.NewConsulApplicator(f.Client, 1, 0).SetLabel(
 		labels.POD,
 		path.Join(testNodes[0].String(), testPodId),
 		rc.RCIDLabel,
