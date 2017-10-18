@@ -387,7 +387,6 @@ func (ds *daemonSet) WatchDesires(
 					// channel closed
 					return
 				}
-				ds.logger.NoFields().Infof("Received daemon set update signal: %v", newDS)
 				if ds.ID() != newDS.ID {
 					err = util.Errorf("Expected uuid to be the same, expected '%v', got '%v'", ds.ID(), newDS.ID)
 					continue
@@ -407,6 +406,9 @@ func (ds *daemonSet) WatchDesires(
 				}
 
 				manifestChanged := newManifestSHA != oldManifestSHA
+				if manifestChanged {
+					ds.logger.Infoln("manifest changed")
+				}
 
 				ds.mu.Lock()
 				ds.DaemonSet = newDS
@@ -419,14 +421,21 @@ func (ds *daemonSet) WatchDesires(
 				}
 
 				if ds.Disabled {
+					ds.logger.Infoln("daemon set disabled, pausing replication")
 					pauseReplication <- struct{}{}
 					paused = true
 					continue
 				}
 
 				if paused || manifestChanged {
+					if paused {
+						ds.logger.Infoln("daemon set enabled, unpausing replication")
+					}
+
 					unpauseReplication <- struct{}{}
 					manifestChange <- ds.Manifest()
+
+					ds.logger.Infoln("kicking off replication for all nodes")
 					// schedule all the nodes again cuz the manifest changed or we unpaused
 					eligibleNodes, err = ds.EligibleNodes()
 					if err != nil {
@@ -561,7 +570,10 @@ func (ds *daemonSet) computeNodesToAdd() ([]types.NodeName, error) {
 	// Get the difference in nodes that we need to schedule on and then sort them
 	// for deterministic ordering
 	toScheduleSorted := types.NewNodeSet(eligible...).Difference(types.NewNodeSet(currentNodes...)).ListNodes()
-	ds.logger.Infof("Need to schedule %d nodes: %s", len(toScheduleSorted), toScheduleSorted)
+
+	if len(toScheduleSorted) > 0 {
+		ds.logger.Infof("Need to schedule %d nodes: %s", len(toScheduleSorted), toScheduleSorted)
+	}
 
 	return toScheduleSorted, nil
 }
@@ -587,6 +599,10 @@ func (ds *daemonSet) removePods() error {
 	// Get the difference in nodes that we need to unschedule on and then sort them
 	// for deterministic ordering
 	toUnscheduleSorted := types.NewNodeSet(currentNodes...).Difference(types.NewNodeSet(eligible...)).ListNodes()
+	if len(toUnscheduleSorted) == 0 {
+		return nil
+	}
+
 	ds.logger.NoFields().Infof("Need to unschedule %d nodes, remaining on %d nodes", len(toUnscheduleSorted), len(eligible))
 
 	// NOTE: there's it's possible that this node is in the replication's
