@@ -101,6 +101,42 @@ func TestCASTxn(t *testing.T) {
 	}
 }
 
+func TestDelete(t *testing.T) {
+	th := initTestHelper(t)
+	defer th.stop()
+
+	// Put a value in the store
+	err := th.store.Set(th.id, th.status)
+	if err != nil {
+		t.Fatalf("Unexpected error setting status: %s", err)
+	}
+
+	// Get the value out to confirm it's there
+	status, _, err := th.store.Get(th.id)
+	if err != nil {
+		t.Fatalf("Unexpected error getting status: %s", err)
+	}
+
+	if *(status.NodeTransfer) != *(th.status.NodeTransfer) {
+		t.Fatalf("Expected status.NodeTransfer to be %v, but was %v", th.status.NodeTransfer, status.NodeTransfer)
+	}
+
+	// Now delete it
+	err = th.store.Delete(th.id)
+	if err != nil {
+		t.Fatalf("Error deleting rc status: %s", err)
+	}
+
+	_, _, err = th.store.Get(th.id)
+	if err == nil {
+		t.Fatal("Expected an error fetching a deleted status")
+	}
+
+	if !statusstore.IsNoStatus(err) {
+		t.Errorf("Expected error to be NoStatus but was %s", err)
+	}
+}
+
 func testCASTxnHelper(th testHelper, modifyIndex uint64) (*Status, *api.QueryMeta, error) {
 	writeCtx, writeCancel := transaction.New(context.Background())
 	defer writeCancel()
