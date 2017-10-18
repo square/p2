@@ -341,28 +341,24 @@ func (dsf *Farm) handleDSChanges(ctx context.Context, changes dsstore.WatchedDae
 	dsf.childMu.Lock()
 	defer dsf.childMu.Unlock()
 	if len(changes.Created) > 0 {
-		dsf.logger.Infof("The following %d daemon sets have been created: %s", len(changes.Created), dsIDs(changes.Created))
 		for _, dsFields := range changes.Created {
 			dsf.lockAndSpawn(ctx, *dsFields)
 		}
 	}
 
 	if len(changes.Updated) > 0 {
-		dsf.logger.Infof("The following %d daemon sets have been updated: %s", len(changes.Updated), dsIDs(changes.Updated))
 		for _, dsFields := range changes.Updated {
 			dsf.lockAndSpawn(ctx, *dsFields)
 		}
 	}
 
 	if len(changes.Same) > 0 {
-		dsf.logger.Infof("The following %d daemon sets are the same: %s", len(changes.Same), dsIDs(changes.Same))
 		for _, dsFields := range changes.Same {
 			dsf.lockAndSpawn(ctx, *dsFields)
 		}
 	}
 
 	if len(changes.Deleted) > 0 {
-		dsf.logger.Infof("The following %d daemon sets have been deleted: %s", len(changes.Deleted), dsIDs(changes.Deleted))
 		for _, dsFields := range changes.Deleted {
 			// We have to spawn the daemon set, so that it can act on its deletion.
 			// Otherwise, child is nil when we reach the below select.
@@ -390,6 +386,8 @@ func (dsf *Farm) handleDSChanges(ctx context.Context, changes dsstore.WatchedDae
 			case child.deletedCh <- *dsFields:
 				dsf.closeChild(dsFields.ID)
 			}
+
+			dsf.logger.Infof("Released deleted daemon set %s", dsFields.ID)
 		}
 	}
 }
