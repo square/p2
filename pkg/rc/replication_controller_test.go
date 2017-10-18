@@ -23,7 +23,10 @@ import (
 	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/util"
 
 	. "github.com/anthonybishopric/gotcha"
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -63,6 +66,28 @@ type testAuditLogStore interface {
 	List() (map[audit.ID]audit.AuditLog, error)
 }
 
+func (s testScheduler) EligibleNodes(manifest manifest.Manifest, nodeSelector klabels.Selector) ([]types.NodeName, error) {
+	as := scheduler.NewApplicatorScheduler(s.applicator)
+	return as.EligibleNodes(manifest, nodeSelector)
+}
+
+func (s testScheduler) AllocateNodes(manifest manifest.Manifest, nodeSelector klabels.Selector, allocationCount int) ([]types.NodeName, error) {
+	if s.shouldErr {
+		return nil, util.Errorf("Intentional error allocating nodes.")
+	}
+
+	return []types.NodeName{types.NodeName("new.789")}, nil
+}
+
+func (s testScheduler) DeallocateNodes(nodeSelector klabels.Selector, nodes []types.NodeName) error {
+	return util.Errorf("DeallocateNodes() is not yet implemented")
+}
+
+type testScheduler struct {
+	applicator testApplicator
+	shouldErr  bool
+}
+
 func setup(t *testing.T) (
 	rcStore testRCStore,
 	consulStore testConsulStore,
@@ -88,6 +113,9 @@ func setup(t *testing.T) (
 	rcStore = rcstore.NewConsul(fixture.Client, applicator, 0)
 	consulStore = consul.NewConsulStore(fixture.Client)
 
+	statusStore := statusstore.NewConsul(fixture.Client)
+	rcStatusStore := rcstatus.NewConsul(statusStore, consul.RCStatusNamespace)
+
 	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID("testPod")
 	podManifest := manifestBuilder.GetManifest()
@@ -104,10 +132,11 @@ func setup(t *testing.T) (
 	rc = New(
 		rcData,
 		consulStore,
+		rcStatusStore,
 		auditLogStore,
 		fixture.Client.KV(),
 		rcStore,
-		scheduler.NewApplicatorScheduler(applicator),
+		testScheduler{applicator, false},
 		applicator,
 		logging.DefaultLogger,
 		alerter,
@@ -681,14 +710,104 @@ func TestUnscheduleMoreThan5(t *testing.T) {
 	wg.Wait()
 }
 
-func TestAlertIfNodeBecomesIneligible(t *testing.T) {
+func TestAlertIfNodeBecomesIneligibleIfNotCattleStrategy(t *testing.T) {
 	_, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
+	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(alerter.Alerts) != 1 {
+		t.Fatalf("the RC should have alerted since replicas desired is greater than the number of eligible nodes, but there were %d alerts", len(alerter.Alerts))
+	}
+}
+
+func TestAllocateOnIneligibleIfCattleStrategy(t *testing.T) {
+	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	defer closeFn()
+
+	rc.AllocationStrategy = fields.CattleStrategy
+
+	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(alerter.Alerts) != 0 {
+		t.Fatalf("the RC should not have alerted since it allocated cattle nodes, but there were %d alerts", len(alerter.Alerts))
+	}
+
+	status, _, _ := rc.rcStatusStore.Get(rc.ID())
+	if status.NodeTransfer.NewNode != types.NodeName("new.789") {
+		t.Fatalf("the rc failed to update the node transfer status new node to new.789 from %s", status.NodeTransfer.NewNode)
+	}
+}
+
+func TestNoOpIfNodeTransferInProgress(t *testing.T) {
+	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	defer closeFn()
+
+	rc.AllocationStrategy = fields.CattleStrategy
+
+	// Simulate node transfer in progress with non-nil node transfer
+	testStatus := rcstatus.Status{
+		NodeTransfer: &rcstatus.NodeTransfer{
+			OldNode: types.NodeName("old.123"),
+			NewNode: types.NodeName("new.456"),
+		},
+	}
+	err := rc.rcStatusStore.Set(rc.ID(), testStatus)
+	if err != nil {
+		t.Fatalf("Unexpected error putting in fake node transfer status")
+	}
+
+	err = testIneligibleNodesCommon(applicator, rc, alerter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(alerter.Alerts) != 0 {
+		t.Fatalf("the RC should not have alerted since a transfer was in progress, but there were %d alerts", len(alerter.Alerts))
+	}
+
+	status, _, _ := rc.rcStatusStore.Get(rc.ID())
+	if *(status.NodeTransfer) != *(testStatus.NodeTransfer) {
+		t.Fatalf("the rc should not have updated the status from %v to %v", testStatus, status)
+	}
+}
+
+func TestAlertIfCannotAllocateNodes(t *testing.T) {
+	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	defer closeFn()
+
+	rc.AllocationStrategy = fields.CattleStrategy
+
+	// Force an allocate nodes failure
+	fixture := consulutil.NewFixture(t)
+	closeFn = fixture.Stop
+	applicator = labels.NewConsulApplicator(fixture.Client, 0)
+	rc.scheduler = testScheduler{applicator, true}
+
+	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	if err == nil {
+		t.Fatalf("Expected intentional error but there was none")
+	}
+
+	if len(alerter.Alerts) != 1 {
+		t.Fatalf("the RC should have alerted since the scheduler could not allocate nodes, but there were %d alerts", len(alerter.Alerts))
+	}
+}
+
+// testIneligibleNodesCommmon labels nodes and meets desires, then marks one as
+// bad and meets desires again. It is the shared to code the establish
+// the ineligible node state and cause the RC to act on it
+func testIneligibleNodesCommon(applicator testApplicator, rc *replicationController, alerter *alertingtest.AlertRecorder) error {
 	for i := 0; i < 7; i++ {
 		err := applicator.SetLabel(labels.NODE, fmt.Sprintf("node%d", i), "nodeQuality", "good")
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 	}
 
@@ -696,20 +815,20 @@ func TestAlertIfNodeBecomesIneligible(t *testing.T) {
 
 	err := rc.meetDesires()
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 
 	current, err := rc.CurrentPods()
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 
 	if len(current) != 7 {
-		t.Fatalf("rc should have scheduled 7 pods but found %d", len(current))
+		return util.Errorf("rc should have scheduled 7 pods but found %d", len(current))
 	}
 
 	if len(alerter.Alerts) != 0 {
-		t.Fatalf("there shouldn't have been any alerts yet but there were %d", len(alerter.Alerts))
+		return util.Errorf("there shouldn't have been any alerts yet but there were %d", len(alerter.Alerts))
 	}
 
 	// now make one of the nodes ineligible, creating a situation where the
@@ -717,29 +836,20 @@ func TestAlertIfNodeBecomesIneligible(t *testing.T) {
 	// those nodes meet the node selector's criteria
 	err = applicator.SetLabel(labels.NODE, "node3", "nodeQuality", "bad")
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 
 	err = rc.meetDesires()
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 
 	current, err = rc.CurrentPods()
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 
-	// There should still be 7 pods by design, we want to be paranoid about
-	// unscheduling. The operator should decrease the replica count if they
-	// want an unschedule to happen
-	if len(current) != 7 {
-		t.Fatalf("rc should still have 7 pods (even though only 6 are eligible) but found %d", len(current))
-	}
-
-	if len(alerter.Alerts) != 1 {
-		t.Fatalf("the RC should have alerted since replicas desired is greater than the number of eligible nodes, but there were %d alerts", len(alerter.Alerts))
-	}
+	return nil
 }
 
 // Tests that an RC will not do any scheduling/unscheduling if the only thing

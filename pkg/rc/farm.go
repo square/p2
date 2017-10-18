@@ -19,6 +19,7 @@ import (
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/util"
 
@@ -70,6 +71,7 @@ type AuditLogStore interface {
 type Farm struct {
 	// constructor arguments for rcs created by this farm
 	store         consulStore
+	rcStatusStore rcstatus.ConsulStore
 	auditLogStore AuditLogStore
 	rcStore       ReplicationControllerStore
 	rcLocker      ReplicationControllerLocker
@@ -104,6 +106,7 @@ type childRC struct {
 
 func NewFarm(
 	store consulStore,
+	rcStatusStore rcstatus.ConsulStore,
 	auditLogStore AuditLogStore,
 	rcs ReplicationControllerStore,
 	rcLocker ReplicationControllerLocker,
@@ -123,6 +126,7 @@ func NewFarm(
 
 	return &Farm{
 		store:            store,
+		rcStatusStore:    rcStatusStore,
 		auditLogStore:    auditLogStore,
 		rcStore:          rcs,
 		rcLocker:         rcLocker,
@@ -271,6 +275,7 @@ START_LOOP:
 				newChild := New(
 					rc,
 					rcf.store,
+					rcf.rcStatusStore,
 					rcf.auditLogStore,
 					rcf.txner,
 					rcf.rcWatcher,
