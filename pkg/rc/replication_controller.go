@@ -92,6 +92,15 @@ type consulStore interface {
 		nodeName types.NodeName,
 		manifestID types.PodID,
 	) error
+
+	LockIfKeyNotExistsTxn(
+		ctx context.Context,
+		podPrefix consul.PodPrefix,
+		nodeName types.NodeName,
+		manifest manifest.Manifest,
+		session consul.Session,
+	) error
+
 	NewUnmanagedSession(session, name string) consul.Session
 }
 
