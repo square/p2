@@ -328,7 +328,13 @@ func (c *PreparerConfig) getClient(
 		transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
 	}
 
-	c.httpClient = &http.Client{Transport: transport}
+	c.httpClient = &http.Client{
+		Transport: transport,
+		// 6 minutes is slightly higher than the wait time we use on consul watches of
+		// 5 minutes. We expect that a response might not come back for up to 5
+		// minutes, but we shouldn't wait much longer than that
+		Timeout: 6 * time.Minute,
+	}
 	return c.httpClient, nil
 }
 
