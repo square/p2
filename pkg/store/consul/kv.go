@@ -232,6 +232,45 @@ func (c consulStore) SetPodTxn(ctx context.Context, podPrefix PodPrefix, nodenam
 	})
 }
 
+// LockIfKeyNotExistsTxn will lock and set a key, guaranteeing the key did not
+// exist.
+func (c consulStore) LockIfKeyNotExistsTxn(
+	ctx context.Context,
+	podPrefix PodPrefix,
+	nodename types.NodeName,
+	manifest manifest.Manifest,
+	session Session,
+) error {
+	buf := bytes.Buffer{}
+	err := manifest.Write(&buf)
+	if err != nil {
+		return err
+	}
+
+	key, err := podPath(podPrefix, nodename, manifest.ID())
+	if err != nil {
+		return err
+	}
+
+	// KVDeleteCAS with index 0 is used because it ensures that the subsequent
+	// lock will fail if the key existed.
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb:  string(api.KVDeleteCAS),
+		Key:   key,
+		Index: 0,
+	})
+	if err != nil {
+		return err
+	}
+
+	return transaction.Add(ctx, api.KVTxnOp{
+		Verb:    string(api.KVLock),
+		Key:     key,
+		Value:   buf.Bytes(),
+		Session: session.Session(),
+	})
+}
+
 // DeletePod deletes a pod manifest from the key-value store. No error will be
 // returned if the key didn't exist.
 func (c consulStore) DeletePod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error) {
