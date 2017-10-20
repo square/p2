@@ -349,6 +349,38 @@ func NewSession(client consulutil.ConsulClient, name string, renewalCh <-chan ti
 	return consulSession, renewalErrCh, nil
 }
 
+// SessionContext creates a consul session and keeps it renewed until either a
+// renewal error occurs or the passed context is canceled. If a renewal error
+// occurs, it will cancel the output context
+func SessionContext(ctx context.Context, client consulutil.ConsulClient, name string) (context.Context, Session, error) {
+	sessionID, _, err := client.Session().CreateNoChecks(&api.SessionEntry{
+		Name:      name,
+		LockDelay: lockDelay,
+		// locks should only be used with ephemeral keys
+		Behavior: api.SessionBehaviorDelete,
+		TTL:      lockTTL,
+	}, nil)
+	if err != nil {
+		return nil, nil, util.Errorf("could not create session: %s", err)
+	}
+
+	// adapt the passed context do a quit channel
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		<-ctx.Done()
+		_, _ = client.Session().Destroy(sessionID, nil)
+	}()
+
+	retCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		defer cancel()
+		_ = client.Session().RenewPeriodic(lockTTL, sessionID, nil, done)
+	}()
+
+	return retCtx, NewUnmanagedSession(client, sessionID, name), nil
+}
+
 type AlreadyLockedError struct {
 	Key string
 }
