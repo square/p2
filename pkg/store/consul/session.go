@@ -31,6 +31,11 @@ type Session interface {
 		lockCtx context.Context,
 		key string,
 	) (TxnUnlocker, error)
+	LockIfKeyNotExistsTxn(
+		ctx context.Context,
+		key string,
+		value []byte,
+	) (TxnUnlocker, error)
 	Renew() error
 	Destroy() error
 	Session() string
@@ -107,6 +112,40 @@ func (s session) LockTxn(
 	})
 	if err != nil {
 		return nil, util.Errorf("could not build key locking transaction: %s", err)
+	}
+
+	return &txnUnlocker{
+		session: s.session,
+		key:     key,
+	}, nil
+}
+
+// LockIfKeyNotExistsTxn will lock and set a key, guaranteeing the key did not
+// exist.
+func (s session) LockIfKeyNotExistsTxn(
+	ctx context.Context,
+	key string,
+	value []byte,
+) (TxnUnlocker, error) {
+	// KVDeleteCAS with index 0 is used because it ensures that the subsequent
+	// lock will fail if the key existed.
+	err := transaction.Add(ctx, api.KVTxnOp{
+		Verb:  string(api.KVDeleteCAS),
+		Key:   key,
+		Index: 0,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb:    string(api.KVLock),
+		Key:     key,
+		Value:   value,
+		Session: s.session,
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return &txnUnlocker{
