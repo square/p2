@@ -342,19 +342,19 @@ func (dsf *Farm) handleDSChanges(ctx context.Context, changes dsstore.WatchedDae
 	defer dsf.childMu.Unlock()
 	if len(changes.Created) > 0 {
 		for _, dsFields := range changes.Created {
-			dsf.lockAndSpawn(ctx, *dsFields)
+			dsf.lockAndSpawn(ctx, *dsFields, Created)
 		}
 	}
 
 	if len(changes.Updated) > 0 {
 		for _, dsFields := range changes.Updated {
-			dsf.lockAndSpawn(ctx, *dsFields)
+			dsf.lockAndSpawn(ctx, *dsFields, Updated)
 		}
 	}
 
 	if len(changes.Same) > 0 {
 		for _, dsFields := range changes.Same {
-			dsf.lockAndSpawn(ctx, *dsFields)
+			dsf.lockAndSpawn(ctx, *dsFields, Same)
 		}
 	}
 
@@ -367,7 +367,7 @@ func (dsf *Farm) handleDSChanges(ctx context.Context, changes dsstore.WatchedDae
 			// before we stopped daemon set
 			// deletion behavior were all pods
 			// become deleted
-			dsf.lockAndSpawn(ctx, *dsFields)
+			dsf.lockAndSpawn(ctx, *dsFields, Deleted)
 			dsf.logger.Infof("%v", *dsFields)
 
 			child, ok := dsf.children[dsFields.ID]
@@ -649,6 +649,15 @@ func (dsf *Farm) spawnDaemonSet(
 	}
 }
 
+type dsState string
+
+const (
+	Created dsState = "created"
+	Same    dsState = "same"
+	Updated dsState = "updated"
+	Deleted dsState = "deleted"
+)
+
 // lockAndSpawn does the following
 // 1) checks if the daemon set is "owned" by this farm, and if not tries to
 // acquire the lock and spawn a worker
@@ -657,7 +666,7 @@ func (dsf *Farm) spawnDaemonSet(
 // disable the daemon set
 // 3) If applicable, ensures the worker for this daemon set has the latest copy of the daemon
 // set
-func (dsf *Farm) lockAndSpawn(ctx context.Context, dsFields ds_fields.DaemonSet) bool {
+func (dsf *Farm) lockAndSpawn(ctx context.Context, dsFields ds_fields.DaemonSet, dsState dsState) bool {
 	var err error
 	dsLogger := dsf.makeDSLogger(dsFields)
 
@@ -698,22 +707,27 @@ func (dsf *Farm) lockAndSpawn(ctx context.Context, dsFields ds_fields.DaemonSet)
 		dsf.logger.Infof("Lock on daemon set '%v' acquired", dsFields.ID)
 	}
 
-	// If the daemon set contends with another daemon set, disable it
-	dsContended, isContended, err := DSContends(dsFields, dsf.scheduler, dsf.dsStore)
-	if err != nil {
-		dsf.logger.Errorf("Error occurred when trying to check for daemon set contention: %v", err)
-		dsf.releaseLock(unlocker)
-		return false
-	}
-
-	if isContended {
-		dsf.raiseContentionAlert(dsContended, dsFields)
-		dsf.logger.Errorf("Created daemon set '%s' contends with %s", dsFields.ID, dsContended.ID)
-		dsFields, err = dsf.dsStore.Disable(dsFields.ID)
+	// We only need to check for contention if it's new or changed. This is
+	// an expensive operation to run, particularly when 99% of the time a
+	// daemon set passed to this function hasn't changed
+	if dsState == Updated || dsState == Created {
+		// If the daemon set contends with another daemon set, disable it
+		dsContended, isContended, err := DSContends(dsFields, dsf.scheduler, dsf.dsStore)
 		if err != nil {
-			dsf.logger.Errorf("Error occurred when trying to disable daemon set: %v", err)
+			dsf.logger.Errorf("Error occurred when trying to check for daemon set contention: %v", err)
 			dsf.releaseLock(unlocker)
 			return false
+		}
+
+		if isContended {
+			dsf.raiseContentionAlert(dsContended, dsFields)
+			dsf.logger.Errorf("Created daemon set '%s' contends with %s", dsFields.ID, dsContended.ID)
+			dsFields, err = dsf.dsStore.Disable(dsFields.ID)
+			if err != nil {
+				dsf.logger.Errorf("Error occurred when trying to disable daemon set: %v", err)
+				dsf.releaseLock(unlocker)
+				return false
+			}
 		}
 	}
 
