@@ -12,6 +12,7 @@ import (
 
 	"github.com/square/p2/pkg/alerting/alertingtest"
 	"github.com/square/p2/pkg/audit"
+	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -80,7 +81,7 @@ func (s testScheduler) AllocateNodes(manifest manifest.Manifest, nodeSelector kl
 }
 
 func (s testScheduler) DeallocateNodes(nodeSelector klabels.Selector, nodes []types.NodeName) error {
-	return util.Errorf("DeallocateNodes() is not yet implemented")
+	return nil
 }
 
 type testScheduler struct {
@@ -129,9 +130,12 @@ func setup(t *testing.T) (
 	alerter = alertingtest.NewRecorder()
 	auditLogStore = auditlogstore.NewConsulStore(fixture.Client.KV())
 
+	healthChecker := checker.NewConsulHealthChecker(fixture.Client)
+
 	rc = New(
 		rcData,
 		consulStore,
+		fixture.Client,
 		rcStatusStore,
 		auditLogStore,
 		fixture.Client.KV(),
@@ -140,6 +144,7 @@ func setup(t *testing.T) (
 		applicator,
 		logging.DefaultLogger,
 		alerter,
+		healthChecker,
 	).(*replicationController)
 
 	return

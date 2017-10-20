@@ -110,12 +110,14 @@ func main() {
 	// Run the farms!
 	go rc.NewFarm(
 		consulStore,
+		client,
 		rcStatusStore,
 		auditLogStore,
 		rcStore,
 		rcStore,
 		rcStore,
 		client.KV(),
+		healthChecker,
 		sched,
 		labeler,
 		pub.Subscribe().Chan(),

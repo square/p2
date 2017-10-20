@@ -12,6 +12,7 @@ import (
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/audit"
+	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	p2metrics "github.com/square/p2/pkg/metrics"
@@ -71,6 +72,7 @@ type AuditLogStore interface {
 type Farm struct {
 	// constructor arguments for rcs created by this farm
 	store         consulStore
+	client        consulutil.ConsulClient
 	rcStatusStore rcstatus.ConsulStore
 	auditLogStore AuditLogStore
 	rcStore       ReplicationControllerStore
@@ -79,6 +81,7 @@ type Farm struct {
 	scheduler     Scheduler
 	labeler       Labeler
 	txner         transaction.Txner
+	healthChecker checker.ConsulHealthChecker
 
 	// session stream for the rcs locked by this farm
 	sessions <-chan string
@@ -106,12 +109,14 @@ type childRC struct {
 
 func NewFarm(
 	store consulStore,
+	client consulutil.ConsulClient,
 	rcStatusStore rcstatus.ConsulStore,
 	auditLogStore AuditLogStore,
 	rcs ReplicationControllerStore,
 	rcLocker ReplicationControllerLocker,
 	rcWatcher ReplicationControllerWatcher,
 	txner transaction.Txner,
+	healthChecker checker.ConsulHealthChecker,
 	scheduler Scheduler,
 	labeler Labeler,
 	sessions <-chan string,
@@ -126,12 +131,14 @@ func NewFarm(
 
 	return &Farm{
 		store:            store,
+		client:           client,
 		rcStatusStore:    rcStatusStore,
 		auditLogStore:    auditLogStore,
 		rcStore:          rcs,
 		rcLocker:         rcLocker,
 		rcWatcher:        rcWatcher,
 		txner:            txner,
+		healthChecker:    healthChecker,
 		scheduler:        scheduler,
 		labeler:          labeler,
 		sessions:         sessions,
@@ -275,6 +282,7 @@ START_LOOP:
 				newChild := New(
 					rc,
 					rcf.store,
+					rcf.client,
 					rcf.rcStatusStore,
 					rcf.auditLogStore,
 					rcf.txner,
@@ -283,6 +291,7 @@ START_LOOP:
 					rcf.labeler,
 					rcLogger,
 					rcf.alerter,
+					rcf.healthChecker,
 				)
 				childQuit := make(chan struct{})
 				rcf.children[rcKey.ID] = childRC{
