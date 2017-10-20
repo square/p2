@@ -74,6 +74,26 @@ func (a *auditingTransaction) RemoveNode(node types.NodeName) {
 // scheduled and nodes that will be scheduled as a part of this transaction by
 // the RC. Then it commits the transaction
 func (a *auditingTransaction) Commit(txner transaction.Txner) (bool, *api.KVTxnResponse, error) {
+	err := a.commitCommon(txner)
+	if err != nil {
+		return false, nil, err
+	}
+
+	return transaction.Commit(a.ctx, txner)
+}
+
+// CommitWithRetries() adds the audit log like Commit() but retries the
+// transaction.Commit() until the transaction is applied without an error.
+func (a *auditingTransaction) CommitWithRetries(txner transaction.Txner) (bool, *api.KVTxnResponse, error) {
+	err := a.commitCommon(txner)
+	if err != nil {
+		return false, nil, err
+	}
+
+	return transaction.CommitWithRetries(a.ctx, txner)
+}
+
+func (a *auditingTransaction) commitCommon(txner transaction.Txner) error {
 	details, err := audit.NewRCRetargetingEventDetails(
 		a.podID,
 		a.az,
@@ -81,7 +101,7 @@ func (a *auditingTransaction) Commit(txner transaction.Txner) (bool, *api.KVTxnR
 		a.Nodes(),
 	)
 	if err != nil {
-		return false, nil, err
+		return err
 	}
 
 	err = a.auditLogStore.Create(
@@ -90,8 +110,8 @@ func (a *auditingTransaction) Commit(txner transaction.Txner) (bool, *api.KVTxnR
 		details,
 	)
 	if err != nil {
-		return false, nil, util.Errorf("could not add rc retargeting audit log to context: %s", err)
+		return util.Errorf("could not add rc retargeting audit log to context: %s", err)
 	}
 
-	return transaction.Commit(a.ctx, txner)
+	return nil
 }
