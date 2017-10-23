@@ -56,7 +56,7 @@ func TestHookPathNodeNameIsIgnored(t *testing.T) {
 }
 
 func TestPodPath(t *testing.T) {
-	podPath, err := podPath(REALITY_TREE, testHostname, testPodId)
+	podPath, err := PodPath(REALITY_TREE, testHostname, testPodId)
 	if err != nil {
 		t.Errorf("should not have errored retrieving pod path: %s", err)
 	}
@@ -71,7 +71,7 @@ func TestPodPath(t *testing.T) {
 }
 
 func TestPodPathErrorNoHostname(t *testing.T) {
-	_, err := podPath(REALITY_TREE, "", testPodId)
+	_, err := PodPath(REALITY_TREE, "", testPodId)
 	if err == nil {
 		t.Errorf("should have errored retrieving pod path with empty nodeName")
 	}

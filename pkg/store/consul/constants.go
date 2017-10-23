@@ -36,7 +36,7 @@ func nodePath(podPrefix PodPrefix, nodeName types.NodeName) (string, error) {
 	return path.Join(string(podPrefix), nodeName.String()), nil
 }
 
-func podPath(podPrefix PodPrefix, nodeName types.NodeName, podId types.PodID) (string, error) {
+func PodPath(podPrefix PodPrefix, nodeName types.NodeName, podId types.PodID) (string, error) {
 	nodePath, err := nodePath(podPrefix, nodeName)
 	if err != nil {
 		return "", err
@@ -52,7 +52,7 @@ func podPath(podPrefix PodPrefix, nodeName types.NodeName, podId types.PodID) (s
 // Returns the consul path to use when intending to lock a pod, e.g.
 // lock/intent/some_host/some_pod
 func PodLockPath(podPrefix PodPrefix, nodeName types.NodeName, podId types.PodID) (string, error) {
-	subPodPath, err := podPath(podPrefix, nodeName, podId)
+	subPodPath, err := PodPath(podPrefix, nodeName, podId)
 	if err != nil {
 		return "", err
 	}

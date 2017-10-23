@@ -194,7 +194,7 @@ func (c consulStore) SetPod(podPrefix PodPrefix, nodename types.NodeName, manife
 		return 0, err
 	}
 
-	key, err := podPath(podPrefix, nodename, manifest.ID())
+	key, err := PodPath(podPrefix, nodename, manifest.ID())
 	if err != nil {
 		return 0, err
 	}
@@ -220,7 +220,7 @@ func (c consulStore) SetPodTxn(ctx context.Context, podPrefix PodPrefix, nodenam
 		return err
 	}
 
-	key, err := podPath(podPrefix, nodename, manifest.ID())
+	key, err := PodPath(podPrefix, nodename, manifest.ID())
 	if err != nil {
 		return err
 	}
@@ -247,7 +247,7 @@ func (c consulStore) LockIfKeyNotExistsTxn(
 		return err
 	}
 
-	key, err := podPath(podPrefix, nodename, manifest.ID())
+	key, err := PodPath(podPrefix, nodename, manifest.ID())
 	if err != nil {
 		return err
 	}
@@ -274,7 +274,7 @@ func (c consulStore) LockIfKeyNotExistsTxn(
 // DeletePod deletes a pod manifest from the key-value store. No error will be
 // returned if the key didn't exist.
 func (c consulStore) DeletePod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (time.Duration, error) {
-	key, err := podPath(podPrefix, nodename, podId)
+	key, err := PodPath(podPrefix, nodename, podId)
 	if err != nil {
 		return 0, err
 	}
@@ -287,7 +287,7 @@ func (c consulStore) DeletePod(podPrefix PodPrefix, nodename types.NodeName, pod
 }
 
 func (c consulStore) DeletePodTxn(ctx context.Context, podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) error {
-	key, err := podPath(podPrefix, nodename, podId)
+	key, err := PodPath(podPrefix, nodename, podId)
 	if err != nil {
 		return err
 	}
@@ -309,7 +309,7 @@ func (c consulStore) MutatePod(
 	mutate func(manifest.Manifest) (manifest.Manifest, error),
 ) error {
 	for _, node := range nodes {
-		path, err := podPath(INTENT_TREE, node, podID)
+		path, err := PodPath(INTENT_TREE, node, podID)
 		if err != nil {
 			return util.Errorf("can't make path for %s: %s", node, err)
 		}
@@ -355,7 +355,7 @@ func (c consulStore) MutatePod(
 // exist, a nil *PodManifest will be returned, along with a pods.NoCurrentManifest
 // error.
 func (c consulStore) Pod(podPrefix PodPrefix, nodename types.NodeName, podId types.PodID) (manifest.Manifest, time.Duration, error) {
-	key, err := podPath(podPrefix, nodename, podId)
+	key, err := PodPath(podPrefix, nodename, podId)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -424,7 +424,7 @@ func (c consulStore) WatchPod(
 
 	defer close(podChan)
 
-	key, err := podPath(podPrefix, nodename, podId)
+	key, err := PodPath(podPrefix, nodename, podId)
 	if err != nil {
 		select {
 		case <-quitChan:
