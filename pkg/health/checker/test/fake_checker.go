@@ -25,7 +25,17 @@ func NewSingleService(service string, health map[types.NodeName]health.Result) c
 }
 
 func (s singleServiceChecker) WatchPodOnNode(nodename types.NodeName, podID types.PodID, quitCh <-chan struct{}) (chan health.Result, chan error) {
-	panic("WatchPodOnNode not implemented")
+	resultCh := make(chan health.Result)
+	result, ok := s.health[nodename]
+	if !ok {
+		result = health.Result{Status: health.Critical}
+	}
+
+	go func() {
+		resultCh <- result
+	}()
+
+	return resultCh, nil
 }
 
 func (s singleServiceChecker) WatchService(serviceID string, resultCh chan<- map[types.NodeName]health.Result, errCh chan<- error, quitCh <-chan struct{}, watchDelay time.Duration) {
