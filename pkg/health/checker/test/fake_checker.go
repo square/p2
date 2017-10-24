@@ -24,8 +24,8 @@ func NewSingleService(service string, health map[types.NodeName]health.Result) c
 	}
 }
 
-func (s singleServiceChecker) WatchNodeService(nodename types.NodeName, serviceID string, resultCh chan<- health.Result, errCh chan<- error, quitCh <-chan struct{}) {
-	panic("WatchNodeService not implemented")
+func (s singleServiceChecker) WatchPodOnNode(nodename types.NodeName, podID types.PodID, quitCh <-chan struct{}) (chan health.Result, chan error) {
+	panic("WatchPodOnNode not implemented")
 }
 
 func (s singleServiceChecker) WatchService(serviceID string, resultCh chan<- map[types.NodeName]health.Result, errCh chan<- error, quitCh <-chan struct{}, watchDelay time.Duration) {
@@ -54,24 +54,29 @@ func HappyHealthChecker(nodes []types.NodeName) checker.ConsulHealthChecker {
 	return AlwaysHappyHealthChecker{nodes}
 }
 
-func (h AlwaysHappyHealthChecker) WatchNodeService(
+func (h AlwaysHappyHealthChecker) WatchPodOnNode(
 	nodeName types.NodeName,
-	serviceID string,
-	resultCh chan<- health.Result,
-	errCh chan<- error,
+	podID types.PodID,
 	quitCh <-chan struct{},
-) {
+) (chan health.Result, chan error) {
+	resultCh := make(chan health.Result)
+
 	happyResult := health.Result{
-		ID:     types.PodID(serviceID),
+		ID:     podID,
 		Status: health.Passing,
 	}
-	for {
-		select {
-		case <-quitCh:
-			return
-		case resultCh <- happyResult:
+	go func() {
+		defer close(resultCh)
+		for {
+			select {
+			case <-quitCh:
+				return
+			case resultCh <- happyResult:
+			}
 		}
-	}
+	}()
+
+	return resultCh, nil
 }
 
 func (h AlwaysHappyHealthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {

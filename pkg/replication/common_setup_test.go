@@ -78,13 +78,11 @@ type channelBasedHealthChecker struct {
 }
 
 // Pass along whatever results come through c.resultsChan
-func (c channelBasedHealthChecker) WatchNodeService(
+func (c channelBasedHealthChecker) WatchPodOnNode(
 	nodeName types.NodeName,
-	serviceID string,
-	resultCh chan<- health.Result,
-	errCh chan<- error,
+	podID types.PodID,
 	quitCh <-chan struct{},
-) {
+) (chan health.Result, chan error) {
 	panic("not implemented")
 }
 

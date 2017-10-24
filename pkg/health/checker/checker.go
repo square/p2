@@ -14,13 +14,11 @@ import (
 )
 
 type ConsulHealthChecker interface {
-	WatchNodeService(
+	WatchPodOnNode(
 		nodename types.NodeName,
-		serviceID string,
-		resultCh chan<- health.Result,
-		errCh chan<- error,
+		podID types.PodID,
 		quitCh <-chan struct{},
-	)
+	) (chan health.Result, chan error)
 	WatchService(
 		serviceID string,
 		resultCh chan<- map[types.NodeName]health.Result,
@@ -64,28 +62,49 @@ func NewConsulHealthChecker(client consulutil.ConsulClient) ConsulHealthChecker 
 	}
 }
 
-func (c consulHealthChecker) WatchNodeService(
+func (c consulHealthChecker) WatchPodOnNode(
 	nodename types.NodeName,
-	serviceID string,
-	resultCh chan<- health.Result,
-	errCh chan<- error,
+	podID types.PodID,
 	quitCh <-chan struct{},
-) {
-	defer close(resultCh)
+) (chan health.Result, chan error) {
+	resultCh := make(chan health.Result)
+	errCh := make(chan error)
 
-	for {
-		select {
-		case <-quitCh:
-			return
-		case <-time.After(1 * time.Second):
-			kvCheck, err := c.consulStore.GetHealth(serviceID, nodename)
-			if err != nil {
-				errCh <- err
-			} else {
-				resultCh <- consulWatchToResult(kvCheck)
+	key := consul.HealthPath(podID.String(), nodename)
+
+	wsOut := make(chan *api.KVPair) // closed by WatchSingle
+	wsQuit := make(chan struct{})
+
+	go consulutil.WatchSingle(key, c.client.KV(), wsOut, wsQuit, errCh)
+
+	go func() {
+		defer close(wsQuit)
+		defer close(resultCh)
+		defer close(errCh)
+		for {
+			select {
+			case <-quitCh:
+				return
+			case kvPair := <-wsOut:
+				res, err := kvpToResult(*kvPair)
+				if err != nil {
+					select {
+					case errCh <- err:
+					case <-quitCh:
+						return
+					}
+				} else {
+					select {
+					case resultCh <- *res:
+					case <-quitCh:
+						return
+					}
+				}
 			}
 		}
-	}
+	}()
+
+	return resultCh, errCh
 }
 
 // publishLatestHealth is not thread safe - do not start more than one of these per resultCH
@@ -261,18 +280,25 @@ func consulWatchToResult(w consul.WatchResult) health.Result {
 	}
 }
 
+func kvpToResult(kv api.KVPair) (*health.Result, error) {
+	res := &health.Result{}
+	err := json.Unmarshal(kv.Value, &res)
+	if err != nil {
+		return nil, util.Errorf("Could not unmarshal health at %s: %v", kv.Key, err)
+	}
+	return res, nil
+}
+
 // Maps a list of KV Pairs into a slice of health.Results
 // Halts and returns upon encountering an error
 func kvpsToResult(kvs api.KVPairs) ([]*health.Result, error) {
 	result := make([]*health.Result, len(kvs))
-	var err error
 	for i, kv := range kvs {
-		tmp := &health.Result{}
-		err = json.Unmarshal(kv.Value, &tmp)
+		res, err := kvpToResult(*kv)
 		if err != nil {
-			return nil, util.Errorf("Could not unmarshal health at %s: %v", kv.Key, err)
+			return nil, err
 		}
-		result[i] = tmp
+		result[i] = res
 	}
 
 	return result, nil
