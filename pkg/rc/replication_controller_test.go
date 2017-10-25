@@ -12,6 +12,8 @@ import (
 
 	"github.com/square/p2/pkg/alerting/alertingtest"
 	"github.com/square/p2/pkg/audit"
+	"github.com/square/p2/pkg/health"
+	fake_checker "github.com/square/p2/pkg/health/checker/test"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -30,6 +32,10 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	klabels "k8s.io/kubernetes/pkg/labels"
+)
+
+const (
+	newTransferNode = types.NodeName("newNode")
 )
 
 type testRCStore interface {
@@ -76,11 +82,15 @@ func (s testScheduler) AllocateNodes(manifest manifest.Manifest, nodeSelector kl
 		return nil, util.Errorf("Intentional error allocating nodes.")
 	}
 
-	return []types.NodeName{types.NodeName("new.789")}, nil
+	err := s.applicator.SetLabel(labels.NODE, string(newTransferNode), "nodeQuality", "good")
+	if err != nil {
+		return nil, err
+	}
+	return []types.NodeName{newTransferNode}, nil
 }
 
 func (s testScheduler) DeallocateNodes(nodeSelector klabels.Selector, nodes []types.NodeName) error {
-	return util.Errorf("DeallocateNodes() is not yet implemented")
+	return nil
 }
 
 type testScheduler struct {
@@ -129,9 +139,12 @@ func setup(t *testing.T) (
 	alerter = alertingtest.NewRecorder()
 	auditLogStore = auditlogstore.NewConsulStore(fixture.Client.KV())
 
+	healthChecker := fake_checker.NewSingleService("", nil)
+
 	rc = New(
 		rcData,
 		consulStore,
+		fixture.Client,
 		rcStatusStore,
 		auditLogStore,
 		fixture.Client.KV(),
@@ -140,6 +153,7 @@ func setup(t *testing.T) (
 		applicator,
 		logging.DefaultLogger,
 		alerter,
+		healthChecker,
 	).(*replicationController)
 
 	return
@@ -740,8 +754,8 @@ func TestAllocateOnIneligibleIfCattleStrategy(t *testing.T) {
 	}
 
 	status, _, _ := rc.rcStatusStore.Get(rc.ID())
-	if status.NodeTransfer.NewNode != types.NodeName("new.789") {
-		t.Fatalf("the rc failed to update the node transfer status new node to new.789 from %s", status.NodeTransfer.NewNode)
+	if status.NodeTransfer.NewNode != newTransferNode {
+		t.Fatalf("the rc failed to update the node transfer status new node to %s from %s", newTransferNode, status.NodeTransfer.NewNode)
 	}
 }
 
@@ -844,11 +858,6 @@ func testIneligibleNodesCommon(applicator testApplicator, rc *replicationControl
 		return err
 	}
 
-	current, err = rc.CurrentPods()
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -922,5 +931,252 @@ func TestRCDoesNotFixMembership(t *testing.T) {
 
 	if len(alerter.Alerts) != 1 {
 		t.Fatalf("the RC should have alerted since it has some current nodes that aren't eligible and is unable to correct this. There were %d alerts", len(alerter.Alerts))
+	}
+}
+
+func TestTransferRolledBackByQuitCh(t *testing.T) {
+	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	defer closeFn()
+
+	rc.AllocationStrategy = fields.CattleStrategy
+
+	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	close(rc.nodeTransfer.quit)
+
+	testRolledBackTransfer(rc, t)
+}
+
+func TestTransferRolledBackOnRCDisabled(t *testing.T) {
+	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	defer closeFn()
+
+	rc.AllocationStrategy = fields.CattleStrategy
+
+	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rc.Disabled = true
+
+	err = rc.meetDesires()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testRolledBackTransfer(rc, t)
+}
+
+func TestTransferRolledBackOnReplicasDesiredDecrease(t *testing.T) {
+	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	defer closeFn()
+
+	rc.AllocationStrategy = fields.CattleStrategy
+
+	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rc.ReplicasDesired = rc.ReplicasDesired - 1
+
+	err = rc.meetDesires()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testRolledBackTransfer(rc, t)
+}
+
+func testRolledBackTransfer(rc *replicationController, t *testing.T) {
+	// Give async goroutine time to rollback transfer
+	time.Sleep(1 * time.Second)
+
+	status, _, err := rc.rcStatusStore.Get(rc.ID())
+	if !statusstore.IsNoStatus(err) {
+		t.Fatalf("Expected no node transfer status to exist, got %v", status)
+	}
+
+	man, _, err := rc.consulStore.Pod(consul.INTENT_TREE, newTransferNode, rc.Manifest.ID())
+	if err != pods.NoCurrentManifest {
+		t.Fatalf("Expected new node to have been erased from intent, but man was %v", man)
+	}
+
+	nilTransfer := nodeTransfer{}
+	// We have to compare each field because we can't compare nilTransfer and
+	// rc.nodeTransfer directly (nodeTransfer has a func() field)
+	if rc.nodeTransfer.newNode != nilTransfer.newNode ||
+		rc.nodeTransfer.oldNode != nilTransfer.oldNode ||
+		rc.nodeTransfer.quit != nilTransfer.quit ||
+		rc.nodeTransfer.unlocker != nilTransfer.unlocker {
+		t.Fatalf("Expected rc.nodeTransfer to be %v, was %v", nilTransfer, rc.nodeTransfer)
+	}
+}
+
+func TestNewTransferNodeCannotBeScheduledOnReplicasDesiredIncrease(t *testing.T) {
+	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	defer closeFn()
+
+	rc.AllocationStrategy = fields.CattleStrategy
+
+	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	eligible, err := rc.eligibleNodes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	foundNewTransferNode := false
+	for _, node := range eligible {
+		if node == newTransferNode {
+			foundNewTransferNode = true
+		}
+	}
+
+	if !foundNewTransferNode {
+		t.Fatal("new transfer node should've been eligible but it was not")
+	}
+
+	rc.ReplicasDesired = rc.ReplicasDesired + 1
+	err = rc.meetDesires()
+	if err == nil {
+		t.Fatal("expected not enough replicas to meet desires")
+	}
+
+	if len(alerter.Alerts) != 1 {
+		t.Fatalf("the RC should have alerted not enough replicas to meet desires. There were %d alerts", len(alerter.Alerts))
+	}
+
+	// Add another eligible node
+	err = applicator.SetLabel(labels.NODE, "node7", "nodeQuality", "good")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rc.meetDesires()
+	if err != nil {
+		t.Fatal("meetDesires should succeed, it now has an eligible node for addPods()")
+	}
+
+	current, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, node := range current.Nodes() {
+		if node == newTransferNode {
+			t.Fatal("new transfer node should not be a current node")
+		}
+	}
+
+}
+
+func TestTransferNodeHappyPath(t *testing.T) {
+	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	defer closeFn()
+
+	rc.AllocationStrategy = fields.CattleStrategy
+
+	healthMap := map[types.NodeName]health.Result{
+		newTransferNode: health.Result{Status: health.Passing},
+	}
+	rc.healthChecker = fake_checker.NewSingleService("", healthMap)
+
+	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// give async goroutine time to finish transfer
+	time.Sleep(1 * time.Second)
+
+	current, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nodes := current.Nodes()
+	foundNewTransferNode := false
+	foundBadNode := false
+	for _, node := range nodes {
+		if node == newTransferNode {
+			foundNewTransferNode = true
+		}
+		if node == types.NodeName("node3") {
+			foundBadNode = true
+		}
+	}
+	if !foundNewTransferNode {
+		t.Fatal("Expected transferred node to be a current node but it is not")
+	}
+
+	if foundBadNode {
+		t.Fatal("Expected to have dropped ineligible node but it is still a current node")
+	}
+}
+
+func TestTransferOnAlreadyAllocatedNodeIfPossible(t *testing.T) {
+	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	defer closeFn()
+
+	rc.AllocationStrategy = fields.CattleStrategy
+
+	allocatedNode := types.NodeName("node8")
+	err := applicator.SetLabel(labels.NODE, allocatedNode.String(), "nodeQuality", "good")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	healthMap := map[types.NodeName]health.Result{
+		allocatedNode: health.Result{Status: health.Passing},
+	}
+	rc.healthChecker = fake_checker.NewSingleService("", healthMap)
+
+	err = testIneligibleNodesCommon(applicator, rc, alerter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// give async goroutine time to finish transfer
+	time.Sleep(1 * time.Second)
+
+	current, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nodes := current.Nodes()
+	foundNewTransferNode := false
+	foundAllocatedNode := false
+	foundBadNode := false
+	for _, node := range nodes {
+		if node == newTransferNode {
+			foundNewTransferNode = true
+		}
+		if node == types.NodeName("node3") {
+			foundBadNode = true
+		}
+		if node == allocatedNode {
+			foundAllocatedNode = true
+		}
+	}
+
+	if !foundAllocatedNode {
+		t.Fatal("Expected to transfer to already allocated node but did not")
+	}
+
+	if foundNewTransferNode {
+		t.Fatal("Expected not allocate another node but did")
+	}
+
+	if foundBadNode {
+		t.Fatal("Expected to have dropped ineligible node but it is still a current node")
 	}
 }

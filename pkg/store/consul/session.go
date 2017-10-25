@@ -31,6 +31,11 @@ type Session interface {
 		lockCtx context.Context,
 		key string,
 	) (TxnUnlocker, error)
+	LockIfKeyNotExistsTxn(
+		ctx context.Context,
+		key string,
+		value []byte,
+	) (TxnUnlocker, error)
 	Renew() error
 	Destroy() error
 	Session() string
@@ -107,6 +112,40 @@ func (s session) LockTxn(
 	})
 	if err != nil {
 		return nil, util.Errorf("could not build key locking transaction: %s", err)
+	}
+
+	return &txnUnlocker{
+		session: s.session,
+		key:     key,
+	}, nil
+}
+
+// LockIfKeyNotExistsTxn will lock and set a key, guaranteeing the key did not
+// exist.
+func (s session) LockIfKeyNotExistsTxn(
+	ctx context.Context,
+	key string,
+	value []byte,
+) (TxnUnlocker, error) {
+	// KVDeleteCAS with index 0 is used because it ensures that the subsequent
+	// lock will fail if the key existed.
+	err := transaction.Add(ctx, api.KVTxnOp{
+		Verb:  string(api.KVDeleteCAS),
+		Key:   key,
+		Index: 0,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb:    string(api.KVLock),
+		Key:     key,
+		Value:   value,
+		Session: s.session,
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return &txnUnlocker{
@@ -308,6 +347,38 @@ func NewSession(client consulutil.ConsulClient, name string, renewalCh <-chan ti
 		renewalCh)
 
 	return consulSession, renewalErrCh, nil
+}
+
+// SessionContext creates a consul session and keeps it renewed until either a
+// renewal error occurs or the passed context is canceled. If a renewal error
+// occurs, it will cancel the output context
+func SessionContext(ctx context.Context, client consulutil.ConsulClient, name string) (context.Context, Session, error) {
+	sessionID, _, err := client.Session().CreateNoChecks(&api.SessionEntry{
+		Name:      name,
+		LockDelay: lockDelay,
+		// locks should only be used with ephemeral keys
+		Behavior: api.SessionBehaviorDelete,
+		TTL:      lockTTL,
+	}, nil)
+	if err != nil {
+		return nil, nil, util.Errorf("could not create session: %s", err)
+	}
+
+	// adapt the passed context do a quit channel
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		<-ctx.Done()
+		_, _ = client.Session().Destroy(sessionID, nil)
+	}()
+
+	retCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		defer cancel()
+		_ = client.Session().RenewPeriodic(lockTTL, sessionID, nil, done)
+	}()
+
+	return retCtx, NewUnmanagedSession(client, sessionID, name), nil
 }
 
 type AlreadyLockedError struct {
