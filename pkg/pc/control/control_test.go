@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/square/p2/pkg/pc/fields"
+	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul/consultest"
 	"github.com/square/p2/pkg/store/consul/pcstore"
 	"github.com/square/p2/pkg/store/consul/pcstore/pcstoretest"
@@ -22,8 +23,9 @@ func TestCreate(t *testing.T) {
 		Add(fields.ClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
 	session := consultest.NewSession()
 	pcstore := pcstoretest.NewFake()
+	strategy := rc_fields.PetStrategy
 
-	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector)
+	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector, strategy)
 
 	annotations := map[string]string{
 		"load_balancer_info": "totally",
@@ -83,8 +85,9 @@ func TestUpdateAnnotations(t *testing.T) {
 		Add(fields.ClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
 	session := consultest.NewSession()
 	pcstore := pcstoretest.NewFake()
+	strategy := rc_fields.PetStrategy
 
-	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector)
+	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector, strategy)
 
 	var annotations = map[string]string{
 		"load_balancer_info": "totally",
@@ -150,7 +153,8 @@ func TestPodClusterFromID(t *testing.T) {
 	session := consultest.NewSession()
 	fakePCStore := pcstoretest.NewFake()
 
-	pcControllerFromLabels := NewPodCluster(testAZ, testCN, testPodID, fakePCStore, selector)
+	strategy := rc_fields.PetStrategy
+	pcControllerFromLabels := NewPodCluster(testAZ, testCN, testPodID, fakePCStore, selector, strategy)
 	pc, err := pcControllerFromLabels.Create(fields.Annotations{}, session)
 	if err != nil {
 		t.Fatal(err)

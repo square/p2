@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"reflect"
 
+	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/types"
 
 	"k8s.io/kubernetes/pkg/labels"
@@ -53,6 +54,12 @@ type PodCluster struct {
 	// Selector to identify the pods that are members of this pod cluster
 	PodSelector labels.Selector
 
+	// AllocationStrategy tweaks certain characteristic about how pods
+	// within this cluster are managed. For example the "pet" strategy will
+	// never transfer a pod from one node to another without human
+	// intervention whereas the "cattle" strategy will
+	AllocationStrategy rc_fields.Strategy
+
 	// Free-form annotations for implementation-specific information on top
 	// of pod clusters
 	Annotations Annotations
@@ -78,6 +85,9 @@ func (pc *PodCluster) Equals(other *PodCluster) bool {
 		pc.PodSelector.String() != other.PodSelector.String() {
 		return false
 	}
+	if pc.AllocationStrategy != other.AllocationStrategy {
+		return false
+	}
 	return reflect.DeepEqual(pc.Annotations, other.Annotations)
 }
 
@@ -85,12 +95,13 @@ func (pc *PodCluster) Equals(other *PodCluster) bool {
 // implement it ourselves. RawPodCluster mimics PodCluster but has a string
 // type for PodSelector instead of labels.Selector
 type RawPodCluster struct {
-	ID               ID               `json:"id"`
-	PodID            types.PodID      `json:"pod_id"`
-	AvailabilityZone AvailabilityZone `json:"availability_zone"`
-	Name             ClusterName      `json:"name"`
-	PodSelector      string           `json:"pod_selector"`
-	Annotations      Annotations      `json:"annotations"`
+	ID                 ID                 `json:"id"`
+	PodID              types.PodID        `json:"pod_id"`
+	AvailabilityZone   AvailabilityZone   `json:"availability_zone"`
+	Name               ClusterName        `json:"name"`
+	PodSelector        string             `json:"pod_selector"`
+	Annotations        Annotations        `json:"annotations"`
+	AllocationStrategy rc_fields.Strategy `json:"allocation_strategy"`
 }
 
 // MarshalJSON implements the json.Marshaler interface for serializing the
@@ -113,12 +124,13 @@ func (pc PodCluster) ToRaw() RawPodCluster {
 	}
 
 	return RawPodCluster{
-		ID:               pc.ID,
-		PodID:            pc.PodID,
-		AvailabilityZone: pc.AvailabilityZone,
-		Name:             pc.Name,
-		PodSelector:      podSel,
-		Annotations:      pc.Annotations,
+		ID:                 pc.ID,
+		PodID:              pc.PodID,
+		AvailabilityZone:   pc.AvailabilityZone,
+		Name:               pc.Name,
+		PodSelector:        podSel,
+		Annotations:        pc.Annotations,
+		AllocationStrategy: pc.AllocationStrategy,
 	}
 }
 
@@ -138,12 +150,13 @@ func (pc *PodCluster) UnmarshalJSON(b []byte) error {
 	}
 
 	*pc = PodCluster{
-		ID:               rawPC.ID,
-		PodID:            rawPC.PodID,
-		AvailabilityZone: rawPC.AvailabilityZone,
-		Name:             rawPC.Name,
-		PodSelector:      podSel,
-		Annotations:      rawPC.Annotations,
+		ID:                 rawPC.ID,
+		PodID:              rawPC.PodID,
+		AvailabilityZone:   rawPC.AvailabilityZone,
+		Name:               rawPC.Name,
+		PodSelector:        podSel,
+		Annotations:        rawPC.Annotations,
+		AllocationStrategy: rawPC.AllocationStrategy,
 	}
 	return nil
 }

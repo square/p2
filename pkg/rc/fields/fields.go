@@ -11,20 +11,9 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-const (
-	// CattleStrategy is used for dynamic node allocation to one of many
-	// replaceable nodes i.e. cattle, while PetStrategy is used when a manifest
-	// must be scheduled on specific nodes i.e. pets
-	CattleStrategy = Strategy("cattle_strategy")
-	PetStrategy    = Strategy("pet_strategy")
-)
-
 // ID is a named type alias for Resource Controller IDs. This is preferred to the raw
 // string format so that Go will typecheck its uses.
 type ID string
-
-// Strategy is a type alias used for node allocation strategies.
-type Strategy string
 
 // String implements fmt.Stringer
 func (id ID) String() string {
@@ -39,6 +28,19 @@ func ToRCID(rcID string) (ID, error) {
 
 	return ID(rcUUID.String()), nil
 }
+
+// Strategy is a type alias used for node allocation strategies.
+type Strategy string
+
+func (s Strategy) String() string { return string(s) }
+
+const (
+	// CattleStrategy is used for dynamic node allocation to one of many
+	// replaceable nodes i.e. cattle, while PetStrategy is used when a manifest
+	// must be scheduled on specific nodes i.e. pets
+	CattleStrategy = Strategy("cattle_strategy")
+	PetStrategy    = Strategy("pet_strategy")
+)
 
 // RC holds the runtime state of a Resource Controller as saved in Consul.
 type RC struct {

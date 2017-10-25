@@ -3,6 +3,8 @@ package fields
 import (
 	"k8s.io/kubernetes/pkg/labels"
 
+	rc_fields "github.com/square/p2/pkg/rc/fields"
+
 	"testing"
 )
 
@@ -24,7 +26,8 @@ func equalPodClusters() (*PodCluster, *PodCluster) {
 			"key1": "value",
 			"key2": 2,
 		},
-		PodSelector: labels.Everything().Add("environment", labels.EqualsOperator, []string{"fancy"}),
+		PodSelector:        labels.Everything().Add("environment", labels.EqualsOperator, []string{"fancy"}),
+		AllocationStrategy: rc_fields.PetStrategy,
 	}
 	b := &PodCluster{
 		ID:               "abc123",
@@ -35,7 +38,8 @@ func equalPodClusters() (*PodCluster, *PodCluster) {
 			"key1": "value",
 			"key2": 2,
 		},
-		PodSelector: labels.Everything().Add("environment", labels.EqualsOperator, []string{"fancy"}),
+		PodSelector:        labels.Everything().Add("environment", labels.EqualsOperator, []string{"fancy"}),
+		AllocationStrategy: rc_fields.PetStrategy,
 	}
 	return a, b
 }
@@ -80,6 +84,10 @@ func TestPodEquality(t *testing.T) {
 	a.PodSelector = labels.Everything().Add("environment", labels.EqualsOperator, []string{"special"})
 	assertNotEqual("different pod selector")
 	a.PodSelector = b.PodSelector
+
+	a.AllocationStrategy = "foo"
+	assertNotEqual("AllocationStrategy")
+	a.AllocationStrategy = b.AllocationStrategy
 
 	ax := a
 	a = nil

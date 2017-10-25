@@ -17,6 +17,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pc/fields"
+	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/types"
@@ -122,6 +123,7 @@ func (s *ConsulStore) Create(
 	clusterName fields.ClusterName,
 	podSelector klabels.Selector,
 	annotations fields.Annotations,
+	allocationStrategy rc_fields.Strategy,
 	session Session,
 ) (fields.PodCluster, error) {
 	id := fields.ID(uuid.New())
@@ -141,12 +143,13 @@ func (s *ConsulStore) Create(
 	}
 
 	pc := fields.PodCluster{
-		ID:               id,
-		PodID:            podID,
-		AvailabilityZone: availabilityZone,
-		Name:             clusterName,
-		PodSelector:      podSelector,
-		Annotations:      annotations,
+		ID:                 id,
+		PodID:              podID,
+		AvailabilityZone:   availabilityZone,
+		Name:               clusterName,
+		PodSelector:        podSelector,
+		Annotations:        annotations,
+		AllocationStrategy: allocationStrategy,
 	}
 
 	key, err := pcPath(id)
