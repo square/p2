@@ -5,6 +5,7 @@ import (
 
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/pc/fields"
+	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/pcstore"
 	"github.com/square/p2/pkg/types"
@@ -32,16 +33,18 @@ func (p *FakePCStore) Create(
 	clusterName fields.ClusterName,
 	podSelector klabels.Selector,
 	annotations fields.Annotations,
+	strategy rc_fields.Strategy,
 	_ pcstore.Session,
 ) (fields.PodCluster, error) {
 	id := fields.ID(uuid.New())
 	pc := fields.PodCluster{
-		ID:               id,
-		PodID:            podID,
-		AvailabilityZone: availabilityZone,
-		Name:             clusterName,
-		PodSelector:      podSelector,
-		Annotations:      annotations,
+		ID:                 id,
+		PodID:              podID,
+		AvailabilityZone:   availabilityZone,
+		Name:               clusterName,
+		PodSelector:        podSelector,
+		Annotations:        annotations,
+		AllocationStrategy: strategy,
 	}
 
 	p.podClusters[id] = pc

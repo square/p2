@@ -17,6 +17,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pc/control"
 	"github.com/square/p2/pkg/pc/fields"
+	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/flags"
 	"github.com/square/p2/pkg/store/consul/pcstore"
@@ -41,6 +42,7 @@ var (
 	createAZ          = cmdCreate.Flag("az", "The availability zone of the pod cluster").Required().String()
 	createName        = cmdCreate.Flag("name", "The cluster name (ie. staging, production)").Required().String()
 	createAnnotations = cmdCreate.Flag("annotations", "Complete set of annotations - must parse as JSON!").String()
+	createStrategy    = cmdCreate.Flag("allocation-strategy", "The allocation strategy to use for RCs created for this pod cluster").Required().Enum(rc_fields.PetStrategy.String(), rc_fields.CattleStrategy.String())
 )
 
 // "get" command and flags
@@ -108,7 +110,8 @@ func main() {
 		cn := fields.ClusterName(*createName)
 		podID := types.PodID(*createPodID)
 		selector := defaultSelector(az, cn, podID)
-		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector)
+		strategy := rc_fields.Strategy(*createStrategy)
+		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, strategy)
 
 		annotations := *createAnnotations
 		var parsedAnnotations map[string]interface{}
@@ -137,7 +140,7 @@ func main() {
 			pccontrol = control.NewPodClusterFromID(pcID, pcstore)
 		} else if az != "" && cn != "" && podID != "" {
 			selector := defaultSelector(az, cn, podID)
-			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector)
+			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, "")
 		} else {
 			log.Fatalf("Expected one of: pcID or (pod,az,name)")
 		}
@@ -163,7 +166,7 @@ func main() {
 			pccontrol = control.NewPodClusterFromID(pcID, pcstore)
 		} else if az != "" && cn != "" && podID != "" {
 			selector := defaultSelector(az, cn, podID)
-			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector)
+			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, "")
 		} else {
 			log.Fatalf("Expected one of: pcID or (pod,az,name)")
 		}
@@ -186,7 +189,7 @@ func main() {
 			pccontrol = control.NewPodClusterFromID(pcID, pcstore)
 		} else if az != "" && cn != "" && podID != "" {
 			selector := defaultSelector(az, cn, podID)
-			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector)
+			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, "")
 		} else {
 			log.Fatalf("Expected one of: pcID or (pod,az,name)")
 		}

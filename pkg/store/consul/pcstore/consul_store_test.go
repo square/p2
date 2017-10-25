@@ -9,6 +9,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/pc/fields"
+	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consultest"
 	"github.com/square/p2/pkg/store/consul/consulutil"
@@ -124,9 +125,10 @@ func createPodCluster(store *ConsulStore, t *testing.T) fields.PodCluster {
 	annotations := fields.Annotations(map[string]interface{}{
 		"foo": "bar",
 	})
+	strategy := rc_fields.PetStrategy
 
 	session := consultest.NewSession()
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, session)
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, strategy, session)
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -182,7 +184,7 @@ func TestLabelsOnCreate(t *testing.T) {
 		"foo": "bar",
 	})
 
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, consultest.NewSession())
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.PetStrategy, consultest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -217,7 +219,7 @@ func TestGet(t *testing.T) {
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, consultest.NewSession())
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.PetStrategy, consultest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -291,7 +293,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, consultest.NewSession())
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.PetStrategy, consultest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -338,13 +340,13 @@ func TestList(t *testing.T) {
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, consultest.NewSession())
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.PetStrategy, consultest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
 
 	// Create another one
-	pc2, err := store.Create(podID+"2", az, clusterName, selector, annotations, consultest.NewSession())
+	pc2, err := store.Create(podID+"2", az, clusterName, selector, annotations, rc_fields.PetStrategy, consultest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -390,12 +392,12 @@ func TestWatch(t *testing.T) {
 
 	var watched WatchedPodClusters
 	session := consultest.NewSession()
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, session)
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.PetStrategy, session)
 	if err != nil {
 		t.Fatalf("Unable to create first pod cluster: %s", err)
 	}
 
-	pc2, err := store.Create(podID, "us-east", clusterName, selector, annotations, session)
+	pc2, err := store.Create(podID, "us-east", clusterName, selector, annotations, rc_fields.PetStrategy, session)
 	if err != nil {
 		t.Fatalf("Unable to create second pod cluster: %s", err)
 	}
@@ -447,7 +449,7 @@ func TestWatchPodCluster(t *testing.T) {
 	})
 
 	session := consultest.NewSession()
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, session)
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.PetStrategy, session)
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -971,6 +973,7 @@ func TestWatchAndSync(t *testing.T) {
 		"name1",
 		example.PodSelector,
 		example.Annotations,
+		rc_fields.PetStrategy,
 		consultest.NewSession(),
 	)
 	if err != nil {
@@ -983,6 +986,7 @@ func TestWatchAndSync(t *testing.T) {
 		"name2",
 		example.PodSelector,
 		example.Annotations,
+		rc_fields.PetStrategy,
 		consultest.NewSession(),
 	)
 	if err != nil {
@@ -1044,6 +1048,7 @@ func TestWatchAndSyncWithDelete(t *testing.T) {
 		"name1",
 		example.PodSelector,
 		example.Annotations,
+		rc_fields.PetStrategy,
 		consultest.NewSession(),
 	)
 	if err != nil {
