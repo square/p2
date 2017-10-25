@@ -22,11 +22,12 @@ func (l Type) String() string {
 // Note: the tree name for RCs is pluralized, while the label is not, so this
 // doesn't hold true for RCs
 const (
-	POD  = Type("pod")
-	NODE = Type("node")
-	PC   = Type("pod_clusters")
-	RC   = Type("replication_controller")
-	RU   = Type("rolls")
+	POD    = Type("pod")
+	NODE   = Type("node")
+	PC     = Type("pod_clusters")
+	RC     = Type("replication_controller")
+	RU     = Type("rolls")
+	Config = Type("configs")
 )
 
 var InvalidType error = errors.New("Invalid type provided")
@@ -43,6 +44,8 @@ func AsType(v string) (Type, error) {
 		return RC, nil
 	case RU.String():
 		return RU, nil
+	case Config.String():
+		return Config, nil
 	default:
 		return Type(""), InvalidType
 	}
