@@ -13,7 +13,7 @@ type FakeHealthChecker struct {
 	ready   chan struct{}
 }
 
-func (hc *FakeHealthChecker) WatchNodeService(nodename types.NodeName, serviceID string, resultCh chan<- health.Result, errCh chan<- error, quitCh <-chan struct{}) {
+func (hc *FakeHealthChecker) WatchPodOnNode(nodename types.NodeName, podID types.PodID, quitCh <-chan struct{}) (chan health.Result, chan error) {
 	panic("not implemented")
 }
 
