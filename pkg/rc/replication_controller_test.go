@@ -1121,3 +1121,62 @@ func TestTransferNodeHappyPath(t *testing.T) {
 		t.Fatal("Expected to have dropped ineligible node but it is still a current node")
 	}
 }
+
+func TestTransferOnAlreadyAllocatedNodeIfPossible(t *testing.T) {
+	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	defer closeFn()
+
+	rc.AllocationStrategy = fields.CattleStrategy
+
+	allocatedNode := types.NodeName("node8")
+	err := applicator.SetLabel(labels.NODE, allocatedNode.String(), "nodeQuality", "good")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	healthMap := map[types.NodeName]health.Result{
+		allocatedNode: health.Result{Status: health.Passing},
+	}
+	rc.healthChecker = fake_checker.NewSingleService("", healthMap)
+
+	err = testIneligibleNodesCommon(applicator, rc, alerter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// give async goroutine time to finish transfer
+	time.Sleep(1 * time.Second)
+
+	current, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nodes := current.Nodes()
+	foundNewTransferNode := false
+	foundAllocatedNode := false
+	foundBadNode := false
+	for _, node := range nodes {
+		if node == newTransferNode {
+			foundNewTransferNode = true
+		}
+		if node == types.NodeName("node3") {
+			foundBadNode = true
+		}
+		if node == allocatedNode {
+			foundAllocatedNode = true
+		}
+	}
+
+	if !foundAllocatedNode {
+		t.Fatal("Expected to transfer to already allocated node but did not")
+	}
+
+	if foundNewTransferNode {
+		t.Fatal("Expected not allocate another node but did")
+	}
+
+	if foundBadNode {
+		t.Fatal("Expected to have dropped ineligible node but it is still a current node")
+	}
+}

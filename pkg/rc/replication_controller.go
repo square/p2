@@ -743,19 +743,37 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 		return "", "", util.Errorf("Could not deallocate from %s: %s", oldNode, err)
 	}
 
-	nodesRequested := 1 // We only support one node transfer at a time right now
-	newNodes, err := rc.scheduler.AllocateNodes(man, sel, nodesRequested)
-	if err != nil || len(newNodes) < 1 {
-		errMsg := fmt.Sprintf("Unable to allocate nodes over grpc: %s", err)
-		err := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
-		if err != nil {
-			rc.logger.WithError(err).Errorln("Unable to send alert")
-		}
-
-		return "", "", util.Errorf(errMsg)
+	eligible, err := rc.eligibleNodes()
+	if err != nil {
+		return "", "", err
 	}
 
-	newNode := newNodes[0]
+	current, err := rc.CurrentPods()
+	if err != nil {
+		return "", "", err
+	}
+
+	// Use an existing allocation if available
+	possible := types.NewNodeSet(eligible...).Difference(types.NewNodeSet(current.Nodes()...)).ListNodes()
+
+	var newNode types.NodeName
+	if len(possible) > 0 {
+		newNode = possible[0]
+	} else {
+		nodesRequested := 1 // We only support one node transfer at a time right now
+		newNodes, err := rc.scheduler.AllocateNodes(man, sel, nodesRequested)
+		if err != nil || len(newNodes) < 1 {
+			errMsg := fmt.Sprintf("Unable to allocate nodes over grpc: %s", err)
+			err := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
+			if err != nil {
+				rc.logger.WithError(err).Errorln("Unable to send alert")
+			}
+
+			return "", "", util.Errorf(errMsg)
+		}
+
+		newNode = newNodes[0]
+	}
 
 	status := rcstatus.Status{
 		NodeTransfer: &rcstatus.NodeTransfer{
