@@ -49,6 +49,7 @@ const (
 	cmdDeleteRollText     = "delete-rolling-update"
 	cmdSchedupText        = "schedule-update"
 	cmdUpdateManifestText = "update-manifest"
+	cmdUpdateStrategyText = "update-strategy"
 )
 
 var (
@@ -104,6 +105,10 @@ var (
 	cmdUpdateManifest  = kingpin.Command(cmdUpdateManifestText, "DANGEROUS. Forcefully update the manifest for the given RC. Consider disabling the RC before invoking this command.")
 	updateManifestRCID = cmdUpdateManifest.Arg("id", "replication controller uuid to update").Required().String()
 	updateManifestPath = cmdUpdateManifest.Arg("manifest-path", "Path to a signed manifest").Required().String()
+
+	cmdUpdateStrategy  = kingpin.Command(cmdUpdateStrategyText, "Forcefully update the allocation strategy in the manifest.")
+	updateStrategyRCID = cmdUpdateStrategy.Flag("id", "replication controller uuid to update").Required().String()
+	updateStrategy     = cmdUpdateStrategy.Flag("strategy", "allocation strategy to use for the replication controller").Required().String()
 )
 
 func main() {
@@ -186,6 +191,8 @@ func main() {
 		rctl.DeleteRollingUpdate(*deleteRollID, client.KV())
 	case cmdUpdateManifestText:
 		rctl.UpdateManifest(fields.ID(*updateManifestRCID), *updateManifestPath)
+	case cmdUpdateStrategyText:
+		rctl.UpdateStrategy(fields.ID(*updateStrategyRCID), fields.Strategy(*updateStrategy))
 	}
 }
 
@@ -222,6 +229,7 @@ type ReplicationControllerStore interface {
 	Delete(id fields.ID, force bool) error
 	Get(id fields.ID) (fields.RC, error)
 	UpdateManifest(id fields.ID, man manifest.Manifest) error
+	UpdateStrategy(id fields.ID, strategy fields.Strategy) error
 }
 
 type RollingUpdateStore interface {
@@ -474,5 +482,12 @@ func (r rctlParams) UpdateManifest(id fields.ID, manifestPath string) {
 	err = r.rcs.UpdateManifest(id, man)
 	if err != nil {
 		r.logger.WithError(err).Fatalln("Manifest update failed! Please retry after checking the database")
+	}
+}
+
+func (r rctlParams) UpdateStrategy(id fields.ID, strategy fields.Strategy) {
+	err := r.rcs.UpdateStrategy(id, strategy)
+	if err != nil {
+		r.logger.WithError(err).Fatalln("Strategy update failed")
 	}
 }

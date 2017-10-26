@@ -663,6 +663,18 @@ func (s *ConsulStore) UpdateManifest(id fields.ID, man manifest.Manifest) error 
 	return s.retryMutate(id, manifestUpdater)
 }
 
+func (s *ConsulStore) UpdateStrategy(id fields.ID, strategy fields.Strategy) error {
+	if strategy != fields.DynamicStrategy && strategy != fields.StaticStrategy {
+		return util.Errorf("Ineligible strategy - %s - passed.", strategy)
+	}
+
+	strategyUpdater := func(rc fields.RC) (fields.RC, error) {
+		rc.AllocationStrategy = strategy
+		return rc, nil
+	}
+	return s.retryMutate(id, strategyUpdater)
+}
+
 // TODO: this function is almost a verbatim copy of pkg/labels retryMutate, can
 // we find some way to combine them?
 func (s *ConsulStore) retryMutate(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
