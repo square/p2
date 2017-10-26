@@ -94,6 +94,7 @@ type RCLabeler interface {
 	SetLabels(labelType labels.Type, id string, labels map[string]string) error
 	RemoveAllLabels(labelType labels.Type, id string) error
 	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, labels map[string]string) error
+	GetMatches(klabels.Selector, labels.Type) ([]labels.Labeled, error)
 }
 
 func NewConsul(client consulutil.ConsulClient, labeler RCLabeler, retries int) *ConsulStore {
@@ -1019,6 +1020,31 @@ func (s *ConsulStore) TransferReplicaCounts(req TransferReplicaCountsRequest) er
 
 	// we don't care what the response was if it worked
 	return nil
+}
+
+// FindWhereLabeled will return all RCs that match the arguments
+func (s *ConsulStore) FindWhereLabeled(podID types.PodID,
+	availabilityZone pc_fields.AvailabilityZone,
+	clusterName pc_fields.ClusterName) ([]fields.RC, error) {
+
+	sel := klabels.Everything().
+		Add(pc_fields.PodIDLabel, klabels.EqualsOperator, []string{podID.String()}).
+		Add(pc_fields.AvailabilityZoneLabel, klabels.EqualsOperator, []string{availabilityZone.String()}).
+		Add(pc_fields.ClusterNameLabel, klabels.EqualsOperator, []string{clusterName.String()})
+
+	replicationControllers, err := s.labeler.GetMatches(sel, labels.RC)
+	if err != nil {
+		return nil, err
+	}
+	ret := make([]fields.RC, len(replicationControllers))
+	for i, rc := range replicationControllers {
+		ret[i], err = s.Get(fields.ID(rc.ID))
+		if err != nil {
+			return nil, err
+		}
+	}
+	return ret, nil
+
 }
 
 func formatTxnErrors(txnResponse *api.KVTxnResponse) string {
