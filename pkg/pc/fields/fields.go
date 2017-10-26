@@ -55,9 +55,9 @@ type PodCluster struct {
 	PodSelector labels.Selector
 
 	// AllocationStrategy tweaks certain characteristic about how pods
-	// within this cluster are managed. For example the "pet" strategy will
+	// within this cluster are managed. For example the "static" strategy will
 	// never transfer a pod from one node to another without human
-	// intervention whereas the "cattle" strategy will
+	// intervention whereas the "dynamic" strategy will
 	AllocationStrategy rc_fields.Strategy
 
 	// Free-form annotations for implementation-specific information on top

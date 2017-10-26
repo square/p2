@@ -681,14 +681,14 @@ func (rc *replicationController) transferNodes(ineligible []types.NodeName) erro
 		return nil
 	}
 
-	if rc.AllocationStrategy != fields.CattleStrategy {
-		errMsg := fmt.Sprintf("Non-cattle RC has scheduled %d ineligible nodes: %s", len(ineligible), ineligible)
+	if rc.AllocationStrategy != fields.DynamicStrategy {
+		errMsg := fmt.Sprintf("static strategy RC has scheduled %d ineligible nodes: %s", len(ineligible), ineligible)
 		err := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
 		if err != nil {
 			rc.logger.WithError(err).Errorln("Unable to send alert")
 		}
-		// We don't return an error here because this is the current behavior for non-cattle
-		// ineligible nodes: only page
+		// We don't return an error here because this is the current behavior for static
+		// strategy RCs: only page
 		return nil
 	}
 

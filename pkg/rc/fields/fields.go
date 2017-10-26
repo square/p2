@@ -35,11 +35,11 @@ type Strategy string
 func (s Strategy) String() string { return string(s) }
 
 const (
-	// CattleStrategy is used for dynamic node allocation to one of many
-	// replaceable nodes i.e. cattle, while PetStrategy is used when a manifest
-	// must be scheduled on specific nodes i.e. pets
-	CattleStrategy = Strategy("cattle_strategy")
-	PetStrategy    = Strategy("pet_strategy")
+	// DynamicStrategy is used for dynamic node allocation to one of many
+	// replaceable nodes, while StaticStrategy is used when a manifest
+	// must be scheduled on specific nodes
+	DynamicStrategy = Strategy("dynamic_strategy")
+	StaticStrategy  = Strategy("static_strategy")
 )
 
 // RC holds the runtime state of a Resource Controller as saved in Consul.

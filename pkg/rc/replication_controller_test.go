@@ -724,7 +724,7 @@ func TestUnscheduleMoreThan5(t *testing.T) {
 	wg.Wait()
 }
 
-func TestAlertIfNodeBecomesIneligibleIfNotCattleStrategy(t *testing.T) {
+func TestAlertIfNodeBecomesIneligibleIfNotDynamicStrategy(t *testing.T) {
 	_, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
@@ -738,11 +738,11 @@ func TestAlertIfNodeBecomesIneligibleIfNotCattleStrategy(t *testing.T) {
 	}
 }
 
-func TestAllocateOnIneligibleIfCattleStrategy(t *testing.T) {
+func TestAllocateOnIneligibleIfDynamicStrategy(t *testing.T) {
 	_, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.CattleStrategy
+	rc.AllocationStrategy = fields.DynamicStrategy
 
 	err := testIneligibleNodesCommon(applicator, rc, alerter)
 	if err != nil {
@@ -750,7 +750,7 @@ func TestAllocateOnIneligibleIfCattleStrategy(t *testing.T) {
 	}
 
 	if len(alerter.Alerts) != 0 {
-		t.Fatalf("the RC should not have alerted since it allocated cattle nodes, but there were %d alerts", len(alerter.Alerts))
+		t.Fatalf("the RC should not have alerted since it allocated dynamic nodes, but there were %d alerts", len(alerter.Alerts))
 	}
 
 	status, _, _ := rc.rcStatusStore.Get(rc.ID())
@@ -763,7 +763,7 @@ func TestNoOpIfNodeTransferInProgress(t *testing.T) {
 	_, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.CattleStrategy
+	rc.AllocationStrategy = fields.DynamicStrategy
 
 	// Simulate node transfer in progress with non-nil node transfer
 	testStatus := rcstatus.Status{
@@ -796,7 +796,7 @@ func TestAlertIfCannotAllocateNodes(t *testing.T) {
 	_, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.CattleStrategy
+	rc.AllocationStrategy = fields.DynamicStrategy
 
 	// Force an allocate nodes failure
 	fixture := consulutil.NewFixture(t)
@@ -938,7 +938,7 @@ func TestTransferRolledBackByQuitCh(t *testing.T) {
 	_, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.CattleStrategy
+	rc.AllocationStrategy = fields.DynamicStrategy
 
 	err := testIneligibleNodesCommon(applicator, rc, alerter)
 	if err != nil {
@@ -954,7 +954,7 @@ func TestTransferRolledBackOnRCDisabled(t *testing.T) {
 	_, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.CattleStrategy
+	rc.AllocationStrategy = fields.DynamicStrategy
 
 	err := testIneligibleNodesCommon(applicator, rc, alerter)
 	if err != nil {
@@ -975,7 +975,7 @@ func TestTransferRolledBackOnReplicasDesiredDecrease(t *testing.T) {
 	_, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.CattleStrategy
+	rc.AllocationStrategy = fields.DynamicStrategy
 
 	err := testIneligibleNodesCommon(applicator, rc, alerter)
 	if err != nil {
@@ -1021,7 +1021,7 @@ func TestNewTransferNodeCannotBeScheduledOnReplicasDesiredIncrease(t *testing.T)
 	_, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.CattleStrategy
+	rc.AllocationStrategy = fields.DynamicStrategy
 
 	err := testIneligibleNodesCommon(applicator, rc, alerter)
 	if err != nil {
@@ -1082,7 +1082,7 @@ func TestTransferNodeHappyPath(t *testing.T) {
 	_, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.CattleStrategy
+	rc.AllocationStrategy = fields.DynamicStrategy
 
 	healthMap := map[types.NodeName]health.Result{
 		newTransferNode: health.Result{Status: health.Passing},
@@ -1126,7 +1126,7 @@ func TestTransferOnAlreadyAllocatedNodeIfPossible(t *testing.T) {
 	_, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.CattleStrategy
+	rc.AllocationStrategy = fields.DynamicStrategy
 
 	allocatedNode := types.NodeName("node8")
 	err := applicator.SetLabel(labels.NODE, allocatedNode.String(), "nodeQuality", "good")
