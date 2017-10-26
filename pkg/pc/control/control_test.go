@@ -23,7 +23,7 @@ func TestCreate(t *testing.T) {
 		Add(fields.ClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
 	session := consultest.NewSession()
 	pcstore := pcstoretest.NewFake()
-	strategy := rc_fields.PetStrategy
+	strategy := rc_fields.StaticStrategy
 
 	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector, strategy)
 
@@ -85,7 +85,7 @@ func TestUpdateAnnotations(t *testing.T) {
 		Add(fields.ClusterNameLabel, labels.EqualsOperator, []string{testCN.String()})
 	session := consultest.NewSession()
 	pcstore := pcstoretest.NewFake()
-	strategy := rc_fields.PetStrategy
+	strategy := rc_fields.StaticStrategy
 
 	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector, strategy)
 
@@ -153,7 +153,7 @@ func TestPodClusterFromID(t *testing.T) {
 	session := consultest.NewSession()
 	fakePCStore := pcstoretest.NewFake()
 
-	strategy := rc_fields.PetStrategy
+	strategy := rc_fields.StaticStrategy
 	pcControllerFromLabels := NewPodCluster(testAZ, testCN, testPodID, fakePCStore, selector, strategy)
 	pc, err := pcControllerFromLabels.Create(fields.Annotations{}, session)
 	if err != nil {

@@ -27,7 +27,7 @@ func equalPodClusters() (*PodCluster, *PodCluster) {
 			"key2": 2,
 		},
 		PodSelector:        labels.Everything().Add("environment", labels.EqualsOperator, []string{"fancy"}),
-		AllocationStrategy: rc_fields.PetStrategy,
+		AllocationStrategy: rc_fields.StaticStrategy,
 	}
 	b := &PodCluster{
 		ID:               "abc123",
@@ -39,7 +39,7 @@ func equalPodClusters() (*PodCluster, *PodCluster) {
 			"key2": 2,
 		},
 		PodSelector:        labels.Everything().Add("environment", labels.EqualsOperator, []string{"fancy"}),
-		AllocationStrategy: rc_fields.PetStrategy,
+		AllocationStrategy: rc_fields.StaticStrategy,
 	}
 	return a, b
 }

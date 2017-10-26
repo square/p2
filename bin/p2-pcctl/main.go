@@ -42,7 +42,7 @@ var (
 	createAZ          = cmdCreate.Flag("az", "The availability zone of the pod cluster").Required().String()
 	createName        = cmdCreate.Flag("name", "The cluster name (ie. staging, production)").Required().String()
 	createAnnotations = cmdCreate.Flag("annotations", "Complete set of annotations - must parse as JSON!").String()
-	createStrategy    = cmdCreate.Flag("allocation-strategy", "The allocation strategy to use for RCs created for this pod cluster").Required().Enum(rc_fields.PetStrategy.String(), rc_fields.CattleStrategy.String())
+	createStrategy    = cmdCreate.Flag("allocation-strategy", "The allocation strategy to use for RCs created for this pod cluster").Required().Enum(rc_fields.StaticStrategy.String(), rc_fields.DynamicStrategy.String())
 )
 
 // "get" command and flags
