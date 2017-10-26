@@ -32,6 +32,7 @@ const (
 	cmdDeleteText            = "delete"
 	cmdUpdateAnnotationsText = "update-annotations"
 	cmdUpdateSelectorText    = "update-selector"
+	cmdUpdateStrategyText    = "update-strategy"
 	cmdListText              = "list"
 )
 
@@ -89,6 +90,20 @@ var (
 
 	// this flag specifies the selector to update the pod cluster with
 	updateSelector = cmdUpdateSelector.Flag("selector", "The label selector to use for the pod cluster's pod selector (e.g. \"pod_id=foo,availability_zone=bar\")").Required().String()
+)
+
+// "update-strategy" command
+var (
+	cmdUpdateStrategy = kingpin.Command(cmdUpdateStrategyText, "Update a pod cluster's allocation strategy. This determines whether RCs created for this pod cluster will automatically change node membership when hosts are down")
+
+	// these flags identify the pod cluster to update
+	updateStrategyPodID = cmdUpdateStrategy.Flag("pod", "The pod ID on the pod cluster that should be updated.").String()
+	updateStrategyAZ    = cmdUpdateStrategy.Flag("az", "The availability zone of the pod cluster that should be updated").String()
+	updateStrategyName  = cmdUpdateStrategy.Flag("name", "The cluster name (ie. staging, production) for the pod cluster that should be updated.").String()
+	updateStrategyID    = cmdUpdateStrategy.Flag("id", "The UUID of the pod cluster that should be updated. This option is mutually exclusive with pod,az,name").String()
+
+	// this flag specifies the strategy to update the pod cluster with
+	updateStrategy = cmdUpdateStrategy.Flag("strategy", "The strategy to set for the pod cluster").Required().Enum(rc_fields.StaticStrategy.String(), rc_fields.DynamicStrategy.String())
 )
 
 // "list" command
@@ -205,6 +220,31 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error during PodCluster update: %v\n%v", err, pc)
 			os.Exit(1)
+		}
+		bytes, err := json.Marshal(pc)
+		if err != nil {
+			log.Fatalf("Update succeeded, but error during displaying PC: %v\n%+v", err, pc)
+			os.Exit(1)
+		}
+		fmt.Printf("%s", bytes)
+	case cmdUpdateStrategyText:
+		pc, err := podClusterFromParams(
+			fields.ID(*updateStrategyID),
+			types.PodID(*updateStrategyPodID),
+			fields.AvailabilityZone(*updateStrategyAZ),
+			fields.ClusterName(*updateStrategyName),
+			pcstore,
+		)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		pc, err = pcstore.MutatePC(pc.ID, func(pc fields.PodCluster) (fields.PodCluster, error) {
+			pc.AllocationStrategy = rc_fields.Strategy(*updateStrategy)
+			return pc, nil
+		})
+		if err != nil {
+			log.Fatalf("Error during PodCluster update: %v\n%v", err, pc)
 		}
 		bytes, err := json.Marshal(pc)
 		if err != nil {
@@ -353,4 +393,40 @@ func computeDiff(oldPods []labels.Labeled, newPods []labels.Labeled) ([]string, 
 	removed := oldSet.Difference(newSet)
 
 	return added.List(), removed.List()
+}
+
+type PodClusterStore interface {
+	FindWhereLabeled(
+		podID types.PodID,
+		availabilityZone fields.AvailabilityZone,
+		clusterName fields.ClusterName,
+	) ([]fields.PodCluster, error)
+	Get(id fields.ID) (fields.PodCluster, error)
+}
+
+func podClusterFromParams(
+	id fields.ID,
+	podID types.PodID,
+	az fields.AvailabilityZone,
+	cn fields.ClusterName,
+	pcStore PodClusterStore,
+) (fields.PodCluster, error) {
+	if id != "" {
+		return pcStore.Get(id)
+	}
+
+	if az == "" || cn == "" || podID == "" {
+		return fields.PodCluster{}, errors.New("Expected one of: pcID or (pod,az,name)")
+	}
+
+	pcs, err := pcStore.FindWhereLabeled(podID, az, cn)
+	if err != nil {
+		return fields.PodCluster{}, err
+	}
+
+	if len(pcs) != 1 {
+		return fields.PodCluster{}, fmt.Errorf("found %d pod clusters that match", len(pcs))
+	}
+
+	return pcs[0], nil
 }
