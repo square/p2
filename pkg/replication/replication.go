@@ -482,12 +482,12 @@ func (r *replication) handleReplicationEnd(session consul.Session, renewalErrCh 
 
 func (r *replication) shouldScheduleForNode(node types.NodeName, logger logging.Logger) bool {
 	nodeReality, err := r.queryReality(node)
-	if err != nil {
-		logger.WithError(err).Errorln("Could not read Reality for this node. Will proceed to schedule onto it.")
-		return true
-	}
-	if err == pods.NoCurrentManifest {
+	switch {
+	case err == pods.NoCurrentManifest:
 		logger.Infoln("Nothing installed on this node yet.")
+		return true
+	case err != nil:
+		logger.WithError(err).Errorln("Could not read Reality for this node. Will proceed to schedule onto it.")
 		return true
 	}
 
