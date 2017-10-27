@@ -6,10 +6,14 @@ import (
 	"testing"
 	"time"
 
+	klabels "k8s.io/kubernetes/pkg/labels"
+
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/manifest"
+	pc_fields "github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/types"
 
 	"github.com/hashicorp/consul/api"
 )
@@ -504,6 +508,36 @@ func TestPublishLatestRCsWithLockInfoWithLocks(t *testing.T) {
 	}
 
 	verifyLockInfoTestCase(t, lockedCase2, inCh, lockResultCh)
+}
+
+func TestFindWhereLabeled(t *testing.T) {
+	client := consulutil.NewFakeClient()
+	rcstore := NewConsul(client, labels.NewFakeApplicator(), 1)
+
+	manB := manifest.NewBuilder()
+	manB.SetID("testPod")
+	podID := types.PodID("testPod")
+	az := pc_fields.AvailabilityZone("az")
+	cn := pc_fields.ClusterName("cn")
+	rcLabels := klabels.Set{}
+	rcLabels[pc_fields.PodIDLabel] = "testPod"
+	rcLabels[pc_fields.AvailabilityZoneLabel] = "az"
+	rcLabels[pc_fields.ClusterNameLabel] = "cn"
+	_, err := rcstore.Create(manB.GetManifest(), nil, az, cn, klabels.Set{}, rcLabels, fields.StaticStrategy)
+	if err != nil {
+		t.Errorf("Caught error creating RC: %v", err)
+	}
+
+	labeled, err := rcstore.FindWhereLabeled(podID, az, cn)
+	if err != nil {
+		t.Errorf("Caught error in FindWhereLabeled: %v", err)
+	}
+	if len(labeled) != 1 {
+		t.Errorf("Found wrong number of RCs")
+	}
+	if labeled[0].Manifest.ID() != podID {
+		t.Errorf("Found wrong RC. Expected %s, got %s", podID, labeled[0].Manifest.ID())
+	}
 }
 
 func verifyLockInfoTestCase(t *testing.T, lockInfoTestCase LockInfoTestCase, inCh chan []fields.ID, lockResultCh chan []RCLockResult) {
