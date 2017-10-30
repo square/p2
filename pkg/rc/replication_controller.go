@@ -295,7 +295,7 @@ func (rc *replicationController) meetDesires() error {
 		}
 	}
 
-	return rc.ensureConsistency(current)
+	return rc.ensureConsistency(current.Nodes(), eligible)
 }
 
 func (rc *replicationController) addPods(current types.PodLocations, eligible []types.NodeName) error {
@@ -473,15 +473,12 @@ func (rc *replicationController) removePods(current types.PodLocations, eligible
 	return nil
 }
 
-func (rc *replicationController) ensureConsistency(current types.PodLocations) error {
+func (rc *replicationController) ensureConsistency(current []types.NodeName, eligible []types.NodeName) error {
 	rc.mu.Lock()
-	// if a node transfer is in progress, the old node could be in current
-	// but could be unscheduled during this function's execution. We
-	// ignore it to prevent rescheduling
-	oldNode := rc.nodeTransfer.oldNode
-
 	manifest := rc.Manifest
 	rc.mu.Unlock()
+
+	eligibleCurrent := types.NewNodeSet(current...).Intersection(types.NewNodeSet(eligible...)).ListNodes()
 
 	manifestSHA, err := manifest.SHA()
 	if err != nil {
@@ -492,11 +489,7 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 	defer func() {
 		cancelFunc()
 	}()
-	for i, pod := range current {
-		if pod.Node == oldNode {
-			continue
-		}
-
+	for i, node := range eligibleCurrent {
 		// create a new context for every 5 nodes. This is done to make
 		// sure we're safely under the 64 operation limit imposed by
 		// consul on transactions. This shouldn't be necessary after
@@ -513,7 +506,7 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 			cancelFunc()
 			ctx, cancelFunc = transaction.New(context.Background())
 		}
-		intent, _, err := rc.consulStore.Pod(consul.INTENT_TREE, pod.Node, types.PodID(pod.PodID))
+		intent, _, err := rc.consulStore.Pod(consul.INTENT_TREE, node, manifest.ID())
 		if err != nil && err != pods.NoCurrentManifest {
 			return err
 		}
@@ -521,16 +514,16 @@ func (rc *replicationController) ensureConsistency(current types.PodLocations) e
 		if intent != nil {
 			intentSHA, err = intent.SHA()
 			if err != nil {
-				rc.logger.WithError(err).WithField("node", pod.Node).Warn("Could not hash manifest to determine consistency of intent")
+				rc.logger.WithError(err).WithField("node", node).Warn("Could not hash manifest to determine consistency of intent")
 			}
 			if intentSHA == manifestSHA {
 				continue
 			}
 		}
 
-		rc.logger.WithField("node", pod.Node).WithField("intentManifestSHA", intentSHA).Info("Found inconsistency in scheduled manifest")
+		rc.logger.WithField("node", node).WithField("intentManifestSHA", intentSHA).Info("Found inconsistency in scheduled manifest")
 
-		if err := rc.scheduleNoAudit(ctx, pod.Node); err != nil {
+		if err := rc.scheduleNoAudit(ctx, node); err != nil {
 			cancelFunc()
 			return err
 		}
