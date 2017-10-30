@@ -679,10 +679,10 @@ func (s *ConsulStore) UpdateStrategy(id fields.ID, strategy fields.Strategy) err
 // TODO: this function is almost a verbatim copy of pkg/labels retryMutate, can
 // we find some way to combine them?
 func (s *ConsulStore) retryMutate(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
-	err := s.mutateRc(id, mutator)
+	err := s.MutateRC(id, mutator)
 	for i := 0; i < s.retries; i++ {
 		if _, ok := err.(CASError); ok {
-			err = s.mutateRc(id, mutator)
+			err = s.MutateRC(id, mutator)
 		} else {
 			break
 		}
@@ -694,7 +694,7 @@ func (s *ConsulStore) retryMutate(id fields.ID, mutator func(fields.RC) (fields.
 // using the given function
 // if the mutator returns an error, it will be propagated out
 // if the returned RC has id="", then it will be deleted
-func (s *ConsulStore) mutateRc(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
+func (s *ConsulStore) MutateRC(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
 	rcp, err := s.rcPath(id)
 	if err != nil {
 		return err
