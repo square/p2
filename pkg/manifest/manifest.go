@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
@@ -27,6 +28,10 @@ type StatusStanza struct {
 	Path          string `yaml:"path,omitempty"`
 	Port          int    `yaml:"port,omitempty"`
 	LocalhostOnly bool   `yaml:"localhost_only,omitempty"`
+}
+
+type ResourceLimitsStanza struct {
+	CGroup cgroups.Config `yaml:"cgroup,omitempty"`
 }
 
 type Builder interface {
@@ -63,7 +68,9 @@ type Manifest interface {
 	ConfigFileName() (string, error)
 	WriteConfig(out io.Writer) error
 	PlatformConfigFileName() (string, error)
+	ResourceLimitsConfigFileName() (string, error)
 	WritePlatformConfig(out io.Writer) error
+	WriteResourceLimitsConfig(out io.Writer) error
 	GetLaunchableStanzas() map[launch.LaunchableID]launch.LaunchableStanza
 	GetConfig() map[interface{}]interface{}
 	SHA() (string, error)
@@ -84,6 +91,7 @@ type manifest struct {
 	Id                types.PodID                                     `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
 	RunAs             string                                          `yaml:"run_as,omitempty"`
 	LaunchableStanzas map[launch.LaunchableID]launch.LaunchableStanza `yaml:"launchables"`
+	ResourceLimits    ResourceLimitsStanza                            `yaml:"resource_limits,omitempty"`
 	Config            map[interface{}]interface{}                     `yaml:"config"`
 	StatusPort        int                                             `yaml:"status_port,omitempty"`
 	StatusHTTP        bool                                            `yaml:"status_http,omitempty"`
@@ -348,6 +356,18 @@ func (manifest *manifest) WritePlatformConfig(out io.Writer) error {
 	return nil
 }
 
+func (manifest *manifest) WriteResourceLimitsConfig(out io.Writer) error {
+	bytes, err := yaml.Marshal(manifest.ResourceLimits)
+	if err != nil {
+		return util.Errorf("Could not write resource limits for %s: %s", manifest.ID(), err)
+	}
+	_, err = out.Write(bytes)
+	if err != nil {
+		return util.Errorf("Could not write resource limits for %s: %s", manifest.ID(), err)
+	}
+	return nil
+}
+
 // SHA() returns a string containing a hex encoded SHA256 checksum of the
 // manifest's contents. The contents are normalized, such that all equivalent
 // YAML structures have the same SHA (despite differences in comments,
@@ -381,6 +401,14 @@ func (manifest *manifest) PlatformConfigFileName() (string, error) {
 		return "", err
 	}
 	return string(manifest.Id) + "_" + sha + ".platform.yaml", nil
+}
+
+func (manifest *manifest) ResourceLimitsConfigFileName() (string, error) {
+	sha, err := manifest.SHA()
+	if err != nil {
+		return "", err
+	}
+	return string(manifest.Id) + "_" + sha + ".resource.yaml", nil
 }
 
 // Returns readers needed to verify the signature on the

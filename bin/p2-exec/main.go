@@ -39,7 +39,7 @@ var (
 	workDir        = kingpin.Flag("workdir", "Set working directory.").Short('w').String()
 	umask          = kingpin.Flag("umask", "Set the process umask. Use octal notation ex. 0022").Short('m').Default(umaskDefault).String()
 	umaskDefault   = ""
-	podID          = kingpin.Flag("pod-cgroup", "Nest this launchable cgroup beneath a pod level cgroup. Looks in $CONFIG_PATH for parameters").Short('p').String()
+	podID          = kingpin.Flag("pod-cgroup", "Nest this launchable cgroup beneath a pod level cgroup. Looks in $PLATFORM_CONFIG_PATH_TWO for parameters").Short('p').String()
 
 	cmd = kingpin.Arg("command", "the command to execute").Required().Strings()
 )
@@ -83,7 +83,7 @@ func main() {
 
 	cgroupPath := ""
 	if *podID != "" {
-		cgConfig, err := cgGetConfig("CONFIG_PATH", *podID)
+		cgConfig, err := cgGetConfig("RESOURCE_LIMITS", "")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -284,20 +284,33 @@ func cgGetConfig(configPath string, configKey string) (cgroups.Config, error) {
 		if err != nil {
 			return cgroups.Config{}, err
 		}
-		cgMap := make(map[string]map[string]cgroups.Config)
-		err = yaml.Unmarshal(confBuf, cgMap)
-		if err != nil {
-			return cgroups.Config{}, err
-		}
+		if configPath == "RESOURCE_LIMITS" {
+			cgMap := make(map[string]cgroups.Config)
+			err = yaml.Unmarshal(confBuf, cgMap)
+			if err != nil {
+				return cgroups.Config{}, err
+			}
+			if _, ok := cgMap["cgroup"]; !ok {
+				return cgroups.Config{}, util.Errorf("Key %q in %s does not contain cgroup parameters\n", configKey, configPath)
+			}
+			cgConfig := cgMap["cgroup"]
+			return cgConfig, nil
+		} else {
+			cgMap := make(map[string]map[string]cgroups.Config)
+			err = yaml.Unmarshal(confBuf, cgMap)
+			if err != nil {
+				return cgroups.Config{}, err
+			}
 
-		if _, ok := cgMap[configKey]; !ok {
-			return cgroups.Config{}, util.Errorf("Key %q not found in %s", configKey, configPath)
+			if _, ok := cgMap[configKey]; !ok {
+				return cgroups.Config{}, util.Errorf("Key %q not found in %s", configKey, configPath)
+			}
+			if _, ok := cgMap[configKey]["cgroup"]; !ok {
+				return cgroups.Config{}, util.Errorf("Key %q in %s does not contain cgroup parameters\n", configKey, configPath)
+			}
+			cgConfig := cgMap[configKey]["cgroup"]
+			return cgConfig, nil
 		}
-		if _, ok := cgMap[configKey]["cgroup"]; !ok {
-			return cgroups.Config{}, util.Errorf("Key %q in %s does not contain cgroup parameters\n", configKey, configPath)
-		}
-		cgConfig := cgMap[configKey]["cgroup"]
-		return cgConfig, nil
 	} else {
 		return cgroups.Config{}, util.Errorf("No %s found in environment", configPath)
 	}

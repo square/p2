@@ -49,6 +49,7 @@ const (
 	PodHomeEnvVar                  = "POD_HOME"
 	PodUniqueKeyEnvVar             = "POD_UNIQUE_KEY"
 	PlatformConfigPathEnvVar       = "PLATFORM_CONFIG_PATH"
+	ResourceLimitsConfigPathEnvVar = "RESOURCE_LIMITS_PATH"
 	LaunchableRestartTimeoutEnvVar = "RESTART_TIMEOUT"
 )
 
@@ -539,6 +540,11 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 	if err != nil {
 		return err
 	}
+	var resourceLimitsConfigData bytes.Buffer
+	err = manifest.WriteResourceLimitsConfig(&resourceLimitsConfigData)
+	if err != nil {
+		return err
+	}
 
 	err = util.MkdirChownAll(pod.ConfigDir(), uid, gid, 0755)
 	if err != nil {
@@ -562,6 +568,15 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 	if err != nil {
 		return util.Errorf("Error writing platform config file for pod %s: %s", manifest.ID(), err)
 	}
+	resourceLimitsConfigFileName, err := manifest.ResourceLimitsConfigFileName()
+	if err != nil {
+		return err
+	}
+	resourceLimitsConfigPath := filepath.Join(pod.ConfigDir(), resourceLimitsConfigFileName)
+	err = writeFileChown(resourceLimitsConfigPath, resourceLimitsConfigData.Bytes(), uid, gid)
+	if err != nil {
+		return util.Errorf("Error writing resource limits config file for pod %s: %s", manifest.ID(), err)
+	}
 
 	err = util.MkdirChownAll(pod.EnvDir(), uid, gid, 0755)
 	if err != nil {
@@ -572,6 +587,10 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 		return err
 	}
 	err = writeEnvFile(pod.EnvDir(), PlatformConfigPathEnvVar, platConfigPath, uid, gid)
+	if err != nil {
+		return err
+	}
+	err = writeEnvFile(pod.EnvDir(), ResourceLimitsConfigPathEnvVar, platConfigPath, uid, gid)
 	if err != nil {
 		return err
 	}
