@@ -697,19 +697,19 @@ func (rc *replicationController) transferNodes(ineligible []types.NodeName) erro
 		if err != nil {
 			return err
 		}
-
-		err = rc.scheduleWithSession(newNode)
-		if err != nil {
-			// Different RC may have already taken over the new node, abort transfer
-			deleteErr := rc.rcStatusStore.Delete(rc.ID())
-			if deleteErr != nil {
-				rc.logger.WithError(deleteErr).Errorln("could not delete rc status")
-			}
-			return util.Errorf("Could not schedule with session; new rc may have taken node: %s", err)
-		}
 	} else {
 		newNode = status.NodeTransfer.NewNode
 		oldNode = status.NodeTransfer.OldNode
+	}
+
+	err = rc.scheduleWithSession(newNode)
+	if err != nil {
+		// Different RC may have already taken over the new node, abort transfer
+		deleteErr := rc.rcStatusStore.Delete(rc.ID())
+		if deleteErr != nil {
+			rc.logger.WithError(deleteErr).Errorln("could not delete rc status")
+		}
+		return util.Errorf("Could not schedule with session; new rc may have taken node: %s", err)
 	}
 
 	rc.nodeTransfer.newNode = newNode
