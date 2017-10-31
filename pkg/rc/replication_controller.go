@@ -697,19 +697,19 @@ func (rc *replicationController) transferNodes(ineligible []types.NodeName) erro
 		if err != nil {
 			return err
 		}
-
-		err = rc.scheduleWithSession(newNode)
-		if err != nil {
-			// Different RC may have already taken over the new node, abort transfer
-			deleteErr := rc.rcStatusStore.Delete(rc.ID())
-			if deleteErr != nil {
-				rc.logger.WithError(deleteErr).Errorln("could not delete rc status")
-			}
-			return util.Errorf("Could not schedule with session; new rc may have taken node: %s", err)
-		}
 	} else {
 		newNode = status.NodeTransfer.NewNode
 		oldNode = status.NodeTransfer.OldNode
+	}
+
+	err = rc.scheduleWithSession(newNode)
+	if err != nil {
+		// Different RC may have already taken over the new node, abort transfer
+		deleteErr := rc.rcStatusStore.Delete(rc.ID())
+		if deleteErr != nil {
+			rc.logger.WithError(deleteErr).Errorln("could not delete rc status")
+		}
+		return util.Errorf("Could not schedule with session; new rc may have taken node: %s", err)
 	}
 
 	rc.nodeTransfer.newNode = newNode
@@ -736,6 +736,7 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 	if err != nil {
 		return "", "", util.Errorf("Could not deallocate from %s: %s", oldNode, err)
 	}
+	rc.logger.Infof("Deallocated ineligible node %s", oldNode)
 
 	eligible, err := rc.eligibleNodes()
 	if err != nil {
@@ -753,6 +754,7 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 	var newNode types.NodeName
 	if len(possible) > 0 {
 		newNode = possible[0]
+		rc.logger.Infof("Existing eligible node %s found for transfer", newNode)
 	} else {
 		nodesRequested := 1 // We only support one node transfer at a time right now
 		newNodes, err := rc.scheduler.AllocateNodes(man, sel, nodesRequested)
@@ -767,6 +769,7 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 		}
 
 		newNode = newNodes[0]
+		rc.logger.Infof("Allocated node %s for transfer", newNode)
 	}
 
 	status := rcstatus.Status{
@@ -876,6 +879,8 @@ func (rc *replicationController) doBackgroundNodeTransfer() {
 }
 
 func (rc *replicationController) watchHealth() bool {
+	rc.logger.Infof("Watching health on %s", rc.nodeTransfer.newNode)
+
 	rc.mu.Lock()
 	podID := rc.Manifest.ID()
 	rc.mu.Unlock()

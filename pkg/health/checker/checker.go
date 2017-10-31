@@ -86,18 +86,32 @@ func (c consulHealthChecker) WatchPodOnNode(
 			case <-quitCh:
 				return
 			case kvPair := <-wsOut:
-				res, err := kvpToResult(*kvPair)
-				if err != nil {
+				if kvPair == nil {
+					unknownRes := health.Result{
+						ID:      podID,
+						Node:    nodename,
+						Service: podID.String(),
+						Status:  health.Unknown,
+					}
 					select {
-					case errCh <- err:
+					case resultCh <- unknownRes:
 					case <-quitCh:
 						return
 					}
 				} else {
-					select {
-					case resultCh <- *res:
-					case <-quitCh:
-						return
+					res, err := kvpToResult(*kvPair)
+					if err != nil {
+						select {
+						case errCh <- err:
+						case <-quitCh:
+							return
+						}
+					} else {
+						select {
+						case resultCh <- *res:
+						case <-quitCh:
+							return
+						}
 					}
 				}
 			}
