@@ -1012,7 +1012,7 @@ func testRolledBackTransfer(rc *replicationController, t *testing.T) {
 	if rc.nodeTransfer.newNode != nilTransfer.newNode ||
 		rc.nodeTransfer.oldNode != nilTransfer.oldNode ||
 		rc.nodeTransfer.quit != nilTransfer.quit ||
-		rc.nodeTransfer.unlocker != nilTransfer.unlocker {
+		rc.nodeTransfer.session != nilTransfer.session {
 		t.Fatalf("Expected rc.nodeTransfer to be %v, was %v", nilTransfer, rc.nodeTransfer)
 	}
 }
