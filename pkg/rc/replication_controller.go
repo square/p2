@@ -288,6 +288,7 @@ func (rc *replicationController) meetDesires() error {
 
 	ineligible := rc.checkForIneligible(current, eligible)
 	if len(ineligible) > 0 {
+		rc.logger.Infof("Ineligible nodes: %s found, starting node transfer", ineligible)
 		err := rc.transferNodes(ineligible)
 		if err != nil {
 			return err
@@ -869,6 +870,8 @@ func (rc *replicationController) doBackgroundNodeTransfer() {
 
 	rc.nodeTransfer.cancelSession()
 
+	rc.logger.Infof("Node transfer from %s to %s complete.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode)
+
 	rc.mu.Lock()
 	rc.nodeTransfer = nodeTransfer{}
 	rc.mu.Unlock()
@@ -892,10 +895,16 @@ func (rc *replicationController) watchHealth() bool {
 
 	for {
 		select {
-		case err := <-errCh:
-			rc.logger.WithError(err).Errorln("Node transfer health checker sent error")
+		case err, ok := <-errCh:
+			// TODO rewrite once we understand why nil errors were sent to this chan
+			if err != nil {
+				rc.logger.WithError(err).Errorln("Node transfer health checker sent error")
+			} else {
+				rc.logger.Errorln("Node transfer health checker sent nil error. Ok was: %v", ok)
+			}
 		case currentHealth := <-resultCh:
 			if currentHealth.Status == health.Passing {
+				rc.logger.Infof("New transfer node %s health now passing", rc.nodeTransfer.newNode)
 				return true
 			}
 		case <-rc.nodeTransfer.quit:
