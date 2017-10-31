@@ -31,6 +31,11 @@ type Session interface {
 		lockCtx context.Context,
 		key string,
 	) (TxnUnlocker, error)
+	UnlockTxn(
+		ctx context.Context,
+		key string,
+		value []byte,
+	) error
 	LockIfKeyNotExistsTxn(
 		ctx context.Context,
 		key string,
@@ -118,6 +123,26 @@ func (s session) LockTxn(
 		session: s.session,
 		key:     key,
 	}, nil
+}
+
+// UnlockTxn unlocks a key in the traditional consul sense. It unlocks the
+// session from the key without deleting the key.
+func (s session) UnlockTxn(
+	ctx context.Context,
+	key string,
+	value []byte,
+) error {
+	err := transaction.Add(ctx, api.KVTxnOp{
+		Verb:    string(api.KVUnlock),
+		Key:     key,
+		Value:   value,
+		Session: s.session,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // LockIfKeyNotExistsTxn will lock and set a key, guaranteeing the key did not
