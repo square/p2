@@ -105,8 +105,14 @@ type nodeTransfer struct {
 	newNode       types.NodeName
 	oldNode       types.NodeName
 	quit          chan struct{}
+	session       consul.Session
 	cancelSession context.CancelFunc
-	unlocker      consul.TxnUnlocker
+	unlockArgs    unlockArgs
+}
+
+type unlockArgs struct {
+	key   string
+	value []byte
 }
 
 // replicationController wraps a fields.RC with information required to manage the RC.
@@ -833,7 +839,7 @@ func (rc *replicationController) scheduleWithSession(newNode types.NodeName) err
 	writeCtx, writeCancel := transaction.New(context.Background())
 	defer writeCancel()
 
-	txnUnlocker, err := session.LockIfKeyNotExistsTxn(writeCtx, key, manifestBytes)
+	_, err = session.LockIfKeyNotExistsTxn(writeCtx, key, manifestBytes)
 	if err != nil {
 		return err
 	}
@@ -849,8 +855,12 @@ func (rc *replicationController) scheduleWithSession(newNode types.NodeName) err
 		return err
 	}
 
+	rc.nodeTransfer.session = session
 	rc.nodeTransfer.cancelSession = ctxCancel
-	rc.nodeTransfer.unlocker = txnUnlocker
+	rc.nodeTransfer.unlockArgs = unlockArgs{
+		key:   key,
+		value: manifestBytes,
+	}
 
 	return nil
 }
@@ -893,12 +903,11 @@ func (rc *replicationController) watchHealth() bool {
 
 	for {
 		select {
-		case err, ok := <-errCh:
-			// TODO rewrite once we understand why nil errors were sent to this chan
+		case err := <-errCh:
 			if err != nil {
 				rc.logger.WithError(err).Errorln("Node transfer health checker sent error")
 			} else {
-				rc.logger.Errorln("Node transfer health checker sent nil error. Ok was: %v", ok)
+				rc.logger.Errorln("Node transfer health checker sent nil error")
 			}
 		case currentHealth := <-resultCh:
 			if currentHealth.Status == health.Passing {
@@ -926,7 +935,9 @@ func (rc *replicationController) finishTransfer() error {
 	txn, cancelFunc := rc.newAuditingTransaction(ctx, current.Nodes())
 	defer cancelFunc()
 
-	err = rc.nodeTransfer.unlocker.UnlockTxn(txn.Context())
+	key := rc.nodeTransfer.unlockArgs.key
+	value := rc.nodeTransfer.unlockArgs.value
+	err = rc.nodeTransfer.session.UnlockTxn(txn.Context(), key, value)
 	if err != nil {
 		return err
 	}
