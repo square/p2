@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/square/p2/pkg/cgroups"
+	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -39,7 +40,7 @@ var (
 	workDir        = kingpin.Flag("workdir", "Set working directory.").Short('w').String()
 	umask          = kingpin.Flag("umask", "Set the process umask. Use octal notation ex. 0022").Short('m').Default(umaskDefault).String()
 	umaskDefault   = ""
-	podID          = kingpin.Flag("pod-cgroup", "Nest this launchable cgroup beneath a pod level cgroup. Looks in $PLATFORM_CONFIG_PATH_TWO for parameters").Short('p').String()
+	podID          = kingpin.Flag("pod-cgroup", "Nest this launchable cgroup beneath a pod level cgroup. Looks in $RESOURCE_LIMITS_PATH for parameters").Short('p').String()
 
 	cmd = kingpin.Arg("command", "the command to execute").Required().Strings()
 )
@@ -83,7 +84,7 @@ func main() {
 
 	cgroupPath := ""
 	if *podID != "" {
-		cgConfig, err := cgGetConfig("RESOURCE_LIMITS", "")
+		cgConfig, err := cgGetPodConfig(pods.ResourceLimitsConfigPathEnvVar)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -106,13 +107,13 @@ func main() {
 		if err != nil && !os.IsExist(err) {
 			log.Fatal(err)
 		}
-		cgroupPath = "p2" + "/" + node
+		cgroupPath = filepath.Join(cgroupPath, node)
 
 		err = cgCreate(*podID, cgroupPath, cgConfig)
 		if err != nil {
 			log.Fatalf("Could not create pod %v cgroup %v\n", *podID, err)
 		}
-		cgroupPath = cgroupPath + "/" + *podID
+		cgroupPath = filepath.Join(cgroupPath, *podID)
 	}
 
 	if *launchableName == "" && *cgroupName != "" {
@@ -122,7 +123,7 @@ func main() {
 		log.Fatalf("Specified launchable name %q, but no cgroup name was specified", *launchableName)
 	}
 	if *launchableName != "" && *cgroupName != "" {
-		cgPlatConfig, err := cgGetConfig("PLATFORM_CONFIG_PATH", *launchableName)
+		cgPlatConfig, err := cgGetLaunchableConfig(pods.PlatformConfigPathEnvVar, *launchableName)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -277,40 +278,47 @@ func cgCreate(cgroupName string, targetDirectory string, config cgroups.Config) 
 	return cg.AddPID(config.Name, 0)
 }
 
-// given ENV variable "configPath" return parameters for the new cgroup being created
-func cgGetConfig(configPath string, configKey string) (cgroups.Config, error) {
+func cgGetPodConfig(configPath string) (cgroups.Config, error) {
 	if config := os.Getenv(configPath); config != "" {
 		confBuf, err := ioutil.ReadFile(config)
 		if err != nil {
 			return cgroups.Config{}, err
 		}
-		if configPath == "RESOURCE_LIMITS" {
-			cgMap := make(map[string]cgroups.Config)
-			err = yaml.Unmarshal(confBuf, cgMap)
-			if err != nil {
-				return cgroups.Config{}, err
-			}
-			if _, ok := cgMap["cgroup"]; !ok {
-				return cgroups.Config{}, util.Errorf("Key %q in %s does not contain cgroup parameters\n", configKey, configPath)
-			}
-			cgConfig := cgMap["cgroup"]
-			return cgConfig, nil
-		} else {
-			cgMap := make(map[string]map[string]cgroups.Config)
-			err = yaml.Unmarshal(confBuf, cgMap)
-			if err != nil {
-				return cgroups.Config{}, err
-			}
-
-			if _, ok := cgMap[configKey]; !ok {
-				return cgroups.Config{}, util.Errorf("Key %q not found in %s", configKey, configPath)
-			}
-			if _, ok := cgMap[configKey]["cgroup"]; !ok {
-				return cgroups.Config{}, util.Errorf("Key %q in %s does not contain cgroup parameters\n", configKey, configPath)
-			}
-			cgConfig := cgMap[configKey]["cgroup"]
-			return cgConfig, nil
+		cgMap := make(map[string]cgroups.Config)
+		err = yaml.Unmarshal(confBuf, cgMap)
+		if err != nil {
+			return cgroups.Config{}, err
 		}
+		if _, ok := cgMap["cgroup"]; !ok {
+			return cgroups.Config{}, util.Errorf("%s does not contain cgroup parameters\n", configPath)
+		}
+		cgConfig := cgMap["cgroup"]
+		return cgConfig, nil
+	} else {
+		return cgroups.Config{}, util.Errorf("No %s found in environment", configPath)
+	}
+}
+
+func cgGetLaunchableConfig(configPath string, configKey string) (cgroups.Config, error) {
+	if config := os.Getenv(configPath); config != "" {
+		confBuf, err := ioutil.ReadFile(config)
+		if err != nil {
+			return cgroups.Config{}, err
+		}
+		cgMap := make(map[string]map[string]cgroups.Config)
+		err = yaml.Unmarshal(confBuf, cgMap)
+		if err != nil {
+			return cgroups.Config{}, err
+		}
+
+		if _, ok := cgMap[configKey]; !ok {
+			return cgroups.Config{}, util.Errorf("Key %q not found in %s", configKey, configPath)
+		}
+		if _, ok := cgMap[configKey]["cgroup"]; !ok {
+			return cgroups.Config{}, util.Errorf("Key %q in %s does not contain cgroup parameters\n", configKey, configPath)
+		}
+		cgConfig := cgMap[configKey]["cgroup"]
+		return cgConfig, nil
 	} else {
 		return cgroups.Config{}, util.Errorf("No %s found in environment", configPath)
 	}
