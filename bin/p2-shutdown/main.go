@@ -56,6 +56,8 @@ func main() {
 		podsToShutdown = append(podsToShutdown, types.PodID(pod))
 	}
 
+	success := true
+	var successMu sync.Mutex
 	// TODO: configure a proper http client instead of using default fetcher
 	podFactory := pods.NewFactory(*podRoot, node, uri.DefaultFetcher, "")
 	var haltWG sync.WaitGroup
@@ -80,10 +82,18 @@ func main() {
 			}
 			if err != nil {
 				log.Printf("[ERROR]: Got error while halting pod %s. Consider retrying the command. \n %s", podID, err)
+				successMu.Lock()
+				success = false
+				successMu.Unlock()
 			}
 		}(realityEntry.Manifest, pod.Id)
 	}
 	haltWG.Wait()
+
+	if !success {
+		log.Println("at least one app encountered a shutdown error")
+		os.Exit(1)
+	}
 }
 
 // returns true if the pod should be shutdown
