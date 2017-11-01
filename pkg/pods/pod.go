@@ -590,7 +590,7 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 	if err != nil {
 		return err
 	}
-	err = writeEnvFile(pod.EnvDir(), ResourceLimitsConfigPathEnvVar, platConfigPath, uid, gid)
+	err = writeEnvFile(pod.EnvDir(), ResourceLimitsConfigPathEnvVar, resourceLimitsConfigPath, uid, gid)
 	if err != nil {
 		return err
 	}

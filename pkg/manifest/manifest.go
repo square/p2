@@ -43,6 +43,7 @@ type Builder interface {
 	SetStatusPath(statusPath string)
 	SetStatusPort(port int)
 	SetLaunchables(launchableStanzas map[launch.LaunchableID]launch.LaunchableStanza)
+	SetPodLevelCgroup(cgroups.Config)
 }
 
 var _ Builder = builder{}
@@ -72,6 +73,7 @@ type Manifest interface {
 	WritePlatformConfig(out io.Writer) error
 	WriteResourceLimitsConfig(out io.Writer) error
 	GetLaunchableStanzas() map[launch.LaunchableID]launch.LaunchableStanza
+	GetResourceLimits() ResourceLimitsStanza
 	GetConfig() map[interface{}]interface{}
 	SHA() (string, error)
 	GetStatusHTTP() bool
@@ -129,8 +131,16 @@ func (manifest *manifest) GetLaunchableStanzas() map[launch.LaunchableID]launch.
 	return manifest.LaunchableStanzas
 }
 
+func (manifest *manifest) GetResourceLimits() ResourceLimitsStanza {
+	return manifest.ResourceLimits
+}
+
 func (manifest *manifest) SetLaunchables(launchableStanzas map[launch.LaunchableID]launch.LaunchableStanza) {
 	manifest.LaunchableStanzas = launchableStanzas
+}
+
+func (manifest *manifest) SetPodLevelCgroup(cgroupConfig cgroups.Config) {
+	manifest.ResourceLimits.CGroup = cgroupConfig
 }
 
 func (manifest *manifest) GetConfig() map[interface{}]interface{} {
@@ -392,7 +402,7 @@ func (manifest *manifest) ConfigFileName() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(manifest.Id) + "_" + sha + ".yaml", nil
+	return manifest.Id.String() + "_" + sha + ".yaml", nil
 }
 
 func (manifest *manifest) PlatformConfigFileName() (string, error) {
@@ -400,7 +410,7 @@ func (manifest *manifest) PlatformConfigFileName() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(manifest.Id) + "_" + sha + ".platform.yaml", nil
+	return manifest.Id.String() + "_" + sha + ".platform.yaml", nil
 }
 
 func (manifest *manifest) ResourceLimitsConfigFileName() (string, error) {
@@ -408,7 +418,7 @@ func (manifest *manifest) ResourceLimitsConfigFileName() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(manifest.Id) + "_" + sha + ".resource.yaml", nil
+	return manifest.Id.String() + "_" + sha + ".resource.yaml", nil
 }
 
 // Returns readers needed to verify the signature on the

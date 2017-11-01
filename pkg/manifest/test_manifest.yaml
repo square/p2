@@ -13,6 +13,11 @@ launchables:
     launchable_id: app
     location: hoisted-hello_def456.tar.gz
 
+resource_limits:
+  cgroup:
+    cpus: 4
+    memory: 1
+
 config:
   # is written to a file and passed as CONFIG_FILE to the process
   ENVIRONMENT: staging
