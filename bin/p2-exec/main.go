@@ -89,25 +89,16 @@ func main() {
 			log.Fatal(err)
 		}
 
-		node, err := os.Hostname()
-		if err != nil {
-			log.Fatal(err)
-		}
-
 		cg, err := cgroups.Find()
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		err = os.MkdirAll(filepath.Join(cg.CPU, "p2", node), 0755)
-		if err != nil && !os.IsExist(err) {
+		// Create p2/{nodename} cgroup if it does not already exist
+		cgroupPath, err = cg.CreateBaseCgroup()
+		if err != nil {
 			log.Fatal(err)
 		}
-		err = os.MkdirAll(filepath.Join(cg.Memory, "p2", node), 0755)
-		if err != nil && !os.IsExist(err) {
-			log.Fatal(err)
-		}
-		cgroupPath = filepath.Join(cgroupPath, node)
 
 		err = cgCreate(*podID, cgroupPath, cgConfig)
 		if err != nil {

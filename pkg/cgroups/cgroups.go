@@ -195,6 +195,22 @@ func (subsys Subsystems) AddPID(name string, pid int) error {
 	return appendIntToFile(filepath.Join(subsys.CPU, name, "cgroup.procs"), pid)
 }
 
+func (subsys Subsystems) CreateBaseCgroup() (string, error) {
+	node, err := os.Hostname()
+	if err != nil {
+		return "", err
+	}
+	err = os.MkdirAll(filepath.Join(subsys.CPU, "p2", node), 0755)
+	if err != nil && !os.IsExist(err) {
+		return "", err
+	}
+	err = os.MkdirAll(filepath.Join(subsys.Memory, "p2", node), 0755)
+	if err != nil && !os.IsExist(err) {
+		return "", err
+	}
+	return filepath.Join("p2", node), nil
+}
+
 func appendIntToFile(filename string, data int) error {
 	fd, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 	if err != nil {
