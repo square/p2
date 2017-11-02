@@ -31,7 +31,7 @@ type StatusStanza struct {
 }
 
 type ResourceLimitsStanza struct {
-	CGroup cgroups.Config `yaml:"cgroup,omitempty"`
+	Cgroup cgroups.Config `yaml:"cgroup,omitempty"`
 }
 
 type Builder interface {
@@ -140,7 +140,7 @@ func (manifest *manifest) SetLaunchables(launchableStanzas map[launch.Launchable
 }
 
 func (manifest *manifest) SetPodLevelCgroup(cgroupConfig cgroups.Config) {
-	manifest.ResourceLimits.CGroup = cgroupConfig
+	manifest.ResourceLimits.Cgroup = cgroupConfig
 }
 
 func (manifest *manifest) GetConfig() map[interface{}]interface{} {

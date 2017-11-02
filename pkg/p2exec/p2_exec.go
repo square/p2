@@ -21,7 +21,7 @@ type P2ExecArgs struct {
 	WorkDir          string
 	RequireFile      string
 	ClearEnv         bool
-	Pod              string
+	PodCgroup        string
 }
 
 func (args P2ExecArgs) CommandLine() []string {
@@ -60,8 +60,10 @@ func (args P2ExecArgs) CommandLine() []string {
 
 	if args.ClearEnv {
 		cmd = append(cmd, "--clearenv")
-	if args.Pod != "" {
-		cmd = append(cmd, "-p", args.Pod)
+    }
+
+	if args.PodCgroup != "" {
+		cmd = append(cmd, "-p", args.PodCgroup)
 	}
 
 	if len(cmd) > 0 {
