@@ -20,7 +20,7 @@ type P2ExecArgs struct {
 	Command          []string
 	WorkDir          string
 	RequireFile      string
-	Pod              string
+	PodCgroup        string
 }
 
 func (args P2ExecArgs) CommandLine() []string {
@@ -57,8 +57,8 @@ func (args P2ExecArgs) CommandLine() []string {
 		cmd = append(cmd, "--require-file", args.RequireFile)
 	}
 
-	if args.Pod != "" {
-		cmd = append(cmd, "-p", args.Pod)
+	if args.PodCgroup != "" {
+		cmd = append(cmd, "-p", args.PodCgroup)
 	}
 
 	if len(cmd) > 0 {

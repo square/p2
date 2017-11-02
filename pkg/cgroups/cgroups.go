@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/square/p2/pkg/util"
+	"gopkg.in/yaml.v2"
 )
 
 // maps cgroup subsystems to their respective paths
@@ -72,11 +73,18 @@ func Find() (Subsystems, error) {
 	return ret, nil
 }
 
-func FindWithParentGroup(parentGroupName string) (Subsystems, error) {
+func FindWithParentGroup(podID string) (Subsystems, error) {
 	subsys, err := Find()
 	if err != nil {
 		return Subsystems{}, err
 	}
+
+	node, err := os.Hostname()
+	if err != nil {
+		return Subsystems{}, err
+	}
+
+	parentGroupName := filepath.Join("p2", node, podID)
 
 	subsys.CPU = filepath.Join(subsys.CPU, parentGroupName)
 	subsys.Memory = filepath.Join(subsys.Memory, parentGroupName)
@@ -195,20 +203,101 @@ func (subsys Subsystems) AddPID(name string, pid int) error {
 	return appendIntToFile(filepath.Join(subsys.CPU, name, "cgroup.procs"), pid)
 }
 
-func (subsys Subsystems) CreateBaseCgroup() (string, error) {
+func CreatePodCgroup(cgroupName string, config Config) error {
+	subsys, err := Find()
+	if err != nil {
+		return err
+	}
 	node, err := os.Hostname()
 	if err != nil {
-		return "", err
+		return err
 	}
 	err = os.MkdirAll(filepath.Join(subsys.CPU, "p2", node), 0755)
 	if err != nil && !os.IsExist(err) {
-		return "", err
+		return err
 	}
 	err = os.MkdirAll(filepath.Join(subsys.Memory, "p2", node), 0755)
 	if err != nil && !os.IsExist(err) {
-		return "", err
+		return err
 	}
-	return filepath.Join("p2", node), nil
+	return create(cgroupName, "", config)
+}
+
+func CreateLaunchableCgroup(cgroupName, podID string, config Config) error {
+	return create(cgroupName, podID, config)
+}
+
+func create(cgroupName string, podID string, config Config) error {
+	config.Name = cgroupName
+
+	var subsys Subsystems
+	var err error
+	if podID != "" {
+		subsys, err = FindWithParentGroup(podID)
+	} else {
+		subsys, err = Find()
+	}
+
+	if err != nil {
+		return util.Errorf("Could not find cgroupfs mount point: %s", err)
+	}
+
+	err = subsys.Write(config)
+	if _, ok := err.(UnsupportedError); ok {
+		// if a subsystem is not supported, just log
+		// and carry on
+		fmt.Printf("Unsupported subsystem (%s), continuing\n", err)
+		return nil
+	} else if err != nil {
+		return util.Errorf("Could not set cgroup parameters: %s", err)
+	}
+	return subsys.AddPID(config.Name, 0)
+}
+
+func GetPodConfig(configPath string) (Config, error) {
+	if config := os.Getenv(configPath); config != "" {
+		confBuf, err := ioutil.ReadFile(config)
+		if err != nil {
+			return Config{}, err
+		}
+		cgMap := make(map[string]Config)
+		err = yaml.Unmarshal(confBuf, cgMap)
+		if err != nil {
+			return Config{}, err
+		}
+		if _, ok := cgMap["cgroup"]; !ok {
+			return Config{}, util.Errorf("%s does not contain cgroup parameters\n", configPath)
+		}
+		cgConfig := cgMap["cgroup"]
+		return cgConfig, nil
+	} else {
+		return Config{}, util.Errorf("No %s found in environment", configPath)
+	}
+}
+
+func GetLaunchableConfig(configPath string, configKey string) (Config, error) {
+	if config := os.Getenv(configPath); config != "" {
+		confBuf, err := ioutil.ReadFile(config)
+		if err != nil {
+			return Config{}, err
+		}
+		cgMap := make(map[string]map[string]Config)
+		err = yaml.Unmarshal(confBuf, cgMap)
+		if err != nil {
+			return Config{}, err
+		}
+
+		if _, ok := cgMap[configKey]; !ok {
+			return Config{}, util.Errorf("Key %q not found in %s", configKey, configPath)
+		}
+		if _, ok := cgMap[configKey]["cgroup"]; !ok {
+			return Config{}, util.Errorf("Key %q in %s does not contain cgroup parameters\n", configKey, configPath)
+		}
+		cgConfig := cgMap[configKey]["cgroup"]
+		return cgConfig, nil
+	} else {
+		return Config{}, util.Errorf("No %s found in environment", configPath)
+	}
 }
 
 func appendIntToFile(filename string, data int) error {
