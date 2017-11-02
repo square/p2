@@ -261,26 +261,8 @@ START_LOOP:
 				// at this point the rc is ours, time to spin it up
 				rcLogger.NoFields().Infoln("Acquired lock on new replication controller, spawning")
 
-				// TODO: maybe we don't need to fetch the RC
-				// here, but that involves changing replication
-				// controller code which expands the scope of
-				// the change to watching RC keys rather than
-				// values.  Also it probably doesn't matter
-				// much since we won't actually be doing a
-				// fetch that often (only when lock not held)
-				rc, err := rcf.rcStore.Get(rcKey.ID)
-				if err != nil {
-					rcLogger.WithError(err).Error("unable to fetch RC to process it")
-
-					unlockErr := rcUnlocker.Unlock()
-					if unlockErr != nil {
-						rcLogger.WithError(unlockErr).Error("unable to unlock RC after processing failure")
-					}
-					continue
-				}
-
 				newChild := New(
-					rc,
+					rcKey.ID,
 					rcf.store,
 					rcf.client,
 					rcf.rcStatusStore,

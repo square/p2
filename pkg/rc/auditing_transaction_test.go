@@ -25,18 +25,19 @@ func TestAuditingTransaction(t *testing.T) {
 	defer fixture.Stop()
 
 	auditLogStore := auditlogstore.NewConsulStore(fixture.Client.KV())
-	rc := &replicationController{
-		RC: rc_fields.RC{
-			Manifest: testManifest(),
-			PodLabels: klabels.Set{
-				pc_fields.AvailabilityZoneLabel: "some_az",
-				pc_fields.ClusterNameLabel:      "some_cn",
-			},
+	rcFields := rc_fields.RC{
+		Manifest: testManifest(),
+		PodLabels: klabels.Set{
+			pc_fields.AvailabilityZoneLabel: "some_az",
+			pc_fields.ClusterNameLabel:      "some_cn",
 		},
+	}
+
+	rc := &replicationController{
 		auditLogStore: auditLogStore,
 	}
 
-	ctx, cancel := rc.newAuditingTransaction(context.Background(), []types.NodeName{"node1", "node2"})
+	ctx, cancel := rc.newAuditingTransaction(context.Background(), rcFields, []types.NodeName{"node1", "node2"})
 	defer cancel()
 
 	ctx.AddNode("node3")
@@ -195,18 +196,18 @@ func TestCommitWithRetriesDoesntRetryRollback(t *testing.T) {
 func testCommitWithRetries(fixture consulutil.Fixture, t *testing.T, shouldErr bool, shouldRollback bool) (signalingTxner, auditlogstore.ConsulStore) {
 
 	auditLogStore := auditlogstore.NewConsulStore(fixture.Client.KV())
-	rc := &replicationController{
-		RC: rc_fields.RC{
-			Manifest: testManifest(),
-			PodLabels: klabels.Set{
-				pc_fields.AvailabilityZoneLabel: "some_az",
-				pc_fields.ClusterNameLabel:      "some_cn",
-			},
+	rcFields := rc_fields.RC{
+		Manifest: testManifest(),
+		PodLabels: klabels.Set{
+			pc_fields.AvailabilityZoneLabel: "some_az",
+			pc_fields.ClusterNameLabel:      "some_cn",
 		},
+	}
+	rc := &replicationController{
 		auditLogStore: auditLogStore,
 	}
 
-	ctx, cancel := rc.newAuditingTransaction(context.Background(), []types.NodeName{"node1", "node2"})
+	ctx, cancel := rc.newAuditingTransaction(context.Background(), rcFields, []types.NodeName{"node1", "node2"})
 
 	ctx.AddNode("node3")
 	ctx.RemoveNode("node2")

@@ -142,7 +142,7 @@ func setup(t *testing.T) (
 	healthChecker := fake_checker.NewSingleService("", nil)
 
 	rc = New(
-		rcData,
+		rcData.ID,
 		consulStore,
 		fixture.Client,
 		rcStatusStore,
@@ -188,10 +188,15 @@ func waitForNodes(t *testing.T, rc ReplicationController, desired int) int {
 }
 
 func TestDoNothing(t *testing.T) {
-	_, consulStore, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	err := rc.meetDesires()
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rc.meetDesires(rcFields)
 	Assert(t).IsNil(err, "expected no error meeting")
 
 	scheduled := scheduledPods(t, applicator)
@@ -213,7 +218,7 @@ func TestCantSchedule(t *testing.T) {
 	quit := make(chan struct{})
 	errors := rc.WatchDesires(quit)
 
-	rcStore.SetDesiredReplicas(rc.ID(), 1)
+	rcStore.SetDesiredReplicas(rc.rcID, 1)
 
 	select {
 	case rcErr := <-errors:
@@ -248,7 +253,7 @@ func TestSchedule(t *testing.T) {
 	defer close(quit)
 	rc.WatchDesires(quit)
 
-	rcStore.SetDesiredReplicas(rc.ID(), 1)
+	rcStore.SetDesiredReplicas(rc.rcID, 1)
 	numNodes := waitForNodes(t, rc, 1)
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
 
@@ -300,7 +305,7 @@ func TestSchedule(t *testing.T) {
 }
 
 func TestSchedulePartial(t *testing.T) {
-	_, consulStore, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
@@ -308,9 +313,14 @@ func TestSchedulePartial(t *testing.T) {
 	err = applicator.SetLabel(labels.NODE, "node2", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error labeling node2")
 
-	rc.ReplicasDesired = 2
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	err = rc.meetDesires()
+	rcFields.ReplicasDesired = 2
+
+	err = rc.meetDesires(rcFields)
 	if err == nil {
 		t.Fatal("expected an error when there weren't enough nodes to schedule")
 	}
@@ -346,15 +356,20 @@ func TestSchedulePartial(t *testing.T) {
 }
 
 func TestUnschedulePartial(t *testing.T) {
-	_, consulStore, applicator, rc, _, _, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node2", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error labeling node2")
 
-	rc.ReplicasDesired = 1
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	err = rc.meetDesires()
+	rcFields.ReplicasDesired = 1
+
+	err = rc.meetDesires(rcFields)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,8 +383,8 @@ func TestUnschedulePartial(t *testing.T) {
 	}
 
 	// we would never set this to a negative number in production but we're testing an error path here
-	rc.ReplicasDesired = -1
-	err = rc.meetDesires()
+	rcFields.ReplicasDesired = -1
+	err = rc.meetDesires(rcFields)
 	if err == nil {
 		t.Fatal("expected an error setting replicas desired to a negative number because there aren't enough nodes to unschedule to meet such a request")
 	}
@@ -396,11 +411,11 @@ func TestScheduleTwice(t *testing.T) {
 	defer close(quit)
 	rc.WatchDesires(quit)
 
-	rcStore.SetDesiredReplicas(rc.ID(), 1)
+	rcStore.SetDesiredReplicas(rc.rcID, 1)
 	numNodes := waitForNodes(t, rc, 1)
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule first")
 
-	rcStore.SetDesiredReplicas(rc.ID(), 2)
+	rcStore.SetDesiredReplicas(rc.rcID, 2)
 	numNodes = waitForNodes(t, rc, 2)
 	Assert(t).AreEqual(numNodes, 2, "took too long to schedule second")
 
@@ -439,7 +454,7 @@ func TestUnschedule(t *testing.T) {
 	defer close(quit)
 	rc.WatchDesires(quit)
 
-	rcStore.SetDesiredReplicas(rc.ID(), 1)
+	rcStore.SetDesiredReplicas(rc.rcID, 1)
 	numNodes := waitForNodes(t, rc, 1)
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
 
@@ -451,7 +466,7 @@ func TestUnschedule(t *testing.T) {
 	}
 	Assert(t).AreEqual(len(manifests), 1, "expected a manifest to have been scheduled")
 
-	rcStore.SetDesiredReplicas(rc.ID(), 0)
+	rcStore.SetDesiredReplicas(rc.rcID, 0)
 	numNodes = waitForNodes(t, rc, 0)
 	Assert(t).AreEqual(numNodes, 0, "took too long to unschedule")
 
@@ -517,7 +532,7 @@ func TestPreferUnscheduleIneligible(t *testing.T) {
 	defer close(quit)
 	rc.WatchDesires(quit)
 
-	rcStore.SetDesiredReplicas(rc.ID(), 1000)
+	rcStore.SetDesiredReplicas(rc.rcID, 1000)
 	numNodes := waitForNodes(t, rc, 1000)
 	Assert(t).AreEqual(numNodes, 1000, "took too long to schedule")
 
@@ -534,7 +549,7 @@ func TestPreferUnscheduleIneligible(t *testing.T) {
 	err = applicator.SetLabel(labels.NODE, "node503", "nodeQuality", "bad")
 	Assert(t).IsNil(err, "expected no error marking node503 as bad")
 
-	rcStore.SetDesiredReplicas(rc.ID(), 999)
+	rcStore.SetDesiredReplicas(rc.rcID, 999)
 	numNodes = waitForNodes(t, rc, 999)
 	Assert(t).AreEqual(numNodes, 999, "took too long to unschedule")
 
@@ -547,15 +562,21 @@ func TestPreferUnscheduleIneligible(t *testing.T) {
 }
 
 func TestConsistencyNoChange(t *testing.T) {
-	_, kvStore, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, kvStore, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
-	rcSHA, _ := rc.Manifest.SHA()
-	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
+
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rcSHA, _ := rcFields.Manifest.SHA()
+	err = applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error assigning label")
 
 	// Install manifest on a single node
-	rc.ReplicasDesired = 1
-	err = rc.meetDesires()
+	rcFields.ReplicasDesired = 1
+	err = rc.meetDesires(rcFields)
 	Assert(t).IsNil(err, "unexpected error scheduling nodes")
 	numNodes := waitForNodes(t, rc, 1)
 	Assert(t).AreEqual(numNodes, 1, "took too long to schedule")
@@ -569,7 +590,7 @@ func TestConsistencyNoChange(t *testing.T) {
 	// Make no changes
 
 	// The controller shouldn't alter the node
-	err = rc.meetDesires()
+	err = rc.meetDesires(rcFields)
 	Assert(t).IsNil(err, "unexpected error scheduling nodes")
 	manifest, _, err = kvStore.Pod(consul.INTENT_TREE, "node1", "testPod")
 	Assert(t).IsNil(err, "could not fetch intent")
@@ -579,19 +600,26 @@ func TestConsistencyNoChange(t *testing.T) {
 }
 
 func TestConsistencyModify(t *testing.T) {
-	_, kvStore, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, kvStore, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
-	rcSHA, _ := rc.Manifest.SHA()
-	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
+
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rcSHA, _ := rcFields.Manifest.SHA()
+
+	err = applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error assigning label")
 
 	// Install manifest on a single node
-	rc.ReplicasDesired = 1
-	err = rc.meetDesires()
+	rcFields.ReplicasDesired = 1
+	err = rc.meetDesires(rcFields)
 	Assert(t).IsNil(err, "unexpected error scheduling nodes")
 
 	// Modify the intent manifest
-	b := rc.Manifest.GetBuilder()
+	b := rcFields.Manifest.GetBuilder()
 	b.SetConfig(map[interface{}]interface{}{"test": true})
 	manifest2 := b.GetManifest()
 	sha2, _ := manifest2.SHA()
@@ -599,7 +627,7 @@ func TestConsistencyModify(t *testing.T) {
 	kvStore.SetPod(consul.INTENT_TREE, "node1", manifest2)
 
 	// Controller should force the node back to the canonical manifest
-	err = rc.meetDesires()
+	err = rc.meetDesires(rcFields)
 	Assert(t).IsNil(err, "unexpected error scheduling nodes")
 	manifest, _, err := kvStore.Pod(consul.INTENT_TREE, "node1", "testPod")
 	Assert(t).IsNil(err, "could not fetch intent")
@@ -609,15 +637,21 @@ func TestConsistencyModify(t *testing.T) {
 }
 
 func TestConsistencyDelete(t *testing.T) {
-	_, kvStore, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, kvStore, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
-	rcSHA, _ := rc.Manifest.SHA()
-	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
+
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rcSHA, _ := rcFields.Manifest.SHA()
+	err = applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error assigning label")
 
 	// Install manifest on a single node
-	rc.ReplicasDesired = 1
-	err = rc.meetDesires()
+	rcFields.ReplicasDesired = 1
+	err = rc.meetDesires(rcFields)
 	Assert(t).IsNil(err, "unexpected error scheduling nodes")
 
 	// Delete the intent manifest
@@ -627,7 +661,7 @@ func TestConsistencyDelete(t *testing.T) {
 	Assert(t).AreEqual(pods.NoCurrentManifest, err, "unexpected pod result")
 
 	// Controller should force the node back to the canonical manifest
-	err = rc.meetDesires()
+	err = rc.meetDesires(rcFields)
 	Assert(t).IsNil(err, "unexpected error scheduling nodes")
 	manifest, _, err := kvStore.Pod(consul.INTENT_TREE, "node1", "testPod")
 	Assert(t).IsNil(err, "could not fetch intent")
@@ -637,15 +671,20 @@ func TestConsistencyDelete(t *testing.T) {
 }
 
 func TestReservedLabels(t *testing.T) {
-	_, _, applicator, rc, _, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, _, _, closeFn := setup(t)
 	defer closeFn()
 
-	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
 	Assert(t).IsNil(err, "expected no error assigning label")
 
 	// Install manifest on a single node
-	rc.ReplicasDesired = 1
-	err = rc.meetDesires()
+	rcFields.ReplicasDesired = 1
+	err = rc.meetDesires(rcFields)
 	if err != nil {
 		t.Fatalf("unexpected error scheduling nodes: %s", err)
 	}
@@ -654,7 +693,7 @@ func TestReservedLabels(t *testing.T) {
 	Assert(t).IsNil(err, "unexpected error getting pod labels")
 
 	Assert(t).AreEqual(labeled.Labels[rcstore.PodIDLabel], "testPod", "Pod label not set as expected")
-	Assert(t).AreEqual(labeled.Labels[RCIDLabel], rc.ID().String(), "RC label not set as expected")
+	Assert(t).AreEqual(labeled.Labels[RCIDLabel], rc.rcID.String(), "RC label not set as expected")
 }
 
 func TestScheduleMoreThan5(t *testing.T) {
@@ -679,7 +718,7 @@ func TestScheduleMoreThan5(t *testing.T) {
 		}
 	}()
 
-	rcStore.SetDesiredReplicas(rc.ID(), 7)
+	rcStore.SetDesiredReplicas(rc.rcID, 7)
 
 	numNodes := waitForNodes(t, rc, 7)
 	Assert(t).AreEqual(numNodes, 7, "took too long to schedule")
@@ -710,12 +749,12 @@ func TestUnscheduleMoreThan5(t *testing.T) {
 		}
 	}()
 
-	rcStore.SetDesiredReplicas(rc.ID(), 7)
+	rcStore.SetDesiredReplicas(rc.rcID, 7)
 
 	numNodes := waitForNodes(t, rc, 7)
 	Assert(t).AreEqual(numNodes, 7, "took too long to schedule")
 
-	rcStore.SetDesiredReplicas(rc.ID(), 0)
+	rcStore.SetDesiredReplicas(rc.rcID, 0)
 
 	numNodes = waitForNodes(t, rc, 0)
 	Assert(t).AreEqual(numNodes, 0, "took too long to unschedule")
@@ -725,10 +764,15 @@ func TestUnscheduleMoreThan5(t *testing.T) {
 }
 
 func TestAlertIfNodeBecomesIneligibleIfNotDynamicStrategy(t *testing.T) {
-	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rcFields, err = testIneligibleNodesCommon(applicator, rc, rcFields, alerter)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -739,12 +783,17 @@ func TestAlertIfNodeBecomesIneligibleIfNotDynamicStrategy(t *testing.T) {
 }
 
 func TestAllocateOnIneligibleIfDynamicStrategy(t *testing.T) {
-	_, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.DynamicStrategy
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	rcFields.AllocationStrategy = fields.DynamicStrategy
+
+	rcFields, err = testIneligibleNodesCommon(applicator, rc, rcFields, alerter)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -753,7 +802,7 @@ func TestAllocateOnIneligibleIfDynamicStrategy(t *testing.T) {
 		t.Fatalf("the RC should not have alerted since it allocated dynamic nodes, but there were %d alerts", len(alerter.Alerts))
 	}
 
-	status, _, _ := rc.rcStatusStore.Get(rc.ID())
+	status, _, _ := rc.rcStatusStore.Get(rc.rcID)
 	if status.NodeTransfer.NewNode != newTransferNode {
 		t.Fatalf("the rc failed to update the node transfer status new node to %s from %s", newTransferNode, status.NodeTransfer.NewNode)
 	}
@@ -769,10 +818,15 @@ func TestAllocateOnIneligibleIfDynamicStrategy(t *testing.T) {
 }
 
 func TestNoOpIfNodeTransferInProgress(t *testing.T) {
-	_, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.DynamicStrategy
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rcFields.AllocationStrategy = fields.DynamicStrategy
 
 	// Simulate node transfer in progress with non-nil node transfer
 	testStatus := rcstatus.Status{
@@ -781,12 +835,12 @@ func TestNoOpIfNodeTransferInProgress(t *testing.T) {
 			NewNode: types.NodeName("new.456"),
 		},
 	}
-	err := rc.rcStatusStore.Set(rc.ID(), testStatus)
+	err = rc.rcStatusStore.Set(rc.rcID, testStatus)
 	if err != nil {
 		t.Fatalf("Unexpected error putting in fake node transfer status")
 	}
 
-	err = testIneligibleNodesCommon(applicator, rc, alerter)
+	rcFields, err = testIneligibleNodesCommon(applicator, rc, rcFields, alerter)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -795,7 +849,7 @@ func TestNoOpIfNodeTransferInProgress(t *testing.T) {
 		t.Fatalf("the RC should not have alerted since a transfer was in progress, but there were %d alerts", len(alerter.Alerts))
 	}
 
-	status, _, _ := rc.rcStatusStore.Get(rc.ID())
+	status, _, _ := rc.rcStatusStore.Get(rc.rcID)
 	if *(status.NodeTransfer) != *(testStatus.NodeTransfer) {
 		t.Fatalf("the rc should not have updated the status from %v to %v", testStatus, status)
 	}
@@ -807,10 +861,14 @@ func TestNoOpIfNodeTransferInProgress(t *testing.T) {
 }
 
 func TestAlertIfCannotAllocateNodes(t *testing.T) {
-	_, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.DynamicStrategy
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rcFields.AllocationStrategy = fields.DynamicStrategy
 
 	// Force an allocate nodes failure
 	fixture := consulutil.NewFixture(t)
@@ -818,7 +876,7 @@ func TestAlertIfCannotAllocateNodes(t *testing.T) {
 	applicator = labels.NewConsulApplicator(fixture.Client, 0, 0)
 	rc.scheduler = testScheduler{applicator, true}
 
-	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	_, err = testIneligibleNodesCommon(applicator, rc, rcFields, alerter)
 	if err == nil {
 		t.Fatalf("Expected intentional error but there was none")
 	}
@@ -836,32 +894,32 @@ func TestAlertIfCannotAllocateNodes(t *testing.T) {
 // testIneligibleNodesCommmon labels nodes and meets desires, then marks one as
 // bad and meets desires again. It is the shared to code the establish
 // the ineligible node state and cause the RC to act on it
-func testIneligibleNodesCommon(applicator testApplicator, rc *replicationController, alerter *alertingtest.AlertRecorder) error {
+func testIneligibleNodesCommon(applicator testApplicator, rc *replicationController, rcFields fields.RC, alerter *alertingtest.AlertRecorder) (fields.RC, error) {
 	for i := 0; i < 7; i++ {
 		err := applicator.SetLabel(labels.NODE, fmt.Sprintf("node%d", i), "nodeQuality", "good")
 		if err != nil {
-			return err
+			return fields.RC{}, err
 		}
 	}
 
-	rc.ReplicasDesired = 7
+	rcFields.ReplicasDesired = 7
 
-	err := rc.meetDesires()
+	err := rc.meetDesires(rcFields)
 	if err != nil {
-		return err
+		return fields.RC{}, err
 	}
 
 	current, err := rc.CurrentPods()
 	if err != nil {
-		return err
+		return fields.RC{}, err
 	}
 
 	if len(current) != 7 {
-		return util.Errorf("rc should have scheduled 7 pods but found %d", len(current))
+		return fields.RC{}, util.Errorf("rc should have scheduled 7 pods but found %d", len(current))
 	}
 
 	if len(alerter.Alerts) != 0 {
-		return util.Errorf("there shouldn't have been any alerts yet but there were %d", len(alerter.Alerts))
+		return fields.RC{}, util.Errorf("there shouldn't have been any alerts yet but there were %d", len(alerter.Alerts))
 	}
 
 	// now make one of the nodes ineligible, creating a situation where the
@@ -869,15 +927,15 @@ func testIneligibleNodesCommon(applicator testApplicator, rc *replicationControl
 	// those nodes meet the node selector's criteria
 	err = applicator.SetLabel(labels.NODE, "node3", "nodeQuality", "bad")
 	if err != nil {
-		return err
+		return fields.RC{}, err
 	}
 
-	err = rc.meetDesires()
+	err = rc.meetDesires(rcFields)
 	if err != nil {
-		return err
+		return fields.RC{}, err
 	}
 
-	return nil
+	return rcFields, nil
 }
 
 // Tests that an RC will not do any scheduling/unscheduling if the only thing
@@ -890,7 +948,7 @@ func testIneligibleNodesCommon(applicator testApplicator, rc *replicationControl
 // conditions have been met) decrease the replica count back to 1 to unschedule
 // the ineligible node.
 func TestRCDoesNotFixMembership(t *testing.T) {
-	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
@@ -898,9 +956,13 @@ func TestRCDoesNotFixMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rc.ReplicasDesired = 1
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rcFields.ReplicasDesired = 1
 
-	err = rc.meetDesires()
+	err = rc.meetDesires(rcFields)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -930,7 +992,7 @@ func TestRCDoesNotFixMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = rc.meetDesires()
+	err = rc.meetDesires(rcFields)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -954,73 +1016,88 @@ func TestRCDoesNotFixMembership(t *testing.T) {
 }
 
 func TestTransferRolledBackByQuitCh(t *testing.T) {
-	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.DynamicStrategy
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	rcFields.AllocationStrategy = fields.DynamicStrategy
+
+	rcFields, err = testIneligibleNodesCommon(applicator, rc, rcFields, alerter)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	close(rc.nodeTransfer.quit)
 
-	testRolledBackTransfer(rc, t)
+	testRolledBackTransfer(rc, rcFields, t)
 }
 
 func TestTransferRolledBackOnRCDisabled(t *testing.T) {
-	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.DynamicStrategy
-
-	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	rcFields, err := rcStore.Get(rc.rcID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	rc.Disabled = true
+	rcFields.AllocationStrategy = fields.DynamicStrategy
 
-	err = rc.meetDesires()
+	rcFields, err = testIneligibleNodesCommon(applicator, rc, rcFields, alerter)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	testRolledBackTransfer(rc, t)
+	rcFields.Disabled = true
+
+	err = rc.meetDesires(rcFields)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testRolledBackTransfer(rc, rcFields, t)
 }
 
 func TestTransferRolledBackOnReplicasDesiredDecrease(t *testing.T) {
-	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.DynamicStrategy
-
-	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	rcFields, err := rcStore.Get(rc.rcID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	rc.ReplicasDesired = rc.ReplicasDesired - 1
+	rcFields.AllocationStrategy = fields.DynamicStrategy
 
-	err = rc.meetDesires()
+	rcFields, err = testIneligibleNodesCommon(applicator, rc, rcFields, alerter)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	testRolledBackTransfer(rc, t)
+	rcFields.ReplicasDesired = rcFields.ReplicasDesired - 1
+
+	err = rc.meetDesires(rcFields)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testRolledBackTransfer(rc, rcFields, t)
 }
 
-func testRolledBackTransfer(rc *replicationController, t *testing.T) {
+func testRolledBackTransfer(rc *replicationController, rcFields fields.RC, t *testing.T) {
 	// Give async goroutine time to rollback transfer
 	time.Sleep(1 * time.Second)
 
-	status, _, err := rc.rcStatusStore.Get(rc.ID())
+	status, _, err := rc.rcStatusStore.Get(rc.rcID)
 	if !statusstore.IsNoStatus(err) {
 		t.Fatalf("Expected no node transfer status to exist, got %v", status)
 	}
 
-	man, _, err := rc.consulStore.Pod(consul.INTENT_TREE, newTransferNode, rc.Manifest.ID())
+	man, _, err := rc.consulStore.Pod(consul.INTENT_TREE, newTransferNode, rcFields.Manifest.ID())
 	if err != pods.NoCurrentManifest {
 		t.Fatalf("Expected new node to have been erased from intent, but man was %v", man)
 	}
@@ -1049,7 +1126,7 @@ func testRolledBackTransfer(rc *replicationController, t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if details.ReplicationControllerID == rc.ID() {
+			if details.ReplicationControllerID == rc.rcID {
 				rollbackAuditLogFound = true
 				break
 			}
@@ -1062,17 +1139,22 @@ func testRolledBackTransfer(rc *replicationController, t *testing.T) {
 }
 
 func TestNewTransferNodeCannotBeScheduledOnReplicasDesiredIncrease(t *testing.T) {
-	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.DynamicStrategy
-
-	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	rcFields, err := rcStore.Get(rc.rcID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	eligible, err := rc.eligibleNodes()
+	rcFields.AllocationStrategy = fields.DynamicStrategy
+
+	rcFields, err = testIneligibleNodesCommon(applicator, rc, rcFields, alerter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	eligible, err := rc.eligibleNodes(rcFields)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1088,8 +1170,8 @@ func TestNewTransferNodeCannotBeScheduledOnReplicasDesiredIncrease(t *testing.T)
 		t.Fatal("new transfer node should've been eligible but it was not")
 	}
 
-	rc.ReplicasDesired = rc.ReplicasDesired + 1
-	err = rc.meetDesires()
+	rcFields.ReplicasDesired = rcFields.ReplicasDesired + 1
+	err = rc.meetDesires(rcFields)
 	if err == nil {
 		t.Fatal("expected not enough replicas to meet desires")
 	}
@@ -1104,7 +1186,7 @@ func TestNewTransferNodeCannotBeScheduledOnReplicasDesiredIncrease(t *testing.T)
 		t.Fatal(err)
 	}
 
-	err = rc.meetDesires()
+	err = rc.meetDesires(rcFields)
 	if err != nil {
 		t.Fatal("meetDesires should succeed, it now has an eligible node for addPods()")
 	}
@@ -1123,17 +1205,22 @@ func TestNewTransferNodeCannotBeScheduledOnReplicasDesiredIncrease(t *testing.T)
 }
 
 func TestTransferNodeHappyPath(t *testing.T) {
-	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.DynamicStrategy
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rcFields.AllocationStrategy = fields.DynamicStrategy
 
 	healthMap := map[types.NodeName]health.Result{
 		newTransferNode: health.Result{Status: health.Passing},
 	}
 	rc.healthChecker = fake_checker.NewSingleService("", healthMap)
 
-	err := testIneligibleNodesCommon(applicator, rc, alerter)
+	rcFields, err = testIneligibleNodesCommon(applicator, rc, rcFields, alerter)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1167,13 +1254,18 @@ func TestTransferNodeHappyPath(t *testing.T) {
 }
 
 func TestTransferOnAlreadyAllocatedNodeIfPossible(t *testing.T) {
-	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
 	defer closeFn()
 
-	rc.AllocationStrategy = fields.DynamicStrategy
+	rcFields, err := rcStore.Get(rc.rcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rcFields.AllocationStrategy = fields.DynamicStrategy
 
 	allocatedNode := types.NodeName("node8")
-	err := applicator.SetLabel(labels.NODE, allocatedNode.String(), "nodeQuality", "good")
+	err = applicator.SetLabel(labels.NODE, allocatedNode.String(), "nodeQuality", "good")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1183,7 +1275,7 @@ func TestTransferOnAlreadyAllocatedNodeIfPossible(t *testing.T) {
 	}
 	rc.healthChecker = fake_checker.NewSingleService("", healthMap)
 
-	err = testIneligibleNodesCommon(applicator, rc, alerter)
+	rcFields, err = testIneligibleNodesCommon(applicator, rc, rcFields, alerter)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/square/p2/pkg/audit"
 	pc_fields "github.com/square/p2/pkg/pc/fields"
+	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -25,6 +26,7 @@ type scheduledNodesKey struct{}
 
 func (rc *replicationController) newAuditingTransaction(
 	ctx context.Context,
+	rcFields fields.RC,
 	startingNodes []types.NodeName,
 ) (*auditingTransaction, func()) {
 	annotatedContext := context.WithValue(ctx, scheduledNodesKey{}, startingNodes)
@@ -35,15 +37,12 @@ func (rc *replicationController) newAuditingTransaction(
 		startingNodeMap[node] = struct{}{}
 	}
 
-	rc.mu.Lock()
-	manifest := rc.Manifest
-	podLabels := rc.PodLabels
-	rc.mu.Unlock()
+	podLabels := rcFields.PodLabels
 	return &auditingTransaction{
 		ctx:           ctx,
 		nodes:         startingNodeMap,
 		auditLogStore: rc.auditLogStore,
-		podID:         manifest.ID(),
+		podID:         rcFields.Manifest.ID(),
 		az:            pc_fields.AvailabilityZone(podLabels[types.AvailabilityZoneLabel]),
 		cn:            pc_fields.ClusterName(podLabels[types.ClusterNameLabel]),
 	}, cancelFunc

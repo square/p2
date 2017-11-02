@@ -757,19 +757,17 @@ func (s *ConsulStore) MutateRC(id fields.ID, mutator func(fields.RC) (fields.RC,
 	return nil
 }
 
-// Watch watches for any changes to the replication controller `rc`.
+// Watch watches for any changes to the replication controller with ID `rcID`.
 // This returns two output channels.
-// A `struct{}` is sent on the first output channel whenever a change has occurred.
-// At that time, the replication controller will have been updated in place.
+// The RC's most recent value is sent on the first output channel whenever a
+// change has occurred or the watch times out.
 // Errors are sent on the second output channel.
 // Send a value on `quitChannel` to stop watching.
 // The two output channels will be closed in response.
-// The passed mutex is used to synchronize access to the `rc` variable which is mutated
-// by this function
-func (s *ConsulStore) Watch(rc *fields.RC, mu *sync.Mutex, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
-	updated := make(chan struct{})
+func (s *ConsulStore) Watch(rcID fields.ID, quit <-chan struct{}) (<-chan fields.RC, <-chan error) {
+	updated := make(chan fields.RC)
 
-	rcp, err := s.rcPath(rc.ID)
+	rcp, err := s.rcPath(rcID)
 	if err != nil {
 		errors := make(chan error, 1)
 		errors <- err
@@ -800,11 +798,8 @@ func (s *ConsulStore) Watch(rc *fields.RC, mu *sync.Mutex, quit <-chan struct{})
 				case <-quit:
 				}
 			} else {
-				mu.Lock()
-				*rc = newRC
-				mu.Unlock()
 				select {
-				case updated <- struct{}{}:
+				case updated <- newRC:
 				case <-quit:
 				}
 			}
