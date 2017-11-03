@@ -85,7 +85,11 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	// This allows us to signal the goroutine watching consul to quit
 	quitChan := make(chan struct{})
 	errChan := make(chan error)
-	podChan := make(chan []consul.ManifestResult)
+
+	// buffer this with 1 manifest so that we can make sure that the
+	// consumer is always reading the latest manifest. Before writing to
+	// this channel, we will attempt to drain it first
+	podChan := make(chan []consul.ManifestResult, 1)
 
 	go p.store.WatchPods(consul.INTENT_TREE, p.node, quitChan, errChan, podChan)
 
@@ -120,15 +124,24 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 							quitChanMap[workerID] = make(chan struct{})
 							go p.handlePods(podChanMap[workerID], quitChanMap[workerID])
 						}
-						// It is possible for the goroutine responsible for performing the installation
-						// of a particular pod ID to be stalled or mid-deploy. This should not cause
-						// this loop to block. Intent results will be re-sent within the watch expiration
-						// loop time.
+
+						// Attempt to drain the channel first. If a value is in the channel's buffer,
+						// it means that the consumer of the channel is still working on the last read.
+						//We drain the channel to make sure that the next time it reads the channel it
+						//gets the latest manifest
 						select {
-						case podChanMap[workerID] <- pair:
-						case <-time.After(5 * time.Second):
-							p.Logger.WithField("pod", pair.ID).Warnln("Missed possible manifest update, will wait for next watch.")
+						case oldPair := <-podChanMap[workerID]:
+							oldSHA, _ := oldPair.Intent.SHA()
+							newSHA, _ := pair.Intent.SHA()
+							if newSHA != oldSHA {
+								p.Logger.WithField("pod", pair.ID).Warnln("previous manifest update still in progress, there will be a delay before the latest manifest is processed")
+							}
+						default:
+							// this is good, it means that the pod's worker has already dealt
+							//with the last value we put on the channel
 						}
+
+						podChanMap[workerID] <- pair
 					}
 
 				}
