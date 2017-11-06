@@ -10,6 +10,7 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
+	"github.com/square/p2/pkg/audit"
 	grpc_scheduler "github.com/square/p2/pkg/grpc/scheduler/client"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
@@ -785,8 +786,31 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 		},
 	}
 
+	rc.mu.Lock()
+	auditLogDetails, err := audit.NewNodeTransferStartDetails(
+		rc.ID(),
+		rc.NodeSelector,
+		oldNode,
+		newNode,
+		rc.ReplicasDesired,
+	)
+	rc.mu.Unlock()
+	if err != nil {
+		return "", "", util.Errorf("could not generate node transfer start audit log details: %s", err)
+	}
+
 	writeCtx, writeCancel := transaction.New(context.Background())
 	defer writeCancel()
+
+	err = rc.auditLogStore.Create(
+		writeCtx,
+		audit.NodeTransferStartEvent,
+		auditLogDetails,
+	)
+	if err != nil {
+		return "", "", util.Errorf("could not add audit log record to node transfer start transaction: %s", err)
+	}
+
 	err = rc.rcStatusStore.CASTxn(writeCtx, rc.ID(), 0, status)
 	if err != nil {
 		return "", "", util.Errorf("Could not write new node to store: %s", err)
@@ -794,7 +818,7 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 
 	err = transaction.MustCommit(writeCtx, rc.txner)
 	if err != nil {
-		return "", "", util.Errorf("Could not commit CASTxn: %s", err)
+		return "", "", util.Errorf("could not commit transaction to update RC status with node transfer information: %s", err)
 	}
 
 	return newNode, oldNode, nil

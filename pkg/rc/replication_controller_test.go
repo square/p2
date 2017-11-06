@@ -739,7 +739,7 @@ func TestAlertIfNodeBecomesIneligibleIfNotDynamicStrategy(t *testing.T) {
 }
 
 func TestAllocateOnIneligibleIfDynamicStrategy(t *testing.T) {
-	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	_, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
 	defer closeFn()
 
 	rc.AllocationStrategy = fields.DynamicStrategy
@@ -757,10 +757,25 @@ func TestAllocateOnIneligibleIfDynamicStrategy(t *testing.T) {
 	if status.NodeTransfer.NewNode != newTransferNode {
 		t.Fatalf("the rc failed to update the node transfer status new node to %s from %s", newTransferNode, status.NodeTransfer.NewNode)
 	}
+
+	auditLogs, err := auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(auditLogs) != 1 {
+		t.Fatal("expected an audit log record to be created when a node transfer is started")
+	}
+
+	for _, al := range auditLogs {
+		if al.EventType != audit.NodeTransferStartEvent {
+			t.Fatalf("expected audit log event type to be %q but was %q", audit.NodeTransferStartEvent, al.EventType)
+		}
+	}
 }
 
 func TestNoOpIfNodeTransferInProgress(t *testing.T) {
-	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	_, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
 	defer closeFn()
 
 	rc.AllocationStrategy = fields.DynamicStrategy
@@ -790,10 +805,19 @@ func TestNoOpIfNodeTransferInProgress(t *testing.T) {
 	if *(status.NodeTransfer) != *(testStatus.NodeTransfer) {
 		t.Fatalf("the rc should not have updated the status from %v to %v", testStatus, status)
 	}
+
+	auditLogs, err := auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(auditLogs) != 0 {
+		t.Fatal("expected no audit log to be created if the node transfer was already started")
+	}
 }
 
 func TestAlertIfCannotAllocateNodes(t *testing.T) {
-	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	_, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
 	defer closeFn()
 
 	rc.AllocationStrategy = fields.DynamicStrategy
@@ -811,6 +835,15 @@ func TestAlertIfCannotAllocateNodes(t *testing.T) {
 
 	if len(alerter.Alerts) != 1 {
 		t.Fatalf("the RC should have alerted since the scheduler could not allocate nodes, but there were %d alerts", len(alerter.Alerts))
+	}
+
+	auditLogs, err := auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(auditLogs) != 0 {
+		t.Fatal("expected no audit log to be created if the allocation call failed")
 	}
 }
 
