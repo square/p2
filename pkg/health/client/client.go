@@ -18,7 +18,6 @@ type HealthResponse struct {
 }
 
 type HealthServiceClient interface {
-	HealthCheck(req *HealthRequest) (health.HealthState, error)
-	HealthMonitor(ctx context.Context, req *HealthRequest, resultChan chan *HealthResponse)
-	MultiHealthMonitor(ctx context.Context, reqs []*HealthRequest, resultChan chan *HealthResponse)
+	HealthCheck(ctx context.Context, req *HealthRequest) (health.HealthState, error)
+	HealthMonitor(ctx context.Context, req *HealthRequest, resultChan chan *HealthResponse) error
 }
