@@ -904,11 +904,12 @@ func (rc *replicationController) doBackgroundNodeTransfer() {
 		if err != nil {
 			rc.logger.WithError(err).Errorln("could not do final node transfer transaction")
 		}
+		rc.logger.Infof("Node transfer from %s to %s complete.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode)
+	} else {
+		rc.logger.Infof("Node transfer from %s to %s was rolled back.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode)
 	}
 
 	rc.nodeTransfer.cancelSession()
-
-	rc.logger.Infof("Node transfer from %s to %s complete.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode)
 
 	defer func() {
 		rc.mu.Lock()
