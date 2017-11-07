@@ -737,13 +737,6 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 	sel := rc.NodeSelector
 	rc.mu.Unlock()
 
-	oldNode := ineligible[0]
-	err := rc.scheduler.DeallocateNodes(sel, []types.NodeName{oldNode})
-	if err != nil {
-		return "", "", util.Errorf("Could not deallocate from %s: %s", oldNode, err)
-	}
-	rc.logger.Infof("Deallocated ineligible node %s", oldNode)
-
 	eligible, err := rc.eligibleNodes()
 	if err != nil {
 		return "", "", err
@@ -777,6 +770,13 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 		newNode = newNodes[0]
 		rc.logger.Infof("Allocated node %s for transfer", newNode)
 	}
+
+	oldNode := ineligible[0]
+	err = rc.scheduler.DeallocateNodes(sel, []types.NodeName{oldNode})
+	if err != nil {
+		return "", "", util.Errorf("Could not deallocate from %s: %s", oldNode, err)
+	}
+	rc.logger.Infof("Deallocated ineligible node %s", oldNode)
 
 	status := rcstatus.Status{
 		NodeTransfer: &rcstatus.NodeTransfer{
