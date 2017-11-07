@@ -760,7 +760,7 @@ func TestAllocateOnIneligibleIfDynamicStrategy(t *testing.T) {
 
 	nodeTransferAuditLogs := getNodeTransferAuditLogs(t, auditLogStore)
 	if len(nodeTransferAuditLogs) != 1 {
-		t.Fatal("expected an audit log record to be created when a node transfer is started but found %d", len(nodeTransferAuditLogs))
+		t.Fatalf("expected an audit log record to be created when a node transfer is started but found %d", len(nodeTransferAuditLogs))
 	}
 
 	if nodeTransferAuditLogs[0].EventType != audit.NodeTransferStartEvent {
@@ -829,7 +829,7 @@ func TestAlertIfCannotAllocateNodes(t *testing.T) {
 
 	nodeTransferAuditLogs := getNodeTransferAuditLogs(t, auditLogStore)
 	if len(nodeTransferAuditLogs) != 0 {
-		t.Fatal("expected no audit log to be created if the allocation call failed but found %d", nodeTransferAuditLogs)
+		t.Fatalf("expected no audit log to be created if the allocation call failed but found %d", len(nodeTransferAuditLogs))
 	}
 }
 
