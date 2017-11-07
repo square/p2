@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/util"
 
 	"github.com/hashicorp/consul/api"
 )
@@ -131,6 +132,15 @@ func (s *FakeStatusStore) DeleteStatus(
 	delete(s.Statuses, identifier)
 	s.LastIndex++
 	return nil
+}
+
+func (s *FakeStatusStore) DeleteStatusTxn(
+	ctx context.Context,
+	t statusstore.ResourceType,
+	id statusstore.ResourceID,
+	namespace statusstore.Namespace,
+) error {
+	return util.Errorf("DeleteStatusTxn() is not implemented on FakeStatusStore. Use a real consul-backed status store if you need this")
 }
 
 func (s *FakeStatusStore) GetAllStatusForResource(

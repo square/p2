@@ -739,7 +739,7 @@ func TestAlertIfNodeBecomesIneligibleIfNotDynamicStrategy(t *testing.T) {
 }
 
 func TestAllocateOnIneligibleIfDynamicStrategy(t *testing.T) {
-	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	_, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
 	defer closeFn()
 
 	rc.AllocationStrategy = fields.DynamicStrategy
@@ -757,10 +757,19 @@ func TestAllocateOnIneligibleIfDynamicStrategy(t *testing.T) {
 	if status.NodeTransfer.NewNode != newTransferNode {
 		t.Fatalf("the rc failed to update the node transfer status new node to %s from %s", newTransferNode, status.NodeTransfer.NewNode)
 	}
+
+	nodeTransferAuditLogs := getNodeTransferAuditLogs(t, auditLogStore)
+	if len(nodeTransferAuditLogs) != 1 {
+		t.Fatalf("expected an audit log record to be created when a node transfer is started but found %d", len(nodeTransferAuditLogs))
+	}
+
+	if nodeTransferAuditLogs[0].EventType != audit.NodeTransferStartEvent {
+		t.Fatalf("expected audit log event type to be %q but was %q", audit.NodeTransferStartEvent, nodeTransferAuditLogs[0].EventType)
+	}
 }
 
 func TestNoOpIfNodeTransferInProgress(t *testing.T) {
-	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	_, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
 	defer closeFn()
 
 	rc.AllocationStrategy = fields.DynamicStrategy
@@ -790,10 +799,15 @@ func TestNoOpIfNodeTransferInProgress(t *testing.T) {
 	if *(status.NodeTransfer) != *(testStatus.NodeTransfer) {
 		t.Fatalf("the rc should not have updated the status from %v to %v", testStatus, status)
 	}
+
+	nodeTransferAuditLogs := getNodeTransferAuditLogs(t, auditLogStore)
+	if len(nodeTransferAuditLogs) != 0 {
+		t.Fatalf("expected no node transfer audit log to be created if the node transfer was already started but found %d", len(nodeTransferAuditLogs))
+	}
 }
 
 func TestAlertIfCannotAllocateNodes(t *testing.T) {
-	_, _, applicator, rc, alerter, _, closeFn := setup(t)
+	_, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
 	defer closeFn()
 
 	rc.AllocationStrategy = fields.DynamicStrategy
@@ -811,6 +825,11 @@ func TestAlertIfCannotAllocateNodes(t *testing.T) {
 
 	if len(alerter.Alerts) != 1 {
 		t.Fatalf("the RC should have alerted since the scheduler could not allocate nodes, but there were %d alerts", len(alerter.Alerts))
+	}
+
+	nodeTransferAuditLogs := getNodeTransferAuditLogs(t, auditLogStore)
+	if len(nodeTransferAuditLogs) != 0 {
+		t.Fatalf("expected no audit log to be created if the allocation call failed but found %d", len(nodeTransferAuditLogs))
 	}
 }
 
@@ -1015,6 +1034,31 @@ func testRolledBackTransfer(rc *replicationController, t *testing.T) {
 		rc.nodeTransfer.session != nilTransfer.session {
 		t.Fatalf("Expected rc.nodeTransfer to be %v, was %v", nilTransfer, rc.nodeTransfer)
 	}
+
+	auditLogs, err := rc.auditLogStore.(testAuditLogStore).List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rollbackAuditLogFound := false
+	for _, auditLog := range auditLogs {
+		if auditLog.EventType == audit.NodeTransferRollbackEvent {
+			var details audit.NodeTransferRollbackDetails
+			err = json.Unmarshal([]byte(*auditLog.EventDetails), &details)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if details.ReplicationControllerID == rc.ID() {
+				rollbackAuditLogFound = true
+				break
+			}
+		}
+	}
+
+	if !rollbackAuditLogFound {
+		t.Fatal("found no node transfer rollback audit log record for this RC")
+	}
 }
 
 func TestNewTransferNodeCannotBeScheduledOnReplicasDesiredIncrease(t *testing.T) {
@@ -1179,4 +1223,22 @@ func TestTransferOnAlreadyAllocatedNodeIfPossible(t *testing.T) {
 	if foundBadNode {
 		t.Fatal("Expected to have dropped ineligible node but it is still a current node")
 	}
+}
+
+func getNodeTransferAuditLogs(t *testing.T, auditLogStore testAuditLogStore) []audit.AuditLog {
+	var ret []audit.AuditLog
+	auditLogs, err := auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, al := range auditLogs {
+		switch al.EventType {
+		case audit.NodeTransferStartEvent, audit.NodeTransferCompletionEvent, audit.NodeTransferRollbackEvent:
+			ret = append(ret, al)
+		default:
+		}
+	}
+
+	return ret
 }

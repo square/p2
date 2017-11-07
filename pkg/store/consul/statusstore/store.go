@@ -66,6 +66,10 @@ type Store interface {
 	// deletion has been processed
 	DeleteStatus(t ResourceType, id ResourceID, namespace Namespace) error
 
+	// DeleteStatusTxn adds an operation to the transaction within the passed context that arranges for deleting the corresponding
+	// status record when transaction.Commit() is called with the context
+	DeleteStatusTxn(ctx context.Context, t ResourceType, id ResourceID, namespace Namespace) error
+
 	// Get the status for all namespaces for a particular resource specified
 	// by ResourceType and ID
 	GetAllStatusForResource(t ResourceType, id ResourceID) (map[Namespace]Status, error)
