@@ -17,6 +17,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	pcfields "github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/scheduler"
@@ -795,9 +796,14 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 	rc.mu.Lock()
 	nodeSel := rc.NodeSelector
 	replicasDesired := rc.ReplicasDesired
+	podLabels := rc.PodLabels
+	podID := rc.Manifest.ID()
 	rc.mu.Unlock()
 	auditLogDetails, err := audit.NewNodeTransferStartDetails(
 		rc.ID(),
+		podID,
+		pcfields.AvailabilityZone(podLabels[pcfields.AvailabilityZoneLabel]),
+		pcfields.ClusterName(podLabels[pcfields.ClusterNameLabel]),
 		nodeSel,
 		oldNode,
 		newNode,
@@ -1040,10 +1046,15 @@ func (rc *replicationController) finishTransfer() error {
 	oldNode := rc.nodeTransfer.oldNode
 	newNode := rc.nodeTransfer.newNode
 	replicaCount := rc.ReplicasDesired
+	podID := rc.Manifest.ID()
+	podLabels := rc.PodLabels
 	rc.mu.Unlock()
 
 	auditLogDetails, err := audit.NewNodeTransferCompletionDetails(
 		rc.ID(),
+		podID,
+		pcfields.AvailabilityZone(podLabels[pcfields.AvailabilityZoneLabel]),
+		pcfields.ClusterName(podLabels[pcfields.ClusterNameLabel]),
 		nodeSel,
 		oldNode,
 		newNode,
@@ -1095,10 +1106,15 @@ func (rc *replicationController) createRollbackTransferRecord(ctx context.Contex
 	oldNode := rc.nodeTransfer.oldNode
 	newNode := rc.nodeTransfer.newNode
 	replicaCount := rc.ReplicasDesired
+	podID := rc.Manifest.ID()
+	podLabels := rc.PodLabels
 	rc.mu.Unlock()
 
 	auditLogDetails, err := audit.NewNodeTransferRollbackDetails(
 		rc.ID(),
+		podID,
+		pcfields.AvailabilityZone(podLabels[pcfields.AvailabilityZoneLabel]),
+		pcfields.ClusterName(podLabels[pcfields.ClusterNameLabel]),
 		nodeSel,
 		oldNode,
 		newNode,

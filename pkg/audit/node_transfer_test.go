@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	pcfields "github.com/square/p2/pkg/pc/fields"
 	rcfields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/types"
 
@@ -16,9 +17,15 @@ func TestNewNodeTransferStartDetails(t *testing.T) {
 	oldNode := types.NodeName("broken_node")
 	newNode := types.NodeName("functional_node")
 	replicaCount := 8000
+	podID := types.PodID("some_pod_id")
+	az := pcfields.AvailabilityZone("some_az")
+	cn := pcfields.ClusterName("some_cn")
 
 	jsonMessage, err := NewNodeTransferStartDetails(
 		rcID,
+		podID,
+		az,
+		cn,
 		nodeSelector,
 		oldNode,
 		newNode,
@@ -49,6 +56,15 @@ func TestNewNodeTransferStartDetails(t *testing.T) {
 	if details.ReplicaCount != replicaCount {
 		t.Errorf("expected replica count to be %q but was %q", replicaCount, details.ReplicaCount)
 	}
+	if details.PodID != podID {
+		t.Errorf("expected pod ID to be %q but was %q", podID, details.PodID)
+	}
+	if details.AvailabilityZone != az {
+		t.Errorf("expected availability zone to be %q but was %q", az, details.AvailabilityZone)
+	}
+	if details.ClusterName != cn {
+		t.Errorf("expected cluster name to be %q but was %q", cn, details.ClusterName)
+	}
 }
 
 func TestNewNodeTransferCompletionDetails(t *testing.T) {
@@ -57,9 +73,15 @@ func TestNewNodeTransferCompletionDetails(t *testing.T) {
 	oldNode := types.NodeName("broken_node")
 	newNode := types.NodeName("functional_node")
 	replicaCount := 8000
+	podID := types.PodID("some_pod_id")
+	az := pcfields.AvailabilityZone("some_az")
+	cn := pcfields.ClusterName("some_cn")
 
 	jsonMessage, err := NewNodeTransferCompletionDetails(
 		rcID,
+		podID,
+		az,
+		cn,
 		nodeSelector,
 		oldNode,
 		newNode,
@@ -90,6 +112,15 @@ func TestNewNodeTransferCompletionDetails(t *testing.T) {
 	if details.ReplicaCount != replicaCount {
 		t.Errorf("expected replica count to be %q but was %q", replicaCount, details.ReplicaCount)
 	}
+	if details.PodID != podID {
+		t.Errorf("expected pod ID to be %q but was %q", podID, details.PodID)
+	}
+	if details.AvailabilityZone != az {
+		t.Errorf("expected availability zone to be %q but was %q", az, details.AvailabilityZone)
+	}
+	if details.ClusterName != cn {
+		t.Errorf("expected cluster name to be %q but was %q", cn, details.ClusterName)
+	}
 }
 
 func TestNewNodeTransferRollbackDetails(t *testing.T) {
@@ -99,9 +130,15 @@ func TestNewNodeTransferRollbackDetails(t *testing.T) {
 	newNode := types.NodeName("functional_node")
 	replicaCount := 8000
 	rollbackReason := RollbackReason("they told me not to!")
+	podID := types.PodID("some_pod_id")
+	az := pcfields.AvailabilityZone("some_az")
+	cn := pcfields.ClusterName("some_cn")
 
 	jsonMessage, err := NewNodeTransferRollbackDetails(
 		rcID,
+		podID,
+		az,
+		cn,
 		nodeSelector,
 		oldNode,
 		newNode,
@@ -135,5 +172,14 @@ func TestNewNodeTransferRollbackDetails(t *testing.T) {
 	}
 	if details.RollbackReason != rollbackReason {
 		t.Errorf("expected rollback reason to be %q but was %q", rollbackReason, details.RollbackReason)
+	}
+	if details.PodID != podID {
+		t.Errorf("expected pod ID to be %q but was %q", podID, details.PodID)
+	}
+	if details.AvailabilityZone != az {
+		t.Errorf("expected availability zone to be %q but was %q", az, details.AvailabilityZone)
+	}
+	if details.ClusterName != cn {
+		t.Errorf("expected cluster name to be %q but was %q", cn, details.ClusterName)
 	}
 }

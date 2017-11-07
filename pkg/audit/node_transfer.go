@@ -3,6 +3,7 @@ package audit
 import (
 	"encoding/json"
 
+	pcfields "github.com/square/p2/pkg/pc/fields"
 	rcfields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -29,6 +30,16 @@ type CommonNodeTransferDetails struct {
 	// ReplicationControllerID is the ID of the replication controller that
 	// started the node transfer
 	ReplicationControllerID rcfields.ID `json:"replication_controller_id"`
+
+	// PodID denotes the pod ID of the pod cluster that the RC belongs to
+	PodID types.PodID `json:"pod_id"`
+
+	// AvailabilityZone is the availability zone of the pod cluster that
+	// the RC belongs to
+	AvailabilityZone pcfields.AvailabilityZone `json:"availability_zone"`
+
+	// ClusterName is the name of the pod cluster that the RC belongs to
+	ClusterName pcfields.ClusterName `json:"cluster_name"`
 
 	// RCNodeSelector is the node selector the RC had when the event was
 	// created.  This is a klabels.Selector represented as a string because
@@ -65,6 +76,9 @@ type NodeTransferRollbackDetails struct {
 
 func NewNodeTransferStartDetails(
 	rcID rcfields.ID,
+	podID types.PodID,
+	availabilityZone pcfields.AvailabilityZone,
+	clusterName pcfields.ClusterName,
 	nodeSelector klabels.Selector,
 	oldNode types.NodeName,
 	newNode types.NodeName,
@@ -73,6 +87,9 @@ func NewNodeTransferStartDetails(
 	details := NodeTransferStartDetails{
 		CommonNodeTransferDetails: commonNodeTransferDetails(
 			rcID,
+			podID,
+			availabilityZone,
+			clusterName,
 			nodeSelector,
 			oldNode,
 			newNode,
@@ -90,6 +107,9 @@ func NewNodeTransferStartDetails(
 
 func NewNodeTransferCompletionDetails(
 	rcID rcfields.ID,
+	podID types.PodID,
+	availabilityZone pcfields.AvailabilityZone,
+	clusterName pcfields.ClusterName,
 	nodeSelector klabels.Selector,
 	oldNode types.NodeName,
 	newNode types.NodeName,
@@ -98,6 +118,9 @@ func NewNodeTransferCompletionDetails(
 	details := NodeTransferCompletionDetails{
 		CommonNodeTransferDetails: commonNodeTransferDetails(
 			rcID,
+			podID,
+			availabilityZone,
+			clusterName,
 			nodeSelector,
 			oldNode,
 			newNode,
@@ -115,6 +138,9 @@ func NewNodeTransferCompletionDetails(
 
 func NewNodeTransferRollbackDetails(
 	rcID rcfields.ID,
+	podID types.PodID,
+	availabilityZone pcfields.AvailabilityZone,
+	clusterName pcfields.ClusterName,
 	nodeSelector klabels.Selector,
 	oldNode types.NodeName,
 	newNode types.NodeName,
@@ -124,6 +150,9 @@ func NewNodeTransferRollbackDetails(
 	details := NodeTransferRollbackDetails{
 		CommonNodeTransferDetails: commonNodeTransferDetails(
 			rcID,
+			podID,
+			availabilityZone,
+			clusterName,
 			nodeSelector,
 			oldNode,
 			newNode,
@@ -142,6 +171,9 @@ func NewNodeTransferRollbackDetails(
 
 func commonNodeTransferDetails(
 	rcID rcfields.ID,
+	podID types.PodID,
+	availabilityZone pcfields.AvailabilityZone,
+	clusterName pcfields.ClusterName,
 	nodeSelector klabels.Selector,
 	oldNode types.NodeName,
 	newNode types.NodeName,
@@ -149,9 +181,12 @@ func commonNodeTransferDetails(
 ) CommonNodeTransferDetails {
 	return CommonNodeTransferDetails{
 		ReplicationControllerID: rcID,
-		RCNodeSelector:          nodeSelector.String(),
-		OldNode:                 oldNode,
-		NewNode:                 newNode,
-		ReplicaCount:            replicaCount,
+		PodID:            podID,
+		AvailabilityZone: availabilityZone,
+		ClusterName:      clusterName,
+		RCNodeSelector:   nodeSelector.String(),
+		OldNode:          oldNode,
+		NewNode:          newNode,
+		ReplicaCount:     replicaCount,
 	}
 }
