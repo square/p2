@@ -244,10 +244,7 @@ func create(cgroupName string, podID string, config Config) error {
 
 	err = subsys.Write(config)
 	if _, ok := err.(UnsupportedError); ok {
-		// if a subsystem is not supported, just log
-		// and carry on
-		fmt.Printf("Unsupported subsystem (%s), continuing\n", err)
-		return nil
+		return util.Errorf("Unsupported subsystem: %s", err)
 	} else if err != nil {
 		return util.Errorf("Could not set cgroup parameters: %s", err)
 	}
