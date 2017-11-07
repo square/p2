@@ -37,8 +37,6 @@ const (
 )
 
 type ReplicationController interface {
-	ID() fields.ID
-
 	// WatchDesires causes the replication controller to watch for any changes to its desired state.
 	// It is expected that a replication controller is aware of a backing rcstore against which to perform this watch.
 	// Upon seeing any changes, the replication controller schedules or unschedules pods to meet the desired state.
@@ -121,12 +119,8 @@ type unlockArgs struct {
 	value []byte
 }
 
-// replicationController wraps a fields.RC with information required to manage the RC.
-// Note: the fields.RC might be mutated during this struct's lifetime, so a mutex is
-// used to synchronize access to it
 type replicationController struct {
-	fields.RC
-	mu sync.Mutex
+	rcID fields.ID
 
 	logger logging.Logger
 
@@ -140,15 +134,20 @@ type replicationController struct {
 	podApplicator Labeler
 	alerter       alerting.Alerter
 	healthChecker checker.ConsulHealthChecker
-	nodeTransfer  nodeTransfer
+
+	nodeTransfer nodeTransfer
+
+	// nodeTransferMu protects access to nodeTransfer because it is used
+	// across goroutines
+	nodeTransferMu sync.Mutex
 }
 
 type ReplicationControllerWatcher interface {
-	Watch(rc *fields.RC, mu *sync.Mutex, quit <-chan struct{}) (<-chan struct{}, <-chan error)
+	Watch(rcID fields.ID, quit <-chan struct{}) (<-chan fields.RC, <-chan error)
 }
 
 func New(
-	fields fields.RC,
+	rcID fields.ID,
 	consulStore consulStore,
 	consulClient consulutil.ConsulClient,
 	rcStatusStore rcstatus.ConsulStore,
@@ -166,7 +165,7 @@ func New(
 	}
 
 	return &replicationController{
-		RC: fields,
+		rcID: rcID,
 
 		logger:        logger,
 		consulStore:   consulStore,
@@ -183,14 +182,8 @@ func New(
 	}
 }
 
-func (rc *replicationController) ID() fields.ID {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-	return rc.RC.ID
-}
-
 func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error {
-	desiresChanged, errInChannel := rc.rcWatcher.Watch(&rc.RC, &rc.mu, quit)
+	rcChanges, errInChannel := rc.rcWatcher.Watch(rc.rcID, quit)
 
 	errOutChannel := make(chan error)
 	channelsClosed := make(chan struct{})
@@ -198,8 +191,8 @@ func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error
 	// When seeing any changes, try to meet them.
 	// If meeting produces any error, send it on the output error channel.
 	go func() {
-		for range desiresChanged {
-			err := rc.meetDesires()
+		for rcFields := range rcChanges {
+			err := rc.meetDesires(rcFields)
 			if err != nil {
 				errOutChannel <- err
 			}
@@ -230,18 +223,18 @@ func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error
 	return errOutChannel
 }
 
-func (rc *replicationController) meetDesires() error {
-	rc.logger.NoFields().Infof("Handling RC update: desired replicas %d, disabled %v", rc.ReplicasDesired, rc.Disabled)
+func (rc *replicationController) meetDesires(rcFields fields.RC) error {
+	rc.logger.NoFields().Infof("Handling RC update: desired replicas %d, disabled %v", rcFields.ReplicasDesired, rcFields.Disabled)
 
 	// If we're disabled, quit an in progress node transfer (if any) and no-op
 	// (it's a normal possibility to be disabled)
-	if rc.Disabled {
-		rc.mu.Lock()
+	if rcFields.Disabled {
+		rc.nodeTransferMu.Lock()
 		rc.nodeTransfer.rollbackReason = "RC disabled"
 		if rc.nodeTransfer.quit != nil {
 			close(rc.nodeTransfer.quit)
 		}
-		rc.mu.Unlock()
+		rc.nodeTransferMu.Unlock()
 		return nil
 	}
 
@@ -249,7 +242,7 @@ func (rc *replicationController) meetDesires() error {
 	if err != nil {
 		return err
 	}
-	eligible, err := rc.eligibleNodes()
+	eligible, err := rc.eligibleNodes(rcFields)
 	if err != nil {
 		return err
 	}
@@ -258,7 +251,7 @@ func (rc *replicationController) meetDesires() error {
 
 	nodesChanged := false
 	switch {
-	case rc.ReplicasDesired > len(current):
+	case rcFields.ReplicasDesired > len(current):
 		if rc.nodeTransfer.quit != nil {
 			// Remove nodeTransfer.newNode from eligible during a node transfer
 			// because if it is scheduled again below in addPods(), the rc
@@ -271,20 +264,20 @@ func (rc *replicationController) meetDesires() error {
 				}
 			}
 		}
-		err := rc.addPods(current, eligible)
+		err := rc.addPods(rcFields, current, eligible)
 		if err != nil {
 			return err
 		}
 		nodesChanged = true
-	case len(current) > rc.ReplicasDesired:
-		rc.mu.Lock()
+	case len(current) > rcFields.ReplicasDesired:
+		rc.nodeTransferMu.Lock()
 		rc.nodeTransfer.rollbackReason = "replica count increased"
 		if rc.nodeTransfer.quit != nil {
 			// stop the node transfer; additional node is no longer needed
 			close(rc.nodeTransfer.quit)
 		}
-		rc.mu.Unlock()
-		err := rc.removePods(current, eligible)
+		rc.nodeTransferMu.Unlock()
+		err := rc.removePods(rcFields, current, eligible)
 		if err != nil {
 			return err
 		}
@@ -303,16 +296,16 @@ func (rc *replicationController) meetDesires() error {
 	ineligible := rc.checkForIneligible(current, eligible)
 	if len(ineligible) > 0 {
 		rc.logger.Infof("Ineligible nodes: %s found, starting node transfer", ineligible)
-		err := rc.transferNodes(ineligible)
+		err := rc.transferNodes(rcFields, ineligible)
 		if err != nil {
 			return err
 		}
 	}
 
-	return rc.ensureConsistency(current.Nodes(), eligible)
+	return rc.ensureConsistency(rcFields, current.Nodes(), eligible)
 }
 
-func (rc *replicationController) addPods(current types.PodLocations, eligible []types.NodeName) error {
+func (rc *replicationController) addPods(rcFields fields.RC, current types.PodLocations, eligible []types.NodeName) error {
 	currentNodes := current.Nodes()
 
 	// TODO: With Docker or runc we would not be constrained to running only once per node.
@@ -322,16 +315,18 @@ func (rc *replicationController) addPods(current types.PodLocations, eligible []
 	// Users want deterministic ordering of nodes being populated to a new
 	// RC. Move nodes in sorted order by hostname to achieve this
 	possibleSorted := possible.ListNodes()
-	toSchedule := rc.ReplicasDesired - len(currentNodes)
+	toSchedule := rcFields.ReplicasDesired - len(currentNodes)
 
 	rc.logger.NoFields().Infof("Need to schedule %d nodes out of %s", toSchedule, possible)
 
-	txn, cancelFunc := rc.newAuditingTransaction(context.Background(), currentNodes)
+	txn, cancelFunc := rc.newAuditingTransaction(context.Background(), rcFields, currentNodes)
 	defer func() {
 		// we write the defer this way so that reassignments to cancelFunc
 		// are noticed and the final value is called
 		cancelFunc()
 	}()
+
+	fmt.Printf("mpuncel: possibleSorted %d\n", len(possibleSorted))
 	for i := 0; i < toSchedule; i++ {
 		// create a new context for every 5 nodes. This is done to make
 		// sure we're safely under the 64 operation limit imposed by
@@ -347,14 +342,15 @@ func (rc *replicationController) addPods(current types.PodLocations, eligible []
 			}
 
 			cancelFunc()
-			txn, cancelFunc = rc.newAuditingTransaction(context.Background(), txn.Nodes())
+			txn, cancelFunc = rc.newAuditingTransaction(context.Background(), rcFields, txn.Nodes())
 		}
+		fmt.Printf("mpuncel: i+1: %d\n", i+1)
 		if len(possibleSorted) < i+1 {
 			errMsg := fmt.Sprintf(
 				"Not enough nodes to meet desire: %d replicas desired, %d currentNodes, %d eligible. Scheduled on %d nodes instead.",
-				rc.ReplicasDesired, len(currentNodes), len(eligible), i,
+				rcFields.ReplicasDesired, len(currentNodes), len(eligible), i,
 			)
-			err := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
+			err := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
 			if err != nil {
 				rc.logger.WithError(err).Errorln("Unable to send alert")
 			}
@@ -372,7 +368,7 @@ func (rc *replicationController) addPods(current types.PodLocations, eligible []
 		}
 		scheduleOn := possibleSorted[i]
 
-		err := rc.schedule(txn, scheduleOn)
+		err := rc.schedule(txn, rcFields, scheduleOn)
 		if err != nil {
 			return err
 		}
@@ -392,42 +388,37 @@ func (rc *replicationController) addPods(current types.PodLocations, eligible []
 // Generates an alerting.AlertInfo struct. Includes information relevant to
 // debugging an RC. Attempts to include the hostname the RC is running on as
 // well
-func (rc *replicationController) alertInfo(msg string) alerting.AlertInfo {
+func (rc *replicationController) alertInfo(rcFields fields.RC, msg string) alerting.AlertInfo {
 	hostname, _ := os.Hostname()
 
-	rcID := rc.ID()
-	rc.mu.Lock()
-	manifest := rc.Manifest
-	nodeSelector := rc.NodeSelector
-	rc.mu.Unlock()
 	return alerting.AlertInfo{
 		Description: msg,
-		IncidentKey: rcID.String(),
+		IncidentKey: rcFields.ID.String(),
 		Details: struct {
 			RCID         string `json:"rc_id"`
 			Hostname     string `json:"hostname"`
 			PodId        string `json:"pod_id"`
 			NodeSelector string `json:"node_selector"`
 		}{
-			RCID:         rcID.String(),
+			RCID:         rcFields.ID.String(),
 			Hostname:     hostname,
-			PodId:        manifest.ID().String(),
-			NodeSelector: nodeSelector.String(),
+			PodId:        rcFields.Manifest.ID().String(),
+			NodeSelector: rcFields.NodeSelector.String(),
 		},
 	}
 }
 
-func (rc *replicationController) removePods(current types.PodLocations, eligible []types.NodeName) error {
+func (rc *replicationController) removePods(rcFields fields.RC, current types.PodLocations, eligible []types.NodeName) error {
 	currentNodes := current.Nodes()
 
 	// If we need to downsize the number of nodes, prefer any in current that are not eligible anymore.
 	// TODO: evaluate changes to 'eligible' more frequently
 	preferred := types.NewNodeSet(currentNodes...).Difference(types.NewNodeSet(eligible...))
 	rest := types.NewNodeSet(currentNodes...).Difference(preferred)
-	toUnschedule := len(current) - rc.ReplicasDesired
+	toUnschedule := len(current) - rcFields.ReplicasDesired
 	rc.logger.NoFields().Infof("Need to unschedule %d nodes out of %s", toUnschedule, current)
 
-	txn, cancelFunc := rc.newAuditingTransaction(context.Background(), currentNodes)
+	txn, cancelFunc := rc.newAuditingTransaction(context.Background(), rcFields, currentNodes)
 	defer func() {
 		cancelFunc()
 	}()
@@ -446,7 +437,7 @@ func (rc *replicationController) removePods(current types.PodLocations, eligible
 			}
 
 			cancelFunc()
-			txn, cancelFunc = rc.newAuditingTransaction(context.Background(), txn.Nodes())
+			txn, cancelFunc = rc.newAuditingTransaction(context.Background(), rcFields, txn.Nodes())
 		}
 
 		unscheduleFrom, ok := preferred.PopAny()
@@ -466,11 +457,11 @@ func (rc *replicationController) removePods(current types.PodLocations, eligible
 
 				return util.Errorf(
 					"Unable to unschedule enough nodes to meet replicas desired: %d replicas desired, %d current.",
-					rc.ReplicasDesired, len(current),
+					rcFields.ReplicasDesired, len(current),
 				)
 			}
 		}
-		err := rc.unschedule(txn, unscheduleFrom)
+		err := rc.unschedule(txn, rcFields, unscheduleFrom)
 		if err != nil {
 			return err
 		}
@@ -487,10 +478,8 @@ func (rc *replicationController) removePods(current types.PodLocations, eligible
 	return nil
 }
 
-func (rc *replicationController) ensureConsistency(current []types.NodeName, eligible []types.NodeName) error {
-	rc.mu.Lock()
-	manifest := rc.Manifest
-	rc.mu.Unlock()
+func (rc *replicationController) ensureConsistency(rcFields fields.RC, current []types.NodeName, eligible []types.NodeName) error {
+	manifest := rcFields.Manifest
 
 	eligibleCurrent := types.NewNodeSet(current...).Intersection(types.NewNodeSet(eligible...)).ListNodes()
 
@@ -537,7 +526,7 @@ func (rc *replicationController) ensureConsistency(current []types.NodeName, eli
 
 		rc.logger.WithField("node", node).WithField("intentManifestSHA", intentSHA).Info("Found inconsistency in scheduled manifest")
 
-		if err := rc.scheduleNoAudit(ctx, node); err != nil {
+		if err := rc.scheduleNoAudit(ctx, rcFields, node); err != nil {
 			cancelFunc()
 			return err
 		}
@@ -574,13 +563,8 @@ func (rc *replicationController) checkForIneligible(current types.PodLocations, 
 	return ineligibleCurrent
 }
 
-func (rc *replicationController) eligibleNodes() ([]types.NodeName, error) {
-	rc.mu.Lock()
-	manifest := rc.Manifest
-	nodeSelector := rc.NodeSelector
-	rc.mu.Unlock()
-
-	return rc.scheduler.EligibleNodes(manifest, nodeSelector)
+func (rc *replicationController) eligibleNodes(rcFields fields.RC) ([]types.NodeName, error) {
+	return rc.scheduler.EligibleNodes(rcFields.Manifest, rcFields.NodeSelector)
 }
 
 // CurrentPods returns all pods managed by an RC with the given ID.
@@ -606,33 +590,28 @@ func CurrentPods(rcid fields.ID, labeler LabelMatcher) (types.PodLocations, erro
 }
 
 func (rc *replicationController) CurrentPods() (types.PodLocations, error) {
-	return CurrentPods(rc.ID(), rc.podApplicator)
+	return CurrentPods(rc.rcID, rc.podApplicator)
 }
 
 // computePodLabels() computes the set of pod labels that should be applied to
 // every pod scheduled by this RC. The labels include a combination of user
 // requested ones and automatic ones
-func (rc *replicationController) computePodLabels() map[string]string {
-	rc.mu.Lock()
-	manifest := rc.Manifest
-	podLabels := rc.PodLabels
-	rc.mu.Unlock()
-	rcID := rc.ID()
+func (rc *replicationController) computePodLabels(rcFields fields.RC) map[string]string {
 	ret := make(map[string]string)
 	// user-requested labels.
-	for k, v := range podLabels {
+	for k, v := range rcFields.PodLabels {
 		ret[k] = v
 	}
 
 	// our reserved labels (pod id and replication controller id)
-	ret[rcstore.PodIDLabel] = manifest.ID().String()
-	ret[RCIDLabel] = rcID.String()
+	ret[rcstore.PodIDLabel] = rcFields.Manifest.ID().String()
+	ret[RCIDLabel] = rcFields.ID.String()
 
 	return ret
 }
 
-func (rc *replicationController) schedule(txn *auditingTransaction, node types.NodeName) error {
-	err := rc.scheduleNoAudit(txn.Context(), node)
+func (rc *replicationController) schedule(txn *auditingTransaction, rcFields fields.RC, node types.NodeName) error {
+	err := rc.scheduleNoAudit(txn.Context(), rcFields, node)
 	if err != nil {
 		return err
 	}
@@ -641,38 +620,32 @@ func (rc *replicationController) schedule(txn *auditingTransaction, node types.N
 	return nil
 }
 
-func (rc *replicationController) scheduleNoAudit(ctx context.Context, node types.NodeName) error {
+func (rc *replicationController) scheduleNoAudit(ctx context.Context, rcFields fields.RC, node types.NodeName) error {
 	rc.logger.NoFields().Infof("Scheduling on %s", node)
-	rc.mu.Lock()
-	manifest := rc.Manifest
-	rc.mu.Unlock()
-	labelKey := labels.MakePodLabelKey(node, manifest.ID())
+	labelKey := labels.MakePodLabelKey(node, rcFields.Manifest.ID())
 
-	err := rc.podApplicator.SetLabelsTxn(ctx, labels.POD, labelKey, rc.computePodLabels())
+	err := rc.podApplicator.SetLabelsTxn(ctx, labels.POD, labelKey, rc.computePodLabels(rcFields))
 	if err != nil {
 		return err
 	}
 
-	return rc.consulStore.SetPodTxn(ctx, consul.INTENT_TREE, node, manifest)
+	return rc.consulStore.SetPodTxn(ctx, consul.INTENT_TREE, node, rcFields.Manifest)
 }
 
-func (rc *replicationController) unschedule(txn *auditingTransaction, node types.NodeName) error {
+func (rc *replicationController) unschedule(txn *auditingTransaction, rcFields fields.RC, node types.NodeName) error {
 	rc.logger.NoFields().Infof("Unscheduling from %s", node)
-	rc.mu.Lock()
-	manifest := rc.Manifest
-	rc.mu.Unlock()
-	err := rc.consulStore.DeletePodTxn(txn.Context(), consul.INTENT_TREE, node, manifest.ID())
+	err := rc.consulStore.DeletePodTxn(txn.Context(), consul.INTENT_TREE, node, rcFields.Manifest.ID())
 	if err != nil {
 		return err
 	}
 
-	labelsToSet := rc.computePodLabels()
+	labelsToSet := rc.computePodLabels(rcFields)
 	var keysToRemove []string
 	for k, _ := range labelsToSet {
 		keysToRemove = append(keysToRemove, k)
 	}
 
-	labelKey := labels.MakePodLabelKey(node, manifest.ID())
+	labelKey := labels.MakePodLabelKey(node, rcFields.Manifest.ID())
 
 	err = rc.podApplicator.RemoveLabelsTxn(txn.Context(), labels.POD, labelKey, keysToRemove)
 	if err != nil {
@@ -683,15 +656,15 @@ func (rc *replicationController) unschedule(txn *auditingTransaction, node types
 	return nil
 }
 
-func (rc *replicationController) transferNodes(ineligible []types.NodeName) error {
+func (rc *replicationController) transferNodes(rcFields fields.RC, ineligible []types.NodeName) error {
 	if rc.nodeTransfer.quit != nil {
 		// a node transfer to replace the ineligible node is already in progress
 		return nil
 	}
 
-	if rc.AllocationStrategy != fields.DynamicStrategy {
+	if rcFields.AllocationStrategy != fields.DynamicStrategy {
 		errMsg := fmt.Sprintf("static strategy RC has scheduled %d ineligible nodes: %s", len(ineligible), ineligible)
-		err := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
+		err := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
 		if err != nil {
 			rc.logger.WithError(err).Errorln("Unable to send alert")
 		}
@@ -700,14 +673,14 @@ func (rc *replicationController) transferNodes(ineligible []types.NodeName) erro
 		return nil
 	}
 
-	status, _, err := rc.rcStatusStore.Get(rc.ID())
+	status, _, err := rc.rcStatusStore.Get(rc.rcID)
 	if err != nil && !statusstore.IsNoStatus(err) {
 		return err
 	}
 
 	var newNode, oldNode types.NodeName
 	if status.NodeTransfer == nil {
-		newNode, oldNode, err = rc.updateAllocations(ineligible)
+		newNode, oldNode, err = rc.updateAllocations(rcFields, ineligible)
 		if err != nil {
 			return err
 		}
@@ -716,10 +689,10 @@ func (rc *replicationController) transferNodes(ineligible []types.NodeName) erro
 		oldNode = status.NodeTransfer.OldNode
 	}
 
-	err = rc.scheduleWithSession(newNode)
+	err = rc.scheduleWithSession(rcFields, newNode)
 	if err != nil {
 		// Different RC may have already taken over the new node, abort transfer
-		deleteErr := rc.rcStatusStore.Delete(rc.ID())
+		deleteErr := rc.rcStatusStore.Delete(rc.rcID)
 		if deleteErr != nil {
 			rc.logger.WithError(deleteErr).Errorln("could not delete rc status")
 		}
@@ -730,22 +703,17 @@ func (rc *replicationController) transferNodes(ineligible []types.NodeName) erro
 	rc.nodeTransfer.oldNode = oldNode
 	rc.nodeTransfer.quit = make(chan struct{})
 
-	go rc.doBackgroundNodeTransfer()
+	go rc.doBackgroundNodeTransfer(rcFields)
 
 	return nil
 }
 
-func (rc *replicationController) updateAllocations(ineligible []types.NodeName) (types.NodeName, types.NodeName, error) {
+func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligible []types.NodeName) (types.NodeName, types.NodeName, error) {
 	if len(ineligible) < 1 {
 		return "", "", util.Errorf("Need at least one ineligible node to transfer from, had 0")
 	}
 
-	rc.mu.Lock()
-	man := rc.Manifest
-	sel := rc.NodeSelector
-	rc.mu.Unlock()
-
-	eligible, err := rc.eligibleNodes()
+	eligible, err := rc.eligibleNodes(rcFields)
 	if err != nil {
 		return "", "", err
 	}
@@ -764,10 +732,10 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 		rc.logger.Infof("Existing eligible node %s found for transfer", newNode)
 	} else {
 		nodesRequested := 1 // We only support one node transfer at a time right now
-		newNodes, err := rc.scheduler.AllocateNodes(man, sel, nodesRequested)
+		newNodes, err := rc.scheduler.AllocateNodes(rcFields.Manifest, rcFields.NodeSelector, nodesRequested)
 		if err != nil || len(newNodes) < 1 {
 			errMsg := fmt.Sprintf("Unable to allocate nodes over grpc: %s", err)
-			err := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
+			err := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
 			if err != nil {
 				rc.logger.WithError(err).Errorln("Unable to send alert")
 			}
@@ -780,7 +748,7 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 	}
 
 	oldNode := ineligible[0]
-	err = rc.scheduler.DeallocateNodes(sel, []types.NodeName{oldNode})
+	err = rc.scheduler.DeallocateNodes(rcFields.NodeSelector, []types.NodeName{oldNode})
 	if err != nil {
 		return "", "", util.Errorf("Could not deallocate from %s: %s", oldNode, err)
 	}
@@ -793,21 +761,15 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 		},
 	}
 
-	rc.mu.Lock()
-	nodeSel := rc.NodeSelector
-	replicasDesired := rc.ReplicasDesired
-	podLabels := rc.PodLabels
-	podID := rc.Manifest.ID()
-	rc.mu.Unlock()
 	auditLogDetails, err := audit.NewNodeTransferStartDetails(
-		rc.ID(),
-		podID,
-		pcfields.AvailabilityZone(podLabels[pcfields.AvailabilityZoneLabel]),
-		pcfields.ClusterName(podLabels[pcfields.ClusterNameLabel]),
-		nodeSel,
+		rc.rcID,
+		rcFields.Manifest.ID(),
+		pcfields.AvailabilityZone(rcFields.PodLabels[pcfields.AvailabilityZoneLabel]),
+		pcfields.ClusterName(rcFields.PodLabels[pcfields.ClusterNameLabel]),
+		rcFields.NodeSelector,
 		oldNode,
 		newNode,
-		replicasDesired,
+		rcFields.ReplicasDesired,
 	)
 	if err != nil {
 		return "", "", util.Errorf("could not generate node transfer start audit log details: %s", err)
@@ -825,7 +787,7 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 		return "", "", util.Errorf("could not add audit log record to node transfer start transaction: %s", err)
 	}
 
-	err = rc.rcStatusStore.CASTxn(writeCtx, rc.ID(), 0, status)
+	err = rc.rcStatusStore.CASTxn(writeCtx, rc.rcID, 0, status)
 	if err != nil {
 		return "", "", util.Errorf("Could not write new node to store: %s", err)
 	}
@@ -838,23 +800,19 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 	return newNode, oldNode, nil
 }
 
-func (rc *replicationController) scheduleWithSession(newNode types.NodeName) error {
+func (rc *replicationController) scheduleWithSession(rcFields fields.RC, newNode types.NodeName) error {
 	rc.logger.NoFields().Infof("Scheduling with session on %s", newNode)
-	rc.mu.Lock()
-	manifest := rc.Manifest
-	rc.mu.Unlock()
-
-	manifestBytes, err := manifest.Marshal()
+	manifestBytes, err := rcFields.Manifest.Marshal()
 	if err != nil {
 		return err
 	}
 
-	key, err := consul.PodPath(consul.INTENT_TREE, newNode, manifest.ID())
+	key, err := consul.PodPath(consul.INTENT_TREE, newNode, rcFields.Manifest.ID())
 	if err != nil {
 		return err
 	}
 
-	name := fmt.Sprintf("wait-on-%s-health-%s", newNode, rc.ID())
+	name := fmt.Sprintf("wait-on-%s-health-%s", newNode, rc.rcID)
 
 	ctx, ctxCancel := context.WithCancel(context.Background())
 	defer func() {
@@ -903,10 +861,10 @@ func (rc *replicationController) scheduleWithSession(newNode types.NodeName) err
 	return nil
 }
 
-func (rc *replicationController) doBackgroundNodeTransfer() {
-	ok, rollbackReason := rc.watchHealth()
+func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC) {
+	ok, rollbackReason := rc.watchHealth(rcFields)
 	if ok {
-		err := rc.finishTransfer()
+		err := rc.finishTransfer(rcFields)
 		if err != nil {
 			rc.logger.WithError(err).Errorln("could not do final node transfer transaction")
 		}
@@ -918,17 +876,21 @@ func (rc *replicationController) doBackgroundNodeTransfer() {
 	rc.nodeTransfer.cancelSession()
 
 	defer func() {
-		rc.mu.Lock()
+		rc.nodeTransferMu.Lock()
 		rc.nodeTransfer = nodeTransfer{}
-		rc.mu.Unlock()
+		rc.nodeTransferMu.Unlock()
 	}()
+
+	rc.nodeTransferMu.Lock()
+	rc.nodeTransfer = nodeTransfer{}
+	rc.nodeTransferMu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	deleteStatusCtx, cancel := transaction.New(ctx)
 	defer cancel()
 
-	err := rc.rcStatusStore.DeleteTxn(deleteStatusCtx, rc.ID())
+	err := rc.rcStatusStore.DeleteTxn(deleteStatusCtx, rc.rcID)
 	if err != nil {
 		rc.logger.WithError(err).Errorln("error deleting transfer status during cleanup")
 		// TODO: low urgency alert here, the RC loop is not going to
@@ -937,7 +899,7 @@ func (rc *replicationController) doBackgroundNodeTransfer() {
 		return
 	}
 	if !ok {
-		err = rc.createRollbackTransferRecord(deleteStatusCtx, rollbackReason)
+		err = rc.createRollbackTransferRecord(deleteStatusCtx, rcFields, rollbackReason)
 		if err != nil {
 			rc.logger.WithError(err).Errorln("could not create node transfer rollback audit log")
 			// TODO: low urgency alert here, the RC loop is not going to
@@ -954,7 +916,7 @@ func (rc *replicationController) doBackgroundNodeTransfer() {
 			"could not delete RC status within timeout: %s",
 			err,
 		)
-		alertErr := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
+		alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
 		if alertErr != nil {
 			rc.logger.WithError(alertErr).Errorln("Unable to send alert")
 		}
@@ -963,25 +925,21 @@ func (rc *replicationController) doBackgroundNodeTransfer() {
 			"Transaction violation trying to delete RC status: %s",
 			transaction.TxnErrorsToString(resp.Errors),
 		)
-		err := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
+		err := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
 		if err != nil {
 			rc.logger.WithError(err).Errorln("Unable to send alert")
 		}
 	}
 }
 
-func (rc *replicationController) watchHealth() (bool, audit.RollbackReason) {
+func (rc *replicationController) watchHealth(rcFields fields.RC) (bool, audit.RollbackReason) {
 	rc.logger.Infof("Watching health on %s", rc.nodeTransfer.newNode)
-
-	rc.mu.Lock()
-	podID := rc.Manifest.ID()
-	rc.mu.Unlock()
 
 	healthQuitCh := make(chan struct{})
 	defer close(healthQuitCh)
 
 	// these channels are closed by WatchPodOnNode
-	resultCh, errCh := rc.healthChecker.WatchPodOnNode(rc.nodeTransfer.newNode, podID, healthQuitCh)
+	resultCh, errCh := rc.healthChecker.WatchPodOnNode(rc.nodeTransfer.newNode, rcFields.Manifest.ID(), healthQuitCh)
 
 	for {
 		select {
@@ -1006,7 +964,7 @@ func (rc *replicationController) watchHealth() (bool, audit.RollbackReason) {
 	}
 }
 
-func (rc *replicationController) finishTransfer() error {
+func (rc *replicationController) finishTransfer(rcFields fields.RC) error {
 	current, err := rc.CurrentPods()
 	if err != nil {
 		return err
@@ -1015,7 +973,7 @@ func (rc *replicationController) finishTransfer() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	txn, cancelFunc := rc.newAuditingTransaction(ctx, current.Nodes())
+	txn, cancelFunc := rc.newAuditingTransaction(ctx, rcFields, current.Nodes())
 	defer cancelFunc()
 
 	key := rc.nodeTransfer.unlockArgs.key
@@ -1027,38 +985,30 @@ func (rc *replicationController) finishTransfer() error {
 
 	txn.AddNode(rc.nodeTransfer.newNode)
 
-	rc.mu.Lock()
-	man := rc.Manifest
-	rc.mu.Unlock()
-
-	labelKey := labels.MakePodLabelKey(rc.nodeTransfer.newNode, man.ID())
-	err = rc.podApplicator.SetLabelsTxn(txn.Context(), labels.POD, labelKey, rc.computePodLabels())
+	labelKey := labels.MakePodLabelKey(rc.nodeTransfer.newNode, rcFields.Manifest.ID())
+	err = rc.podApplicator.SetLabelsTxn(txn.Context(), labels.POD, labelKey, rc.computePodLabels(rcFields))
 	if err != nil {
 		return err
 	}
 
-	err = rc.unschedule(txn, rc.nodeTransfer.oldNode)
+	err = rc.unschedule(txn, rcFields, rc.nodeTransfer.oldNode)
 	if err != nil {
 		return err
 	}
-	rc.mu.Lock()
-	nodeSel := rc.NodeSelector
+	rc.nodeTransferMu.Lock()
 	oldNode := rc.nodeTransfer.oldNode
 	newNode := rc.nodeTransfer.newNode
-	replicaCount := rc.ReplicasDesired
-	podID := rc.Manifest.ID()
-	podLabels := rc.PodLabels
-	rc.mu.Unlock()
+	rc.nodeTransferMu.Unlock()
 
 	auditLogDetails, err := audit.NewNodeTransferCompletionDetails(
-		rc.ID(),
-		podID,
-		pcfields.AvailabilityZone(podLabels[pcfields.AvailabilityZoneLabel]),
-		pcfields.ClusterName(podLabels[pcfields.ClusterNameLabel]),
-		nodeSel,
+		rc.rcID,
+		rcFields.Manifest.ID(),
+		pcfields.AvailabilityZone(rcFields.PodLabels[pcfields.AvailabilityZoneLabel]),
+		pcfields.ClusterName(rcFields.PodLabels[pcfields.ClusterNameLabel]),
+		rcFields.NodeSelector,
 		oldNode,
 		newNode,
-		replicaCount,
+		rcFields.ReplicasDesired,
 	)
 	if err != nil {
 		return util.Errorf("could not generate node transfer completion audit log details: %s", err)
@@ -1080,7 +1030,7 @@ func (rc *replicationController) finishTransfer() error {
 			"transfer unlock, label, and unschedule txn returned err after timeout: %s",
 			err,
 		)
-		alertErr := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
+		alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
 		if alertErr != nil {
 			rc.logger.WithError(alertErr).Errorln("Unable to send alert")
 		}
@@ -1090,7 +1040,7 @@ func (rc *replicationController) finishTransfer() error {
 			"Transaction violation trying to unlock node transfer session and label new node. New RC may have scheduled node: %s",
 			transaction.TxnErrorsToString(resp.Errors),
 		)
-		err := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
+		err := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
 		if err != nil {
 			rc.logger.WithError(err).Errorln("Unable to send alert")
 		}
@@ -1100,25 +1050,21 @@ func (rc *replicationController) finishTransfer() error {
 	return nil
 }
 
-func (rc *replicationController) createRollbackTransferRecord(ctx context.Context, rollbackReason audit.RollbackReason) error {
-	rc.mu.Lock()
-	nodeSel := rc.NodeSelector
+func (rc *replicationController) createRollbackTransferRecord(ctx context.Context, rcFields fields.RC, rollbackReason audit.RollbackReason) error {
+	rc.nodeTransferMu.Lock()
 	oldNode := rc.nodeTransfer.oldNode
 	newNode := rc.nodeTransfer.newNode
-	replicaCount := rc.ReplicasDesired
-	podID := rc.Manifest.ID()
-	podLabels := rc.PodLabels
-	rc.mu.Unlock()
+	rc.nodeTransferMu.Unlock()
 
 	auditLogDetails, err := audit.NewNodeTransferRollbackDetails(
-		rc.ID(),
-		podID,
-		pcfields.AvailabilityZone(podLabels[pcfields.AvailabilityZoneLabel]),
-		pcfields.ClusterName(podLabels[pcfields.ClusterNameLabel]),
-		nodeSel,
+		rc.rcID,
+		rcFields.Manifest.ID(),
+		pcfields.AvailabilityZone(rcFields.PodLabels[pcfields.AvailabilityZoneLabel]),
+		pcfields.ClusterName(rcFields.PodLabels[pcfields.ClusterNameLabel]),
+		rcFields.NodeSelector,
 		oldNode,
 		newNode,
-		replicaCount,
+		rcFields.ReplicasDesired,
 		rollbackReason,
 	)
 	if err != nil {
