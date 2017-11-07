@@ -78,3 +78,11 @@ func (c ConsulStore) Delete(rcID fields.ID) error {
 
 	return c.statusStore.DeleteStatus(statusstore.RC, statusstore.ResourceID(rcID.String()), c.namespace)
 }
+
+func (c ConsulStore) DeleteTxn(ctx context.Context, rcID fields.ID) error {
+	if rcID == "" {
+		return util.Errorf("Provided replication controller ID was empty")
+	}
+
+	return c.statusStore.DeleteStatusTxn(ctx, statusstore.RC, statusstore.ResourceID(rcID.String()), c.namespace)
+}

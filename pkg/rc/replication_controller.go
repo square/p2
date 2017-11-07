@@ -109,6 +109,10 @@ type nodeTransfer struct {
 	session       consul.Session
 	cancelSession context.CancelFunc
 	unlockArgs    unlockArgs
+
+	// rollbackReason indicates why the quit channel was closed. Closers of
+	// the quit channel should set this first for audit logging purposes
+	rollbackReason audit.RollbackReason
 }
 
 type unlockArgs struct {
@@ -232,6 +236,7 @@ func (rc *replicationController) meetDesires() error {
 	// (it's a normal possibility to be disabled)
 	if rc.Disabled {
 		rc.mu.Lock()
+		rc.nodeTransfer.rollbackReason = "RC disabled"
 		if rc.nodeTransfer.quit != nil {
 			close(rc.nodeTransfer.quit)
 		}
@@ -272,6 +277,7 @@ func (rc *replicationController) meetDesires() error {
 		nodesChanged = true
 	case len(current) > rc.ReplicasDesired:
 		rc.mu.Lock()
+		rc.nodeTransfer.rollbackReason = "replica count increased"
 		if rc.nodeTransfer.quit != nil {
 			// stop the node transfer; additional node is no longer needed
 			close(rc.nodeTransfer.quit)
@@ -787,14 +793,16 @@ func (rc *replicationController) updateAllocations(ineligible []types.NodeName) 
 	}
 
 	rc.mu.Lock()
+	nodeSel := rc.NodeSelector
+	replicasDesired := rc.ReplicasDesired
+	rc.mu.Unlock()
 	auditLogDetails, err := audit.NewNodeTransferStartDetails(
 		rc.ID(),
-		rc.NodeSelector,
+		nodeSel,
 		oldNode,
 		newNode,
-		rc.ReplicasDesired,
+		replicasDesired,
 	)
-	rc.mu.Unlock()
 	if err != nil {
 		return "", "", util.Errorf("could not generate node transfer start audit log details: %s", err)
 	}
@@ -890,7 +898,7 @@ func (rc *replicationController) scheduleWithSession(newNode types.NodeName) err
 }
 
 func (rc *replicationController) doBackgroundNodeTransfer() {
-	ok := rc.watchHealth()
+	ok, rollbackReason := rc.watchHealth()
 	if ok {
 		err := rc.finishTransfer()
 		if err != nil {
@@ -902,17 +910,60 @@ func (rc *replicationController) doBackgroundNodeTransfer() {
 
 	rc.logger.Infof("Node transfer from %s to %s complete.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode)
 
-	rc.mu.Lock()
-	rc.nodeTransfer = nodeTransfer{}
-	rc.mu.Unlock()
+	defer func() {
+		rc.mu.Lock()
+		rc.nodeTransfer = nodeTransfer{}
+		rc.mu.Unlock()
+	}()
 
-	err := rc.rcStatusStore.Delete(rc.ID())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	deleteStatusCtx, cancel := transaction.New(ctx)
+	defer cancel()
+
+	err := rc.rcStatusStore.DeleteTxn(deleteStatusCtx, rc.ID())
 	if err != nil {
 		rc.logger.WithError(err).Errorln("error deleting transfer status during cleanup")
+		// TODO: low urgency alert here, the RC loop is not going to
+		// retry this because we've (possibly) handled the ineligible
+		// node already
+		return
+	}
+	if !ok {
+		err = rc.createRollbackTransferRecord(deleteStatusCtx, rollbackReason)
+		if err != nil {
+			rc.logger.WithError(err).Errorln("could not create node transfer rollback audit log")
+			// TODO: low urgency alert here, the RC loop is not going to
+			// retry this because we've (possibly) handled the ineligible
+			// node already
+			return
+		}
+	}
+
+	ok, resp, err := transaction.CommitWithRetries(deleteStatusCtx, rc.txner)
+	switch {
+	case err != nil:
+		errMsg := fmt.Sprintf(
+			"could not delete RC status within timeout: %s",
+			err,
+		)
+		alertErr := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
+		if alertErr != nil {
+			rc.logger.WithError(alertErr).Errorln("Unable to send alert")
+		}
+	case !ok:
+		errMsg := fmt.Sprintf(
+			"Transaction violation trying to delete RC status: %s",
+			transaction.TxnErrorsToString(resp.Errors),
+		)
+		err := rc.alerter.Alert(rc.alertInfo(errMsg), alerting.LowUrgency)
+		if err != nil {
+			rc.logger.WithError(err).Errorln("Unable to send alert")
+		}
 	}
 }
 
-func (rc *replicationController) watchHealth() bool {
+func (rc *replicationController) watchHealth() (bool, audit.RollbackReason) {
 	rc.logger.Infof("Watching health on %s", rc.nodeTransfer.newNode)
 
 	rc.mu.Lock()
@@ -936,13 +987,14 @@ func (rc *replicationController) watchHealth() bool {
 		case currentHealth := <-resultCh:
 			if currentHealth.Status == health.Passing {
 				rc.logger.Infof("New transfer node %s health now passing", rc.nodeTransfer.newNode)
-				return true
+				return true, ""
 			}
 		case <-rc.nodeTransfer.quit:
-			return false
+			return false, rc.nodeTransfer.rollbackReason
 		case <-time.After(5 * time.Minute):
-			rc.logger.Errorln("watchHealth routine timed out waiting for health result")
-			return false
+			err := "watchHealth routine timed out waiting for health result"
+			rc.logger.Errorln(err)
+			return false, audit.RollbackReason(err)
 		}
 	}
 }
@@ -982,6 +1034,32 @@ func (rc *replicationController) finishTransfer() error {
 	if err != nil {
 		return err
 	}
+	rc.mu.Lock()
+	nodeSel := rc.NodeSelector
+	oldNode := rc.nodeTransfer.oldNode
+	newNode := rc.nodeTransfer.newNode
+	replicaCount := rc.ReplicasDesired
+	rc.mu.Unlock()
+
+	auditLogDetails, err := audit.NewNodeTransferCompletionDetails(
+		rc.ID(),
+		nodeSel,
+		oldNode,
+		newNode,
+		replicaCount,
+	)
+	if err != nil {
+		return util.Errorf("could not generate node transfer completion audit log details: %s", err)
+	}
+
+	err = rc.auditLogStore.Create(
+		txn.Context(),
+		audit.NodeTransferCompletionEvent,
+		auditLogDetails,
+	)
+	if err != nil {
+		return util.Errorf("could not add audit log record to node transfer completion transaction: %s", err)
+	}
 
 	ok, resp, err := txn.CommitWithRetries(rc.txner)
 	switch {
@@ -1005,6 +1083,38 @@ func (rc *replicationController) finishTransfer() error {
 			rc.logger.WithError(err).Errorln("Unable to send alert")
 		}
 		return nil
+	}
+
+	return nil
+}
+
+func (rc *replicationController) createRollbackTransferRecord(ctx context.Context, rollbackReason audit.RollbackReason) error {
+	rc.mu.Lock()
+	nodeSel := rc.NodeSelector
+	oldNode := rc.nodeTransfer.oldNode
+	newNode := rc.nodeTransfer.newNode
+	replicaCount := rc.ReplicasDesired
+	rc.mu.Unlock()
+
+	auditLogDetails, err := audit.NewNodeTransferRollbackDetails(
+		rc.ID(),
+		nodeSel,
+		oldNode,
+		newNode,
+		replicaCount,
+		rollbackReason,
+	)
+	if err != nil {
+		return util.Errorf("could not generate audit log details for node transfer rollback: %s", err)
+	}
+
+	err = rc.auditLogStore.Create(
+		ctx,
+		audit.NodeTransferRollbackEvent,
+		auditLogDetails,
+	)
+	if err != nil {
+		return util.Errorf("could not add audit log record to node transfer rollback transaction: %s", err)
 	}
 
 	return nil

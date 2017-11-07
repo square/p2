@@ -155,6 +155,23 @@ func (s *consulStore) DeleteStatus(t ResourceType, id ResourceID, namespace Name
 	return nil
 }
 
+func (s *consulStore) DeleteStatusTxn(ctx context.Context, t ResourceType, id ResourceID, namespace Namespace) error {
+	key, err := namespacedResourcePath(t, id, namespace)
+	if err != nil {
+		return err
+	}
+
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb: api.KVDelete,
+		Key:  key,
+	})
+	if err != nil {
+		return util.Errorf("could not add delete operation for %s to transaction: %s", key, err)
+	}
+
+	return nil
+}
+
 func (s *consulStore) GetAllStatusForResource(t ResourceType, id ResourceID) (map[Namespace]Status, error) {
 	prefix, err := resourcePath(t, id)
 	if err != nil {
