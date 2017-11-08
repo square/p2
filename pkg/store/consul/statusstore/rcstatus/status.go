@@ -12,9 +12,16 @@ type Status struct {
 	NodeTransfer *NodeTransfer `json:"node_transfer"`
 }
 
+type NodeTransferID string
+
 type NodeTransfer struct {
 	OldNode types.NodeName `json:"old_node"`
 	NewNode types.NodeName `json:"new_node"`
+
+	// ID is a uuid representing a node transfer. This is mostly useful for
+	// auditing purposes to tie together audit logs denoting the start and
+	// end of a node transfer
+	ID NodeTransferID `json:"id"`
 }
 
 func rawStatusToStatus(rawStatus statusstore.Status) (Status, error) {

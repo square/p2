@@ -29,6 +29,8 @@ import (
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
+
+	"github.com/pborman/uuid"
 )
 
 const (
@@ -758,6 +760,7 @@ func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligibl
 		NodeTransfer: &rcstatus.NodeTransfer{
 			OldNode: oldNode,
 			NewNode: newNode,
+			ID:      rcstatus.NodeTransferID(uuid.New()),
 		},
 	}
 
