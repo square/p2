@@ -6,12 +6,14 @@ import (
 
 	pcfields "github.com/square/p2/pkg/pc/fields"
 	rcfields "github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
 	"github.com/square/p2/pkg/types"
 
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 func TestNewNodeTransferStartDetails(t *testing.T) {
+	nodeTransferID := rcstatus.NodeTransferID("some_node_transfer_id")
 	rcID := rcfields.ID("some_rc_id")
 	nodeSelector := klabels.Everything().Add("node", klabels.EqualsOperator, []string{"good"})
 	oldNode := types.NodeName("broken_node")
@@ -22,6 +24,7 @@ func TestNewNodeTransferStartDetails(t *testing.T) {
 	cn := pcfields.ClusterName("some_cn")
 
 	jsonMessage, err := NewNodeTransferStartDetails(
+		nodeTransferID,
 		rcID,
 		podID,
 		az,
@@ -41,6 +44,12 @@ func TestNewNodeTransferStartDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if details.NodeTransferID != nodeTransferID {
+		t.Errorf("expected nodeTransferID ID to be %q but was %q", nodeTransferID, details.NodeTransferID)
+	}
+	if details.ReplicationControllerID != rcID {
+		t.Errorf("expected rc ID to be %q but was %q", rcID, details.ReplicationControllerID)
+	}
 	if details.ReplicationControllerID != rcID {
 		t.Errorf("expected rc ID to be %q but was %q", rcID, details.ReplicationControllerID)
 	}
@@ -68,6 +77,7 @@ func TestNewNodeTransferStartDetails(t *testing.T) {
 }
 
 func TestNewNodeTransferCompletionDetails(t *testing.T) {
+	nodeTransferID := rcstatus.NodeTransferID("some_node_transfer_id")
 	rcID := rcfields.ID("some_rc_id")
 	nodeSelector := klabels.Everything().Add("node", klabels.EqualsOperator, []string{"good"})
 	oldNode := types.NodeName("broken_node")
@@ -78,6 +88,7 @@ func TestNewNodeTransferCompletionDetails(t *testing.T) {
 	cn := pcfields.ClusterName("some_cn")
 
 	jsonMessage, err := NewNodeTransferCompletionDetails(
+		nodeTransferID,
 		rcID,
 		podID,
 		az,
@@ -97,6 +108,9 @@ func TestNewNodeTransferCompletionDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if details.NodeTransferID != nodeTransferID {
+		t.Errorf("expected nodeTransferID ID to be %q but was %q", nodeTransferID, details.NodeTransferID)
+	}
 	if details.ReplicationControllerID != rcID {
 		t.Errorf("expected rc ID to be %q but was %q", rcID, details.ReplicationControllerID)
 	}
@@ -124,6 +138,7 @@ func TestNewNodeTransferCompletionDetails(t *testing.T) {
 }
 
 func TestNewNodeTransferRollbackDetails(t *testing.T) {
+	nodeTransferID := rcstatus.NodeTransferID("some_node_transfer_id")
 	rcID := rcfields.ID("some_rc_id")
 	nodeSelector := klabels.Everything().Add("node", klabels.EqualsOperator, []string{"good"})
 	oldNode := types.NodeName("broken_node")
@@ -135,6 +150,7 @@ func TestNewNodeTransferRollbackDetails(t *testing.T) {
 	cn := pcfields.ClusterName("some_cn")
 
 	jsonMessage, err := NewNodeTransferRollbackDetails(
+		nodeTransferID,
 		rcID,
 		podID,
 		az,
@@ -155,6 +171,9 @@ func TestNewNodeTransferRollbackDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if details.NodeTransferID != nodeTransferID {
+		t.Errorf("expected nodeTransferID ID to be %q but was %q", nodeTransferID, details.NodeTransferID)
+	}
 	if details.ReplicationControllerID != rcID {
 		t.Errorf("expected rc ID to be %q but was %q", rcID, details.ReplicationControllerID)
 	}
