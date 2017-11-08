@@ -84,15 +84,7 @@ func main() {
 				haltWG.Done()
 				rateLimiter <- struct{}{}
 			}(haltWG, rateLimiter)
-			for {
-				select {
-				case <-rateLimiter:
-					break
-				default:
-					log.Printf("[INFO]: Max parallelism of %d for pod shutdown has been reached. Waiting.", *parallelFactor)
-					time.Sleep(1 * time.Second)
-				}
-			}
+			rateLimit(rateLimiter)
 			success, err := pod.Halt(man)
 			if !success {
 				log.Printf("[ERROR]: at least one launchable of %s did not halt successfully.", podID)
@@ -103,6 +95,18 @@ func main() {
 		}(realityEntry.Manifest, pod.Id, &haltWG, paralellShutdowns)
 	}
 	haltWG.Wait()
+}
+
+func rateLimit(rateLimiter chan struct{}) {
+	for {
+		select {
+		case <-rateLimiter:
+			return
+		default:
+			log.Printf("[INFO]: Max parallelism of %d for pod shutdown has been reached. Waiting.", *parallelFactor)
+			time.Sleep(1 * time.Second)
+		}
+	}
 }
 
 // returns true if the pod should be shutdown
