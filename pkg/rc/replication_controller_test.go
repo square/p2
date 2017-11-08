@@ -807,6 +807,10 @@ func TestAllocateOnIneligibleIfDynamicStrategy(t *testing.T) {
 		t.Fatalf("the rc failed to update the node transfer status new node to %s from %s", newTransferNode, status.NodeTransfer.NewNode)
 	}
 
+	if status.NodeTransfer.ID == "" {
+		t.Fatal("no ID was set for the node transfer in RC status")
+	}
+
 	nodeTransferAuditLogs := getNodeTransferAuditLogs(t, auditLogStore)
 	if len(nodeTransferAuditLogs) != 1 {
 		t.Fatalf("expected an audit log record to be created when a node transfer is started but found %d", len(nodeTransferAuditLogs))
@@ -814,6 +818,16 @@ func TestAllocateOnIneligibleIfDynamicStrategy(t *testing.T) {
 
 	if nodeTransferAuditLogs[0].EventType != audit.NodeTransferStartEvent {
 		t.Fatalf("expected audit log event type to be %q but was %q", audit.NodeTransferStartEvent, nodeTransferAuditLogs[0].EventType)
+	}
+
+	var details audit.NodeTransferStartDetails
+	err = json.Unmarshal([]byte(*nodeTransferAuditLogs[0].EventDetails), &details)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if details.NodeTransferID != status.NodeTransfer.ID {
+		t.Fatalf("the node transfer ID in the start audit log did not match the one from the RC status: expected %q but got %q", status.NodeTransfer.ID, details.NodeTransferID)
 	}
 }
 

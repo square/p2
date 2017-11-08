@@ -5,6 +5,7 @@ import (
 
 	pcfields "github.com/square/p2/pkg/pc/fields"
 	rcfields "github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -27,6 +28,11 @@ const (
 )
 
 type CommonNodeTransferDetails struct {
+	// NodeTransferID is a uuid that will be the same for all audit log records
+	// associated with the same node transfer.  It can be used to match up
+	// "start" events with "rollback" or "completion" events
+	NodeTransferID rcstatus.NodeTransferID `json:"node_transfer_id"`
+
 	// ReplicationControllerID is the ID of the replication controller that
 	// started the node transfer
 	ReplicationControllerID rcfields.ID `json:"replication_controller_id"`
@@ -75,6 +81,7 @@ type NodeTransferRollbackDetails struct {
 }
 
 func NewNodeTransferStartDetails(
+	nodeTransferID rcstatus.NodeTransferID,
 	rcID rcfields.ID,
 	podID types.PodID,
 	availabilityZone pcfields.AvailabilityZone,
@@ -86,6 +93,7 @@ func NewNodeTransferStartDetails(
 ) (json.RawMessage, error) {
 	details := NodeTransferStartDetails{
 		CommonNodeTransferDetails: commonNodeTransferDetails(
+			nodeTransferID,
 			rcID,
 			podID,
 			availabilityZone,
@@ -106,6 +114,7 @@ func NewNodeTransferStartDetails(
 }
 
 func NewNodeTransferCompletionDetails(
+	nodeTransferID rcstatus.NodeTransferID,
 	rcID rcfields.ID,
 	podID types.PodID,
 	availabilityZone pcfields.AvailabilityZone,
@@ -117,6 +126,7 @@ func NewNodeTransferCompletionDetails(
 ) (json.RawMessage, error) {
 	details := NodeTransferCompletionDetails{
 		CommonNodeTransferDetails: commonNodeTransferDetails(
+			nodeTransferID,
 			rcID,
 			podID,
 			availabilityZone,
@@ -137,6 +147,7 @@ func NewNodeTransferCompletionDetails(
 }
 
 func NewNodeTransferRollbackDetails(
+	nodeTransferID rcstatus.NodeTransferID,
 	rcID rcfields.ID,
 	podID types.PodID,
 	availabilityZone pcfields.AvailabilityZone,
@@ -149,6 +160,7 @@ func NewNodeTransferRollbackDetails(
 ) (json.RawMessage, error) {
 	details := NodeTransferRollbackDetails{
 		CommonNodeTransferDetails: commonNodeTransferDetails(
+			nodeTransferID,
 			rcID,
 			podID,
 			availabilityZone,
@@ -170,6 +182,7 @@ func NewNodeTransferRollbackDetails(
 }
 
 func commonNodeTransferDetails(
+	nodeTransferID rcstatus.NodeTransferID,
 	rcID rcfields.ID,
 	podID types.PodID,
 	availabilityZone pcfields.AvailabilityZone,
@@ -180,6 +193,7 @@ func commonNodeTransferDetails(
 	replicaCount int,
 ) CommonNodeTransferDetails {
 	return CommonNodeTransferDetails{
+		NodeTransferID:          nodeTransferID,
 		ReplicationControllerID: rcID,
 		PodID:            podID,
 		AvailabilityZone: availabilityZone,

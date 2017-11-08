@@ -106,6 +106,7 @@ type consulStore interface {
 type nodeTransfer struct {
 	newNode       types.NodeName
 	oldNode       types.NodeName
+	id            rcstatus.NodeTransferID
 	quit          chan struct{}
 	session       consul.Session
 	cancelSession context.CancelFunc
@@ -681,14 +682,17 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, ineligible []
 	}
 
 	var newNode, oldNode types.NodeName
+	var nodeTransferID rcstatus.NodeTransferID
 	if status.NodeTransfer == nil {
-		newNode, oldNode, err = rc.updateAllocations(rcFields, ineligible)
+		nodeTransferID = rcstatus.NodeTransferID(uuid.New())
+		newNode, oldNode, err = rc.updateAllocations(rcFields, ineligible, nodeTransferID)
 		if err != nil {
 			return err
 		}
 	} else {
 		newNode = status.NodeTransfer.NewNode
 		oldNode = status.NodeTransfer.OldNode
+		nodeTransferID = status.NodeTransfer.ID
 	}
 
 	err = rc.scheduleWithSession(rcFields, newNode)
@@ -703,6 +707,7 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, ineligible []
 
 	rc.nodeTransfer.newNode = newNode
 	rc.nodeTransfer.oldNode = oldNode
+	rc.nodeTransfer.id = nodeTransferID
 	rc.nodeTransfer.quit = make(chan struct{})
 
 	go rc.doBackgroundNodeTransfer(rcFields)
@@ -710,7 +715,7 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, ineligible []
 	return nil
 }
 
-func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligible []types.NodeName) (types.NodeName, types.NodeName, error) {
+func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligible []types.NodeName, nodeTransferID rcstatus.NodeTransferID) (types.NodeName, types.NodeName, error) {
 	if len(ineligible) < 1 {
 		return "", "", util.Errorf("Need at least one ineligible node to transfer from, had 0")
 	}
@@ -760,11 +765,12 @@ func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligibl
 		NodeTransfer: &rcstatus.NodeTransfer{
 			OldNode: oldNode,
 			NewNode: newNode,
-			ID:      rcstatus.NodeTransferID(uuid.New()),
+			ID:      nodeTransferID,
 		},
 	}
 
 	auditLogDetails, err := audit.NewNodeTransferStartDetails(
+		nodeTransferID,
 		rc.rcID,
 		rcFields.Manifest.ID(),
 		pcfields.AvailabilityZone(rcFields.PodLabels[pcfields.AvailabilityZoneLabel]),
@@ -1001,9 +1007,11 @@ func (rc *replicationController) finishTransfer(rcFields fields.RC) error {
 	rc.nodeTransferMu.Lock()
 	oldNode := rc.nodeTransfer.oldNode
 	newNode := rc.nodeTransfer.newNode
+	nodeTransferID := rc.nodeTransfer.id
 	rc.nodeTransferMu.Unlock()
 
 	auditLogDetails, err := audit.NewNodeTransferCompletionDetails(
+		nodeTransferID,
 		rc.rcID,
 		rcFields.Manifest.ID(),
 		pcfields.AvailabilityZone(rcFields.PodLabels[pcfields.AvailabilityZoneLabel]),
@@ -1057,9 +1065,11 @@ func (rc *replicationController) createRollbackTransferRecord(ctx context.Contex
 	rc.nodeTransferMu.Lock()
 	oldNode := rc.nodeTransfer.oldNode
 	newNode := rc.nodeTransfer.newNode
+	nodeTransferID := rc.nodeTransfer.id
 	rc.nodeTransferMu.Unlock()
 
 	auditLogDetails, err := audit.NewNodeTransferRollbackDetails(
+		nodeTransferID,
 		rc.rcID,
 		rcFields.Manifest.ID(),
 		pcfields.AvailabilityZone(rcFields.PodLabels[pcfields.AvailabilityZoneLabel]),
