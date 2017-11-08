@@ -13,6 +13,7 @@ import (
 
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/digest"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
@@ -49,6 +50,7 @@ const (
 	PodHomeEnvVar                  = "POD_HOME"
 	PodUniqueKeyEnvVar             = "POD_UNIQUE_KEY"
 	PlatformConfigPathEnvVar       = "PLATFORM_CONFIG_PATH"
+	ResourceLimitsConfigPathEnvVar = "RESOURCE_LIMITS_PATH"
 	LaunchableRestartTimeoutEnvVar = "RESTART_TIMEOUT"
 )
 
@@ -539,6 +541,11 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 	if err != nil {
 		return err
 	}
+	var resourceLimitsConfigData bytes.Buffer
+	err = manifest.WriteResourceLimitsConfig(&resourceLimitsConfigData)
+	if err != nil {
+		return err
+	}
 
 	err = util.MkdirChownAll(pod.ConfigDir(), uid, gid, 0755)
 	if err != nil {
@@ -562,6 +569,15 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 	if err != nil {
 		return util.Errorf("Error writing platform config file for pod %s: %s", manifest.ID(), err)
 	}
+	resourceLimitsConfigFileName, err := manifest.ResourceLimitsConfigFileName()
+	if err != nil {
+		return err
+	}
+	resourceLimitsConfigPath := filepath.Join(pod.ConfigDir(), resourceLimitsConfigFileName)
+	err = writeFileChown(resourceLimitsConfigPath, resourceLimitsConfigData.Bytes(), uid, gid)
+	if err != nil {
+		return util.Errorf("Error writing resource limits config file for pod %s: %s", manifest.ID(), err)
+	}
 
 	err = util.MkdirChownAll(pod.EnvDir(), uid, gid, 0755)
 	if err != nil {
@@ -572,6 +588,10 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 		return err
 	}
 	err = writeEnvFile(pod.EnvDir(), PlatformConfigPathEnvVar, platConfigPath, uid, gid)
+	if err != nil {
+		return err
+	}
+	err = writeEnvFile(pod.EnvDir(), ResourceLimitsConfigPathEnvVar, resourceLimitsConfigPath, uid, gid)
 	if err != nil {
 		return err
 	}
@@ -713,6 +733,16 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 		pod.logger.WithError(err).Warnf("Could not parse version from launchable %s.", launchableID)
 	}
 
+	podCgroup := ""
+	if *NestedCgroups {
+		err = pod.installCgroup()
+		if err != nil {
+			pod.logger.WithError(err).Errorf("Could not create pod cgroup")
+		}
+
+		podCgroup = pod.UniqueName()
+	}
+
 	if launchableStanza.LaunchableType == "hoist" {
 		entryPointPaths := launchableStanza.EntryPoints
 		implicitEntryPoints := false
@@ -720,19 +750,15 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			implicitEntryPoints = true
 			entryPointPaths = append(entryPointPaths, path.Join("bin", "launch"))
 		}
-		cgroupName := serviceId
-		if *NestedCgroups {
-			cgroupName = filepath.Join(
-				"p2",
-				pod.node.String(),
-				pod.UniqueName(),
-				launchableID.String(),
-			)
-		}
 
 		entryPoints := hoist.EntryPoints{
 			Paths:    entryPointPaths,
 			Implicit: implicitEntryPoints,
+		}
+
+		cgroupName := serviceId
+		if *NestedCgroups {
+			cgroupName = launchableID.String()
 		}
 
 		ret := &hoist.Launchable{
@@ -749,6 +775,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			CgroupConfig:     launchableStanza.CgroupConfig,
 			CgroupConfigName: launchableID.String(),
 			CgroupName:       cgroupName,
+			PodCgroup:        podCgroup,
 			SuppliedEnvVars:  launchableStanza.Env,
 			EntryPoints:      entryPoints,
 			IsUUIDPod:        pod.uniqueKey != "",
@@ -802,6 +829,20 @@ func (pod *Pod) disableAndHaltLaunchables(currentManifest manifest.Manifest) err
 		}
 	}
 
+	return nil
+}
+
+func (pod *Pod) installCgroup() error {
+	if *NestedCgroups {
+		cgConfig, err := cgroups.GetPodConfig(ResourceLimitsConfigPathEnvVar)
+		if err != nil {
+			return err
+		}
+		err = cgroups.CreatePodCgroup(pod.UniqueName(), cgConfig)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

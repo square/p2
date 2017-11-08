@@ -16,10 +16,10 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/square/p2/pkg/cgroups"
+	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"gopkg.in/yaml.v2"
 )
 
 var (
@@ -39,6 +39,8 @@ var (
 	workDir        = kingpin.Flag("workdir", "Set working directory.").Short('w').String()
 	umask          = kingpin.Flag("umask", "Set the process umask. Use octal notation ex. 0022").Short('m').Default(umaskDefault).String()
 	umaskDefault   = ""
+
+	podID = kingpin.Flag("pod-cgroup", "Nest this launchable cgroup beneath a pod level cgroup. Looks in $RESOURCE_LIMITS_PATH for parameters").Short('p').String()
 
 	cmd = kingpin.Arg("command", "the command to execute").Required().Strings()
 )
@@ -80,6 +82,17 @@ func main() {
 		}
 	}
 
+	if *podID != "" {
+		cgConfig, err := cgroups.GetPodConfig(pods.ResourceLimitsConfigPathEnvVar)
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = cgroups.CreatePodCgroup(*podID, cgConfig)
+		if err != nil {
+			log.Fatalf("Could not create pod %v cgroup %v\n", *podID, err)
+		}
+	}
+
 	if *launchableName == "" && *cgroupName != "" {
 		log.Fatalf("Specified cgroup name %q, but no launchable name was specified", *cgroupName)
 	}
@@ -87,13 +100,13 @@ func main() {
 		log.Fatalf("Specified launchable name %q, but no cgroup name was specified", *launchableName)
 	}
 	if *launchableName != "" && *cgroupName != "" {
-		if platconf := os.Getenv("PLATFORM_CONFIG_PATH"); platconf != "" {
-			err := cgEnter(platconf, *launchableName, *cgroupName)
-			if err != nil {
-				log.Fatal(err)
-			}
-		} else {
-			log.Fatal("No PLATFORM_CONFIG_PATH, cannot determine cgroup")
+		cgPlatConfig, err := cgroups.GetLaunchableConfig(pods.PlatformConfigPathEnvVar, *launchableName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = cgroups.CreateLaunchableCgroup(*cgroupName, *podID, cgPlatConfig)
+		if err != nil {
+			log.Fatal(err)
 		}
 	}
 
@@ -203,51 +216,6 @@ func loadEnvDir(dir string) error {
 	}
 
 	return nil
-}
-
-// requires a path to a platform configuration file in this format:
-// <launchablename>:
-//   cgroup:
-//     cpus: 4
-//     memory: 123456
-// and the <launchablename> and <cgroupname>
-// a cgroup with the name <cgroupname> will be created, using the parameters for
-// <launchablename> found in the platform configuration
-// then, the current PID will be added to that cgroup
-func cgEnter(platconf, launchableName, cgroupName string) error {
-	platconfBuf, err := ioutil.ReadFile(platconf)
-	if err != nil {
-		return err
-	}
-	cgMap := make(map[string]map[string]cgroups.Config)
-	err = yaml.Unmarshal(platconfBuf, cgMap)
-	if err != nil {
-		return err
-	}
-
-	if _, ok := cgMap[launchableName]; !ok {
-		return util.Errorf("Unknown launchable %q in PLATFORM_CONFIG_PATH", launchableName)
-	}
-	if _, ok := cgMap[launchableName]["cgroup"]; !ok {
-		return util.Errorf("Launchable %q has malformed PLATFORM_CONFIG_PATH", launchableName)
-	}
-	cgConfig := cgMap[launchableName]["cgroup"]
-	cgConfig.Name = cgroupName
-
-	cg, err := cgroups.Find()
-	if err != nil {
-		return util.Errorf("Could not find cgroupfs mount point: %s", err)
-	}
-	err = cg.Write(cgConfig)
-	if _, ok := err.(cgroups.UnsupportedError); ok {
-		// if a subsystem is not supported, just log
-		// and carry on
-		log.Printf("Unsupported subsystem (%s), continuing\n", err)
-		return nil
-	} else if err != nil {
-		return util.Errorf("Could not set cgroup parameters: %s", err)
-	}
-	return cg.AddPID(cgConfig.Name, 0)
 }
 
 // generalized code to remove rlimits on both darwin and linux

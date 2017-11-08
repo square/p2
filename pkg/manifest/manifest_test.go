@@ -25,6 +25,8 @@ func TestPodManifestCanBeRead(t *testing.T) {
 	Assert(t).AreEqual(manifest.GetLaunchableStanzas()["app"].Location, "hoisted-hello_def456.tar.gz", "Location read from manifest didn't have expected value")
 	Assert(t).AreEqual("hoist", manifest.GetLaunchableStanzas()["app"].LaunchableType, "LaunchableType read from manifest didn't have expected value")
 
+	Assert(t).AreEqual(4, manifest.GetResourceLimits().Cgroup.CPUs, "CPU count for pod level cgroup didn't have expected value")
+
 	Assert(t).AreEqual("staging", manifest.GetConfig()["ENVIRONMENT"], "Should have read the ENVIRONMENT from the config stanza")
 	hoptoad := manifest.GetConfig()["hoptoad"].(map[interface{}]interface{})
 	Assert(t).IsTrue(len(hoptoad) == 3, "Should have read the hoptoad value from the config stanza")
@@ -42,6 +44,10 @@ launchables:
       cpus: 4
       memory: 1073741824
     location: https://localhost:4444/foo/bar/baz.tar.gz
+resource_limits:
+  cgroup:
+    cpus: 8
+    memory: 1099511627776
 config:
   ENVIRONMENT: staging
 status:
@@ -103,6 +109,10 @@ func TestPodManifestCanBeWritten(t *testing.T) {
 			},
 		},
 	}
+	builder.SetPodLevelCgroup(cgroups.Config{
+		CPUs:   8,
+		Memory: 1 * size.Tebibyte,
+	})
 	builder.SetLaunchables(launchables)
 	err := builder.SetConfig(map[interface{}]interface{}{
 		"ENVIRONMENT": "staging",
@@ -143,7 +153,7 @@ func TestPodManifestCanReportItsSHA(t *testing.T) {
 	}
 }
 
-func TestPodManifestLaunchablesCGroups(t *testing.T) {
+func TestPodManifestLaunchablesCgroups(t *testing.T) {
 	config := testPod()
 	manifest, _ := FromBytes([]byte(config))
 	launchables := manifest.GetLaunchableStanzas()

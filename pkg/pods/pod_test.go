@@ -130,6 +130,10 @@ launchables:
       memory: 4G
     env:
       ENABLED_BLAMS: 5
+resource_limits:
+  cgroup:
+    cpus: 9
+    memory: 8G
 config:
   ENVIRONMENT: staging
 `
@@ -203,6 +207,21 @@ config:
 		Assert(t).IsNil(err, "should not have erred reading custom env var")
 		Assert(t).AreEqual("5", string(enableBlamSetting), "The user-supplied custom env var was wrong")
 	}
+
+	resourceLimitsConfigFileName, err := manifest.ResourceLimitsConfigFileName()
+	Assert(t).IsNil(err, "Couldn't generate resource limits config filename")
+	resourceLimitsConfigPath := filepath.Join(pod.ConfigDir(), resourceLimitsConfigFileName)
+	resourceLimitsConfig, err := ioutil.ReadFile(resourceLimitsConfigPath)
+
+	expectedResourceLimitsConfig := `cgroup:
+  cpus: 9
+  memory: 8589934592
+`
+	Assert(t).AreEqual(expectedResourceLimitsConfig, string(resourceLimitsConfig), "the resource limits config didn't match")
+
+	resourceEnv, err := ioutil.ReadFile(filepath.Join(pod.EnvDir(), "RESOURCE_LIMITS_PATH"))
+	Assert(t).IsNil(err, "should not have erred while reading the resource limits env file")
+	Assert(t).AreEqual(resourceLimitsConfigPath, string(resourceEnv), "The env path to resource limits didn't match")
 }
 
 func TestLogLaunchableError(t *testing.T) {
