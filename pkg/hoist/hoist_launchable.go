@@ -209,6 +209,7 @@ func (hl *Launchable) InvokeBinScript(script string) (string, error) {
 		CgroupConfigName: hl.CgroupConfigName,
 		CgroupName:       cgroupName,
 		RequireFile:      hl.RequireFile,
+		ClearEnv:         true,
 	}
 	cmd := exec.Command(hl.P2Exec, p2ExecArgs.CommandLine()...)
 	buffer := bytes.Buffer{}

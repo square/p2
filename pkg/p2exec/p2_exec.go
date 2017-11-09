@@ -20,6 +20,7 @@ type P2ExecArgs struct {
 	Command          []string
 	WorkDir          string
 	RequireFile      string
+	ClearEnv         bool
 }
 
 func (args P2ExecArgs) CommandLine() []string {
@@ -54,6 +55,10 @@ func (args P2ExecArgs) CommandLine() []string {
 
 	if args.RequireFile != "" {
 		cmd = append(cmd, "--require-file", args.RequireFile)
+	}
+
+	if args.ClearEnv {
+		cmd = append(cmd, "--clearenv")
 	}
 
 	if len(cmd) > 0 {
