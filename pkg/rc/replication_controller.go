@@ -329,7 +329,6 @@ func (rc *replicationController) addPods(rcFields fields.RC, current types.PodLo
 		cancelFunc()
 	}()
 
-	fmt.Printf("mpuncel: possibleSorted %d\n", len(possibleSorted))
 	for i := 0; i < toSchedule; i++ {
 		// create a new context for every 5 nodes. This is done to make
 		// sure we're safely under the 64 operation limit imposed by
@@ -347,7 +346,6 @@ func (rc *replicationController) addPods(rcFields fields.RC, current types.PodLo
 			cancelFunc()
 			txn, cancelFunc = rc.newAuditingTransaction(context.Background(), rcFields, txn.Nodes())
 		}
-		fmt.Printf("mpuncel: i+1: %d\n", i+1)
 		if len(possibleSorted) < i+1 {
 			errMsg := fmt.Sprintf(
 				"Not enough nodes to meet desire: %d replicas desired, %d currentNodes, %d eligible. Scheduled on %d nodes instead.",
