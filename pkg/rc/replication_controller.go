@@ -902,18 +902,30 @@ func (rc *replicationController) rollbackTransfer(rcFields fields.RC, rollbackRe
 	err := rc.rcStatusStore.DeleteTxn(deleteStatusCtx, rc.rcID)
 	if err != nil {
 		rc.logger.WithError(err).Errorln("error deleting transfer status during cleanup")
-		// TODO: low urgency alert here, the RC loop is not going to
-		// retry this because we've (possibly) handled the ineligible
-		// node already
+
+		errMsg := fmt.Sprintf(
+			"could not set up transaction to delete RC status: %s",
+			err,
+		)
+		alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
+		if alertErr != nil {
+			rc.logger.WithError(alertErr).Errorln("Unable to send alert")
+		}
 		return
 	}
 
 	err = rc.createRollbackTransferRecord(deleteStatusCtx, rcFields, rollbackReason)
 	if err != nil {
 		rc.logger.WithError(err).Errorln("could not create node transfer rollback audit log")
-		// TODO: low urgency alert here, the RC loop is not going to
-		// retry this because we've (possibly) handled the ineligible
-		// node already
+
+		errMsg := fmt.Sprintf(
+			"could not set up transaction to create rollback audit log record: %s",
+			err,
+		)
+		alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
+		if alertErr != nil {
+			rc.logger.WithError(alertErr).Errorln("Unable to send alert")
+		}
 		return
 	}
 
