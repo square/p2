@@ -693,20 +693,73 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, ineligible []
 		nodeTransferID = status.NodeTransfer.ID
 	}
 
-	err = rc.scheduleWithSession(rcFields, newNode)
-	if err != nil {
-		// Different RC may have already taken over the new node, abort transfer
-		deleteErr := rc.rcStatusStore.Delete(rc.rcID)
-		if deleteErr != nil {
-			rc.logger.WithError(deleteErr).Errorln("could not delete rc status")
-		}
-		return util.Errorf("Could not schedule with session; new rc may have taken node: %s", err)
-	}
-
+	rc.nodeTransferMu.Lock()
 	rc.nodeTransfer.newNode = newNode
 	rc.nodeTransfer.oldNode = oldNode
 	rc.nodeTransfer.id = nodeTransferID
+	rc.nodeTransferMu.Unlock()
+
+	err = rc.scheduleWithSession(rcFields, newNode)
+	if err != nil {
+		// This is kind of awkward, but createRollbackTransferRecord
+		// reads rc.nodeTransfer to populate some audit log records
+		defer func() {
+			rc.nodeTransferMu.Lock()
+			rc.nodeTransfer = nodeTransfer{}
+			rc.nodeTransferMu.Unlock()
+		}()
+
+		// Different RC may have already taken over the new node, abort transfer
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		deleteStatusCtx, cancel := transaction.New(ctx)
+		defer cancel()
+
+		deleteErr := rc.rcStatusStore.DeleteTxn(deleteStatusCtx, rc.rcID)
+		if deleteErr != nil {
+			rc.logger.WithError(deleteErr).Errorln("could not delete rc status")
+		}
+
+		deleteErr = rc.createRollbackTransferRecord(
+			deleteStatusCtx,
+			rcFields,
+			audit.RollbackReason(err.Error()),
+		)
+		if deleteErr != nil {
+			rc.logger.WithError(deleteErr).Errorln("could not create node transfer rollback audit log")
+			// TODO: low urgency alert here, the RC loop is not going to
+			// retry this because we've (possibly) handled the ineligible
+			// node already
+		}
+
+		ok, resp, commitErr := transaction.CommitWithRetries(deleteStatusCtx, rc.txner)
+		switch {
+		case commitErr != nil:
+			errMsg := fmt.Sprintf(
+				"could not delete RC status within timeout: %s",
+				commitErr,
+			)
+			alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
+			if alertErr != nil {
+				rc.logger.WithError(alertErr).Errorln("Unable to send alert")
+			}
+		case !ok:
+			errMsg := fmt.Sprintf(
+				"Transaction violation trying to delete RC status: %s",
+				transaction.TxnErrorsToString(resp.Errors),
+			)
+			alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
+			if err != nil {
+				rc.logger.WithError(alertErr).Errorln("Unable to send alert")
+			}
+		}
+
+		return util.Errorf("Could not schedule with session; new rc may have taken node: %s", err)
+	}
+
+	rc.nodeTransferMu.Lock()
 	rc.nodeTransfer.quit = make(chan struct{})
+	rc.nodeTransferMu.Unlock()
 
 	go rc.doBackgroundNodeTransfer(rcFields)
 
@@ -1077,11 +1130,15 @@ func (rc *replicationController) finishTransfer(rcFields fields.RC) error {
 	return nil
 }
 
-func (rc *replicationController) createRollbackTransferRecord(ctx context.Context, rcFields fields.RC, rollbackReason audit.RollbackReason) error {
+func (rc *replicationController) createRollbackTransferRecord(
+	ctx context.Context,
+	rcFields fields.RC,
+	rollbackReason audit.RollbackReason,
+) error {
 	rc.nodeTransferMu.Lock()
+	nodeTransferID := rc.nodeTransfer.id
 	oldNode := rc.nodeTransfer.oldNode
 	newNode := rc.nodeTransfer.newNode
-	nodeTransferID := rc.nodeTransfer.id
 	rc.nodeTransferMu.Unlock()
 
 	auditLogDetails, err := audit.NewNodeTransferRollbackDetails(

@@ -105,6 +105,7 @@ func setup(t *testing.T) (
 	rc *replicationController,
 	alerter *alertingtest.AlertRecorder,
 	auditLogStore testAuditLogStore,
+	rcStatusStore rcstatus.ConsulStore,
 	closeFn func(),
 ) {
 	fixture := consulutil.NewFixture(t)
@@ -124,7 +125,7 @@ func setup(t *testing.T) (
 	consulStore = consul.NewConsulStore(fixture.Client)
 
 	statusStore := statusstore.NewConsul(fixture.Client)
-	rcStatusStore := rcstatus.NewConsul(statusStore, consul.RCStatusNamespace)
+	rcStatusStore = rcstatus.NewConsul(statusStore, consul.RCStatusNamespace)
 
 	manifestBuilder := manifest.NewBuilder()
 	manifestBuilder.SetID("testPod")
@@ -188,7 +189,7 @@ func waitForNodes(t *testing.T, rc ReplicationController, desired int) int {
 }
 
 func TestDoNothing(t *testing.T) {
-	rcStore, consulStore, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -212,7 +213,7 @@ func TestDoNothing(t *testing.T) {
 }
 
 func TestCantSchedule(t *testing.T) {
-	rcStore, consulStore, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	quit := make(chan struct{})
@@ -241,7 +242,7 @@ func TestCantSchedule(t *testing.T) {
 }
 
 func TestSchedule(t *testing.T) {
-	rcStore, consulStore, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, auditLogStore, _, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
@@ -305,7 +306,7 @@ func TestSchedule(t *testing.T) {
 }
 
 func TestSchedulePartial(t *testing.T) {
-	rcStore, consulStore, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
@@ -356,7 +357,7 @@ func TestSchedulePartial(t *testing.T) {
 }
 
 func TestUnschedulePartial(t *testing.T) {
-	rcStore, consulStore, applicator, rc, _, _, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, _, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node2", "nodeQuality", "good")
@@ -399,7 +400,7 @@ func TestUnschedulePartial(t *testing.T) {
 }
 
 func TestScheduleTwice(t *testing.T) {
-	rcStore, consulStore, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
@@ -442,7 +443,7 @@ func TestScheduleTwice(t *testing.T) {
 }
 
 func TestUnschedule(t *testing.T) {
-	rcStore, consulStore, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, auditLogStore, _, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "bad")
@@ -520,7 +521,7 @@ func TestUnschedule(t *testing.T) {
 }
 
 func TestPreferUnscheduleIneligible(t *testing.T) {
-	rcStore, consulStore, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, consulStore, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 	for i := 0; i < 1000; i++ {
 		nodeName := fmt.Sprintf("node%d", i)
@@ -562,7 +563,7 @@ func TestPreferUnscheduleIneligible(t *testing.T) {
 }
 
 func TestConsistencyNoChange(t *testing.T) {
-	rcStore, kvStore, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, kvStore, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -600,7 +601,7 @@ func TestConsistencyNoChange(t *testing.T) {
 }
 
 func TestConsistencyModify(t *testing.T) {
-	rcStore, kvStore, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, kvStore, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -637,7 +638,7 @@ func TestConsistencyModify(t *testing.T) {
 }
 
 func TestConsistencyDelete(t *testing.T) {
-	rcStore, kvStore, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, kvStore, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -671,7 +672,7 @@ func TestConsistencyDelete(t *testing.T) {
 }
 
 func TestReservedLabels(t *testing.T) {
-	rcStore, _, applicator, rc, _, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, _, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -697,7 +698,7 @@ func TestReservedLabels(t *testing.T) {
 }
 
 func TestScheduleMoreThan5(t *testing.T) {
-	rcStore, _, applicator, rc, _, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, _, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	for i := 0; i < 7; i++ {
@@ -728,7 +729,7 @@ func TestScheduleMoreThan5(t *testing.T) {
 }
 
 func TestUnscheduleMoreThan5(t *testing.T) {
-	rcStore, _, applicator, rc, _, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, _, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	for i := 0; i < 7; i++ {
@@ -764,7 +765,7 @@ func TestUnscheduleMoreThan5(t *testing.T) {
 }
 
 func TestAlertIfNodeBecomesIneligibleIfNotDynamicStrategy(t *testing.T) {
-	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -783,7 +784,7 @@ func TestAlertIfNodeBecomesIneligibleIfNotDynamicStrategy(t *testing.T) {
 }
 
 func TestAllocateOnIneligibleIfDynamicStrategy(t *testing.T) {
-	rcStore, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, auditLogStore, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -832,7 +833,7 @@ func TestAllocateOnIneligibleIfDynamicStrategy(t *testing.T) {
 }
 
 func TestNoOpIfNodeTransferInProgress(t *testing.T) {
-	rcStore, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, auditLogStore, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -875,7 +876,7 @@ func TestNoOpIfNodeTransferInProgress(t *testing.T) {
 }
 
 func TestAlertIfCannotAllocateNodes(t *testing.T) {
-	rcStore, _, applicator, rc, alerter, auditLogStore, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, auditLogStore, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -962,7 +963,7 @@ func testIneligibleNodesCommon(applicator testApplicator, rc *replicationControl
 // conditions have been met) decrease the replica count back to 1 to unschedule
 // the ineligible node.
 func TestRCDoesNotFixMembership(t *testing.T) {
-	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	err := applicator.SetLabel(labels.NODE, "node1", "nodeQuality", "good")
@@ -1030,7 +1031,7 @@ func TestRCDoesNotFixMembership(t *testing.T) {
 }
 
 func TestTransferRolledBackByQuitCh(t *testing.T) {
-	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -1051,7 +1052,7 @@ func TestTransferRolledBackByQuitCh(t *testing.T) {
 }
 
 func TestTransferRolledBackOnRCDisabled(t *testing.T) {
-	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -1077,7 +1078,7 @@ func TestTransferRolledBackOnRCDisabled(t *testing.T) {
 }
 
 func TestTransferRolledBackOnReplicasDesiredDecrease(t *testing.T) {
-	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -1153,7 +1154,7 @@ func testRolledBackTransfer(rc *replicationController, rcFields fields.RC, t *te
 }
 
 func TestNewTransferNodeCannotBeScheduledOnReplicasDesiredIncrease(t *testing.T) {
-	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -1219,7 +1220,7 @@ func TestNewTransferNodeCannotBeScheduledOnReplicasDesiredIncrease(t *testing.T)
 }
 
 func TestTransferNodeHappyPath(t *testing.T) {
-	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -1268,7 +1269,7 @@ func TestTransferNodeHappyPath(t *testing.T) {
 }
 
 func TestTransferOnAlreadyAllocatedNodeIfPossible(t *testing.T) {
-	rcStore, _, applicator, rc, alerter, _, closeFn := setup(t)
+	rcStore, _, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
 	rcFields, err := rcStore.Get(rc.rcID)
@@ -1328,6 +1329,98 @@ func TestTransferOnAlreadyAllocatedNodeIfPossible(t *testing.T) {
 
 	if foundBadNode {
 		t.Fatal("Expected to have dropped ineligible node but it is still a current node")
+	}
+}
+
+func TestNodeTransferFailsOnScheduleStep(t *testing.T) {
+	_, consulStore, _, rc, _, auditLogStore, rcStatusStore, closeFn := setup(t)
+	defer closeFn()
+
+	oldNode := types.NodeName("old_node")
+	newNode := types.NodeName("new_node")
+	id := rcstatus.NodeTransferID("abcdefg")
+	rc.nodeTransferMu.Lock()
+	rc.nodeTransfer.oldNode = oldNode
+	rc.nodeTransfer.newNode = newNode
+	rc.nodeTransfer.id = id
+	rc.nodeTransferMu.Unlock()
+
+	err := rcStatusStore.Set(rc.rcID, rcstatus.Status{
+		NodeTransfer: &rcstatus.NodeTransfer{
+			OldNode: oldNode,
+			NewNode: newNode,
+			ID:      id,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rcFields := fields.RC{
+		AllocationStrategy: fields.DynamicStrategy,
+		Manifest:           testManifest(),
+		NodeSelector:       klabels.Everything(),
+	}
+
+	// rig transferNodes() to fail at the scheduleWithSession step by writing
+	// the key that it wants to write ahead of time
+	_, err = consulStore.SetPod(consul.INTENT_TREE, newNode, testManifest())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rc.transferNodes(rcFields, nil)
+	if err == nil {
+		t.Fatal("expected an error because we rigged it to fail")
+	}
+
+	auditLogs := getNodeTransferAuditLogs(t, auditLogStore)
+	if len(auditLogs) != 1 {
+		// In normal operation we'd expect a start record as well, but we set the RC status
+		// ahead of time to make this test simpler, so we only expect a rollback record
+		t.Fatalf("expected one audit log to exist but there were %d", len(auditLogs))
+	}
+
+	al := auditLogs[0]
+	if al.EventType != audit.NodeTransferRollbackEvent {
+		t.Errorf("expected audit log to have event type %q but was %q", audit.NodeTransferRollbackEvent, al.EventType)
+	}
+	var details audit.NodeTransferRollbackDetails
+	err = json.Unmarshal([]byte(*al.EventDetails), &details)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if details.OldNode != oldNode {
+		t.Errorf("expected node transfer rollback record to have OldNode %q but was %q", oldNode, details.OldNode)
+	}
+	if details.NewNode != newNode {
+		t.Errorf("expected node transfer rollback record to have NewNode %q but was %q", newNode, details.NewNode)
+	}
+	if details.NodeTransferID != id {
+		t.Errorf("expected node transfer rollback record to have NodeTransferID %q but was %q", id, details.NodeTransferID)
+	}
+
+	_, _, err = rcStatusStore.Get(rc.rcID)
+	switch {
+	case statusstore.IsNoStatus(err):
+		// this is what we expect
+	case err != nil:
+		t.Fatalf("unexpected error checking for status not existing: %s", err)
+	case err == nil:
+		t.Fatal("rc status was not deleted when scheduleWithSession failed")
+	}
+
+	rc.nodeTransferMu.Lock()
+	defer rc.nodeTransferMu.Unlock()
+	if rc.nodeTransfer.oldNode != "" {
+		t.Fatal("local node transfer state should have been zeroed when scheduleWithSession() failed")
+	}
+	if rc.nodeTransfer.newNode != "" {
+		t.Fatal("local node transfer state should have been zeroed when scheduleWithSession() failed")
+	}
+	if rc.nodeTransfer.id != "" {
+		t.Fatal("local node transfer state should have been zeroed when scheduleWithSession() failed")
 	}
 }
 
