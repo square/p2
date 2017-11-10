@@ -869,29 +869,31 @@ func (rc *replicationController) scheduleWithSession(rcFields fields.RC, newNode
 }
 
 func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC) {
-	ok, rollbackReason := rc.watchHealth(rcFields)
-	if ok {
-		err := rc.finishTransfer(rcFields)
-		if err != nil {
-			rc.logger.WithError(err).Errorln("could not do final node transfer transaction")
-		}
-		rc.logger.Infof("Node transfer from %s to %s complete.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode)
-	} else {
-		rc.logger.Infof("Node transfer from %s to %s was rolled back.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode)
-	}
-
-	rc.nodeTransfer.cancelSession()
-
 	defer func() {
+		rc.nodeTransfer.cancelSession()
 		rc.nodeTransferMu.Lock()
 		rc.nodeTransfer = nodeTransfer{}
 		rc.nodeTransferMu.Unlock()
 	}()
 
-	rc.nodeTransferMu.Lock()
-	rc.nodeTransfer = nodeTransfer{}
-	rc.nodeTransferMu.Unlock()
+	ok, rollbackReason := rc.watchHealth(rcFields)
+	if ok {
+		err := rc.finishTransfer(rcFields)
+		if err == nil {
+			rc.logger.Infof("Node transfer from %s to %s complete.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode)
+			return
+		}
 
+		rc.logger.WithError(err).Errorln("could not do final node transfer transaction, rolling back")
+		rollbackReason = audit.RollbackReason(err.Error())
+	} else {
+		rc.logger.Infof("Node transfer from %s to %s was rolled back.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode)
+	}
+
+	rc.rollbackTransfer(rcFields, rollbackReason)
+}
+
+func (rc *replicationController) rollbackTransfer(rcFields fields.RC, rollbackReason audit.RollbackReason) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	deleteStatusCtx, cancel := transaction.New(ctx)
@@ -905,15 +907,14 @@ func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC) {
 		// node already
 		return
 	}
-	if !ok {
-		err = rc.createRollbackTransferRecord(deleteStatusCtx, rcFields, rollbackReason)
-		if err != nil {
-			rc.logger.WithError(err).Errorln("could not create node transfer rollback audit log")
-			// TODO: low urgency alert here, the RC loop is not going to
-			// retry this because we've (possibly) handled the ineligible
-			// node already
-			return
-		}
+
+	err = rc.createRollbackTransferRecord(deleteStatusCtx, rcFields, rollbackReason)
+	if err != nil {
+		rc.logger.WithError(err).Errorln("could not create node transfer rollback audit log")
+		// TODO: low urgency alert here, the RC loop is not going to
+		// retry this because we've (possibly) handled the ineligible
+		// node already
+		return
 	}
 
 	ok, resp, err := transaction.CommitWithRetries(deleteStatusCtx, rc.txner)
@@ -1030,6 +1031,11 @@ func (rc *replicationController) finishTransfer(rcFields fields.RC) error {
 	)
 	if err != nil {
 		return util.Errorf("could not add audit log record to node transfer completion transaction: %s", err)
+	}
+
+	err = rc.rcStatusStore.DeleteTxn(txn.Context(), rc.rcID)
+	if err != nil {
+		return util.Errorf("could not add RC status deletion to node transfer completion transaction: %s", err)
 	}
 
 	ok, resp, err := txn.CommitWithRetries(rc.txner)
