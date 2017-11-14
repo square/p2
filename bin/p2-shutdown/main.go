@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
@@ -23,11 +24,12 @@ host but we live in a world where hosts are pets.
 `
 
 var (
-	verbose      = kingpin.Flag("verbose", "Print debugging information").Short('v').Bool()
-	dryRun       = kingpin.Flag("dry", "Dry run: do not stop any pods").Short('d').Bool()
-	shutdownPods = kingpin.Flag("pods", "The list of pods to shutdown. Leave empty for all").Short('p').Strings()
-	excludePods  = kingpin.Flag("exclude-pods", "The list of pods to exclude from shutdown.").Short('e').Strings()
-	podRoot      = kingpin.Flag("pod-root", "The base directory for pods").Default(pods.DefaultPath).String()
+	verbose        = kingpin.Flag("verbose", "Print debugging information").Short('v').Bool()
+	dryRun         = kingpin.Flag("dry", "Dry run: do not stop any pods").Short('d').Bool()
+	shutdownPods   = kingpin.Flag("pods", "The list of pods to shutdown. Leave empty for all").Short('p').Strings()
+	excludePods    = kingpin.Flag("exclude-pods", "The list of pods to exclude from shutdown.").Short('e').Strings()
+	podRoot        = kingpin.Flag("pod-root", "The base directory for pods").Default(pods.DefaultPath).String()
+	parallelFactor = kingpin.Flag("limit the number of pods shutdown in parallel to cap load on the system ", "Limit the number of apps we shutdown in parallel.").Default("5").Int()
 )
 
 func main() {
@@ -59,6 +61,11 @@ func main() {
 	// TODO: configure a proper http client instead of using default fetcher
 	podFactory := pods.NewFactory(*podRoot, node, uri.DefaultFetcher, "")
 	var haltWG sync.WaitGroup
+	paralellShutdowns := make(chan struct{}, *parallelFactor)
+	for i := 0; i < *parallelFactor; i++ {
+		paralellShutdowns <- struct{}{}
+	}
+
 	for _, realityEntry := range reality {
 		pod := podFactory.NewLegacyPod(realityEntry.Manifest.ID())
 		if !shouldShutdownPod(pod.Id, podsToShutdown, podsToExclude) {
@@ -72,8 +79,12 @@ func main() {
 
 		haltWG.Add(1)
 		// Halt in the background because Halt() waits for lifecycle scripts
-		go func(man manifest.Manifest, podID types.PodID) {
-			defer haltWG.Done()
+		go func(man manifest.Manifest, podID types.PodID, haltWG *sync.WaitGroup, rateLimiter chan struct{}) {
+			defer func(haltWG *sync.WaitGroup, rateLimiter chan struct{}) {
+				haltWG.Done()
+				rateLimiter <- struct{}{}
+			}(haltWG, rateLimiter)
+			rateLimit(rateLimiter)
 			success, err := pod.Halt(man)
 			if !success {
 				log.Printf("[ERROR]: at least one launchable of %s did not halt successfully.", podID)
@@ -81,9 +92,21 @@ func main() {
 			if err != nil {
 				log.Printf("[ERROR]: Got error while halting pod %s. Consider retrying the command. \n %s", podID, err)
 			}
-		}(realityEntry.Manifest, pod.Id)
+		}(realityEntry.Manifest, pod.Id, &haltWG, paralellShutdowns)
 	}
 	haltWG.Wait()
+}
+
+func rateLimit(rateLimiter chan struct{}) {
+	for {
+		select {
+		case <-rateLimiter:
+			return
+		default:
+			log.Printf("[INFO]: Max parallelism of %d for pod shutdown has been reached. Waiting.", *parallelFactor)
+			time.Sleep(1 * time.Second)
+		}
+	}
 }
 
 // returns true if the pod should be shutdown
