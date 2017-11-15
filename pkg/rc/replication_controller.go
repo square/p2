@@ -229,18 +229,6 @@ func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error
 func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 	rc.logger.NoFields().Infof("Handling RC update: desired replicas %d, disabled %v", rcFields.ReplicasDesired, rcFields.Disabled)
 
-	// If we're disabled, quit an in progress node transfer (if any) and no-op
-	// (it's a normal possibility to be disabled)
-	if rcFields.Disabled {
-		rc.nodeTransferMu.Lock()
-		if rc.nodeTransfer.quit != nil {
-			rc.nodeTransfer.rollbackReason = "RC disabled"
-			close(rc.nodeTransfer.quit)
-		}
-		rc.nodeTransferMu.Unlock()
-		return nil
-	}
-
 	current, err := rc.CurrentPods()
 	if err != nil {
 		return err
@@ -311,6 +299,10 @@ func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 }
 
 func (rc *replicationController) addPods(rcFields fields.RC, current types.PodLocations, eligible []types.NodeName) error {
+	if rcFields.Disabled {
+		return nil
+	}
+
 	currentNodes := current.Nodes()
 
 	// TODO: With Docker or runc we would not be constrained to running only once per node.
@@ -412,12 +404,23 @@ func (rc *replicationController) alertInfo(rcFields fields.RC, msg string) alert
 }
 
 func (rc *replicationController) removePods(rcFields fields.RC, current types.PodLocations, eligible []types.NodeName) error {
+	// If the RC is disabled, we don't want to remove any pods with one
+	// exception: if the ReplicasDesired count is zero and their are "ineligible"
+	// nodes. In this case, we want to unschedule all ineligible nodes.
+	//
+	// An ineligible node is defined as a node that appears in "current" but not
+	// in "eligible". This means that the scheduler has decided this node is no
+	// longer eligible.
+	if rcFields.ReplicasDesired != 0 && rcFields.Disabled {
+		return nil
+	}
+
 	currentNodes := current.Nodes()
 
 	// If we need to downsize the number of nodes, prefer any in current that are not eligible anymore.
 	// TODO: evaluate changes to 'eligible' more frequently
-	preferred := types.NewNodeSet(currentNodes...).Difference(types.NewNodeSet(eligible...))
-	rest := types.NewNodeSet(currentNodes...).Difference(preferred)
+	ineligible := types.NewNodeSet(currentNodes...).Difference(types.NewNodeSet(eligible...))
+	rest := types.NewNodeSet(currentNodes...).Difference(ineligible)
 	toUnschedule := len(current) - rcFields.ReplicasDesired
 	rc.logger.NoFields().Infof("Need to unschedule %d nodes out of %s", toUnschedule, current)
 
@@ -443,8 +446,68 @@ func (rc *replicationController) removePods(rcFields fields.RC, current types.Po
 			txn, cancelFunc = rc.newAuditingTransaction(context.Background(), rcFields, txn.Nodes())
 		}
 
-		unscheduleFrom, ok := preferred.PopAny()
+		unscheduleFrom, ok := ineligible.PopAny()
 		if !ok {
+			if rcFields.Disabled {
+				// Long explanation warning:
+				//
+				// Background: an RC is typically disabled when it is
+				// part of a rolling update, in which pods are
+				// transferred from the "old" (disabled) RC onto a
+				// "new" (enabled) RC.  This is done by decreasing
+				// the replica count on the old RC, and increasing
+				// the replica count on the new RC. Decrementing the
+				// count on the old RC was, until recently, mostly
+				// just a symbolic act because the RC is disabled, so
+				// it wasn't taking any action in response to the
+				// count changes. This works because when the new RC
+				// schedules the pod on a node that the old RC
+				// scheduled, it implicitly destroys the old instance
+				// because it overwrites the same consul key.
+				//
+				// With the introduction of node transfers, we can't
+				// quite rely on this behavior everywhere. Node
+				// transfers are meant to transfer a pod from an
+				// "ineligible" node to a new "eligible" node
+				// transparently to the rest of the system. One
+				// complication is that during a rolling update, a
+				// node on the "old" (disabled) RC might become
+				// ineligible. In this case, the "new" (enabled) RC
+				// is never going to know about the existence of this
+				// ineligible node because it has been removed from
+				// the scheduler, which means that the old RC is
+				// responsible for ultimately unscheduling the pod
+				// from this node.
+				//
+				// For this reason, we have this special case where a
+				// disabled RC is allowed to unschedule ineligible
+				// nodes, but it should NOT unschedule eligble nodes
+				// (because it will rely on a different enabled RC to
+				// do it implicitly)
+				//
+				// One final safety restriction we put in place
+				// is that a disabled RC should only unschedule
+				// ineligible nodes if its replica count is
+				// zero, which we expect to occur at the end of
+				// a rolling update. This protection is
+				// necessary to prevent the rolling update from
+				// counting this ineligible (presumably
+				// healthy) node when it computes the number of
+				// replicas to transfer from the old to the new
+				// RC. If the old RC deletes this node just
+				// after the replica count change is executed,
+				// cluster might fall below the minimum health
+				// requirement of the rolling update.
+				//
+				// If the RCs replica count is zero, we can
+				// reliably assume that the rolling update is
+				// over so it is always safe to unschedule the
+				// old node. This is enforced at the beginning
+				// of the removePods() function in the first
+				// return
+				break
+			}
+
 			var ok bool
 			unscheduleFrom, ok = rest.PopAny()
 			if !ok {

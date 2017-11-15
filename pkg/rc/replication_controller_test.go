@@ -1424,6 +1424,266 @@ func TestNodeTransferFailsOnScheduleStep(t *testing.T) {
 	}
 }
 
+func TestAddPods(t *testing.T) {
+	_, _, _, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+
+	rcFields := fields.RC{
+		ID:              rc.rcID,
+		ReplicasDesired: 5,
+		Manifest:        testManifest(),
+	}
+
+	// empty
+	current := make(types.PodLocations, 0)
+
+	eligible := []types.NodeName{"node1", "node2", "node3", "node4", "node5"}
+
+	err := rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 5 pods were scheduled
+	currentPods, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 5 {
+		t.Fatalf("5 pods should have been scheduled but found %d", len(currentPods))
+	}
+}
+
+func TestAddPodsDisabled(t *testing.T) {
+	_, _, _, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+
+	rcFields := fields.RC{
+		ID:              rc.rcID,
+		ReplicasDesired: 5,
+		Manifest:        testManifest(),
+		Disabled:        true,
+	}
+
+	// empty
+	current := make(types.PodLocations, 0)
+
+	eligible := []types.NodeName{"node1", "node2", "node3", "node4", "node5"}
+
+	err := rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 5 pods were scheduled
+	currentPods, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 0 {
+		t.Fatalf("0 pods should have been scheduled (because RC is disabled) but found %d", len(currentPods))
+	}
+}
+
+func TestRemovePods(t *testing.T) {
+	_, _, _, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+
+	rcFields := fields.RC{
+		ID:              rc.rcID,
+		ReplicasDesired: 5,
+		Manifest:        testManifest(),
+	}
+
+	current := types.PodLocations{}
+
+	eligible := []types.NodeName{"node1", "node2", "node3", "node4", "node5"}
+
+	// first add the pods so the labels get set up correctly
+	err := rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 5 pods were scheduled
+	currentPods, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 5 {
+		t.Fatalf("5 pods should have been scheduled (because RC has nonzero count) but found %d", len(currentPods))
+	}
+
+	rcFields.ReplicasDesired = 3
+
+	err = rc.removePods(rcFields, currentPods, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 3 pods were scheduled (since replicas desired fell to 3)
+	currentPods, err = rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 3 {
+		t.Fatalf("3 pods should have been scheduled but found %d", len(currentPods))
+	}
+}
+
+func TestRemovePodsDisabled(t *testing.T) {
+	_, _, _, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+
+	rcFields := fields.RC{
+		ID:              rc.rcID,
+		ReplicasDesired: 5,
+		Manifest:        testManifest(),
+		Disabled:        false,
+	}
+
+	current := types.PodLocations{}
+	eligible := []types.NodeName{"node1", "node2", "node3", "node4", "node5"}
+
+	// first add the pods so the labels get set up correctly
+	err := rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 5 pods were scheduled
+	currentPods, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 5 {
+		t.Fatalf("5 pods should have been scheduled (because RC has nonzero count) but found %d", len(currentPods))
+	}
+
+	rcFields.Disabled = true
+	rcFields.ReplicasDesired = 3
+
+	err = rc.removePods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 5 pods were scheduled (since the RC was disabled so it shouldn't have done anything)
+	currentPods, err = rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 5 {
+		t.Fatalf("5 pods should have been scheduled (because RC is disabled) but found %d", len(currentPods))
+	}
+}
+
+func TestRemovePodsDisabledCount0AndIneligible(t *testing.T) {
+	// For explanation for why this test exists, see the comments in removePods()
+	//
+	// TL;DR we expect a disabled RC to unschedule nodes that are in current but
+	// not in eligible if and only if its count is 0
+	_, _, _, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+
+	rcFields := fields.RC{
+		ID:              rc.rcID,
+		ReplicasDesired: 5,
+		Manifest:        testManifest(),
+		Disabled:        false,
+	}
+
+	// 5 pods
+	current := types.PodLocations{}
+
+	eligible := []types.NodeName{"node1", "node2", "node3", "node4", "node5"}
+
+	// first add the pods so the labels get set up correctly
+	err := rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 5 pods were scheduled
+	currentPods, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	currentNodes := currentPods.Nodes()
+
+	if len(currentPods) != 5 {
+		t.Fatalf("5 pods should have been scheduled (because RC has nonzero count) but found %d", len(currentPods))
+	}
+
+	// node4 and node5 are "ineligible"
+	eligible = []types.NodeName{"node1", "node2", "node3"}
+	rcFields.Disabled = true
+
+	err = rc.removePods(rcFields, currentPods, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 5 pods were scheduled (since the RC's count was not zero)
+	currentPods, err = rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 5 {
+		t.Fatalf("5 pods should have been scheduled (because RC has nonzero count) but found %d", len(currentPods))
+	}
+
+	// Set the count to zero, and now we should see the ineligible nodes become unscheduled
+	rcFields.ReplicasDesired = 0
+
+	err = rc.removePods(rcFields, currentPods, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 5 pods were scheduled
+	currentPods, err = rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 3 {
+		t.Fatalf("3 pods should have been scheduled (because RC has zero count) but found %d", len(currentPods))
+	}
+
+	// confirm that only node4 and node5 were removed
+
+	removed := types.NewNodeSet(currentNodes...).Difference(types.NewNodeSet(currentPods.Nodes()...))
+	node4Found := false
+	node5Found := false
+
+	for _, removedNode := range removed.List() {
+		switch removedNode {
+		case "node4":
+			node4Found = true
+		case "node5":
+			node5Found = true
+		default:
+			t.Fatalf("node %q was removed in error", removedNode)
+		}
+	}
+
+	if !node4Found {
+		t.Error("expected node4 to be removed because it was ineligible")
+	}
+	if !node5Found {
+		t.Error("expected node5 to be removed because it was ineligible")
+	}
+}
+
 func getNodeTransferAuditLogs(t *testing.T, auditLogStore testAuditLogStore) []audit.AuditLog {
 	var ret []audit.AuditLog
 	auditLogs, err := auditLogStore.List()
