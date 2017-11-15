@@ -255,6 +255,7 @@ func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 	nodesChanged := false
 	switch {
 	case rcFields.ReplicasDesired > len(current):
+		rc.nodeTransferMu.Lock()
 		if rc.nodeTransfer.quit != nil {
 			// Remove nodeTransfer.newNode from eligible during a node transfer
 			// because if it is scheduled again below in addPods(), the rc
@@ -267,6 +268,7 @@ func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 				}
 			}
 		}
+		rc.nodeTransferMu.Unlock()
 		err := rc.addPods(rcFields, current, eligible)
 		if err != nil {
 			return err
