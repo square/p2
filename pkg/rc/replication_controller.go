@@ -233,8 +233,8 @@ func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 	// (it's a normal possibility to be disabled)
 	if rcFields.Disabled {
 		rc.nodeTransferMu.Lock()
-		rc.nodeTransfer.rollbackReason = "RC disabled"
 		if rc.nodeTransfer.quit != nil {
+			rc.nodeTransfer.rollbackReason = "RC disabled"
 			close(rc.nodeTransfer.quit)
 		}
 		rc.nodeTransferMu.Unlock()
