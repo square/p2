@@ -229,18 +229,6 @@ func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error
 func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 	rc.logger.NoFields().Infof("Handling RC update: desired replicas %d, disabled %v", rcFields.ReplicasDesired, rcFields.Disabled)
 
-	// If we're disabled, quit an in progress node transfer (if any) and no-op
-	// (it's a normal possibility to be disabled)
-	if rcFields.Disabled {
-		rc.nodeTransferMu.Lock()
-		if rc.nodeTransfer.quit != nil {
-			rc.nodeTransfer.rollbackReason = "RC disabled"
-			close(rc.nodeTransfer.quit)
-		}
-		rc.nodeTransferMu.Unlock()
-		return nil
-	}
-
 	current, err := rc.CurrentPods()
 	if err != nil {
 		return err
@@ -311,6 +299,10 @@ func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 }
 
 func (rc *replicationController) addPods(rcFields fields.RC, current types.PodLocations, eligible []types.NodeName) error {
+	if rcFields.Disabled {
+		return nil
+	}
+
 	currentNodes := current.Nodes()
 
 	// TODO: With Docker or runc we would not be constrained to running only once per node.
@@ -412,12 +404,16 @@ func (rc *replicationController) alertInfo(rcFields fields.RC, msg string) alert
 }
 
 func (rc *replicationController) removePods(rcFields fields.RC, current types.PodLocations, eligible []types.NodeName) error {
+	if rcFields.Disabled {
+		return nil
+	}
+
 	currentNodes := current.Nodes()
 
 	// If we need to downsize the number of nodes, prefer any in current that are not eligible anymore.
 	// TODO: evaluate changes to 'eligible' more frequently
-	preferred := types.NewNodeSet(currentNodes...).Difference(types.NewNodeSet(eligible...))
-	rest := types.NewNodeSet(currentNodes...).Difference(preferred)
+	ineligible := types.NewNodeSet(currentNodes...).Difference(types.NewNodeSet(eligible...))
+	rest := types.NewNodeSet(currentNodes...).Difference(ineligible)
 	toUnschedule := len(current) - rcFields.ReplicasDesired
 	rc.logger.NoFields().Infof("Need to unschedule %d nodes out of %s", toUnschedule, current)
 
@@ -443,7 +439,7 @@ func (rc *replicationController) removePods(rcFields fields.RC, current types.Po
 			txn, cancelFunc = rc.newAuditingTransaction(context.Background(), rcFields, txn.Nodes())
 		}
 
-		unscheduleFrom, ok := preferred.PopAny()
+		unscheduleFrom, ok := ineligible.PopAny()
 		if !ok {
 			var ok bool
 			unscheduleFrom, ok = rest.PopAny()
