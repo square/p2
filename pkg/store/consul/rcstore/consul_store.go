@@ -95,6 +95,7 @@ type RCLabeler interface {
 	RemoveAllLabels(labelType labels.Type, id string) error
 	SetLabelsTxn(ctx context.Context, labelType labels.Type, id string, labels map[string]string) error
 	GetMatches(klabels.Selector, labels.Type) ([]labels.Labeled, error)
+	RemoveAllLabelsTxn(ctx context.Context, labelType labels.Type, id string) error
 }
 
 func NewConsul(client consulutil.ConsulClient, labeler RCLabeler, retries int) *ConsulStore {
@@ -600,10 +601,26 @@ func (s *ConsulStore) Disable(id fields.ID) error {
 	})
 }
 
+// DisableTxn adds the KV operations required to disable the RC to ctx.
+func (s *ConsulStore) DisableTxn(ctx context.Context, id fields.ID) error {
+	return s.mutateRCTxn(ctx, id, func(rc fields.RC) (fields.RC, error) {
+		rc.Disabled = true
+		return rc, nil
+	})
+}
+
 // Enable unsets the disabled flag for the given RC, instructing any running
 // farms to begin handling it.
 func (s *ConsulStore) Enable(id fields.ID) error {
 	return s.retryMutate(id, func(rc fields.RC) (fields.RC, error) {
+		rc.Disabled = false
+		return rc, nil
+	})
+}
+
+// EnableTxn adds the KV operations required to enable the RC to ctx.
+func (s *ConsulStore) EnableTxn(ctx context.Context, id fields.ID) error {
+	return s.mutateRCTxn(ctx, id, func(rc fields.RC) (fields.RC, error) {
 		rc.Disabled = false
 		return rc, nil
 	})
@@ -655,6 +672,22 @@ func (s *ConsulStore) Delete(id fields.ID, force bool) error {
 	})
 }
 
+// DeleteTxn adds a deletion operation to the passed context rather than
+// immediately deleting ig
+func (s *ConsulStore) DeleteTxn(ctx context.Context, id fields.ID, force bool) error {
+	return s.mutateRCTxn(ctx, id, func(rc fields.RC) (fields.RC, error) {
+		if force {
+			return fields.RC{}, nil
+		}
+
+		if rc.ReplicasDesired != 0 {
+			return rc, util.Errorf("cannot delete RC %s because its replica count is nonzero, was %d", id, rc.ReplicasDesired)
+		}
+
+		return fields.RC{}, nil
+	})
+}
+
 // UpdateManifest will set the manifest on the RC at the given ID. Be careful with this function!
 func (s *ConsulStore) UpdateManifest(id fields.ID, man manifest.Manifest) error {
 	manifestUpdater := func(rc fields.RC) (fields.RC, error) {
@@ -690,40 +723,97 @@ func (s *ConsulStore) retryMutate(id fields.ID, mutator func(fields.RC) (fields.
 	return err
 }
 
-// performs a safe (ie check-and-set) mutation of the rc with the given id,
-// using the given function
-// if the mutator returns an error, it will be propagated out
-// if the returned RC has id="", then it will be deleted
-func (s *ConsulStore) MutateRC(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
+func (s *ConsulStore) mutatePair(id fields.ID, mutator func(fields.RC) (fields.RC, error)) (*api.KVPair, error) {
 	rcp, err := s.rcPath(id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	kvp, meta, err := s.kv.Get(rcp, nil)
 	if err != nil {
-		return consulutil.NewKVError("get", rcp, err)
+		return nil, consulutil.NewKVError("get", rcp, err)
 	}
 
 	if kvp == nil {
-		return NoReplicationController
+		return nil, NoReplicationController
 	}
 
 	rc, err := kvpToRC(kvp)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	newKVP := &api.KVPair{
 		Key:         rcp,
 		ModifyIndex: meta.LastIndex,
 	}
 
-	var success bool
 	newRC, err := mutator(rc)
+	if err != nil {
+		return nil, err
+	}
+
+	if newRC.ID.String() == "" {
+		// returning nil Value field signifies that the RC is being deleted
+		return newKVP, nil
+	}
+
+	b, err := json.Marshal(newRC)
+	if err != nil {
+		return nil, util.Errorf("Could not marshal RC as JSON: %s", err)
+	}
+	newKVP.Value = b
+	return newKVP, nil
+}
+
+func (s *ConsulStore) mutateRCTxn(ctx context.Context, id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
+	newKVP, err := s.mutatePair(id, mutator)
 	if err != nil {
 		return err
 	}
-	if newRC.ID.String() == "" {
+
+	if newKVP.Value == nil {
+		err = s.labeler.RemoveAllLabelsTxn(ctx, labels.RC, id.String())
+		if err != nil {
+			return err
+		}
+
+		err = transaction.Add(ctx, api.KVTxnOp{
+			Verb:  api.KVDeleteCAS,
+			Key:   newKVP.Key,
+			Index: newKVP.ModifyIndex,
+		})
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb:  api.KVCAS,
+		Key:   newKVP.Key,
+		Index: newKVP.ModifyIndex,
+		Value: newKVP.Value,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// performs a safe (ie check-and-set) mutation of the rc with the given id,
+// using the given function
+// if the mutator returns an error, it will be propagated out
+// if the returned RC has id="", then it will be deleted
+func (s *ConsulStore) MutateRC(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
+	newKVP, err := s.mutatePair(id, mutator)
+	if err != nil {
+		return nil
+	}
+
+	var success bool
+	if newKVP.Value == nil {
 		// TODO: If this fails, then we have some dangling labels.
 		// Perhaps they can be cleaned up later.
 		// note that if the CAS fails afterwards, we will have still deleted
@@ -740,11 +830,6 @@ func (s *ConsulStore) MutateRC(id fields.ID, mutator func(fields.RC) (fields.RC,
 			return consulutil.NewKVError("delete-cas", newKVP.Key, err)
 		}
 	} else {
-		b, err := json.Marshal(newRC)
-		if err != nil {
-			return util.Errorf("Could not marshal RC as JSON: %s", err)
-		}
-		newKVP.Value = b
 		success, _, err = s.kv.CAS(newKVP, nil)
 		if err != nil {
 			return consulutil.NewKVError("cas", newKVP.Key, err)
@@ -752,7 +837,7 @@ func (s *ConsulStore) MutateRC(id fields.ID, mutator func(fields.RC) (fields.RC,
 	}
 
 	if !success {
-		return CASError(rcp)
+		return CASError(newKVP.Key)
 	}
 	return nil
 }
@@ -867,6 +952,22 @@ func (s *ConsulStore) LockForMutation(rcID fields.ID, session consul.Session) (c
 	return session.Lock(mutationLockPath)
 }
 
+// LockForMutationTxn doesn't immediately lock the RC for mutation but instead
+// adds the necessary kv operations to the lockCtx's transaction to do so. It
+// also adds the operations required to unlock the RC to unlockCtx.
+func (s *ConsulStore) LockForMutationTxn(
+	lockCtx context.Context,
+	rcID fields.ID,
+	session consul.Session,
+) (consul.TxnUnlocker, error) {
+	mutationLockPath, err := s.mutationLockPath(rcID)
+	if err != nil {
+		return nil, err
+	}
+
+	return session.LockTxn(lockCtx, mutationLockPath)
+}
+
 // UpdateCreationLockPath computes the consul key that should be locked by callers
 // creating an RU that will operate on this RC. This function is exported so these
 // callers can perform operations on the lock during a consul transaction
@@ -928,7 +1029,7 @@ type TransferReplicaCountsRequest struct {
 // of two RCs in consul.  This is useful for rolling updates to transition
 // nodes from the old RC to the new one without risking the consul database
 // dying between updates and violating replica count invariants
-func (s *ConsulStore) TransferReplicaCounts(req TransferReplicaCountsRequest) error {
+func (s *ConsulStore) TransferReplicaCounts(ctx context.Context, req TransferReplicaCountsRequest) error {
 	if req.ToRCID == "" {
 		return util.Errorf("couldn't transfer replica counts: ToRCID was empty")
 	}
@@ -989,31 +1090,26 @@ func (s *ConsulStore) TransferReplicaCounts(req TransferReplicaCountsRequest) er
 		return util.Errorf("couldn't transfer replica counts: %s", err)
 	}
 
-	ops := api.KVTxnOps{
-		{
-			Verb:  api.KVCAS,
-			Key:   fromRCPath,
-			Value: fromRCBytes,
-			Index: fromRCIndex,
-		},
-		{
-			Verb:  api.KVCAS,
-			Key:   toRCPath,
-			Value: toRCBytes,
-			Index: toRCIndex,
-		},
-	}
-
-	ok, resp, _, err := s.kv.Txn(ops, nil)
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb:  api.KVCAS,
+		Key:   fromRCPath,
+		Value: fromRCBytes,
+		Index: fromRCIndex,
+	})
 	if err != nil {
-		return util.Errorf("replica count transfer failed: %s", err)
+		return err
 	}
 
-	if !ok {
-		return util.Errorf("replica count transfer transaction was rolled back. errors: %s", formatTxnErrors(resp))
+	err = transaction.Add(ctx, api.KVTxnOp{
+		Verb:  api.KVCAS,
+		Key:   toRCPath,
+		Value: toRCBytes,
+		Index: toRCIndex,
+	})
+	if err != nil {
+		return err
 	}
 
-	// we don't care what the response was if it worked
 	return nil
 }
 

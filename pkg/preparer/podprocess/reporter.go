@@ -390,10 +390,8 @@ func (r *Reporter) reportLatestExits() {
 		ok, resp, err := transaction.Commit(ctx, r.client.KV())
 		switch {
 		case err != nil:
-			// this means there was an error talking to consul and the
-			// transaction was not even attempted.
-			// TODO: consider retrying transaction.Commit()
-			subLogger.WithError(err).Errorln("Failed to record status due to intermittent error")
+			subLogger.WithError(err).Errorln("Failed to record status")
+			cancelFunc()
 			return
 		case !ok:
 			// this means the transaction was rolled back, probably because something else about the status record changed.

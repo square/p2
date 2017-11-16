@@ -318,6 +318,9 @@ type session struct {
 	renewalCh <-chan time.Time
 }
 
+// TODO: this should really use RenewPeriodic() instead of continuallyRenew()
+// because it properly handles the server changing the session TTL to put
+// backpressure on clients during high load.
 func NewManagedSession(client consulutil.ConsulClient, sessionID string, name string, quitCh chan struct{}, renewalErrCh chan error, renewalCh <-chan time.Time) Session {
 	sess := &session{
 		client:       client,

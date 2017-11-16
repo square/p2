@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -37,6 +38,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
@@ -471,9 +473,18 @@ func verifyTransferReplicas(errCh chan<- error, tempdir string, logger logging.L
 		StartingFromReplicas: &startingFromReplicas,
 		StartingToReplicas:   &startingToReplicas,
 	}
-	err = rcStore.TransferReplicaCounts(transferReq)
+
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	err = rcStore.TransferReplicaCounts(ctx, transferReq)
 	if err != nil {
-		errCh <- util.Errorf("failed to transfer replicas from one RC to another: %s", err)
+		errCh <- util.Errorf("failed to build transfer RC transaction: %s", err)
+		return
+	}
+
+	err = transaction.MustCommit(ctx, consulClient.KV())
+	if err != nil {
+		errCh <- util.Errorf("failed to commit RC transfer transaction: %s", err)
 		return
 	}
 
