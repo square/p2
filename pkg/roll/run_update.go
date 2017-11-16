@@ -148,7 +148,7 @@ func RetryOrQuit(ctx context.Context, f func() error, logger logging.Logger, err
 		select {
 		case <-ctx.Done():
 			return false
-		case <-time.After(1 * time.Second):
+		case <-time.After(5 * time.Second):
 			// unblock the select and loop again
 		}
 	}
