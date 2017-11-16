@@ -307,10 +307,16 @@ func (u *update) Run(ctx context.Context) {
 }
 
 func (u *update) cleanupOldRC(ctx context.Context) {
+	oldRCZeroed := false
 	cleanupFunc := func() error {
 		oldRC, err := u.rcStore.Get(u.OldRC)
 		if err != nil {
 			return err
+		}
+
+		if oldRC.ReplicasDesired == 0 {
+			oldRCZeroed = true
+			return nil
 		}
 
 		if oldRC.ReplicasDesired != 0 {
@@ -340,6 +346,7 @@ func (u *update) cleanupOldRC(ctx context.Context) {
 			if err != nil {
 				return err
 			}
+
 			// return nil to avoid looping, the alert
 			// should cause the issue to be fixed by a
 			// human operator
@@ -350,6 +357,11 @@ func (u *update) cleanupOldRC(ctx context.Context) {
 
 	u.logger.NoFields().Infoln("Cleaning up old RC")
 	if !RetryOrQuit(ctx, cleanupFunc, u.logger, "Could not delete old RC") {
+		return
+	}
+
+	if !oldRCZeroed {
+		u.logger.Infoln("Not cleaning up old RC because it still has some replicas desired")
 		return
 	}
 

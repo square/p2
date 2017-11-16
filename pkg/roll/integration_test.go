@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/alerting"
+	"github.com/square/p2/pkg/alerting/alertingtest"
 	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -108,6 +109,72 @@ func TestCleanupOldRCHappy(t *testing.T) {
 		//good
 	case nil:
 		t.Fatal("expected an error due to missing old RC")
+	default:
+		t.Fatalf("unexpected error when checking that old RC was deleted: %s", err)
+	}
+}
+
+func TestCleanupOldRCNotZeroed(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+
+	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
+	rcStore := rcstore.NewConsul(fixture.Client, applicator, 0)
+
+	err := applicator.SetLabel(labels.POD, "some_id", "some_key", "some_value")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	builder := manifest.NewBuilder()
+	builder.SetID("whatever")
+
+	rc, err := rcStore.Create(
+		builder.GetManifest(),
+		klabels.Everything(),
+		"some_az",
+		"some_cn",
+		nil,
+		nil,
+		"some_strategy",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// make the RC not have zero replicas
+	err = rcStore.SetDesiredReplicas(rc.ID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	alerter := alertingtest.NewRecorder()
+	update := update{
+		Update:  fields.Update{OldRC: rc.ID},
+		logger:  logging.TestLogger(),
+		rcStore: rcStore,
+		alerter: alerter,
+	}
+
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+
+	update.cleanupOldRC(ctx)
+
+	if len(alerter.Alerts) != 1 {
+		t.Fatal("expected an alert to fire if the old RC isn't zeroed out")
+	}
+
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = rcStore.Get(rc.ID)
+	switch err {
+	case rcstore.NoReplicationController:
+		t.Fatal("old RC was deleted even though it wasn't zeroed out")
+	case nil:
 	default:
 		t.Fatalf("unexpected error when checking that old RC was deleted: %s", err)
 	}
