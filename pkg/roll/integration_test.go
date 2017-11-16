@@ -81,6 +81,11 @@ func TestCleanupOldRCHappy(t *testing.T) {
 	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
 	rcStore := rcstore.NewConsul(fixture.Client, applicator, 0)
 
+	err := applicator.SetLabel(labels.POD, "some_id", "some_key", "some_value")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	builder := manifest.NewBuilder()
 	builder.SetID("whatever")
 
@@ -93,6 +98,7 @@ func TestCleanupOldRCHappy(t *testing.T) {
 		Update:  fields.Update{OldRC: rc.ID},
 		logger:  logging.TestLogger(),
 		rcStore: rcStore,
+		labeler: applicator,
 	}
 
 	ctx, cancel := transaction.New(context.Background())

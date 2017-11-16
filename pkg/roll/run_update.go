@@ -308,50 +308,60 @@ func (u *update) Run(ctx context.Context) {
 
 func (u *update) cleanupOldRC(ctx context.Context) {
 	oldRCZeroed := false
+
 	cleanupFunc := func() error {
-		oldRC, err := u.rcStore.Get(u.OldRC)
-		if err != nil {
-			return err
-		}
-
-		if oldRC.ReplicasDesired == 0 {
-			oldRCZeroed = true
-			return nil
-		}
-
-		if oldRC.ReplicasDesired != 0 {
-			// This likely means there was a mathematical error
-			// of some kind that was made when the RU was
-			// scheduled. If LeaveOld is false, we expect that
-			// all nodes will have been rolled from the old RC to
-			// the new one at this point, so we can delete the
-			// old RC after it isn't managing any nodes anymore.
-			// This error likely needs manual fixing by shifting
-			// the remaining nodes off of this RC and then
-			// deleting it
-			u.logger.Errorln("could not delete old RC because its replica count is nonzero")
-			err = u.alerter.Alert(alerting.AlertInfo{
-				Description: "old RC did not have 0 replicas and could not be deleted.",
-				IncidentKey: "roll-" + u.ID().String(),
-				Details: struct {
-					OldRCID     string `json:"old_rc_id"`
-					RUID        string `json:"ru_id"`
-					NumReplicas int    `json:"num_replicas"`
-				}{
-					OldRCID:     u.OldRC.String(),
-					RUID:        u.ID().String(),
-					NumReplicas: oldRC.ReplicasDesired,
-				},
-			}, alerting.LowUrgency)
+		if !oldRCZeroed {
+			oldRC, err := u.rcStore.Get(u.OldRC)
 			if err != nil {
 				return err
 			}
 
-			// return nil to avoid looping, the alert
-			// should cause the issue to be fixed by a
-			// human operator
-			return nil
+			if oldRC.ReplicasDesired != 0 {
+				// This likely means there was a mathematical error
+				// of some kind that was made when the RU was
+				// scheduled. If LeaveOld is false, we expect that
+				// all nodes will have been rolled from the old RC to
+				// the new one at this point, so we can delete the
+				// old RC after it isn't managing any nodes anymore.
+				// This error likely needs manual fixing by shifting
+				// the remaining nodes off of this RC and then
+				// deleting it
+				u.logger.Errorln("could not delete old RC because its replica count is nonzero")
+				err = u.alerter.Alert(alerting.AlertInfo{
+					Description: "old RC did not have 0 replicas and could not be deleted.",
+					IncidentKey: "roll-" + u.ID().String(),
+					Details: struct {
+						OldRCID     string `json:"old_rc_id"`
+						RUID        string `json:"ru_id"`
+						NumReplicas int    `json:"num_replicas"`
+					}{
+						OldRCID:     u.OldRC.String(),
+						RUID:        u.ID().String(),
+						NumReplicas: oldRC.ReplicasDesired,
+					},
+				}, alerting.LowUrgency)
+				if err != nil {
+					return err
+				}
+
+				// return nil to avoid looping, the alert
+				// should cause the issue to be fixed by a
+				// human operator
+				return nil
+			}
+			oldRCZeroed = true
 		}
+
+		currentPods, err := rc.CurrentPods(u.OldRC, u.labeler)
+		if err != nil {
+			return err
+		}
+
+		if len(currentPods) != 0 {
+			u.logger.Warnf("old RC still has %d current pods, waiting to delete")
+			return util.Errorf("waiting for old RC to have 0 current pods before deleting")
+		}
+
 		return nil
 	}
 
