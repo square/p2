@@ -9,6 +9,7 @@ import (
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/health/checker"
+	hclient "github.com/square/p2/pkg/health/client"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	p2metrics "github.com/square/p2/pkg/metrics"
@@ -34,16 +35,17 @@ type Factory interface {
 }
 
 type UpdateFactory struct {
-	Store         Store
-	Client        consulutil.ConsulClient
-	Txner         transaction.Txner
-	RCLocker      ReplicationControllerLocker
-	RCStore       ReplicationControllerStore
-	RollStore     RollingUpdateStore
-	HealthChecker checker.ConsulHealthChecker
-	Labeler       labeler
-	WatchDelay    time.Duration
-	Alerter       alerting.Alerter
+	Store               Store
+	Client              consulutil.ConsulClient
+	Txner               transaction.Txner
+	RCLocker            ReplicationControllerLocker
+	RCStore             ReplicationControllerStore
+	RollStore           RollingUpdateStore
+	HealthChecker       checker.ConsulHealthChecker
+	HealthServiceClient hclient.HealthServiceClient
+	Labeler             labeler
+	WatchDelay          time.Duration
+	Alerter             alerting.Alerter
 }
 
 type labeler interface {
@@ -59,21 +61,23 @@ func NewUpdateFactory(
 	rcStore ReplicationControllerStore,
 	rollStore RollingUpdateStore,
 	healthChecker checker.ConsulHealthChecker,
+	healthServiceClient hclient.HealthServiceClient,
 	labeler labeler,
 	watchDelay time.Duration,
 	alerter alerting.Alerter,
 ) UpdateFactory {
 	return UpdateFactory{
-		Store:         store,
-		Client:        consulClient,
-		Txner:         txner,
-		RCLocker:      rcLocker,
-		RCStore:       rcStore,
-		RollStore:     rollStore,
-		HealthChecker: healthChecker,
-		Labeler:       labeler,
-		WatchDelay:    watchDelay,
-		Alerter:       alerter,
+		Store:               store,
+		Client:              consulClient,
+		Txner:               txner,
+		RCLocker:            rcLocker,
+		RCStore:             rcStore,
+		RollStore:           rollStore,
+		HealthChecker:       healthChecker,
+		HealthServiceClient: healthServiceClient,
+		Labeler:             labeler,
+		WatchDelay:          watchDelay,
+		Alerter:             alerter,
 	}
 }
 
@@ -87,6 +91,7 @@ func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consu
 		f.RollStore,
 		f.Txner,
 		f.HealthChecker,
+		f.HealthServiceClient,
 		f.Labeler,
 		l,
 		session,
