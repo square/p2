@@ -887,12 +887,12 @@ func (rc *replicationController) scheduleWithSession(rcFields fields.RC, newNode
 
 	// By passing ctx below, ctxCancel (defined above) can be used to destroy
 	// the session when the node transfer finishes or is stopped
-	_, session, err := consul.SessionContext(ctx, rc.consulClient, name)
+	sessionCtx, session, err := consul.SessionContext(ctx, rc.consulClient, name)
 	if err != nil {
 		return err
 	}
 
-	writeCtx, writeCancel := transaction.New(context.Background())
+	writeCtx, writeCancel := transaction.New(sessionCtx)
 	defer writeCancel()
 
 	_, err = session.LockIfKeyNotExistsTxn(writeCtx, key, manifestBytes)
@@ -905,18 +905,28 @@ func (rc *replicationController) scheduleWithSession(rcFields fields.RC, newNode
 	case err != nil:
 		return err
 	case !ok:
-		// assign to err instead of just returning it so that deferred func sees
-		// the assignment
-		err = util.Errorf("transaction violation scheduling new node: %s", transaction.TxnErrorsToString(resp.Errors))
-		return err
+		// if the error was because we lost our session, then return. Otherwise we
+		// got a conflict on the intent record which is fine and we should just proceed.
+		// It's probably because a rolling update (deploy) is underway so another RC
+		// scheduled it for us
+		select {
+		case <-sessionCtx.Done():
+			// assign to err instead of just returning it so that deferred func sees
+			// the assignment
+			err = util.Errorf("transaction violation scheduling new node: %s", transaction.TxnErrorsToString(resp.Errors))
+			return err
+		default:
+		}
+	default:
+		// only set unlockArgs if the lock was actually acquired
+		rc.nodeTransfer.unlockArgs = unlockArgs{
+			key:   key,
+			value: manifestBytes,
+		}
 	}
 
 	rc.nodeTransfer.session = session
 	rc.nodeTransfer.cancelSession = ctxCancel
-	rc.nodeTransfer.unlockArgs = unlockArgs{
-		key:   key,
-		value: manifestBytes,
-	}
 
 	return nil
 }
@@ -1049,11 +1059,16 @@ func (rc *replicationController) finishTransfer(rcFields fields.RC) error {
 	txn, cancelFunc := rc.newAuditingTransaction(ctx, rcFields, current.Nodes())
 	defer cancelFunc()
 
-	key := rc.nodeTransfer.unlockArgs.key
-	value := rc.nodeTransfer.unlockArgs.value
-	err = rc.nodeTransfer.session.UnlockTxn(txn.Context(), key, value)
-	if err != nil {
-		return err
+	// if unlockArgs is empty, there's nothing to unlock. This might happen if we
+	// didn't actually acquire the lock on the new node (because another RC scheduled
+	// it)
+	if rc.nodeTransfer.unlockArgs.key != "" {
+		key := rc.nodeTransfer.unlockArgs.key
+		value := rc.nodeTransfer.unlockArgs.value
+		err = rc.nodeTransfer.session.UnlockTxn(txn.Context(), key, value)
+		if err != nil {
+			return err
+		}
 	}
 
 	txn.AddNode(rc.nodeTransfer.newNode)

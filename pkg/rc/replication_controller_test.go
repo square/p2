@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path"
 	"sync"
 	"testing"
 	"time"
@@ -27,10 +28,12 @@ import (
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/hashicorp/consul/api"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -1336,7 +1339,22 @@ func TestTransferOnAlreadyAllocatedNodeIfPossible(t *testing.T) {
 	}
 }
 
-func TestNodeTransferFailsOnScheduleStep(t *testing.T) {
+type failOnLockKeyTxner struct {
+	badKey string
+	inner  transaction.Txner
+}
+
+func (f failOnLockKeyTxner) Txn(txn api.KVTxnOps, q *api.QueryOptions) (bool, *api.KVTxnResponse, *api.QueryMeta, error) {
+	for _, op := range txn {
+		if op.Verb == string(api.KVLock) && op.Key == f.badKey {
+			return false, &api.KVTxnResponse{}, &api.QueryMeta{}, util.Errorf("this key was configured to fail")
+		}
+	}
+
+	return f.inner.Txn(txn, q)
+}
+
+func TestNodeTransferRollsBackOnScheduleError(t *testing.T) {
 	_, consulStore, _, rc, _, auditLogStore, rcStatusStore, closeFn := setup(t)
 	defer closeFn()
 
@@ -1366,8 +1384,11 @@ func TestNodeTransferFailsOnScheduleStep(t *testing.T) {
 		NodeSelector:       klabels.Everything(),
 	}
 
-	// rig transferNodes() to fail at the scheduleWithSession step by writing
-	// the key that it wants to write ahead of time
+	// rig scheduleWithSession() to fail by inserting a special txner
+	rc.txner = failOnLockKeyTxner{
+		badKey: path.Join(consul.INTENT_TREE.String(), newNode.String(), testManifest().ID().String()),
+		inner:  rc.txner,
+	}
 	_, err = consulStore.SetPod(consul.INTENT_TREE, newNode, testManifest())
 	if err != nil {
 		t.Fatal(err)
@@ -1375,7 +1396,7 @@ func TestNodeTransferFailsOnScheduleStep(t *testing.T) {
 
 	err = rc.transferNodes(rcFields, nil)
 	if err == nil {
-		t.Fatal("expected an error because we rigged it to fail")
+		t.Fatal("expected an error due to rigging the txner")
 	}
 
 	auditLogs := getNodeTransferAuditLogs(t, auditLogStore)
@@ -1425,6 +1446,49 @@ func TestNodeTransferFailsOnScheduleStep(t *testing.T) {
 	}
 	if rc.nodeTransfer.id != "" {
 		t.Fatal("local node transfer state should have been zeroed when scheduleWithSession() failed")
+	}
+}
+
+func TestNodeTransferDoesNotFailOnScheduleConflict(t *testing.T) {
+	_, consulStore, _, rc, _, _, rcStatusStore, closeFn := setup(t)
+	defer closeFn()
+
+	oldNode := types.NodeName("old_node")
+	newNode := types.NodeName("new_node")
+	id := rcstatus.NodeTransferID("abcdefg")
+	rc.nodeTransferMu.Lock()
+	rc.nodeTransfer.oldNode = oldNode
+	rc.nodeTransfer.newNode = newNode
+	rc.nodeTransfer.id = id
+	rc.nodeTransferMu.Unlock()
+
+	err := rcStatusStore.Set(rc.rcID, rcstatus.Status{
+		NodeTransfer: &rcstatus.NodeTransfer{
+			OldNode: oldNode,
+			NewNode: newNode,
+			ID:      id,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rcFields := fields.RC{
+		AllocationStrategy: fields.DynamicStrategy,
+		Manifest:           testManifest(),
+		NodeSelector:       klabels.Everything(),
+	}
+
+	// rig transferNodes() to have a conflict at the scheduleWithSession
+	// step by writing the key that it wants to write ahead of time
+	_, err = consulStore.SetPod(consul.INTENT_TREE, newNode, testManifest())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rc.transferNodes(rcFields, nil)
+	if err != nil {
+		t.Fatal("expected no error due to a schedule conflict")
 	}
 }
 
