@@ -75,6 +75,11 @@ type update struct {
 	// alerter allows the roll farm to page human operators if an
 	// unrecoverable problem occurs
 	alerter alerting.Alerter
+
+	// scheduler is used to determine which nodes are eligible for a given RC
+	// which factors into some of the computations that are performed during
+	// a rolling update
+	scheduler RCScheduler
 }
 
 // Create a new Update. The consul.Store, rcstore.Store, labels.Applicator and
@@ -96,6 +101,7 @@ func NewUpdate(
 	session consul.Session,
 	watchDelay time.Duration,
 	alerter alerting.Alerter,
+	scheduler RCScheduler,
 ) Update {
 	logger = logger.SubLogger(logrus.Fields{
 		"desired_replicas": f.DesiredReplicas,
@@ -115,6 +121,7 @@ func NewUpdate(
 		watchDelay:   watchDelay,
 		alerter:      alerter,
 		consulClient: consulClient,
+		scheduler:    scheduler,
 	}
 }
 
@@ -700,7 +707,30 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 		ret.Unknown = ret.Desired - ret.Current
 	}
 
+	var eligibleNodes []types.NodeName
+	if rcFields.AllocationStrategy == rcf.DynamicStrategy {
+		eligibleNodes, err = u.scheduler.EligibleNodes(rcFields.Manifest, rcFields.NodeSelector)
+		if err != nil {
+			return ret, util.Errorf("could not enumerate eligible nodes for %s: %s", rcFields.ID, err)
+		}
+	}
+
 	for _, pod := range currentPods {
+		if rcFields.AllocationStrategy == rcf.DynamicStrategy {
+			// don't count this pod if it's ineligible on a dynamic RC, it will be undergoing a node transfer soon and therefore might be unscheduled
+			// beneath the rolling update
+			nodeEligible := false
+			for _, eligibleNode := range eligibleNodes {
+				if eligibleNode == pod.Node {
+					nodeEligible = true
+					break
+				}
+			}
+			if !nodeEligible {
+				continue
+			}
+		}
+
 		node := pod.Node
 		// TODO: is reality checking an rc-layer concern?
 		realManifest, _, err := u.consuls.Pod(consul.REALITY_TREE, node, rcFields.Manifest.ID())

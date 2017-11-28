@@ -382,8 +382,9 @@ func createRC(
 	manifest manifest.Manifest,
 	desired int,
 	nodes map[types.NodeName]bool,
+	strategy rc_fields.Strategy,
 ) (rc_fields.RC, error) {
-	created, err := rcs.Create(manifest, nil, "some_az", "some_cn", nil, nil, "some_strategy")
+	created, err := rcs.Create(manifest, nil, "some_az", "some_cn", nil, nil, strategy)
 	if err != nil {
 		return rc_fields.RC{}, fmt.Errorf("Error creating RC: %s", err)
 	}
@@ -399,10 +400,30 @@ func createRC(
 	return created, rcs.SetDesiredReplicas(created.ID, desired)
 }
 
+type fakeScheduler struct {
+	eligibleNodes []types.NodeName
+}
+
+func newFakeSchedulerWithNodes(eligibleNodes map[types.NodeName]bool) fakeScheduler {
+	var eligibleNodeSlice []types.NodeName
+	for node, _ := range eligibleNodes {
+		eligibleNodeSlice = append(eligibleNodeSlice, node)
+	}
+	return fakeScheduler{
+		eligibleNodeSlice,
+	}
+}
+
+func (f fakeScheduler) EligibleNodes(_ manifest.Manifest, selector klabels.Selector) ([]types.NodeName, error) {
+	return f.eligibleNodes, nil
+}
+
 func updateWithHealth(t *testing.T,
 	desiredOld, desiredNew int,
 	oldNodes, newNodes map[types.NodeName]bool,
+	eligibleNodes map[types.NodeName]bool,
 	checks map[types.NodeName]health.Result,
+	rcStrategy rc_fields.Strategy,
 ) (update, manifest.Manifest, manifest.Manifest, testReplicationControllerWatcher, func()) {
 	podID := "mypod"
 
@@ -427,11 +448,13 @@ func updateWithHealth(t *testing.T,
 	}
 	rcs := rcstore.NewConsul(fixture.Client, applicator, 0)
 
-	oldRC, err := createRC(rcs, applicator, oldManifest, desiredOld, oldNodes)
+	oldRC, err := createRC(rcs, applicator, oldManifest, desiredOld, oldNodes, rcStrategy)
 	Assert(t).IsNil(err, "expected no error setting up old RC")
 
-	newRC, err := createRC(rcs, applicator, newManifest, desiredNew, newNodes)
+	newRC, err := createRC(rcs, applicator, newManifest, desiredNew, newNodes, rcStrategy)
 	Assert(t).IsNil(err, "expected no error setting up new RC")
+
+	fakeScheduler := newFakeSchedulerWithNodes(eligibleNodes)
 
 	return update{
 		consuls: podStore,
@@ -444,6 +467,7 @@ func updateWithHealth(t *testing.T,
 			OldRC: oldRC.ID,
 			NewRC: newRC.ID,
 		},
+		scheduler: fakeScheduler,
 	}, oldManifest, newManifest, rcs, fixture.Stop
 }
 
@@ -457,7 +481,7 @@ func updateWithUniformHealth(t *testing.T, numNodes int, status health.HealthSta
 		checks[node] = health.Result{Status: status}
 	}
 
-	upd, _, _, _, f := updateWithHealth(t, numNodes, 0, current, nil, nil)
+	upd, _, _, _, f := updateWithHealth(t, numNodes, 0, current, nil, nil, nil, rc_fields.StaticStrategy)
 	return upd, checks, f
 }
 
@@ -518,7 +542,7 @@ func TestCountHealthAllImplicitUnknown(t *testing.T) {
 }
 
 func TestCountHealthNonReal(t *testing.T) {
-	upd, _, _, _, f := updateWithHealth(t, 3, 0, map[types.NodeName]bool{"node1": true, "node2": true, "node3": false}, nil, nil)
+	upd, _, _, _, f := updateWithHealth(t, 3, 0, map[types.NodeName]bool{"node1": true, "node2": true, "node3": false}, nil, nil, nil, rc_fields.StaticStrategy)
 	defer f()
 	checks := map[types.NodeName]health.Result{
 		"node1": {Status: health.Passing},
@@ -538,7 +562,7 @@ func TestCountHealthNonReal(t *testing.T) {
 }
 
 func TestCountHealthNonCurrent(t *testing.T) {
-	upd, _, _, _, f := updateWithHealth(t, 3, 0, map[types.NodeName]bool{}, nil, nil)
+	upd, _, _, _, f := updateWithHealth(t, 3, 0, map[types.NodeName]bool{}, nil, nil, nil, rc_fields.StaticStrategy)
 	defer f()
 	checks := map[types.NodeName]health.Result{
 		"node1": {Status: health.Critical},
@@ -550,6 +574,25 @@ func TestCountHealthNonCurrent(t *testing.T) {
 		Unknown: 3,
 	}
 	Assert(t).AreEqual(counts, expected, "incorrect health counts")
+}
+
+func TestCountHealthyLooksAtEligibleForDynamicRCs(t *testing.T) {
+	upd, _, _, _, f := updateWithHealth(t, 2, 0, map[types.NodeName]bool{"node1": true, "node2": true}, nil, map[types.NodeName]bool{"node1": true}, nil, rc_fields.DynamicStrategy)
+	defer f()
+	checks := map[types.NodeName]health.Result{
+		"node1": {Status: health.Critical},
+		"node2": {Status: health.Passing},
+	}
+	counts, err := upd.countHealthy(upd.OldRC, checks)
+	Assert(t).IsNil(err, "expected no error counting health")
+	expected := rcNodeCounts{
+		Desired:   2,
+		Current:   2,
+		Healthy:   0, // reduced because only one node is eligible
+		Real:      1, // reduced because only one node is eligible
+		Unhealthy: 1,
+	}
+	Assert(t).AreEqual(expected, counts, "incorrect health counts")
 }
 
 func (u *update) uniformShouldRollAfterDelay(t *testing.T, podID types.PodID) (int, error) {
@@ -568,7 +611,7 @@ func TestShouldRollInitial(t *testing.T) {
 		"node1": true,
 		"node2": true,
 		"node3": true,
-	}, nil, checks)
+	}, nil, nil, checks, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
@@ -579,7 +622,7 @@ func TestShouldRollInitial(t *testing.T) {
 }
 
 func TestShouldRollInitialUnknown(t *testing.T) {
-	upd, _, manifest, _, f := updateWithHealth(t, 3, 0, nil, nil, nil)
+	upd, _, manifest, _, f := updateWithHealth(t, 3, 0, nil, nil, nil, nil, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
@@ -589,7 +632,7 @@ func TestShouldRollInitialUnknown(t *testing.T) {
 }
 
 func TestShouldRollInitialMigrationFromZero(t *testing.T) {
-	upd, _, manifest, _, f := updateWithHealth(t, 0, 0, nil, nil, nil)
+	upd, _, manifest, _, f := updateWithHealth(t, 0, 0, nil, nil, nil, nil, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
@@ -611,7 +654,7 @@ func TestShouldRollMidwayUnhealthy(t *testing.T) {
 		"node2": true,
 	}, map[types.NodeName]bool{
 		"node3": true,
-	}, checks)
+	}, nil, checks, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
@@ -626,7 +669,7 @@ func TestShouldRollMidwayUnhealthyMigration(t *testing.T) {
 	}
 	upd, _, manifest, _, f := updateWithHealth(t, 2, 1, nil, map[types.NodeName]bool{
 		"node3": true,
-	}, checks)
+	}, nil, checks, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
@@ -641,7 +684,7 @@ func TestShouldRollMidwayUnhealthyMigrationFromZero(t *testing.T) {
 	}
 	upd, _, manifest, _, f := updateWithHealth(t, 0, 1, nil, map[types.NodeName]bool{
 		"node3": true,
-	}, checks)
+	}, nil, checks, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
@@ -662,7 +705,7 @@ func TestShouldRollMidwayHealthy(t *testing.T) {
 		"node2": true,
 	}, map[types.NodeName]bool{
 		"node3": true,
-	}, checks)
+	}, nil, checks, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
@@ -678,7 +721,7 @@ func TestShouldRollMidwayUnknkown(t *testing.T) {
 	}
 	upd, _, manifest, _, f := updateWithHealth(t, 2, 1, nil, map[types.NodeName]bool{
 		"node3": true,
-	}, checks)
+	}, nil, checks, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
@@ -703,7 +746,7 @@ func TestShouldRollMidwayDesireLessThanHealthy(t *testing.T) {
 		"node3": true,
 		"node4": true,
 		"node5": true,
-	}, map[types.NodeName]bool{}, checks)
+	}, nil, map[types.NodeName]bool{}, checks, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 5
 	upd.MinimumReplicas = 3
@@ -732,7 +775,7 @@ func TestShouldRollMidwayDesireLessThanHealthyPartial(t *testing.T) {
 		"node4": true,
 	}, map[types.NodeName]bool{
 		"node5": true,
-	}, checks)
+	}, nil, checks, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 5
 	upd.MinimumReplicas = 3
@@ -757,7 +800,7 @@ func TestShouldRollWhenNewSatisfiesButNotAllDesiredHealthy(t *testing.T) {
 	}, map[types.NodeName]bool{
 		"node2": true,
 		"node3": true,
-	}, checks)
+	}, nil, checks, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 1
@@ -773,7 +816,7 @@ func TestShouldRollMidwayHealthyMigrationFromZero(t *testing.T) {
 	}
 	upd, _, manifest, _, f := updateWithHealth(t, 0, 1, nil, map[types.NodeName]bool{
 		"node3": true,
-	}, checks)
+	}, nil, checks, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
@@ -792,7 +835,7 @@ func TestShouldRollMidwayHealthyMigrationFromZeroWhenNewSatisfies(t *testing.T) 
 	upd, _, manifest, _, f := updateWithHealth(t, 0, 2, nil, map[types.NodeName]bool{
 		"node2": true,
 		"node3": true,
-	}, checks)
+	}, nil, checks, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
@@ -866,11 +909,12 @@ func assertRollLoopResult(t *testing.T, channel <-chan bool, expect bool) {
 }
 
 func TestRollLoopTypicalCase(t *testing.T) {
-	upd, _, manifest, rcWatcher, f := updateWithHealth(t, 3, 0, map[types.NodeName]bool{
+	nodes := map[types.NodeName]bool{
 		"node1": true,
 		"node2": true,
 		"node3": true,
-	}, nil, nil)
+	}
+	upd, _, manifest, rcWatcher, f := updateWithHealth(t, 3, 0, nodes, nil, nil, nil, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
@@ -944,7 +988,7 @@ func failIfRCDesireChanges(t *testing.T, rcCh <-chan rc_fields.RC, expected int)
 }
 
 func TestRollLoopMigrateFromZero(t *testing.T) {
-	upd, _, manifest, rcWatcher, f := updateWithHealth(t, 0, 0, nil, nil, nil)
+	upd, _, manifest, rcWatcher, f := updateWithHealth(t, 0, 0, nil, nil, nil, nil, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
@@ -1010,7 +1054,7 @@ func TestRollLoopStallsIfUnhealthy(t *testing.T) {
 		"node1": true,
 		"node2": true,
 		"node3": true,
-	}, nil, nil)
+	}, nil, nil, nil, rc_fields.StaticStrategy)
 	defer f()
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2

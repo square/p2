@@ -303,6 +303,7 @@ func TestLockRCs(t *testing.T) {
 		session,
 		0,
 		nil,
+		nil,
 	).(*update)
 	lockCtx, lockCancel := transaction.New(context.Background())
 	defer lockCancel()
