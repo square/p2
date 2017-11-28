@@ -87,7 +87,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		err = cgroups.CreatePodCgroup(*podID, cgConfig)
+		err = cgroups.CreatePodCgroup(*podID, cgConfig, cgroups.DefaultSubsystemer)
 		if err != nil {
 			log.Fatalf("Could not create pod %v cgroup %v\n", *podID, err)
 		}
@@ -104,7 +104,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		err = cgroups.CreateLaunchableCgroup(*cgroupName, cgPlatConfig)
+		err = cgroups.CreateLaunchableCgroup(*cgroupName, cgPlatConfig, cgroups.DefaultSubsystemer)
 		if err != nil {
 			log.Fatal(err)
 		}

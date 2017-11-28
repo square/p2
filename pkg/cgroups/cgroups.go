@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// maps cgroup subsystems to their respective paths
+// Subsystems maps cgroup subsystems to their respective paths
 type Subsystems struct {
 	CPU    string
 	Memory string
@@ -30,6 +30,10 @@ func (err UnsupportedError) Error() string {
 	// remember to cast to a string, otherwise %q invokes
 	// the Error function again (infinite recursion)
 	return fmt.Sprintf("subsystem %q is not available on this system", string(err))
+}
+
+type Subsystemer interface {
+	Find() (Subsystems, error)
 }
 
 // Find retrieves the mount points for all cgroup subsystems on the host. The
@@ -73,8 +77,8 @@ func Find() (Subsystems, error) {
 	return ret, nil
 }
 
-func FindWithParentGroup(podID string) (Subsystems, error) {
-	subsys, err := Find()
+func FindWithParentGroup(podID string, subsystemer Subsystemer) (Subsystems, error) {
+	subsys, err := subsystemer.Find()
 	if err != nil {
 		return Subsystems{}, err
 	}
@@ -203,8 +207,8 @@ func (subsys Subsystems) AddPID(name string, pid int) error {
 	return appendIntToFile(filepath.Join(subsys.CPU, name, "cgroup.procs"), pid)
 }
 
-func CreatePodCgroup(cgroupName string, config Config) error {
-	subsys, err := Find()
+func CreatePodCgroup(cgroupName string, config Config, subsystemer Subsystemer) error {
+	subsys, err := subsystemer.Find()
 	if err != nil {
 		return err
 	}
@@ -220,22 +224,22 @@ func CreatePodCgroup(cgroupName string, config Config) error {
 	if err != nil && !os.IsExist(err) {
 		return err
 	}
-	return create(cgroupName, "", config)
+	return create(cgroupName, "", config, subsystemer)
 }
 
-func CreateLaunchableCgroup(cgroupName string, config Config) error {
-	return create(cgroupName, "", config)
+func CreateLaunchableCgroup(cgroupName string, config Config, subsystemer Subsystemer) error {
+	return create(cgroupName, "", config, subsystemer)
 }
 
-func create(cgroupName string, podID string, config Config) error {
+func create(cgroupName string, podID string, config Config, subsystemer Subsystemer) error {
 	config.Name = cgroupName
 
 	var subsys Subsystems
 	var err error
 	if podID != "" {
-		subsys, err = FindWithParentGroup(podID)
+		subsys, err = FindWithParentGroup(podID, subsystemer)
 	} else {
-		subsys, err = Find()
+		subsys, err = subsystemer.Find()
 	}
 
 	if err != nil {

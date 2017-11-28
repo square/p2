@@ -838,7 +838,7 @@ func (pod *Pod) installCgroup() error {
 		if err != nil {
 			return err
 		}
-		err = cgroups.CreatePodCgroup(pod.UniqueName(), cgConfig)
+		err = cgroups.CreatePodCgroup(pod.UniqueName(), cgConfig, cgroups.DefaultSubsystemer)
 		if err != nil {
 			return err
 		}
