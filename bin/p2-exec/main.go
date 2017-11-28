@@ -104,7 +104,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		err = cgroups.CreateLaunchableCgroup(*cgroupName, *podID, cgPlatConfig)
+		err = cgroups.CreateLaunchableCgroup(*cgroupName, cgPlatConfig)
 		if err != nil {
 			log.Fatal(err)
 		}

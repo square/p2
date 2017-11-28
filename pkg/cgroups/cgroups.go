@@ -223,8 +223,8 @@ func CreatePodCgroup(cgroupName string, config Config) error {
 	return create(cgroupName, "", config)
 }
 
-func CreateLaunchableCgroup(cgroupName, podID string, config Config) error {
-	return create(cgroupName, podID, config)
+func CreateLaunchableCgroup(cgroupName string, config Config) error {
+	return create(cgroupName, "", config)
 }
 
 func create(cgroupName string, podID string, config Config) error {
