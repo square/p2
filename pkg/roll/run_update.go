@@ -669,13 +669,18 @@ func (u *update) enable(checkLocksCtx context.Context) error {
 	return nil
 }
 
+// rcNodeCounts represents a snapshot of an RC with details about how many pods
+// it has under various conditions. Most of the fields are for debug logging
+// purposes, but the "Healthy" count is used to determine how many nodes the
+// rolling update can proceed with on each iteration
 type rcNodeCounts struct {
-	Desired   int // the number of nodes the RC wants to be on
-	Current   int // the number of nodes the RC has scheduled itself on
-	Real      int // the number of current nodes that have finished scheduling
-	Healthy   int // the number of real nodes that are healthy
-	Unhealthy int // the number of real nodes that are unhealthy
-	Unknown   int // the number of real nodes that are of unknown health
+	Desired    int // the number of nodes the RC wants to be on
+	Current    int // the number of nodes the RC has scheduled itself on
+	Ineligible int // the number of nodes the RC has scheduled itself on that are no longer eligible. These nodes will not be considered for the "Real" or "Healthy" counts
+	Real       int // the number of current and non-ineligible nodes that have finished scheduling
+	Healthy    int // the number of real nodes that are healthy
+	Unhealthy  int // the number of real nodes that are unhealthy
+	Unknown    int // the number of real nodes that are of unknown health
 }
 
 func (r rcNodeCounts) ToString() string {
@@ -727,6 +732,8 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 				}
 			}
 			if !nodeEligible {
+				ret.Ineligible++
+				// Don't count this node toward the Real or Healthy counts, continue on to the next one
 				continue
 			}
 		}

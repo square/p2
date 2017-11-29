@@ -586,11 +586,12 @@ func TestCountHealthyLooksAtEligibleForDynamicRCs(t *testing.T) {
 	counts, err := upd.countHealthy(upd.OldRC, checks)
 	Assert(t).IsNil(err, "expected no error counting health")
 	expected := rcNodeCounts{
-		Desired:   2,
-		Current:   2,
-		Healthy:   0, // reduced because only one node is eligible
-		Real:      1, // reduced because only one node is eligible
-		Unhealthy: 1,
+		Desired:    2,
+		Current:    2,
+		Ineligible: 1,
+		Healthy:    0, // reduced because only one node is eligible
+		Real:       1, // reduced because only one node is eligible
+		Unhealthy:  1,
 	}
 	Assert(t).AreEqual(expected, counts, "incorrect health counts")
 }
