@@ -1114,9 +1114,12 @@ func testRolledBackTransfer(rc *replicationController, rcFields fields.RC, t *te
 	// Give async goroutine time to rollback transfer
 	time.Sleep(1 * time.Second)
 
-	status, _, err := rc.rcStatusStore.Get(rc.rcID)
-	if !statusstore.IsNoStatus(err) {
-		t.Fatalf("Expected no node transfer status to exist, got %v", status)
+	_, _, err := rc.rcStatusStore.Get(rc.rcID)
+	switch {
+	case statusstore.IsNoStatus(err):
+		t.Fatalf("Expected node transfer status to exist")
+	case err != nil:
+		t.Fatal(err)
 	}
 
 	man, _, err := rc.consulStore.Pod(consul.INTENT_TREE, newTransferNode, rcFields.Manifest.ID())
@@ -1132,31 +1135,6 @@ func testRolledBackTransfer(rc *replicationController, rcFields fields.RC, t *te
 		rc.nodeTransfer.quit != nilTransfer.quit ||
 		rc.nodeTransfer.session != nilTransfer.session {
 		t.Fatalf("Expected rc.nodeTransfer to be %v, was %v", nilTransfer, rc.nodeTransfer)
-	}
-
-	auditLogs, err := rc.auditLogStore.(testAuditLogStore).List()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rollbackAuditLogFound := false
-	for _, auditLog := range auditLogs {
-		if auditLog.EventType == audit.NodeTransferRollbackEvent {
-			var details audit.NodeTransferRollbackDetails
-			err = json.Unmarshal([]byte(*auditLog.EventDetails), &details)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if details.ReplicationControllerID == rc.rcID {
-				rollbackAuditLogFound = true
-				break
-			}
-		}
-	}
-
-	if !rollbackAuditLogFound {
-		t.Fatal("found no node transfer rollback audit log record for this RC")
 	}
 }
 
@@ -1290,8 +1268,8 @@ func (f failOnLockKeyTxner) Txn(txn api.KVTxnOps, q *api.QueryOptions) (bool, *a
 	return f.inner.Txn(txn, q)
 }
 
-func TestNodeTransferRollsBackOnScheduleError(t *testing.T) {
-	_, consulStore, _, rc, _, auditLogStore, rcStatusStore, closeFn := setup(t)
+func TestNodeTransferDoesNotDeleteStatusOnScheduleError(t *testing.T) {
+	_, consulStore, _, rc, _, _, rcStatusStore, closeFn := setup(t)
 	defer closeFn()
 
 	oldNode := types.NodeName("old_node")
@@ -1335,41 +1313,14 @@ func TestNodeTransferRollsBackOnScheduleError(t *testing.T) {
 		t.Fatal("expected an error due to rigging the txner")
 	}
 
-	auditLogs := getNodeTransferAuditLogs(t, auditLogStore)
-	if len(auditLogs) != 1 {
-		// In normal operation we'd expect a start record as well, but we set the RC status
-		// ahead of time to make this test simpler, so we only expect a rollback record
-		t.Fatalf("expected one audit log to exist but there were %d", len(auditLogs))
-	}
-
-	al := auditLogs[0]
-	if al.EventType != audit.NodeTransferRollbackEvent {
-		t.Errorf("expected audit log to have event type %q but was %q", audit.NodeTransferRollbackEvent, al.EventType)
-	}
-	var details audit.NodeTransferRollbackDetails
-	err = json.Unmarshal([]byte(*al.EventDetails), &details)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if details.OldNode != oldNode {
-		t.Errorf("expected node transfer rollback record to have OldNode %q but was %q", oldNode, details.OldNode)
-	}
-	if details.NewNode != newNode {
-		t.Errorf("expected node transfer rollback record to have NewNode %q but was %q", newNode, details.NewNode)
-	}
-	if details.NodeTransferID != id {
-		t.Errorf("expected node transfer rollback record to have NodeTransferID %q but was %q", id, details.NodeTransferID)
-	}
-
 	_, _, err = rcStatusStore.Get(rc.rcID)
 	switch {
 	case statusstore.IsNoStatus(err):
-		// this is what we expect
+		t.Fatal("status was deleted but shouldn't have been")
 	case err != nil:
 		t.Fatalf("unexpected error checking for status not existing: %s", err)
 	case err == nil:
-		t.Fatal("rc status was not deleted when scheduleWithSession failed")
+		// we expect this
 	}
 
 	rc.nodeTransferMu.Lock()

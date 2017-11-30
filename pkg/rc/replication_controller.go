@@ -701,60 +701,11 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, ineligible []
 
 	err = rc.scheduleWithSession(rcFields, newNode)
 	if err != nil {
-		// This is kind of awkward, but createRollbackTransferRecord
-		// reads rc.nodeTransfer to populate some audit log records
-		defer func() {
-			rc.nodeTransferMu.Lock()
-			rc.nodeTransfer = nodeTransfer{}
-			rc.nodeTransferMu.Unlock()
-		}()
+		rc.nodeTransferMu.Lock()
+		rc.nodeTransfer = nodeTransfer{}
+		rc.nodeTransferMu.Unlock()
 
-		// Different RC may have already taken over the new node, abort transfer
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		deleteStatusCtx, cancel := transaction.New(ctx)
-		defer cancel()
-
-		deleteErr := rc.rcStatusStore.DeleteTxn(deleteStatusCtx, rc.rcID)
-		if deleteErr != nil {
-			rc.logger.WithError(deleteErr).Errorln("could not delete rc status")
-		}
-
-		deleteErr = rc.createRollbackTransferRecord(
-			deleteStatusCtx,
-			rcFields,
-			audit.RollbackReason(err.Error()),
-		)
-		if deleteErr != nil {
-			rc.logger.WithError(deleteErr).Errorln("could not create node transfer rollback audit log")
-			// TODO: low urgency alert here, the RC loop is not going to
-			// retry this because we've (possibly) handled the ineligible
-			// node already
-		}
-
-		ok, resp, commitErr := transaction.CommitWithRetries(deleteStatusCtx, rc.txner)
-		switch {
-		case commitErr != nil:
-			errMsg := fmt.Sprintf(
-				"could not delete RC status within timeout: %s",
-				commitErr,
-			)
-			alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
-			if alertErr != nil {
-				rc.logger.WithError(alertErr).Errorln("Unable to send alert")
-			}
-		case !ok:
-			errMsg := fmt.Sprintf(
-				"Transaction violation trying to delete RC status: %s",
-				transaction.TxnErrorsToString(resp.Errors),
-			)
-			alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
-			if err != nil {
-				rc.logger.WithError(alertErr).Errorln("Unable to send alert")
-			}
-		}
-
-		return util.Errorf("Could not schedule with session; new rc may have taken node: %s", err)
+		return util.Errorf("Could not schedule with session: %s", err)
 	}
 
 	rc.nodeTransferMu.Lock()
@@ -931,68 +882,7 @@ func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC) {
 		rc.logger.WithError(err).Errorln("could not do final node transfer transaction, rolling back")
 		rollbackReason = audit.RollbackReason(err.Error())
 	} else {
-		rc.logger.Infof("Node transfer from %s to %s was rolled back.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode)
-	}
-
-	rc.rollbackTransfer(rcFields, rollbackReason)
-}
-
-func (rc *replicationController) rollbackTransfer(rcFields fields.RC, rollbackReason audit.RollbackReason) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	deleteStatusCtx, cancel := transaction.New(ctx)
-	defer cancel()
-
-	err := rc.rcStatusStore.DeleteTxn(deleteStatusCtx, rc.rcID)
-	if err != nil {
-		rc.logger.WithError(err).Errorln("error deleting transfer status during cleanup")
-
-		errMsg := fmt.Sprintf(
-			"could not set up transaction to delete RC status: %s",
-			err,
-		)
-		alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
-		if alertErr != nil {
-			rc.logger.WithError(alertErr).Errorln("Unable to send alert")
-		}
-		return
-	}
-
-	err = rc.createRollbackTransferRecord(deleteStatusCtx, rcFields, rollbackReason)
-	if err != nil {
-		rc.logger.WithError(err).Errorln("could not create node transfer rollback audit log")
-
-		errMsg := fmt.Sprintf(
-			"could not set up transaction to create rollback audit log record: %s",
-			err,
-		)
-		alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
-		if alertErr != nil {
-			rc.logger.WithError(alertErr).Errorln("Unable to send alert")
-		}
-		return
-	}
-
-	ok, resp, err := transaction.CommitWithRetries(deleteStatusCtx, rc.txner)
-	switch {
-	case err != nil:
-		errMsg := fmt.Sprintf(
-			"could not delete RC status within timeout: %s",
-			err,
-		)
-		alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
-		if alertErr != nil {
-			rc.logger.WithError(alertErr).Errorln("Unable to send alert")
-		}
-	case !ok:
-		errMsg := fmt.Sprintf(
-			"Transaction violation trying to delete RC status: %s",
-			transaction.TxnErrorsToString(resp.Errors),
-		)
-		err := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
-		if err != nil {
-			rc.logger.WithError(err).Errorln("Unable to send alert")
-		}
+		rc.logger.Infof("Node transfer from %s to %s was rolled back: %s.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode, rollbackReason)
 	}
 }
 
