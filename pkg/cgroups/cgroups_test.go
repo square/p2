@@ -27,17 +27,27 @@ func (fs *FakeSubsystemer) Find() (Subsystems, error) {
 }
 
 func TestCreatePodCgroup(t *testing.T) {
-
-	// Name   string         `yaml:"-"`                // The name of the cgroup in cgroupfs
-	// CPUs   int            `yaml:"cpus,omitempty"`   // The number of logical CPUs
-	// Memory size.ByteCount `yaml:"memory,omitempty"` // The number of bytes of memory
-
 	c := Config{
 		"cgroup-path",
 		2,
 		1024,
 	}
-	if err := CreatePodCgroup("pod", c, &FakeSubsystemer{}); err != nil {
+	fs := &FakeSubsystemer{}
+	if err := CreatePodCgroup("pod", c, fs); err != nil {
 		t.Fatalf("err: %v", err)
+	}
+
+	expectCgroupFileToContain(t, "2048\n", filepath.Join(fs.tmpdir, "memory", "pod", "memory.limit_in_bytes"))
+	expectCgroupFileToContain(t, "2048\n", filepath.Join(fs.tmpdir, "memory", "pod", "memory.memsw.limit_in_bytes"))
+	expectCgroupFileToContain(t, "1024\n", filepath.Join(fs.tmpdir, "memory", "pod", "memory.soft_limit_in_bytes"))
+}
+
+func expectCgroupFileToContain(t *testing.T, s string, file string) {
+	actual, err := ioutil.ReadFile(filepath.Join(file))
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if string(actual) != s { // We set the hard limit to 2x the request
+		t.Errorf("expected %s, but got: %s", s, string(actual))
 	}
 }
