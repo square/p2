@@ -298,7 +298,7 @@ func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 
 	ineligible := rc.checkForIneligible(current, eligible)
 	if len(ineligible) > 0 {
-		rc.logger.Infof("Ineligible nodes: %s found, starting node transfer", ineligible)
+		rc.logger.Infof("Ineligible nodes: %s found", ineligible)
 		err := rc.transferNodes(rcFields, ineligible)
 		if err != nil {
 			return err
@@ -662,6 +662,8 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, ineligible []
 		// a node transfer to replace the ineligible node is already in progress
 		return nil
 	}
+
+	rc.logger.Infoln("Starting node transfer")
 
 	if rcFields.AllocationStrategy != fields.DynamicStrategy {
 		errMsg := fmt.Sprintf("static strategy RC has scheduled %d ineligible nodes: %s", len(ineligible), ineligible)
