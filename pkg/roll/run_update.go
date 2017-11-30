@@ -122,10 +122,8 @@ type Update interface {
 	// canceling the context causes it to terminate it early. If an Update
 	// is interrupted or encounters an unrecoverable error such as a
 	// transaction violation, Run should leave the RCs in a state such that
-	// it can later be called again to resume. The return value indicates
-	// if the update completed (true) or if it was terminated early
-	// (false).
-	Run(ctx context.Context) bool
+	// it can later be called again to resume.
+	Run(ctx context.Context)
 }
 
 // returned by shouldStop
@@ -157,7 +155,7 @@ func RetryOrQuit(ctx context.Context, f func() error, logger logging.Logger, err
 // cancelled via the passed quit channel. The passed context is expected to
 // have a consul transaction value stored in it and cleanup operations such as
 // deleting the old RC will be added to it when applicable.
-func (u *update) Run(ctx context.Context) (ret bool) {
+func (u *update) Run(ctx context.Context) {
 	u.logger.Infoln("creating a session for this RU")
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -169,7 +167,7 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 	sessionCtx, session, err := consul.SessionContext(sessionRenewalCtx, u.consulClient, fmt.Sprintf("ru-farm:%s:%s", hostname, u.ID()))
 	if err != nil {
 		u.logger.WithError(err).Errorln("could not create session")
-		return false
+		return
 	}
 
 	// create a transaction to lock the RCs with. This way we can't lock
@@ -199,9 +197,6 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 			// finished, and try to perform cleanup (e.g. deleting
 			// the old RC)
 			u.logger.WithError(err).Errorln("could not perform RU cleanup because transaction did not succeed before cancellation")
-
-			// set ret to false so that the farm does not delete the RU, giving another farm a chance to handle this cleanup
-			ret = false
 			return
 		}
 		if !ok {
@@ -212,11 +207,9 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 			// perform the necessary cleanup
 			err := util.Errorf("transaction errors: %s", transaction.TxnErrorsToString(resp.Errors))
 			u.logger.WithError(err).Errorln("could not perform RU cleanup due to transaction conflict")
-			ret = false
 			return
 		}
 
-		// leave ret set however it was before this function was called
 		return
 	}
 	defer performCleanup()
@@ -239,25 +232,26 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 			"build-lock-"+u.ID().String(),
 			err,
 		)
-		return false
+		return
 	}
 
 	ok, resp, err := transaction.CommitWithRetries(lockRCsCtx, u.txner)
 	if err != nil {
 		// this will only happen if the context was canceled, so just stop processing the roll
-		return false
+		return
 	}
 	if !ok {
 		// another farm must have the locks, stop processng the roll
 		u.logger.Infof("could not lock RCs (transaction response %s). Exiting roll loop", transaction.TxnErrorsToString(resp.Errors))
-		return false
+		return
 	}
 	cancelLockRCs()
 
 	u.logger.NoFields().Debugln("Enabling")
 	err = u.enable(checkRCLocksCtx)
 	if err != nil {
-		return false
+		u.logger.WithError(err).Errorln("could not enable RCs")
+		return
 	}
 
 	u.logger.NoFields().Debugln("Launching health watch")
@@ -286,7 +280,7 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 
 	if updateSucceeded := u.rollLoop(checkRCLocksCtx, newFields.Manifest.ID(), hChecks, hErrs); !updateSucceeded {
 		// We were asked to quit. Do so without cleaning old RC.
-		return false
+		return
 	}
 
 	// rollout complete, clean up old RC if told to do so
@@ -304,12 +298,8 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 			"ru-deletion-txn"+u.ID().String(),
 			err,
 		)
-		return false
+		return
 	}
-
-	// return true here, but note that it might become false because of the
-	// deferred performCleanup() function
-	return true
 }
 
 func (u *update) cleanupOldRC(ctx context.Context) {
