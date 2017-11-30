@@ -168,22 +168,22 @@ func (subsys Subsystems) SetMemory(name string, bytes int) error {
 
 	// the hard memory limit must be set BEFORE the mem+swap limit
 	// so we must clear the swap limit at the start
-	err = ioutil.WriteFile(filepath.Join(subsys.Memory, name, "memory.memsw.limit_in_bytes"), []byte("-1\n"), 0)
+	err = ioutil.WriteFile(filepath.Join(subsys.Memory, name, "memory.memsw.limit_in_bytes"), []byte("-1\n"), 0600)
 	if err != nil {
 		return err
 	}
 
-	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.soft_limit_in_bytes"), []byte(strconv.Itoa(softLimit)+"\n"), 0)
+	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.soft_limit_in_bytes"), []byte(strconv.Itoa(softLimit)+"\n"), 0600)
 	if err != nil {
 		return err
 	}
 
-	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0)
+	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0600)
 	if err != nil {
 		return err
 	}
 
-	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.memsw.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0)
+	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.memsw.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0600)
 	if err != nil {
 		return err
 	}
