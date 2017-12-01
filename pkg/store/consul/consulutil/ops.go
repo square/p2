@@ -1,10 +1,13 @@
 package consulutil
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
+	"strconv"
 
 	"github.com/hashicorp/consul/api"
 )
@@ -144,21 +147,24 @@ type getReply struct {
 
 // Like List, but for a single key instead of a list.
 func Get(
+	ctx context.Context,
 	clientKV ConsulGetter,
-	done <-chan struct{},
 	key string,
 	options *api.QueryOptions,
 ) (*api.KVPair, *api.QueryMeta, error) {
 	resultChan := make(chan getReply, 1)
-	go func() {
+
+	getFunc := func(ctx context.Context) {
 		kvp, queryMeta, err := clientKV.Get(key, options)
 		if err != nil {
 			err = NewKVError("get", key, err)
 		}
 		resultChan <- getReply{kvp, queryMeta, err}
-	}()
+	}
+
+	pprof.Do(ctx, pprof.Labels("consul_key", key, "index", strconv.FormatUint(options.WaitIndex, 10)), getFunc)
 	select {
-	case <-done:
+	case <-ctx.Done():
 		return nil, nil, CanceledError
 	case r := <-resultChan:
 		return r.kvp, r.queryMeta, r.err
