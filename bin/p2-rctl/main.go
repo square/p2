@@ -19,6 +19,7 @@ import (
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/cli"
 	"github.com/square/p2/pkg/health/checker"
+	hclient "github.com/square/p2/pkg/health/client"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -157,6 +158,7 @@ func main() {
 		consuls:     consul.NewConsulStore(client),
 		labeler:     labeler,
 		hcheck:      checker.NewConsulHealthChecker(client),
+		hclient:     nil,
 		logger:      logger,
 	}
 
@@ -252,6 +254,7 @@ type rctlParams struct {
 	labeler     labels.ApplicatorWithoutWatches
 	consuls     Store
 	hcheck      checker.ConsulHealthChecker
+	hclient     hclient.HealthServiceClient
 	logger      logging.Logger
 }
 
@@ -424,6 +427,7 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 			r.rls,
 			r.baseClient.KV(),
 			r.hcheck,
+			r.hclient,
 			r.labeler,
 			r.logger,
 			session,
