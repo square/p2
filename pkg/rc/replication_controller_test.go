@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path"
 	"sync"
 	"testing"
 	"time"
@@ -27,10 +28,12 @@ import (
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/hashicorp/consul/api"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -1052,7 +1055,7 @@ func TestTransferRolledBackByQuitCh(t *testing.T) {
 	testRolledBackTransfer(rc, rcFields, t)
 }
 
-func TestTransferRolledBackOnRCDisabled(t *testing.T) {
+func TestTransferNotRolledBackOnRCDisabled(t *testing.T) {
 	rcStore, _, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
@@ -1075,7 +1078,10 @@ func TestTransferRolledBackOnRCDisabled(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	testRolledBackTransfer(rc, rcFields, t)
+	status, _, err := rc.rcStatusStore.Get(rc.rcID)
+	if statusstore.IsNoStatus(err) {
+		t.Fatalf("Expected node transfer status to exist (even for a disabled RC), got %v", status)
+	}
 }
 
 func TestTransferRolledBackOnReplicasDesiredDecrease(t *testing.T) {
@@ -1108,9 +1114,12 @@ func testRolledBackTransfer(rc *replicationController, rcFields fields.RC, t *te
 	// Give async goroutine time to rollback transfer
 	time.Sleep(1 * time.Second)
 
-	status, _, err := rc.rcStatusStore.Get(rc.rcID)
-	if !statusstore.IsNoStatus(err) {
-		t.Fatalf("Expected no node transfer status to exist, got %v", status)
+	_, _, err := rc.rcStatusStore.Get(rc.rcID)
+	switch {
+	case statusstore.IsNoStatus(err):
+		t.Fatalf("Expected node transfer status to exist")
+	case err != nil:
+		t.Fatal(err)
 	}
 
 	man, _, err := rc.consulStore.Pod(consul.INTENT_TREE, newTransferNode, rcFields.Manifest.ID())
@@ -1126,31 +1135,6 @@ func testRolledBackTransfer(rc *replicationController, rcFields fields.RC, t *te
 		rc.nodeTransfer.quit != nilTransfer.quit ||
 		rc.nodeTransfer.session != nilTransfer.session {
 		t.Fatalf("Expected rc.nodeTransfer to be %v, was %v", nilTransfer, rc.nodeTransfer)
-	}
-
-	auditLogs, err := rc.auditLogStore.(testAuditLogStore).List()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rollbackAuditLogFound := false
-	for _, auditLog := range auditLogs {
-		if auditLog.EventType == audit.NodeTransferRollbackEvent {
-			var details audit.NodeTransferRollbackDetails
-			err = json.Unmarshal([]byte(*auditLog.EventDetails), &details)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if details.ReplicationControllerID == rc.rcID {
-				rollbackAuditLogFound = true
-				break
-			}
-		}
-	}
-
-	if !rollbackAuditLogFound {
-		t.Fatal("found no node transfer rollback audit log record for this RC")
 	}
 }
 
@@ -1269,72 +1253,23 @@ func TestTransferNodeHappyPath(t *testing.T) {
 	}
 }
 
-func TestTransferOnAlreadyAllocatedNodeIfPossible(t *testing.T) {
-	rcStore, _, applicator, rc, alerter, _, _, closeFn := setup(t)
-	defer closeFn()
-
-	rcFields, err := rcStore.Get(rc.rcID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rcFields.AllocationStrategy = fields.DynamicStrategy
-
-	allocatedNode := types.NodeName("node8")
-	err = applicator.SetLabel(labels.NODE, allocatedNode.String(), "nodeQuality", "good")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	healthMap := map[types.NodeName]health.Result{
-		allocatedNode: health.Result{Status: health.Passing},
-	}
-	rc.healthChecker = fake_checker.NewSingleService("", healthMap)
-
-	rcFields, err = testIneligibleNodesCommon(applicator, rc, rcFields, alerter)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// give async goroutine time to finish transfer
-	time.Sleep(1 * time.Second)
-
-	current, err := rc.CurrentPods()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	nodes := current.Nodes()
-	foundNewTransferNode := false
-	foundAllocatedNode := false
-	foundBadNode := false
-	for _, node := range nodes {
-		if node == newTransferNode {
-			foundNewTransferNode = true
-		}
-		if node == types.NodeName("node3") {
-			foundBadNode = true
-		}
-		if node == allocatedNode {
-			foundAllocatedNode = true
-		}
-	}
-
-	if !foundAllocatedNode {
-		t.Fatal("Expected to transfer to already allocated node but did not")
-	}
-
-	if foundNewTransferNode {
-		t.Fatal("Expected not allocate another node but did")
-	}
-
-	if foundBadNode {
-		t.Fatal("Expected to have dropped ineligible node but it is still a current node")
-	}
+type failOnLockKeyTxner struct {
+	badKey string
+	inner  transaction.Txner
 }
 
-func TestNodeTransferFailsOnScheduleStep(t *testing.T) {
-	_, consulStore, _, rc, _, auditLogStore, rcStatusStore, closeFn := setup(t)
+func (f failOnLockKeyTxner) Txn(txn api.KVTxnOps, q *api.QueryOptions) (bool, *api.KVTxnResponse, *api.QueryMeta, error) {
+	for _, op := range txn {
+		if op.Verb == string(api.KVLock) && op.Key == f.badKey {
+			return false, &api.KVTxnResponse{}, &api.QueryMeta{}, util.Errorf("this key was configured to fail")
+		}
+	}
+
+	return f.inner.Txn(txn, q)
+}
+
+func TestNodeTransferDoesNotDeleteStatusOnScheduleError(t *testing.T) {
+	_, consulStore, _, rc, _, _, rcStatusStore, closeFn := setup(t)
 	defer closeFn()
 
 	oldNode := types.NodeName("old_node")
@@ -1363,8 +1298,11 @@ func TestNodeTransferFailsOnScheduleStep(t *testing.T) {
 		NodeSelector:       klabels.Everything(),
 	}
 
-	// rig transferNodes() to fail at the scheduleWithSession step by writing
-	// the key that it wants to write ahead of time
+	// rig scheduleWithSession() to fail by inserting a special txner
+	rc.txner = failOnLockKeyTxner{
+		badKey: path.Join(consul.INTENT_TREE.String(), newNode.String(), testManifest().ID().String()),
+		inner:  rc.txner,
+	}
 	_, err = consulStore.SetPod(consul.INTENT_TREE, newNode, testManifest())
 	if err != nil {
 		t.Fatal(err)
@@ -1372,44 +1310,17 @@ func TestNodeTransferFailsOnScheduleStep(t *testing.T) {
 
 	err = rc.transferNodes(rcFields, nil)
 	if err == nil {
-		t.Fatal("expected an error because we rigged it to fail")
-	}
-
-	auditLogs := getNodeTransferAuditLogs(t, auditLogStore)
-	if len(auditLogs) != 1 {
-		// In normal operation we'd expect a start record as well, but we set the RC status
-		// ahead of time to make this test simpler, so we only expect a rollback record
-		t.Fatalf("expected one audit log to exist but there were %d", len(auditLogs))
-	}
-
-	al := auditLogs[0]
-	if al.EventType != audit.NodeTransferRollbackEvent {
-		t.Errorf("expected audit log to have event type %q but was %q", audit.NodeTransferRollbackEvent, al.EventType)
-	}
-	var details audit.NodeTransferRollbackDetails
-	err = json.Unmarshal([]byte(*al.EventDetails), &details)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if details.OldNode != oldNode {
-		t.Errorf("expected node transfer rollback record to have OldNode %q but was %q", oldNode, details.OldNode)
-	}
-	if details.NewNode != newNode {
-		t.Errorf("expected node transfer rollback record to have NewNode %q but was %q", newNode, details.NewNode)
-	}
-	if details.NodeTransferID != id {
-		t.Errorf("expected node transfer rollback record to have NodeTransferID %q but was %q", id, details.NodeTransferID)
+		t.Fatal("expected an error due to rigging the txner")
 	}
 
 	_, _, err = rcStatusStore.Get(rc.rcID)
 	switch {
 	case statusstore.IsNoStatus(err):
-		// this is what we expect
+		t.Fatal("status was deleted but shouldn't have been")
 	case err != nil:
 		t.Fatalf("unexpected error checking for status not existing: %s", err)
 	case err == nil:
-		t.Fatal("rc status was not deleted when scheduleWithSession failed")
+		// we expect this
 	}
 
 	rc.nodeTransferMu.Lock()
@@ -1422,6 +1333,209 @@ func TestNodeTransferFailsOnScheduleStep(t *testing.T) {
 	}
 	if rc.nodeTransfer.id != "" {
 		t.Fatal("local node transfer state should have been zeroed when scheduleWithSession() failed")
+	}
+}
+
+func TestNodeTransferDoesNotFailOnScheduleConflict(t *testing.T) {
+	_, consulStore, _, rc, _, _, rcStatusStore, closeFn := setup(t)
+	defer closeFn()
+
+	oldNode := types.NodeName("old_node")
+	newNode := types.NodeName("new_node")
+	id := rcstatus.NodeTransferID("abcdefg")
+	rc.nodeTransferMu.Lock()
+	rc.nodeTransfer.oldNode = oldNode
+	rc.nodeTransfer.newNode = newNode
+	rc.nodeTransfer.id = id
+	rc.nodeTransferMu.Unlock()
+
+	err := rcStatusStore.Set(rc.rcID, rcstatus.Status{
+		NodeTransfer: &rcstatus.NodeTransfer{
+			OldNode: oldNode,
+			NewNode: newNode,
+			ID:      id,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rcFields := fields.RC{
+		AllocationStrategy: fields.DynamicStrategy,
+		Manifest:           testManifest(),
+		NodeSelector:       klabels.Everything(),
+	}
+
+	// rig transferNodes() to have a conflict at the scheduleWithSession
+	// step by writing the key that it wants to write ahead of time
+	_, err = consulStore.SetPod(consul.INTENT_TREE, newNode, testManifest())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rc.transferNodes(rcFields, nil)
+	if err != nil {
+		t.Fatal("expected no error due to a schedule conflict")
+	}
+}
+
+func TestAddPods(t *testing.T) {
+	_, _, _, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+
+	rcFields := fields.RC{
+		ID:              rc.rcID,
+		ReplicasDesired: 5,
+		Manifest:        testManifest(),
+	}
+
+	// empty
+	current := make(types.PodLocations, 0)
+
+	eligible := []types.NodeName{"node1", "node2", "node3", "node4", "node5"}
+
+	err := rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 5 pods were scheduled
+	currentPods, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 5 {
+		t.Fatalf("5 pods should have been scheduled but found %d", len(currentPods))
+	}
+}
+
+func TestAddPodsDisabled(t *testing.T) {
+	_, _, _, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+
+	rcFields := fields.RC{
+		ID:              rc.rcID,
+		ReplicasDesired: 5,
+		Manifest:        testManifest(),
+		Disabled:        true,
+	}
+
+	// empty
+	current := make(types.PodLocations, 0)
+
+	eligible := []types.NodeName{"node1", "node2", "node3", "node4", "node5"}
+
+	err := rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 0 pods were scheduled
+	currentPods, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 0 {
+		t.Fatalf("0 pods should have been scheduled (because RC is disabled) but found %d", len(currentPods))
+	}
+}
+
+func TestRemovePods(t *testing.T) {
+	_, _, _, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+
+	rcFields := fields.RC{
+		ID:              rc.rcID,
+		ReplicasDesired: 5,
+		Manifest:        testManifest(),
+	}
+
+	current := types.PodLocations{}
+
+	eligible := []types.NodeName{"node1", "node2", "node3", "node4", "node5"}
+
+	// first add the pods so the labels get set up correctly
+	err := rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 5 pods were scheduled
+	currentPods, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 5 {
+		t.Fatalf("5 pods should have been scheduled (because RC has nonzero count) but found %d", len(currentPods))
+	}
+
+	rcFields.ReplicasDesired = 3
+
+	err = rc.removePods(rcFields, currentPods, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 3 pods were scheduled (since replicas desired fell to 3)
+	currentPods, err = rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 3 {
+		t.Fatalf("3 pods should have been scheduled but found %d", len(currentPods))
+	}
+}
+
+func TestRemovePodsDisabled(t *testing.T) {
+	_, _, _, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+
+	rcFields := fields.RC{
+		ID:              rc.rcID,
+		ReplicasDesired: 5,
+		Manifest:        testManifest(),
+		Disabled:        false,
+	}
+
+	current := types.PodLocations{}
+	eligible := []types.NodeName{"node1", "node2", "node3", "node4", "node5"}
+
+	// first add the pods so the labels get set up correctly
+	err := rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 5 pods were scheduled
+	currentPods, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 5 {
+		t.Fatalf("5 pods should have been scheduled (because RC has nonzero count) but found %d", len(currentPods))
+	}
+
+	rcFields.Disabled = true
+	rcFields.ReplicasDesired = 3
+
+	err = rc.removePods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 5 pods were scheduled (since the RC was disabled so it shouldn't have done anything)
+	currentPods, err = rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 5 {
+		t.Fatalf("5 pods should have been scheduled (because RC is disabled) but found %d", len(currentPods))
 	}
 }
 

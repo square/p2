@@ -75,6 +75,11 @@ type update struct {
 	// alerter allows the roll farm to page human operators if an
 	// unrecoverable problem occurs
 	alerter alerting.Alerter
+
+	// scheduler is used to determine which nodes are eligible for a given RC
+	// which factors into some of the computations that are performed during
+	// a rolling update
+	scheduler RCScheduler
 }
 
 // Create a new Update. The consul.Store, rcstore.Store, labels.Applicator and
@@ -96,6 +101,7 @@ func NewUpdate(
 	session consul.Session,
 	watchDelay time.Duration,
 	alerter alerting.Alerter,
+	scheduler RCScheduler,
 ) Update {
 	logger = logger.SubLogger(logrus.Fields{
 		"desired_replicas": f.DesiredReplicas,
@@ -115,6 +121,7 @@ func NewUpdate(
 		watchDelay:   watchDelay,
 		alerter:      alerter,
 		consulClient: consulClient,
+		scheduler:    scheduler,
 	}
 }
 
@@ -148,7 +155,7 @@ func RetryOrQuit(ctx context.Context, f func() error, logger logging.Logger, err
 		select {
 		case <-ctx.Done():
 			return false
-		case <-time.After(1 * time.Second):
+		case <-time.After(5 * time.Second):
 			// unblock the select and loop again
 		}
 	}
@@ -307,49 +314,71 @@ func (u *update) Run(ctx context.Context) {
 }
 
 func (u *update) cleanupOldRC(ctx context.Context) {
+	oldRCZeroed := false
+
 	cleanupFunc := func() error {
-		oldRC, err := u.rcStore.Get(u.OldRC)
+		if !oldRCZeroed {
+			oldRC, err := u.rcStore.Get(u.OldRC)
+			if err != nil {
+				return err
+			}
+
+			if oldRC.ReplicasDesired != 0 {
+				// This likely means there was a mathematical error
+				// of some kind that was made when the RU was
+				// scheduled. If LeaveOld is false, we expect that
+				// all nodes will have been rolled from the old RC to
+				// the new one at this point, so we can delete the
+				// old RC after it isn't managing any nodes anymore.
+				// This error likely needs manual fixing by shifting
+				// the remaining nodes off of this RC and then
+				// deleting it
+				u.logger.Errorln("could not delete old RC because its replica count is nonzero")
+				err = u.alerter.Alert(alerting.AlertInfo{
+					Description: "old RC did not have 0 replicas and could not be deleted.",
+					IncidentKey: "roll-" + u.ID().String(),
+					Details: struct {
+						OldRCID     string `json:"old_rc_id"`
+						RUID        string `json:"ru_id"`
+						NumReplicas int    `json:"num_replicas"`
+					}{
+						OldRCID:     u.OldRC.String(),
+						RUID:        u.ID().String(),
+						NumReplicas: oldRC.ReplicasDesired,
+					},
+				}, alerting.LowUrgency)
+				if err != nil {
+					return err
+				}
+
+				// return nil to avoid looping, the alert
+				// should cause the issue to be fixed by a
+				// human operator
+				return nil
+			}
+			oldRCZeroed = true
+		}
+
+		currentPods, err := rc.CurrentPods(u.OldRC, u.labeler)
 		if err != nil {
 			return err
 		}
 
-		if oldRC.ReplicasDesired != 0 {
-			// This likely means there was a mathematical error
-			// of some kind that was made when the RU was
-			// scheduled. If LeaveOld is false, we expect that
-			// all nodes will have been rolled from the old RC to
-			// the new one at this point, so we can delete the
-			// old RC after it isn't managing any nodes anymore.
-			// This error likely needs manual fixing by shifting
-			// the remaining nodes off of this RC and then
-			// deleting it
-			u.logger.Errorln("could not delete old RC because its replica count is nonzero")
-			err = u.alerter.Alert(alerting.AlertInfo{
-				Description: "old RC did not have 0 replicas and could not be deleted.",
-				IncidentKey: "roll-" + u.ID().String(),
-				Details: struct {
-					OldRCID     string `json:"old_rc_id"`
-					RUID        string `json:"ru_id"`
-					NumReplicas int    `json:"num_replicas"`
-				}{
-					OldRCID:     u.OldRC.String(),
-					RUID:        u.ID().String(),
-					NumReplicas: oldRC.ReplicasDesired,
-				},
-			}, alerting.LowUrgency)
-			if err != nil {
-				return err
-			}
-			// return nil to avoid looping, the alert
-			// should cause the issue to be fixed by a
-			// human operator
-			return nil
+		if len(currentPods) != 0 {
+			u.logger.Warnf("old RC still has %d current pods, waiting to delete")
+			return util.Errorf("waiting for old RC to have 0 current pods before deleting")
 		}
+
 		return nil
 	}
 
 	u.logger.NoFields().Infoln("Cleaning up old RC")
 	if !RetryOrQuit(ctx, cleanupFunc, u.logger, "Could not delete old RC") {
+		return
+	}
+
+	if !oldRCZeroed {
+		u.logger.Infoln("Not cleaning up old RC because it still has some replicas desired")
 		return
 	}
 
@@ -640,13 +669,18 @@ func (u *update) enable(checkLocksCtx context.Context) error {
 	return nil
 }
 
+// rcNodeCounts represents a snapshot of an RC with details about how many pods
+// it has under various conditions. Most of the fields are for debug logging
+// purposes, but the "Healthy" count is used to determine how many nodes the
+// rolling update can proceed with on each iteration
 type rcNodeCounts struct {
-	Desired   int // the number of nodes the RC wants to be on
-	Current   int // the number of nodes the RC has scheduled itself on
-	Real      int // the number of current nodes that have finished scheduling
-	Healthy   int // the number of real nodes that are healthy
-	Unhealthy int // the number of real nodes that are unhealthy
-	Unknown   int // the number of real nodes that are of unknown health
+	Desired    int // the number of nodes the RC wants to be on
+	Current    int // the number of nodes the RC has scheduled itself on
+	Ineligible int // the number of nodes the RC has scheduled itself on that are no longer eligible. These nodes will not be considered for the "Real" or "Healthy" counts
+	Real       int // the number of current and non-ineligible nodes that have finished scheduling
+	Healthy    int // the number of real nodes that are healthy
+	Unhealthy  int // the number of real nodes that are unhealthy
+	Unknown    int // the number of real nodes that are of unknown health
 }
 
 func (r rcNodeCounts) ToString() string {
@@ -678,7 +712,32 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 		ret.Unknown = ret.Desired - ret.Current
 	}
 
+	var eligibleNodes []types.NodeName
+	if rcFields.AllocationStrategy == rcf.DynamicStrategy {
+		eligibleNodes, err = u.scheduler.EligibleNodes(rcFields.Manifest, rcFields.NodeSelector)
+		if err != nil {
+			return ret, util.Errorf("could not enumerate eligible nodes for %s: %s", rcFields.ID, err)
+		}
+	}
+
 	for _, pod := range currentPods {
+		if rcFields.AllocationStrategy == rcf.DynamicStrategy {
+			// don't count this pod if it's ineligible on a dynamic RC, it will be undergoing a node transfer soon and therefore might be unscheduled
+			// beneath the rolling update
+			nodeEligible := false
+			for _, eligibleNode := range eligibleNodes {
+				if eligibleNode == pod.Node {
+					nodeEligible = true
+					break
+				}
+			}
+			if !nodeEligible {
+				ret.Ineligible++
+				// Don't count this node toward the Real or Healthy counts, continue on to the next one
+				continue
+			}
+		}
+
 		node := pod.Node
 		// TODO: is reality checking an rc-layer concern?
 		realManifest, _, err := u.consuls.Pod(consul.REALITY_TREE, node, rcFields.Manifest.ID())

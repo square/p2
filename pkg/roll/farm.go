@@ -12,6 +12,7 @@ import (
 	hclient "github.com/square/p2/pkg/health/client"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	p2metrics "github.com/square/p2/pkg/metrics"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/rc/fields"
@@ -22,6 +23,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/store/consul/rollstore"
 	"github.com/square/p2/pkg/store/consul/transaction"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
@@ -34,6 +36,10 @@ type Factory interface {
 	New(roll_fields.Update, logging.Logger, consul.Session) Update
 }
 
+type RCScheduler interface {
+	EligibleNodes(man manifest.Manifest, nodeSelector klabels.Selector) ([]types.NodeName, error)
+}
+
 type UpdateFactory struct {
 	Store               Store
 	Client              consulutil.ConsulClient
@@ -41,11 +47,13 @@ type UpdateFactory struct {
 	RCLocker            ReplicationControllerLocker
 	RCStore             ReplicationControllerStore
 	RollStore           RollingUpdateStore
-	HealthChecker       checker.ConsulHealthChecker
 	HealthServiceClient hclient.HealthServiceClient
+	HealthChecker       checker.ConsulHealthChecker
 	Labeler             labeler
 	WatchDelay          time.Duration
 	Alerter             alerting.Alerter
+
+	scheduler RCScheduler
 }
 
 type labeler interface {
@@ -65,6 +73,7 @@ func NewUpdateFactory(
 	labeler labeler,
 	watchDelay time.Duration,
 	alerter alerting.Alerter,
+	scheduler RCScheduler,
 ) UpdateFactory {
 	return UpdateFactory{
 		Store:               store,
@@ -78,6 +87,7 @@ func NewUpdateFactory(
 		Labeler:             labeler,
 		WatchDelay:          watchDelay,
 		Alerter:             alerter,
+		scheduler:           scheduler,
 	}
 }
 
@@ -97,6 +107,7 @@ func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consu
 		session,
 		f.WatchDelay,
 		f.Alerter,
+		f.scheduler,
 	)
 }
 
