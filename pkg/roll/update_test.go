@@ -848,7 +848,7 @@ func transferNode(node types.NodeName, manifest manifest.Manifest, upd update) e
 func assertRCUpdates(t *testing.T, rcCh <-chan rc_fields.RC, expect int, desc string) {
 	rc := <-rcCh
 	if rc.ReplicasDesired != expect {
-		t.Errorf("expected replicas desired count to be %d but was %d", expect, rc.ReplicasDesired)
+		t.Fatalf("expected replicas desired count to be %d but was %d", expect, rc.ReplicasDesired)
 	}
 }
 
