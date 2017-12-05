@@ -26,6 +26,7 @@ func TestPodManifestCanBeRead(t *testing.T) {
 	Assert(t).AreEqual("hoist", manifest.GetLaunchableStanzas()["app"].LaunchableType, "LaunchableType read from manifest didn't have expected value")
 
 	Assert(t).AreEqual(4, manifest.GetResourceLimits().Cgroup.CPUs, "CPU count for pod level cgroup didn't have expected value")
+	Assert(t).AreEqual(size.ByteCount(1), manifest.GetResourceLimits().Cgroup.Memory, "Memory in Bytes for pod level cgroup didn't have expected value")
 
 	Assert(t).AreEqual("staging", manifest.GetConfig()["ENVIRONMENT"], "Should have read the ENVIRONMENT from the config stanza")
 	hoptoad := manifest.GetConfig()["hoptoad"].(map[interface{}]interface{})
