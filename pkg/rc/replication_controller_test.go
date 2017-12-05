@@ -942,7 +942,7 @@ func testIneligibleNodesCommon(applicator testApplicator, rc *replicationControl
 	}
 
 	// now make one of the nodes ineligible, creating a situation where the
-	// RC has 7 "current" nodes and 7 desired recplicas, but only 6 of
+	// RC has 7 "current" nodes and 7 desired replicas, but only 6 of
 	// those nodes meet the node selector's criteria
 	err = applicator.SetLabel(labels.NODE, "node3", "nodeQuality", "bad")
 	if err != nil {
@@ -1034,7 +1034,7 @@ func TestRCDoesNotFixMembership(t *testing.T) {
 	}
 }
 
-func TestTransferRolledBackByQuitCh(t *testing.T) {
+func TestTransferHaltedByQuitCh(t *testing.T) {
 	rcStore, _, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
 
@@ -1121,21 +1121,6 @@ func testRolledBackTransfer(rc *replicationController, rcFields fields.RC, t *te
 	case err != nil:
 		t.Fatal(err)
 	}
-
-	man, _, err := rc.consulStore.Pod(consul.INTENT_TREE, newTransferNode, rcFields.Manifest.ID())
-	if err != pods.NoCurrentManifest {
-		t.Fatalf("Expected new node to have been erased from intent, but man was %v", man)
-	}
-
-	nilTransfer := nodeTransfer{}
-	// We have to compare each field because we can't compare nilTransfer and
-	// rc.nodeTransfer directly (nodeTransfer has a func() field)
-	if rc.nodeTransfer.newNode != nilTransfer.newNode ||
-		rc.nodeTransfer.oldNode != nilTransfer.oldNode ||
-		rc.nodeTransfer.quit != nilTransfer.quit ||
-		rc.nodeTransfer.session != nilTransfer.session {
-		t.Fatalf("Expected rc.nodeTransfer to be %v, was %v", nilTransfer, rc.nodeTransfer)
-	}
 }
 
 func TestNewTransferNodeCannotBeScheduledOnReplicasDesiredIncrease(t *testing.T) {
@@ -1170,7 +1155,7 @@ func TestNewTransferNodeCannotBeScheduledOnReplicasDesiredIncrease(t *testing.T)
 		t.Fatal("new transfer node should've been eligible but it was not")
 	}
 
-	rcFields.ReplicasDesired = rcFields.ReplicasDesired + 1
+	rcFields.ReplicasDesired = rcFields.ReplicasDesired + 2
 	err = rc.meetDesires(rcFields)
 	if err == nil {
 		t.Fatal("expected not enough replicas to meet desires")
@@ -1190,18 +1175,6 @@ func TestNewTransferNodeCannotBeScheduledOnReplicasDesiredIncrease(t *testing.T)
 	if err != nil {
 		t.Fatal("meetDesires should succeed, it now has an eligible node for addPods()")
 	}
-
-	current, err := rc.CurrentPods()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, node := range current.Nodes() {
-		if node == newTransferNode {
-			t.Fatal("new transfer node should not be a current node")
-		}
-	}
-
 }
 
 func TestTransferNodeHappyPath(t *testing.T) {
@@ -1253,14 +1226,14 @@ func TestTransferNodeHappyPath(t *testing.T) {
 	}
 }
 
-type failOnLockKeyTxner struct {
+type failOnDeleteCASKeyTxner struct {
 	badKey string
 	inner  transaction.Txner
 }
 
-func (f failOnLockKeyTxner) Txn(txn api.KVTxnOps, q *api.QueryOptions) (bool, *api.KVTxnResponse, *api.QueryMeta, error) {
+func (f failOnDeleteCASKeyTxner) Txn(txn api.KVTxnOps, q *api.QueryOptions) (bool, *api.KVTxnResponse, *api.QueryMeta, error) {
 	for _, op := range txn {
-		if op.Verb == string(api.KVLock) && op.Key == f.badKey {
+		if op.Verb == string(api.KVDeleteCAS) && op.Key == f.badKey && op.Index == 0 {
 			return false, &api.KVTxnResponse{}, &api.QueryMeta{}, util.Errorf("this key was configured to fail")
 		}
 	}
@@ -1298,8 +1271,8 @@ func TestNodeTransferDoesNotDeleteStatusOnScheduleError(t *testing.T) {
 		NodeSelector:       klabels.Everything(),
 	}
 
-	// rig scheduleWithSession() to fail by inserting a special txner
-	rc.txner = failOnLockKeyTxner{
+	// rig scheduleNewNodeForNodeTransfer() to fail by inserting a special txner
+	rc.txner = failOnDeleteCASKeyTxner{
 		badKey: path.Join(consul.INTENT_TREE.String(), newNode.String(), testManifest().ID().String()),
 		inner:  rc.txner,
 	}
@@ -1308,7 +1281,7 @@ func TestNodeTransferDoesNotDeleteStatusOnScheduleError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = rc.transferNodes(rcFields, nil)
+	err = rc.transferNodes(rcFields, types.PodLocations{}, nil)
 	if err == nil {
 		t.Fatal("expected an error due to rigging the txner")
 	}
@@ -1325,14 +1298,14 @@ func TestNodeTransferDoesNotDeleteStatusOnScheduleError(t *testing.T) {
 
 	rc.nodeTransferMu.Lock()
 	defer rc.nodeTransferMu.Unlock()
-	if rc.nodeTransfer.oldNode != "" {
-		t.Fatal("local node transfer state should have been zeroed when scheduleWithSession() failed")
+	if rc.nodeTransfer.oldNode == "" {
+		t.Fatal("local node transfer state should not have been zeroed when scheduleNewNodeForNodeTransfer() failed")
 	}
-	if rc.nodeTransfer.newNode != "" {
-		t.Fatal("local node transfer state should have been zeroed when scheduleWithSession() failed")
+	if rc.nodeTransfer.newNode == "" {
+		t.Fatal("local node transfer state should not have been zeroed when scheduleNewNodeForNodeTransfer() failed")
 	}
-	if rc.nodeTransfer.id != "" {
-		t.Fatal("local node transfer state should have been zeroed when scheduleWithSession() failed")
+	if rc.nodeTransfer.id == "" {
+		t.Fatal("local node transfer state should not have been zeroed when scheduleNewNodeForNodeTransfer() failed")
 	}
 }
 
@@ -1366,14 +1339,14 @@ func TestNodeTransferDoesNotFailOnScheduleConflict(t *testing.T) {
 		NodeSelector:       klabels.Everything(),
 	}
 
-	// rig transferNodes() to have a conflict at the scheduleWithSession
+	// rig transferNodes() to have a conflict at the scheduleNewNodeForNodeTransfer
 	// step by writing the key that it wants to write ahead of time
 	_, err = consulStore.SetPod(consul.INTENT_TREE, newNode, testManifest())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = rc.transferNodes(rcFields, nil)
+	err = rc.transferNodes(rcFields, types.PodLocations{}, nil)
 	if err != nil {
 		t.Fatal("expected no error due to a schedule conflict")
 	}
@@ -1536,6 +1509,169 @@ func TestRemovePodsDisabled(t *testing.T) {
 
 	if len(currentPods) != 5 {
 		t.Fatalf("5 pods should have been scheduled (because RC is disabled) but found %d", len(currentPods))
+	}
+
+}
+
+func TestRemovePodsDoesntRemoveOldNodeInNodeTransfer(t *testing.T) {
+	_, _, _, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+
+	rcFields := fields.RC{
+		ID:              rc.rcID,
+		ReplicasDesired: 2,
+		Manifest:        testManifest(),
+		Disabled:        false,
+	}
+
+	current := types.PodLocations{}
+	eligible := []types.NodeName{"node1", "node2"}
+
+	// first add the pods so the labels get set up correctly
+	err := rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// first add the pods so the labels get set up correctly
+	err = rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 2 pods were scheduled
+	currentPods, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 2 {
+		t.Fatalf("2 pods should have been scheduled but found %d", len(currentPods))
+	}
+
+	// now make node1 not eligible and also make it the old node in the local
+	// node transfer storage to make sure the RC doesn't uninstall it
+	eligible = []types.NodeName{"node2"}
+	rc.nodeTransferMu.Lock()
+	rc.nodeTransfer.oldNode = "node1"
+	rc.nodeTransferMu.Unlock()
+
+	rcFields.ReplicasDesired = 1
+
+	err = rc.removePods(rcFields, currentPods, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// there should still be 2 pods because a special case protects nodes that
+	// are part of node transfers
+	currentPods, err = rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 2 {
+		t.Fatalf("2 pods should still have been scheduled (because RC has a special case preventing removing the old node in a node transfer) but found %d", len(currentPods))
+	}
+
+	// now, wipe the node transfer and make sure node1 gets removed
+	rc.nodeTransferMu.Lock()
+	rc.nodeTransfer.oldNode = ""
+	rc.nodeTransferMu.Unlock()
+
+	err = rc.removePods(rcFields, currentPods, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	currentPods, err = rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 1 {
+		t.Fatalf("1 pods should have been scheduled after the node transfer data was cleared out but found %d", len(currentPods))
+	}
+}
+
+func TestRemovePodsDoesntRemoveNewNodeInNodeTransfer(t *testing.T) {
+	_, _, _, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+
+	rcFields := fields.RC{
+		ID:              rc.rcID,
+		ReplicasDesired: 2,
+		Manifest:        testManifest(),
+		Disabled:        false,
+	}
+
+	current := types.PodLocations{}
+	eligible := []types.NodeName{"node1", "node2"}
+
+	// first add the pods so the labels get set up correctly
+	err := rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// first add the pods so the labels get set up correctly
+	err = rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 2 pods were scheduled
+	currentPods, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 2 {
+		t.Fatalf("2 pods should have been scheduled but found %d", len(currentPods))
+	}
+
+	// now make node1 not eligible and also make it the old node in the local
+	// node transfer storage to make sure the RC doesn't uninstall it
+	eligible = []types.NodeName{"node2"}
+	rc.nodeTransferMu.Lock()
+	rc.nodeTransfer.newNode = "node1"
+	rc.nodeTransferMu.Unlock()
+
+	rcFields.ReplicasDesired = 1
+
+	err = rc.removePods(rcFields, currentPods, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// there should still be 2 pods because a special case protects nodes that
+	// are part of node transfers
+	currentPods, err = rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 2 {
+		t.Fatalf("2 pods should still have been scheduled (because RC has a special case preventing removing the old node in a node transfer) but found %d", len(currentPods))
+	}
+
+	// now, wipe the node transfer and make sure node1 gets removed
+	rc.nodeTransferMu.Lock()
+	rc.nodeTransfer.newNode = ""
+	rc.nodeTransferMu.Unlock()
+
+	err = rc.removePods(rcFields, currentPods, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	currentPods, err = rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 1 {
+		t.Fatalf("1 pods should have been scheduled after the node transfer data was cleared out but found %d", len(currentPods))
 	}
 }
 
