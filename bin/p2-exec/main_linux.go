@@ -35,14 +35,9 @@ func sysMaxFDs() (*C.struct_rlimit, error) {
 }
 
 func sysUnRlimit() *C.struct_rlimit {
-	// this constant is set to -1. in C, you can coerce this to an
-	// unsigned integer, but in go, you cannot
-	// we have to delay the signed->unsigned cast until runtime to
-	// avoid compile errors
-	inf := C.RLIM_INFINITY
 	return &C.struct_rlimit{
-		C.rlim_t(inf),
-		C.rlim_t(inf),
+		C.rlim_t(C.RLIM_INFINITY),
+		C.rlim_t(C.RLIM_INFINITY),
 	}
 }
 

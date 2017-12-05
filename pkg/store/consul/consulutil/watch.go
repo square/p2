@@ -2,6 +2,7 @@ package consulutil
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math/rand"
 	"time"
@@ -224,6 +225,12 @@ func WatchSingle(
 		outputPairStart time.Time
 	)
 
+	ctx, cancel := context.WithCancel(context.TODO())
+	go func() {
+		<-done
+		cancel()
+	}()
+
 	for {
 		select {
 		case <-done:
@@ -232,7 +239,7 @@ func WatchSingle(
 		}
 		safeGetStart = time.Now()
 		timer.Reset(250 * time.Millisecond) // upper bound on request rate
-		kvp, queryMeta, err := Get(clientKV, done, key, &api.QueryOptions{
+		kvp, queryMeta, err := Get(ctx, clientKV, key, &api.QueryOptions{
 			WaitIndex: currentIndex,
 		})
 		listLatencyHistogram.Update(int64(time.Since(safeGetStart) / time.Millisecond))

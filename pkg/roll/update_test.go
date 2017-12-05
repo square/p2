@@ -848,7 +848,7 @@ func transferNode(node types.NodeName, manifest manifest.Manifest, upd update) e
 func assertRCUpdates(t *testing.T, rcCh <-chan rc_fields.RC, expect int, desc string) {
 	rc := <-rcCh
 	if rc.ReplicasDesired != expect {
-		t.Errorf("expected replicas desired count to be %d but was %d", expect, rc.ReplicasDesired)
+		t.Fatalf("expected replicas desired count to be %d but was %d", expect, rc.ReplicasDesired)
 	}
 }
 
@@ -905,27 +905,34 @@ func TestRollLoopTypicalCase(t *testing.T) {
 	assertRCUpdates(t, oldRCCh, 2, "old RC")
 	assertRCUpdates(t, newRCCh, 1, "new RC")
 
-	transferNode("node1", manifest, upd)
+	err := transferNode("node1", manifest, upd)
+	if err != nil {
+		t.Fatal(err)
+	}
 	healths <- checks
 
 	assertRCUpdates(t, oldRCCh, 1, "old RC")
 	assertRCUpdates(t, newRCCh, 2, "new RC")
 
-	transferNode("node2", manifest, upd)
+	err = transferNode("node2", manifest, upd)
+	if err != nil {
+		t.Fatal(err)
+	}
 	healths <- checks
 
 	assertRCUpdates(t, oldRCCh, 0, "old RC")
 	assertRCUpdates(t, newRCCh, 3, "new RC")
 
-	transferNode("node3", manifest, upd)
+	err = transferNode("node3", manifest, upd)
+	if err != nil {
+		t.Fatal(err)
+	}
 	healths <- checks
 
 	assertRollLoopResult(t, rollLoopResult, true)
 
 	cancel()
 	wg.Wait()
-
-	fmt.Println("WE HERE")
 }
 
 func failIfRCDesireChanges(t *testing.T, rcCh <-chan rc_fields.RC, expected int) {
@@ -968,19 +975,28 @@ func TestRollLoopMigrateFromZero(t *testing.T) {
 	assertRCUpdates(t, newRCCh, 1, "new RC")
 
 	checks["node1"] = health.Result{Status: health.Passing}
-	transferNode("node1", manifest, upd)
+	err := transferNode("node1", manifest, upd)
+	if err != nil {
+		t.Fatal(err)
+	}
 	healths <- checks
 
 	assertRCUpdates(t, newRCCh, 2, "new RC")
 
 	checks["node2"] = health.Result{Status: health.Passing}
-	transferNode("node2", manifest, upd)
+	err = transferNode("node2", manifest, upd)
+	if err != nil {
+		t.Fatal(err)
+	}
 	healths <- checks
 
 	assertRCUpdates(t, newRCCh, 3, "new RC")
 
 	checks["node3"] = health.Result{Status: health.Passing}
-	transferNode("node3", manifest, upd)
+	err = transferNode("node3", manifest, upd)
+	if err != nil {
+		t.Fatal(err)
+	}
 	healths <- checks
 
 	assertRollLoopResult(t, rollLoopResult, true)
@@ -1029,7 +1045,10 @@ func TestRollLoopStallsIfUnhealthy(t *testing.T) {
 	assertRCUpdates(t, oldRCCh, 2, "old RC")
 	assertRCUpdates(t, newRCCh, 1, "new RC")
 
-	transferNode("node1", manifest, upd)
+	err := transferNode("node1", manifest, upd)
+	if err != nil {
+		t.Fatal(err)
+	}
 	checks["node1"] = health.Result{Status: health.Critical}
 	go failIfRCDesireChanges(t, oldRCCh, 2)
 	go failIfRCDesireChanges(t, newRCCh, 1)
