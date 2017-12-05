@@ -992,21 +992,23 @@ func (rc *replicationController) finishTransfer(rcFields fields.RC) error {
 	ok, resp, err := txn.CommitWithRetries(rc.txner)
 	switch {
 	case err != nil:
-		errMsg := fmt.Sprintf(
+		err := util.Errorf(
 			"transfer unlock, label, and unschedule txn returned err after timeout: %s",
 			err,
 		)
-		alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
+		rc.logger.WithError(err).Errorln("could not finalize node transfer")
+		alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, err.Error()), alerting.LowUrgency)
 		if alertErr != nil {
 			rc.logger.WithError(alertErr).Errorln("Unable to send alert")
 		}
 		return err
 	case !ok:
-		errMsg := fmt.Sprintf(
+		err := util.Errorf(
 			"Transaction violation trying to unlock node transfer session and label new node. New RC may have scheduled node: %s",
 			transaction.TxnErrorsToString(resp.Errors),
 		)
-		err := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
+		rc.logger.WithError(err).Errorln("could not finalize node transfer")
+		err = rc.alerter.Alert(rc.alertInfo(rcFields, err.Error()), alerting.LowUrgency)
 		if err != nil {
 			rc.logger.WithError(err).Errorln("Unable to send alert")
 		}
