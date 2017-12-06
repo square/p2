@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 
@@ -267,7 +268,7 @@ func GetPodConfig(configPath string) (Config, error) {
 			return Config{}, err
 		}
 		if _, ok := cgMap["cgroup"]; !ok {
-			return Config{}, util.Errorf("%s does not contain cgroup parameters\n", configPath)
+			return Config{}, util.Errorf("%s does not contain cgroup parameters\n %s", configPath, debug.Stack())
 		}
 		cgConfig := cgMap["cgroup"]
 		return cgConfig, nil

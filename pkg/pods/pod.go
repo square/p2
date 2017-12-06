@@ -735,12 +735,21 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 
 	podCgroup := ""
 	if *NestedCgroups {
-		err = pod.installCgroup()
+		// if pod.CurrentManifest().GetResourceLimits() == Resourc
+		man, err := pod.CurrentManifest()
 		if err != nil {
 			pod.logger.WithError(err).Errorf("Could not create pod cgroup")
 		}
+		if (man.GetResourceLimits() == manifest.ResourceLimitsStanza{}) || (man.GetResourceLimits().Cgroup == cgroups.Config{}) {
+			pod.logger.Warn("Resource Limits not specified, skipping pod cgroup")
+		} else {
+			err = pod.installCgroup()
+			if err != nil {
+				pod.logger.WithError(err).Errorf("Could not create pod cgroup")
+			}
 
-		podCgroup = pod.UniqueName()
+			podCgroup = pod.UniqueName()
+		}
 	}
 
 	if launchableStanza.LaunchableType == "hoist" {
