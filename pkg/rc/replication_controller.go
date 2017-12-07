@@ -521,6 +521,10 @@ func (rc *replicationController) removePods(rcFields fields.RC, current types.Po
 }
 
 func (rc *replicationController) ensureConsistency(rcFields fields.RC, current []types.NodeName, eligible []types.NodeName) error {
+	if rcFields.Disabled {
+		return nil
+	}
+
 	manifest := rcFields.Manifest
 
 	eligibleCurrent := types.NewNodeSet(current...).Intersection(types.NewNodeSet(eligible...)).ListNodes()
