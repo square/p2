@@ -16,6 +16,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/hashicorp/consul/api"
+	"github.com/pborman/uuid"
 	context "golang.org/x/net/context"
 	"golang.org/x/net/http2"
 	"gopkg.in/yaml.v2"
@@ -36,6 +37,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/podstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
@@ -648,6 +650,71 @@ func getArtifactRegistry(preparerConfig *PreparerConfig) (artifact.Registry, err
 	}
 
 	return artifact.NewRegistry(url, fetcher, osversion.DefaultDetector), nil
+}
+
+func (p *Preparer) BuildRealityAtLaunch() error {
+	// check if reality tree does not exist, if true then reimage occurred and may need
+	// to rebuild reality tree for orphaned pods
+	// a pod is orphaned if they exist on disk but not in intent
+	sub := p.Logger.SubLogger(nil)
+	realityResults, _, err := p.store.ListPods(consul.REALITY_TREE, p.node)
+	if err != nil {
+		sub.WithError(err).Errorln("Could not check reality: %s", err)
+		return err
+	} else if len(realityResults) == 0 {
+		// get set of pods in intent
+		intentResults, _, err := p.store.ListPods(consul.INTENT_TREE, p.node)
+		if err != nil {
+			sub.WithError(err).Errorln("Could not check intent: %s", err)
+			return err
+		}
+		intentMap := map[string]bool{}
+		for _, result := range intentResults {
+			intentMap[result.Manifest.ID().String()] = true
+		}
+
+		// get set of pods installed on machine
+		manifestFilePaths, err := filepath.Glob("/data/pods/*/current_manifest.yaml")
+		if err != nil {
+			sub.WithError(err).Errorln("Could not check filepaths of pods installed on disk: %s", err)
+			return err
+		}
+		for _, fp := range manifestFilePaths {
+			podIDStr := strings.SplitN(fp, "/", 5)[3]
+			var podUUID uuid.UUID
+			if len(podIDStr) > types.PodUUIDLength {
+				podUUID = uuid.Parse(podIDStr[len(podIDStr)-types.PodUUIDLength:])
+			}
+			if podUUID != nil {
+				uniqueKey := types.PodUniqueKey(podUUID.String())
+				_, err := p.podStore.ReadPodFromIndex(podstore.PodIndex{PodKey: uniqueKey})
+				if podstore.IsNoPod(err) {
+					ctx, cancelFunc := transaction.New(context.Background())
+					defer cancelFunc()
+					err := p.podStore.WriteRealityIndex(ctx, uniqueKey, p.node)
+					if err != nil {
+						sub.WithError(err).Errorln("Could not add 'write uuid index to reality store' to transaction: %s", err)
+						return err
+					}
+				} else if err != nil {
+					sub.WithError(err).Errorln("Unexpected error reading pod: %s", err)
+					return err
+				}
+			} else if _, ok := intentMap[podIDStr]; !ok {
+				diskManifest, err := manifest.FromPath(fp)
+				if err != nil {
+					sub.WithError(err).Errorln("Could not read manifest from path: %s", err)
+					return err
+				}
+				_, err = p.store.SetPod(consul.REALITY_TREE, p.node, diskManifest)
+				if err != nil {
+					sub.WithError(err).Errorln("Could not set pod in reality tree: %s", err)
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (p *Preparer) InstallHooks() error {
