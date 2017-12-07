@@ -767,13 +767,18 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, current types
 
 func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligible []types.NodeName, nodeTransferID rcstatus.NodeTransferID) (types.NodeName, types.NodeName, error) {
 	if len(ineligible) < 1 {
-		return "", "", util.Errorf("Need at least one ineligible node to transfer from, had 0")
+		err := util.Errorf("Need at least one ineligible node to transfer from, had 0")
+		rc.logger.WithError(err).Errorln("could not figure out which node to transfer from")
+		return "", "", err
 	}
+
+	oldNode := ineligible[0]
 
 	nodesRequested := 1 // We only support one node transfer at a time right now
 	newNodes, err := rc.scheduler.AllocateNodes(rcFields.Manifest, rcFields.NodeSelector, nodesRequested)
 	if err != nil || len(newNodes) < 1 {
 		errMsg := fmt.Sprintf("Unable to allocate nodes over grpc: %s", err)
+		rc.logger.WithError(err).Errorf("could not allocate node to replace %s", oldNode)
 		err := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
 		if err != nil {
 			rc.logger.WithError(err).Errorln("Unable to send alert")
@@ -783,14 +788,19 @@ func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligibl
 	}
 
 	newNode := newNodes[0]
-	rc.logger.Infof("Allocated node %s for transfer", newNode)
 
-	oldNode := ineligible[0]
+	logger := rc.logger.SubLogger(logrus.Fields{
+		"old_node": oldNode,
+		"new_node": newNode,
+	})
+	logger.Infof("Allocated node %s for transfer", newNode)
+
 	err = rc.scheduler.DeallocateNodes(rcFields.NodeSelector, []types.NodeName{oldNode})
 	if err != nil {
+		logger.WithError(err).Errorf("could not make deallocate call")
 		return "", "", util.Errorf("Could not deallocate from %s: %s", oldNode, err)
 	}
-	rc.logger.Infof("Deallocated ineligible node %s", oldNode)
+	logger.Infof("Deallocated ineligible node %s", oldNode)
 
 	status := rcstatus.Status{
 		NodeTransfer: &rcstatus.NodeTransfer{
@@ -812,6 +822,7 @@ func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligibl
 		rcFields.ReplicasDesired,
 	)
 	if err != nil {
+		logger.WithError(err).Errorf("could not generate node transfer start audit log for transfer")
 		return "", "", util.Errorf("could not generate node transfer start audit log details: %s", err)
 	}
 
@@ -824,16 +835,19 @@ func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligibl
 		auditLogDetails,
 	)
 	if err != nil {
+		logger.WithError(err).Errorln("could not create audit log record for node transfer start")
 		return "", "", util.Errorf("could not add audit log record to node transfer start transaction: %s", err)
 	}
 
 	err = rc.rcStatusStore.CASTxn(writeCtx, rc.rcID, 0, status)
 	if err != nil {
+		rc.logger.WithError(err).Errorln("could not build transaction to write RC status")
 		return "", "", util.Errorf("Could not write new node to store: %s", err)
 	}
 
 	err = transaction.MustCommit(writeCtx, rc.txner)
 	if err != nil {
+		logger.WithError(err).Errorln("could not write RC status")
 		return "", "", util.Errorf("could not commit transaction to update RC status with node transfer information: %s", err)
 	}
 
@@ -998,7 +1012,7 @@ func (rc *replicationController) finishTransfer(rcFields fields.RC, logger loggi
 	case !ok:
 		// This doesn't make sense because there are no "check" conditions in the transaction
 		err := util.Errorf(
-			"Transaction violation trying to delete RC status",
+			"Transaction violation trying to delete RC status: %s",
 			transaction.TxnErrorsToString(resp.Errors),
 		)
 		logger.WithError(err).Errorln("could not finalize node transfer")
