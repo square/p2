@@ -10,6 +10,18 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
+const (
+	PodUUIDLength int = 36
+)
+
+func HomeToPodUUID(home string) uuid.UUID {
+	var podUUID uuid.UUID
+	if len(home) > PodUUIDLength {
+		podUUID = uuid.Parse(home[len(home)-PodUUIDLength:])
+	}
+	return podUUID
+}
+
 type NodeName string
 
 // Refers to the id: key in a pod manifest, i.e. the name of the application

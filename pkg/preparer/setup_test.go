@@ -2,6 +2,7 @@ package preparer
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/pborman/uuid"
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/launch"
@@ -17,6 +19,9 @@ import (
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/consulutil"
+	"github.com/square/p2/pkg/store/consul/podstore"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 )
@@ -81,4 +86,82 @@ func TestInstallHooks(t *testing.T) {
 	hookFile := filepath.Join(execDir, "users__create__launch")
 	_, err = os.Stat(hookFile)
 	Assert(t).IsNil(err, "should have created the user launch script")
+}
+
+func TestBuildRealityAtLaunch(t *testing.T) {
+	podID := "some-app"
+	testDir := "./tmp"
+	podRoot := filepath.Join(testDir, "data/pods/")
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+	store := consul.NewConsulStore(fixture.Client)
+	podStore := podstore.NewConsul(fixture.Client.KV())
+	preparer := Preparer{
+		node:     "test.local",
+		client:   fixture.Client,
+		Logger:   logging.DefaultLogger,
+		store:    store,
+		podStore: podStore,
+		podRoot:  podRoot,
+	}
+
+	from, err := os.Open("./testdata/test_current_manifest.yaml")
+	if err != nil {
+		t.Fatalf("Error opening ./testdata/test_current_manifest.yaml: %s", err)
+	}
+	defer from.Close()
+
+	uuidStr := uuid.New()
+	apps := []string{podID, podID + "-" + uuidStr}
+	for _, app := range apps {
+		err := os.MkdirAll(filepath.Join(podRoot, app), 0755)
+		if err != nil {
+			t.Fatalf("Error making tmp directory: %s", err)
+		}
+
+		to, err := os.OpenFile(filepath.Join(podRoot, app, "current_manifest.yaml"), os.O_RDWR|os.O_CREATE, 0755)
+		if err != nil {
+			t.Fatalf("Error opening destination current_manifest.yaml: %s", err)
+		}
+		defer to.Close()
+
+		_, err = io.Copy(to, from)
+		if err != nil {
+			t.Fatalf("Error copying ./testdata/test_current_manifest.yaml to tmp: %s", err)
+		}
+	}
+	defer func() {
+		err := os.RemoveAll(testDir)
+		if err != nil {
+			t.Fatalf("Unable to remove tmp directory used for testing: %s", err)
+		}
+	}()
+
+	err = preparer.BuildRealityAtLaunch()
+	if err != nil {
+		t.Fatalf("Error in BuildRealityAtLaunch: %s", err)
+	}
+
+	reality, _, err := store.ListPods(consul.REALITY_TREE, preparer.node)
+	if err != nil {
+		t.Fatalf("Error reading reality tree: %s", err)
+	}
+	match := false
+	for _, result := range reality {
+		if result.Manifest.ID().String() == podID {
+			match = true
+			break
+		}
+	}
+	if !match {
+		t.Fatalf("Did not find podID %s in reality tree", podID)
+	}
+	realityIndexPath := fmt.Sprintf("reality/%s/%s", preparer.node, uuidStr)
+	pair, _, err := preparer.client.KV().Get(realityIndexPath, nil)
+	if err != nil {
+		t.Fatalf("Unable to fetch the key (%s): %s", realityIndexPath, err)
+	}
+	if pair == nil {
+		t.Fatalf("%s should have been written but it wasn't", realityIndexPath)
+	}
 }

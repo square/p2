@@ -225,7 +225,7 @@ func (c *consulStore) WriteRealityIndex(ctx context.Context, podKey types.PodUni
 
 	realityIndexPath := computeRealityIndexPath(podKey, node)
 
-	// Now, write the secondary index to /intent/<node>/<key>
+	// Now, write the secondary index to /reality/<node>/<key>
 	index := PodIndex{
 		PodKey: podKey,
 	}

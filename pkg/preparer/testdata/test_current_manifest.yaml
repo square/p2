@@ -1,0 +1,8 @@
+id: some-app
+launchables:
+  some-app:
+    launchable_type: hoist
+    version:
+      id: asdf
+      tags:
+        directory: deployable
