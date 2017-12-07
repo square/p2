@@ -408,12 +408,12 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 	}
 	session := r.consuls.NewUnmanagedSession(sessionID, "")
 
-	result := make(chan struct{})
-	ctx, cancel := transaction.New(context.Background())
+	result := make(chan bool, 1)
 	go func() {
+		ctx, cancel := transaction.New(context.Background())
 		defer cancel()
 		watchDelay := 1 * time.Second
-		roll.NewUpdate(
+		result <- roll.NewUpdate(
 			roll_fields.Update{
 				OldRC:           rc_fields.ID(oldID),
 				NewRC:           rc_fields.ID(newID),
@@ -446,19 +446,19 @@ LOOP:
 		select {
 		case <-signals:
 			// try to clean up locks on ^C
-			cancel()
 			close(quit)
-
 			// do not exit right away - the session and result channels will be
 			// closed after the quit is requested, ensuring that the locks held
 			// by the farm were released.
 			r.logger.NoFields().Errorln("Got signal, exiting")
 		case <-sessions:
 			r.logger.NoFields().Fatalln("Lost session")
-		case <-result:
+		case res := <-result:
 			// done, either due to ^C (already printed message above) or
 			// clean finish
-			r.logger.NoFields().Infoln("Done")
+			if res {
+				r.logger.NoFields().Infoln("Done")
+			}
 			break LOOP
 		}
 	}
