@@ -30,6 +30,7 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/hashicorp/consul/api"
 	"github.com/pborman/uuid"
 )
@@ -741,16 +742,21 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, current types
 	rc.nodeTransfer.id = nodeTransferID
 	rc.nodeTransferMu.Unlock()
 
-	err = rc.scheduleNewNodeForTransfer(rcFields, newNode, current)
+	nodeTransferLogger := rc.logger.SubLogger(logrus.Fields{
+		"old_node": oldNode,
+		"new_node": newNode,
+	})
+
+	err = rc.scheduleNewNodeForTransfer(rcFields, newNode, current, nodeTransferLogger)
 	if err != nil {
-		return util.Errorf("Could not schedule with session: %s", err)
+		return util.Errorf("could not schedule new node: %s", err)
 	}
 
 	rc.nodeTransferMu.Lock()
 	rc.nodeTransfer.quit = make(chan struct{})
 	rc.nodeTransferMu.Unlock()
 
-	go rc.doBackgroundNodeTransfer(rcFields)
+	go rc.doBackgroundNodeTransfer(rcFields, nodeTransferLogger)
 
 	return nil
 }
@@ -830,8 +836,8 @@ func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligibl
 	return newNode, oldNode, nil
 }
 
-func (rc *replicationController) scheduleNewNodeForTransfer(rcFields fields.RC, newNode types.NodeName, current types.PodLocations) error {
-	rc.logger.NoFields().Infof("Scheduling %s as part of node transfer", newNode)
+func (rc *replicationController) scheduleNewNodeForTransfer(rcFields fields.RC, newNode types.NodeName, current types.PodLocations, logger logging.Logger) error {
+	logger.NoFields().Infof("Scheduling %s as part of node transfer", newNode)
 
 	key, err := consul.PodPath(consul.INTENT_TREE, newNode, rcFields.Manifest.ID())
 	if err != nil {
@@ -857,24 +863,25 @@ func (rc *replicationController) scheduleNewNodeForTransfer(rcFields fields.RC, 
 	ok, _, err := auditingTransaction.Commit(rc.txner)
 	switch {
 	case err != nil:
+		logger.WithError(err).Errorln("could not schedule new node")
 		return err
 	case !ok:
 		// This means that our DeleteCAS failed, which means another RC
 		// scheduled the new node already, or a past incarnation of
 		// this RC already scheduled it. Either of these situations are
 		// fine, proceed onwards
-		rc.logger.Infof("New node %s of node transfer was already scheduled, proceeding without scheduling", newNode)
+		logger.Infof("New node %s of node transfer was already scheduled, proceeding without scheduling", newNode)
 	}
 
 	return nil
 }
 
-func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC) {
-	ok, rollbackReason := rc.watchHealth(rcFields)
+func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC, logger logging.Logger) {
+	ok, rollbackReason := rc.watchHealth(rcFields, logger)
 	if ok {
-		err := rc.finishTransfer(rcFields)
+		err := rc.finishTransfer(rcFields, logger)
 		if err == nil {
-			rc.logger.Infof("Node transfer from %s to %s complete.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode)
+			logger.Infoln("Node transfer complete.")
 			return
 		}
 
@@ -884,8 +891,8 @@ func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC) {
 	}
 }
 
-func (rc *replicationController) watchHealth(rcFields fields.RC) (bool, audit.RollbackReason) {
-	rc.logger.Infof("Watching health on %s", rc.nodeTransfer.newNode)
+func (rc *replicationController) watchHealth(rcFields fields.RC, logger logging.Logger) (bool, audit.RollbackReason) {
+	logger.Infof("Watching health on %s", rc.nodeTransfer.newNode)
 
 	healthQuitCh := make(chan struct{})
 	defer close(healthQuitCh)
@@ -897,13 +904,13 @@ func (rc *replicationController) watchHealth(rcFields fields.RC) (bool, audit.Ro
 		select {
 		case err := <-errCh:
 			if err != nil {
-				rc.logger.WithError(err).Errorln("Node transfer health checker sent error")
+				logger.WithError(err).Errorln("Node transfer health checker sent error")
 			} else {
-				rc.logger.Errorln("Node transfer health checker sent nil error")
+				logger.Errorln("Node transfer health checker sent nil error")
 			}
 		case currentHealth := <-resultCh:
 			if currentHealth.Status == health.Passing {
-				rc.logger.Infof("New transfer node %s health now passing", rc.nodeTransfer.newNode)
+				logger.Infof("New transfer node %s health now passing", rc.nodeTransfer.newNode)
 				return true, ""
 			}
 		case <-rc.nodeTransfer.quit:
@@ -916,7 +923,7 @@ func (rc *replicationController) watchHealth(rcFields fields.RC) (bool, audit.Ro
 	}
 }
 
-func (rc *replicationController) finishTransfer(rcFields fields.RC) error {
+func (rc *replicationController) finishTransfer(rcFields fields.RC, logger logging.Logger) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -978,10 +985,10 @@ func (rc *replicationController) finishTransfer(rcFields fields.RC) error {
 			"RC status deletion and audit log record returned err after timeout: %s",
 			err,
 		)
-		rc.logger.WithError(err).Errorln("could not finalize node transfer")
+		logger.WithError(err).Errorln("could not finalize node transfer")
 		alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, err.Error()), alerting.LowUrgency)
 		if alertErr != nil {
-			rc.logger.WithError(alertErr).Errorln("Unable to send alert")
+			logger.WithError(alertErr).Errorln("Unable to send alert")
 		}
 		return err
 	case !ok:
@@ -990,10 +997,10 @@ func (rc *replicationController) finishTransfer(rcFields fields.RC) error {
 			"Transaction violation trying to delete RC status",
 			transaction.TxnErrorsToString(resp.Errors),
 		)
-		rc.logger.WithError(err).Errorln("could not finalize node transfer")
+		logger.WithError(err).Errorln("could not finalize node transfer")
 		err = rc.alerter.Alert(rc.alertInfo(rcFields, err.Error()), alerting.LowUrgency)
 		if err != nil {
-			rc.logger.WithError(err).Errorln("Unable to send alert")
+			logger.WithError(err).Errorln("Unable to send alert")
 		}
 		return nil
 	}
