@@ -10,6 +10,10 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
+const (
+	PodUUIDLength int = 36
+)
+
 type NodeName string
 
 // Refers to the id: key in a pod manifest, i.e. the name of the application
