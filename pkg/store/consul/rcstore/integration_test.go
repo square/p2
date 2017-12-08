@@ -4,13 +4,18 @@ package rcstore
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/manifest"
+	rcfields "github.com/square/p2/pkg/rc/fields"
+	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/transaction"
 
+	"github.com/pborman/uuid"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -383,6 +388,80 @@ func TestEnableTxnFailsIfChanged(t *testing.T) {
 	if ok {
 		t.Fatal("transaction should have failed since RC was changed before transaction was committed")
 	}
+}
+
+func TestLockForNodeTransfer(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+
+	store := consul.NewConsulStore(fixture.Client)
+	session1, renewalErrCh, err := store.NewSession("session1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := <-renewalErrCh
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	session2, renewalErrCh2, err := store.NewSession("session1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := <-renewalErrCh2
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
+	rcStore := NewConsul(fixture.Client, applicator, 0)
+
+	rcID := rcfields.ID(uuid.New())
+	unlocker, err := rcStore.LockForNodeTransfer(rcID, session1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectedLockPath := fmt.Sprintf("lock/replication_controllers/%s/node_transfer", rcID)
+	if unlocker.Key() != expectedLockPath {
+		t.Fatalf("expected lock path to be %q but was %q", expectedLockPath, unlocker.Key())
+	}
+
+	_, err = rcStore.LockForNodeTransfer(rcID, session2)
+	if err == nil {
+		t.Fatal("expected an error locking the same key with a different session")
+	}
+
+	err = unlocker.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = rcStore.LockForNodeTransfer(rcID, session2)
+	if err != nil {
+		t.Fatalf("unexpected error locking the key with another session after the first session released it: %s", err)
+	}
+
+	err = session1.Destroy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = session2.Destroy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
 }
 
 func testManifest() manifest.Manifest {

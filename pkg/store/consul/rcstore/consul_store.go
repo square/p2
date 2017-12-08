@@ -32,6 +32,7 @@ const (
 	// should probably be named "mutate"
 	mutationSuffix       = "update"
 	updateCreationSuffix = "update_creation"
+	nodeTransferSuffix   = "node_transfer"
 )
 
 const rcTree string = "replication_controllers"
@@ -49,6 +50,7 @@ const (
 	MutationLockType
 	UpdateCreationLockType
 	UnknownLockType
+	NodeTransferLockType
 )
 
 func (l LockType) String() string {
@@ -920,10 +922,31 @@ func (s *ConsulStore) ownershipLockPath(rcID fields.ID) (string, error) {
 	return s.rcLockPath(rcID)
 }
 
-// LockForOwnership qcquires a lock on the RC that should be used by RC farm
+// LockForOwnership acquires a lock on the RC that should be used by RC farm
 // goroutines, whose job it is to carry out the intent of the RC
 func (s *ConsulStore) LockForOwnership(rcID fields.ID, session consul.Session) (consul.Unlocker, error) {
-	lockPath, err := s.rcLockPath(rcID)
+	lockPath, err := s.ownershipLockPath(rcID)
+	if err != nil {
+		return nil, err
+	}
+
+	return session.Lock(lockPath)
+}
+
+func (s *ConsulStore) nodeTransferLockPath(rcID fields.ID) (string, error) {
+	baseLockPath, err := s.rcLockPath(rcID)
+	if err != nil {
+		return "", err
+	}
+
+	return path.Join(baseLockPath, nodeTransferSuffix), nil
+}
+
+// LockForNodeTransfer attempts to acquire a lock that must be held before a node transfer is initiated by an RC.
+// This is useful for external systems that wish to temporarily prevent an RC from performing a node transfer
+// which can be accomplished by preemptively acquiring the lock
+func (s *ConsulStore) LockForNodeTransfer(rcID fields.ID, session consul.Session) (consul.Unlocker, error) {
+	lockPath, err := s.nodeTransferLockPath(rcID)
 	if err != nil {
 		return nil, err
 	}
@@ -1211,6 +1234,8 @@ func (s *ConsulStore) lockTypeFromKey(key string) (fields.ID, LockType, error) {
 		return fields.ID(rcID), MutationLockType, nil
 	case updateCreationSuffix:
 		return fields.ID(rcID), UpdateCreationLockType, nil
+	case nodeTransferSuffix:
+		return fields.ID(rcID), NodeTransferLockType, nil
 	default:
 		return fields.ID(rcID), UnknownLockType, nil
 	}
