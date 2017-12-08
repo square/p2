@@ -30,6 +30,8 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
+	"github.com/Sirupsen/logrus"
+	"github.com/hashicorp/consul/api"
 	"github.com/pborman/uuid"
 )
 
@@ -104,22 +106,14 @@ type consulStore interface {
 // nodeTransfer encapsulates the information required to perform and cancel a node transfer
 // off an ineligible node
 type nodeTransfer struct {
-	newNode       types.NodeName
-	oldNode       types.NodeName
-	id            rcstatus.NodeTransferID
-	quit          chan struct{}
-	session       consul.Session
-	cancelSession context.CancelFunc
-	unlockArgs    unlockArgs
+	newNode types.NodeName
+	oldNode types.NodeName
+	id      rcstatus.NodeTransferID
+	quit    chan struct{}
 
 	// rollbackReason indicates why the quit channel was closed. Closers of
 	// the quit channel should set this first for audit logging purposes
 	rollbackReason audit.RollbackReason
-}
-
-type unlockArgs struct {
-	key   string
-	value []byte
 }
 
 type replicationController struct {
@@ -181,7 +175,6 @@ func New(
 		podApplicator: podApplicator,
 		alerter:       alerter,
 		healthChecker: healthChecker,
-		nodeTransfer:  nodeTransfer{},
 	}
 }
 
@@ -194,6 +187,42 @@ func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error
 	// When seeing any changes, try to meet them.
 	// If meeting produces any error, send it on the output error channel.
 	go func() {
+		defer func() {
+			rc.nodeTransferMu.Lock()
+			if rc.nodeTransfer.quit != nil {
+				rc.nodeTransfer.rollbackReason = "RC farm quitting"
+				close(rc.nodeTransfer.quit)
+			}
+			rc.nodeTransferMu.Unlock()
+		}()
+		// Fetch the RC's status to find out of a node transfer is underway
+		// from a different incarnation of this RC
+
+		needToFetchStatus := true
+		var status rcstatus.Status
+		var err error
+		for needToFetchStatus {
+			status, _, err = rc.rcStatusStore.Get(rc.rcID)
+			switch {
+			case err == nil:
+				needToFetchStatus = false
+			case statusstore.IsNoStatus(err):
+				needToFetchStatus = false
+			case err != nil:
+				errOutChannel <- err
+				rc.logger.WithError(err).Errorln("cannot begin servicing RC because status could not be fetched")
+				time.Sleep(1 * time.Second)
+			}
+		}
+
+		if status.NodeTransfer != nil {
+			rc.nodeTransferMu.Lock()
+			rc.nodeTransfer.oldNode = status.NodeTransfer.OldNode
+			rc.nodeTransfer.newNode = status.NodeTransfer.NewNode
+			rc.nodeTransfer.id = status.NodeTransfer.ID
+			rc.nodeTransferMu.Unlock()
+		}
+
 		for rcFields := range rcChanges {
 			err := rc.meetDesires(rcFields)
 			if err != nil {
@@ -244,32 +273,27 @@ func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 	switch {
 	case rcFields.ReplicasDesired > len(current):
 		rc.nodeTransferMu.Lock()
-		if rc.nodeTransfer.quit != nil {
+		newNode := rc.nodeTransfer.newNode
+		rc.nodeTransferMu.Unlock()
+
+		if newNode != "" {
 			// Remove nodeTransfer.newNode from eligible during a node transfer
 			// because if it is scheduled again below in addPods(), the rc
 			// will have one less node than desired. Waiting for the next loop
 			// for this case again will add a node, but is a bad experience.
 			for i, v := range eligible {
-				if v == rc.nodeTransfer.newNode {
+				if v == newNode {
 					eligible = append(eligible[:i], eligible[i+1:]...)
 					break
 				}
 			}
 		}
-		rc.nodeTransferMu.Unlock()
 		err := rc.addPods(rcFields, current, eligible)
 		if err != nil {
 			return err
 		}
 		nodesChanged = true
 	case len(current) > rcFields.ReplicasDesired:
-		rc.nodeTransferMu.Lock()
-		rc.nodeTransfer.rollbackReason = "replica count increased"
-		if rc.nodeTransfer.quit != nil {
-			// stop the node transfer; additional node is no longer needed
-			close(rc.nodeTransfer.quit)
-		}
-		rc.nodeTransferMu.Unlock()
 		err := rc.removePods(rcFields, current, eligible)
 		if err != nil {
 			return err
@@ -289,7 +313,7 @@ func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 	ineligible := rc.checkForIneligible(current, eligible)
 	if len(ineligible) > 0 {
 		rc.logger.Infof("Ineligible nodes: %s found", ineligible)
-		err := rc.transferNodes(rcFields, ineligible)
+		err := rc.transferNodes(rcFields, current, ineligible)
 		if err != nil {
 			return err
 		}
@@ -460,6 +484,25 @@ func (rc *replicationController) removePods(rcFields fields.RC, current types.Po
 				)
 			}
 		}
+
+		rc.nodeTransferMu.Lock()
+		oldNodeInNodeTransfer := rc.nodeTransfer.oldNode
+		newNodeInNodeTransfer := rc.nodeTransfer.newNode
+		rc.nodeTransferMu.Unlock()
+
+		if unscheduleFrom == oldNodeInNodeTransfer || unscheduleFrom == newNodeInNodeTransfer {
+			// We don't want to unschedule the old node in a node
+			// transfer until the new node is healthy, to guarantee that
+			// we don't reduce cluster health as a result of the
+			// transfer.  Therefore exclude this node from consideration,
+			// even if it means keeping the current node count larger
+			// than the replicas_desired count. Once the node transfer is
+			// finished (and rc.nodeTransfer.oldNode becomes empty) we
+			// will unschedule this node
+			rc.logger.Infof("exempting %s from being unscheduled because it is part of a node transfer", unscheduleFrom)
+			continue
+		}
+
 		err := rc.unschedule(txn, rcFields, unscheduleFrom)
 		if err != nil {
 			return err
@@ -478,6 +521,10 @@ func (rc *replicationController) removePods(rcFields fields.RC, current types.Po
 }
 
 func (rc *replicationController) ensureConsistency(rcFields fields.RC, current []types.NodeName, eligible []types.NodeName) error {
+	if rcFields.Disabled {
+		return nil
+	}
+
 	manifest := rcFields.Manifest
 
 	eligibleCurrent := types.NewNodeSet(current...).Intersection(types.NewNodeSet(eligible...)).ListNodes()
@@ -655,7 +702,7 @@ func (rc *replicationController) unschedule(txn *auditingTransaction, rcFields f
 	return nil
 }
 
-func (rc *replicationController) transferNodes(rcFields fields.RC, ineligible []types.NodeName) error {
+func (rc *replicationController) transferNodes(rcFields fields.RC, current types.PodLocations, ineligible []types.NodeName) error {
 	if rc.nodeTransfer.quit != nil {
 		// a node transfer to replace the ineligible node is already in progress
 		return nil
@@ -699,33 +746,39 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, ineligible []
 	rc.nodeTransfer.id = nodeTransferID
 	rc.nodeTransferMu.Unlock()
 
-	err = rc.scheduleWithSession(rcFields, newNode)
-	if err != nil {
-		rc.nodeTransferMu.Lock()
-		rc.nodeTransfer = nodeTransfer{}
-		rc.nodeTransferMu.Unlock()
+	nodeTransferLogger := rc.logger.SubLogger(logrus.Fields{
+		"old_node": oldNode,
+		"new_node": newNode,
+	})
 
-		return util.Errorf("Could not schedule with session: %s", err)
+	err = rc.scheduleNewNodeForTransfer(rcFields, newNode, current, nodeTransferLogger)
+	if err != nil {
+		return util.Errorf("could not schedule new node: %s", err)
 	}
 
 	rc.nodeTransferMu.Lock()
 	rc.nodeTransfer.quit = make(chan struct{})
 	rc.nodeTransferMu.Unlock()
 
-	go rc.doBackgroundNodeTransfer(rcFields)
+	go rc.doBackgroundNodeTransfer(rcFields, nodeTransferLogger)
 
 	return nil
 }
 
 func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligible []types.NodeName, nodeTransferID rcstatus.NodeTransferID) (types.NodeName, types.NodeName, error) {
 	if len(ineligible) < 1 {
-		return "", "", util.Errorf("Need at least one ineligible node to transfer from, had 0")
+		err := util.Errorf("Need at least one ineligible node to transfer from, had 0")
+		rc.logger.WithError(err).Errorln("could not figure out which node to transfer from")
+		return "", "", err
 	}
+
+	oldNode := ineligible[0]
 
 	nodesRequested := 1 // We only support one node transfer at a time right now
 	newNodes, err := rc.scheduler.AllocateNodes(rcFields.Manifest, rcFields.NodeSelector, nodesRequested)
 	if err != nil || len(newNodes) < 1 {
 		errMsg := fmt.Sprintf("Unable to allocate nodes over grpc: %s", err)
+		rc.logger.WithError(err).Errorf("could not allocate node to replace %s", oldNode)
 		err := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
 		if err != nil {
 			rc.logger.WithError(err).Errorln("Unable to send alert")
@@ -735,14 +788,19 @@ func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligibl
 	}
 
 	newNode := newNodes[0]
-	rc.logger.Infof("Allocated node %s for transfer", newNode)
 
-	oldNode := ineligible[0]
+	logger := rc.logger.SubLogger(logrus.Fields{
+		"old_node": oldNode,
+		"new_node": newNode,
+	})
+	logger.Infof("Allocated node %s for transfer", newNode)
+
 	err = rc.scheduler.DeallocateNodes(rcFields.NodeSelector, []types.NodeName{oldNode})
 	if err != nil {
+		logger.WithError(err).Errorf("could not make deallocate call")
 		return "", "", util.Errorf("Could not deallocate from %s: %s", oldNode, err)
 	}
-	rc.logger.Infof("Deallocated ineligible node %s", oldNode)
+	logger.Infof("Deallocated ineligible node %s", oldNode)
 
 	status := rcstatus.Status{
 		NodeTransfer: &rcstatus.NodeTransfer{
@@ -764,6 +822,7 @@ func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligibl
 		rcFields.ReplicasDesired,
 	)
 	if err != nil {
+		logger.WithError(err).Errorf("could not generate node transfer start audit log for transfer")
 		return "", "", util.Errorf("could not generate node transfer start audit log details: %s", err)
 	}
 
@@ -776,118 +835,82 @@ func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligibl
 		auditLogDetails,
 	)
 	if err != nil {
+		logger.WithError(err).Errorln("could not create audit log record for node transfer start")
 		return "", "", util.Errorf("could not add audit log record to node transfer start transaction: %s", err)
 	}
 
 	err = rc.rcStatusStore.CASTxn(writeCtx, rc.rcID, 0, status)
 	if err != nil {
+		rc.logger.WithError(err).Errorln("could not build transaction to write RC status")
 		return "", "", util.Errorf("Could not write new node to store: %s", err)
 	}
 
 	err = transaction.MustCommit(writeCtx, rc.txner)
 	if err != nil {
+		logger.WithError(err).Errorln("could not write RC status")
 		return "", "", util.Errorf("could not commit transaction to update RC status with node transfer information: %s", err)
 	}
 
 	return newNode, oldNode, nil
 }
 
-func (rc *replicationController) scheduleWithSession(rcFields fields.RC, newNode types.NodeName) error {
-	rc.logger.NoFields().Infof("Scheduling with session on %s", newNode)
-	manifestBytes, err := rcFields.Manifest.Marshal()
-	if err != nil {
-		return err
-	}
+func (rc *replicationController) scheduleNewNodeForTransfer(rcFields fields.RC, newNode types.NodeName, current types.PodLocations, logger logging.Logger) error {
+	logger.NoFields().Infof("Scheduling %s as part of node transfer", newNode)
 
 	key, err := consul.PodPath(consul.INTENT_TREE, newNode, rcFields.Manifest.ID())
 	if err != nil {
 		return err
 	}
 
-	name := fmt.Sprintf("wait-on-%s-health-%s", newNode, rc.rcID)
+	auditingTransaction, cancel := rc.newAuditingTransaction(context.Background(), rcFields, current.Nodes())
+	defer cancel()
 
-	ctx, ctxCancel := context.WithCancel(context.Background())
-	defer func() {
-		// We close the context on error to prevent a leak but leave it
-		// otherwise so it can be used to cancel the session. We write the
-		// defer this way so that reassignments to err are noticed and the
-		// final value is used.
-		if err != nil {
-			ctxCancel()
-		}
-	}()
+	// delete-cas with an index of 0 is equivalent to "check-not-exists" which
+	// is introduced in a later consul version than we're using
+	err = transaction.Add(auditingTransaction.Context(), api.KVTxnOp{
+		Verb:  string(api.KVDeleteCAS),
+		Key:   key,
+		Index: 0,
+	})
 
-	// By passing ctx below, ctxCancel (defined above) can be used to destroy
-	// the session when the node transfer finishes or is stopped
-	sessionCtx, session, err := consul.SessionContext(ctx, rc.consulClient, name)
+	err = rc.schedule(auditingTransaction, rcFields, newNode)
 	if err != nil {
 		return err
 	}
 
-	writeCtx, writeCancel := transaction.New(sessionCtx)
-	defer writeCancel()
-
-	_, err = session.LockIfKeyNotExistsTxn(writeCtx, key, manifestBytes)
-	if err != nil {
-		return err
-	}
-
-	ok, resp, err := transaction.Commit(writeCtx, rc.txner)
+	ok, _, err := auditingTransaction.Commit(rc.txner)
 	switch {
 	case err != nil:
+		logger.WithError(err).Errorln("could not schedule new node")
 		return err
 	case !ok:
-		// if the error was because we lost our session, then return. Otherwise we
-		// got a conflict on the intent record which is fine and we should just proceed.
-		// It's probably because a rolling update (deploy) is underway so another RC
-		// scheduled it for us
-		select {
-		case <-sessionCtx.Done():
-			// assign to err instead of just returning it so that deferred func sees
-			// the assignment
-			err = util.Errorf("transaction violation scheduling new node: %s", transaction.TxnErrorsToString(resp.Errors))
-			return err
-		default:
-		}
-	default:
-		// only set unlockArgs if the lock was actually acquired
-		rc.nodeTransfer.unlockArgs = unlockArgs{
-			key:   key,
-			value: manifestBytes,
-		}
+		// This means that our DeleteCAS failed, which means another RC
+		// scheduled the new node already, or a past incarnation of
+		// this RC already scheduled it. Either of these situations are
+		// fine, proceed onwards
+		logger.Infof("New node %s of node transfer was already scheduled, proceeding without scheduling", newNode)
 	}
-
-	rc.nodeTransfer.session = session
-	rc.nodeTransfer.cancelSession = ctxCancel
 
 	return nil
 }
 
-func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC) {
-	defer func() {
-		rc.nodeTransfer.cancelSession()
-		rc.nodeTransferMu.Lock()
-		rc.nodeTransfer = nodeTransfer{}
-		rc.nodeTransferMu.Unlock()
-	}()
-
-	ok, rollbackReason := rc.watchHealth(rcFields)
+func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC, logger logging.Logger) {
+	ok, rollbackReason := rc.watchHealth(rcFields, logger)
 	if ok {
-		err := rc.finishTransfer(rcFields)
+		err := rc.finishTransfer(rcFields, logger)
 		if err == nil {
-			rc.logger.Infof("Node transfer from %s to %s complete.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode)
+			logger.Infoln("Node transfer complete.")
 			return
 		}
 
 		rc.logger.WithError(err).Errorln("could not do final node transfer transaction, rolling back")
-		rollbackReason = audit.RollbackReason(err.Error())
 	} else {
-		rc.logger.Infof("Node transfer from %s to %s was rolled back: %s.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode, rollbackReason)
+		rc.logger.Infof("Node transfer from %s to %s was canceled: %s.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode, rollbackReason)
 	}
 }
 
-func (rc *replicationController) watchHealth(rcFields fields.RC) (bool, audit.RollbackReason) {
-	rc.logger.Infof("Watching health on %s", rc.nodeTransfer.newNode)
+func (rc *replicationController) watchHealth(rcFields fields.RC, logger logging.Logger) (bool, audit.RollbackReason) {
+	logger.Infof("Watching health on %s", rc.nodeTransfer.newNode)
 
 	healthQuitCh := make(chan struct{})
 	defer close(healthQuitCh)
@@ -899,13 +922,13 @@ func (rc *replicationController) watchHealth(rcFields fields.RC) (bool, audit.Ro
 		select {
 		case err := <-errCh:
 			if err != nil {
-				rc.logger.WithError(err).Errorln("Node transfer health checker sent error")
+				logger.WithError(err).Errorln("Node transfer health checker sent error")
 			} else {
-				rc.logger.Errorln("Node transfer health checker sent nil error")
+				logger.Errorln("Node transfer health checker sent nil error")
 			}
 		case currentHealth := <-resultCh:
 			if currentHealth.Status == health.Passing {
-				rc.logger.Infof("New transfer node %s health now passing", rc.nodeTransfer.newNode)
+				logger.Infof("New transfer node %s health now passing", rc.nodeTransfer.newNode)
 				return true, ""
 			}
 		case <-rc.nodeTransfer.quit:
@@ -918,47 +941,31 @@ func (rc *replicationController) watchHealth(rcFields fields.RC) (bool, audit.Ro
 	}
 }
 
-func (rc *replicationController) finishTransfer(rcFields fields.RC) error {
+func (rc *replicationController) finishTransfer(rcFields fields.RC, logger logging.Logger) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	// technically there's a race here with the roll loop changing the node
+	// membership which could make the audit log records incorrect, but
+	// that's a small price to pay
 	current, err := rc.CurrentPods()
 	if err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
 	txn, cancelFunc := rc.newAuditingTransaction(ctx, rcFields, current.Nodes())
 	defer cancelFunc()
 
-	// if unlockArgs is empty, there's nothing to unlock. This might happen if we
-	// didn't actually acquire the lock on the new node (because another RC scheduled
-	// it)
-	if rc.nodeTransfer.unlockArgs.key != "" {
-		key := rc.nodeTransfer.unlockArgs.key
-		value := rc.nodeTransfer.unlockArgs.value
-		err = rc.nodeTransfer.session.UnlockTxn(txn.Context(), key, value)
-		if err != nil {
-			return err
-		}
-	}
-
-	txn.AddNode(rc.nodeTransfer.newNode)
-
-	labelKey := labels.MakePodLabelKey(rc.nodeTransfer.newNode, rcFields.Manifest.ID())
-	err = rc.podApplicator.SetLabelsTxn(txn.Context(), labels.POD, labelKey, rc.computePodLabels(rcFields))
-	if err != nil {
-		return err
-	}
-
-	err = rc.unschedule(txn, rcFields, rc.nodeTransfer.oldNode)
-	if err != nil {
-		return err
-	}
 	rc.nodeTransferMu.Lock()
 	oldNode := rc.nodeTransfer.oldNode
 	newNode := rc.nodeTransfer.newNode
 	nodeTransferID := rc.nodeTransfer.id
 	rc.nodeTransferMu.Unlock()
+
+	err = rc.unschedule(txn, rcFields, oldNode)
+	if err != nil {
+		return err
+	}
 
 	auditLogDetails, err := audit.NewNodeTransferCompletionDetails(
 		nodeTransferID,
@@ -993,28 +1000,32 @@ func (rc *replicationController) finishTransfer(rcFields fields.RC) error {
 	switch {
 	case err != nil:
 		err := util.Errorf(
-			"transfer unlock, label, and unschedule txn returned err after timeout: %s",
+			"RC status deletion and audit log record returned err after timeout: %s",
 			err,
 		)
-		rc.logger.WithError(err).Errorln("could not finalize node transfer")
+		logger.WithError(err).Errorln("could not finalize node transfer")
 		alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, err.Error()), alerting.LowUrgency)
 		if alertErr != nil {
-			rc.logger.WithError(alertErr).Errorln("Unable to send alert")
+			logger.WithError(alertErr).Errorln("Unable to send alert")
 		}
 		return err
 	case !ok:
+		// This doesn't make sense because there are no "check" conditions in the transaction
 		err := util.Errorf(
-			"Transaction violation trying to unlock node transfer session and label new node. New RC may have scheduled node: %s",
+			"Transaction violation trying to delete RC status: %s",
 			transaction.TxnErrorsToString(resp.Errors),
 		)
-		rc.logger.WithError(err).Errorln("could not finalize node transfer")
+		logger.WithError(err).Errorln("could not finalize node transfer")
 		err = rc.alerter.Alert(rc.alertInfo(rcFields, err.Error()), alerting.LowUrgency)
 		if err != nil {
-			rc.logger.WithError(err).Errorln("Unable to send alert")
+			logger.WithError(err).Errorln("Unable to send alert")
 		}
 		return nil
 	}
 
+	rc.nodeTransferMu.Lock()
+	rc.nodeTransfer = nodeTransfer{}
+	rc.nodeTransferMu.Unlock()
 	return nil
 }
 
@@ -1053,6 +1064,10 @@ func (rc *replicationController) createRollbackTransferRecord(
 	if err != nil {
 		return util.Errorf("could not add audit log record to node transfer rollback transaction: %s", err)
 	}
+
+	rc.nodeTransferMu.Lock()
+	rc.nodeTransfer = nodeTransfer{}
+	rc.nodeTransferMu.Unlock()
 
 	return nil
 }

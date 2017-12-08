@@ -940,11 +940,9 @@ func TestRollLoopTypicalCase(t *testing.T) {
 		"node2": {Status: health.Passing},
 		"node3": {Status: health.Passing},
 	}
-	healths <- checks
 
 	assertRCUpdates(t, oldRCCh, 3, "old RC")
 	assertRCUpdates(t, newRCCh, 0, "new RC")
-
 	healths <- checks
 
 	assertRCUpdates(t, oldRCCh, 2, "old RC")
@@ -954,6 +952,7 @@ func TestRollLoopTypicalCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	healths <- checks
 
 	assertRCUpdates(t, oldRCCh, 1, "old RC")
@@ -963,6 +962,7 @@ func TestRollLoopTypicalCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	healths <- checks
 
 	assertRCUpdates(t, oldRCCh, 0, "old RC")
@@ -972,6 +972,7 @@ func TestRollLoopTypicalCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	healths <- checks
 
 	assertRollLoopResult(t, rollLoopResult, true)
@@ -1011,13 +1012,14 @@ func TestRollLoopMigrateFromZero(t *testing.T) {
 	}()
 
 	checks := map[types.NodeName]health.Result{}
-	healths <- checks
 
 	assertRCUpdates(t, newRCCh, 0, "new RC")
 
 	healths <- checks
 
 	assertRCUpdates(t, newRCCh, 1, "new RC")
+
+	healths <- checks
 
 	checks["node1"] = health.Result{Status: health.Passing}
 	err := transferNode("node1", manifest, upd)

@@ -28,7 +28,7 @@ func (rc *replicationController) newAuditingTransaction(
 	ctx context.Context,
 	rcFields fields.RC,
 	startingNodes []types.NodeName,
-) (*auditingTransaction, func()) {
+) (*auditingTransaction, context.CancelFunc) {
 	annotatedContext := context.WithValue(ctx, scheduledNodesKey{}, startingNodes)
 	ctx, cancelFunc := transaction.New(annotatedContext)
 
