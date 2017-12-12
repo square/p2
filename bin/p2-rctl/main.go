@@ -30,6 +30,7 @@ import (
 	"github.com/square/p2/pkg/roll"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/flags"
 	"github.com/square/p2/pkg/store/consul/rcstore"
@@ -439,7 +440,9 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 			session,
 			watchDelay,
 			alerting.NewNop(),
-			nil, // note: this will cause a panic if one of the RCs is dynamic
+			nil,   // note: this will cause a panic if one of the RCs is dynamic
+			false, // no audit logging
+			auditlogstore.ConsulStore{}, // no audit logging
 		).Run(ctx)
 		close(result)
 	}()

@@ -48,7 +48,7 @@ func TestAuditLogCreation(t *testing.T) {
 		defer close(done)
 		ctx, cancel := transaction.New(context.Background())
 		defer cancel()
-		farm.mustDeleteRU(ctx, "some_id", logger)
+		farm.mustDeleteRU(ctx, "some_id", logger, true, false)
 	}()
 
 	select {
@@ -305,6 +305,8 @@ func TestLockRCs(t *testing.T) {
 		0,
 		nil,
 		nil,
+		false,
+		auditlogstore.ConsulStore{},
 	).(*update)
 	lockCtx, lockCancel := transaction.New(context.Background())
 	defer lockCancel()

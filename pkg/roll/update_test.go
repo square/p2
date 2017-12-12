@@ -4,12 +4,14 @@ package roll
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/health"
 	checkertest "github.com/square/p2/pkg/health/checker/test"
 	"github.com/square/p2/pkg/labels"
@@ -20,8 +22,10 @@ import (
 	rc_fields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
+	"github.com/square/p2/pkg/store/consul/rollstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
 	"github.com/square/p2/pkg/store/consul/transaction"
@@ -29,6 +33,12 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	klabels "k8s.io/kubernetes/pkg/labels"
+)
+
+const (
+	testPodID            = "test_pod_id"
+	testAvailabilityZone = "test_az"
+	testClusterName      = "test_cn"
 )
 
 func uniformRollAlgorithm(t *testing.T, old, new, want, need int) int {
@@ -459,18 +469,51 @@ func updateWithHealth(t *testing.T,
 
 	fakeScheduler := newFakeSchedulerWithNodes(eligibleNodes)
 
+	auditLogStore := auditlogstore.NewConsulStore(fixture.Client.KV())
+
+	logger := logging.TestLogger()
+	rollStore := rollstore.NewConsul(fixture.Client, applicator, &logger)
+
+	upd := fields.Update{
+		OldRC: oldRC.ID,
+		NewRC: newRC.ID,
+	}
+	rollLabels := klabels.Set{
+		pc_fields.PodIDLabel:            testPodID,
+		pc_fields.AvailabilityZoneLabel: testAvailabilityZone,
+		pc_fields.ClusterNameLabel:      testClusterName,
+	}
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	ru, err := rollStore.CreateRollingUpdateFromExistingRCs(
+		ctx,
+		upd,
+		nil,
+		rollLabels,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = transaction.MustCommit(ctx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	return update{
-		consuls: podStore,
-		txner:   fixture.Client.KV(),
-		rcStore: rcs,
-		hcheck:  checkertest.NewSingleService(podID, checks),
-		labeler: applicator,
-		logger:  logging.TestLogger(),
-		Update: fields.Update{
-			OldRC: oldRC.ID,
-			NewRC: newRC.ID,
-		},
-		scheduler: fakeScheduler,
+		consuls:                     podStore,
+		txner:                       fixture.Client.KV(),
+		consulClient:                fixture.Client,
+		rcStore:                     rcs,
+		rcLocker:                    rcs,
+		hcheck:                      checkertest.NewSingleService(podID, checks),
+		labeler:                     applicator,
+		logger:                      logger,
+		Update:                      ru,
+		scheduler:                   fakeScheduler,
+		auditLogStore:               auditLogStore,
+		shouldCreateAuditLogRecords: true,
+		rollStore:                   rollStore,
 	}, oldManifest, newManifest, rcs, fixture.Stop
 }
 
@@ -912,6 +955,36 @@ func assertRollLoopResult(t *testing.T, channel <-chan bool, expect bool) {
 	}
 }
 
+type cannedWatchServiceChecker struct {
+	watchServiceCh chan map[types.NodeName]health.Result
+	serviceResult  map[types.NodeName]health.Result
+}
+
+func (c cannedWatchServiceChecker) WatchService(
+	serviceID string,
+	resultCh chan<- map[types.NodeName]health.Result,
+	errCh chan<- error,
+	quitCh <-chan struct{},
+	watchDelay time.Duration,
+) {
+	for {
+		select {
+		case <-quitCh:
+			return
+		case val := <-c.watchServiceCh:
+			select {
+			case resultCh <- val:
+			case <-quitCh:
+				return
+			}
+		}
+	}
+}
+
+func (c cannedWatchServiceChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
+	return c.serviceResult, nil
+}
+
 func TestRollLoopTypicalCase(t *testing.T) {
 	nodes := map[types.NodeName]bool{
 		"node1": true,
@@ -924,6 +997,16 @@ func TestRollLoopTypicalCase(t *testing.T) {
 	upd.MinimumReplicas = 2
 
 	healths := make(chan map[types.NodeName]health.Result)
+	checks := map[types.NodeName]health.Result{
+		"node1": {Status: health.Passing},
+		"node2": {Status: health.Passing},
+		"node3": {Status: health.Passing},
+	}
+	upd.hcheck = cannedWatchServiceChecker{
+		watchServiceCh: healths,
+		serviceResult:  checks,
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -934,15 +1017,9 @@ func TestRollLoopTypicalCase(t *testing.T) {
 	rollLoopResult := make(chan bool)
 
 	go func() {
-		rollLoopResult <- upd.rollLoop(ctx, manifest.ID(), healths, nil)
+		rollLoopResult <- upd.Run(ctx)
 		close(rollLoopResult)
 	}()
-
-	checks := map[types.NodeName]health.Result{
-		"node1": {Status: health.Passing},
-		"node2": {Status: health.Passing},
-		"node3": {Status: health.Passing},
-	}
 
 	assertRCUpdates(t, oldRCCh, 3, "old RC")
 	assertRCUpdates(t, newRCCh, 0, "new RC")
@@ -982,6 +1059,53 @@ func TestRollLoopTypicalCase(t *testing.T) {
 
 	cancel()
 	wg.Wait()
+
+	// confirm the RU was deleted
+	ru, err := upd.rollStore.(rollstore.ConsulStore).Get(upd.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ru.NewRC != "" {
+		t.Fatal("expected RU to be deleted before Run() exits")
+	}
+
+	// confirm that an audit log record was created
+	als, err := upd.auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(als) != 1 {
+		t.Fatalf("expected 1 audit log record but there were %d", len(als))
+	}
+
+	for _, al := range als {
+		if al.EventType != audit.RUCompletionEvent {
+			t.Fatalf("expected audit log record to have type %q but was %q", audit.RUCompletionEvent, al.EventType)
+		}
+
+		var details audit.RUCompletionDetails
+		err = json.Unmarshal([]byte(*al.EventDetails), &details)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if details.PodID != testPodID {
+			t.Errorf("expected audit log pod ID to be %q but was %q", testPodID, details.PodID)
+		}
+		if details.AvailabilityZone != testAvailabilityZone {
+			t.Errorf("expected audit log availability zone to be %q but was %q", testAvailabilityZone, details.AvailabilityZone)
+		}
+		if details.ClusterName != testClusterName {
+			t.Errorf("expected audit log cluster name to be %q but was %q", testClusterName, details.ClusterName)
+		}
+		if !details.Succeeded {
+			t.Error("expected audit log details to say the RU succeeded")
+		}
+		if details.Canceled {
+			t.Error("expected audit log details to say the RU wasn't canceled")
+		}
+	}
 }
 
 func failIfRCDesireChanges(t *testing.T, rcCh <-chan rc_fields.RC, expected int) {

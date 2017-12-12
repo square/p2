@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/alerting"
+	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/health"
-	"github.com/square/p2/pkg/health/checker"
 	hclient "github.com/square/p2/pkg/health/client"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -17,6 +17,7 @@ import (
 	rcf "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
@@ -54,6 +55,22 @@ type ReplicationControllerStore interface {
 	EnableTxn(ctx context.Context, id rcf.ID) error
 }
 
+type Labeler interface {
+	rc.LabelMatcher
+	audit.Labeler
+}
+
+type ServiceWatcher interface {
+	WatchService(
+		serviceID string,
+		resultCh chan<- map[types.NodeName]health.Result,
+		errCh chan<- error,
+		quitCh <-chan struct{},
+		watchDelay time.Duration,
+	)
+	Service(serviceID string) (map[types.NodeName]health.Result, error)
+}
+
 type update struct {
 	fields.Update
 
@@ -63,9 +80,9 @@ type update struct {
 	rcStatusStore RCStatusStore
 	rollStore     RollingUpdateStore
 	rcLocker      ReplicationControllerLocker
-	hcheck        checker.ConsulHealthChecker
+	hcheck        ServiceWatcher
 	hclient       hclient.HealthServiceClient
-	labeler       rc.LabelMatcher
+	labeler       Labeler
 	txner         transaction.Txner
 
 	logger logging.Logger
@@ -84,6 +101,11 @@ type update struct {
 	// which factors into some of the computations that are performed during
 	// a rolling update
 	scheduler RCScheduler
+
+	// If set, will create an audit log record when a rolling upate is completed (and thus deleted)
+	// to signify that the rolling update was successful
+	shouldCreateAuditLogRecords bool
+	auditLogStore               auditlogstore.ConsulStore
 }
 
 type RCStatusStore interface {
@@ -103,14 +125,16 @@ func NewUpdate(
 	rcStatusStore RCStatusStore,
 	rollStore RollingUpdateStore,
 	txner transaction.Txner,
-	hcheck checker.ConsulHealthChecker,
+	hcheck ServiceWatcher,
 	hclient hclient.HealthServiceClient,
-	labeler rc.LabelMatcher,
+	labeler Labeler,
 	logger logging.Logger,
 	session consul.Session,
 	watchDelay time.Duration,
 	alerter alerting.Alerter,
 	scheduler RCScheduler,
+	shouldCreateAuditLogRecords bool,
+	auditLogStore auditlogstore.ConsulStore,
 ) Update {
 	logger = logger.SubLogger(logrus.Fields{
 		"desired_replicas": f.DesiredReplicas,
@@ -132,6 +156,7 @@ func NewUpdate(
 		alerter:       alerter,
 		consulClient:  consulClient,
 		scheduler:     scheduler,
+		auditLogStore: auditLogStore,
 	}
 }
 
@@ -327,6 +352,33 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 			err,
 		)
 		return false
+	}
+
+	if u.shouldCreateAuditLogRecords {
+		succeeded := true
+		canceled := false
+		details, err := audit.NewRUCompletionEventDetails(u.ID(), succeeded, canceled, u.labeler)
+		if err != nil {
+			u.logger.WithError(err).Errorln("could not create RU completion audit log record")
+			u.mustAlert(
+				context.Background(),
+				"could not build RU deletion transaction due to audit log operation",
+				"ru-deletion-txn"+u.ID().String(),
+				err,
+			)
+		}
+
+		err = u.auditLogStore.Create(cleanupCtx, audit.RUCompletionEvent, details)
+		if err != nil {
+			u.logger.WithError(err).Errorln("could not add audit log operation to transaction")
+			u.mustAlert(
+				context.Background(),
+				"could not build RU deletion transaction due to audit log operation",
+				"ru-deletion-txn"+u.ID().String(),
+				err,
+			)
+			return false
+		}
 	}
 
 	// return true here, but note that it might become false because of the
