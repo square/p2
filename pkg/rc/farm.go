@@ -48,6 +48,7 @@ type ReplicationControllerStore interface {
 }
 
 type ReplicationControllerLocker interface {
+	RCNodeTransferLocker
 	LockForOwnership(rcID fields.ID, session consul.Session) (consul.Unlocker, error)
 }
 
@@ -265,6 +266,7 @@ START_LOOP:
 					rcKey.ID,
 					rcf.store,
 					rcf.client,
+					rcf.rcLocker,
 					rcf.rcStatusStore,
 					rcf.auditLogStore,
 					rcf.txner,

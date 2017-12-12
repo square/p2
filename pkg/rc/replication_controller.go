@@ -116,6 +116,10 @@ type nodeTransfer struct {
 	rollbackReason audit.RollbackReason
 }
 
+type RCNodeTransferLocker interface {
+	LockForNodeTransfer(fields.ID, consul.Session) (consul.Unlocker, error)
+}
+
 type replicationController struct {
 	rcID fields.ID
 
@@ -124,6 +128,7 @@ type replicationController struct {
 	consulStore   consulStore
 	consulClient  consulutil.ConsulClient
 	rcStatusStore rcstatus.ConsulStore
+	rcLocker      RCNodeTransferLocker
 	auditLogStore AuditLogStore
 	txner         transaction.Txner
 	rcWatcher     ReplicationControllerWatcher
@@ -147,6 +152,7 @@ func New(
 	rcID fields.ID,
 	consulStore consulStore,
 	consulClient consulutil.ConsulClient,
+	rcLocker RCNodeTransferLocker,
 	rcStatusStore rcstatus.ConsulStore,
 	auditLogStore AuditLogStore,
 	txner transaction.Txner,
@@ -167,6 +173,7 @@ func New(
 		logger:        logger,
 		consulStore:   consulStore,
 		consulClient:  consulClient,
+		rcLocker:      rcLocker,
 		rcStatusStore: rcStatusStore,
 		auditLogStore: auditLogStore,
 		txner:         txner,
@@ -729,6 +736,30 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, current types
 	var newNode, oldNode types.NodeName
 	var nodeTransferID rcstatus.NodeTransferID
 	if status.NodeTransfer == nil {
+		// attempt to acquire the node transfer lock before starting a node transfer.
+		// If the lock is already held, then another system is intentionally preventing
+		// this RC from starting a transfer
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		ctx, session, err := consul.SessionContext(ctx, rc.consulClient, fmt.Sprintf("rc-farm-node-transfer-%s", rc.rcID))
+		if err != nil {
+			rc.logger.WithError(err).Errorln("could not create a session to acquire node transfer lock")
+			return err
+		}
+
+		unlocker, err := rc.rcLocker.LockForNodeTransfer(rc.rcID, session)
+		rc.logger.Infoln("trying the lock!", err)
+		switch {
+		case consul.IsAlreadyLocked(err):
+			rc.logger.Infoln("skipping node transfer because node transfer lock is already held")
+			return nil
+		case err != nil:
+			rc.logger.WithError(err).Errorln("could not acquire node transfer lock")
+			return err
+		}
+		defer unlocker.Unlock()
+
 		nodeTransferID = rcstatus.NodeTransferID(uuid.New())
 		newNode, oldNode, err = rc.updateAllocations(rcFields, ineligible, nodeTransferID)
 		if err != nil {

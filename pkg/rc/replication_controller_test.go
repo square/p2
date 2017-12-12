@@ -54,6 +54,7 @@ type testRCStore interface {
 		allocationStrategy fields.Strategy,
 	) (fields.RC, error)
 	SetDesiredReplicas(id fields.ID, n int) error
+	LockForNodeTransfer(fields.ID, consul.Session) (consul.Unlocker, error)
 }
 
 type testConsulStore interface {
@@ -150,6 +151,7 @@ func setup(t *testing.T) (
 		rcData.ID,
 		consulStore,
 		fixture.Client,
+		rcStore,
 		rcStatusStore,
 		auditLogStore,
 		fixture.Client.KV(),
@@ -1614,12 +1616,6 @@ func TestRemovePodsDoesntRemoveNewNodeInNodeTransfer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// first add the pods so the labels get set up correctly
-	err = rc.addPods(rcFields, current, eligible)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// now confirm that 2 pods were scheduled
 	currentPods, err := rc.CurrentPods()
 	if err != nil {
@@ -1672,6 +1668,85 @@ func TestRemovePodsDoesntRemoveNewNodeInNodeTransfer(t *testing.T) {
 
 	if len(currentPods) != 1 {
 		t.Fatalf("1 pods should have been scheduled after the node transfer data was cleared out but found %d", len(currentPods))
+	}
+}
+
+func TestNodeTransferDoesntStartIfLockHeld(t *testing.T) {
+	_, _, _, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+
+	rcFields := fields.RC{
+		ID:                 rc.rcID,
+		ReplicasDesired:    2,
+		Manifest:           testManifest(),
+		Disabled:           false,
+		NodeSelector:       klabels.Everything(),
+		AllocationStrategy: fields.DynamicStrategy,
+	}
+
+	current := types.PodLocations{}
+	eligible := []types.NodeName{"node1", "node2"}
+
+	// first add the pods so the labels get set up correctly
+	err := rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 2 pods were scheduled
+	currentPods, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 2 {
+		t.Fatalf("2 pods should have been scheduled but found %d", len(currentPods))
+	}
+
+	// now set up conditions so a node transfer should happen by removing an eligible node
+	eligible = []types.NodeName{"node1"}
+
+	// however, acquire the lock first to prevent a node transfer from happening
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx, session, err := consul.SessionContext(ctx, rc.consulClient, "test-no-node-transfer-when-lock-held")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unlocker, err := rc.rcLocker.LockForNodeTransfer(rc.rcID, session)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Log("we got the lock")
+	err = rc.meetDesires(rcFields)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = rc.rcStatusStore.Get(rc.rcID)
+	if !statusstore.IsNoStatus(err) {
+		t.Fatal("didn't expect a node transfer to start if the node transfer lock was held")
+	}
+
+	// now release the lock and see if a node transfer is able to start
+	err = unlocker.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rc.meetDesires(rcFields)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = rc.rcStatusStore.Get(rc.rcID)
+	if statusstore.IsNoStatus(err) {
+		t.Fatal("expected a node transfer to start if the lock isn't held")
+	}
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

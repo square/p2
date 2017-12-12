@@ -276,6 +276,11 @@ func TestLockTypeFromKey(t *testing.T) {
 		t.Fatalf("Unable to compute lock path for rc")
 	}
 
+	nodeTransferLockPath, err := store.nodeTransferLockPath(expectedRCID)
+	if err != nil {
+		t.Fatalf("Unable to compute node transfer lock path for rc")
+	}
+
 	type lockTypeExpectation struct {
 		Key          string
 		ExpectedType LockType
@@ -286,6 +291,7 @@ func TestLockTypeFromKey(t *testing.T) {
 		{mutationLockPath, MutationLockType, false},
 		{updateCreationLockPath, UpdateCreationLockType, false},
 		{ownershipLockPath, OwnershipLockType, false},
+		{nodeTransferLockPath, NodeTransferLockType, false},
 		{"bogus_key", UnknownLockType, true},
 		{"/lock/bogus_key", UnknownLockType, true},
 		{"/lock/replication_controllers/bogus/key/blah", UnknownLockType, true},
