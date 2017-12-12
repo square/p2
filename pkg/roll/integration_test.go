@@ -295,6 +295,7 @@ func TestLockRCs(t *testing.T) {
 		rcstore.NewConsul(fixture.Client, applicator, 0),
 		nil,
 		nil,
+		nil,
 		fixture.Client.KV(),
 		nil,
 		nil,

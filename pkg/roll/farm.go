@@ -46,6 +46,7 @@ type UpdateFactory struct {
 	Txner               transaction.Txner
 	RCLocker            ReplicationControllerLocker
 	RCStore             ReplicationControllerStore
+	RCStatusStore       RCStatusStore
 	RollStore           RollingUpdateStore
 	HealthServiceClient hclient.HealthServiceClient
 	HealthChecker       checker.ConsulHealthChecker
@@ -67,6 +68,7 @@ func NewUpdateFactory(
 	txner transaction.Txner,
 	rcLocker ReplicationControllerLocker,
 	rcStore ReplicationControllerStore,
+	rcStatusStore RCStatusStore,
 	rollStore RollingUpdateStore,
 	healthChecker checker.ConsulHealthChecker,
 	healthServiceClient hclient.HealthServiceClient,
@@ -81,6 +83,7 @@ func NewUpdateFactory(
 		Txner:               txner,
 		RCLocker:            rcLocker,
 		RCStore:             rcStore,
+		RCStatusStore:       rcStatusStore,
 		RollStore:           rollStore,
 		HealthChecker:       healthChecker,
 		HealthServiceClient: healthServiceClient,
@@ -98,6 +101,7 @@ func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consu
 		f.Client,
 		f.RCLocker,
 		f.RCStore,
+		f.RCStatusStore,
 		f.RollStore,
 		f.Txner,
 		f.HealthChecker,

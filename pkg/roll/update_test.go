@@ -22,6 +22,9 @@ import (
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
@@ -1106,4 +1109,168 @@ func TestRollLoopStallsIfUnhealthy(t *testing.T) {
 	cancel()
 	wg.Wait()
 	assertRollLoopResult(t, rollLoopResult, false)
+}
+
+func TestEnableAccountsForNodeTransfers(t *testing.T) {
+	fixture := consulutil.NewFixture(t)
+	defer fixture.Stop()
+
+	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
+	rcStore := rcstore.NewConsul(fixture.Client, applicator, 0)
+	rcStatusStore := rcstatus.NewConsul(statusstore.NewConsul(fixture.Client), consul.RCStatusNamespace)
+
+	newRC, err := rcStore.Create(testManifest(), klabels.Everything(), "some_az", "some_cn", nil, nil, "dynamic_strategy")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rcStore.Disable(newRC.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oldRC, err := rcStore.Create(testManifest(), klabels.Everything(), "some_az", "some_cn", nil, nil, "dynamic_strategy")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// give the new RC one node
+	err = applicator.SetLabel(labels.POD, "node1/some_pod", rc.RCIDLabel, newRC.ID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rcStore.SetDesiredReplicas(newRC.ID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	labeler := labels.NewConsulApplicator(fixture.Client, 0, 0)
+	update := &update{
+		Update: fields.Update{
+			NewRC: newRC.ID,
+			OldRC: oldRC.ID,
+		},
+		rcStore:       rcStore,
+		rcStatusStore: rcStatusStore,
+		txner:         fixture.Client.KV(),
+		labeler:       labeler,
+	}
+
+	// Now try to enable, it should work because 1 current node == 1 replicas desired
+	ctx, cancel := transaction.New(context.Background())
+	defer cancel()
+	err = update.enable(ctx)
+	if err != nil {
+		t.Fatalf("expected enable to work when new RC replica count == new RC current pod count: %s", err)
+	}
+
+	// confirm that the new RC got enabled and the old RC got disabled
+	oldRC, err = rcStore.Get(oldRC.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !oldRC.Disabled {
+		t.Fatal("expected the old RC to be disabled")
+	}
+	newRC, err = rcStore.Get(newRC.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newRC.Disabled {
+		t.Fatal("expected the new RC to be enabled")
+	}
+
+	// Now re-disable the new RC
+	err = rcStore.Disable(newRC.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Now re-enable the oldRC
+	err = rcStore.Enable(oldRC.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now, label an extra pod so that there are 2 current pods but 1
+	// replicas desired, this should make enable fail (unless there's a
+	// node transfer record)
+	err = applicator.SetLabel(labels.POD, "node2/some_pod", rc.RCIDLabel, newRC.ID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel = transaction.New(context.Background())
+	defer cancel()
+	err = update.enable(ctx)
+	if err == nil {
+		t.Fatal("expected an error when the RC's current pod count is larger than it's replicas desired count")
+	}
+
+	// confirm that the new RC is still disabled and the old RC is stil enabled
+	oldRC, err = rcStore.Get(oldRC.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if oldRC.Disabled {
+		t.Fatal("expected the old RC to be enabled still")
+	}
+	newRC, err = rcStore.Get(newRC.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !newRC.Disabled {
+		t.Fatal("expected the new RC to be disabled still")
+	}
+
+	// now create a status record that includes both the pods and ensure
+	// that it causes enable to succeed (since we know that the RC having
+	// an extra node is just temporary)
+	status := rcstatus.Status{
+		NodeTransfer: &rcstatus.NodeTransfer{
+			OldNode: "node1",
+			NewNode: "node2",
+			ID:      "some_id",
+		},
+	}
+
+	writeCtx, writeCancel := transaction.New(context.Background())
+	defer writeCancel()
+	err = rcStatusStore.CASTxn(writeCtx, newRC.ID, 0, status)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = transaction.MustCommit(writeCtx, fixture.Client.KV())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now try again and we shouldn't get an error this time because both nodes are included in the node transfer
+	err = update.enable(ctx)
+	if err != nil {
+		t.Fatalf("expected enable to work when new RC current node count == replica count + 1 and both node transfer nodes are included in the current pods count: %s", err)
+	}
+
+	// confirm that the new RC got enabled and the old RC got disabled
+	oldRC, err = rcStore.Get(oldRC.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !oldRC.Disabled {
+		t.Fatal("expected the old RC to be disabled")
+	}
+	newRC, err = rcStore.Get(newRC.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newRC.Disabled {
+		t.Fatal("expected the new RC to be enabled")
+	}
+}
+
+func testManifest() manifest.Manifest {
+	builder := manifest.NewBuilder()
+	builder.SetID("whatever")
+	return builder.GetManifest()
 }
