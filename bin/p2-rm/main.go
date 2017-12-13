@@ -23,6 +23,7 @@ var (
 	nodeName     = kingpin.Flag("node", "The node to unschedule the pod from. Uses the hostname by default. Only applies to \"legacy\" pods.").String()
 	podUniqueKey = kingpin.Flag("pod-unique-key", "The pod unique key to unschedule. Only applies to \"uuid\" pods. Cannot be used with --node").Short('k').String()
 	deallocation = kingpin.Flag("deallocate", "Specifies that we are deallocating this pod on this node. Using this switch will mutate the desired_replicas value on a managing RC, if one exists.").Bool()
+	removeOrphan = kingpin.Flag("remove-orphan", "Remove the pod even if it is labeled with a replication controller ID, but only if no RC with that ID exists").Bool()
 )
 
 func main() {
@@ -63,7 +64,7 @@ func handlePodRemoval(consulClient consulutil.ConsulClient, labeler Labeler) err
 		rm = NewLegacyP2RM(consulClient, types.PodID(*podName), types.NodeName(*nodeName), labeler)
 	}
 
-	podIsManagedByRC, rcID, err := rm.checkForManagingReplicationController()
+	podIsManagedByRC, rcID, err := rm.checkForManagingReplicationController(*removeOrphan)
 	if err != nil {
 		return err
 	}
