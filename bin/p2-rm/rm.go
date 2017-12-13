@@ -30,6 +30,7 @@ type ReplicationControllerStore interface {
 	Disable(id fields.ID) error
 	AddDesiredReplicas(id fields.ID, n int) error
 	Enable(id fields.ID) error
+	Get(id fields.ID) (fields.RC, error)
 }
 
 type Labeler interface {
@@ -88,13 +89,24 @@ func (rm *P2RM) configureStorage(client consulutil.ConsulClient, labeler Labeler
 	rm.PodStore = podstore.NewConsul(client.KV())
 }
 
-func (rm *P2RM) checkForManagingReplicationController() (bool, fields.ID, error) {
+func (rm *P2RM) checkForManagingReplicationController(checkForOrphaned bool) (bool, fields.ID, error) {
 	podLabels, err := rm.Labeler.GetLabels(labels.POD, rm.LabelID)
 	if err != nil {
 		return false, "", fmt.Errorf("unable to check node for labels: %v", err)
 	}
 
 	if podLabels.Labels.Has(rc.RCIDLabel) {
+		if checkForOrphaned {
+			_, err := rm.RCStore.Get(fields.ID(podLabels.Labels[rc.RCIDLabel]))
+			switch {
+			case err == rcstore.NoReplicationController:
+				// this pod is an orphan, so return false, allowing it to be removed
+				return false, "", nil
+			case err != nil:
+				return true, fields.ID(podLabels.Labels.Get(rc.RCIDLabel)), fmt.Errorf("could not check if RC exists: %s", err)
+			}
+		}
+
 		return true, fields.ID(podLabels.Labels.Get(rc.RCIDLabel)), nil
 	}
 
@@ -160,6 +172,10 @@ func (rm *P2RM) deleteLegacyPod() error {
 	_, err := rm.Store.DeletePod(consul.INTENT_TREE, rm.NodeName, types.PodID(rm.PodID))
 	if err != nil {
 		return fmt.Errorf("unable to remove pod: %v", err)
+	}
+	err = rm.Labeler.RemoveAllLabels(labels.POD, labels.MakePodLabelKey(rm.NodeName, rm.PodID))
+	if err != nil {
+		return fmt.Errorf("unalbe to remove labels: %s", err)
 	}
 
 	return nil
