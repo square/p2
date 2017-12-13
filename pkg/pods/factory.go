@@ -3,7 +3,6 @@ package pods
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/square/p2/pkg/logging"
@@ -14,7 +13,6 @@ import (
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/pborman/uuid"
 )
 
 const DefaultPath = "/data/pods"
@@ -139,13 +137,10 @@ func PodFromPodHome(node types.NodeName, home string) (*Pod, error) {
 }
 
 func PodFromPodHomeWithReqFile(node types.NodeName, home string, requireFile string) (*Pod, error) {
-	// Check if the pod home is namespaced by a UUID by splitting on a hyphen and
-	// checking the last part. If it parses as a UUID, pass it to newPodWithHome.
-	// Otherwise, pass a nil uniqueKey
-	homeParts := strings.Split(filepath.Base(home), "-")
-
+	// Check if the pod home is namespaced by a UUID and pass it to newPodWithHome
+	// uniqueKey can be nil if pod home is not namespaced by a UUID
 	var uniqueKey types.PodUniqueKey
-	podUUID := uuid.Parse(homeParts[len(homeParts)-1])
+	podUUID := types.HomeToPodUUID(home)
 	if podUUID != nil {
 		uniqueKey = types.PodUniqueKey(podUUID.String())
 	}

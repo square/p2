@@ -79,6 +79,12 @@ func main() {
 	if err != nil {
 		logger.WithError(err).Fatalln("Could not do initial hook installation")
 	}
+
+	err = prep.BuildRealityAtLaunch()
+	if err != nil {
+		logger.WithError(err).Fatalf("Could not do initial build reality at launch: %s", err)
+	}
+
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
 
 	if prep.PodProcessReporter != nil {

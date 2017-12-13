@@ -36,6 +36,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/podstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
+	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
@@ -77,6 +78,7 @@ type Preparer struct {
 	hooks                  Hooks
 	Logger                 logging.Logger
 	podFactory             pods.Factory
+	podRoot                string
 	authPolicy             auth.Policy
 	maxLaunchableDiskUsage size.ByteCount
 	finishExec             []string
@@ -521,6 +523,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		hooks:                  hooks.NewContext(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger, auditLogger),
 		podStatusStore:         podStatusStore,
 		podStore:               podStore,
+		podRoot:                preparerConfig.PodRoot,
 		client:                 client,
 		Logger:                 logger,
 		podFactory:             pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName, fetcher, preparerConfig.RequireFile),
@@ -648,6 +651,83 @@ func getArtifactRegistry(preparerConfig *PreparerConfig) (artifact.Registry, err
 	}
 
 	return artifact.NewRegistry(url, fetcher, osversion.DefaultDetector), nil
+}
+
+func (p *Preparer) BuildRealityAtLaunch() error {
+	// check for pods on disk and not in intent
+	// insert kv pairs into reality if so
+	sub := p.Logger.SubLogger(nil)
+	// get set of pods in reality
+	realityResults, _, err := p.store.ListPods(consul.REALITY_TREE, p.node)
+	if err != nil {
+		sub.WithError(err).Errorln("Could not check reality: %s", err)
+		return err
+	}
+	realityMap := map[string]bool{}
+	for _, result := range realityResults {
+		realityMap[result.Manifest.ID().String()] = true
+	}
+	// get set of pods in intent
+	intentResults, _, err := p.store.ListPods(consul.INTENT_TREE, p.node)
+	if err != nil {
+		sub.WithError(err).Errorln("Could not check intent: %s", err)
+		return err
+	}
+	intentMap := map[string]bool{}
+	for _, result := range intentResults {
+		intentMap[result.Manifest.ID().String()] = true
+	}
+	// get set of pods installed on machine
+	manifestFilePaths, err := filepath.Glob(filepath.Join(p.podRoot, "*/current_manifest.yaml"))
+	if err != nil {
+		sub.WithError(err).Errorln("Could not check filepaths of pods installed on disk: %s", err)
+		return err
+	}
+	for _, fp := range manifestFilePaths {
+		home := strings.SplitN(fp, "/", 5)[3]
+		podUUID := types.HomeToPodUUID(home)
+		if podUUID != nil {
+			uniqueKey := types.PodUniqueKey(podUUID.String())
+			_, err := p.podStore.ReadPodFromIndex(podstore.PodIndex{PodKey: uniqueKey})
+			// no pod means the pod was unscheduled and also removed from the intent tree
+			if podstore.IsNoPod(err) {
+				ctx, cancelFunc := transaction.New(context.Background())
+				defer cancelFunc()
+				err := p.podStore.WriteRealityIndex(ctx, uniqueKey, p.node)
+				if err != nil {
+					sub.WithError(err).Errorln("Could not add 'write uuid index to reality store' to transaction: %s", err)
+					return err
+				}
+				ok, resp, err := transaction.Commit(ctx, p.client.KV())
+				if err != nil {
+					sub.WithError(err).Errorln("Could not write uuid index to reality store")
+					return err
+				}
+				if !ok {
+					err := util.Errorf("status record transaction rolled back: %s", transaction.TxnErrorsToString(resp.Errors))
+					sub.WithError(err).Errorln("Could not write uuid index to reality store")
+					return err
+				}
+			} else if err != nil {
+				sub.WithError(err).Errorln("Unexpected error reading pod: %s", err)
+				return err
+			}
+		} else if _, ok := intentMap[home]; !ok {
+			if _, ok := realityMap[home]; !ok {
+				diskManifest, err := manifest.FromPath(fp)
+				if err != nil {
+					sub.WithError(err).Errorln("Could not read manifest from path: %s", err)
+					return err
+				}
+				_, err = p.store.SetPod(consul.REALITY_TREE, p.node, diskManifest)
+				if err != nil {
+					sub.WithError(err).Errorln("Could not set pod in reality tree: %s", err)
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (p *Preparer) InstallHooks() error {
