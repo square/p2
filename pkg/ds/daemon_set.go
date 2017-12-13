@@ -76,7 +76,7 @@ type DaemonSet interface {
 	// CurrentPods() returns all nodes that are scheduled by this daemon set
 	CurrentPods() (types.PodLocations, error)
 
-	Replicate(context.Context, <-chan []types.NodeName, <-chan struct{}, <-chan struct{}, <-chan manifest.Manifest)
+	Replicate(context.Context, <-chan []types.NodeName, <-chan struct{}, <-chan struct{}, <-chan manifest.Manifest, <-chan time.Duration)
 }
 
 type Labeler interface {
@@ -310,7 +310,8 @@ func (ds *daemonSet) WatchDesires(
 	pauseReplication := make(chan struct{})
 	unpauseReplication := make(chan struct{})
 	manifestChange := make(chan manifest.Manifest)
-	go ds.Replicate(ctx, nodesToAdd, pauseReplication, unpauseReplication, manifestChange)
+	timeoutChange := make(chan time.Duration)
+	go ds.Replicate(ctx, nodesToAdd, pauseReplication, unpauseReplication, manifestChange, timeoutChange)
 
 	nodesChangedCh := ds.watcher.WatchMatchDiff(ds.NodeSelector, labels.NODE, ds.labelsAggregationRate, watchMatchQuitCh)
 	// Do something whenever something is changed
@@ -405,6 +406,9 @@ func (ds *daemonSet) WatchDesires(
 				}
 
 				ds.mu.Lock()
+				if ds.Timeout != newDS.Timeout {
+					timeoutChange <- newDS.Timeout
+				}
 				ds.DaemonSet = newDS
 				ds.mu.Unlock()
 
@@ -647,6 +651,7 @@ func (ds *daemonSet) Replicate(
 	pauseReplication <-chan struct{},
 	unpauseReplication <-chan struct{},
 	manifestChange <-chan manifest.Manifest,
+	timeoutChange <-chan time.Duration,
 ) {
 	nodeQueue := make(chan types.NodeName)
 
@@ -761,6 +766,8 @@ func (ds *daemonSet) Replicate(
 				if man != nil {
 					ds.getDSReplication().replication.SetManifest(man)
 				}
+			case timeout := <-timeoutChange:
+				ds.getDSReplication().replication.SetTimeout(timeout)
 			default:
 			}
 
@@ -790,6 +797,8 @@ func (ds *daemonSet) Replicate(
 			if man != nil {
 				ds.getDSReplication().replication.SetManifest(man)
 			}
+		case timeout := <-timeoutChange:
+			ds.getDSReplication().replication.SetTimeout(timeout)
 		case <-pauseReplication:
 			paused = true
 		case <-unpauseReplication:

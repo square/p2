@@ -77,6 +77,9 @@ type Replication interface {
 
 	// SetManifest() can be used to change the manifest while a replication is in progress
 	SetManifest(manifest.Manifest)
+
+	// SetTimeout() is used to change the timeout used for the replication while it is in progress
+	SetTimeout(timeout time.Duration)
 }
 
 type Store interface {
@@ -101,7 +104,7 @@ type replication struct {
 	txner          transaction.Txner
 	labeler        Labeler
 	manifest       manifest.Manifest
-	manifestMu     sync.RWMutex
+	mu             sync.RWMutex
 	health         checker.ConsulHealthChecker
 	threshold      health.HealthState // minimum state to treat as "healthy"
 	logger         logging.Logger
@@ -357,9 +360,11 @@ func (r *replication) Enact() {
 			for node := range nodeQueue {
 				exitCh := make(chan struct{})
 				ctx, cancel := context.WithCancel(context.Background())
+				r.mu.Lock()
 				if r.timeout != NoTimeout {
 					ctx, cancel = context.WithTimeout(ctx, r.timeout)
 				}
+				r.mu.Unlock()
 				ctx, _ = transaction.New(ctx)
 
 				go func(ctx context.Context, cancel context.CancelFunc) {
@@ -414,8 +419,8 @@ func (r *replication) WaitForReplication() {
 }
 
 func (r *replication) SetManifest(man manifest.Manifest) {
-	r.manifestMu.Lock()
-	defer r.manifestMu.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	oldSHA, _ := r.manifest.SHA()
 	newSHA, _ := man.SHA()
 	if oldSHA != newSHA {
@@ -425,9 +430,15 @@ func (r *replication) SetManifest(man manifest.Manifest) {
 	r.manifest = man
 }
 
+func (r *replication) SetTimeout(timeout time.Duration) {
+	r.mu.Lock()
+	r.timeout = timeout
+	r.mu.Unlock()
+}
+
 func (r *replication) GetManifest() manifest.Manifest {
-	r.manifestMu.RLock()
-	defer r.manifestMu.RUnlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.manifest
 }
 

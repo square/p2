@@ -620,6 +620,9 @@ func (n nullReplication) InProgress() bool {
 func (n nullReplication) SetManifest(manifest.Manifest) {
 	panic("SetManifest() not implemented on nullReplication")
 }
+func (n nullReplication) SetTimeout(time.Duration) {
+	panic("SetTimeout() not implemented on nullReplication")
+}
 
 func TestWriteNewestStatus(t *testing.T) {
 	type writeStatusTestCase struct {
