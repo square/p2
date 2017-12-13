@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	"github.com/square/p2/pkg/launch"
@@ -234,9 +235,11 @@ func TestDisable(t *testing.T) {
 	disableOutput, err := hl.disable()
 	Assert(t).IsNil(err, "Got an unexpected error when calling disable on the test hoist launchable")
 
-	expectedDisableOutput := "disable invoked\n"
+	expectedDisableOutput := "disable invoked"
 
-	Assert(t).AreEqual(disableOutput, expectedDisableOutput, "Did not get expected output from test disable script")
+	if !strings.Contains(disableOutput, "disable invoked") {
+		t.Fatalf("expected to see %q in the disable output. Full output:\n%s", expectedDisableOutput, disableOutput)
+	}
 }
 
 func TestFailingDisable(t *testing.T) {
@@ -247,9 +250,11 @@ func TestFailingDisable(t *testing.T) {
 	disableOutput, err := hl.disable()
 	Assert(t).IsNotNil(err, "Expected disable to fail for this test, but it didn't")
 
-	expectedDisableOutput := "Error: this script failed\n"
+	expectedDisableOutput := "Error: this script failed"
 
-	Assert(t).AreEqual(disableOutput, expectedDisableOutput, "Did not get expected output from test disable script")
+	if !strings.Contains(disableOutput, expectedDisableOutput) {
+		t.Fatalf("expected to see %q in the disable output. Full output:\n%s", expectedDisableOutput, disableOutput)
+	}
 }
 
 // providing a disable script is optional, make sure we don't error
@@ -274,9 +279,10 @@ func TestEnable(t *testing.T) {
 	enableOutput, err := hl.enable()
 	Assert(t).IsNil(err, "Got an unexpected error when calling enable on the test hoist launchable")
 
-	expectedEnableOutput := "enable invoked\n"
-
-	Assert(t).AreEqual(enableOutput, expectedEnableOutput, "Did not get expected output from test enable script")
+	expectedEnableOutput := "enable invoked"
+	if !strings.Contains(enableOutput, expectedEnableOutput) {
+		t.Fatalf("expected to see %q in the enable output. Full output:\n%s", expectedEnableOutput, enableOutput)
+	}
 }
 
 func TestNoEnableForUUIDPods(t *testing.T) {
@@ -299,9 +305,11 @@ func TestFailingEnable(t *testing.T) {
 	enableOutput, err := hl.enable()
 	Assert(t).IsNotNil(err, "Expected enable to fail for this test, but it didn't")
 
-	expectedEnableOutput := "Error: this script failed\n"
+	expectedEnableOutput := "Error: this script failed"
 
-	Assert(t).AreEqual(enableOutput, expectedEnableOutput, "Did not get expected output from test enable script")
+	if !strings.Contains(enableOutput, expectedEnableOutput) {
+		t.Fatalf("expected to see %q in the enable output. Full output:\n%s", expectedEnableOutput, enableOutput)
+	}
 }
 
 // providing an enable script is optional, make sure we don't error
