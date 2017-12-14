@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/alerting/alertingtest"
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/health"
 	fake_checker "github.com/square/p2/pkg/health/checker/test"
@@ -147,6 +148,8 @@ func setup(t *testing.T) (
 
 	healthChecker := fake_checker.NewSingleService("", nil)
 
+	artifactRegistry := artifact.NewRegistry(nil, nil, nil)
+
 	rc = New(
 		rcData.ID,
 		consulStore,
@@ -161,6 +164,7 @@ func setup(t *testing.T) (
 		logging.DefaultLogger,
 		alerter,
 		healthChecker,
+		artifactRegistry,
 	).(*replicationController)
 
 	return

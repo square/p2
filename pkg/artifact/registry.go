@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/launch"
@@ -28,6 +31,8 @@ type Registry interface {
 	// artifact can be fetched an a struct containing the locations of files that
 	// can be used to verify artifact integrity
 	LocationDataForLaunchable(podID types.PodID, launchableID launch.LaunchableID, stanza launch.LaunchableStanza) (*url.URL, auth.VerificationData, error)
+
+	CheckArtifactExists(u *url.URL) (bool, error)
 }
 
 type registry struct {
@@ -86,6 +91,37 @@ func (a registry) LocationDataForLaunchable(podID types.PodID, launchableID laun
 	}
 
 	return a.fetchRegistryData(podID, launchableID, stanza.Version)
+}
+
+func (a registry) CheckArtifactExists(u *url.URL) (bool, error) {
+	switch u.Scheme {
+	case "file":
+		if u.Path == "" {
+			return false, util.Errorf("%s: invalid path in URI", u.String())
+		}
+		if !filepath.IsAbs(u.Path) {
+			return false, util.Errorf("%q: file URIs must use an absolute path", u.Path)
+		}
+		_, err := os.Stat(u.Path)
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	case "http", "https":
+		resp, err := a.fetcher.Head(u)
+		if err != nil {
+			return false, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			return false, nil
+		}
+		return true, nil
+	default:
+		return false, util.Errorf("%q: unknown scheme %s", u.String(), u.Scheme)
+	}
 }
 
 type RegistryResponse struct {

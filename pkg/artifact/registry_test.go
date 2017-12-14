@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/http"
 	"net/url"
 	"os"
 	"testing"
@@ -31,6 +32,10 @@ func (f *FakeFetcher) Open(uri *url.URL) (io.ReadCloser, error) {
 	readCloser := ioutil.NopCloser(reader)
 	f.FetchedURL = uri
 	return readCloser, nil
+}
+
+func (f *FakeFetcher) Head(url *url.URL) (*http.Response, error) {
+	return nil, errors.New("Head not implemented on fake fetcher")
 }
 
 func (f *FakeFetcher) CopyLocal(srcUri *url.URL, dstPath string) error {

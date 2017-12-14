@@ -15,8 +15,10 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/rc"
 	"github.com/square/p2/pkg/roll"
 	"github.com/square/p2/pkg/scheduler"
@@ -28,6 +30,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/rollstore"
 	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util/stream"
 	"github.com/square/p2/pkg/version"
 )
@@ -107,6 +110,10 @@ func main() {
 
 	auditLogStore := auditlogstore.NewConsulStore(client.KV())
 
+	fetcher := uri.BasicFetcher{Client: opts.Client}
+	// Only works for local files
+	artifactRegistry := artifact.NewRegistry(nil, fetcher, osversion.DefaultDetector)
+
 	// Run the farms!
 	go rc.NewFarm(
 		consulStore,
@@ -125,6 +132,7 @@ func main() {
 		klabels.Everything(),
 		alerter,
 		1*time.Second,
+		artifactRegistry,
 	).Start(nil)
 	roll.NewFarm(
 		roll.UpdateFactory{
