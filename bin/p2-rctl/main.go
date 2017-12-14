@@ -30,10 +30,13 @@ import (
 	"github.com/square/p2/pkg/roll"
 	roll_fields "github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/flags"
 	"github.com/square/p2/pkg/store/consul/rcstore"
 	"github.com/square/p2/pkg/store/consul/rollstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/version"
 )
@@ -140,6 +143,7 @@ func main() {
 	labeler := labels.NewConsulApplicator(client, 0, 0)
 
 	rcStore := rcstore.NewConsul(client, labeler, 3)
+	rcStatusStore := rcstatus.NewConsul(statusstore.NewConsul(client), consul.RCStatusNamespace)
 
 	// The roll labeler CANT be an http applicator because it uses consul
 	// transactions, so this might be different from labeler returned by
@@ -151,15 +155,16 @@ func main() {
 		// rcStore copied so many times right now but might not all be
 		// the same implementation of these various interfaces in
 		// the future.
-		rcs:         rcStore,
-		rollRCStore: rcStore,
-		rcLocker:    rcStore,
-		rls:         rollstore.NewConsul(client, rollLabeler, nil),
-		consuls:     consul.NewConsulStore(client),
-		labeler:     labeler,
-		hcheck:      checker.NewConsulHealthChecker(client),
-		hclient:     nil,
-		logger:      logger,
+		rcs:               rcStore,
+		rollRCStore:       rcStore,
+		rollRCStatusStore: rcStatusStore,
+		rcLocker:          rcStore,
+		rls:               rollstore.NewConsul(client, rollLabeler, nil),
+		consuls:           consul.NewConsulStore(client),
+		labeler:           labeler,
+		hcheck:            checker.NewConsulHealthChecker(client),
+		hclient:           nil,
+		logger:            logger,
 	}
 
 	switch cmd {
@@ -244,18 +249,19 @@ type RollingUpdateStore interface {
 // each member function represents a single command that takes over from main
 // and terminates the program on failure
 type rctlParams struct {
-	httpClient  *http.Client
-	baseClient  consulutil.ConsulClient
-	rcs         ReplicationControllerStore
-	rollRCStore roll.ReplicationControllerStore
-	rcLocker    roll.ReplicationControllerLocker
-	rcWatcher   rc.ReplicationControllerWatcher
-	rls         RollingUpdateStore
-	labeler     labels.ApplicatorWithoutWatches
-	consuls     Store
-	hcheck      checker.ConsulHealthChecker
-	hclient     hclient.HealthServiceClient
-	logger      logging.Logger
+	httpClient        *http.Client
+	baseClient        consulutil.ConsulClient
+	rcs               ReplicationControllerStore
+	rollRCStore       roll.ReplicationControllerStore
+	rollRCStatusStore roll.RCStatusStore
+	rcLocker          roll.ReplicationControllerLocker
+	rcWatcher         rc.ReplicationControllerWatcher
+	rls               RollingUpdateStore
+	labeler           labels.ApplicatorWithoutWatches
+	consuls           Store
+	hcheck            checker.ConsulHealthChecker
+	hclient           hclient.HealthServiceClient
+	logger            logging.Logger
 }
 
 func (r rctlParams) Create(
@@ -424,6 +430,7 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 			r.baseClient,
 			r.rcLocker,
 			r.rollRCStore,
+			r.rollRCStatusStore,
 			r.rls,
 			r.baseClient.KV(),
 			r.hcheck,
@@ -433,7 +440,9 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 			session,
 			watchDelay,
 			alerting.NewNop(),
-			nil, // note: this will cause a panic if one of the RCs is dynamic
+			nil,   // note: this will cause a panic if one of the RCs is dynamic
+			false, // no audit logging
+			auditlogstore.ConsulStore{}, // no audit logging
 		).Run(ctx)
 		close(result)
 	}()

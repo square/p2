@@ -6,11 +6,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/Sirupsen/logrus"
-
 	"github.com/square/p2/pkg/alerting"
+	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/health"
-	"github.com/square/p2/pkg/health/checker"
 	hclient "github.com/square/p2/pkg/health/client"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -19,11 +17,17 @@ import (
 	rcf "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/roll/fields"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
+
+	"github.com/Sirupsen/logrus"
+	"github.com/hashicorp/consul/api"
 )
 
 type Store interface {
@@ -51,18 +55,35 @@ type ReplicationControllerStore interface {
 	EnableTxn(ctx context.Context, id rcf.ID) error
 }
 
+type Labeler interface {
+	rc.LabelMatcher
+	audit.Labeler
+}
+
+type ServiceWatcher interface {
+	WatchService(
+		serviceID string,
+		resultCh chan<- map[types.NodeName]health.Result,
+		errCh chan<- error,
+		quitCh <-chan struct{},
+		watchDelay time.Duration,
+	)
+	Service(serviceID string) (map[types.NodeName]health.Result, error)
+}
+
 type update struct {
 	fields.Update
 
-	consuls      Store
-	consulClient consulutil.ConsulClient
-	rcStore      ReplicationControllerStore
-	rollStore    RollingUpdateStore
-	rcLocker     ReplicationControllerLocker
-	hcheck       checker.ConsulHealthChecker
-	hclient      hclient.HealthServiceClient
-	labeler      rc.LabelMatcher
-	txner        transaction.Txner
+	consuls       Store
+	consulClient  consulutil.ConsulClient
+	rcStore       ReplicationControllerStore
+	rcStatusStore RCStatusStore
+	rollStore     RollingUpdateStore
+	rcLocker      ReplicationControllerLocker
+	hcheck        ServiceWatcher
+	hclient       hclient.HealthServiceClient
+	labeler       Labeler
+	txner         transaction.Txner
 
 	logger logging.Logger
 
@@ -80,6 +101,15 @@ type update struct {
 	// which factors into some of the computations that are performed during
 	// a rolling update
 	scheduler RCScheduler
+
+	// If set, will create an audit log record when a rolling upate is completed (and thus deleted)
+	// to signify that the rolling update was successful
+	shouldCreateAuditLogRecords bool
+	auditLogStore               auditlogstore.ConsulStore
+}
+
+type RCStatusStore interface {
+	Get(rcID rcf.ID) (rcstatus.Status, *api.QueryMeta, error)
 }
 
 // Create a new Update. The consul.Store, rcstore.Store, labels.Applicator and
@@ -92,36 +122,41 @@ func NewUpdate(
 	consulClient consulutil.ConsulClient,
 	rcLocker ReplicationControllerLocker,
 	rcStore ReplicationControllerStore,
+	rcStatusStore RCStatusStore,
 	rollStore RollingUpdateStore,
 	txner transaction.Txner,
-	hcheck checker.ConsulHealthChecker,
+	hcheck ServiceWatcher,
 	hclient hclient.HealthServiceClient,
-	labeler rc.LabelMatcher,
+	labeler Labeler,
 	logger logging.Logger,
 	session consul.Session,
 	watchDelay time.Duration,
 	alerter alerting.Alerter,
 	scheduler RCScheduler,
+	shouldCreateAuditLogRecords bool,
+	auditLogStore auditlogstore.ConsulStore,
 ) Update {
 	logger = logger.SubLogger(logrus.Fields{
 		"desired_replicas": f.DesiredReplicas,
 		"minimum_replicas": f.MinimumReplicas,
 	})
 	return &update{
-		Update:       f,
-		consuls:      consuls,
-		rcLocker:     rcLocker,
-		rcStore:      rcStore,
-		rollStore:    rollStore,
-		txner:        txner,
-		hcheck:       hcheck,
-		hclient:      hclient,
-		labeler:      labeler,
-		logger:       logger,
-		watchDelay:   watchDelay,
-		alerter:      alerter,
-		consulClient: consulClient,
-		scheduler:    scheduler,
+		Update:        f,
+		consuls:       consuls,
+		rcLocker:      rcLocker,
+		rcStore:       rcStore,
+		rcStatusStore: rcStatusStore,
+		rollStore:     rollStore,
+		txner:         txner,
+		hcheck:        hcheck,
+		hclient:       hclient,
+		labeler:       labeler,
+		logger:        logger,
+		watchDelay:    watchDelay,
+		alerter:       alerter,
+		consulClient:  consulClient,
+		scheduler:     scheduler,
+		auditLogStore: auditLogStore,
 	}
 }
 
@@ -268,6 +303,7 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 	u.logger.NoFields().Debugln("Enabling")
 	err = u.enable(checkRCLocksCtx)
 	if err != nil {
+		u.logger.WithError(err).Errorln("could not enable RCs")
 		return false
 	}
 
@@ -316,6 +352,33 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 			err,
 		)
 		return false
+	}
+
+	if u.shouldCreateAuditLogRecords {
+		succeeded := true
+		canceled := false
+		details, err := audit.NewRUCompletionEventDetails(u.ID(), succeeded, canceled, u.labeler)
+		if err != nil {
+			u.logger.WithError(err).Errorln("could not create RU completion audit log record")
+			u.mustAlert(
+				context.Background(),
+				"could not build RU deletion transaction due to audit log operation",
+				"ru-deletion-txn"+u.ID().String(),
+				err,
+			)
+		}
+
+		err = u.auditLogStore.Create(cleanupCtx, audit.RUCompletionEvent, details)
+		if err != nil {
+			u.logger.WithError(err).Errorln("could not add audit log operation to transaction")
+			u.mustAlert(
+				context.Background(),
+				"could not build RU deletion transaction due to audit log operation",
+				"ru-deletion-txn"+u.ID().String(),
+				err,
+			)
+			return false
+		}
 	}
 
 	// return true here, but note that it might become false because of the
@@ -622,33 +685,9 @@ func (u *update) enable(checkLocksCtx context.Context) error {
 	}
 
 	if newRC.Disabled {
-		// We must exercise caution before enabling a disabled RC.
-		//
-		// Consider a deploy:
-		// Old RC:                        | New RC:
-		// disabled, 2 desired, 2 labeled | enabled, 0 desired, 0 labeled.
-		// disabled, 1 desired, 2 labeled | enabled, 1 desired, 0 labeled.
-		//
-		// Now let's say we interrupt the deploy here,
-		// and because of Consul latency the new RC doesn't get to act on its desire.
-		// Then, we rollback.
-		//
-		//  enabled, 1 desired, 2 labeled | disabled, 1 desired, 0 labeled.
-		//
-		// At this point, the formerly-old RC momentarily unschedules one node, because it has too many.
-		// This is undesirable.
-		//
-		// Solution: Wait until formerly-old RC has only 1 node labeled.
-		// TODO: We can explore whether it's safe to just set the RCs to 2 desired if it has 2 RCs labeled,
-		// but we would be more comfortable with this if we could ascertain there is no chance of race.
-		currentPods, err := rc.CurrentPods(u.NewRC, u.labeler)
+		err = u.validateNewRCCounts(newRC)
 		if err != nil {
 			return err
-		}
-
-		if len(currentPods) != newRC.ReplicasDesired {
-			// enable is called in a RetryOrQuit,
-			return util.Errorf("RC %s currently has %d replicas but wants %d - waiting until it matches to enable.", u.NewRC, len(currentPods), newRC.ReplicasDesired)
 		}
 	}
 
@@ -677,6 +716,75 @@ func (u *update) enable(checkLocksCtx context.Context) error {
 	}
 
 	return nil
+}
+
+func (u *update) validateNewRCCounts(newRC rcf.RC) error {
+	// We must exercise caution before enabling a disabled RC.
+	//
+	// Consider a deploy:
+	// Old RC:                        | New RC:
+	// disabled, 2 desired, 2 labeled | enabled, 0 desired, 0 labeled.
+	// disabled, 1 desired, 2 labeled | enabled, 1 desired, 0 labeled.
+	//
+	// Now let's say we interrupt the deploy here,
+	// and because of Consul latency the new RC doesn't get to act on its desire.
+	// Then, we rollback.
+	//
+	//  enabled, 1 desired, 2 labeled | disabled, 1 desired, 0 labeled.
+	//
+	// At this point, the formerly-old RC momentarily unschedules one node, because it has too many.
+	// This is undesirable.
+	//
+	// Solution: Wait until formerly-old RC has only 1 node labeled.
+	// TODO: We can explore whether it's safe to just set the RCs to 2 desired if it has 2 RCs labeled,
+	// but we would be more comfortable with this if we could ascertain there is no chance of race.
+	currentPods, err := rc.CurrentPods(u.NewRC, u.labeler)
+	if err != nil {
+		return err
+	}
+
+	if len(currentPods) == newRC.ReplicasDesired {
+		return nil
+	}
+
+	// Special case: if current pods == replicaCount + 1, we should check if this is only the case because
+	// a node transfer is happening
+	if len(currentPods) == newRC.ReplicasDesired+1 {
+		rcStatus, _, err := u.rcStatusStore.Get(u.NewRC)
+		switch {
+		case statusstore.IsNoStatus(err):
+			return util.Errorf("RC %s currently has %d replicas but wants %d (and has no node transfer) - waiting until it matches to enable.", u.NewRC, len(currentPods), newRC.ReplicasDesired)
+		case err != nil:
+			return util.Errorf("could not check RC status: %s", err)
+		}
+
+		// If a node transfer is in progress, and the
+		// current pods we counted include both the old
+		// node and the new node of the node transfer,
+		// then the RC effectively has one node less
+		// than CurrentPods() shows
+		if rcStatus.NodeTransfer == nil {
+			// release the RU and let another farm try later
+			return util.Errorf("RC %s currently has %d replicas but wants %d (and has no node transfer) - waiting until it matches to enable.", u.NewRC, len(currentPods), newRC.ReplicasDesired)
+		}
+
+		oldNodeIncluded := false
+		newNodeIncluded := false
+		for _, node := range currentPods.Nodes() {
+			if node == rcStatus.NodeTransfer.NewNode {
+				newNodeIncluded = true
+			}
+			if node == rcStatus.NodeTransfer.OldNode {
+				oldNodeIncluded = true
+			}
+		}
+
+		if oldNodeIncluded || newNodeIncluded {
+			return nil
+		}
+	}
+
+	return util.Errorf("RC %s currently has %d replicas but wants %d - waiting until it matches to enable.", u.NewRC, len(currentPods), newRC.ReplicasDesired)
 }
 
 // rcNodeCounts represents a snapshot of an RC with details about how many pods

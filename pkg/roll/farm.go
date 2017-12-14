@@ -46,6 +46,7 @@ type UpdateFactory struct {
 	Txner               transaction.Txner
 	RCLocker            ReplicationControllerLocker
 	RCStore             ReplicationControllerStore
+	RCStatusStore       RCStatusStore
 	RollStore           RollingUpdateStore
 	HealthServiceClient hclient.HealthServiceClient
 	HealthChecker       checker.ConsulHealthChecker
@@ -54,6 +55,9 @@ type UpdateFactory struct {
 	Alerter             alerting.Alerter
 
 	scheduler RCScheduler
+
+	ShouldCreateAuditLogRecords bool
+	AuditLogStore               auditlogstore.ConsulStore
 }
 
 type labeler interface {
@@ -67,6 +71,7 @@ func NewUpdateFactory(
 	txner transaction.Txner,
 	rcLocker ReplicationControllerLocker,
 	rcStore ReplicationControllerStore,
+	rcStatusStore RCStatusStore,
 	rollStore RollingUpdateStore,
 	healthChecker checker.ConsulHealthChecker,
 	healthServiceClient hclient.HealthServiceClient,
@@ -74,20 +79,25 @@ func NewUpdateFactory(
 	watchDelay time.Duration,
 	alerter alerting.Alerter,
 	scheduler RCScheduler,
+	auditLogStore auditlogstore.ConsulStore,
+	shouldCreateAuditLogRecords bool,
 ) UpdateFactory {
 	return UpdateFactory{
-		Store:               store,
-		Client:              consulClient,
-		Txner:               txner,
-		RCLocker:            rcLocker,
-		RCStore:             rcStore,
-		RollStore:           rollStore,
-		HealthChecker:       healthChecker,
-		HealthServiceClient: healthServiceClient,
-		Labeler:             labeler,
-		WatchDelay:          watchDelay,
-		Alerter:             alerter,
-		scheduler:           scheduler,
+		Store:                       store,
+		Client:                      consulClient,
+		Txner:                       txner,
+		RCLocker:                    rcLocker,
+		RCStore:                     rcStore,
+		RCStatusStore:               rcStatusStore,
+		RollStore:                   rollStore,
+		HealthChecker:               healthChecker,
+		HealthServiceClient:         healthServiceClient,
+		Labeler:                     labeler,
+		WatchDelay:                  watchDelay,
+		Alerter:                     alerter,
+		scheduler:                   scheduler,
+		AuditLogStore:               auditLogStore,
+		ShouldCreateAuditLogRecords: shouldCreateAuditLogRecords,
 	}
 }
 
@@ -98,6 +108,7 @@ func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consu
 		f.Client,
 		f.RCLocker,
 		f.RCStore,
+		f.RCStatusStore,
 		f.RollStore,
 		f.Txner,
 		f.HealthChecker,
@@ -108,6 +119,8 @@ func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consu
 		f.WatchDelay,
 		f.Alerter,
 		f.scheduler,
+		f.ShouldCreateAuditLogRecords,
+		f.AuditLogStore,
 	)
 }
 
@@ -315,9 +328,18 @@ START_LOOP:
 				if err != nil {
 					rlLogger.WithError(err).Errorln("RU was invalid, deleting")
 
-					// Just delete the RU, the farm will clean up the lock when releaseDeletedChildren() is called
+					// Just delete the RU, the farm will
+					// clean up the lock when
+					// releaseDeletedChildren() is called
+
+					// We consider this to be a "succeeded" rolling update because the most likely reason we would hit this case is that the
+					// old RC does not exist, which implies that a previous rolling update finished the roll (and deleted the old RC) but didn't
+					// delete the RU yet, which we're going to do now
+					// TODO: page in validateRoll() because we don't expect this to happen anymore now that rolling updates use transactions
+					succeeded := true
+					canceled := true
 					ctx, cancel := transaction.New(context.Background())
-					rlf.mustDeleteRU(ctx, rlField.ID(), rlLogger)
+					rlf.mustDeleteRU(ctx, rlField.ID(), rlLogger, succeeded, canceled)
 					cancel()
 					continue
 				}
@@ -440,8 +462,7 @@ func (rlf *Farm) validateRoll(update roll_fields.Update, logger logging.Logger) 
 	return nil
 }
 
-// Tries to delete the given RU every second until it succeeds
-func (rlf *Farm) mustDeleteRU(ctx context.Context, id roll_fields.ID, logger logging.Logger) {
+func (rlf *Farm) mustDeleteRU(ctx context.Context, id roll_fields.ID, logger logging.Logger, succeeded bool, canceled bool) {
 	err := rlf.rls.Delete(ctx, id)
 	if err != nil {
 		// this error is really bad because we can't recover from it
@@ -450,7 +471,7 @@ func (rlf *Farm) mustDeleteRU(ctx context.Context, id roll_fields.ID, logger log
 	}
 
 	if rlf.config.ShouldCreateAuditLogRecords {
-		details, err := audit.NewRUCompletionEventDetails(id, true, false, rlf.labeler)
+		details, err := audit.NewRUCompletionEventDetails(id, succeeded, canceled, rlf.labeler)
 		if err != nil {
 			logger.WithError(err).Errorln("could not create RU completion audit log record")
 			// this error won't be recoverable so continue with deleting
