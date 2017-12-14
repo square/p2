@@ -56,7 +56,7 @@ func TestGetLaunchable(t *testing.T) {
 	pod := getTestPod()
 	Assert(t).AreNotEqual(0, len(launchableStanzas), "Expected there to be at least one launchable stanza in the test manifest")
 	for launchableID, stanza := range launchableStanzas {
-		l, _ := pod.getLaunchable(launchableID, stanza, "foouser")
+		l, _ := pod.getLaunchable(launchableID, stanza, "foouser", "root")
 		launchable := l.(hoist.LaunchAdapter).Launchable
 		if launchable.Id != "app" {
 			t.Errorf("Launchable Id did not have expected value: wanted '%s' was '%s'", "app", launchable.Id)
@@ -67,7 +67,8 @@ func TestGetLaunchable(t *testing.T) {
 			t.Errorf("Launchable version did not have expected value: wanted '%s' was '%s'", expectedVersion, launchable.Version)
 		}
 		Assert(t).AreEqual("hello__app", launchable.ServiceId, "Launchable ServiceId did not have expected value")
-		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
+		Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected RunAs")
+		Assert(t).AreEqual("root", launchable.OwnAs, "Launchable run as did not have expected OwnAs")
 		Assert(t).IsTrue(launchable.ExecNoLimit, "GetLaunchable() should always set ExecNoLimit to true for hoist launchables")
 		Assert(t).AreEqual(launchable.RestartPolicy(), runit.RestartPolicyAlways, "Default RestartPolicy for a launchable should be 'always'")
 	}
@@ -79,7 +80,7 @@ func TestGetLaunchableNoVersion(t *testing.T) {
 		LaunchableType: "hoist",
 	}
 	pod := getTestPod()
-	l, _ := pod.getLaunchable("somelaunchable", launchableStanza, "foouser")
+	l, _ := pod.getLaunchable("somelaunchable", launchableStanza, "foouser", "foouser")
 	launchable := l.(hoist.LaunchAdapter).Launchable
 
 	if launchable.Id != "somelaunchable" {
@@ -146,7 +147,7 @@ config:
 
 	launchables := make([]launch.Launchable, 0)
 	for launchableID, stanza := range manifest.GetLaunchableStanzas() {
-		launchable, err := pod.getLaunchable(launchableID, stanza, manifest.RunAsUser())
+		launchable, err := pod.getLaunchable(launchableID, stanza, manifest.RunAsUser(), manifest.UnpackAsUser())
 		Assert(t).IsNil(err, "There shouldn't have been an error getting launchable")
 		launchables = append(launchables, launchable)
 	}
