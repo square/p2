@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
-	"runtime/pprof"
-	"strconv"
 
 	"github.com/hashicorp/consul/api"
 )
@@ -154,15 +152,17 @@ func Get(
 ) (*api.KVPair, *api.QueryMeta, error) {
 	resultChan := make(chan getReply, 1)
 
-	getFunc := func(ctx context.Context) {
+	go func() {
 		kvp, queryMeta, err := clientKV.Get(key, options)
 		if err != nil {
 			err = NewKVError("get", key, err)
 		}
-		resultChan <- getReply{kvp, queryMeta, err}
-	}
+		select {
+		case resultChan <- getReply{kvp, queryMeta, err}:
+		case <-ctx.Done():
+		}
+	}()
 
-	pprof.Do(ctx, pprof.Labels("consul_key", key, "index", strconv.FormatUint(options.WaitIndex, 10)), getFunc)
 	select {
 	case <-ctx.Done():
 		return nil, nil, CanceledError
