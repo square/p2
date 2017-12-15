@@ -398,7 +398,7 @@ func (pod *Pod) Uninstall() error {
 // supported currently, this will set up runit services.).
 func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifier, artifactRegistry artifact.Registry) error {
 	podHome := pod.home
-	uid, gid, err := user.IDs(manifest.RunAsUser())
+	uid, gid, err := user.IDs(manifest.UnpackAsUser())
 	if err != nil {
 		return util.Errorf("Could not determine pod UID/GID for %s: %s", manifest.RunAsUser(), err)
 	}
@@ -525,7 +525,7 @@ func (pod *Pod) Verify(manifest manifest.Manifest, authPolicy auth.Policy) error
 // We may wish to provide a "config" directory per launchable at some point as
 // well, so that launchables can have different config namespaces
 func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Launchable) error {
-	uid, gid, err := user.IDs(manifest.RunAsUser())
+	uid, gid, err := user.IDs(manifest.UnpackAsUser())
 	if err != nil {
 		return util.Errorf("Could not determine pod UID/GID: %s", err)
 	}
