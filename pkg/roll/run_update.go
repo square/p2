@@ -438,7 +438,7 @@ func (u *update) cleanupOldRC(ctx context.Context) {
 		}
 
 		if len(currentPods) != 0 {
-			u.logger.Warnf("old RC still has %d current pods, waiting to delete")
+			u.logger.Warnf("old RC still has %d current pods, waiting to delete", len(currentPods))
 			return util.Errorf("waiting for old RC to have 0 current pods before deleting")
 		}
 
