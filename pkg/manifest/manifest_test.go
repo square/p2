@@ -230,6 +230,22 @@ func TestRunAs(t *testing.T) {
 	Assert(t).AreEqual(manifest.RunAsUser(), "specialuser", "RunAsUser() didn't match expectations")
 }
 
+func TestReadOnly(t *testing.T) {
+	config := testPod()
+	manifest, err := FromBytes([]byte(config))
+
+	Assert(t).IsNil(err, "should not have erred when building manifest")
+	Assert(t).AreEqual(manifest.GetReadOnly(), false, "GetReadOnly() should be false by default")
+	Assert(t).AreEqual(manifest.UnpackAsUser(), manifest.RunAsUser(), "UnpackAsUser() should be the RunAsUser by default")
+
+	config += `readonly: true`
+	manifest, err = FromBytes([]byte(config))
+
+	Assert(t).IsNil(err, "should not have erred when building manifest")
+	Assert(t).AreEqual(manifest.GetReadOnly(), true, "GetReadOnly() should be configuable to true")
+	Assert(t).AreEqual(manifest.UnpackAsUser(), "root", "UnpackAsUser() should be root when ReadOnly() is true")
+}
+
 func TestByteOrderPreserved(t *testing.T) {
 	// The yaml keys here are intentionally ordered in a way that without special
 	// care, the bytes returned by manifest.Bytes() would be in a different order

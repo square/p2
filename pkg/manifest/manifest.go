@@ -59,6 +59,7 @@ type builder struct {
 type Manifest interface {
 	ID() types.PodID
 	RunAsUser() string
+	UnpackAsUser() string
 	Write(out io.Writer) error
 	ConfigFileName() (string, error)
 	WriteConfig(out io.Writer) error
@@ -71,6 +72,7 @@ type Manifest interface {
 	GetStatusPath() string
 	GetStatusPort() int
 	GetStatusLocalhostOnly() bool
+	GetReadOnly() bool
 	Marshal() ([]byte, error)
 	SignatureData() (plaintext, signature []byte)
 
@@ -88,6 +90,7 @@ type manifest struct {
 	StatusPort        int                                             `yaml:"status_port,omitempty"`
 	StatusHTTP        bool                                            `yaml:"status_http,omitempty"`
 	Status            StatusStanza                                    `yaml:"status,omitempty"`
+	ReadOnly          bool                                            `yaml:"readonly,omitempty"`
 
 	// Used to track the original bytes so that we don't reorder them when
 	// doing a yaml.Unmarshal and a yaml.Marshal in succession
@@ -217,8 +220,24 @@ func (manifest *manifest) RunAsUser() string {
 	return string(manifest.ID())
 }
 
+func (manifest *manifest) UnpackAsUser() string {
+	if manifest.ReadOnly {
+		return "root"
+	}
+
+	return manifest.RunAsUser()
+}
+
+func (manifest *manifest) GetReadOnly() bool {
+	return manifest.ReadOnly
+}
+
 func (mb builder) SetRunAsUser(user string) {
 	mb.manifest.RunAs = user
+}
+
+func (mb builder) SetReadonly(readonly bool) {
+	mb.manifest.ReadOnly = readonly
 }
 
 // FromPath constructs a Manifest from a local file. This function is a helper for

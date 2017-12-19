@@ -38,6 +38,7 @@ type Launchable struct {
 	Version          launch.LaunchableVersionID // A version identifier
 	ServiceId        string                     // A (host-wise) unique identifier for this launchable, used when creating runit services
 	RunAs            string                     // The user to assume when launching the executable
+	OwnAs            string                     // The user that owns all the launcable's artifacts
 	PodEnvDir        string                     // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
 	RootDir          string                     // The root directory of the launchable, containing N:N>=1 installs.
 	P2Exec           string                     // Struct that can be used to build a p2-exec invocation with appropriate flags
@@ -468,9 +469,9 @@ func (hl *Launchable) flipSymlink(newLinkPath string) error {
 		return util.Errorf("Couldn't create symlink for hoist launchable %s: %s", hl.ServiceId, err)
 	}
 
-	uid, gid, err := user.IDs(hl.RunAs)
+	uid, gid, err := user.IDs(hl.GetOwnAs())
 	if err != nil {
-		return util.Errorf("Couldn't retrieve UID/GID for hoist launchable %s user %s: %s", hl.ServiceId, hl.RunAs, err)
+		return util.Errorf("Couldn't retrieve UID/GID for hoist launchable %s user %s: %s", hl.ServiceId, hl.GetOwnAs(), err)
 	}
 	err = os.Lchown(tempLinkPath, uid, gid)
 	if err != nil {
@@ -478,6 +479,14 @@ func (hl *Launchable) flipSymlink(newLinkPath string) error {
 	}
 
 	return os.Rename(tempLinkPath, newLinkPath)
+}
+
+func (hl *Launchable) GetOwnAs() string {
+	if hl.OwnAs != "" {
+		return hl.OwnAs
+	}
+
+	return hl.RunAs
 }
 
 func (hl *Launchable) EnvDir() string {
