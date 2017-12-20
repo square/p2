@@ -749,7 +749,6 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, current types
 		}
 
 		unlocker, err := rc.rcLocker.LockForNodeTransfer(rc.rcID, session)
-		rc.logger.Infoln("trying the lock!", err)
 		switch {
 		case consul.IsAlreadyLocked(err):
 			rc.logger.Infoln("skipping node transfer because node transfer lock is already held")
