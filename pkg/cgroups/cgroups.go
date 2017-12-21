@@ -6,13 +6,15 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 
 	"github.com/square/p2/pkg/util"
+	"gopkg.in/yaml.v2"
 )
 
-// maps cgroup subsystems to their respective paths
+// Subsystems maps cgroup subsystems to their respective paths
 type Subsystems struct {
 	CPU    string
 	Memory string
@@ -29,6 +31,10 @@ func (err UnsupportedError) Error() string {
 	// remember to cast to a string, otherwise %q invokes
 	// the Error function again (infinite recursion)
 	return fmt.Sprintf("subsystem %q is not available on this system", string(err))
+}
+
+type Subsystemer interface {
+	Find() (Subsystems, error)
 }
 
 // Find retrieves the mount points for all cgroup subsystems on the host. The
@@ -70,6 +76,30 @@ func Find() (Subsystems, error) {
 	}
 
 	return ret, nil
+}
+
+func FindWithParentGroup(podID string, subsystemer Subsystemer) (Subsystems, error) {
+	subsys, err := subsystemer.Find()
+	if err != nil {
+		return Subsystems{}, err
+	}
+
+	node, err := os.Hostname()
+	if err != nil {
+		return Subsystems{}, err
+	}
+
+	parentGroupName := filepath.Join("p2", node, podID)
+
+	subsys.CPU = filepath.Join(subsys.CPU, parentGroupName)
+	subsys.Memory = filepath.Join(subsys.Memory, parentGroupName)
+
+	if stat, err := os.Stat(subsys.CPU); err == nil && stat.IsDir() {
+		if stat, err := os.Stat(subsys.Memory); err == nil && stat.IsDir() {
+			return subsys, nil
+		}
+	}
+	return Subsystems{}, UnsupportedError(parentGroupName)
 }
 
 // set the number of logical CPUs in a given cgroup, 0 to unrestrict
@@ -139,22 +169,22 @@ func (subsys Subsystems) SetMemory(name string, bytes int) error {
 
 	// the hard memory limit must be set BEFORE the mem+swap limit
 	// so we must clear the swap limit at the start
-	err = ioutil.WriteFile(filepath.Join(subsys.Memory, name, "memory.memsw.limit_in_bytes"), []byte("-1\n"), 0)
+	err = ioutil.WriteFile(filepath.Join(subsys.Memory, name, "memory.memsw.limit_in_bytes"), []byte("-1\n"), 0600)
 	if err != nil {
 		return err
 	}
 
-	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.soft_limit_in_bytes"), []byte(strconv.Itoa(softLimit)+"\n"), 0)
+	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.soft_limit_in_bytes"), []byte(strconv.Itoa(softLimit)+"\n"), 0600)
 	if err != nil {
 		return err
 	}
 
-	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0)
+	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0600)
 	if err != nil {
 		return err
 	}
 
-	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.memsw.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0)
+	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.memsw.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0600)
 	if err != nil {
 		return err
 	}
@@ -176,6 +206,100 @@ func (subsys Subsystems) AddPID(name string, pid int) error {
 		return err
 	}
 	return appendIntToFile(filepath.Join(subsys.CPU, name, "cgroup.procs"), pid)
+}
+
+func CreatePodCgroup(cgroupName string, config Config, subsystemer Subsystemer) error {
+	subsys, err := subsystemer.Find()
+	if err != nil {
+		return err
+	}
+	node, err := os.Hostname()
+	if err != nil {
+		return err
+	}
+	err = os.MkdirAll(filepath.Join(subsys.CPU, "p2", node), 0755)
+	if err != nil && !os.IsExist(err) {
+		return err
+	}
+	err = os.MkdirAll(filepath.Join(subsys.Memory, "p2", node), 0755)
+	if err != nil && !os.IsExist(err) {
+		return err
+	}
+	return create(cgroupName, "", config, subsystemer)
+}
+
+func CreateLaunchableCgroup(cgroupName string, config Config, subsystemer Subsystemer) error {
+	return create(cgroupName, "", config, subsystemer)
+}
+
+func create(cgroupName string, podID string, config Config, subsystemer Subsystemer) error {
+	config.Name = cgroupName
+
+	var subsys Subsystems
+	var err error
+	if podID != "" {
+		subsys, err = FindWithParentGroup(podID, subsystemer)
+	} else {
+		subsys, err = subsystemer.Find()
+	}
+
+	if err != nil {
+		return util.Errorf("Could not find cgroupfs mount point: %s", err)
+	}
+
+	err = subsys.Write(config)
+	if _, ok := err.(UnsupportedError); ok {
+		return util.Errorf("Unsupported subsystem: %s", err)
+	} else if err != nil {
+		return util.Errorf("Could not set cgroup parameters: %s", err)
+	}
+	return subsys.AddPID(config.Name, 0)
+}
+
+func GetPodConfig(configPath string) (Config, error) {
+	if config := os.Getenv(configPath); config != "" {
+		confBuf, err := ioutil.ReadFile(config)
+		if err != nil {
+			return Config{}, err
+		}
+		cgMap := make(map[string]Config)
+		err = yaml.Unmarshal(confBuf, cgMap)
+		if err != nil {
+			return Config{}, err
+		}
+		if _, ok := cgMap["cgroup"]; !ok {
+			return Config{}, util.Errorf("%s does not contain cgroup parameters\n %s", configPath, debug.Stack())
+		}
+		cgConfig := cgMap["cgroup"]
+		return cgConfig, nil
+	} else {
+		return Config{}, util.Errorf("No %s found in environment", configPath)
+	}
+}
+
+func GetLaunchableConfig(configPath string, configKey string) (Config, error) {
+	if config := os.Getenv(configPath); config != "" {
+		confBuf, err := ioutil.ReadFile(config)
+		if err != nil {
+			return Config{}, err
+		}
+		cgMap := make(map[string]map[string]Config)
+		err = yaml.Unmarshal(confBuf, cgMap)
+		if err != nil {
+			return Config{}, err
+		}
+
+		if _, ok := cgMap[configKey]; !ok {
+			return Config{}, util.Errorf("Key %q not found in %s", configKey, configPath)
+		}
+		if _, ok := cgMap[configKey]["cgroup"]; !ok {
+			return Config{}, util.Errorf("Key %q in %s does not contain cgroup parameters\n", configKey, configPath)
+		}
+		cgConfig := cgMap[configKey]["cgroup"]
+		return cgConfig, nil
+	} else {
+		return Config{}, util.Errorf("No %s found in environment", configPath)
+	}
 }
 
 func appendIntToFile(filename string, data int) error {
