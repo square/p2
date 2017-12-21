@@ -17,6 +17,8 @@ type Fetcher interface {
 	// specified, treats the URI as a path to a local file.
 	Open(uri *url.URL) (io.ReadCloser, error)
 
+	Head(uri *url.URL) (*http.Response, error)
+
 	// Copy all data from the source URI to a local file at the
 	// destination path.
 	CopyLocal(srcUri *url.URL, dstPath string) error
@@ -69,6 +71,10 @@ func (f BasicFetcher) Open(u *url.URL) (io.ReadCloser, error) {
 	}
 }
 
+func (f BasicFetcher) Head(u *url.URL) (*http.Response, error) {
+	return f.Client.Head(u.String())
+}
+
 func (f BasicFetcher) CopyLocal(srcUri *url.URL, dstPath string) (err error) {
 	src, err := f.Open(srcUri)
 	if err != nil {
@@ -108,6 +114,12 @@ func (f *LoggedFetcher) Open(srcUri *url.URL) (io.ReadCloser, error) {
 	f.SrcUri = srcUri
 	f.DstPath = ""
 	return f.fetcher.Open(srcUri)
+}
+
+func (f *LoggedFetcher) Head(srcUri *url.URL) (*http.Response, error) {
+	f.SrcUri = srcUri
+	f.DstPath = ""
+	return f.fetcher.Head(srcUri)
 }
 
 func (f *LoggedFetcher) CopyLocal(srcUri *url.URL, dstPath string) error {

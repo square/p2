@@ -11,6 +11,7 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
@@ -100,6 +101,8 @@ type Farm struct {
 	// datastore. Higher values will result in delays in processing newly
 	// created RCs but lower bandwidth usage and QPS.
 	rcWatchPauseTime time.Duration
+
+	artifactRegistry artifact.Registry
 }
 
 type childRC struct {
@@ -125,6 +128,7 @@ func NewFarm(
 	rcSelector klabels.Selector,
 	alerter alerting.Alerter,
 	rcWatchPauseTime time.Duration,
+	artifactRegistry artifact.Registry,
 ) *Farm {
 	if alerter == nil {
 		alerter = alerting.NewNop()
@@ -148,6 +152,7 @@ func NewFarm(
 		alerter:          alerter,
 		rcSelector:       rcSelector,
 		rcWatchPauseTime: rcWatchPauseTime,
+		artifactRegistry: artifactRegistry,
 	}
 }
 
@@ -276,6 +281,7 @@ START_LOOP:
 					rcLogger,
 					rcf.alerter,
 					rcf.healthChecker,
+					rcf.artifactRegistry,
 				)
 				childQuit := make(chan struct{})
 				rcf.children[rcKey.ID] = childRC{

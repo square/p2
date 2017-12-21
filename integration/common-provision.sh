@@ -6,7 +6,7 @@
 set -ex
 
 # Install and setup Go
-VERSION=1.7.4
+VERSION=1.9.2
 curl -LO https://storage.googleapis.com/golang/go$VERSION.linux-amd64.tar.gz
 sudo tar -C /usr/local -xvf go$VERSION.linux-amd64.tar.gz
 sudo mkdir -p /usr/local/share/go

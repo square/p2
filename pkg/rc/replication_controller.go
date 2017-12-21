@@ -10,6 +10,7 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/alerting"
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/audit"
 	grpc_scheduler "github.com/square/p2/pkg/grpc/scheduler/client"
 	"github.com/square/p2/pkg/health"
@@ -142,6 +143,8 @@ type replicationController struct {
 	// nodeTransferMu protects access to nodeTransfer because it is used
 	// across goroutines
 	nodeTransferMu sync.Mutex
+
+	artifactRegistry artifact.Registry
 }
 
 type ReplicationControllerWatcher interface {
@@ -162,6 +165,7 @@ func New(
 	logger logging.Logger,
 	alerter alerting.Alerter,
 	healthChecker checker.ConsulHealthChecker,
+	artifactRegistry artifact.Registry,
 ) ReplicationController {
 	if alerter == nil {
 		alerter = alerting.NewNop()
@@ -170,18 +174,19 @@ func New(
 	return &replicationController{
 		rcID: rcID,
 
-		logger:        logger,
-		consulStore:   consulStore,
-		consulClient:  consulClient,
-		rcLocker:      rcLocker,
-		rcStatusStore: rcStatusStore,
-		auditLogStore: auditLogStore,
-		txner:         txner,
-		rcWatcher:     rcWatcher,
-		scheduler:     scheduler,
-		podApplicator: podApplicator,
-		alerter:       alerter,
-		healthChecker: healthChecker,
+		logger:           logger,
+		consulStore:      consulStore,
+		consulClient:     consulClient,
+		rcLocker:         rcLocker,
+		rcStatusStore:    rcStatusStore,
+		auditLogStore:    auditLogStore,
+		txner:            txner,
+		rcWatcher:        rcWatcher,
+		scheduler:        scheduler,
+		podApplicator:    podApplicator,
+		alerter:          alerter,
+		healthChecker:    healthChecker,
+		artifactRegistry: artifactRegistry,
 	}
 }
 
@@ -264,6 +269,38 @@ func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error
 
 func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 	rc.logger.NoFields().Infof("Handling RC update: desired replicas %d, disabled %v", rcFields.ReplicasDesired, rcFields.Disabled)
+	podID := rcFields.Manifest.ID()
+	launchableStanzas := rcFields.Manifest.GetLaunchableStanzas()
+	for launchableID, launchableStanza := range launchableStanzas {
+		artifactUrl, _, err := rc.artifactRegistry.LocationDataForLaunchable(podID, launchableID, launchableStanza)
+		if err != nil {
+			rc.logger.WithError(err).Errorln("Unable to retrieve location for launchable")
+		}
+		exists, err := rc.artifactRegistry.CheckArtifactExists(artifactUrl)
+		if err != nil {
+			rc.logger.WithError(err).Errorln("Unexpected error when checking if artifact exists")
+		}
+		if !exists {
+			hostname, _ := os.Hostname()
+			if err := rc.alerter.Alert(alerting.AlertInfo{
+				Description: fmt.Sprintf("This RC is missing an artifact at url %s for launchable id %s", artifactUrl, launchableID),
+				IncidentKey: fmt.Sprintf("%s-missing_artifact", rcFields.ID.String()),
+				Details: struct {
+					RCID         string `json:"rc_id"`
+					Hostname     string `json:"hostname"`
+					PodId        string `json:"pod_id"`
+					NodeSelector string `json:"node_selector"`
+				}{
+					RCID:         rcFields.ID.String(),
+					Hostname:     hostname,
+					PodId:        rcFields.Manifest.ID().String(),
+					NodeSelector: rcFields.NodeSelector.String(),
+				},
+			}, alerting.LowUrgency); err != nil {
+				rc.logger.WithError(err).Errorln("Unable to deliver alert!")
+			}
+		}
+	}
 
 	current, err := rc.CurrentPods()
 	if err != nil {
