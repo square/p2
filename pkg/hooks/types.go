@@ -133,11 +133,11 @@ type HookExecContext struct {
 	Name        string // human-readable name of Hook
 	Timeout     time.Duration
 	env         HookExecutionEnvironment // This will be used as the set of UNIX environment variables for the hook's execution
-	logger      *logging.Logger
+	logger      logging.Logger
 	auditLogger AuditLogger
 }
 
-func NewHookExecContext(path string, name string, timeout time.Duration, env HookExecutionEnvironment, logger *logging.Logger) *HookExecContext {
+func NewHookExecContext(path string, name string, timeout time.Duration, env HookExecutionEnvironment, logger logging.Logger) *HookExecContext {
 	return &HookExecContext{
 		Path:    path,
 		Name:    name,

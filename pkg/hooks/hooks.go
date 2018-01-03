@@ -24,10 +24,10 @@ func NewContext(dirpath string, podRoot string, logger *logging.Logger, auditLog
 }
 
 // runDirectory executes all executable files in a given directory path.
-func (h *hookContext) runDirectory(hookEnv *HookExecutionEnvironment) error {
+func (h *hookContext) runDirectory(hookEnv *HookExecutionEnvironment, logger logging.Logger) error {
 	entries, err := ioutil.ReadDir(h.dirpath)
 	if os.IsNotExist(err) {
-		h.logger.WithField("dir", h.dirpath).Debugln("Hooks not set up")
+		logger.WithField("dir", h.dirpath).Debugln("Hooks not set up")
 		return nil
 	}
 	if err != nil {
@@ -36,33 +36,33 @@ func (h *hookContext) runDirectory(hookEnv *HookExecutionEnvironment) error {
 
 	for _, f := range entries {
 		fullpath := path.Join(h.dirpath, f.Name())
-		hec := NewHookExecContext(fullpath, f.Name(), DefaultTimeout, *hookEnv, h.logger)
+		hec := NewHookExecContext(fullpath, f.Name(), DefaultTimeout, *hookEnv, logger)
 		executable := (f.Mode() & 0111) != 0
 		if !executable {
 			h.auditLogger.LogFailure(hec, nil)
-			h.logger.WithField("path", fullpath).Warnln("Hook is not executable")
+			logger.WithField("path", fullpath).Warnln("Hook is not executable")
 			continue
 		}
 		if f.IsDir() {
 			continue
 		}
 
-		err := hec.RunWithTimeout()
+		logger := logger.SubLogger(logrus.Fields{
+			"path":      hec.Path,
+			"hook_name": hec.Name,
+		})
+
+		err := hec.RunWithTimeout(logger)
 		if htErr, ok := err.(ErrHookTimeout); ok {
 			h.auditLogger.LogFailure(hec, err)
-			h.logger.WithErrorAndFields(htErr, logrus.Fields{
-				"path":      hec.Path,
-				"hook_name": hec.Name,
-				"timeout":   hec.Timeout,
+			logger.WithErrorAndFields(htErr, logrus.Fields{
+				"timeout": hec.Timeout,
 			}).Warnln(htErr.Error())
 			// we intentionally swallow timeout HookTimeoutErrors
 			continue
 		} else if err != nil {
 			h.auditLogger.LogFailure(hec, err)
-			h.logger.WithErrorAndFields(err, logrus.Fields{
-				"path":      hec.Path,
-				"hook_name": hec.Name,
-			}).Warningf("Unknown error in hook %s: %s", hec.Name, err)
+			logger.WithError(err).Warningf("Unknown error in hook %s: %s", hec.Name, err)
 			continue
 		}
 		h.auditLogger.LogSuccess(hec)
@@ -80,10 +80,10 @@ func (h *hookContext) Close() error {
 // re-opening its fd's and exec.Start() will dutifully wait on any unclosed fd
 //
 // NB: in the event of a timeout this will leak descriptors
-func (h *HookExecContext) RunWithTimeout() error {
+func (h *HookExecContext) RunWithTimeout(logger logging.Logger) error {
 	finished := make(chan struct{})
 	go func() {
-		h.Run()
+		h.Run(logger)
 		close(finished)
 	}()
 
@@ -97,8 +97,8 @@ func (h *HookExecContext) RunWithTimeout() error {
 }
 
 // Run executes the hook in the context of its environment and logs the output
-func (h *HookExecContext) Run() {
-	h.logger.WithField("path", h.Path).Infof("Executing hook %s", h.Name)
+func (h *HookExecContext) Run(logger logging.Logger) {
+	logger.Infof("Executing hook %s", h.Name)
 	cmd := exec.Command(h.Path)
 	hookOut := &bytes.Buffer{}
 	cmd.Stdout = hookOut
@@ -106,13 +106,11 @@ func (h *HookExecContext) Run() {
 	cmd.Env = h.env.Env()
 	err := cmd.Run()
 	if err != nil {
-		h.logger.WithErrorAndFields(err, logrus.Fields{
-			"path":   h.Path,
+		logger.WithErrorAndFields(err, logrus.Fields{
 			"output": hookOut.String(),
 		}).Warnf("Could not execute hook %s", h.Name)
 	} else {
-		h.logger.WithFields(logrus.Fields{
-			"path":   h.Path,
+		logger.WithFields(logrus.Fields{
 			"output": hookOut.String(),
 		}).Debugln("Executed hook")
 	}
@@ -155,7 +153,7 @@ func (h *hookContext) runHooks(dirpath string, hType HookType, pod Pod, podManif
 		HookedSystemPodRootEnvVar: h.podRoot,
 		HookedPodUniqueKeyEnvVar:  pod.UniqueKey().String(),
 	}
-	return h.runDirectory(hec)
+	return h.runDirectory(hec, logger)
 }
 
 func (h *hookContext) RunHookType(hookType HookType, pod Pod, manifest manifest.Manifest) error {
