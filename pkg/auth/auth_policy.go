@@ -36,6 +36,8 @@ type Policy interface {
 	// returned.
 	AuthorizeApp(manifest Manifest, logger logging.Logger) error
 
+	Authorize(email, appUser string) bool
+
 	// Check if a file digest has a valid signature and that the
 	// signer is authorized to certify the digest. The caller must
 	// separately check that the actual files match the digest. If
@@ -85,6 +87,10 @@ type NullPolicy struct{}
 
 func (p NullPolicy) AuthorizeApp(manifest Manifest, logger logging.Logger) error {
 	return nil
+}
+
+func (p NullPolicy) Authorize(email, appUser string) bool {
+	return false
 }
 
 func (p NullPolicy) CheckDigest(digest Digest) error {
@@ -154,6 +160,10 @@ func (p FixedKeyringPolicy) AuthorizeApp(manifest Manifest, logger logging.Logge
 	}
 
 	return nil
+}
+
+func (p FixedKeyringPolicy) Authorize(email, appUser string) bool {
+	return false
 }
 
 func (p FixedKeyringPolicy) CheckDigest(digest Digest) error {
@@ -276,6 +286,10 @@ func (p FileKeyringPolicy) AuthorizeApp(manifest Manifest, logger logging.Logger
 		(<-p.keyringWatcher.GetAsync()).(openpgp.EntityList),
 		p.AuthorizedDeployers,
 	}.AuthorizeApp(manifest, logger)
+}
+
+func (p FileKeyringPolicy) Authorize(email, appUser string) bool {
+	return false
 }
 
 func (p FileKeyringPolicy) CheckDigest(digest Digest) error {
@@ -481,6 +495,12 @@ func (p UserPolicy) AuthorizeApp(manifest Manifest, logger logging.Logger) error
 		user = p.preparerUser
 	}
 	return p.AuthorizePod(user, manifest, logger)
+}
+
+func (p UserPolicy) Authorize(email, appUser string) bool {
+	dpolChan := p.deployWatcher.GetAsync()
+	dpol := (<-dpolChan).(DeployPol)
+	return dpol.Authorized(appUser, email)
 }
 
 func (p UserPolicy) CheckDigest(digest Digest) error {
