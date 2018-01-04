@@ -18,6 +18,7 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
+	"github.com/square/p2/pkg/util/size"
 	"golang.org/x/crypto/openpgp/clearsign"
 	"gopkg.in/yaml.v2"
 )
@@ -29,6 +30,11 @@ type StatusStanza struct {
 	LocalhostOnly bool   `yaml:"localhost_only,omitempty"`
 }
 
+type ResourceLimitsStanza struct {
+	CPUs   int            `yaml:"cpus,omitempty"`
+	Memory size.ByteCount `yaml:"memory,omitempty"`
+}
+
 type Builder interface {
 	GetManifest() Manifest
 	SetID(types.PodID)
@@ -38,6 +44,7 @@ type Builder interface {
 	SetStatusPath(statusPath string)
 	SetStatusPort(port int)
 	SetLaunchables(launchableStanzas map[launch.LaunchableID]launch.LaunchableStanza)
+	SetResourceLimits(limits ResourceLimitsStanza)
 }
 
 var _ Builder = builder{}
@@ -90,6 +97,7 @@ type manifest struct {
 	StatusPort        int                                             `yaml:"status_port,omitempty"`
 	StatusHTTP        bool                                            `yaml:"status_http,omitempty"`
 	Status            StatusStanza                                    `yaml:"status,omitempty"`
+	ResourceLimits    ResourceLimitsStanza                            `yaml:"resource_limits,omitempty"`
 	ReadOnly          bool                                            `yaml:"readonly,omitempty"`
 
 	// Used to track the original bytes so that we don't reorder them when
@@ -211,6 +219,10 @@ func (manifest *manifest) GetStatusLocalhostOnly() bool {
 
 func (manifest *manifest) SetStatusLocalhostOnly(localhostOnly bool) {
 	manifest.Status.LocalhostOnly = localhostOnly
+}
+
+func (manifest *manifest) SetResourceLimits(limits ResourceLimitsStanza) {
+	manifest.ResourceLimits = limits
 }
 
 func (manifest *manifest) RunAsUser() string {
