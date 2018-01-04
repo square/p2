@@ -47,6 +47,7 @@ const (
 	cmdReplicasText       = "set-replicas"
 	cmdListText           = "list"
 	cmdGetText            = "get"
+	cmdGetStatusText      = "get-status"
 	cmdEnableText         = "enable"
 	cmdDisableText        = "disable"
 	cmdRollText           = "rolling-update"
@@ -84,6 +85,9 @@ var (
 	cmdGet      = kingpin.Command(cmdGetText, "Get replication controller")
 	getID       = cmdGet.Arg("id", "replication controller uuid to get").Required().String()
 	getManifest = cmdGet.Flag("manifest", "print just the manifest of the replication controller").Short('m').Bool()
+
+	cmdGetStatus = kingpin.Command(cmdGetStatusText, "Get the status entry for a replication controller")
+	getStatusID  = cmdGetStatus.Arg("id", "uuid of replication controller whose status should be fetched").Required().String()
 
 	cmdEnable = kingpin.Command(cmdEnableText, "Enable replication controller")
 	enableID  = cmdEnable.Arg("id", "replication controller uuid to enable").Required().String()
@@ -156,6 +160,7 @@ func main() {
 		// the same implementation of these various interfaces in
 		// the future.
 		rcs:               rcStore,
+		rcStatusStore:     rcStatusStore,
 		rollRCStore:       rcStore,
 		rollRCStatusStore: rcStatusStore,
 		rcLocker:          rcStore,
@@ -186,6 +191,8 @@ func main() {
 		rctl.List(*listJSON)
 	case cmdGetText:
 		rctl.Get(*getID, *getManifest)
+	case cmdGetStatusText:
+		rctl.GetStatus(*getStatusID)
 	case cmdEnableText:
 		rctl.Enable(*enableID)
 	case cmdDisableText:
@@ -245,6 +252,10 @@ type RollingUpdateStore interface {
 	Watch(quit <-chan struct{}, jitterWindow time.Duration) (<-chan []roll_fields.Update, <-chan error)
 }
 
+type RCStatusStore interface {
+	Get(rcID rc_fields.ID) (rcstatus.Status, *api.QueryMeta, error)
+}
+
 // rctl is a struct for the data structures shared between commands
 // each member function represents a single command that takes over from main
 // and terminates the program on failure
@@ -252,6 +263,7 @@ type rctlParams struct {
 	httpClient        *http.Client
 	baseClient        consulutil.ConsulClient
 	rcs               ReplicationControllerStore
+	rcStatusStore     RCStatusStore
 	rollRCStore       roll.ReplicationControllerStore
 	rollRCStatusStore roll.RCStatusStore
 	rcLocker          roll.ReplicationControllerLocker
@@ -373,6 +385,23 @@ func (r rctlParams) Get(id string, manifest bool) {
 		}
 		fmt.Printf("%s\n", out)
 	}
+}
+
+func (r rctlParams) GetStatus(id string) {
+	status, _, err := r.rcStatusStore.Get(rc_fields.ID(id))
+	switch {
+	case statusstore.IsNoStatus(err):
+		fmt.Printf("no status found for %s\n", id)
+		return
+	case err != nil:
+		r.logger.WithError(err).Fatalln("could not fetch RC status")
+	}
+
+	out, err := json.MarshalIndent(status, "", "    ")
+	if err != nil {
+		r.logger.WithError(err).Fatalln("could not print rc status as JSON")
+	}
+	fmt.Printf("%s\n", out)
 }
 
 func (r rctlParams) Enable(id string) {
