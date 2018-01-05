@@ -73,6 +73,7 @@ type Manifest interface {
 	PlatformConfigFileName() (string, error)
 	WritePlatformConfig(out io.Writer) error
 	GetLaunchableStanzas() map[launch.LaunchableID]launch.LaunchableStanza
+	GetResourceLimitsStanza() ResourceLimitsStanza
 	GetConfig() map[interface{}]interface{}
 	SHA() (string, error)
 	GetStatusHTTP() bool
@@ -223,6 +224,10 @@ func (manifest *manifest) SetStatusLocalhostOnly(localhostOnly bool) {
 
 func (manifest *manifest) SetResourceLimits(limits ResourceLimitsStanza) {
 	manifest.ResourceLimits = limits
+}
+
+func (manifest *manifest) GetResourceLimitsStanza() ResourceLimitsStanza {
+	return manifest.ResourceLimits
 }
 
 func (manifest *manifest) RunAsUser() string {
