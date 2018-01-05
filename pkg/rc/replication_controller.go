@@ -357,7 +357,7 @@ func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 	ineligible := rc.checkForIneligible(current, eligible)
 	if len(ineligible) > 0 {
 		rc.logger.Infof("Ineligible nodes: %s found", ineligible)
-		err := rc.transferNodes(rcFields, current, ineligible)
+		err := rc.transferNodes(rcFields, current, eligible, ineligible)
 		if err != nil {
 			return err
 		}
@@ -746,7 +746,7 @@ func (rc *replicationController) unschedule(txn *auditingTransaction, rcFields f
 	return nil
 }
 
-func (rc *replicationController) transferNodes(rcFields fields.RC, current types.PodLocations, ineligible []types.NodeName) error {
+func (rc *replicationController) transferNodes(rcFields fields.RC, current types.PodLocations, eligible []types.NodeName, ineligible []types.NodeName) error {
 	if rc.nodeTransfer.quit != nil {
 		// a node transfer to replace the ineligible node is already in progress
 		return nil
@@ -797,7 +797,7 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, current types
 		defer unlocker.Unlock()
 
 		nodeTransferID = rcstatus.NodeTransferID(uuid.New())
-		newNode, oldNode, err = rc.updateAllocations(rcFields, ineligible, nodeTransferID)
+		newNode, oldNode, err = rc.updateAllocations(rcFields, ineligible, eligible, current.Nodes(), nodeTransferID)
 		if err != nil {
 			return err
 		}
@@ -832,7 +832,7 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, current types
 	return nil
 }
 
-func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligible []types.NodeName, nodeTransferID rcstatus.NodeTransferID) (types.NodeName, types.NodeName, error) {
+func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligible []types.NodeName, eligible []types.NodeName, current []types.NodeName, nodeTransferID rcstatus.NodeTransferID) (types.NodeName, types.NodeName, error) {
 	if len(ineligible) < 1 {
 		err := util.Errorf("Need at least one ineligible node to transfer from, had 0")
 		rc.logger.WithError(err).Errorln("could not figure out which node to transfer from")
@@ -842,19 +842,27 @@ func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligibl
 	oldNode := ineligible[0]
 
 	nodesRequested := 1 // We only support one node transfer at a time right now
-	newNodes, err := rc.scheduler.AllocateNodes(rcFields.Manifest, rcFields.NodeSelector, nodesRequested)
-	if err != nil || len(newNodes) < 1 {
-		errMsg := fmt.Sprintf("Unable to allocate nodes over grpc: %s", err)
-		rc.logger.WithError(err).Errorf("could not allocate node to replace %s", oldNode)
-		err := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
-		if err != nil {
-			rc.logger.WithError(err).Errorln("Unable to send alert")
-		}
 
-		return "", "", util.Errorf(errMsg)
+	var newNode types.NodeName
+	newNode, err := rc.checkEligibleForUnused(rcFields.Manifest.ID(), eligible, current)
+	if err != nil {
+		return "", "", err
 	}
 
-	newNode := newNodes[0]
+	if newNode == "" {
+		newNodes, err := rc.scheduler.AllocateNodes(rcFields.Manifest, rcFields.NodeSelector, nodesRequested)
+		if err != nil || len(newNodes) < 1 {
+			errMsg := fmt.Sprintf("Unable to allocate nodes over grpc: %s", err)
+			rc.logger.WithError(err).Errorf("could not allocate node to replace %s", oldNode)
+			err := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
+			if err != nil {
+				rc.logger.WithError(err).Errorln("Unable to send alert")
+			}
+
+			return "", "", util.Errorf(errMsg)
+		}
+		newNode = newNodes[0]
+	}
 
 	logger := rc.logger.SubLogger(logrus.Fields{
 		"old_node": oldNode,
@@ -1137,4 +1145,20 @@ func (rc *replicationController) createRollbackTransferRecord(
 	rc.nodeTransferMu.Unlock()
 
 	return nil
+}
+
+func (rc *replicationController) checkEligibleForUnused(podID types.PodID, eligible []types.NodeName, current []types.NodeName) (types.NodeName, error) {
+	toCheck := types.NewNodeSet(eligible...).Difference(types.NewNodeSet(current...)).ListNodes()
+	for _, node := range toCheck {
+		_, _, err := rc.consulStore.Pod(consul.INTENT_TREE, node, podID)
+		switch {
+		case err == pods.NoCurrentManifest:
+			return node, nil
+		case err != nil:
+			return "", util.Errorf("error checking for unused allocation for RC: %s", err)
+		}
+	}
+
+	// no nodes are unused
+	return "", nil
 }

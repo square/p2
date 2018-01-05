@@ -1287,7 +1287,7 @@ func TestNodeTransferDoesNotDeleteStatusOnScheduleError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = rc.transferNodes(rcFields, types.PodLocations{}, nil)
+	err = rc.transferNodes(rcFields, types.PodLocations{}, nil, nil)
 	if err == nil {
 		t.Fatal("expected an error due to rigging the txner")
 	}
@@ -1352,7 +1352,7 @@ func TestNodeTransferDoesNotFailOnScheduleConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = rc.transferNodes(rcFields, types.PodLocations{}, nil)
+	err = rc.transferNodes(rcFields, types.PodLocations{}, nil, nil)
 	if err != nil {
 		t.Fatal("expected no error due to a schedule conflict")
 	}
@@ -1751,6 +1751,83 @@ func TestNodeTransferDoesntStartIfLockHeld(t *testing.T) {
 	}
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+type failingAllocator struct {
+	eligibleNodes []types.NodeName
+}
+
+func (f *failingAllocator) EligibleNodes(manifest.Manifest, klabels.Selector) ([]types.NodeName, error) {
+	return f.eligibleNodes, nil
+}
+
+func (f *failingAllocator) AllocateNodes(manifest.Manifest, klabels.Selector, int) ([]types.NodeName, error) {
+	return nil, util.Errorf("AllocateNodes shouldn't have been called")
+}
+func (f *failingAllocator) DeallocateNodes(klabels.Selector, []types.NodeName) error {
+	return nil
+}
+
+func TestUpdateAllocationsPrefersUnused(t *testing.T) {
+	_, _, _, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+	allocator := &failingAllocator{}
+	rc.scheduler = allocator
+
+	rcFields := fields.RC{
+		ID:                 rc.rcID,
+		ReplicasDesired:    2,
+		Manifest:           testManifest(),
+		Disabled:           false,
+		NodeSelector:       klabels.Everything(),
+		AllocationStrategy: fields.DynamicStrategy,
+	}
+
+	current := types.PodLocations{}
+	eligible := []types.NodeName{"node1", "node2"}
+
+	// first add the pods so the labels get set up correctly
+	err := rc.addPods(rcFields, current, eligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now confirm that 2 pods were scheduled
+	currentPods, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(currentPods) != 2 {
+		t.Fatalf("2 pods should have been scheduled but found %d", len(currentPods))
+	}
+
+	// now set up conditions so a node transfer should happen by removing
+	// an eligible node, but there's also a new node that appeared
+	// out-of-band that we want the RC to use as the new node
+	eligible = []types.NodeName{"node1", "node3"}
+	allocator.eligibleNodes = eligible
+
+	err = rc.meetDesires(rcFields)
+	if err != nil {
+		t.Fatalf("got an error in meet desires, maybe AllocateNodes() was called on our failing allocator (it shouldn't have been because there's already an allocation to use): %s", err)
+	}
+
+	status, _, err := rc.rcStatusStore.Get(rc.rcID)
+	if statusstore.IsNoStatus(err) {
+		t.Fatal("expected a node transfer to start if the lock isn't held")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if status.NodeTransfer == nil {
+		t.Fatal("node transfer unexpectedly nil")
+	}
+
+	if status.NodeTransfer.NewNode != "node3" {
+		t.Fatalf("expected node transfer to use unused allocation for %q but instead it used %q", "node3", status.NodeTransfer.NewNode)
 	}
 }
 
