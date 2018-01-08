@@ -275,10 +275,13 @@ func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 		artifactUrl, _, err := rc.artifactRegistry.LocationDataForLaunchable(podID, launchableID, launchableStanza)
 		if err != nil {
 			rc.logger.WithError(err).Errorln("Unable to retrieve location for launchable")
+			continue
 		}
+
 		exists, err := rc.artifactRegistry.CheckArtifactExists(artifactUrl)
 		if err != nil {
 			rc.logger.WithError(err).Errorln("Unexpected error when checking if artifact exists")
+			continue
 		}
 		if !exists {
 			hostname, _ := os.Hostname()
