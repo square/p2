@@ -1182,10 +1182,20 @@ func TestDieAndUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer session.Destroy()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
-		err, ok := <-renewalErrCh
-		if ok {
-			t.Error(err)
+		defer wg.Done()
+
+		select {
+		case err, ok := <-renewalErrCh:
+			if ok {
+				t.Error(err)
+			}
+		case <-ctx.Done():
 		}
 	}()
 
@@ -1275,6 +1285,9 @@ func TestDieAndUpdate(t *testing.T) {
 
 	// After the first farm quits, the second farm should take over.
 	assertLabel("node3", "first farm quit")
+
+	cancel()
+	wg.Wait()
 }
 
 func TestBlacklistAndWhitelist(t *testing.T) {
