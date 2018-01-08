@@ -219,9 +219,13 @@ func (s session) continuallyRenew() {
 		case <-s.renewalCh:
 			err := s.Renew()
 			if err != nil {
-				s.renewalErrCh <- err
-				_, _ = s.client.Session().Destroy(s.session, nil)
-				return
+				select {
+				case s.renewalErrCh <- err:
+					_, _ = s.client.Session().Destroy(s.session, nil)
+					return
+				case <-s.quitCh:
+					return
+				}
 			}
 		case <-s.quitCh:
 			return
