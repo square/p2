@@ -10,7 +10,6 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/constants"
-	"github.com/square/p2/pkg/p2start"
 	"github.com/square/p2/pkg/p2stop"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
@@ -101,9 +100,9 @@ func main() {
 	if u.Username == "" {
 		logger.Fatalln("Could not get Username from lookup")
 	}
-	email := fmt.Sprintf("%s%s", u.Username, p2start.DefaultDomain)
+	email := fmt.Sprintf("%s%s", u.Username, p2stop.DefaultDomain)
 	if !authPolicy.Authorize(email, manifest.ID().String()) {
-		logger.WithError(err).Fatalln("Could not authorize user, may not have permission to run script")
+		logger.Fatalln("Could not authorize user, may not have permission to run script")
 	}
 
 	logger = logger.SubLogger(logrus.Fields{"pod": pod.Id})
