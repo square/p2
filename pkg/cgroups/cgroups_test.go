@@ -38,11 +38,16 @@ func (fs *FakeSubsystemer) createTmpdir() error {
 	return nil
 }
 
+func (fs *FakeSubsystemer) cleanupTmpdir() error {
+	return os.RemoveAll(fs.tmpdir)
+}
+
 func TestCreatePodCgroup(t *testing.T) {
 	c := Config{CPUs: 2, Memory: size.ByteCount(1024)}
 	podID := types.PodID("podID")
 	hostname := types.NodeName("abc123.example")
 	fs := &FakeSubsystemer{}
+	defer fs.cleanupTmpdir()
 	if err := CreatePodCgroup(podID, hostname, c, fs); err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -57,7 +62,7 @@ func expectCgroupFileToContain(t *testing.T, s string, file string) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if string(actual) != s { // We set the hard limit to 2x the request
+	if string(actual) != s {
 		t.Errorf("expected %s, but got: %s", s, string(actual))
 	}
 }

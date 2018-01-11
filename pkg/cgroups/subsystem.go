@@ -15,6 +15,9 @@ type ProcSubsystemer struct {
 var DefaultSubsystemer = &ProcSubsystemer{}
 
 func (ps *ProcSubsystemer) Find() (Subsystems, error) {
+	if ps.CachedSubsystems != nil {
+		return *ps.CachedSubsystems, nil
+	}
 	// For details about how this file is structured, refer to `man proc` or
 	// https://www.kernel.org/doc/Documentation/filesystems/proc.txt section 3.5
 	mountInfo, err := os.Open("/proc/self/mountinfo")
@@ -22,9 +25,6 @@ func (ps *ProcSubsystemer) Find() (Subsystems, error) {
 		return Subsystems{}, err
 	}
 	defer mountInfo.Close()
-	if ps.CachedSubsystems != nil {
-		return *ps.CachedSubsystems, nil
-	}
 
 	var ret Subsystems
 	scanner := bufio.NewScanner(mountInfo)

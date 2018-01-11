@@ -17,6 +17,7 @@ import (
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 )
@@ -36,6 +37,7 @@ type EntryPoints struct {
 type Launchable struct {
 	Id               launch.LaunchableID        // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
 	Version          launch.LaunchableVersionID // A version identifier
+	PodID            types.PodID                // A (possibly-null) PodID denoting which launchable this belongs to
 	ServiceId        string                     // A (host-wise) unique identifier for this launchable, used when creating runit services
 	RunAs            string                     // The user to assume when launching the executable
 	OwnAs            string                     // The user that owns all the launcable's artifacts
@@ -43,6 +45,7 @@ type Launchable struct {
 	RootDir          string                     // The root directory of the launchable, containing N:N>=1 installs.
 	P2Exec           string                     // Struct that can be used to build a p2-exec invocation with appropriate flags
 	ExecNoLimit      bool                       // If set, execute with the -n (--no-limit) argument to p2-exec
+	PodCgroupConfig  cgroups.Config             // PodCgroupConfig
 	CgroupConfig     cgroups.Config             // Cgroup parameters to use with p2-exec
 	CgroupConfigName string                     // The string in PLATFORM_CONFIG to pass to p2-exec
 	CgroupName       string                     // The name of the cgroup to run this launchable in
@@ -371,6 +374,7 @@ func (hl *Launchable) Executables(
 				ExtraEnv:         map[string]string{launch.EntryPointEnvVar: relativePath},
 				NoLimits:         hl.ExecNoLimit,
 				CgroupConfigName: hl.CgroupConfigName,
+				PodID:            &hl.PodID,
 				CgroupName:       hl.CgroupName,
 				RequireFile:      hl.RequireFile,
 			}
