@@ -238,7 +238,6 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 					}
 				}
 				pod.SetLogBridgeExec(effectiveLogBridgeExec)
-
 				pod.SetFinishExec(p.finishExec)
 
 				// podChan is being fed values gathered from a consul.Watch() in

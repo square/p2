@@ -38,8 +38,8 @@ func (c *CgroupID) String() string {
 	return string(*c)
 }
 
-// SetCPU will set a number of CPU limits in the cgroup specified by the argument
-// set the number of logical CPUs in a given cgroup, 0 to unrestrict
+// SetCPU will set a number of CPU limits in the cgroup specified by the argument.
+// A sentinel value of 0 will create an unrestricted CPU subsystem
 // https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
 func (subsys Subsystems) SetCPU(name CgroupID, cpus int) error {
 	if subsys.CPU == "" {
@@ -81,8 +81,8 @@ func (subsys Subsystems) SetCPU(name CgroupID, cpus int) error {
 	return nil
 }
 
-// SetMemory will set several memory limits in the cgroup specified in the argument
-// set the memory limit on a cgroup, 0 to unrestrict
+// SetMemory will set several memory limits in the cgroup specified in the argument.
+// A sentinel value of 0 will create an unrestricted memory subsystem
 // https://www.kernel.org/doc/Documentation/cgroups/memory.txt
 func (subsys Subsystems) SetMemory(name CgroupID, bytes int) error {
 	if subsys.Memory == "" {
@@ -146,10 +146,6 @@ func (subsys Subsystems) AddPID(name string, pid int) error {
 	return appendIntToFile(filepath.Join(subsys.CPU, name, "cgroup.procs"), pid)
 }
 
-func (subsys Subsystems) GetPrefix() string {
-	return subsys.Prefix
-}
-
 func appendIntToFile(filename string, data int) error {
 	fd, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 	if err != nil {
@@ -163,24 +159,6 @@ func appendIntToFile(filename string, data int) error {
 // Subsystemer is anything that can find a set of Subsystems
 type Subsystemer interface {
 	Find() (Subsystems, error)
-}
-
-func ensurePrefix(s Subsystemer) error {
-	ss, err := s.Find()
-	if err != nil {
-		return err
-	}
-
-	err = os.MkdirAll(ss.Prefix, 0755)
-	if err != nil && !os.IsExist(err) {
-		return err
-	}
-	err = os.MkdirAll(ss.Prefix, 0755)
-	if err != nil && !os.IsExist(err) {
-		return err
-	}
-
-	return nil
 }
 
 // CreatePodCgroup will set cgroup parameters for the specified pod with podID
@@ -216,7 +194,7 @@ func CgroupIDForLaunchable(s Subsystemer, podID types.PodID, nodeName types.Node
 	if err != nil {
 		return nil, err
 	}
-	cgID := CgroupID(filepath.Join(ss.GetPrefix(), "p2", nodeName.String(), podID.String(), launchableID))
+	cgID := CgroupID(filepath.Join(ss.Prefix, "p2", nodeName.String(), podID.String(), launchableID))
 	return &cgID, nil
 }
 
@@ -227,6 +205,6 @@ func CgroupIDForPod(s Subsystemer, podID types.PodID, nodeName types.NodeName) (
 	if err != nil {
 		return nil, err
 	}
-	cgID := CgroupID(filepath.Join(ss.GetPrefix(), "p2", nodeName.String(), podID.String()))
+	cgID := CgroupID(filepath.Join(ss.Prefix, "p2", nodeName.String(), podID.String()))
 	return &cgID, nil
 }

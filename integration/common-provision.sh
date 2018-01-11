@@ -49,3 +49,6 @@ sudo yum -y --nogpgcheck localinstall $GOPATH/src/github.com/square/p2/integrati
 sudo yum -y install unzip
 sudo mkdir -p /etc/servicebuilder.d
 sudo mkdir -p /var/service-stage
+
+# symlink cgroup from modern /sys/fs/cgroup to legacy /cgroup
+sudo ln -sf /sys/fs/cgroup /cgroup

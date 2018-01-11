@@ -355,3 +355,32 @@ func TestSetConfigCopies(t *testing.T) {
 	config["foo"] = "baz"
 	Assert(t).AreEqual(manifestConfig["foo"], "bar", "Config values shouldn't have changed when mutating the original input due to deep copy")
 }
+
+func TestWriteResourceLimitsConfigWithResourceLimits(t *testing.T) {
+	builder := NewBuilder()
+	builder.SetResourceLimits(ResourceLimitsStanza{Cgroup: &cgroups.Config{CPUs: 1, Memory: 1024}})
+	manifest := builder.GetManifest()
+	buf := bytes.Buffer{}
+	err := manifest.WriteResourceLimitsConfig(&buf)
+	if err != nil {
+		t.Errorf("Unexpected error writing Resource Limits Config: %v", err)
+	}
+	if len(buf.Bytes()) == 0 {
+		t.Error("Expected some resource limits config to be written but it wasn't")
+	}
+
+}
+
+func TestWriteResourceLimitsConfigWithoutResourceLimits(t *testing.T) {
+	builder := NewBuilder()
+	manifest := builder.GetManifest()
+	buf := bytes.Buffer{}
+	err := manifest.WriteResourceLimitsConfig(&buf)
+	if err != nil {
+		t.Errorf("It should not have been an error to write ResourceLimits on a manifest without them, but: %v", err)
+	}
+	if len(buf.Bytes()) != 0 {
+		t.Error("Wrote some resource limits config file with nonsense contents (none provided in manifest)")
+	}
+
+}

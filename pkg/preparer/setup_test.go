@@ -14,6 +14,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -67,6 +68,7 @@ func TestInstallHooks(t *testing.T) {
 
 	hookFactory := pods.NewHookFactory(destDir, "testNode", uri.DefaultFetcher)
 	hooksPod := hookFactory.NewHookPod(podManifest.ID())
+	hooksPod.SetSubsystemer(&FakeSubsystemer{})
 
 	preparer := Preparer{
 		hooksManifest:    podManifest,
@@ -164,4 +166,22 @@ func TestBuildRealityAtLaunch(t *testing.T) {
 	if pair == nil {
 		t.Fatalf("%s should have been written but it wasn't", realityIndexPath)
 	}
+}
+
+type FakeSubsystemer struct {
+	tmpdir string
+}
+
+func (fs *FakeSubsystemer) Find() (cgroups.Subsystems, error) {
+	var err error
+	if fs.tmpdir == "" {
+		fs.tmpdir, err = ioutil.TempDir("", "")
+		if err != nil {
+			return cgroups.Subsystems{}, err
+		}
+		if err = os.Chmod(fs.tmpdir, os.ModePerm); err != nil {
+			return cgroups.Subsystems{}, err
+		}
+	}
+	return cgroups.Subsystems{CPU: filepath.Join(fs.tmpdir, "cpu"), Memory: filepath.Join(fs.tmpdir, "memory")}, nil
 }

@@ -36,4 +36,7 @@ CERTPATH=/var/tmp/certs
 mkdir -p $CERTPATH
 openssl req -x509 -newkey rsa:2048 -keyout $CERTPATH/key.pem -out $CERTPATH/cert.pem -nodes -days 300 -subj "$(echo -n "$subj" | tr "\n" "/")"
 
+# symlink cgroup from modern /sys/fs/cgroup to legacy /cgroup
+sudo ln -sf /sys/fs/cgroup /cgroup
+
 sudo env PATH=$PATH GOPATH=$GOPATH GOROOT=$GOROOT go run integration/single-node-slug-deploy/check.go --no-add-user

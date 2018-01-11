@@ -13,6 +13,7 @@ import (
 
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/digest"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
@@ -49,6 +50,7 @@ const (
 	PodHomeEnvVar                  = "POD_HOME"
 	PodUniqueKeyEnvVar             = "POD_UNIQUE_KEY"
 	PlatformConfigPathEnvVar       = "PLATFORM_CONFIG_PATH"
+	ResourceLimitsPathEnvVar       = "RESOURCE_LIMIT_PATH" // ResourceLimits is a superset of PlatformConfig
 	LaunchableRestartTimeoutEnvVar = "RESTART_TIMEOUT"
 )
 
@@ -73,9 +75,27 @@ type Pod struct {
 	LogExec        runit.Exec
 	FinishExec     runit.Exec
 	Fetcher        uri.Fetcher
+	ManifestFinder ManifestFinder
 
 	// Pod will not start if file is not present
 	RequireFile string
+
+	// subsystemer is a tool for this pod to find its cgroup subsystem controller and metadata. Optionally nil, overridden in test
+	subsystemer cgroups.Subsystemer
+}
+
+type ManifestFinder interface {
+	Find(pod Pod) (manifest.Manifest, error)
+}
+
+type diskManifestFinder struct{}
+
+func (dmf *diskManifestFinder) Find(pod Pod) (manifest.Manifest, error) {
+	currentManPath := pod.currentPodManifestPath()
+	if _, err := os.Stat(currentManPath); os.IsNotExist(err) {
+		return nil, NoCurrentManifest
+	}
+	return manifest.FromPath(currentManPath)
 }
 
 var NoCurrentManifest error = fmt.Errorf("No current manifest for this pod")
@@ -103,11 +123,11 @@ func (pod *Pod) UniqueKey() types.PodUniqueKey {
 }
 
 func (pod *Pod) CurrentManifest() (manifest.Manifest, error) {
-	currentManPath := pod.currentPodManifestPath()
-	if _, err := os.Stat(currentManPath); os.IsNotExist(err) {
-		return nil, NoCurrentManifest
+	if pod.ManifestFinder != nil {
+		return pod.ManifestFinder.Find(*pod)
 	}
-	return manifest.FromPath(currentManPath)
+	dmf := &diskManifestFinder{}
+	return dmf.Find(*pod)
 }
 
 func (pod *Pod) Halt(manifest manifest.Manifest) (bool, error) {
@@ -393,6 +413,19 @@ func (pod *Pod) Uninstall() error {
 	return nil
 }
 
+func (pod *Pod) getSubsystemer() cgroups.Subsystemer {
+	if pod.subsystemer == nil {
+		return cgroups.DefaultSubsystemer
+	}
+
+	return pod.subsystemer
+}
+
+// SetSubsystemer is useful for tests
+func (pod *Pod) SetSubsystemer(s cgroups.Subsystemer) {
+	pod.subsystemer = s
+}
+
 // Install will ensure that executables for all required services are present on the host
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
@@ -539,6 +572,11 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 	if err != nil {
 		return err
 	}
+	var resourceLimitData bytes.Buffer
+	err = manifest.WriteResourceLimitsConfig(&resourceLimitData)
+	if err != nil {
+		return err
+	}
 
 	err = util.MkdirChownAll(pod.ConfigDir(), uid, gid, 0755)
 	if err != nil {
@@ -563,6 +601,18 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 		return util.Errorf("Error writing platform config file for pod %s: %s", manifest.ID(), err)
 	}
 
+	resourceLimitFilename, err := manifest.ResourceLimitsConfigFileName()
+	resourceLimitPath := filepath.Join(pod.ConfigDir(), resourceLimitFilename)
+	if len(resourceLimitData.Bytes()) != 0 {
+		if err != nil {
+			return util.Errorf("Could not determine resource file name for pod %s: %s", manifest.ID(), err)
+		}
+		err = writeFileChown(resourceLimitPath, resourceLimitData.Bytes(), uid, gid)
+		if err != nil {
+			return util.Errorf("Error writing resource limit path for pod %s: %s", manifest.ID(), err)
+		}
+	}
+
 	err = util.MkdirChownAll(pod.EnvDir(), uid, gid, 0755)
 	if err != nil {
 		return util.Errorf("Could not create the environment dir for pod %s: %s", manifest.ID(), err)
@@ -574,6 +624,14 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 	err = writeEnvFile(pod.EnvDir(), PlatformConfigPathEnvVar, platConfigPath, uid, gid)
 	if err != nil {
 		return err
+	}
+	if _, err = os.Stat(resourceLimitPath); err == nil {
+		err = writeEnvFile(pod.EnvDir(), ResourceLimitsPathEnvVar, resourceLimitPath, uid, gid)
+		if err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return nil
 	}
 	err = writeEnvFile(pod.EnvDir(), PodHomeEnvVar, pod.Home(), uid, gid)
 	if err != nil {
@@ -688,6 +746,20 @@ func (pod *Pod) SetLogBridgeExec(logExec []string) {
 	pod.LogExec = append([]string{pod.P2Exec}, p2ExecArgs.CommandLine()...)
 }
 
+func (pod *Pod) CreateCgroupForPod() error {
+	man, err := pod.CurrentManifest()
+	if err != nil {
+		return err
+	}
+	limits := man.GetResourceLimits()
+	ceegroup := limits.Cgroup
+	if ceegroup == nil { // pod cgroups are optional
+		return nil
+	}
+
+	return cgroups.CreatePodCgroup(man.ID(), pod.Node(), *ceegroup, cgroups.DefaultSubsystemer)
+}
+
 func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza launch.LaunchableStanza, runAsUser string, ownAsUser string) (launch.Launchable, error) {
 	launchableRootDir := filepath.Join(pod.home, launchableID.String())
 	serviceId := strings.Join(
@@ -722,23 +794,22 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 		}
 		cgroupName := serviceId
 		if *NestedCgroups {
-			cgroupName = filepath.Join(
-				"p2",
-				pod.node.String(),
-				pod.UniqueName(),
-				launchableID.String(),
-			)
+			cgroupID, err := cgroups.CgroupIDForLaunchable(pod.getSubsystemer(), pod.Id, pod.node, launchableID.String())
+			if err != nil {
+				return nil, err
+			}
+			cgroupName = cgroupID.String()
 		}
 
 		entryPoints := hoist.EntryPoints{
 			Paths:    entryPointPaths,
 			Implicit: implicitEntryPoints,
 		}
-
 		ret := &hoist.Launchable{
 			Version:          version,
 			Id:               launchableID,
 			ServiceId:        serviceId,
+			PodID:            pod.Id,
 			RunAs:            runAsUser,
 			OwnAs:            ownAsUser,
 			PodEnvDir:        pod.EnvDir(),
@@ -755,7 +826,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			IsUUIDPod:        pod.uniqueKey != "",
 			RequireFile:      pod.RequireFile,
 		}
-		ret.CgroupConfig.Name = ret.ServiceId
+		ret.CgroupConfig.Name = cgroups.CgroupID(ret.ServiceId)
 		return ret.If(), nil
 	} else if *ExperimentalOpencontainer && launchableStanza.LaunchableType == "opencontainer" {
 		ret := &opencontainer.Launchable{
@@ -769,7 +840,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			CgroupConfig:    launchableStanza.CgroupConfig,
 			SuppliedEnvVars: launchableStanza.Env,
 		}
-		ret.CgroupConfig.Name = serviceId
+		ret.CgroupConfig.Name = cgroups.CgroupID(serviceId)
 		return ret, nil
 	} else {
 		err := fmt.Errorf("launchable type '%s' is not supported", launchableStanza.LaunchableType)
@@ -823,6 +894,18 @@ func (p *Pod) logLaunchableWarning(serviceID string, err error, message string) 
 
 func (p *Pod) logInfo(message string) {
 	p.logger.WithFields(logrus.Fields{}).Info(message)
+}
+
+func (p *Pod) resourceLimitsConfigPath() (string, error) {
+	manifest, err := p.CurrentManifest()
+	if err != nil {
+		return "", util.Errorf("This pod does not have a manifest, cannot determine its config file: %v", err)
+	}
+	resourceLimitsConfigFile, err := manifest.ResourceLimitsConfigFileName()
+	if err != nil {
+		return "", util.Errorf("Unable to determine config file name for manifest %v", err)
+	}
+	return resourceLimitsConfigFile, nil
 }
 
 // Runs function f and emits warnings if it hasn't completed within 1 minute, 2
