@@ -3,6 +3,7 @@ package rc
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -196,6 +197,11 @@ func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error
 	errOutChannel := make(chan error)
 	channelsClosed := make(chan struct{})
 
+	// get random wait time to check for missing artifacts bewteen 1 - 60 minutes
+	randomTime := rand.Intn(60) + 1
+	shouldCheckTimer := time.NewTimer(time.Duration(randomTime) * time.Minute)
+	shouldCheck := shouldCheckTimer.C
+
 	// When seeing any changes, try to meet them.
 	// If meeting produces any error, send it on the output error channel.
 	go func() {
@@ -236,6 +242,12 @@ func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error
 		}
 
 		for rcFields := range rcChanges {
+			select {
+			case <-shouldCheck:
+				rc.checkMissingArtifacts(rcFields)
+				shouldCheckTimer.Reset(time.Hour)
+			default:
+			}
 			err := rc.meetDesires(rcFields)
 			if err != nil {
 				errOutChannel <- err
@@ -269,41 +281,6 @@ func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error
 
 func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 	rc.logger.NoFields().Infof("Handling RC update: desired replicas %d, disabled %v", rcFields.ReplicasDesired, rcFields.Disabled)
-	podID := rcFields.Manifest.ID()
-	launchableStanzas := rcFields.Manifest.GetLaunchableStanzas()
-	for launchableID, launchableStanza := range launchableStanzas {
-		artifactUrl, _, err := rc.artifactRegistry.LocationDataForLaunchable(podID, launchableID, launchableStanza)
-		if err != nil {
-			rc.logger.WithError(err).Errorln("Unable to retrieve location for launchable")
-			continue
-		}
-
-		exists, err := rc.artifactRegistry.CheckArtifactExists(artifactUrl)
-		if err != nil {
-			rc.logger.WithError(err).Errorln("Unexpected error when checking if artifact exists")
-			continue
-		}
-		if !exists {
-			hostname, _ := os.Hostname()
-			if err := rc.alerter.Alert(alerting.AlertInfo{
-				Description: fmt.Sprintf("This RC is missing an artifact at url %s for launchable id %s", artifactUrl, launchableID),
-				IncidentKey: fmt.Sprintf("%s-missing_artifact", rcFields.ID.String()),
-				Details: struct {
-					RCID         string `json:"rc_id"`
-					Hostname     string `json:"hostname"`
-					PodId        string `json:"pod_id"`
-					NodeSelector string `json:"node_selector"`
-				}{
-					RCID:         rcFields.ID.String(),
-					Hostname:     hostname,
-					PodId:        rcFields.Manifest.ID().String(),
-					NodeSelector: rcFields.NodeSelector.String(),
-				},
-			}, alerting.LowUrgency); err != nil {
-				rc.logger.WithError(err).Errorln("Unable to deliver alert!")
-			}
-		}
-	}
 
 	current, err := rc.CurrentPods()
 	if err != nil {
@@ -1164,4 +1141,42 @@ func (rc *replicationController) checkEligibleForUnused(podID types.PodID, eligi
 
 	// no nodes are unused
 	return "", nil
+}
+
+func (rc *replicationController) checkMissingArtifacts(rcFields fields.RC) {
+	podID := rcFields.Manifest.ID()
+	launchableStanzas := rcFields.Manifest.GetLaunchableStanzas()
+	for launchableID, launchableStanza := range launchableStanzas {
+		artifactUrl, _, err := rc.artifactRegistry.LocationDataForLaunchable(podID, launchableID, launchableStanza)
+		if err != nil {
+			rc.logger.WithError(err).Errorln("Unable to retrieve location for launchable")
+			continue
+		}
+
+		exists, err := rc.artifactRegistry.CheckArtifactExists(artifactUrl)
+		if err != nil {
+			rc.logger.WithError(err).Errorln("Unexpected error when checking if artifact exists")
+			continue
+		}
+		if !exists {
+			hostname, _ := os.Hostname()
+			if err := rc.alerter.Alert(alerting.AlertInfo{
+				Description: fmt.Sprintf("This RC is missing an artifact at url %s for launchable id %s", artifactUrl, launchableID),
+				IncidentKey: fmt.Sprintf("%s-missing_artifact", rcFields.ID.String()),
+				Details: struct {
+					RCID         string `json:"rc_id"`
+					Hostname     string `json:"hostname"`
+					PodId        string `json:"pod_id"`
+					NodeSelector string `json:"node_selector"`
+				}{
+					RCID:         rcFields.ID.String(),
+					Hostname:     hostname,
+					PodId:        rcFields.Manifest.ID().String(),
+					NodeSelector: rcFields.NodeSelector.String(),
+				},
+			}, alerting.LowUrgency); err != nil {
+				rc.logger.WithError(err).Errorln("Unable to deliver alert!")
+			}
+		}
+	}
 }
