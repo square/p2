@@ -3,6 +3,7 @@ package rc
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"sync"
@@ -952,13 +953,40 @@ func (rc *replicationController) scheduleNewNodeForTransfer(rcFields fields.RC, 
 func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC, logger logging.Logger) {
 	ok, rollbackReason := rc.watchHealth(rcFields, logger)
 	if ok {
-		err := rc.finishTransfer(rcFields, logger)
-		if err == nil {
-			logger.Infoln("Node transfer complete.")
-			return
+		// We retry finishTransfer() up to 10 times in case of a
+		// fleeting transaction building error or network error
+		var err error
+		for i := 0; ; i++ {
+			err = rc.finishTransfer(rcFields, logger)
+			if err == nil {
+				logger.Infoln("Node transfer complete.")
+				return
+			}
+
+			// The loop break condition is here rather than in the declaration
+			// so that we don't sleep only to immediately break and alert after
+			// waking
+			if i >= 9 {
+				break
+			}
+
+			rc.logger.WithError(err).Errorln("could not do final node transfer transaction, retrying")
+
+			backoff := time.Duration(math.Pow(2, float64(i))) * time.Second
+			if backoff > 1*time.Minute {
+				backoff = 1 * time.Minute
+			}
+			time.Sleep(backoff)
+		}
+		rc.logger.WithError(err).Errorln("could not do final node transfer transaction after retries, rolling back")
+		alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, err.Error()), alerting.LowUrgency)
+		if alertErr != nil {
+			logger.WithError(alertErr).Errorln("Unable to send alert")
 		}
 
-		rc.logger.WithError(err).Errorln("could not do final node transfer transaction, rolling back")
+		rc.nodeTransferMu.Lock()
+		rc.nodeTransfer = nodeTransfer{}
+		rc.nodeTransferMu.Unlock()
 	} else {
 		rc.logger.Infof("Node transfer from %s to %s was canceled: %s.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode, rollbackReason)
 	}
