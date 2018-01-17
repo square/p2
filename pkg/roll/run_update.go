@@ -367,6 +367,7 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 				"ru-deletion-txn"+u.ID().String(),
 				err,
 			)
+			return false
 		}
 
 		err = u.auditLogStore.Create(cleanupCtx, audit.RUCompletionEvent, details)

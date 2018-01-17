@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/health"
 	checkertest "github.com/square/p2/pkg/health/checker/test"
@@ -30,10 +31,33 @@ import (
 	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/util"
 
 	. "github.com/anthonybishopric/gotcha"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
+
+type badGetLabels struct {
+	ID fields.ID
+	labels.ConsulApplicator
+}
+
+func (b *badGetLabels) GetLabels(labelType labels.Type, id string) (labels.Labeled, error) {
+	if id == string(b.ID) {
+		return labels.Labeled{}, util.Errorf("Expected error")
+	} else {
+		return b.ConsulApplicator.GetLabels(labelType, id)
+	}
+}
+
+type fakeAlerter struct {
+	numCalls int
+}
+
+func (f *fakeAlerter) Alert(alertInfo alerting.AlertInfo, urgency alerting.Urgency) error {
+	f.numCalls += 1
+	return nil
+}
 
 const (
 	testPodID            = "test_pod_id"
@@ -1106,6 +1130,93 @@ func TestRollLoopTypicalCase(t *testing.T) {
 			t.Error("expected audit log details to say the RU wasn't canceled")
 		}
 	}
+}
+
+func TestRollLoopNilAuditLogDetails(t *testing.T) {
+	nodes := map[types.NodeName]bool{
+		"node1": true,
+		"node2": true,
+		"node3": true,
+	}
+	upd, _, manifest, _, f := updateWithHealth(t, 3, 0, nodes, nil, nil, nil, rc_fields.StaticStrategy)
+	defer f()
+	upd.DesiredReplicas = 3
+	upd.MinimumReplicas = 2
+
+	healths := make(chan map[types.NodeName]health.Result)
+	checks := map[types.NodeName]health.Result{
+		"node1": {Status: health.Passing},
+		"node2": {Status: health.Passing},
+		"node3": {Status: health.Passing},
+	}
+	upd.hcheck = cannedWatchServiceChecker{
+		watchServiceCh: healths,
+		serviceResult:  checks,
+	}
+	alerter := &fakeAlerter{}
+	upd.alerter = alerter
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	var wg sync.WaitGroup
+
+	rollLoopResult := make(chan bool)
+
+	// We replace upd.labeler with one that will return an error from GetLabels().
+	// That forces NewRUCompletionEventDetails to return nil details and an error
+	// so that we can test that the Roll returns early and does not call
+	// auditLogStore.Create() with nil details
+	fixture := consulutil.NewFixture(t)
+	upd.labeler = &badGetLabels{upd.ID(), *labels.NewConsulApplicator(fixture.Client, 0, 0)}
+
+	go func() {
+		rollLoopResult <- upd.Run(ctx)
+		close(rollLoopResult)
+	}()
+
+	healths <- checks
+
+	err := transferNode("node1", manifest, upd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	healths <- checks
+
+	err = transferNode("node2", manifest, upd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	healths <- checks
+
+	err = transferNode("node3", manifest, upd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	healths <- checks
+
+	assertRollLoopResult(t, rollLoopResult, false)
+
+	wg.Wait()
+
+	// confirm Alert() was called
+	if alerter.numCalls != 1 {
+		t.Fatalf("Expected Alert() to have been called 1 time, was %d", alerter.numCalls)
+	}
+
+	// confirm that an audit log record was not created
+	als, err := upd.auditLogStore.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(als) != 0 {
+		t.Fatalf("expected 0 audit log records but there were %d", len(als))
+	}
+
+	cancel()
 }
 
 func failIfRCDesireChanges(t *testing.T, rcCh <-chan rc_fields.RC, expected int) {
