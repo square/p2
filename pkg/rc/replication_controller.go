@@ -733,8 +733,6 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, current types
 		return nil
 	}
 
-	rc.logger.Infoln("Starting node transfer")
-
 	if rcFields.AllocationStrategy != fields.DynamicStrategy {
 		errMsg := fmt.Sprintf("static strategy RC has scheduled %d ineligible nodes: %s", len(ineligible), ineligible)
 		err := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
@@ -795,12 +793,16 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, current types
 	rc.nodeTransferMu.Unlock()
 
 	nodeTransferLogger := rc.logger.SubLogger(logrus.Fields{
-		"old_node": oldNode,
-		"new_node": newNode,
+		"node_transfer": nodeTransferID,
+		"old_node":      oldNode,
+		"new_node":      newNode,
 	})
+
+	nodeTransferLogger.Infoln("attempting node transfer")
 
 	err = rc.scheduleNewNodeForTransfer(rcFields, newNode, current, nodeTransferLogger)
 	if err != nil {
+		nodeTransferLogger.WithError(err).Errorln("error scheduling new node")
 		return util.Errorf("could not schedule new node: %s", err)
 	}
 
@@ -937,7 +939,6 @@ func (rc *replicationController) scheduleNewNodeForTransfer(rcFields fields.RC, 
 	ok, _, err := auditingTransaction.Commit(rc.txner)
 	switch {
 	case err != nil:
-		logger.WithError(err).Errorln("could not schedule new node")
 		return err
 	case !ok:
 		// This means that our DeleteCAS failed, which means another RC
@@ -970,7 +971,7 @@ func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC, lo
 				break
 			}
 
-			rc.logger.WithError(err).Errorln("could not do final node transfer transaction, retrying")
+			logger.WithError(err).Errorln("could not do final node transfer transaction, retrying")
 
 			backoff := time.Duration(math.Pow(2, float64(i))) * time.Second
 			if backoff > 1*time.Minute {
@@ -978,7 +979,7 @@ func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC, lo
 			}
 			time.Sleep(backoff)
 		}
-		rc.logger.WithError(err).Errorln("could not do final node transfer transaction after retries, rolling back")
+		logger.WithError(err).Errorln("could not do final node transfer transaction after retries, rolling back")
 		alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, err.Error()), alerting.LowUrgency)
 		if alertErr != nil {
 			logger.WithError(alertErr).Errorln("Unable to send alert")
@@ -988,7 +989,7 @@ func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC, lo
 		rc.nodeTransfer = nodeTransfer{}
 		rc.nodeTransferMu.Unlock()
 	} else {
-		rc.logger.Infof("Node transfer from %s to %s was canceled: %s.", rc.nodeTransfer.oldNode, rc.nodeTransfer.newNode, rollbackReason)
+		logger.Infof("Node transfer was canceled: %s.", rollbackReason)
 	}
 }
 
