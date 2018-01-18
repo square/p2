@@ -95,15 +95,12 @@ func FakeServiceBuilder() (s *testServiceBuilder) {
 	install := filepath.Join(root, "service")
 	mustMkdirAll(install)
 
-	bin := util.From(runtime.Caller(0)).ExpandPath("fake_servicebuilder")
-
 	return &testServiceBuilder{
 		root: root,
 		ServiceBuilder: ServiceBuilder{
 			ConfigRoot:     config,
 			StagingRoot:    staging,
 			RunitRoot:      install,
-			Bin:            bin,
 			testingNoChown: true,
 		},
 	}

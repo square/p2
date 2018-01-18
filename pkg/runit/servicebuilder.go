@@ -149,7 +149,6 @@ type ServiceBuilder struct {
 	ConfigRoot  string // directory to generate YAML files
 	StagingRoot string // directory to place staged runit services
 	RunitRoot   string // directory of runsvdir
-	Bin         string
 
 	// testingNoChown should be set during unit tests to prevent the chown() operation when
 	// staging a service. Unit tests run as normal users, not root, so the chown() will fail
@@ -161,7 +160,6 @@ var DefaultBuilder = &ServiceBuilder{
 	ConfigRoot:  "/etc/servicebuilder.d",
 	StagingRoot: "/var/service-stage",
 	RunitRoot:   "/var/service",
-	Bin:         "/usr/bin/servicebuilder",
 }
 
 // DefaultChpst is the path to the default chpst binary. Specified as a var so you
