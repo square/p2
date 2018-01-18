@@ -69,9 +69,10 @@ var (
 )
 
 const DefaultTimeout = 7 * time.Second // This is runit's default wait period for commands that stop a process
+const SuperviseOKTimeout = 30 * time.Second
 
 func (sv *sv) waitForSupervision(service *Service) error {
-	maxWait := time.After(10 * time.Second)
+	maxWait := time.After(SuperviseOKTimeout)
 	for {
 		if _, err := os.Stat(filepath.Join(service.Path, "supervise")); !os.IsNotExist(err) {
 			return nil
