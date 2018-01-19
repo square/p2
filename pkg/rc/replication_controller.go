@@ -1173,6 +1173,9 @@ func (rc *replicationController) checkEligibleForUnused(podID types.PodID, eligi
 }
 
 func (rc *replicationController) checkMissingArtifacts(rcFields fields.RC) {
+	if rcFields.ReplicasDesired == 0 {
+		return
+	}
 	podID := rcFields.Manifest.ID()
 	launchableStanzas := rcFields.Manifest.GetLaunchableStanzas()
 	for launchableID, launchableStanza := range launchableStanzas {
