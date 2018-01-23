@@ -1195,9 +1195,22 @@ func TestRollLoopNilAuditLogDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	healths <- checks
-
-	assertRollLoopResult(t, rollLoopResult, false)
+	// We don't know how many times we need to pass health checks to the roll
+	// loop for it to complete
+	func() {
+		for {
+			select {
+			case healths <- checks:
+			case ok := <-rollLoopResult:
+				if ok {
+					t.Fatal("expected roll loop to return false when audit log details couldn't be created")
+				}
+				return
+			case <-time.After(1 * time.Second):
+				t.Fatal("Roll loop didn't exit within a second")
+			}
+		}
+	}()
 
 	wg.Wait()
 

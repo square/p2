@@ -746,6 +746,7 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, current types
 
 	status, _, err := rc.rcStatusStore.Get(rc.rcID)
 	if err != nil && !statusstore.IsNoStatus(err) {
+		rc.logger.WithError(err).Errorln("Unable to fetch RC status to start node transfer")
 		return err
 	}
 
