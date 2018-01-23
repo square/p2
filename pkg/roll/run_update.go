@@ -339,7 +339,11 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 
 	// rollout complete, clean up old RC if told to do so
 	if !u.LeaveOld {
-		u.cleanupOldRC(cleanupCtx)
+		ok = u.cleanupOldRC(cleanupCtx)
+		if !ok {
+			// we already alerted inside cleanupOldRC
+			return false
+		}
 	}
 
 	err = u.rollStore.Delete(cleanupCtx, u.ID())
@@ -388,7 +392,7 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 	return true
 }
 
-func (u *update) cleanupOldRC(ctx context.Context) {
+func (u *update) cleanupOldRC(ctx context.Context) bool {
 	oldRCZeroed := false
 
 	cleanupFunc := func() error {
@@ -449,12 +453,12 @@ func (u *update) cleanupOldRC(ctx context.Context) {
 
 	u.logger.NoFields().Infoln("Cleaning up old RC")
 	if !RetryOrQuit(ctx, cleanupFunc, u.logger, "Could not delete old RC") {
-		return
+		return false
 	}
 
 	if !oldRCZeroed {
 		u.logger.Infoln("Not cleaning up old RC because it still has some replicas desired")
-		return
+		return false
 	}
 
 	err := u.rcStore.DeleteTxn(ctx, u.OldRC, false)
@@ -480,7 +484,11 @@ func (u *update) cleanupOldRC(ctx context.Context) {
 			"rc-deletion-txn"+u.ID().String(),
 			err,
 		)
+
+		return false
 	}
+
+	return true
 }
 
 // returns true if roll succeeded, false if asked to quit.
