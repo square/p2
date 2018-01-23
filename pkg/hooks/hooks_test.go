@@ -110,9 +110,9 @@ func TestHookRunWithTimeout(t *testing.T) {
 	defer os.Remove(tmpFile)
 
 	logger := logging.TestLogger()
-	hook := NewHookExecContext(tmpFile, "timeout-test-hook", timeout, HookExecutionEnvironment{}, &logger)
+	hook := NewHookExecContext(tmpFile, "timeout-test-hook", timeout, HookExecutionEnvironment{}, logger)
 
-	toErr := hook.RunWithTimeout()
+	toErr := hook.RunWithTimeout(logger)
 	if _, ok := toErr.(ErrHookTimeout); !ok {
 		// we either had no error or a different error
 		t.Errorf("timeout did not throw a HookTimeoutError: timeout: %#v / sleep: %#v / err: %#v", timeout, sleep, toErr)
