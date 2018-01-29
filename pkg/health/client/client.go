@@ -17,7 +17,18 @@ type HealthResponse struct {
 	Error  error
 }
 
+type HealthEndpointsRequest struct {
+	Endpoints []string
+	Protocol  string
+}
+
+type HealthEndpointsResponse struct {
+	HealthResponses map[string]HealthResponse
+}
+
 type HealthServiceClient interface {
 	HealthCheck(ctx context.Context, req *HealthRequest) (health.HealthState, error)
 	HealthMonitor(ctx context.Context, req *HealthRequest, resultChan chan *HealthResponse) error
+	HealthCheckEndpoints(ctx context.Context, req *HealthEndpointsRequest) (map[string]health.HealthState, error)
+	HealthMonitorEndpoints(ctx context.Context, req *HealthEndpointsRequest, resultChan chan *HealthResponse) error
 }

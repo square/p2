@@ -1,6 +1,7 @@
 package replication
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -11,14 +12,14 @@ import (
 
 type podHealth struct {
 	podId   types.PodID
-	checker checker.ConsulHealthChecker
+	checker checker.HealthChecker
 	quit    chan struct{}
 
 	cond      *sync.Cond // guards curHealth
 	curHealth map[types.NodeName]health.Result
 }
 
-func AggregateHealth(id types.PodID, checker checker.ConsulHealthChecker, watchDelay time.Duration) *podHealth {
+func AggregateHealth(id types.PodID, checker checker.HealthChecker, watchDelay time.Duration) *podHealth {
 	p := &podHealth{
 		podId:   id,
 		checker: checker,
@@ -46,10 +47,12 @@ func (p *podHealth) beginWatch(watchDelay time.Duration) {
 	}()
 
 	resultCh := make(chan map[types.NodeName]health.Result)
+	watchServiceCtx, watchServiceCancel := context.WithCancel(context.Background())
 	go func() {
-		p.checker.WatchService(p.podId.String(), resultCh, errCh, p.quit, watchDelay)
+		p.checker.WatchService(watchServiceCtx, p.podId.String(), resultCh, errCh, watchDelay)
 		close(errCh)
 	}()
+	defer watchServiceCancel()
 
 	// Always unblock AggregateHealth()
 	defer func() {

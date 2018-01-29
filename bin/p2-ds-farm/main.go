@@ -46,7 +46,7 @@ func main() {
 	logger := logging.NewLogger(logrus.Fields{})
 	dsStore := dsstore.NewConsul(client, 3, &logger)
 	consulStore := consul.NewConsulStore(client)
-	healthChecker := checker.NewConsulHealthChecker(client)
+	healthChecker := checker.NewHealthChecker(client)
 
 	rawStatusStore := statusstore.NewConsul(client)
 	statusStore := daemonsetstatus.NewConsul(rawStatusStore, ds_farm.DaemonSetStatusNamespace)

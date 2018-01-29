@@ -74,7 +74,7 @@ type Farm struct {
 	logger  logging.Logger
 	alerter alerting.Alerter
 
-	healthChecker    *checker.ConsulHealthChecker
+	healthChecker    *checker.HealthChecker
 	healthWatchDelay time.Duration
 
 	monitorHealth         bool
@@ -120,7 +120,7 @@ func NewFarm(
 	sessions <-chan string,
 	logger logging.Logger,
 	alerter alerting.Alerter,
-	healthChecker *checker.ConsulHealthChecker,
+	healthChecker *checker.HealthChecker,
 	rateLimitInterval time.Duration,
 	monitorHealth bool,
 	cachedPodMatch bool,

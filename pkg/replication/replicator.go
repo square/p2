@@ -60,7 +60,7 @@ type replicator struct {
 	store            Store
 	txner            transaction.Txner
 	labeler          Labeler
-	health           checker.ConsulHealthChecker
+	health           checker.HealthChecker
 	threshold        health.HealthState // minimum state to treat as "healthy"
 	healthWatchDelay time.Duration      // interval of time between initiating health watches
 
@@ -78,7 +78,7 @@ func NewReplicator(
 	store Store,
 	txner transaction.Txner,
 	labeler Labeler,
-	health checker.ConsulHealthChecker,
+	health checker.HealthChecker,
 	threshold health.HealthState,
 	lockMessage string,
 	timeout time.Duration,

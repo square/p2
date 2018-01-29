@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -31,7 +32,7 @@ var (
 	watchReality  = kingpin.Flag("reality", "Watch the reality store instead of the intent store. False by default").Default("false").Bool()
 	hooks         = kingpin.Flag("hook", "Watch hooks.").Bool()
 	podClusters   = kingpin.Flag("pod-clusters", "Watch pod clusters and their labeled pods").Bool()
-	watchHealthF  = kingpin.Flag("health", "Watch health using ConsulHealthChecker").Bool()
+	watchHealthF  = kingpin.Flag("health", "Watch health using HealthChecker").Bool()
 	healthService = kingpin.Arg("health-pod", "Pod to watch. Required if --health is passed").String()
 )
 
@@ -138,12 +139,14 @@ func watchPodClusters(client consulutil.ConsulClient, applicator labels.Applicat
 }
 
 func watchHealth(service string, client consulutil.ConsulClient) {
-	hc := checker.NewConsulHealthChecker(client)
+	hc := checker.NewHealthChecker(client)
 	healthResults := make(chan map[types.NodeName]health.Result)
 	errCh := make(chan error)
 	quitCh := make(chan struct{})
+	ctx, cancelFunc := context.WithCancel(context.Background())
 	watchDelay := 1 * time.Second
-	go hc.WatchService(*healthService, healthResults, errCh, quitCh, watchDelay)
+	go hc.WatchService(ctx, *healthService, healthResults, errCh, watchDelay)
+	defer cancelFunc()
 
 	go func() {
 		signalCh := make(chan os.Signal, 2)

@@ -80,6 +80,7 @@ type Manifest interface {
 	GetStatusPath() string
 	GetStatusPort() int
 	GetStatusLocalhostOnly() bool
+	GetStatusStanza() StatusStanza
 	GetReadOnly() bool
 	Marshal() ([]byte, error)
 	SignatureData() (plaintext, signature []byte)
@@ -214,8 +215,12 @@ func (manifest *manifest) SetStatusHTTP(statusHTTP bool) {
 }
 
 func (manifest *manifest) GetStatusPath() string {
-	if manifest.Status.Path != "" {
-		return path.Join("/", manifest.Status.Path)
+	return manifest.Status.GetPath()
+}
+
+func (status StatusStanza) GetPath() string {
+	if status.Path != "" {
+		return path.Join("/", status.Path)
 	}
 	return "/_status"
 }
@@ -242,6 +247,10 @@ func (manifest *manifest) GetStatusLocalhostOnly() bool {
 
 func (manifest *manifest) SetStatusLocalhostOnly(localhostOnly bool) {
 	manifest.Status.LocalhostOnly = localhostOnly
+}
+
+func (manifest *manifest) GetStatusStanza() StatusStanza {
+	return manifest.Status
 }
 
 func (manifest *manifest) SetResourceLimits(limits ResourceLimitsStanza) {

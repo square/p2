@@ -1,6 +1,7 @@
 package replication
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -100,21 +101,21 @@ func (c channelBasedHealthChecker) Service(serviceID string) (map[types.NodeName
 }
 
 func (h channelBasedHealthChecker) WatchService(
+	ctx context.Context,
 	serviceID string,
 	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
-	quitCh <-chan struct{},
 	watchDelay time.Duration,
 ) {
 	var results map[types.NodeName]health.Result
 	select {
 	case results = <-h.resultsChans:
-	case <-quitCh:
+	case <-ctx.Done():
 		return
 	}
 	for {
 		select {
-		case <-quitCh:
+		case <-ctx.Done():
 			return
 		case results = <-h.resultsChans:
 		case resultCh <- results:
@@ -131,9 +132,9 @@ func (h channelBasedHealthChecker) WatchHealth(
 	panic("not implemented")
 }
 
-// returns an implementation of checker.ConsulHealthChecker that will provide
+// returns an implementation of checker.HealthChecker that will provide
 // results based on what is passed on the returned  chanel
-func channelHealthChecker(nodes []types.NodeName, t *testing.T) (checker.ConsulHealthChecker, chan map[types.NodeName]health.Result) {
+func channelHealthChecker(nodes []types.NodeName, t *testing.T) (checker.HealthChecker, chan map[types.NodeName]health.Result) {
 	resultsChans := make(chan map[types.NodeName]health.Result)
 	return channelBasedHealthChecker{
 		resultsChans: resultsChans,
