@@ -14,11 +14,11 @@ import (
 	"os"
 	"path"
 
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
-	"github.com/square/p2/pkg/util/size"
 	"golang.org/x/crypto/openpgp/clearsign"
 	"gopkg.in/yaml.v2"
 )
@@ -28,11 +28,6 @@ type StatusStanza struct {
 	Path          string `yaml:"path,omitempty"`
 	Port          int    `yaml:"port,omitempty"`
 	LocalhostOnly bool   `yaml:"localhost_only,omitempty"`
-}
-
-type ResourceLimitsStanza struct {
-	CPUs   int            `yaml:"cpus,omitempty"`
-	Memory size.ByteCount `yaml:"memory,omitempty"`
 }
 
 type Builder interface {
@@ -72,8 +67,11 @@ type Manifest interface {
 	WriteConfig(out io.Writer) error
 	PlatformConfigFileName() (string, error)
 	WritePlatformConfig(out io.Writer) error
+	WriteResourceLimitsConfig(out io.Writer) error
 	GetLaunchableStanzas() map[launch.LaunchableID]launch.LaunchableStanza
 	GetResourceLimitsStanza() ResourceLimitsStanza
+	GetResourceLimits() ResourceLimitsStanza
+	ResourceLimitsConfigFileName() (string, error)
 	GetConfig() map[interface{}]interface{}
 	SHA() (string, error)
 	GetStatusHTTP() bool
@@ -89,6 +87,10 @@ type Manifest interface {
 
 // assert manifest implements Manifest and UnsignedManifest
 var _ Manifest = &manifest{}
+
+type ResourceLimitsStanza struct {
+	Cgroup *cgroups.Config `yaml:"cgroup,omitempty"`
+}
 
 type manifest struct {
 	Id                types.PodID                                     `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
@@ -135,6 +137,10 @@ func (manifest *manifest) GetLaunchableStanzas() map[launch.LaunchableID]launch.
 
 func (manifest *manifest) SetLaunchables(launchableStanzas map[launch.LaunchableID]launch.LaunchableStanza) {
 	manifest.LaunchableStanzas = launchableStanzas
+}
+
+func (manifest *manifest) GetResourceLimits() ResourceLimitsStanza {
+	return manifest.ResourceLimits
 }
 
 func (manifest *manifest) GetConfig() map[interface{}]interface{} {
@@ -366,12 +372,7 @@ func (manifest *manifest) WriteConfig(out io.Writer) error {
 }
 
 func (manifest *manifest) WritePlatformConfig(out io.Writer) error {
-	platConf := make(map[launch.LaunchableID]interface{})
-	for launchableID, stanza := range manifest.LaunchableStanzas {
-		platConf[launchableID] = map[launch.LaunchableID]interface{}{
-			"cgroup": stanza.CgroupConfig,
-		}
-	}
+	platConf := manifest.launchableResourceLimits()
 
 	bytes, err := yaml.Marshal(platConf)
 	if err != nil {
@@ -380,6 +381,41 @@ func (manifest *manifest) WritePlatformConfig(out io.Writer) error {
 	_, err = out.Write(bytes)
 	if err != nil {
 		return util.Errorf("Could not write config for %s: %s", manifest.ID(), err)
+	}
+	return nil
+}
+
+type ResourceLimitsConfigFileSchema struct {
+	PodLimits        map[types.PodID]cgroups.Config      `yaml:"pod"`
+	LaunchableLimits map[launch.LaunchableID]interface{} `yaml:"launchables"`
+}
+
+func (manifest *manifest) launchableResourceLimits() map[launch.LaunchableID]interface{} {
+	limits := make(map[launch.LaunchableID]interface{})
+	for launchableID, stanza := range manifest.LaunchableStanzas {
+		limits[launchableID] = map[launch.LaunchableID]interface{}{
+			"cgroup": stanza.CgroupConfig,
+		}
+	}
+	return limits
+}
+
+func (manifest *manifest) WriteResourceLimitsConfig(out io.Writer) error {
+	if manifest.ResourceLimits.Cgroup == nil { // ResourceLimits are optional for now, this is not an error
+		return nil
+	}
+	resourceLimitsConfigFile := ResourceLimitsConfigFileSchema{
+		PodLimits:        map[types.PodID]cgroups.Config{manifest.ID(): *manifest.ResourceLimits.Cgroup},
+		LaunchableLimits: manifest.launchableResourceLimits(),
+	}
+
+	bytes, err := yaml.Marshal(resourceLimitsConfigFile)
+	if err != nil {
+		return util.Errorf("Could not write resource limits for %s: %s", manifest.ID(), err)
+	}
+	_, err = out.Write(bytes)
+	if err != nil {
+		return util.Errorf("Could not write resource limits for %s: %s", manifest.ID(), err)
 	}
 	return nil
 }
@@ -408,7 +444,7 @@ func (manifest *manifest) ConfigFileName() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(manifest.Id) + "_" + sha + ".yaml", nil
+	return manifest.Id.String() + "_" + sha + ".yaml", nil
 }
 
 func (manifest *manifest) PlatformConfigFileName() (string, error) {
@@ -416,7 +452,15 @@ func (manifest *manifest) PlatformConfigFileName() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(manifest.Id) + "_" + sha + ".platform.yaml", nil
+	return manifest.Id.String() + "_" + sha + ".platform.yaml", nil
+}
+
+func (manifest *manifest) ResourceLimitsConfigFileName() (string, error) {
+	sha, err := manifest.SHA()
+	if err != nil {
+		return "", err
+	}
+	return manifest.Id.String() + "_" + sha + ".resource_limits.yaml", nil
 }
 
 // Returns readers needed to verify the signature on the

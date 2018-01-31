@@ -16,6 +16,9 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/square/p2/pkg/cgroups"
+	"github.com/square/p2/pkg/manifest"
+	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -31,14 +34,15 @@ var (
 		"extra-env",
 		"Specifies an extra environment KEY=VALUE pair to set for the process. May be used multiple times. Takes precedence over --env if there are conflicts",
 	).StringMap()
-	launchableName = kingpin.Flag("launchable", "The key in $PLATFORM_CONFIG_PATH containing the cgroup parameters.").Short('l').String()
-	requireFile    = kingpin.Flag("require-file", "Check for the presence of a required file before execing its argument").String()
-	cgroupName     = kingpin.Flag("cgroup", "The name of the cgroup that should be created.").Short('c').String()
-	nolim          = kingpin.Flag("nolimit", "Remove rlimits.").Short('n').Bool()
-	clearEnv       = kingpin.Flag("clearenv", "Clear all environment variables before loading envDir(s).").Bool()
-	workDir        = kingpin.Flag("workdir", "Set working directory.").Short('w').String()
-	umask          = kingpin.Flag("umask", "Set the process umask. Use octal notation ex. 0022").Short('m').Default(umaskDefault).String()
-	umaskDefault   = ""
+	launchableName       = kingpin.Flag("launchable", "The key in $PLATFORM_CONFIG_PATH containing the cgroup parameters.").Short('l').String()
+	podID                = kingpin.Flag("podID", "Setting this optional flag will nest the process under the cgroup for this pod, creating it if necessary.").Short('p').String()
+	requireFile          = kingpin.Flag("require-file", "Check for the presence of a required file before execing its argument").String()
+	launchableCgroupName = kingpin.Flag("cgroup", "The name of the cgroup that should be created for the executable. You probably want this to match your executable name.").Short('c').String()
+	nolim                = kingpin.Flag("nolimit", "Remove rlimits.").Short('n').Bool()
+	clearEnv             = kingpin.Flag("clearenv", "Clear all environment variables before loading envDir(s).").Bool()
+	workDir              = kingpin.Flag("workdir", "Set working directory.").Short('w').String()
+	umask                = kingpin.Flag("umask", "Set the process umask. Use octal notation ex. 0022").Short('m').Default(umaskDefault).String()
+	umaskDefault         = ""
 
 	cmd = kingpin.Arg("command", "the command to execute").Required().Strings()
 )
@@ -80,15 +84,35 @@ func main() {
 		}
 	}
 
-	if *launchableName == "" && *cgroupName != "" {
-		log.Fatalf("Specified cgroup name %q, but no launchable name was specified", *cgroupName)
+	if *podID != "" && *launchableName != "" && *launchableCgroupName != "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			log.Fatal(err)
+		}
+		if resourceLimitsConf := os.Getenv(pods.ResourceLimitsPathEnvVar); resourceLimitsConf != "" {
+			if _, err := os.Stat(resourceLimitsConf); err == nil {
+				err := createPodCgroup(resourceLimitsConf, types.PodID(*podID), types.NodeName(hostname))
+				if err != nil {
+					log.Fatal(err)
+				}
+			} else if os.IsNotExist(err) {
+			} else { // implies err != nil && err != os.IsNotExist(err)
+				log.Fatal(err)
+			}
+		} // TODO implement launchable cgroups based on ResourceLimitsPath also. Presently, they are implemented in an entirely separate conditional
+	} else if *podID != "" {
+		log.Fatal("Missing required arguments when specifying podID.")
 	}
-	if *launchableName != "" && *cgroupName == "" {
+
+	if *launchableName == "" && *launchableCgroupName != "" {
+		log.Fatalf("Specified cgroup name %q, but no launchable name was specified", *launchableCgroupName)
+	}
+	if *launchableName != "" && *launchableCgroupName == "" {
 		log.Fatalf("Specified launchable name %q, but no cgroup name was specified", *launchableName)
 	}
-	if *launchableName != "" && *cgroupName != "" {
+	if *launchableName != "" && *launchableCgroupName != "" {
 		if platconf := os.Getenv("PLATFORM_CONFIG_PATH"); platconf != "" {
-			err := cgEnter(platconf, *launchableName, *cgroupName)
+			err := cgEnter(platconf, *launchableName, *launchableCgroupName)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -232,9 +256,9 @@ func cgEnter(platconf, launchableName, cgroupName string) error {
 		return util.Errorf("Launchable %q has malformed PLATFORM_CONFIG_PATH", launchableName)
 	}
 	cgConfig := cgMap[launchableName]["cgroup"]
-	cgConfig.Name = cgroupName
+	cgConfig.Name = cgroups.CgroupID(cgroupName)
 
-	cg, err := cgroups.Find()
+	cg, err := cgroups.DefaultSubsystemer.Find()
 	if err != nil {
 		return util.Errorf("Could not find cgroupfs mount point: %s", err)
 	}
@@ -247,7 +271,7 @@ func cgEnter(platconf, launchableName, cgroupName string) error {
 	} else if err != nil {
 		return util.Errorf("Could not set cgroup parameters: %s", err)
 	}
-	return cg.AddPID(cgConfig.Name, 0)
+	return cg.AddPID(cgConfig.Name.String(), 0)
 }
 
 // generalized code to remove rlimits on both darwin and linux
@@ -288,5 +312,44 @@ func nolimit() error {
 	if ret != 0 && err != nil {
 		return util.Errorf("Could not set RLIMIT_RSS: %s", err)
 	}
+	return nil
+}
+
+// This function could do the translation from manifest to resource_limits_path, I don't believe the file is necessary before this point (but it is necessary after)
+func createPodCgroup(resourceLimitsPath string, podID types.PodID, hostname types.NodeName) error {
+	limits, err := ioutil.ReadFile(resourceLimitsPath)
+	// this file is optional
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	cfg := &manifest.ResourceLimitsConfigFileSchema{}
+	err = yaml.Unmarshal(limits, cfg)
+	if err != nil {
+		return err
+	}
+	if cfg == nil {
+		return util.Errorf("Error unserializing cgroup file, please check the contents of %s", resourceLimitsPath)
+	}
+
+	podLimits, ok := cfg.PodLimits[podID]
+	if !ok {
+		return util.Errorf("Did not find any pod limits in file at: %s, instead found %+v", resourceLimitsPath, podLimits)
+	}
+	if podLimits.CPUs == 0 {
+		return util.Errorf("Expected cgroup config to contain a non-zero value for CPU. %+v", podLimits)
+	}
+	if podLimits.Memory == 0 {
+		return util.Errorf("Expected cgroup config to contain a non-zero value for CPU. %+v", podLimits)
+	}
+
+	err = cgroups.CreatePodCgroup(podID, hostname, podLimits, cgroups.DefaultSubsystemer)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

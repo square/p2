@@ -2,6 +2,8 @@ package p2exec
 
 import (
 	"fmt"
+
+	"github.com/square/p2/pkg/types"
 )
 
 // DefaultP2Exec is the path to the default p2-exec binary. Specified as a var so you
@@ -15,6 +17,7 @@ type P2ExecArgs struct {
 	EnvDirs          []string
 	ExtraEnv         map[string]string
 	NoLimits         bool
+	PodID            *types.PodID
 	CgroupName       string
 	CgroupConfigName string
 	Command          []string
@@ -59,6 +62,10 @@ func (args P2ExecArgs) CommandLine() []string {
 
 	if args.ClearEnv {
 		cmd = append(cmd, "--clearenv")
+	}
+
+	if args.PodID != nil {
+		cmd = append(cmd, "--podID", args.PodID.String())
 	}
 
 	if len(cmd) > 0 {
