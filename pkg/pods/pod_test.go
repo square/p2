@@ -14,6 +14,7 @@ import (
 
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
+	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
@@ -30,7 +31,10 @@ import (
 
 func getTestPod() *Pod {
 	podFactory := NewFactory("/data/pods", "testNode", uri.DefaultFetcher, "")
-	return podFactory.NewLegacyPod("hello")
+	pod := podFactory.NewLegacyPod("hello")
+	pod.subsystemer = &FakeSubsystemer{}
+	pod.CurrentManifest()
+	return pod
 }
 
 func getTestPodManifest(t *testing.T) manifest.Manifest {
@@ -56,7 +60,10 @@ func TestGetLaunchable(t *testing.T) {
 	pod := getTestPod()
 	Assert(t).AreNotEqual(0, len(launchableStanzas), "Expected there to be at least one launchable stanza in the test manifest")
 	for launchableID, stanza := range launchableStanzas {
-		l, _ := pod.getLaunchable(launchableID, stanza, "foouser", "root")
+		l, err := pod.getLaunchable(launchableID, stanza, "foouser", "root")
+		if err != nil {
+			t.Fatal(err)
+		}
 		launchable := l.(hoist.LaunchAdapter).Launchable
 		if launchable.Id != "app" {
 			t.Errorf("Launchable Id did not have expected value: wanted '%s' was '%s'", "app", launchable.Id)
@@ -144,6 +151,7 @@ config:
 
 	podFactory := NewFactory(podTemp, "testNode", uri.DefaultFetcher, "")
 	pod := podFactory.NewLegacyPod(manifest.ID())
+	pod.subsystemer = &FakeSubsystemer{}
 
 	launchables := make([]launch.Launchable, 0)
 	for launchableID, stanza := range manifest.GetLaunchableStanzas() {
@@ -374,6 +382,7 @@ func TestInstall(t *testing.T) {
 		logger:  Log.SubLogger(logrus.Fields{"pod": "testPod"}),
 		Fetcher: fetcher,
 	}
+	pod.subsystemer = &FakeSubsystemer{}
 
 	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector))
 	Assert(t).IsNil(err, "there should not have been an error when installing")
@@ -407,6 +416,7 @@ func TestUninstall(t *testing.T) {
 		ServiceBuilder: serviceBuilder,
 		logger:         logging.DefaultLogger,
 	}
+	pod.subsystemer = &FakeSubsystemer{}
 	manifest := getTestPodManifest(t)
 	manifestContent, err := manifest.Marshal()
 	Assert(t).IsNil(err, "couldn't get manifest bytes")
@@ -441,8 +451,25 @@ func ContainsString(test string) func(interface{}) bool {
 	return func(subject interface{}) bool {
 		if subjectString, ok := subject.(string); ok {
 			return strings.Contains(subjectString, test)
-		} else {
-			return false
+		}
+		return false
+	}
+}
+
+type FakeSubsystemer struct {
+	tmpdir string
+}
+
+func (fs *FakeSubsystemer) Find() (cgroups.Subsystems, error) {
+	var err error
+	if fs.tmpdir == "" {
+		fs.tmpdir, err = ioutil.TempDir("", "")
+		if err != nil {
+			return cgroups.Subsystems{}, err
+		}
+		if err = os.Chmod(fs.tmpdir, os.ModePerm); err != nil {
+			return cgroups.Subsystems{}, err
 		}
 	}
+	return cgroups.Subsystems{CPU: filepath.Join(fs.tmpdir, "cpu"), Memory: filepath.Join(fs.tmpdir, "memory")}, nil
 }

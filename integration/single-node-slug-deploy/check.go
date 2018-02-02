@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/square/p2/pkg/cgroups"
 	label_grpc_client "github.com/square/p2/pkg/grpc/labelstore/client"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/labels"
@@ -42,6 +43,8 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
+	"github.com/square/p2/pkg/util/size"
+	"gopkg.in/yaml.v2"
 
 	"github.com/Sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -266,7 +269,65 @@ func verifyLegacyPod(errCh chan error, tempDir string, config *preparer.Preparer
 		errCh <- fmt.Errorf("Could not get health check info from consul: %s", err)
 		return
 	}
+
+	err = verifyCgroups()
+	if err != nil {
+		errCh <- fmt.Errorf("cgroup info missing: %v", err)
+		return
+	}
 	logger.Infof("health checks for %s succeeded", services)
+}
+
+func verifyCgroups() error {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(fmt.Sprintf("/cgroup/cpu/p2/%s/hello/hello", hostname)); err != nil {
+		return err
+	}
+	if _, err := os.Stat(fmt.Sprintf("/cgroup/memory/p2/%s/hello/hello", hostname)); err != nil {
+		return err
+	}
+
+	if _, err := os.Stat("/cgroup/memory/p2"); err != nil {
+		return err
+	}
+	if _, err := os.Stat("/cgroup/memory/"); err != nil {
+		log.Printf("ERROR: %v", err)
+		return err
+	}
+	if _, err := os.Stat("/sys/fs/cgroup/memory/"); err != nil {
+		return err
+	}
+	resourceLimitsPath, err := ioutil.ReadFile("/data/pods/hello/env/RESOURCE_LIMIT_PATH")
+	if err != nil {
+		return err
+	}
+
+	if _, err := os.Stat(string(resourceLimitsPath)); err != nil {
+		return err
+	}
+
+	limits, err := ioutil.ReadFile(string(resourceLimitsPath))
+	if err != nil {
+		return err
+	}
+
+	cfg := &manifest.ResourceLimitsConfigFileSchema{}
+	err = yaml.Unmarshal(limits, cfg)
+	if err != nil {
+		return err
+	}
+	if cfg == nil {
+		return util.Errorf("Error unserializing cgroup file, please check the contents of %s", resourceLimitsPath)
+	}
+
+	if _, ok := cfg.PodLimits["hello"]; !ok {
+		return util.Errorf("Did not find cgroup limits for hello test pod")
+	}
+
+	return nil
 }
 
 func verifyUUIDPod(errCh chan error, tempDir string, logger logging.Logger) {
@@ -587,6 +648,9 @@ func generatePreparerPod(workdir string, userHookManifest manifest.Manifest, req
 			"cert_file":   filepath.Join(certpath, "cert.pem"),
 			"key_file":    filepath.Join(certpath, "key.pem"),
 			"status_port": preparerStatusPort,
+			"params": map[interface{}]interface{}{
+				"nested_cgroups": true,
+			},
 			"process_result_reporter_config": map[string]string{
 				"sqlite_database_path":       sqliteFinishDatabasePath,
 				"environment_extractor_path": strings.TrimSpace(string(envExtractorPath)),
@@ -738,7 +802,7 @@ func getConsulManifest(dir string) (string, error) {
 		dst := filepath.Join(dir, "consul_zip")
 		err = uri.URICopy(consulURI, dst)
 		if err != nil {
-			return "", util.Errorf("could not download conzul: %s", err)
+			return "", util.Errorf("could not download consul: %s", err)
 		}
 
 		output, err := exec.Command("unzip", dst, "-d", dir).CombinedOutput()
@@ -846,6 +910,7 @@ func writeHelloManifest(dir string, manifestName string, port int) (string, erro
 	builder.SetConfig(map[interface{}]interface{}{
 		"port": port,
 	})
+	builder.SetResourceLimits(manifest.ResourceLimitsStanza{Cgroup: &cgroups.Config{CPUs: 1, Memory: size.ByteCount(1024 * 1024 * 1024)}})
 	manifest := builder.GetManifest()
 
 	manifestPath := filepath.Join(dir, manifestName)
@@ -1166,7 +1231,7 @@ func startLabelStoreServer(dir string) error {
 		"localhost:3000",
 		grpc.WithBlock(),
 		grpc.WithInsecure(),
-		grpc.WithTimeout(30*time.Second),
+		grpc.WithTimeout(60*time.Second),
 		grpc.WithBackoffMaxDelay(time.Second),
 	)
 	if err != nil {

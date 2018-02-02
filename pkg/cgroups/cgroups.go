@@ -1,14 +1,13 @@
 package cgroups
 
 import (
-	"bufio"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -16,11 +15,13 @@ import (
 type Subsystems struct {
 	CPU    string
 	Memory string
+	Prefix string
 }
 
-var Default Subsystems = Subsystems{
+var DefaultSubsystems = Subsystems{
 	CPU:    "/cgroup/cpu",
 	Memory: "/cgroup/memory",
+	Prefix: "/cgroup",
 }
 
 type UnsupportedError string
@@ -31,50 +32,16 @@ func (err UnsupportedError) Error() string {
 	return fmt.Sprintf("subsystem %q is not available on this system", string(err))
 }
 
-// Find retrieves the mount points for all cgroup subsystems on the host. The
-// result of this operation should be cached if possible.
-func Find() (Subsystems, error) {
-	// For details about how this file is structured, refer to `man proc` or
-	// https://www.kernel.org/doc/Documentation/filesystems/proc.txt section 3.5
-	mountInfo, err := os.Open("/proc/self/mountinfo")
-	if err != nil {
-		return Subsystems{}, err
-	}
-	defer mountInfo.Close()
+type CgroupID string
 
-	var ret Subsystems
-	scanner := bufio.NewScanner(mountInfo)
-	for scanner.Scan() {
-		lineSegs := strings.Fields(scanner.Text())
-		nSegs := len(lineSegs)
-		if nSegs < 10 || lineSegs[nSegs-4] != "-" {
-			return Subsystems{}, fmt.Errorf("mountinfo: unrecognized format")
-		}
-		mountPoint := lineSegs[4]
-		fsType := lineSegs[nSegs-3]
-		superOptions := strings.Split(lineSegs[nSegs-1], ",")
-
-		if fsType != "cgroup" {
-			// filesystem type is not "cgroup", skip
-			continue
-		}
-
-		for _, opt := range superOptions {
-			switch opt {
-			case "cpu":
-				ret.CPU = mountPoint
-			case "memory":
-				ret.Memory = mountPoint
-			}
-		}
-	}
-
-	return ret, nil
+func (c *CgroupID) String() string {
+	return string(*c)
 }
 
-// set the number of logical CPUs in a given cgroup, 0 to unrestrict
+// SetCPU will set a number of CPU limits in the cgroup specified by the argument.
+// A sentinel value of 0 will create an unrestricted CPU subsystem
 // https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
-func (subsys Subsystems) SetCPU(name string, cpus int) error {
+func (subsys Subsystems) SetCPU(name CgroupID, cpus int) error {
 	if subsys.CPU == "" {
 		return UnsupportedError("cpu")
 	}
@@ -88,13 +55,13 @@ func (subsys Subsystems) SetCPU(name string, cpus int) error {
 		quota = -1
 	}
 
-	err := os.MkdirAll(filepath.Join(subsys.CPU, name), 0755)
+	err := os.MkdirAll(filepath.Join(subsys.CPU, name.String()), 0755)
 	if err != nil && !os.IsExist(err) {
 		return err
 	}
 
 	_, err = util.WriteIfChanged(
-		filepath.Join(subsys.CPU, name, "cpu.cfs_period_us"),
+		filepath.Join(subsys.CPU, name.String(), "cpu.cfs_period_us"),
 		[]byte(strconv.Itoa(period)+"\n"),
 		0,
 	)
@@ -103,7 +70,7 @@ func (subsys Subsystems) SetCPU(name string, cpus int) error {
 	}
 
 	_, err = util.WriteIfChanged(
-		filepath.Join(subsys.CPU, name, "cpu.cfs_quota_us"),
+		filepath.Join(subsys.CPU, name.String(), "cpu.cfs_quota_us"),
 		[]byte(strconv.Itoa(quota)+"\n"),
 		0,
 	)
@@ -114,9 +81,10 @@ func (subsys Subsystems) SetCPU(name string, cpus int) error {
 	return nil
 }
 
-// set the memory limit on a cgroup, 0 to unrestrict
+// SetMemory will set several memory limits in the cgroup specified in the argument.
+// A sentinel value of 0 will create an unrestricted memory subsystem
 // https://www.kernel.org/doc/Documentation/cgroups/memory.txt
-func (subsys Subsystems) SetMemory(name string, bytes int) error {
+func (subsys Subsystems) SetMemory(name CgroupID, bytes int) error {
 	if subsys.Memory == "" {
 		return UnsupportedError("memory")
 	}
@@ -132,29 +100,29 @@ func (subsys Subsystems) SetMemory(name string, bytes int) error {
 		hardLimit = -1
 	}
 
-	err := os.MkdirAll(filepath.Join(subsys.Memory, name), 0755)
+	err := os.MkdirAll(filepath.Join(subsys.Memory, name.String()), 0755)
 	if err != nil && !os.IsExist(err) {
 		return err
 	}
 
 	// the hard memory limit must be set BEFORE the mem+swap limit
 	// so we must clear the swap limit at the start
-	err = ioutil.WriteFile(filepath.Join(subsys.Memory, name, "memory.memsw.limit_in_bytes"), []byte("-1\n"), 0)
+	err = ioutil.WriteFile(filepath.Join(subsys.Memory, name.String(), "memory.memsw.limit_in_bytes"), []byte("-1\n"), 0600)
 	if err != nil {
 		return err
 	}
 
-	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.soft_limit_in_bytes"), []byte(strconv.Itoa(softLimit)+"\n"), 0)
+	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name.String(), "memory.soft_limit_in_bytes"), []byte(strconv.Itoa(softLimit)+"\n"), 0600)
 	if err != nil {
 		return err
 	}
 
-	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0)
+	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name.String(), "memory.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0600)
 	if err != nil {
 		return err
 	}
 
-	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name, "memory.memsw.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0)
+	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name.String(), "memory.memsw.limit_in_bytes"), []byte(strconv.Itoa(hardLimit)+"\n"), 0600)
 	if err != nil {
 		return err
 	}
@@ -186,4 +154,57 @@ func appendIntToFile(filename string, data int) error {
 	defer fd.Close()
 	_, err = fd.WriteString(strconv.Itoa(data))
 	return err
+}
+
+// Subsystemer is anything that can find a set of Subsystems
+type Subsystemer interface {
+	Find() (Subsystems, error)
+}
+
+// CreatePodCgroup will set cgroup parameters for the specified pod with podID
+// on hostname. In order for nested cgroups to work correctly, the path used here
+// must match the path used in pkg/servicebuilder
+func CreatePodCgroup(podID types.PodID, hostname types.NodeName, c Config, s Subsystemer) error {
+	ss, err := s.Find()
+	if err != nil {
+		return err
+	}
+
+	cgroupID, err := CgroupIDForPod(s, podID, hostname)
+	if err != nil {
+		return err
+	}
+	err = ss.SetCPU(*cgroupID, c.CPUs)
+	if err != nil {
+		return err
+	}
+	err = ss.SetMemory(*cgroupID, int(c.Memory))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// CgroupIDForLaunchable encapsulates the cgroup path for launchable cgroups.
+// launchableID is a string because I am too cowardly to break the import cycle
+// caused by importing `launch` here.
+func CgroupIDForLaunchable(s Subsystemer, podID types.PodID, nodeName types.NodeName, launchableID string) (*CgroupID, error) {
+	ss, err := s.Find()
+	if err != nil {
+		return nil, err
+	}
+	cgID := CgroupID(filepath.Join(ss.Prefix, "p2", nodeName.String(), podID.String(), launchableID))
+	return &cgID, nil
+}
+
+// CgroupIDForPod encapsulates the cgroup path for pod cgroups. This function
+// should match CgroupIDForLaunchable
+func CgroupIDForPod(s Subsystemer, podID types.PodID, nodeName types.NodeName) (*CgroupID, error) {
+	ss, err := s.Find()
+	if err != nil {
+		return nil, err
+	}
+	cgID := CgroupID(filepath.Join(ss.Prefix, "p2", nodeName.String(), podID.String()))
+	return &cgID, nil
 }

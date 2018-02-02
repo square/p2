@@ -152,7 +152,7 @@ func main() {
 
 	// P2 only uses the "memory" and "cpu" resource controllers, and it creates an
 	// identical hierarchy in either. Just scan "cpu".
-	sys, err := cgroups.Find()
+	sys, err := cgroups.DefaultSubsystemer.Find()
 	if err != nil {
 		logger.Fatalf("error finding cgroups: %v", err)
 	}
