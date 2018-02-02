@@ -199,8 +199,8 @@ func (rc *replicationController) WatchDesires(quit <-chan struct{}) <-chan error
 	channelsClosed := make(chan struct{})
 
 	// get random wait time to check for missing artifacts bewteen 1 - 60 minutes
-	randomTime := rand.Intn(60) + 1
-	shouldCheckTimer := time.NewTimer(time.Duration(randomTime) * time.Minute)
+	randomJitter := rand.Intn(60) + 1
+	shouldCheckTimer := time.NewTimer(time.Duration(24*time.Hour) + (time.Duration(randomJitter) * time.Minute))
 	shouldCheck := shouldCheckTimer.C
 
 	// When seeing any changes, try to meet them.
