@@ -386,8 +386,10 @@ func (p *Preparer) artifactRegistryFor(manifest manifest.Manifest) artifact.Regi
 	if manifest == nil {
 		return p.artifactRegistry
 	}
-	// TODO fetcher
-	if registry := manifest.GetArtifactRegistry(); registry != nil {
+	if p.fetcher == nil {
+		return p.artifactRegistry
+	}
+	if registry := manifest.GetArtifactRegistry(p.fetcher); registry != nil {
 		return registry
 	}
 	return p.artifactRegistry

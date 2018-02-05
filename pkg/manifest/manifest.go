@@ -75,7 +75,7 @@ type Manifest interface {
 	ResourceLimitsConfigFileName() (string, error)
 	GetConfig() map[interface{}]interface{}
 	SHA() (string, error)
-	GetArtifactRegistry() artifact.Registry
+	GetArtifactRegistry(uri.Fetcher) artifact.Registry
 	GetStatusHTTP() bool
 	GetStatusPath() string
 	GetStatusPort() int
@@ -134,14 +134,14 @@ func (m builder) SetID(id types.PodID) {
 	m.manifest.Id = id
 }
 
-func (manifest *manifest) GetArtifactRegistry() artifact.Registry {
+func (manifest *manifest) GetArtifactRegistry(fetcher uri.Fetcher) artifact.Registry {
 	if manifest.ArtifactRegistryURL != "" {
 		url, err := url.Parse(manifest.ArtifactRegistryURL)
 		if err != nil {
 			logging.DefaultLogger.WithError(err).Errorln("Unable to parse artifact registry URL for pod %s", manifest.ID())
 			return nil // This shouldn't block installation, we expect the client to fallback to some default
 		}
-		return artifact.NewRegistry(url, nil, nil)
+		return artifact.NewRegistry(url, fetcher, nil)
 	}
 
 	return nil

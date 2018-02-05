@@ -9,7 +9,10 @@ import (
 
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util/size"
+
+	"net/http"
 
 	. "github.com/anthonybishopric/gotcha"
 	"gopkg.in/yaml.v2"
@@ -372,42 +375,13 @@ func TestSetConfigCopies(t *testing.T) {
 	Assert(t).AreEqual(manifestConfig["foo"], "bar", "Config values shouldn't have changed when mutating the original input due to deep copy")
 }
 
-func TestWriteResourceLimitsConfigWithResourceLimits(t *testing.T) {
-	builder := NewBuilder()
-	builder.SetResourceLimits(ResourceLimitsStanza{Cgroup: &cgroups.Config{CPUs: 1, Memory: 1024}})
-	manifest := builder.GetManifest()
-	buf := bytes.Buffer{}
-	err := manifest.WriteResourceLimitsConfig(&buf)
-	if err != nil {
-		t.Errorf("Unexpected error writing Resource Limits Config: %v", err)
-	}
-	if len(buf.Bytes()) == 0 {
-		t.Error("Expected some resource limits config to be written but it wasn't")
-	}
-
-}
-
-func TestWriteResourceLimitsConfigWithoutResourceLimits(t *testing.T) {
-	builder := NewBuilder()
-	manifest := builder.GetManifest()
-	buf := bytes.Buffer{}
-	err := manifest.WriteResourceLimitsConfig(&buf)
-	if err != nil {
-		t.Errorf("It should not have been an error to write ResourceLimits on a manifest without them, but: %v", err)
-	}
-	if len(buf.Bytes()) != 0 {
-		t.Error("Wrote some resource limits config file with nonsense contents (none provided in manifest)")
-	}
-
-}
-
 func TestArtifactRegistryOverride(t *testing.T) {
 	rawManifest := testPodWithArtifactRegistryOverride()
 	manifest, err := FromBytes([]byte(rawManifest))
 	if err != nil {
 		t.Errorf("Unable to parse manifest: %v", err)
 	}
-	registry := manifest.GetArtifactRegistry()
+	registry := manifest.GetArtifactRegistry(uri.BasicFetcher{Client: http.DefaultClient})
 	if registry == nil {
 		t.Error("Expected registry override to occur, but didn't find one")
 	}
