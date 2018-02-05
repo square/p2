@@ -90,6 +90,22 @@ QyB184dCJQnFbcQslyXDSR4Lal12NPvxbtK/4YYXZZVwf4hKCfVqvmG2zgwINDc=
 -----END PGP SIGNATURE-----`
 }
 
+func testPodWithArtifactRegistryOverride() string {
+	return `id: thepod
+launchables:
+  my-app:
+    launchable_type: hoist
+    cgroup:
+      cpus: 4
+      memory: 1073741824
+    location: https://localhost:4444/foo/bar/baz.tar.gz
+config:
+  ENVIRONMENT: staging
+status_port: 8000
+artifact_registry: "https://www.example.com"
+`
+}
+
 func TestPodManifestCanBeWritten(t *testing.T) {
 	builder := NewBuilder()
 	builder.SetID("thepod")
@@ -383,4 +399,16 @@ func TestWriteResourceLimitsConfigWithoutResourceLimits(t *testing.T) {
 		t.Error("Wrote some resource limits config file with nonsense contents (none provided in manifest)")
 	}
 
+}
+
+func TestArtifactRegistryOverride(t *testing.T) {
+	rawManifest := testPodWithArtifactRegistryOverride()
+	manifest, err := FromBytes([]byte(rawManifest))
+	if err != nil {
+		t.Errorf("Unable to parse manifest: %v", err)
+	}
+	registry := manifest.GetArtifactRegistry()
+	if registry == nil {
+		t.Error("Expected registry override to occur, but didn't find one")
+	}
 }

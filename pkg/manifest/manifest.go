@@ -14,8 +14,10 @@ import (
 	"os"
 	"path"
 
+	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
+	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
@@ -73,6 +75,7 @@ type Manifest interface {
 	ResourceLimitsConfigFileName() (string, error)
 	GetConfig() map[interface{}]interface{}
 	SHA() (string, error)
+	GetArtifactRegistry() artifact.Registry
 	GetStatusHTTP() bool
 	GetStatusPath() string
 	GetStatusPort() int
@@ -92,15 +95,16 @@ type ResourceLimitsStanza struct {
 }
 
 type manifest struct {
-	Id                types.PodID                                     `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
-	RunAs             string                                          `yaml:"run_as,omitempty"`
-	LaunchableStanzas map[launch.LaunchableID]launch.LaunchableStanza `yaml:"launchables"`
-	Config            map[interface{}]interface{}                     `yaml:"config"`
-	StatusPort        int                                             `yaml:"status_port,omitempty"`
-	StatusHTTP        bool                                            `yaml:"status_http,omitempty"`
-	Status            StatusStanza                                    `yaml:"status,omitempty"`
-	ResourceLimits    ResourceLimitsStanza                            `yaml:"resource_limits,omitempty"`
-	ReadOnly          bool                                            `yaml:"readonly,omitempty"`
+	Id                  types.PodID                                     `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
+	RunAs               string                                          `yaml:"run_as,omitempty"`
+	LaunchableStanzas   map[launch.LaunchableID]launch.LaunchableStanza `yaml:"launchables"`
+	Config              map[interface{}]interface{}                     `yaml:"config"`
+	StatusPort          int                                             `yaml:"status_port,omitempty"`
+	StatusHTTP          bool                                            `yaml:"status_http,omitempty"`
+	Status              StatusStanza                                    `yaml:"status,omitempty"`
+	ResourceLimits      ResourceLimitsStanza                            `yaml:"resource_limits,omitempty"`
+	ReadOnly            bool                                            `yaml:"readonly,omitempty"`
+	ArtifactRegistryURL string                                          `yaml:"artifact_registry,omitempty"`
 
 	// Used to track the original bytes so that we don't reorder them when
 	// doing a yaml.Unmarshal and a yaml.Marshal in succession
@@ -128,6 +132,19 @@ func (manifest *manifest) ID() types.PodID {
 
 func (m builder) SetID(id types.PodID) {
 	m.manifest.Id = id
+}
+
+func (manifest *manifest) GetArtifactRegistry() artifact.Registry {
+	if manifest.ArtifactRegistryURL != "" {
+		url, err := url.Parse(manifest.ArtifactRegistryURL)
+		if err != nil {
+			logging.DefaultLogger.WithError(err).Errorln("Unable to parse artifact registry URL for pod %s", manifest.ID())
+			return nil // This shouldn't block installation, we expect the client to fallback to some default
+		}
+		return artifact.NewRegistry(url, nil, nil)
+	}
+
+	return nil
 }
 
 func (manifest *manifest) GetLaunchableStanzas() map[launch.LaunchableID]launch.LaunchableStanza {

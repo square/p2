@@ -380,12 +380,26 @@ func (p *Preparer) resolvePair(pair ManifestPair, pod Pod, logger logging.Logger
 
 }
 
+// artifactRegistryFor allows for overriding the artifact registry for
+// installation (or otherwise) on a per manifest basis
+func (p *Preparer) artifactRegistryFor(manifest manifest.Manifest) artifact.Registry {
+	if manifest == nil {
+		return p.artifactRegistry
+	}
+	// TODO fetcher
+	if registry := manifest.GetArtifactRegistry(); registry != nil {
+		return registry
+	}
+	return p.artifactRegistry
+}
+
 func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger logging.Logger) bool {
 	p.tryRunHooks(hooks.BeforeInstall, pod, pair.Intent, logger)
 
 	logger.NoFields().Infoln("Installing pod and launchables")
 
-	err := pod.Install(pair.Intent, p.artifactVerifier, p.artifactRegistry)
+	registry := p.artifactRegistryFor(pair.Intent)
+	err := pod.Install(pair.Intent, p.artifactVerifier, registry)
 	if err != nil {
 		// install failed, abort and retry
 		logger.WithError(err).Errorln("Install failed")
