@@ -9,7 +9,10 @@ import (
 
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
+	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util/size"
+
+	"net/http"
 
 	. "github.com/anthonybishopric/gotcha"
 	"gopkg.in/yaml.v2"
@@ -88,6 +91,22 @@ c6o8YRrhIMGiWIA6rTDX53ruk93p7z/axKGJ0nonxJG3u7Be2MsPlYEavZLtKAg1
 QyB184dCJQnFbcQslyXDSR4Lal12NPvxbtK/4YYXZZVwf4hKCfVqvmG2zgwINDc=
 =IMbK
 -----END PGP SIGNATURE-----`
+}
+
+func testPodWithArtifactRegistryOverride() string {
+	return `id: thepod
+launchables:
+  my-app:
+    launchable_type: hoist
+    cgroup:
+      cpus: 4
+      memory: 1073741824
+    location: https://localhost:4444/foo/bar/baz.tar.gz
+config:
+  ENVIRONMENT: staging
+status_port: 8000
+artifact_registry: "https://www.example.com"
+`
 }
 
 func TestPodManifestCanBeWritten(t *testing.T) {
@@ -356,31 +375,14 @@ func TestSetConfigCopies(t *testing.T) {
 	Assert(t).AreEqual(manifestConfig["foo"], "bar", "Config values shouldn't have changed when mutating the original input due to deep copy")
 }
 
-func TestWriteResourceLimitsConfigWithResourceLimits(t *testing.T) {
-	builder := NewBuilder()
-	builder.SetResourceLimits(ResourceLimitsStanza{Cgroup: &cgroups.Config{CPUs: 1, Memory: 1024}})
-	manifest := builder.GetManifest()
-	buf := bytes.Buffer{}
-	err := manifest.WriteResourceLimitsConfig(&buf)
+func TestArtifactRegistryOverride(t *testing.T) {
+	rawManifest := testPodWithArtifactRegistryOverride()
+	manifest, err := FromBytes([]byte(rawManifest))
 	if err != nil {
-		t.Errorf("Unexpected error writing Resource Limits Config: %v", err)
+		t.Errorf("Unable to parse manifest: %v", err)
 	}
-	if len(buf.Bytes()) == 0 {
-		t.Error("Expected some resource limits config to be written but it wasn't")
+	registry := manifest.GetArtifactRegistry(uri.BasicFetcher{Client: http.DefaultClient})
+	if registry == nil {
+		t.Error("Expected registry override to occur, but didn't find one")
 	}
-
-}
-
-func TestWriteResourceLimitsConfigWithoutResourceLimits(t *testing.T) {
-	builder := NewBuilder()
-	manifest := builder.GetManifest()
-	buf := bytes.Buffer{}
-	err := manifest.WriteResourceLimitsConfig(&buf)
-	if err != nil {
-		t.Errorf("It should not have been an error to write ResourceLimits on a manifest without them, but: %v", err)
-	}
-	if len(buf.Bytes()) != 0 {
-		t.Error("Wrote some resource limits config file with nonsense contents (none provided in manifest)")
-	}
-
 }

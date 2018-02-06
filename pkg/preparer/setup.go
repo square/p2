@@ -86,6 +86,7 @@ type Preparer struct {
 	logBridgeBlacklist     []string
 	artifactVerifier       auth.ArtifactVerifier
 	artifactRegistry       artifact.Registry
+	fetcher                uri.Fetcher // cached (potentially nil) uri.Fetcher configured based on the preparer's manifest
 
 	// Exported so it can be checked for nil (it only runs if configured)
 	// and quit channel conditially created
@@ -538,6 +539,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		hooksManifest:          hooksManifest,
 		hooksPod:               hooksPod,
 		hooksExecDir:           preparerConfig.HooksDirectory,
+		fetcher:                fetcher,
 	}, nil
 }
 
@@ -741,7 +743,8 @@ func (p *Preparer) InstallHooks() error {
 	})
 
 	p.Logger.Infoln("Installing hook manifest")
-	err := p.hooksPod.Install(p.hooksManifest, p.artifactVerifier, p.artifactRegistry)
+	registry := p.artifactRegistryFor(p.hooksManifest)
+	err := p.hooksPod.Install(p.hooksManifest, p.artifactVerifier, registry)
 	if err != nil {
 		sub.WithError(err).Errorln("Could not install hook")
 		return err
