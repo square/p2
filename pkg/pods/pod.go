@@ -830,6 +830,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 		return ret.If(), nil
 	} else if *ExperimentalOpencontainer && launchableStanza.LaunchableType == "opencontainer" {
 		ret := &opencontainer.Launchable{
+			Version_:        version,
 			ID_:             launchableID,
 			ServiceID_:      serviceId,
 			RunAs:           runAsUser,
