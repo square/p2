@@ -146,7 +146,7 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 			p2exec.P2ExecArgs{ // TODO: support environment variables
 				NoLimits: true,
 				WorkDir:  l.InstallDir(),
-				Command:  []string{*RuncPath, "start"},
+				Command:  []string{*RuncPath, "run", serviceName},
 			}.CommandLine()...,
 		),
 	}}, nil
