@@ -4,10 +4,13 @@ import (
 	"os"
 )
 
-// These struct definitions are copied verbatim from "github.com/opencontainers/specs".
+// These struct definitions are copied verbatim from
+// https://github.com/opencontainers/runtime-spec/blob/master/specs-go/config.go.
 // The original source package includes Linux-specific structures configured to be
 // compiled only on Linux systems, making it unnecessarily difficult to develop P2 from
 // other environments.
+//
+// The version they were copied from is b2d941ef6a780da2d9982c1fb28d77ad97f54fc7
 //
 // This file only is Copyright 2015 Linux Foundation and is licensed under the Apache 2.0
 // license.
