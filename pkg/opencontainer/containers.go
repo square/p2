@@ -47,12 +47,12 @@ type Launchable struct {
 	Version_        launch.LaunchableVersionID // Version of the specified launchable
 	SuppliedEnvVars map[string]string          // User-supplied env variables
 
-	spec *LinuxSpec // The container's "config.json"
+	spec *Spec // The container's "config.json"
 }
 
 var _ launch.Launchable = &Launchable{}
 
-func (l *Launchable) getSpec() (*LinuxSpec, error) {
+func (l *Launchable) getSpec() (*Spec, error) {
 	if l.spec != nil {
 		return l.spec, nil
 	}
@@ -60,7 +60,7 @@ func (l *Launchable) getSpec() (*LinuxSpec, error) {
 	if err != nil {
 		return nil, err
 	}
-	var spec LinuxSpec
+	var spec Spec
 	err = json.Unmarshal(data, &spec)
 	if err != nil {
 		return nil, err
@@ -121,18 +121,11 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 	if err != nil {
 		return nil, util.Errorf("%s: loading container specification: %s", l.ServiceID_, err)
 	}
-	expectedPlatform := Platform{
-		OS:   "linux",
-		Arch: "amd64",
+
+	if lspec.Solaris != nil || lspec.Windows != nil {
+		return nil, util.Errorf("unsupported platform, only \"linux\" is supported")
 	}
-	if lspec.Platform != expectedPlatform {
-		return nil, util.Errorf(
-			"%s: unsupported container platform: %#v expected %#v",
-			l.ServiceID_,
-			lspec.Platform,
-			expectedPlatform,
-		)
-	}
+
 	if filepath.Base(lspec.Root.Path) != lspec.Root.Path {
 		return nil, util.Errorf("%s: invalid container root: %s", l.ServiceID_, lspec.Root.Path)
 	}
