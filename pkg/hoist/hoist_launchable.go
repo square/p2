@@ -261,7 +261,12 @@ func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv runit.SV) e
 	for _, executable := range executables {
 		var err error
 		if hl.RestartPolicy_ == runit.RestartPolicyAlways {
-			_, err = sv.Restart(&executable.Service, hl.RestartTimeout)
+			// TODO: can we use start always?
+			if hl.NoHaltOnUpdate_ {
+				_, err = sv.Start(&executable.Service)
+			} else {
+				_, err = sv.Restart(&executable.Service, hl.RestartTimeout)
+			}
 		} else {
 			_, err = sv.Once(&executable.Service)
 		}
