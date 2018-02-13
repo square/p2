@@ -21,6 +21,7 @@ type SV interface {
 	Stat(service *Service) (*StatResult, error)
 	Restart(service *Service, timeout time.Duration) (string, error)
 	Once(service *Service) (string, error)
+	ChownControlSocket(service *Service, uid int, gid int) error
 }
 
 type sv struct {
@@ -71,11 +72,29 @@ var (
 const DefaultTimeout = 7 * time.Second // This is runit's default wait period for commands that stop a process
 const SuperviseOKTimeout = 30 * time.Second
 
+func (sv *sv) ChownControlSocket(service *Service, uid int, gid int) error {
+	superviseOKPath := filepath.Join(service.Path, "supervise", "ok")
+	superviseControlPath := filepath.Join(service.Path, "supervise", "control")
+	err := os.Chown(superviseOKPath, uid, gid)
+	if err != nil {
+		return util.Errorf("could not chown %s to uid=%d gid=%d: %s", superviseOKPath, uid, gid, err)
+	}
+
+	err = os.Chown(superviseControlPath, uid, gid)
+	if err != nil {
+		return util.Errorf("could not chown %s to uid=%d gid=%d: %s", superviseControlPath, uid, gid, err)
+	}
+
+	return nil
+}
+
 func (sv *sv) waitForSupervision(service *Service) error {
+	superviseOKPath := filepath.Join(service.Path, "supervise", "ok")
+	superviseControlPath := filepath.Join(service.Path, "supervise", "control")
 	maxWait := time.After(SuperviseOKTimeout)
 	for {
-		if _, err := os.Stat(filepath.Join(service.Path, "supervise")); !os.IsNotExist(err) {
-			return nil
+		if _, err := os.Stat(superviseOKPath); !os.IsNotExist(err) {
+			break
 		}
 		select {
 		case <-maxWait:
@@ -84,6 +103,20 @@ func (sv *sv) waitForSupervision(service *Service) error {
 			// no op
 		}
 	}
+
+	for {
+		if _, err := os.Stat(superviseControlPath); !os.IsNotExist(err) {
+			break
+		}
+		select {
+		case <-maxWait:
+			return NotRunningTimeout
+		case <-time.After(150 * time.Millisecond):
+			// no op
+		}
+	}
+
+	return nil
 }
 
 func (sv *sv) execCmdOnService(service *Service, cmd *exec.Cmd) (string, error) {

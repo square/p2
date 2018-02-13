@@ -43,6 +43,8 @@ type Launchable struct {
 	P2Exec          string                     // The path to p2-exec
 	RestartTimeout  time.Duration              // How long to wait when restarting the services in this launchable.
 	RestartPolicy_  runit.RestartPolicy        // Dictates whether the container should be automatically restarted upon exit.
+	OwnerUid        int                        // The uid of the user that should be the owner of the runit control socket
+	OwnerGid        int                        // The uid of the user that should be the owner of the runit control socket
 	CgroupConfig    cgroups.Config             // Cgroup parameters to use with p2-exec
 	Version_        launch.LaunchableVersionID // Version of the specified launchable
 	SuppliedEnvVars map[string]string          // User-supplied env variables
@@ -244,6 +246,11 @@ func (l *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv runit.SV) er
 			_, err = sv.Once(&executable.Service)
 		}
 		if err != nil && err != runit.SuperviseOkMissing {
+			return err
+		}
+
+		err = sv.ChownControlSocket(&executable.Service, l.OwnerUid, l.OwnerGid)
+		if err != nil {
 			return err
 		}
 	}

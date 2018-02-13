@@ -46,6 +46,8 @@ type Launchable struct {
 	ServiceId        string                     // A (host-wise) unique identifier for this launchable, used when creating runit services
 	RunAs            string                     // The user to assume when launching the executable
 	OwnAs            string                     // The user that owns all the launcable's artifacts
+	OwnerGid         int                        // The gid of the OwnAs user
+	OwnerUid         int                        // The uid of the OwnAs user
 	PodEnvDir        string                     // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
 	RootDir          string                     // The root directory of the launchable, containing N:N>=1 installs.
 	P2Exec           string                     // Struct that can be used to build a p2-exec invocation with appropriate flags
@@ -276,6 +278,11 @@ func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv runit.SV) e
 			_, err = sv.Once(&executable.Service)
 		}
 		if err != nil && err != runit.SuperviseOkMissing && err != runit.Killed {
+			return err
+		}
+
+		err = sv.ChownControlSocket(&executable.Service, hl.OwnerUid, hl.OwnerGid)
+		if err != nil {
 			return err
 		}
 

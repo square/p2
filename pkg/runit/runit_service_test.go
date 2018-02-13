@@ -19,7 +19,7 @@ func TestRunitServicesCanBeStarted(t *testing.T) {
 
 	defer os.RemoveAll(tmpdir)
 
-	sv := FakeSV()
+	sv := FakeSV(false)
 	service := &Service{tmpdir, "foo"}
 	out, err := sv.Start(service)
 	Assert(t).IsNil(err, "There should not have been an error starting the service")
@@ -34,7 +34,7 @@ func TestRunitServicesCanBeOnced(t *testing.T) {
 
 	defer os.RemoveAll(tmpdir)
 
-	sv := FakeSV()
+	sv := FakeSV(false)
 	service := &Service{tmpdir, "foo"}
 	out, err := sv.Once(service)
 	Assert(t).IsNil(err, "There should not have been an error running 'once' for the service")

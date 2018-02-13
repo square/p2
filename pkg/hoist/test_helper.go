@@ -7,6 +7,7 @@ import (
 	"runtime"
 
 	"github.com/square/p2/pkg/runit"
+	ouruser "github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -40,6 +41,9 @@ func fakeHoistLaunchableForDir(dirName string, isUUIDPod bool) (*Launchable, *ru
 	curUser, err := user.Current()
 	if err == nil {
 		launchable.RunAs = curUser.Username
+		uid, gid, _ := ouruser.IDs(launchable.RunAs)
+		launchable.OwnerUid = uid
+		launchable.OwnerGid = gid
 	}
 
 	sbTemp, _ := ioutil.TempDir("", "fakesvdir")

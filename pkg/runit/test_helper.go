@@ -10,8 +10,44 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
-func FakeSV() SV {
-	return &sv{util.From(runtime.Caller(0)).ExpandPath("fake_sv")}
+type fakeSV struct {
+	inner          *sv
+	shouldErrChown bool
+}
+
+func (f fakeSV) ChownControlSocket(service *Service, uid int, gid int) error {
+	if f.shouldErrChown {
+		return util.Errorf("the chown blew up!")
+	}
+
+	return nil
+}
+
+func (f fakeSV) Start(service *Service) (string, error) {
+	return f.inner.Start(service)
+}
+
+func (f fakeSV) Stop(service *Service, timeout time.Duration) (string, error) {
+	return f.inner.Stop(service, timeout)
+}
+
+func (f fakeSV) Stat(service *Service) (*StatResult, error) {
+	return f.inner.Stat(service)
+}
+
+func (f fakeSV) Restart(service *Service, timeout time.Duration) (string, error) {
+	return f.inner.Restart(service, timeout)
+}
+
+func (f fakeSV) Once(service *Service) (string, error) {
+	return f.inner.Once(service)
+}
+
+func FakeSV(shouldErrChown bool) SV {
+	return fakeSV{
+		inner:          &sv{util.From(runtime.Caller(0)).ExpandPath("fake_sv")},
+		shouldErrChown: shouldErrChown,
+	}
 }
 
 func ErringSV() SV {
@@ -28,6 +64,10 @@ type RecordingSV struct {
 
 func (r *RecordingSV) LastCommand() string {
 	return r.Commands[len(r.Commands)-1]
+}
+
+func (r *RecordingSV) ChownControlSocket(service *Service, uid int, gid int) error {
+	return nil
 }
 
 func (r *RecordingSV) recordCommand(command string) (string, error) {

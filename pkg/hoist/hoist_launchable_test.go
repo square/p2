@@ -342,7 +342,7 @@ func TestStart(t *testing.T) {
 	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
 	hl, sb := FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
-	sv := runit.FakeSV()
+	sv := runit.FakeSV(false)
 	executables, err := hl.Executables(sb)
 	outFilePath := path.Join(sb.ConfigRoot, "testPod__testLaunchable.yaml")
 
@@ -363,7 +363,6 @@ func TestStart(t *testing.T) {
 	err = hl.start(sb, sv)
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to start runit services")
-
 }
 
 func TestFailingStart(t *testing.T) {
@@ -393,12 +392,39 @@ func TestFailingStart(t *testing.T) {
 	Assert(t).IsNotNil(err, "Expected an error starting runit services")
 }
 
+func TestFailingChown(t *testing.T) {
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+	sv := runit.FakeSV(true)
+	executables, err := hl.Executables(sb)
+	outFilePath := path.Join(sb.ConfigRoot, "testPod__testLaunchable.yaml")
+
+	sbContentsMap := map[string]interface{}{
+		executables[0].Service.Name: map[string]interface{}{
+			"run": executables[0].Exec,
+		},
+		executables[1].Service.Name: map[string]interface{}{
+			"run": executables[1].Exec,
+		},
+	}
+	sbContents, err := yaml.Marshal(sbContentsMap)
+	Assert(t).IsNil(err, "should have no error marshalling servicebuilder map")
+	f, err := os.Open(outFilePath)
+	defer f.Close()
+	f.Write(sbContents)
+
+	err = hl.start(sb, sv)
+
+	Assert(t).IsNotNil(err, "Expected start() to fail if the chown fails")
+}
+
 func TestStop(t *testing.T) {
 	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
 	hl, sb := FakeHoistLaunchableForDirLegacyPod("multiple_script_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
-	sv := runit.FakeSV()
+	sv := runit.FakeSV(false)
 	err := hl.stop(sb, sv)
 
 	Assert(t).IsNil(err, "Got an unexpected error when attempting to stop runit services")
@@ -437,7 +463,7 @@ func TestLaunchWithFailingEnable(t *testing.T) {
 	hl, sb := FakeHoistLaunchableForDirLegacyPod("failing_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
-	sv := runit.FakeSV()
+	sv := runit.FakeSV(false)
 	err := hl.Launch(sb, sv)
 	Assert(t).IsNotNil(err, "Expected error while launching")
 	_, ok := err.(launch.EnableError)
@@ -451,7 +477,7 @@ func TestLaunchWithPassingEnable(t *testing.T) {
 	hl, sb := FakeHoistLaunchableForDirLegacyPod("successful_scripts_test_hoist_launchable")
 	defer CleanupFakeLaunchable(hl, sb)
 
-	sv := runit.FakeSV()
+	sv := runit.FakeSV(false)
 	err := hl.Launch(sb, sv)
 	Assert(t).IsNil(err, "Expected launch to succeed")
 }

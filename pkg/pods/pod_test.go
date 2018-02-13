@@ -87,7 +87,16 @@ func TestGetLaunchableNoVersion(t *testing.T) {
 		LaunchableType: "hoist",
 	}
 	pod := getTestPod()
-	l, _ := pod.getLaunchable("somelaunchable", launchableStanza, "foouser", "foouser")
+
+	user, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	l, err := pod.getLaunchable("somelaunchable", launchableStanza, user.Username, user.Username)
+	if err != nil {
+		t.Fatal(err)
+	}
 	launchable := l.(hoist.LaunchAdapter).Launchable
 
 	if launchable.Id != "somelaunchable" {
@@ -98,7 +107,7 @@ func TestGetLaunchableNoVersion(t *testing.T) {
 		t.Errorf("Launchable version should have been empty, was '%s'", launchable.Version)
 	}
 	Assert(t).AreEqual("hello__somelaunchable", launchable.ServiceId, "Launchable ServiceId did not have expected value")
-	Assert(t).AreEqual("foouser", launchable.RunAs, "Launchable run as did not have expected username")
+	Assert(t).AreEqual(user.Username, launchable.RunAs, "Launchable run as did not have expected username")
 	Assert(t).IsTrue(launchable.ExecNoLimit, "GetLaunchable() should always set ExecNoLimit to true for hoist launchables")
 	Assert(t).AreEqual(launchable.RestartPolicy(), runit.RestartPolicyAlways, "Default RestartPolicy for a launchable should be 'always'")
 }
@@ -418,6 +427,16 @@ func TestUninstall(t *testing.T) {
 	}
 	pod.subsystemer = &FakeSubsystemer{}
 	manifest := getTestPodManifest(t)
+
+	user, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// override the run as user because the user has to actually exist
+	builder := manifest.GetBuilder()
+	builder.SetRunAsUser(user.Username)
+	manifest = builder.GetManifest()
 	manifestContent, err := manifest.Marshal()
 	Assert(t).IsNil(err, "couldn't get manifest bytes")
 	err = ioutil.WriteFile(pod.currentPodManifestPath(), manifestContent, 0744)
