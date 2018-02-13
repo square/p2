@@ -96,6 +96,14 @@ func TestStagedContents(t *testing.T) {
 	_, err = os.Stat(filepath.Join(sb.StagingRoot, "foo", "down"))
 	Assert(t).IsNotNil(err, "down file should not have existed when restart policy is 'always'")
 	Assert(t).IsTrue(os.IsNotExist(err), "down file should not have existed when restart policy is 'always'")
+
+	info, err = os.Stat(filepath.Join(sb.StagingRoot, "foo", "supervise"))
+	Assert(t).IsNil(err, "supervise directy should have existed")
+	Assert(t).IsTrue(info.IsDir(), "supervise directory should be a directory")
+
+	if (info.Mode() & os.ModePerm) != 0755 {
+		t.Errorf("expected supervise directory to have perms of 0755 but was %s", info.Mode()&os.ModePerm)
+	}
 }
 
 func TestDownFile(t *testing.T) {

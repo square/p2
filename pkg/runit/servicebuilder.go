@@ -227,6 +227,16 @@ func (s *ServiceBuilder) stage(templates map[string]ServiceTemplate) error {
 			return err
 		}
 
+		// creating the supervise directory isn't necessary, but if
+		// runit itself is allowed to create it it will have perms of
+		// 700, which won't allow the pod's user to access the files
+		// inside of it (e.g. control socket, pid file)
+		superviseDir := filepath.Join(stageDir, "supervise")
+		err = os.MkdirAll(superviseDir, 0755)
+		if err != nil {
+			return err
+		}
+
 		runScript, err := template.runScript()
 		if err != nil {
 			return err
