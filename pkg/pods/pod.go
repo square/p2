@@ -130,7 +130,7 @@ func (pod *Pod) CurrentManifest() (manifest.Manifest, error) {
 	return dmf.Find(*pod)
 }
 
-func (pod *Pod) Halt(manifest manifest.Manifest) (bool, error) {
+func (pod *Pod) Halt(manifest manifest.Manifest, force bool) (bool, error) {
 	launchables, err := pod.Launchables(manifest)
 	if err != nil {
 		return false, err
@@ -149,7 +149,7 @@ func (pod *Pod) Halt(manifest manifest.Manifest) (bool, error) {
 		}
 	}
 	for _, launchable := range launchables {
-		err = launchable.Stop(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
+		err = launchable.Stop(runit.DefaultBuilder, runit.DefaultSV, force) // TODO: make these configurable
 		if err != nil {
 			pod.logLaunchableError(launchable.ServiceID(), err, "Could not stop launchable")
 			success = false
@@ -383,7 +383,7 @@ func (pod *Pod) Uninstall() error {
 	switch {
 	case err == nil:
 		// If we found the manifest, gracefully halt all the launchables.
-		err = pod.disableAndHaltLaunchables(currentManifest)
+		err = pod.disableAndForceHaltLaunchables(currentManifest)
 		if err != nil {
 			return err
 		}
@@ -825,6 +825,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			EntryPoints:      entryPoints,
 			IsUUIDPod:        pod.uniqueKey != "",
 			RequireFile:      pod.RequireFile,
+			NoHaltOnUpdate_:  launchableStanza.NoHaltOnUpdate,
 		}
 		ret.CgroupConfig.Name = cgroups.CgroupID(ret.ServiceId)
 		return ret.If(), nil
@@ -849,7 +850,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 	}
 }
 
-func (pod *Pod) disableAndHaltLaunchables(currentManifest manifest.Manifest) error {
+func (pod *Pod) disableAndForceHaltLaunchables(currentManifest manifest.Manifest) error {
 	launchables, err := pod.Launchables(currentManifest)
 	if err != nil {
 		return err
@@ -868,7 +869,10 @@ func (pod *Pod) disableAndHaltLaunchables(currentManifest manifest.Manifest) err
 
 	// halt launchables
 	for _, launchable := range launchables {
-		err = launchable.Stop(runit.DefaultBuilder, runit.DefaultSV) // TODO: make these configurable
+		// This function has "force" in the name, and also it's only called
+		// when uninstalling a pod, so we should force processes to stop
+		force := true
+		err = launchable.Stop(runit.DefaultBuilder, runit.DefaultSV, force) // TODO: make these configurable
 		if err != nil {
 			pod.logLaunchableWarning(launchable.ServiceID(), err, "Could not stop launchable during uninstallation")
 		}

@@ -119,7 +119,9 @@ func main() {
 
 	logger.NoFields().Infoln("Halting pod")
 
-	ok, err := pod.Halt(manifest)
+	// An operator is stopping the pod, don't allow the manifest to decide not to stop a launchable
+	forceHalt := true
+	ok, err := pod.Halt(manifest, forceHalt)
 	if err != nil {
 		logger.WithError(err).Fatalln("Could not halt pod")
 	} else if !ok {

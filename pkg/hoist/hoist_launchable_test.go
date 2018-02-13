@@ -462,7 +462,7 @@ func TestStopWithFailure(t *testing.T) {
 	defer CleanupFakeLaunchable(hl, sb)
 
 	sv := runit.ErringSV()
-	err := hl.Stop(sb, sv)
+	err := hl.Stop(sb, sv, false)
 	Assert(t).IsNotNil(err, "Expected error while halting")
 	_, ok := err.(launch.StopError)
 	Assert(t).IsTrue(ok, "Expected stop error to be returned")
@@ -513,6 +513,43 @@ func TestRestartIfRestartAlways(t *testing.T) {
 	err := hl.Launch(sb, sv)
 	Assert(t).IsNil(err, "Unexpected error when launching")
 	Assert(t).AreEqual(sv.(*runit.RecordingSV).LastCommand(), "restart", "Expected 'restart' command to be used for a launchable with RestartPolicyAlways")
+}
+
+func TestNotStoppedIfNoHaltOnUpdate(t *testing.T) {
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("successful_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+
+	hl.NoHaltOnUpdate_ = true
+
+	sv := runit.NewRecordingSV()
+	err := hl.Stop(sb, sv, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(sv.(*runit.RecordingSV).Commands) != 0 {
+		t.Errorf("expected no sv commands to be sent when Stop() is called on a launchable that set NoHaltOnUpdate_ and force=false but found %s", sv.(*runit.RecordingSV).LastCommand())
+	}
+}
+
+func TestStoppedIfNoHaltOnUpdateAndForce(t *testing.T) {
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("successful_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+
+	hl.NoHaltOnUpdate_ = true
+
+	sv := runit.NewRecordingSV()
+	err := hl.Stop(sb, sv, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(sv.(*runit.RecordingSV).Commands) == 0 {
+		t.Error("expected sv stop to be called even if the launchable has NoHaltOnUpdate_ set if the force flag is set, but no sv commands were issued")
+	}
+	if sv.(*runit.RecordingSV).LastCommand() != "stop" {
+		t.Errorf("expected last command to be \"stop\" but was %q", sv.(*runit.RecordingSV).LastCommand())
+	}
 }
 
 func TestRestartServiceAndLogAgent(t *testing.T) {

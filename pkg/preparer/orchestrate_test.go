@@ -26,10 +26,10 @@ import (
 )
 
 type TestPod struct {
-	currentManifest                                                      manifest.Manifest
-	installed, uninstalled, launched, launchSuccess, halted, haltSuccess bool
-	installErr, uninstallErr, launchErr, haltError, currentManifestError error
-	configDir, envDir                                                    string
+	currentManifest                                                                   manifest.Manifest
+	installed, uninstalled, launched, launchSuccess, halted, haltSuccess, forceHalted bool
+	installErr, uninstallErr, launchErr, haltError, currentManifestError              error
+	configDir, envDir                                                                 string
 }
 
 func (t *TestPod) Prune(_ size.ByteCount, _ manifest.Manifest) {
@@ -63,8 +63,9 @@ func (t *TestPod) Verify(manifest manifest.Manifest, authPolicy auth.Policy) err
 	return nil
 }
 
-func (t *TestPod) Halt(manifest manifest.Manifest) (bool, error) {
+func (t *TestPod) Halt(manifest manifest.Manifest, forceHalt bool) (bool, error) {
 	t.halted = true
+	t.forceHalted = forceHalt
 	return t.haltSuccess, t.haltError
 }
 
@@ -263,6 +264,8 @@ func TestPreparerLaunchesPodsThatHaveDifferentSHAs(t *testing.T) {
 	Assert(t).IsTrue(success, "should have succeeded")
 	Assert(t).IsTrue(testPod.installed, "should have installed")
 	Assert(t).IsTrue(testPod.launched, "should have launched")
+	Assert(t).IsTrue(testPod.halted, "should have halted")
+	Assert(t).IsFalse(testPod.forceHalted, "should not have force halted")
 	Assert(t).IsTrue(hooks.ranBeforeInstall, "before install should have ran")
 	Assert(t).IsTrue(hooks.ranAfterLaunch, "after launch should have ran")
 	Assert(t).AreEqual(newManifest, testPod.currentManifest, "the current manifest should now be the new manifest")
@@ -359,6 +362,7 @@ func TestPreparerWillRemoveIfManifestDisappears(t *testing.T) {
 	Assert(t).IsTrue(success, "Should have successfully removed pod")
 	Assert(t).IsTrue(testPod.uninstalled, "Should have uninstalled pod")
 	Assert(t).IsTrue(testPod.halted, "Should have halted pod")
+	Assert(t).IsTrue(testPod.forceHalted, "Should have force halted pod")
 	Assert(t).IsTrue(hooks.ranBeforeUninstall, "Should have ran uninstall hooks")
 }
 
