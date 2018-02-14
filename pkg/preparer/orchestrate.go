@@ -37,7 +37,7 @@ type Pod interface {
 	Install(manifest.Manifest, auth.ArtifactVerifier, artifact.Registry) error
 	Uninstall() error
 	Verify(manifest.Manifest, auth.Policy) error
-	Halt(manifest.Manifest) (bool, error)
+	Halt(man manifest.Manifest, force bool) (bool, error)
 	Prune(size.ByteCount, manifest.Manifest)
 }
 
@@ -419,8 +419,12 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 	p.tryRunHooks(hooks.AfterInstall, pod, pair.Intent, logger)
 
 	if pair.Reality != nil {
+		// installAndLaunchPod implies that something was in intent, so let
+		// launchables decide whether they want to be halted
+		force := false
+
 		logger.NoFields().Infoln("Invoking the disable hook and halting runit services")
-		success, err := pod.Halt(pair.Reality)
+		success, err := pod.Halt(pair.Reality, force)
 		if err != nil {
 			logger.WithError(err).
 				Errorln("Pod halt failed")
@@ -508,7 +512,9 @@ func (p *Preparer) writeStatusRecord(pair ManifestPair, logger logging.Logger) e
 }
 
 func (p *Preparer) stopAndUninstallPod(pair ManifestPair, pod Pod, logger logging.Logger) bool {
-	success, err := pod.Halt(pair.Reality)
+	// We're uninstalling a pod from the system, so force the process(es) to be stopped
+	force := true
+	success, err := pod.Halt(pair.Reality, force)
 	if err != nil {
 		logger.WithError(err).Errorln("Pod halt failed")
 	} else if !success {

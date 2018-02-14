@@ -49,6 +49,16 @@ type LaunchableStanza struct {
 	// "always".
 	RestartPolicy_ runit.RestartPolicy `yaml:"restart_policy,omitempty"`
 
+	// NoHaltOnUpdate instructs the preparer to skip stopping the
+	// launchable's processes when it is being updated. This is useful for
+	// processes that are designed to be updated via binary overwrite and
+	// SIGHUP for example.
+	// NOTE: under certain circumstances the process still might be
+	// stopped, for example if a host operator calls p2-shutdown
+	// NOTE: P2 does not arrange for signals to your app to signify update,
+	// that should be implemented by the pod itself via bin/post-activate
+	NoHaltOnUpdate bool `yaml:"no_halt_on_update,omitempty"`
+
 	// Specifies which files or directories (relative to launchable root)
 	// should be launched under runit. Only launchables of type "hoist"
 	// make use of this field, and if empty, a default of ["bin/launch"]
@@ -149,7 +159,7 @@ type Launchable interface {
 	// Disable allows a launchable to stop work and do cleanup prior to Stop
 	Disable() error
 	// Stop stops execution.
-	Stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error
+	Stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV, force bool) error
 	// MakeCurrent adjusts a "current" symlink for this launchable name to point to this
 	// launchable's version.
 	MakeCurrent() error

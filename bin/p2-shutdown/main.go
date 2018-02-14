@@ -56,6 +56,10 @@ func main() {
 		podsToShutdown = append(podsToShutdown, types.PodID(pod))
 	}
 
+	// An operator is taking the machine out of service, force all services
+	// to shut down regardless of manifest settings
+	forceHalt := true
+
 	// TODO: configure a proper http client instead of using default fetcher
 	podFactory := pods.NewFactory(*podRoot, node, uri.DefaultFetcher, "")
 	var haltWG sync.WaitGroup
@@ -74,7 +78,7 @@ func main() {
 		// Halt in the background because Halt() waits for lifecycle scripts
 		go func(man manifest.Manifest, podID types.PodID) {
 			defer haltWG.Done()
-			success, err := pod.Halt(man)
+			success, err := pod.Halt(man, forceHalt)
 			if !success {
 				log.Printf("[ERROR]: at least one launchable of %s did not halt successfully.", podID)
 			}

@@ -57,6 +57,7 @@ type Launchable struct {
 	RequireFile      string                     // Do not run this launchable until this file exists
 	RestartTimeout   time.Duration              // How long to wait when restarting the services in this launchable.
 	RestartPolicy_   runit.RestartPolicy        // Dictates whether the launchable should be automatically restarted upon exit.
+	NoHaltOnUpdate_  bool                       // If set, the launchable's process(es) should not be stopped if the pod is being updated (it will arrange for its own signaling)
 	SuppliedEnvVars  map[string]string          // A map of user-supplied environment variables to be exported for this launchable
 	Location         *url.URL                   // URL to download the artifact from
 	VerificationData auth.VerificationData      // Paths to files used to verify the artifact
@@ -117,7 +118,11 @@ func (hl *Launchable) Disable() error {
 	return nil
 }
 
-func (hl *Launchable) Stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
+func (hl *Launchable) Stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV, force bool) error {
+	if hl.NoHaltOnUpdate_ && !force {
+		return nil
+	}
+
 	stopErr := hl.stop(serviceBuilder, sv)
 	// We still want to update the "last" symlink even if there was an
 	// error during stop()
@@ -261,7 +266,12 @@ func (hl *Launchable) start(serviceBuilder *runit.ServiceBuilder, sv runit.SV) e
 	for _, executable := range executables {
 		var err error
 		if hl.RestartPolicy_ == runit.RestartPolicyAlways {
-			_, err = sv.Restart(&executable.Service, hl.RestartTimeout)
+			// TODO: can we use start always?
+			if hl.NoHaltOnUpdate_ {
+				_, err = sv.Start(&executable.Service)
+			} else {
+				_, err = sv.Restart(&executable.Service, hl.RestartTimeout)
+			}
 		} else {
 			_, err = sv.Once(&executable.Service)
 		}

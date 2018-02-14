@@ -291,7 +291,7 @@ func (l *Launchable) Disable() error {
 }
 
 // Halt causes the launchable to halt execution if it is running.
-func (l *Launchable) Stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
+func (l *Launchable) Stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV, _ bool) error {
 	err := l.stop(serviceBuilder, sv)
 	if err != nil {
 		return launch.StopError{Inner: err}
