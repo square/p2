@@ -20,6 +20,7 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
+	"github.com/square/p2/pkg/util/param"
 )
 
 type EntryPoints struct {
@@ -32,6 +33,10 @@ type EntryPoints struct {
 	// if and only if it was listed explicitly
 	Implicit bool
 }
+
+// IncludePodIDArg will include a --podID argument to p2-exec.
+// Delaying the use of this argument from the rollout of the binary that understands it allows for n-1 version compatibility
+var IncludePodIDArg = param.Bool("include_pod_id_arg", false)
 
 // A HoistLaunchable represents a particular install of a hoist artifact.
 type Launchable struct {
@@ -374,9 +379,11 @@ func (hl *Launchable) Executables(
 				ExtraEnv:         map[string]string{launch.EntryPointEnvVar: relativePath},
 				NoLimits:         hl.ExecNoLimit,
 				CgroupConfigName: hl.CgroupConfigName,
-				PodID:            &hl.PodID,
 				CgroupName:       hl.CgroupName,
 				RequireFile:      hl.RequireFile,
+			}
+			if *IncludePodIDArg {
+				p2ExecArgs.PodID = &hl.PodID
 			}
 			execCmd := append([]string{hl.P2Exec}, p2ExecArgs.CommandLine()...)
 
