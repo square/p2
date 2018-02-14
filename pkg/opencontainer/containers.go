@@ -9,7 +9,6 @@ package opencontainer
 import (
 	"encoding/json"
 	"io/ioutil"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,23 +36,23 @@ var RuncPath = param.String("runc_path", "/usr/local/bin/runc")
 
 // Launchable represents an installation of a container.
 type Launchable struct {
-	Location        *url.URL            // A URL where we can download the artifact from.
-	ID_             launch.LaunchableID // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
-	ServiceID_      string              // A (host-wise) unique identifier for this launchable, used when creating runit services
-	RunAs           string              // The user to assume when launching the executable
-	RootDir         string              // The root directory of the launchable, containing N:N>=1 installs.
-	P2Exec          string              // The path to p2-exec
-	RestartTimeout  time.Duration       // How long to wait when restarting the services in this launchable.
-	RestartPolicy_  runit.RestartPolicy // Dictates whether the container should be automatically restarted upon exit.
-	CgroupConfig    cgroups.Config      // Cgroup parameters to use with p2-exec
-	SuppliedEnvVars map[string]string   // User-supplied env variables
+	ID_             launch.LaunchableID        // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
+	ServiceID_      string                     // A (host-wise) unique identifier for this launchable, used when creating runit services
+	RunAs           string                     // The user to assume when launching the executable
+	RootDir         string                     // The root directory of the launchable, containing N:N>=1 installs.
+	P2Exec          string                     // The path to p2-exec
+	RestartTimeout  time.Duration              // How long to wait when restarting the services in this launchable.
+	RestartPolicy_  runit.RestartPolicy        // Dictates whether the container should be automatically restarted upon exit.
+	CgroupConfig    cgroups.Config             // Cgroup parameters to use with p2-exec
+	Version_        launch.LaunchableVersionID // Version of the specified launchable
+	SuppliedEnvVars map[string]string          // User-supplied env variables
 
-	spec *LinuxSpec // The container's "config.json"
+	spec *Spec // The container's "config.json"
 }
 
 var _ launch.Launchable = &Launchable{}
 
-func (l *Launchable) getSpec() (*LinuxSpec, error) {
+func (l *Launchable) getSpec() (*Spec, error) {
 	if l.spec != nil {
 		return l.spec, nil
 	}
@@ -61,7 +60,7 @@ func (l *Launchable) getSpec() (*LinuxSpec, error) {
 	if err != nil {
 		return nil, err
 	}
-	var spec LinuxSpec
+	var spec Spec
 	err = json.Unmarshal(data, &spec)
 	if err != nil {
 		return nil, err
@@ -86,8 +85,7 @@ func (l *Launchable) EnvVars() map[string]string {
 // The version of the artifact is currently derived from the location, using
 // the naming scheme <the-app>_<unique-version-string>.tar.gz
 func (hl *Launchable) Version() string {
-	fileName := filepath.Base(hl.Location.Path)
-	return fileName[:len(fileName)-len(".tar.gz")]
+	return hl.Version_.String()
 }
 
 func (*Launchable) Type() string {
@@ -123,18 +121,11 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 	if err != nil {
 		return nil, util.Errorf("%s: loading container specification: %s", l.ServiceID_, err)
 	}
-	expectedPlatform := Platform{
-		OS:   "linux",
-		Arch: "amd64",
+
+	if lspec.Solaris != nil || lspec.Windows != nil {
+		return nil, util.Errorf("unsupported platform, only \"linux\" is supported")
 	}
-	if lspec.Platform != expectedPlatform {
-		return nil, util.Errorf(
-			"%s: unsupported container platform: %#v expected %#v",
-			l.ServiceID_,
-			lspec.Platform,
-			expectedPlatform,
-		)
-	}
+
 	if filepath.Base(lspec.Root.Path) != lspec.Root.Path {
 		return nil, util.Errorf("%s: invalid container root: %s", l.ServiceID_, lspec.Root.Path)
 	}
@@ -155,7 +146,7 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 			p2exec.P2ExecArgs{ // TODO: support environment variables
 				NoLimits: true,
 				WorkDir:  l.InstallDir(),
-				Command:  []string{*RuncPath, "start"},
+				Command:  []string{*RuncPath, "run", serviceName},
 			}.CommandLine()...,
 		),
 	}}, nil
