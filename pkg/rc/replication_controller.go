@@ -1193,23 +1193,14 @@ func (rc *replicationController) checkMissingArtifacts(rcFields fields.RC) {
 		}
 		if !exists {
 			hostname, _ := os.Hostname()
-			if err := rc.alerter.Alert(alerting.AlertInfo{
-				Description: fmt.Sprintf("This RC is missing an artifact at url %s for launchable id %s", artifactUrl, launchableID),
-				IncidentKey: fmt.Sprintf("%s-missing_artifact", rcFields.ID.String()),
-				Details: struct {
-					RCID         string `json:"rc_id"`
-					Hostname     string `json:"hostname"`
-					PodId        string `json:"pod_id"`
-					NodeSelector string `json:"node_selector"`
-				}{
-					RCID:         rcFields.ID.String(),
-					Hostname:     hostname,
-					PodId:        rcFields.Manifest.ID().String(),
-					NodeSelector: rcFields.NodeSelector.String(),
-				},
-			}, alerting.LowUrgency); err != nil {
-				rc.logger.WithError(err).Errorln("Unable to deliver alert!")
-			}
+			rc.logger.WithFields(logrus.Fields{
+				"Description":  fmt.Sprintf("This RC is missing an artifact at url %s for launchable id %s", artifactUrl, launchableID),
+				"IncidentKey":  fmt.Sprintf("%s-missing_artifact", rcFields.ID.String()),
+				"RCID":         rcFields.ID.String(),
+				"Hostname":     hostname,
+				"PodId":        rcFields.Manifest.ID().String(),
+				"NodeSelector": rcFields.NodeSelector.String(),
+			}).Errorln("RC references artifact not available in the registry")
 		}
 	}
 }
