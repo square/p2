@@ -213,7 +213,7 @@ func NewFarm(
 
 // Start is a blocking function that monitors Consul for updates. The Farm will
 // attempt to claim updates as they appear and, if successful, will start
-// goroutines for those updatesto do their job. Closing the quit channel will
+// goroutines for those updates to do their job. Closing the quit channel will
 // cause this function to return, releasing all locks it holds.
 //
 // Start is not safe for concurrent execution. Do not execute multiple
@@ -314,6 +314,8 @@ START_LOOP:
 
 				// at this point the ru is ours, time to spin it up
 				rlLogger.WithField("new_rc", rlField.ID()).Infof("Acquired lock on update %s -> %s, spawning", rlField.OldRC, rlField.ID())
+				// record ru convergence time
+				startTime := time.Now()
 
 				newChild := rlf.factory.New(rlField, rlLogger, rlf.session)
 				childCtx, cancel := context.WithCancel(context.Background())
@@ -346,6 +348,14 @@ START_LOOP:
 
 				newRC := rlField.NewRC
 				go func(id roll_fields.ID) {
+					defer func() {
+						endTime := time.Now()
+						processingTime := endTime.Sub(startTime)
+						rlf.logger.WithField("ru_processing_time", processingTime.String()).Infoln("Finished processing rolling update")
+						ruProcessingTimeHistogram := metrics.GetOrRegisterHistogram("ru_processing_time", p2metrics.Registry, metrics.NewExpDecaySample(1028, 0.015))
+						ruProcessingTimeHistogram.Update(int64(processingTime))
+					}()
+
 					defer func() {
 						if r := recover(); r != nil {
 							err := util.Errorf("Caught panic in roll farm: %s", r)

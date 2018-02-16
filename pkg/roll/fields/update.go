@@ -27,8 +27,8 @@ type Update struct {
 	//
 	// The acceptable value of Minimum is subject to several constraints:
 	//   - the update will not even start until the minimum is satisfied, so if
-	//     the current number of live nodes is than the minimum, it will block
-	//     forever.
+	//     the current number of live nodes is less than the minimum, it will
+	//     block forever.
 	//   - the rollout algorithm assumes that scheduling a new pod may halt an
 	//     old one. For example, launchables based on hoist artifacts have this
 	//     behavior. Therefore, if the current number of live nodes is the same
