@@ -29,9 +29,6 @@ import (
 // The name of the OpenContainer spec file in the container's root.
 const SpecFilename = "config.json"
 
-// The name of the OpenContainer runtime spec.
-const RuntimeSpecFilename = "runtime.json"
-
 // RuncPath is the full path of the "runc" binary.
 var RuncPath = param.String("runc_path", "/usr/local/bin/runc")
 
@@ -177,23 +174,7 @@ func (l *Launchable) Installed() bool {
 
 // Install ...
 func (l *Launchable) PostInstall() (returnedError error) {
-	if l.Installed() {
-		return nil
-	}
-
-	if _, err := l.getSpec(); err != nil {
-		return err
-	}
-
-	// Construct the host-specific configuration... This is probably the wrong place for this
-	// code because the container cgroup settings depend on the manifest.
-	runSpecPath := filepath.Join(l.InstallDir(), RuntimeSpecFilename)
-	runSpec := DefaultRuntimeSpec
-	runSpecData, err := json.Marshal(runSpec)
-	if err != nil {
-		return err
-	}
-	return ioutil.WriteFile(runSpecPath, runSpecData, 0444)
+	return nil
 }
 
 // PostActive runs a Hoist-specific "post-activate" script in the launchable.
