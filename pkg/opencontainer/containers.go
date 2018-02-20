@@ -16,6 +16,7 @@ import (
 
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
+	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
@@ -135,7 +136,22 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 			l.ServiceID_, l.RunAs, uid, gid, luser.UID, luser.GID)
 	}
 
+	runcConfig, err := GetConfig(osversion.DefaultDetector)
+	if err != nil {
+		return nil, err
+	}
+
+	runcArgs := []string{*RuncPath}
+	if runcConfig.Root != "" {
+		runcArgs = append(runcArgs, "--root", runcConfig.Root)
+	}
+	runcArgs = append(runcArgs, "run")
+	if runcConfig.NoNewKeyring {
+		runcArgs = append(runcArgs, "--no-new-keyring")
+	}
 	serviceName := l.ServiceID_ + "__container"
+	runcArgs = append(runcArgs, serviceName)
+
 	return []launch.Executable{{
 		Service: runit.Service{
 			Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
@@ -146,7 +162,7 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 			p2exec.P2ExecArgs{ // TODO: support environment variables
 				NoLimits: true,
 				WorkDir:  l.InstallDir(),
-				Command:  []string{*RuncPath, "run", serviceName},
+				Command:  runcArgs,
 			}.CommandLine()...,
 		),
 	}}, nil
