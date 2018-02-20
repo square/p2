@@ -20,6 +20,7 @@ import (
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
+	p2metrics "github.com/square/p2/pkg/metrics"
 	pcfields "github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/rc/fields"
@@ -36,6 +37,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/hashicorp/consul/api"
 	"github.com/pborman/uuid"
+	"github.com/rcrowley/go-metrics"
 )
 
 const (
@@ -955,6 +957,16 @@ func (rc *replicationController) scheduleNewNodeForTransfer(rcFields fields.RC, 
 func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC, logger logging.Logger) {
 	ok, rollbackReason := rc.watchHealth(rcFields, logger)
 	if ok {
+		// record the node transfer time
+		startTime := time.Now()
+		defer func() {
+			endTime := time.Now()
+			processingTime := endTime.Sub(startTime)
+			logger.WithField("node_transfer_processing_time", processingTime.String()).Infoln("Node transfer finished")
+			processingTimeHistogram := metrics.GetOrRegisterHistogram("node_transfer_processing_time", p2metrics.Registry, metrics.NewExpDecaySample(1028, 0.015))
+			processingTimeHistogram.Update(int64(processingTime))
+		}()
+
 		// We retry finishTransfer() up to 10 times in case of a
 		// fleeting transaction building error or network error
 		var err error
