@@ -33,10 +33,6 @@ import (
 )
 
 var (
-	// ExperimentalOpencontainer permits the use of the experimental "opencontainer"
-	// launchable type.
-	ExperimentalOpencontainer = param.Bool("experimental_opencontainer", false)
-
 	// NestedCgroups causes the p2-preparer to use a hierarchical cgroup naming scheme when
 	// creating new launchables.
 	NestedCgroups = param.Bool("nested_cgroups", false)
@@ -829,7 +825,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 		}
 		ret.CgroupConfig.Name = cgroups.CgroupID(ret.ServiceId)
 		return ret.If(), nil
-	} else if *ExperimentalOpencontainer && launchableStanza.LaunchableType == "opencontainer" {
+	} else if launchableStanza.LaunchableType == "opencontainer" {
 		ret := &opencontainer.Launchable{
 			Version_:        version,
 			ID_:             launchableID,

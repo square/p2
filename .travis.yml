@@ -25,3 +25,7 @@ script:
   - integration/travis.sh
   - rake errcheck
   - go vet ./bin/... ./pkg/...
+
+sudo: required
+services:
+  - docker

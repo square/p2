@@ -39,4 +39,38 @@ openssl req -x509 -newkey rsa:2048 -keyout $CERTPATH/key.pem -out $CERTPATH/cert
 # symlink cgroup from modern /sys/fs/cgroup to legacy /cgroup
 sudo ln -sf /sys/fs/cgroup /cgroup
 
+# build the opencontainer hello container that the integration test uses
+pushd $GOPATH/src/github.com/square/p2/integration/hello
+go build
+popd
+
+# make the artifact in /tmp because the docker image has hardlinks which can't
+# go on the shared directory ($GOPATH/src/github.com/square/p2)
+pushd /tmp
+mkdir -p opencontainer-hello_def456/rootfs
+cp $GOPATH/src/github.com/square/p2/integration/hello/config.json opencontainer-hello_def456/
+
+# get a suitable root filesystem for centos from docker
+sudo docker pull centos
+container_id=$(sudo docker create centos:latest)
+sudo docker export $container_id > centos.tar
+
+# this creates a rootfs directory in opencontainer-hello_def456/
+sudo tar xf centos.tar -C opencontainer-hello_def456/rootfs
+mkdir -p opencontainer-hello_def456/rootfs/usr/local/bin
+
+sudo mv $GOPATH/src/github.com/square/p2/integration/hello/hello opencontainer-hello_def456/rootfs/usr/local/bin
+sudo tar czf opencontainer-hello_def456.tar.gz -C opencontainer-hello_def456 .
+gpg --no-tty --yes --no-default-keyring --keyring $GOPATH/src/github.com/square/p2/integration/single-node-slug-deploy/pubring.gpg \
+  --secret-keyring $GOPATH/src/github.com/square/p2/integration/single-node-slug-deploy/secring.gpg -u p2universe --out \
+  opencontainer-hello_def456.tar.gz.sig --detach-sign opencontainer-hello_def456.tar.gz
+popd
+
+sudo curl -L https://github.com/opencontainers/runc/releases/download/v1.0.0-rc4/runc.amd64 -o /usr/local/bin/runc
+sudo chmod +x /usr/local/bin/runc
+
+# this is a lie, but the opencontainer code in P2 depends on this file existing
+# to configure runc, so just fudge it for the integration test
+sudo echo 'CentOS Linux release 7.4.1708 (Core)' > /etc/redhat-release
+
 sudo env PATH=$PATH GOPATH=$GOPATH GOROOT=$GOROOT go run integration/single-node-slug-deploy/check.go --no-add-user
