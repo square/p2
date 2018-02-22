@@ -1246,7 +1246,7 @@ func targetUUIDLogs(suffix string) string {
 }
 
 func targetLogs(app string) string {
-	output, err := exec.Command("tail", fmt.Sprintf("/var/service/%s__%s__launch/log/main/current", app, app)).CombinedOutput()
+	output, err := exec.Command("tail", "-n100", fmt.Sprintf("/var/service/%s__%s__launch/log/main/current", app, app)).CombinedOutput()
 	if err != nil {
 		log.Printf("Tail failed: %s", err)
 	}
