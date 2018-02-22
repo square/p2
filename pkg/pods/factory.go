@@ -152,7 +152,7 @@ func newPodWithHome(
 		Fetcher:           fetcher,
 		RequireFile:       requireFile,
 		OSVersionDetector: osVersionDetector,
-		ReadOnly:          readOnly,
+		readOnly:          readOnly,
 	}
 }
 

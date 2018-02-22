@@ -64,6 +64,7 @@ const (
 	HookedConfigDirPathEnvVar = "HOOKED_CONFIG_DIR_PATH"
 	HookedSystemPodRootEnvVar = "HOOKED_SYSTEM_POD_ROOT"
 	HookedPodUniqueKeyEnvVar  = "HOOKED_POD_UNIQUE_KEY"
+	HookedPodReadOnly         = "HOOKED_POD_READ_ONLY"
 
 	DefaultTimeout = 120 * time.Second
 )
@@ -75,6 +76,7 @@ type Pod interface {
 	Node() types.NodeName
 	Home() string
 	UniqueKey() types.PodUniqueKey
+	ReadOnly() bool
 }
 
 type hookContext struct {
@@ -97,7 +99,8 @@ type HookExecutionEnvironment struct {
 	HookedEnvPathEnvVar,
 	HookedConfigDirPathEnvVar,
 	HookedSystemPodRootEnvVar,
-	HookedPodUniqueKeyEnvVar string
+	HookedPodUniqueKeyEnvVar,
+	HookedPodReadOnly string
 }
 
 // The set of UNIX environment variables for the hook's execution
@@ -114,6 +117,7 @@ func (hee *HookExecutionEnvironment) Env() []string {
 		fmt.Sprintf("%s=%s", HookedConfigDirPathEnvVar, hee.HookedConfigDirPathEnvVar),
 		fmt.Sprintf("%s=%s", HookedSystemPodRootEnvVar, hee.HookedSystemPodRootEnvVar),
 		fmt.Sprintf("%s=%s", HookedPodUniqueKeyEnvVar, hee.HookedPodUniqueKeyEnvVar),
+		fmt.Sprintf("%s=%s", HookedPodReadOnly, hee.HookedPodReadOnly),
 	}
 }
 
