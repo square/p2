@@ -42,6 +42,8 @@ type factory struct {
 	podRoot string
 	node    types.NodeName
 
+	readOnlyPolicy ReadOnlyPolicy
+
 	fetcher           uri.Fetcher
 	requireFile       string
 	osVersionDetector osversion.Detector
@@ -54,7 +56,7 @@ type hookFactory struct {
 	osVersionDetector osversion.Detector
 }
 
-func NewFactory(podRoot string, node types.NodeName, fetcher uri.Fetcher, requireFile string) Factory {
+func NewFactory(podRoot string, node types.NodeName, fetcher uri.Fetcher, requireFile string, readOnlyPolicy ReadOnlyPolicy) Factory {
 	if podRoot == "" {
 		podRoot = DefaultPath
 	}
@@ -62,6 +64,7 @@ func NewFactory(podRoot string, node types.NodeName, fetcher uri.Fetcher, requir
 	return &factory{
 		podRoot:           podRoot,
 		node:              node,
+		readOnlyPolicy:    readOnlyPolicy,
 		fetcher:           fetcher,
 		requireFile:       requireFile,
 		osVersionDetector: osversion.DefaultDetector,
@@ -102,19 +105,19 @@ func (f *factory) NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod
 		return nil, util.Errorf("uniqueKey cannot be empty")
 	}
 	home := filepath.Join(f.podRoot, computeUniqueName(id, uniqueKey))
-	return newPodWithHome(id, uniqueKey, home, f.node, f.requireFile, f.fetcher, f.osVersionDetector), nil
+	return newPodWithHome(id, uniqueKey, home, f.node, f.requireFile, f.fetcher, f.osVersionDetector, f.readOnlyPolicy.IsReadOnly(id)), nil
 }
 
 func (f *factory) NewLegacyPod(id types.PodID) *Pod {
 	home := filepath.Join(f.podRoot, id.String())
-	return newPodWithHome(id, "", home, f.node, f.requireFile, f.fetcher, f.osVersionDetector)
+	return newPodWithHome(id, "", home, f.node, f.requireFile, f.fetcher, f.osVersionDetector, f.readOnlyPolicy.IsReadOnly(id))
 }
 
 func (f *hookFactory) NewHookPod(id types.PodID) *Pod {
 	home := filepath.Join(f.hookRoot, id.String())
 
 	// Hooks can't have a UUID
-	return newPodWithHome(id, "", home, f.node, "", f.fetcher, f.osVersionDetector)
+	return newPodWithHome(id, "", home, f.node, "", f.fetcher, f.osVersionDetector, true)
 }
 
 func newPodWithHome(
@@ -125,6 +128,7 @@ func newPodWithHome(
 	requireFile string,
 	fetcher uri.Fetcher,
 	osVersionDetector osversion.Detector,
+    readOnly bool,
 ) *Pod {
 	var logger logging.Logger
 	logger = Log.SubLogger(logrus.Fields{"pod": id, "uuid": uniqueKey})
@@ -148,6 +152,7 @@ func newPodWithHome(
 		Fetcher:           fetcher,
 		RequireFile:       requireFile,
 		OSVersionDetector: osVersionDetector,
+		ReadOnly:          readOnly,
 	}
 }
 
@@ -177,5 +182,5 @@ func PodFromPodHomeWithReqFile(node types.NodeName, home string, requireFile str
 
 	// TODO: Shouldn't the Fetcher be configured? So one should get passed in, right?
 	// TODO (mpuncel): make the osversion detector configurable if needed
-	return newPodWithHome(manifest.ID(), uniqueKey, home, node, requireFile, nil, osversion.DefaultDetector), nil
+	return newPodWithHome(manifest.ID(), uniqueKey, home, node, requireFile, nil, osversion.DefaultDetector, false), nil
 }

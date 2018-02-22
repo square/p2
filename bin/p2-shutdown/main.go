@@ -61,7 +61,7 @@ func main() {
 	forceHalt := true
 
 	// TODO: configure a proper http client instead of using default fetcher
-	podFactory := pods.NewFactory(*podRoot, node, uri.DefaultFetcher, "")
+	podFactory := pods.NewFactory(*podRoot, node, uri.DefaultFetcher, "", pods.NewReadOnlyPolicy(false, nil, nil))
 	var haltWG sync.WaitGroup
 	for _, realityEntry := range reality {
 		pod := podFactory.NewLegacyPod(realityEntry.Manifest.ID())

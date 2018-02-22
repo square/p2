@@ -79,7 +79,7 @@ func (h *HookEnv) PodFromDisk() (*pods.Pod, error) {
 
 // Initializes a pod based on the hooked pod manifest and the system pod root
 func (h *HookEnv) Pod() (*pods.Pod, error) {
-	factory := pods.NewFactory(os.Getenv(HookedSystemPodRootEnvVar), HookedNodeEnvVar, uri.DefaultFetcher, "")
+	factory := pods.NewFactory(os.Getenv(HookedSystemPodRootEnvVar), HookedNodeEnvVar, uri.DefaultFetcher, "", pods.NewReadOnlyPolicy(false, nil, nil))
 
 	podID, err := h.PodID()
 	if err != nil {

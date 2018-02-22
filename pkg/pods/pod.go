@@ -80,6 +80,9 @@ type Pod struct {
 
 	// subsystemer is a tool for this pod to find its cgroup subsystem controller and metadata. Optionally nil, overridden in test
 	subsystemer cgroups.Subsystemer
+
+	// whether or not this pod should be deployed ReadOnly by default
+	ReadOnly bool
 }
 
 type ManifestFinder interface {
@@ -428,6 +431,8 @@ func (pod *Pod) SetSubsystemer(s cgroups.Subsystemer) {
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
 func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifier, artifactRegistry artifact.Registry) error {
+	manifest.SetReadOnlyIfUnset(pod.ReadOnly)
+
 	podHome := pod.home
 	uid, gid, err := user.IDs(manifest.UnpackAsUser())
 	if err != nil {
