@@ -394,7 +394,7 @@ func verifyOpenContainerPod(errCh chan error, tempDir string, logger logging.Log
 
 	err = verifyHelloSuffixRunning("opencontainer", openContainerHelloPort)
 	if err != nil {
-		errCh <- fmt.Errorf("Couldn't get hello running: %s", err)
+		errCh <- fmt.Errorf("Couldn't get hello-opencontainer running: %s", err)
 		return
 	}
 }

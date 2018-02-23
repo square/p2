@@ -1,0 +1,3 @@
+#!/bin/bash
+# this script has to exist & exit nonzero for the integration test to work
+exit 0

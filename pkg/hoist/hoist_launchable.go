@@ -427,8 +427,8 @@ func (hl *Launchable) Installed() bool {
 	return err == nil
 }
 
-func (hl *Launchable) PostInstall() error {
-	return nil
+func (hl *Launchable) PostInstall() (string, error) {
+	return "", nil
 }
 
 // The version of the artifact is determined from the artifact location. If the

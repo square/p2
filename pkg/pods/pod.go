@@ -470,9 +470,9 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 			return err
 		}
 
-		err = launchable.PostInstall()
+		output, err := launchable.PostInstall()
 		if err != nil {
-			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
+			pod.logLaunchableError(launchable.ServiceID(), err, fmt.Sprintf("Unable to install launchable: script output:\n%s", output))
 			_ = os.Remove(launchable.InstallDir())
 			return err
 		}
@@ -783,6 +783,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 		pod.logger.WithError(err).Warnf("Could not parse version from launchable %s.", launchableID)
 	}
 
+	cgroupName := serviceId
 	if launchableStanza.LaunchableType == "hoist" {
 		entryPointPaths := launchableStanza.EntryPoints
 		implicitEntryPoints := false
@@ -790,7 +791,6 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			implicitEntryPoints = true
 			entryPointPaths = append(entryPointPaths, path.Join("bin", "launch"))
 		}
-		cgroupName := serviceId
 		if *NestedCgroups {
 			cgroupID, err := cgroups.CgroupIDForLaunchable(pod.getSubsystemer(), pod.Id, pod.node, launchableID.String())
 			if err != nil {
@@ -840,6 +840,10 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			CgroupConfig:      launchableStanza.CgroupConfig,
 			SuppliedEnvVars:   launchableStanza.Env,
 			OSVersionDetector: pod.OSVersionDetector,
+			CgroupName:        cgroupName,
+			CgroupConfigName:  launchableID.String(),
+			PodEnvDir:         pod.EnvDir(),
+			ExecNoLimit:       true,
 		}
 		ret.CgroupConfig.Name = cgroups.CgroupID(serviceId)
 		return ret, nil

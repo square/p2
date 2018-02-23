@@ -7,6 +7,7 @@
 package opencontainer
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/ioutil"
 	"os"
@@ -45,6 +46,17 @@ type Launchable struct {
 	Version_          launch.LaunchableVersionID // Version of the specified launchable
 	SuppliedEnvVars   map[string]string          // User-supplied env variables
 	OSVersionDetector osversion.Detector
+	ExecNoLimit       bool // If set, execute with the -n (--no-limit) argument to p2-exec
+
+	// These fields are only used to invoke bin/post-install for
+	// opencontainer launchables which is only necessary to allow
+	// launchables to customize their config.json at runtime. This
+	// functoinality could possibly be provided by P2 and these fields
+	// could be removed.
+	CgroupName       string // The name of the cgroup to run this launchable in
+	CgroupConfigName string // The string in PLATFORM_CONFIG to pass to p2-exec
+	PodEnvDir        string // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
+	RequireFile      string // Do not run this launchable until this file exists
 
 	spec *Spec // The container's "config.json"
 }
@@ -151,9 +163,12 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 		Exec: append(
 			[]string{l.P2Exec},
 			p2exec.P2ExecArgs{ // TODO: support environment variables
-				NoLimits: true,
-				WorkDir:  l.InstallDir(),
-				Command:  runcArgs,
+				NoLimits:         l.ExecNoLimit,
+				WorkDir:          l.InstallDir(),
+				EnvDirs:          []string{l.PodEnvDir, l.EnvDir()},
+				Command:          runcArgs,
+				CgroupConfigName: l.CgroupConfigName,
+				CgroupName:       l.CgroupName,
 			}.CommandLine()...,
 		),
 	}}, nil
@@ -166,9 +181,57 @@ func (l *Launchable) Installed() bool {
 	return err == nil
 }
 
-// Install ...
-func (l *Launchable) PostInstall() (returnedError error) {
-	return nil
+// PostInstall() is a useful feature for opencontainers that need to modify
+// their config.json file at runtime, for instance to change the uid/gid
+// based on the currently running user
+func (l *Launchable) PostInstall() (string, error) {
+	// TODO: unexport this method (requires integrating BuildRunitServices into this API)
+	output, err := l.InvokeBinScript("post-install")
+
+	// providing a post-activate script is optional, ignore those errors
+	if err != nil && !os.IsNotExist(err) {
+		return output, err
+	}
+
+	return output, nil
+}
+
+// InvokeBinScript is shamelessly copied from the hoist launchable
+// implementation. It just runs a bin/%s script in the opencontainer
+// launchable. This is only necessary so launchables can configure their
+// config.json at runtime, for instance when hostname parameters or uid/gid
+// parameters should be determined based on running context
+func (l *Launchable) InvokeBinScript(script string) (string, error) {
+	cmdPath := filepath.Join(l.InstallDir(), "bin", script)
+	_, err := os.Stat(cmdPath)
+	if err != nil {
+		return "", err
+	}
+
+	cgroupName := l.CgroupName
+	if l.CgroupConfigName == "" {
+		cgroupName = ""
+	}
+	p2ExecArgs := p2exec.P2ExecArgs{
+		Command:          []string{cmdPath},
+		User:             l.RunAs,
+		EnvDirs:          []string{l.PodEnvDir, l.EnvDir()},
+		NoLimits:         l.ExecNoLimit,
+		CgroupConfigName: l.CgroupConfigName,
+		CgroupName:       cgroupName,
+		RequireFile:      l.RequireFile,
+		ClearEnv:         true,
+	}
+	cmd := exec.Command(l.P2Exec, p2ExecArgs.CommandLine()...)
+	buffer := bytes.Buffer{}
+	cmd.Stdout = &buffer
+	cmd.Stderr = &buffer
+	err = cmd.Run()
+	if err != nil {
+		return buffer.String(), err
+	}
+
+	return buffer.String(), nil
 }
 
 // PostActive runs a Hoist-specific "post-activate" script in the launchable.
