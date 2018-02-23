@@ -6,7 +6,7 @@
 set -ex
 
 # Install and setup Go
-VERSION=1.9.2
+export VERSION=1.9.2
 curl -LO https://storage.googleapis.com/golang/go$VERSION.linux-amd64.tar.gz
 sudo tar -C /usr/local -xvf go$VERSION.linux-amd64.tar.gz
 sudo mkdir -p /usr/local/share/go
@@ -15,6 +15,7 @@ sudo sh -c 'echo "GOPATH=/usr/local/share/go" >> /etc/environment'
 export GOPATH=/usr/local/share/go
 export PATH="/usr/local/go/bin:/usr/local/share/go/bin:$PATH"
 sudo sh -c "echo 'export PATH=$PATH' > /etc/profile.d/gopath.sh"
+sudo sh -c "echo 'export GOPATH=/usr/local/share/go' >> /etc/profile.d/gopath.sh"
 
 # make ssl certs
 subj="
@@ -40,9 +41,9 @@ go version
 sudo yum install -y rubygem-rake gcc git
 
 # Build p2.
-cd $GOPATH/src/github.com/square/p2
+cd ${GOPATH}/src/github.com/square/p2
 go install ./...
-cp $GOPATH/bin/p2-exec /usr/local/bin
+cp ${GOPATH}/bin/p2-exec /usr/local/bin
 
 # Install P2 test dependencies
 sudo yum -y --nogpgcheck localinstall $GOPATH/src/github.com/square/p2/integration/test-deps/*rpm
@@ -52,3 +53,36 @@ sudo mkdir -p /var/service-stage
 
 # symlink cgroup from modern /sys/fs/cgroup to legacy /cgroup
 sudo ln -sf /sys/fs/cgroup /cgroup
+
+# build the opencontainer hello container that the integration test uses
+pushd /usr/local/share/go/src/github.com/square/p2/integration/hello
+go build
+popd
+
+# make the artifact in /tmp because the docker image has hardlinks which can't
+# go on the shared directory (/usr/local/share/go/src/github.com/square/p2)
+pushd /tmp
+mkdir -p opencontainer-hello_def456/rootfs
+cp /usr/local/share/go/src/github.com/square/p2/integration/hello/config.json opencontainer-hello_def456/
+
+# get a suitable root filesystem for centos from docker
+sudo yum install docker -y
+sudo systemctl start docker
+sudo docker pull centos
+container_id=$(sudo docker create centos:latest)
+sudo docker export $container_id > centos.tar
+
+# this creates a rootfs directory in opencontainer-hello_def456/
+tar xf centos.tar -C opencontainer-hello_def456/rootfs
+mkdir -p opencontainer-hello_def456/rootfs/usr/local/bin
+
+mv /usr/local/share/go/src/github.com/square/p2/integration/hello/hello opencontainer-hello_def456/rootfs/usr/local/bin
+tar czf opencontainer-hello_def456.tar.gz -C opencontainer-hello_def456 .
+gpg --no-tty --yes --no-default-keyring --keyring /usr/local/share/go/src/github.com/square/p2/integration/single-node-slug-deploy/pubring.gpg \
+  --secret-keyring /usr/local/share/go/src/github.com/square/p2/integration/single-node-slug-deploy/secring.gpg -u p2universe --out \
+  opencontainer-hello_def456.tar.gz.sig --detach-sign opencontainer-hello_def456.tar.gz
+popd
+
+curl -L https://github.com/opencontainers/runc/releases/download/v1.0.0-rc4/runc.amd64 -o /usr/local/bin/runc
+
+chmod +x /usr/local/bin/runc

@@ -16,6 +16,7 @@ import (
 
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
+	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/uri"
@@ -28,24 +29,22 @@ import (
 // The name of the OpenContainer spec file in the container's root.
 const SpecFilename = "config.json"
 
-// The name of the OpenContainer runtime spec.
-const RuntimeSpecFilename = "runtime.json"
-
 // RuncPath is the full path of the "runc" binary.
 var RuncPath = param.String("runc_path", "/usr/local/bin/runc")
 
 // Launchable represents an installation of a container.
 type Launchable struct {
-	ID_             launch.LaunchableID        // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
-	ServiceID_      string                     // A (host-wise) unique identifier for this launchable, used when creating runit services
-	RunAs           string                     // The user to assume when launching the executable
-	RootDir         string                     // The root directory of the launchable, containing N:N>=1 installs.
-	P2Exec          string                     // The path to p2-exec
-	RestartTimeout  time.Duration              // How long to wait when restarting the services in this launchable.
-	RestartPolicy_  runit.RestartPolicy        // Dictates whether the container should be automatically restarted upon exit.
-	CgroupConfig    cgroups.Config             // Cgroup parameters to use with p2-exec
-	Version_        launch.LaunchableVersionID // Version of the specified launchable
-	SuppliedEnvVars map[string]string          // User-supplied env variables
+	ID_               launch.LaunchableID        // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
+	ServiceID_        string                     // A (host-wise) unique identifier for this launchable, used when creating runit services
+	RunAs             string                     // The user to assume when launching the executable
+	RootDir           string                     // The root directory of the launchable, containing N:N>=1 installs.
+	P2Exec            string                     // The path to p2-exec
+	RestartTimeout    time.Duration              // How long to wait when restarting the services in this launchable.
+	RestartPolicy_    runit.RestartPolicy        // Dictates whether the container should be automatically restarted upon exit.
+	CgroupConfig      cgroups.Config             // Cgroup parameters to use with p2-exec
+	Version_          launch.LaunchableVersionID // Version of the specified launchable
+	SuppliedEnvVars   map[string]string          // User-supplied env variables
+	OSVersionDetector osversion.Detector
 
 	spec *Spec // The container's "config.json"
 }
@@ -135,7 +134,22 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 			l.ServiceID_, l.RunAs, uid, gid, luser.UID, luser.GID)
 	}
 
+	runcConfig, err := GetConfig(l.OSVersionDetector)
+	if err != nil {
+		return nil, err
+	}
+
+	runcArgs := []string{*RuncPath}
+	if runcConfig.Root != "" {
+		runcArgs = append(runcArgs, "--root", runcConfig.Root)
+	}
+	runcArgs = append(runcArgs, "run")
+	if runcConfig.NoNewKeyring {
+		runcArgs = append(runcArgs, "--no-new-keyring")
+	}
 	serviceName := l.ServiceID_ + "__container"
+	runcArgs = append(runcArgs, serviceName)
+
 	return []launch.Executable{{
 		Service: runit.Service{
 			Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
@@ -146,7 +160,7 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 			p2exec.P2ExecArgs{ // TODO: support environment variables
 				NoLimits: true,
 				WorkDir:  l.InstallDir(),
-				Command:  []string{*RuncPath, "run", serviceName},
+				Command:  runcArgs,
 			}.CommandLine()...,
 		),
 	}}, nil
@@ -161,23 +175,7 @@ func (l *Launchable) Installed() bool {
 
 // Install ...
 func (l *Launchable) PostInstall() (returnedError error) {
-	if l.Installed() {
-		return nil
-	}
-
-	if _, err := l.getSpec(); err != nil {
-		return err
-	}
-
-	// Construct the host-specific configuration... This is probably the wrong place for this
-	// code because the container cgroup settings depend on the manifest.
-	runSpecPath := filepath.Join(l.InstallDir(), RuntimeSpecFilename)
-	runSpec := DefaultRuntimeSpec
-	runSpecData, err := json.Marshal(runSpec)
-	if err != nil {
-		return err
-	}
-	return ioutil.WriteFile(runSpecPath, runSpecData, 0444)
+	return nil
 }
 
 // PostActive runs a Hoist-specific "post-activate" script in the launchable.

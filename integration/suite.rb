@@ -27,7 +27,7 @@ end
 
 # TODO read a conf file in the test dir specifying what commands to run on what VMs
 
-options = {:regex => /.*/, :test_command => 'cd $GOPATH/src/github.com/square/p2 && sudo env PATH=$PATH go run %s/*.go', :vm_maintenance => true }
+options = {:regex => /.*/, :test_command => 'source /etc/profile.d/gopath.sh && cd $GOPATH/src/github.com/square/p2 && sudo env PATH=$PATH go run %s/*.go', :vm_maintenance => true }
 parser = OptionParser.new do |opts|
   opts.on('-p', '--pattern=PATTERN', 'Only run tests that match the given regex') do |p|
     options[:regex] = Regexp.new(p)
@@ -51,7 +51,7 @@ Dir.glob(File.join(path, '*/')).each do |test_dir|
   test_name = File.basename(test_dir)
   Dir.chdir(test_dir) do
     succeeded = false
-    puts "Launching test environment in #{test_name}".yellow
+    puts "Launching test environment in #{test_dir}#{test_name}".yellow
     unless system('stat Vagrantfile')
       $stderr.puts "No Vagrantfile found, is this test set up properly?".red
       next

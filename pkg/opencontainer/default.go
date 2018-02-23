@@ -15,6 +15,10 @@ func uint32ToPointer(u uint32) *uint32 {
 }
 
 // DefaultRuntimeSpec is the default template for running Linux containers.
+// NOTE: runtime.json was removed from the opencontainer spec, and this var is
+// not referenced.  For now it's recommended that opencontainer launchables
+// provide their full configuration in a packaged config.json file in their
+// artifacts. This variable is being left for now for historical reference
 var DefaultRuntimeSpec = Spec{
 	Mounts: []Mount{
 		{

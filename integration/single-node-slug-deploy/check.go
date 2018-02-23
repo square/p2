@@ -55,7 +55,14 @@ const (
 	preparerStatusPort       = 32170
 	certpath                 = "/var/tmp/certs"
 	sqliteFinishDatabasePath = "/data/pods/p2-preparer/finish_data/finish.db"
+
+	legacyHelloPort        = 43770
+	uuidHelloPort          = 43771
+	processExitHelloPort   = 43772
+	openContainerHelloPort = 43773
 )
+
+var osVersionFile = util.From(runtime.Caller(0)).ExpandPath("redhat-release")
 
 var noAddUser = false
 
@@ -196,6 +203,18 @@ func main() {
 	})
 	go verifyUUIDPod(uuidTest, tempdir, verifyUUIDPodLogger)
 
+	// Test that a pod deployed as a runc container comes up correctly
+	openContainerTest := make(chan error)
+	verifyOpenContainerPodLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
+		"test_case": "verifyOpenContainerPodLogger",
+	})
+	testCases = append(testCases, testCase{
+		testName: "verifyOpenContainerPodLogger",
+		errCh:    openContainerTest,
+		logger:   verifyOpenContainerPodLogger,
+	})
+	go verifyOpenContainerPod(openContainerTest, tempdir, verifyOpenContainerPodLogger)
+
 	// Test that exit information for a process started by a pod is properly recorded in consul.
 	processExitTest := make(chan error)
 	verifyProcessExitLogger := logging.DefaultLogger.SubLogger(logrus.Fields{
@@ -256,7 +275,7 @@ func verifyLegacyPod(errCh chan error, tempDir string, config *preparer.Preparer
 
 	logger.Infoln("RC successfully scheduled pod")
 
-	err = verifyHelloRunning("", logger)
+	err = verifyHelloRunning("", logger, "hoist")
 	if err != nil {
 		errCh <- fmt.Errorf("Couldn't get hello running: %s", err)
 		return
@@ -334,16 +353,48 @@ func verifyUUIDPod(errCh chan error, tempDir string, logger logging.Logger) {
 	defer close(errCh)
 
 	// Schedule a "uuid" hello pod on a different port
-	podUniqueKey, err := createHelloUUIDPod(tempDir, 43771, logger)
+	podUniqueKey, err := createHelloUUIDPod(tempDir, uuidHelloPort, logger)
 	if err != nil {
 		errCh <- fmt.Errorf("Could not schedule UUID hello pod: %s", err)
 		return
 	}
 	logger.Infoln("p2-schedule'd another hello instance as a uuid pod running on port 43771")
 
-	err = verifyHelloRunning(podUniqueKey, logger)
+	err = verifyHelloRunning(podUniqueKey.String(), logger, "hoist")
 	if err != nil {
 		errCh <- fmt.Errorf("Couldn't get hello running as a uuid pod: %s", err)
+		return
+	}
+}
+
+func verifyOpenContainerPod(errCh chan error, tempDir string, logger logging.Logger) {
+	defer close(errCh)
+
+	// schedule an opencontainer hello pod on a different port
+	logger.Infoln("scheduling hello-opencontainer pod")
+	signedManifestPath, err := writeHelloManifest(tempDir, "hello-opencontainer.yaml", openContainerHelloPort, "opencontainer", "/tmp/opencontainer-hello_def456.tar.gz")
+	if err != nil {
+		errCh <- err
+		return
+	}
+
+	err = scheduleManifest(signedManifestPath, logger)
+	if err != nil {
+		errCh <- err
+		return
+	}
+
+	err = verifyHelloRunning("opencontainer", logger, "opencontainer")
+	if err != nil {
+		errCh <- fmt.Errorf("Couldn't get hello-opencontainer running: %s", err)
+		return
+	}
+
+	logger.Infoln("hello-opencontainer pod is running")
+
+	err = verifyHelloSuffixRunning("opencontainer", openContainerHelloPort)
+	if err != nil {
+		errCh <- fmt.Errorf("Couldn't get hello running: %s", err)
 		return
 	}
 }
@@ -352,7 +403,7 @@ func verifyProcessExit(errCh chan error, tempDir string, logger logging.Logger) 
 	defer close(errCh)
 
 	// Schedule a uuid pod
-	podUniqueKey, err := createHelloUUIDPod(tempDir, 43772, logger)
+	podUniqueKey, err := createHelloUUIDPod(tempDir, processExitHelloPort, logger)
 	if err != nil {
 		errCh <- fmt.Errorf("Could not schedule UUID hello pod: %s", err)
 		return
@@ -363,7 +414,7 @@ func verifyProcessExit(errCh chan error, tempDir string, logger logging.Logger) 
 	})
 	logger.Infoln("Scheduled hello instance on port 43772")
 
-	err = verifyHelloRunning(podUniqueKey, logger)
+	err = verifyHelloRunning(podUniqueKey.String(), logger, "hoist")
 	if err != nil {
 		errCh <- fmt.Errorf("Couldn't get hello running as a uuid pod: %s", err)
 		return
@@ -656,8 +707,9 @@ func generatePreparerPod(workdir string, userHookManifest manifest.Manifest, req
 				"environment_extractor_path": strings.TrimSpace(string(envExtractorPath)),
 				"workspace_dir_path":         "/data/pods/p2-preparer/tmp",
 			},
-			"hooks_manifest": string(userCreationHookBytes),
-			"require_file":   requireFile,
+			"hooks_manifest":  string(userCreationHookBytes),
+			"require_file":    requireFile,
+			"os_version_file": osVersionFile, // because we can't write /etc/redhat-release on travis
 		},
 	})
 	if err != nil {
@@ -894,15 +946,35 @@ func scheduleRCTLServer(dir string) error {
 // Writes a pod manifest for the hello pod at with the specified name in the
 // specified dir, configured to run on the specified port. Returns the path to
 // the signed manifest
-func writeHelloManifest(dir string, manifestName string, port int) (string, error) {
-	hello := fmt.Sprintf("file://%s", util.From(runtime.Caller(0)).ExpandPath("../hoisted-hello_def456.tar.gz"))
+func writeHelloManifest(dir string, manifestName string, port int, launchableType string, filePath string) (string, error) {
+	if filePath == "" {
+		switch launchableType {
+		case "hoist":
+			filePath = "../hoisted-hello_def456.tar.gz"
+		case "opencontainer":
+			filePath = "../opencontainer-hello_def456.tar.gz"
+		default:
+			return "", util.Errorf("unrecognized launchable type: %s", launchableType)
+		}
+
+		filePath = util.From(runtime.Caller(0)).ExpandPath(filePath)
+	}
+
+	hello := fmt.Sprintf("file://%s", filePath)
 	builder := manifest.NewBuilder()
-	builder.SetID("hello")
+
+	// make the pod ID different so we don't get filesystem collisions if it's an opencontainer pod
+	podIDStr := "hello"
+	if launchableType == "opencontainer" {
+		podIDStr += "-opencontainer"
+		builder.SetRunAsUser("root") // mostly this just makes coordinating uid with config.json easy
+	}
+	builder.SetID(types.PodID(podIDStr))
 	builder.SetStatusPort(port)
 	builder.SetStatusHTTP(true)
 	stanzas := map[launch.LaunchableID]launch.LaunchableStanza{
 		"hello": {
-			LaunchableType: "hoist",
+			LaunchableType: launchableType,
 			Location:       hello,
 		},
 	}
@@ -928,7 +1000,7 @@ func writeHelloManifest(dir string, manifestName string, port int) (string, erro
 }
 
 func createHelloUUIDPod(dir string, port int, logger logging.Logger) (types.PodUniqueKey, error) {
-	signedManifestPath, err := writeHelloManifest(dir, fmt.Sprintf("hello-uuid-%d.yaml", port), port)
+	signedManifestPath, err := writeHelloManifest(dir, fmt.Sprintf("hello-uuid-%d.yaml", port), port, "hoist", "")
 	if err != nil {
 		return "", err
 	}
@@ -954,8 +1026,24 @@ func createHelloUUIDPod(dir string, port int, logger logging.Logger) (types.PodU
 	return out.PodUniqueKey, nil
 }
 
+func scheduleManifest(signedManifestPath string, logger logging.Logger) error {
+	logger.Infof("Scheduling %s", signedManifestPath)
+
+	cmd := exec.Command("p2-schedule", signedManifestPath)
+	stdout := bytes.Buffer{}
+	stderr := bytes.Buffer{}
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	if err != nil {
+		fmt.Println(stderr.String())
+		return err
+	}
+
+	return nil
+}
+
 func createHelloReplicationController(dir string) (fields.ID, error) {
-	signedManifestPath, err := writeHelloManifest(dir, "hello.yaml", 43770)
+	signedManifestPath, err := writeHelloManifest(dir, "hello.yaml", legacyHelloPort, "hoist", "")
 	if err != nil {
 		return "", err
 	}
@@ -1067,14 +1155,24 @@ func waitForPodLabeledWithRC(selector klabels.Selector, rcID fields.ID) error {
 	}
 }
 
-func verifyHelloRunning(podUniqueKey types.PodUniqueKey, logger logging.Logger) error {
+func verifyHelloRunning(suffix string, logger logging.Logger, launchableType string) error {
 	helloPidAppeared := make(chan struct{})
 	quit := make(chan struct{})
 	defer close(quit)
 
-	serviceDir := "/var/service/hello__hello__launch"
-	if podUniqueKey != "" {
-		serviceDir = fmt.Sprintf("/var/service/hello-%s__hello__bin__launch", podUniqueKey)
+	serviceDir := "/var/service/hello"
+	if suffix == "" {
+		serviceDir += "__hello__launch"
+	} else {
+		serviceDir += "-" + suffix
+		switch launchableType {
+		case "hoist":
+			serviceDir += "__hello__bin__launch"
+		case "opencontainer":
+			serviceDir += "__hello__container"
+		default:
+			return util.Errorf("unrecognized launchable type: %s", launchableType)
+		}
 	}
 	go func() {
 		for {
@@ -1098,20 +1196,26 @@ func verifyHelloRunning(podUniqueKey types.PodUniqueKey, logger logging.Logger) 
 	}()
 	select {
 	case <-time.After(30 * time.Second):
-		return fmt.Errorf("Couldn't start hello after 30 seconds:\n\n %s%s", targetLogs("hello"), targetLogs("p2-preparer"))
+		logs := ""
+		if suffix != "" {
+			logs = targetUUIDLogs(suffix)
+		} else {
+			logs = targetLogs("hello")
+		}
+		return fmt.Errorf("Couldn't start hello after 60 seconds:\n\n %s%s", logs, targetLogs("p2-preparer"))
 	case <-helloPidAppeared:
 		return nil
 	}
 }
 
-func verifyHelloUUIDRunning(podUniqueKey types.PodUniqueKey) error {
+func verifyHelloSuffixRunning(suffix string, port int) error {
 	helloUUIDAppeared := make(chan struct{})
 	quit := make(chan struct{})
 	defer close(quit)
 	go func() {
 		for {
 			time.Sleep(100 * time.Millisecond)
-			err := exec.Command("curl", "localhost:43771").Run()
+			err := exec.Command("curl", fmt.Sprintf("localhost:%d", port)).Run()
 			if err == nil {
 				select {
 				case <-quit:
@@ -1130,22 +1234,22 @@ func verifyHelloUUIDRunning(podUniqueKey types.PodUniqueKey) error {
 	}()
 	select {
 	case <-time.After(1 * time.Minute):
-		return fmt.Errorf("hello-%s didn't respond healthy on port 43771 after 60 seconds:\n\n %s", podUniqueKey, targetUUIDLogs(podUniqueKey))
+		return fmt.Errorf("hello-%s didn't respond healthy on port %d after 60 seconds:\n\n %s", suffix, port, targetUUIDLogs(suffix))
 	case <-helloUUIDAppeared:
 		return nil
 	}
 }
 
-func targetUUIDLogs(podUniqueKey types.PodUniqueKey) string {
+func targetUUIDLogs(suffix string) string {
 	var helloUUIDTail bytes.Buffer
-	helloT := exec.Command("tail", fmt.Sprintf("/var/service/hello-%s__hello__bin__launch/log/main/current", podUniqueKey))
+	helloT := exec.Command("tail", fmt.Sprintf("/var/service/hello-%s__hello__bin__launch/log/main/current", suffix))
 	helloT.Stdout = &helloUUIDTail
 	helloT.Run()
-	return fmt.Sprintf("hello uuid tail: \n%s\n\n", helloUUIDTail.String())
+	return fmt.Sprintf("hello-%s tail: \n%s\n\n", suffix, helloUUIDTail.String())
 }
 
 func targetLogs(app string) string {
-	output, err := exec.Command("tail", fmt.Sprintf("/var/service/%s__%s__launch/log/main/current", app, app)).CombinedOutput()
+	output, err := exec.Command("tail", "-n100", fmt.Sprintf("/var/service/%s__%s__launch/log/main/current", app, app)).CombinedOutput()
 	if err != nil {
 		log.Printf("Tail failed: %s", err)
 	}

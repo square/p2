@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"html"
 	"io/ioutil"
@@ -12,6 +13,8 @@ import (
 
 	"gopkg.in/yaml.v2"
 )
+
+var port = flag.String("port", "", "port that hello should listen on")
 
 func SayHello(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("%q %q", r.Method, r.URL.Path)
@@ -43,32 +46,37 @@ type HelloConfig struct {
 }
 
 func main() {
-	filePath := os.Getenv("CONFIG_PATH")
-	if filePath == "" {
-		log.Fatal("$CONFIG_PATH was not set")
-	}
+	flag.Parse()
+	if *port == "" {
+		filePath := os.Getenv("CONFIG_PATH")
+		if filePath == "" {
+			log.Fatal("$CONFIG_PATH was not set")
+		}
 
-	configBytes, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		log.Fatal(err)
-	}
+		configBytes, err := ioutil.ReadFile(filePath)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	var config HelloConfig
-	err = yaml.Unmarshal(configBytes, &config)
-	if err != nil {
-		log.Fatal(err)
-	}
+		var config HelloConfig
+		err = yaml.Unmarshal(configBytes, &config)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	if config.Port == 0 {
-		log.Fatal("Config must contain a port to run on")
-	}
+		if config.Port == 0 {
+			log.Fatal("Config must contain a port to run on")
+		}
 
-	port := fmt.Sprintf(":%d", config.Port)
+		*port = fmt.Sprintf(":%d", config.Port)
+	} else {
+		*port = ":" + *port
+	}
 	fmt.Printf("Hello is listening at %q", port)
 	http.HandleFunc("/", SayHello)
 	http.HandleFunc("/exit/", Exit)
 	s := &http.Server{
-		Addr: port,
+		Addr: *port,
 	}
 	log.Fatal(s.ListenAndServe())
 }

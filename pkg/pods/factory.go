@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
@@ -30,6 +31,7 @@ var NopFinishExec = []string{"/bin/true"} // type must match preparerconfig
 type Factory interface {
 	NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod, error)
 	NewLegacyPod(id types.PodID) *Pod
+	SetOSVersionDetector(osversion.Detector)
 }
 
 type HookFactory interface {
@@ -40,14 +42,16 @@ type factory struct {
 	podRoot string
 	node    types.NodeName
 
-	fetcher     uri.Fetcher
-	requireFile string
+	fetcher           uri.Fetcher
+	requireFile       string
+	osVersionDetector osversion.Detector
 }
 
 type hookFactory struct {
-	hookRoot string
-	node     types.NodeName
-	fetcher  uri.Fetcher
+	hookRoot          string
+	node              types.NodeName
+	fetcher           uri.Fetcher
+	osVersionDetector osversion.Detector
 }
 
 func NewFactory(podRoot string, node types.NodeName, fetcher uri.Fetcher, requireFile string) Factory {
@@ -56,11 +60,16 @@ func NewFactory(podRoot string, node types.NodeName, fetcher uri.Fetcher, requir
 	}
 
 	return &factory{
-		podRoot:     podRoot,
-		node:        node,
-		fetcher:     fetcher,
-		requireFile: requireFile,
+		podRoot:           podRoot,
+		node:              node,
+		fetcher:           fetcher,
+		requireFile:       requireFile,
+		osVersionDetector: osversion.DefaultDetector,
 	}
+}
+
+func (f *factory) SetOSVersionDetector(osVersionDetector osversion.Detector) {
+	f.osVersionDetector = osVersionDetector
 }
 
 func NewHookFactory(hookRoot string, node types.NodeName, fetcher uri.Fetcher) HookFactory {
@@ -69,9 +78,10 @@ func NewHookFactory(hookRoot string, node types.NodeName, fetcher uri.Fetcher) H
 	}
 
 	return &hookFactory{
-		hookRoot: hookRoot,
-		node:     node,
-		fetcher:  fetcher,
+		hookRoot:          hookRoot,
+		node:              node,
+		fetcher:           fetcher,
+		osVersionDetector: osversion.DefaultDetector, // TODO(mpuncel) make this configurable if needed
 	}
 }
 
@@ -92,22 +102,30 @@ func (f *factory) NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod
 		return nil, util.Errorf("uniqueKey cannot be empty")
 	}
 	home := filepath.Join(f.podRoot, computeUniqueName(id, uniqueKey))
-	return newPodWithHome(id, uniqueKey, home, f.node, f.requireFile, f.fetcher), nil
+	return newPodWithHome(id, uniqueKey, home, f.node, f.requireFile, f.fetcher, f.osVersionDetector), nil
 }
 
 func (f *factory) NewLegacyPod(id types.PodID) *Pod {
 	home := filepath.Join(f.podRoot, id.String())
-	return newPodWithHome(id, "", home, f.node, f.requireFile, f.fetcher)
+	return newPodWithHome(id, "", home, f.node, f.requireFile, f.fetcher, f.osVersionDetector)
 }
 
 func (f *hookFactory) NewHookPod(id types.PodID) *Pod {
 	home := filepath.Join(f.hookRoot, id.String())
 
 	// Hooks can't have a UUID
-	return newPodWithHome(id, "", home, f.node, "", f.fetcher)
+	return newPodWithHome(id, "", home, f.node, "", f.fetcher, f.osVersionDetector)
 }
 
-func newPodWithHome(id types.PodID, uniqueKey types.PodUniqueKey, podHome string, node types.NodeName, requireFile string, fetcher uri.Fetcher) *Pod {
+func newPodWithHome(
+	id types.PodID,
+	uniqueKey types.PodUniqueKey,
+	podHome string,
+	node types.NodeName,
+	requireFile string,
+	fetcher uri.Fetcher,
+	osVersionDetector osversion.Detector,
+) *Pod {
 	var logger logging.Logger
 	logger = Log.SubLogger(logrus.Fields{"pod": id, "uuid": uniqueKey})
 
@@ -116,19 +134,20 @@ func newPodWithHome(id types.PodID, uniqueKey types.PodUniqueKey, podHome string
 	}
 
 	return &Pod{
-		Id:             id,
-		uniqueKey:      uniqueKey,
-		home:           podHome,
-		node:           node,
-		logger:         logger,
-		SV:             runit.DefaultSV,
-		ServiceBuilder: runit.DefaultBuilder,
-		P2Exec:         p2exec.DefaultP2Exec,
-		DefaultTimeout: 60 * time.Second,
-		LogExec:        runit.DefaultLogExec(),
-		FinishExec:     NopFinishExec,
-		Fetcher:        fetcher,
-		RequireFile:    requireFile,
+		Id:                id,
+		uniqueKey:         uniqueKey,
+		home:              podHome,
+		node:              node,
+		logger:            logger,
+		SV:                runit.DefaultSV,
+		ServiceBuilder:    runit.DefaultBuilder,
+		P2Exec:            p2exec.DefaultP2Exec,
+		DefaultTimeout:    60 * time.Second,
+		LogExec:           runit.DefaultLogExec(),
+		FinishExec:        NopFinishExec,
+		Fetcher:           fetcher,
+		RequireFile:       requireFile,
+		OSVersionDetector: osVersionDetector,
 	}
 }
 
@@ -157,5 +176,6 @@ func PodFromPodHomeWithReqFile(node types.NodeName, home string, requireFile str
 	}
 
 	// TODO: Shouldn't the Fetcher be configured? So one should get passed in, right?
-	return newPodWithHome(manifest.ID(), uniqueKey, home, node, requireFile, nil), nil
+	// TODO (mpuncel): make the osversion detector configurable if needed
+	return newPodWithHome(manifest.ID(), uniqueKey, home, node, requireFile, nil, osversion.DefaultDetector), nil
 }
