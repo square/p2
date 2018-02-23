@@ -112,26 +112,19 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 		return []launch.Executable{}, util.Errorf("%s is not installed", l.ServiceID_)
 	}
 
-	uid, gid, err := user.IDs(l.RunAs)
-	if err != nil {
-		return nil, util.Errorf("%s: unknown runas user: %s", l.ServiceID_, l.RunAs)
-	}
 	lspec, err := l.getSpec()
 	if err != nil {
 		return nil, util.Errorf("%s: loading container specification: %s", l.ServiceID_, err)
 	}
 
-	if lspec.Solaris != nil || lspec.Windows != nil {
-		return nil, util.Errorf("unsupported platform, only \"linux\" is supported")
+	uid, gid, err := user.IDs(l.RunAs)
+	if err != nil {
+		return nil, util.Errorf("%s: unknown runas user: %s", l.ServiceID_, l.RunAs)
 	}
 
-	if filepath.Base(lspec.Root.Path) != lspec.Root.Path {
-		return nil, util.Errorf("%s: invalid container root: %s", l.ServiceID_, lspec.Root.Path)
-	}
-	luser := lspec.Process.User
-	if uid != int(luser.UID) || gid != int(luser.GID) {
-		return nil, util.Errorf("%s: cannot execute as %s(%d:%d): container expects %d:%d",
-			l.ServiceID_, l.RunAs, uid, gid, luser.UID, luser.GID)
+	err = l.validateSpec(lspec, uid, gid)
+	if err != nil {
+		return nil, err
 	}
 
 	runcConfig, err := GetConfig(l.OSVersionDetector)
@@ -220,7 +213,24 @@ func (l *Launchable) makeLast() error {
 
 // Launch allows the launchable to begin execution.
 func (l *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
-	err := l.start(serviceBuilder, sv)
+	// we did this when we built the runit services, but for good measure
+	// validate the config.json again
+	lspec, err := l.getSpec()
+	if err != nil {
+		return util.Errorf("could not fetch config.json to perform validation before starting the container: %s", err)
+	}
+
+	uid, gid, err := user.IDs(l.RunAs)
+	if err != nil {
+		return util.Errorf("%s: unknown runas user: %s", l.ServiceID_, l.RunAs)
+	}
+
+	err = l.validateSpec(lspec, uid, gid)
+	if err != nil {
+		return err
+	}
+
+	err = l.start(serviceBuilder, sv)
 	if err != nil {
 		return launch.StartError{Inner: err}
 	}
@@ -304,4 +314,48 @@ func (l *Launchable) RestartPolicy() runit.RestartPolicy {
 
 func (l *Launchable) GetRestartTimeout() time.Duration {
 	return l.RestartTimeout
+}
+
+// validateSpec enforces constraints on what container settings P2 will run
+func (l *Launchable) validateSpec(lspec *Spec, uid int, gid int) error {
+	if lspec == nil {
+		return util.Errorf("nil lspec")
+	}
+
+	if lspec.Solaris != nil || lspec.Windows != nil {
+		return util.Errorf("unsupported platform, only \"linux\" is supported")
+	}
+
+	if lspec.Root == nil {
+		return util.Errorf("a root filesystem must be specified in config.json")
+	}
+	if filepath.Base(lspec.Root.Path) != lspec.Root.Path {
+		return util.Errorf("%s: invalid container root: %s", l.ServiceID_, lspec.Root.Path)
+	}
+	if !lspec.Root.Readonly {
+		return util.Errorf("root filesystem is required to be set to read only in config.json")
+	}
+
+	luser := lspec.Process.User
+	if uid != int(luser.UID) || gid != int(luser.GID) {
+		return util.Errorf("%s: cannot execute as %s(%d:%d): container expects %d:%d",
+			l.ServiceID_, l.RunAs, uid, gid, luser.UID, luser.GID)
+	}
+
+	capabilities := lspec.Process.Capabilities
+	if luser.UID != 0 && capabilities != nil {
+		if len(capabilities.Bounding) > 0 ||
+			len(capabilities.Effective) > 0 ||
+			len(capabilities.Inheritable) > 0 ||
+			len(capabilities.Permitted) > 0 ||
+			len(capabilities.Ambient) > 0 {
+			return util.Errorf("capabilities were present in config.json but are not allowed")
+		}
+	}
+
+	if !lspec.Process.NoNewPrivileges {
+		return util.Errorf("noNewPrivileges must be set to true in config.json")
+	}
+
+	return nil
 }
