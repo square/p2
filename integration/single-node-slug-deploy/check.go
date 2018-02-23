@@ -62,6 +62,8 @@ const (
 	openContainerHelloPort = 43773
 )
 
+var osVersionFile = util.From(runtime.Caller(0)).ExpandPath("redhat-release")
+
 var noAddUser = false
 
 func parseOptions(args []string) {
@@ -705,8 +707,9 @@ func generatePreparerPod(workdir string, userHookManifest manifest.Manifest, req
 				"environment_extractor_path": strings.TrimSpace(string(envExtractorPath)),
 				"workspace_dir_path":         "/data/pods/p2-preparer/tmp",
 			},
-			"hooks_manifest": string(userCreationHookBytes),
-			"require_file":   requireFile,
+			"hooks_manifest":  string(userCreationHookBytes),
+			"require_file":    requireFile,
+			"os_version_file": osVersionFile, // because we can't write /etc/redhat-release on travis
 		},
 	})
 	if err != nil {

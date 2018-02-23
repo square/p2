@@ -149,6 +149,7 @@ type PreparerConfig struct {
 	LogBridgeBlacklist     []string               `yaml:"log_bridge_blacklist,omitempty"`
 	ArtifactRegistryURL    string                 `yaml:"artifact_registry_url,omitempty"`
 	ConsulConfig           ConsulConfig           `yaml:"consul_config,omitempty"`
+	OSVersionFile          string                 `yaml:"os_version_file,omitempty"`
 
 	// The pod manifest to use for hooks. If no hooks are desired, use the
 	// NoHooksSentinelValue constant to indicate that there aren't any
@@ -517,7 +518,13 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 
 		}
 	}
+	osVersionDetector := osversion.DefaultDetector
+	if preparerConfig.OSVersionFile != "" {
+		osVersionDetector = osversion.NewDetector(preparerConfig.OSVersionFile)
+	}
 
+	podFactory := pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName, fetcher, preparerConfig.RequireFile)
+	podFactory.SetOSVersionDetector(osVersionDetector)
 	return &Preparer{
 		node:                   preparerConfig.NodeName,
 		store:                  store,
@@ -527,7 +534,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		podRoot:                preparerConfig.PodRoot,
 		client:                 client,
 		Logger:                 logger,
-		podFactory:             pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName, fetcher, preparerConfig.RequireFile),
+		podFactory:             podFactory,
 		authPolicy:             authPolicy,
 		maxLaunchableDiskUsage: maxLaunchableDiskUsage,
 		finishExec:             finishExec,

@@ -20,6 +20,7 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/opencontainer"
+	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/p2exec"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"
@@ -62,16 +63,17 @@ type Pod struct {
 	// The home directory for the pod. Typically some global root (e.g.
 	// /data/pods) followed by the pod's UniqueName() (e.g.
 	// /data/pods/<pod_id> or /data/pods/<pod_id>-<uuid>
-	home           string
-	logger         logging.Logger
-	SV             runit.SV
-	ServiceBuilder *runit.ServiceBuilder
-	P2Exec         string
-	DefaultTimeout time.Duration // this is the default timeout for stopping and restarting services in this pod
-	LogExec        runit.Exec
-	FinishExec     runit.Exec
-	Fetcher        uri.Fetcher
-	ManifestFinder ManifestFinder
+	home              string
+	logger            logging.Logger
+	SV                runit.SV
+	ServiceBuilder    *runit.ServiceBuilder
+	P2Exec            string
+	DefaultTimeout    time.Duration // this is the default timeout for stopping and restarting services in this pod
+	LogExec           runit.Exec
+	FinishExec        runit.Exec
+	Fetcher           uri.Fetcher
+	ManifestFinder    ManifestFinder
+	OSVersionDetector osversion.Detector
 
 	// Pod will not start if file is not present
 	RequireFile string
@@ -827,16 +829,17 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 		return ret.If(), nil
 	} else if launchableStanza.LaunchableType == "opencontainer" {
 		ret := &opencontainer.Launchable{
-			Version_:        version,
-			ID_:             launchableID,
-			ServiceID_:      serviceId,
-			RunAs:           runAsUser,
-			RootDir:         launchableRootDir,
-			P2Exec:          pod.P2Exec,
-			RestartTimeout:  restartTimeout,
-			RestartPolicy_:  launchableStanza.RestartPolicy(),
-			CgroupConfig:    launchableStanza.CgroupConfig,
-			SuppliedEnvVars: launchableStanza.Env,
+			Version_:          version,
+			ID_:               launchableID,
+			ServiceID_:        serviceId,
+			RunAs:             runAsUser,
+			RootDir:           launchableRootDir,
+			P2Exec:            pod.P2Exec,
+			RestartTimeout:    restartTimeout,
+			RestartPolicy_:    launchableStanza.RestartPolicy(),
+			CgroupConfig:      launchableStanza.CgroupConfig,
+			SuppliedEnvVars:   launchableStanza.Env,
+			OSVersionDetector: pod.OSVersionDetector,
 		}
 		ret.CgroupConfig.Name = cgroups.CgroupID(serviceId)
 		return ret, nil

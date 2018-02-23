@@ -34,16 +34,17 @@ var RuncPath = param.String("runc_path", "/usr/local/bin/runc")
 
 // Launchable represents an installation of a container.
 type Launchable struct {
-	ID_             launch.LaunchableID        // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
-	ServiceID_      string                     // A (host-wise) unique identifier for this launchable, used when creating runit services
-	RunAs           string                     // The user to assume when launching the executable
-	RootDir         string                     // The root directory of the launchable, containing N:N>=1 installs.
-	P2Exec          string                     // The path to p2-exec
-	RestartTimeout  time.Duration              // How long to wait when restarting the services in this launchable.
-	RestartPolicy_  runit.RestartPolicy        // Dictates whether the container should be automatically restarted upon exit.
-	CgroupConfig    cgroups.Config             // Cgroup parameters to use with p2-exec
-	Version_        launch.LaunchableVersionID // Version of the specified launchable
-	SuppliedEnvVars map[string]string          // User-supplied env variables
+	ID_               launch.LaunchableID        // A (pod-wise) unique identifier for this launchable, used to distinguish it from other launchables in the pod
+	ServiceID_        string                     // A (host-wise) unique identifier for this launchable, used when creating runit services
+	RunAs             string                     // The user to assume when launching the executable
+	RootDir           string                     // The root directory of the launchable, containing N:N>=1 installs.
+	P2Exec            string                     // The path to p2-exec
+	RestartTimeout    time.Duration              // How long to wait when restarting the services in this launchable.
+	RestartPolicy_    runit.RestartPolicy        // Dictates whether the container should be automatically restarted upon exit.
+	CgroupConfig      cgroups.Config             // Cgroup parameters to use with p2-exec
+	Version_          launch.LaunchableVersionID // Version of the specified launchable
+	SuppliedEnvVars   map[string]string          // User-supplied env variables
+	OSVersionDetector osversion.Detector
 
 	spec *Spec // The container's "config.json"
 }
@@ -133,7 +134,7 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 			l.ServiceID_, l.RunAs, uid, gid, luser.UID, luser.GID)
 	}
 
-	runcConfig, err := GetConfig(osversion.DefaultDetector)
+	runcConfig, err := GetConfig(l.OSVersionDetector)
 	if err != nil {
 		return nil, err
 	}

@@ -69,8 +69,4 @@ popd
 sudo curl -L https://github.com/opencontainers/runc/releases/download/v1.0.0-rc4/runc.amd64 -o /usr/local/bin/runc
 sudo chmod +x /usr/local/bin/runc
 
-# this is a lie, but the opencontainer code in P2 depends on this file existing
-# to configure runc, so just fudge it for the integration test
-sudo echo 'CentOS Linux release 7.4.1708 (Core)' > /etc/redhat-release
-
 sudo env PATH=$PATH GOPATH=$GOPATH GOROOT=$GOROOT go run integration/single-node-slug-deploy/check.go --no-add-user
