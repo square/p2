@@ -3,6 +3,7 @@ package hooks
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/square/p2/pkg/config"
 	"github.com/square/p2/pkg/manifest"
@@ -79,7 +80,14 @@ func (h *HookEnv) PodFromDisk() (*pods.Pod, error) {
 
 // Initializes a pod based on the hooked pod manifest and the system pod root
 func (h *HookEnv) Pod() (*pods.Pod, error) {
-	factory := pods.NewFactory(os.Getenv(HookedSystemPodRootEnvVar), HookedNodeEnvVar, uri.DefaultFetcher, "", pods.NewReadOnlyPolicy(false, nil, nil))
+	readonly, err := strconv.ParseBool(os.Getenv(HookedPodReadOnly))
+	if err != nil {
+		// if we can't parse the boolean, it may just be unset; default
+		// to readonly being off
+		readonly = false
+	}
+
+	factory := pods.NewFactory(os.Getenv(HookedSystemPodRootEnvVar), HookedNodeEnvVar, uri.DefaultFetcher, "", pods.NewReadOnlyPolicy(readonly, nil, nil))
 
 	podID, err := h.PodID()
 	if err != nil {
