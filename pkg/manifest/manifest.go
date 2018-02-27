@@ -266,7 +266,7 @@ func (manifest *manifest) RunAsUser() string {
 }
 
 func (manifest *manifest) UnpackAsUser() string {
-	if *manifest.ReadOnly {
+	if manifest.GetReadOnly() {
 		return "root"
 	}
 
@@ -283,7 +283,7 @@ func (manifest *manifest) GetReadOnly() bool {
 
 func (manifest *manifest) SetReadOnlyIfUnset(readonly bool) {
 	if manifest.ReadOnly == nil {
-		*manifest.ReadOnly = readonly
+		manifest.ReadOnly = &readonly
 	}
 }
 
