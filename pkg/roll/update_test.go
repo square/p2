@@ -991,6 +991,7 @@ func (c cannedWatchServiceChecker) WatchService(
 	errCh chan<- error,
 	watchDelay time.Duration,
 	useHealthService bool,
+	useOnlyHealthService bool,
 	status manifest.StatusStanza,
 ) {
 	for {

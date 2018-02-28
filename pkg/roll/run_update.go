@@ -68,6 +68,7 @@ type ServiceWatcher interface {
 		errCh chan<- error,
 		watchDelay time.Duration,
 		useHealthService bool,
+		useOnlyHealthService bool,
 		status manifest.StatusStanza,
 	)
 	Service(
@@ -343,8 +344,14 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 			"podID": newFields.Manifest.ID().String(),
 		}).Infoln("use_health_service config in manifest is either not set or an invalid bool type, defaulting value to false")
 	}
+	useOnlyHealthService, ok := config["use_only_health_service"].(bool)
+	if !ok {
+		u.logger.WithFields(logrus.Fields{
+			"podID": newFields.Manifest.ID().String(),
+		}).Infoln("use_only_health_service config in manifest is either not set or an invalid bool type, defaulting value to false")
+	}
 	watchServiceCtx, watchServiceCancel := context.WithCancel(ctx)
-	go u.hcheck.WatchService(watchServiceCtx, string(newFields.Manifest.ID()), hChecks, hErrs, watchDelay, useHealthService, newFields.Manifest.GetStatusStanza())
+	go u.hcheck.WatchService(watchServiceCtx, string(newFields.Manifest.ID()), hChecks, hErrs, watchDelay, useHealthService, useOnlyHealthService, newFields.Manifest.GetStatusStanza())
 	defer watchServiceCancel()
 
 	if updateSucceeded := u.rollLoop(checkRCLocksCtx, newFields.Manifest.ID(), hChecks, hErrs, useHealthService, newFields.Manifest.GetStatusStanza()); !updateSucceeded {

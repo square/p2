@@ -52,6 +52,7 @@ type ShadowTrafficHealthChecker interface {
 		errCh chan<- error,
 		watchDelay time.Duration,
 		useHealthService bool,
+		useOnlyHealthService bool,
 		status manifest.StatusStanza,
 	)
 	Service(
@@ -395,11 +396,12 @@ func (h shadowTrafficHealthChecker) WatchService(
 	errCh chan<- error,
 	watchDelay time.Duration,
 	useHealthService bool,
+	useOnlyHealthService bool,
 	status manifest.StatusStanza,
 ) {
 	defer close(resultCh)
 
-	if h.useHealthService || useHealthService {
+	if h.useHealthService || useHealthService || useOnlyHealthService {
 		// get status endpoints for service
 		statusEndpoints, err := h.getStatusEndpoints(serviceID, status)
 		if err != nil {
@@ -467,7 +469,9 @@ func (h shadowTrafficHealthChecker) WatchService(
 		}()
 	}
 
-	watchConsulHealth(ctx, serviceID, h.kv, resultCh, errCh, watchDelay)
+	if !useOnlyHealthService {
+		watchConsulHealth(ctx, serviceID, h.kv, resultCh, errCh, watchDelay)
+	}
 }
 
 func (h healthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {

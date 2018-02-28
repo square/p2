@@ -32,6 +32,7 @@ func (s singleServiceShadowChecker) WatchService(
 	errCh chan<- error,
 	watchDelay time.Duration,
 	useHealthService bool,
+	useOnlyHealthService bool,
 	status manifest.StatusStanza,
 ) {
 	panic("WatchService not implemented")
