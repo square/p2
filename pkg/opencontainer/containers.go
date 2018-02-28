@@ -7,6 +7,7 @@
 package opencontainer
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/ioutil"
 	"os"
@@ -45,6 +46,17 @@ type Launchable struct {
 	Version_          launch.LaunchableVersionID // Version of the specified launchable
 	SuppliedEnvVars   map[string]string          // User-supplied env variables
 	OSVersionDetector osversion.Detector
+	ExecNoLimit       bool // If set, execute with the -n (--no-limit) argument to p2-exec
+
+	// These fields are only used to invoke bin/post-install for
+	// opencontainer launchables which is only necessary to allow
+	// launchables to customize their config.json at runtime. This
+	// functoinality could possibly be provided by P2 and these fields
+	// could be removed.
+	CgroupName       string // The name of the cgroup to run this launchable in
+	CgroupConfigName string // The string in PLATFORM_CONFIG to pass to p2-exec
+	PodEnvDir        string // The value for chpst -e. See http://smarden.org/runit/chpst.8.html
+	RequireFile      string // Do not run this launchable until this file exists
 
 	spec *Spec // The container's "config.json"
 }
@@ -112,26 +124,19 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 		return []launch.Executable{}, util.Errorf("%s is not installed", l.ServiceID_)
 	}
 
-	uid, gid, err := user.IDs(l.RunAs)
-	if err != nil {
-		return nil, util.Errorf("%s: unknown runas user: %s", l.ServiceID_, l.RunAs)
-	}
 	lspec, err := l.getSpec()
 	if err != nil {
 		return nil, util.Errorf("%s: loading container specification: %s", l.ServiceID_, err)
 	}
 
-	if lspec.Solaris != nil || lspec.Windows != nil {
-		return nil, util.Errorf("unsupported platform, only \"linux\" is supported")
+	uid, gid, err := user.IDs(l.RunAs)
+	if err != nil {
+		return nil, util.Errorf("%s: unknown runas user: %s", l.ServiceID_, l.RunAs)
 	}
 
-	if filepath.Base(lspec.Root.Path) != lspec.Root.Path {
-		return nil, util.Errorf("%s: invalid container root: %s", l.ServiceID_, lspec.Root.Path)
-	}
-	luser := lspec.Process.User
-	if uid != int(luser.UID) || gid != int(luser.GID) {
-		return nil, util.Errorf("%s: cannot execute as %s(%d:%d): container expects %d:%d",
-			l.ServiceID_, l.RunAs, uid, gid, luser.UID, luser.GID)
+	err = l.validateSpec(lspec, uid, gid)
+	if err != nil {
+		return nil, err
 	}
 
 	runcConfig, err := GetConfig(l.OSVersionDetector)
@@ -149,7 +154,12 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 	}
 	serviceName := l.ServiceID_ + "__container"
 	runcArgs = append(runcArgs, serviceName)
-
+	// TODO: also support adding P2-provided environment variables to the
+	// config.json file so that containerized processes can make use of
+	// them.
+	// The EnvDirs field is set in the P2ExecArgs and used by
+	// p2-exec itself, but runc will reset the env before execing the
+	// containerized process
 	return []launch.Executable{{
 		Service: runit.Service{
 			Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
@@ -157,10 +167,13 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 		},
 		Exec: append(
 			[]string{l.P2Exec},
-			p2exec.P2ExecArgs{ // TODO: support environment variables
-				NoLimits: true,
-				WorkDir:  l.InstallDir(),
-				Command:  runcArgs,
+			p2exec.P2ExecArgs{
+				NoLimits:         l.ExecNoLimit,
+				WorkDir:          l.InstallDir(),
+				EnvDirs:          []string{l.PodEnvDir, l.EnvDir()},
+				Command:          runcArgs,
+				CgroupConfigName: l.CgroupConfigName,
+				CgroupName:       l.CgroupName,
 			}.CommandLine()...,
 		),
 	}}, nil
@@ -173,9 +186,57 @@ func (l *Launchable) Installed() bool {
 	return err == nil
 }
 
-// Install ...
-func (l *Launchable) PostInstall() (returnedError error) {
-	return nil
+// PostInstall() is a useful feature for opencontainers that need to modify
+// their config.json file at runtime, for instance to change the uid/gid
+// based on the currently running user
+func (l *Launchable) PostInstall() (string, error) {
+	// TODO: unexport this method (requires integrating BuildRunitServices into this API)
+	output, err := l.InvokeBinScript("post-install")
+
+	// providing a post-activate script is optional, ignore those errors
+	if err != nil && !os.IsNotExist(err) {
+		return output, err
+	}
+
+	return output, nil
+}
+
+// InvokeBinScript is shamelessly copied from the hoist launchable
+// implementation. It just runs a bin/%s script in the opencontainer
+// launchable. This is only necessary so launchables can configure their
+// config.json at runtime, for instance when hostname parameters or uid/gid
+// parameters should be determined based on running context
+func (l *Launchable) InvokeBinScript(script string) (string, error) {
+	cmdPath := filepath.Join(l.InstallDir(), "bin", script)
+	_, err := os.Stat(cmdPath)
+	if err != nil {
+		return "", err
+	}
+
+	cgroupName := l.CgroupName
+	if l.CgroupConfigName == "" {
+		cgroupName = ""
+	}
+	p2ExecArgs := p2exec.P2ExecArgs{
+		Command:          []string{cmdPath},
+		User:             l.RunAs,
+		EnvDirs:          []string{l.PodEnvDir, l.EnvDir()},
+		NoLimits:         l.ExecNoLimit,
+		CgroupConfigName: l.CgroupConfigName,
+		CgroupName:       cgroupName,
+		RequireFile:      l.RequireFile,
+		ClearEnv:         true,
+	}
+	cmd := exec.Command(l.P2Exec, p2ExecArgs.CommandLine()...)
+	buffer := bytes.Buffer{}
+	cmd.Stdout = &buffer
+	cmd.Stderr = &buffer
+	err = cmd.Run()
+	if err != nil {
+		return buffer.String(), err
+	}
+
+	return buffer.String(), nil
 }
 
 // PostActive runs a Hoist-specific "post-activate" script in the launchable.
@@ -220,7 +281,24 @@ func (l *Launchable) makeLast() error {
 
 // Launch allows the launchable to begin execution.
 func (l *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
-	err := l.start(serviceBuilder, sv)
+	// we did this when we built the runit services, but for good measure
+	// validate the config.json again
+	lspec, err := l.getSpec()
+	if err != nil {
+		return util.Errorf("could not fetch config.json to perform validation before starting the container: %s", err)
+	}
+
+	uid, gid, err := user.IDs(l.RunAs)
+	if err != nil {
+		return util.Errorf("%s: unknown runas user: %s", l.ServiceID_, l.RunAs)
+	}
+
+	err = l.validateSpec(lspec, uid, gid)
+	if err != nil {
+		return err
+	}
+
+	err = l.start(serviceBuilder, sv)
 	if err != nil {
 		return launch.StartError{Inner: err}
 	}
@@ -304,4 +382,48 @@ func (l *Launchable) RestartPolicy() runit.RestartPolicy {
 
 func (l *Launchable) GetRestartTimeout() time.Duration {
 	return l.RestartTimeout
+}
+
+// validateSpec enforces constraints on what container settings P2 will run
+func (l *Launchable) validateSpec(lspec *Spec, uid int, gid int) error {
+	if lspec == nil {
+		return util.Errorf("nil lspec")
+	}
+
+	if lspec.Solaris != nil || lspec.Windows != nil {
+		return util.Errorf("unsupported platform, only \"linux\" is supported")
+	}
+
+	if lspec.Root == nil {
+		return util.Errorf("a root filesystem must be specified in config.json")
+	}
+	if filepath.Base(lspec.Root.Path) != lspec.Root.Path {
+		return util.Errorf("%s: invalid container root: %s", l.ServiceID_, lspec.Root.Path)
+	}
+	if !lspec.Root.Readonly {
+		return util.Errorf("root filesystem is required to be set to read only in config.json")
+	}
+
+	luser := lspec.Process.User
+	if uid != int(luser.UID) || gid != int(luser.GID) {
+		return util.Errorf("%s: cannot execute as %s(%d:%d): container expects %d:%d",
+			l.ServiceID_, l.RunAs, uid, gid, luser.UID, luser.GID)
+	}
+
+	capabilities := lspec.Process.Capabilities
+	if luser.UID != 0 && capabilities != nil {
+		if len(capabilities.Bounding) > 0 ||
+			len(capabilities.Effective) > 0 ||
+			len(capabilities.Inheritable) > 0 ||
+			len(capabilities.Permitted) > 0 ||
+			len(capabilities.Ambient) > 0 {
+			return util.Errorf("capabilities were present in config.json but are not allowed")
+		}
+	}
+
+	if !lspec.Process.NoNewPrivileges {
+		return util.Errorf("noNewPrivileges must be set to true in config.json")
+	}
+
+	return nil
 }

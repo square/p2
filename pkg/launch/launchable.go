@@ -150,7 +150,7 @@ type Launchable interface {
 	// Installed returns true if this launchable is already installed.
 	Installed() bool
 	// Executes any necessary post-install steps to ready the launchable for launch
-	PostInstall() error
+	PostInstall() (string, error)
 
 	// PostActive runs a Hoist-specific "post-activate" script in the launchable.
 	PostActivate() (string, error)
