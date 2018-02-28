@@ -154,7 +154,12 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 	}
 	serviceName := l.ServiceID_ + "__container"
 	runcArgs = append(runcArgs, serviceName)
-
+	// TODO: also support adding P2-provided environment variables to the
+	// config.json file so that containerized processes can make use of
+	// them.
+	// The EnvDirs field is set in the P2ExecArgs and used by
+	// p2-exec itself, but runc will reset the env before execing the
+	// containerized process
 	return []launch.Executable{{
 		Service: runit.Service{
 			Path: filepath.Join(serviceBuilder.RunitRoot, serviceName),
@@ -162,7 +167,7 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 		},
 		Exec: append(
 			[]string{l.P2Exec},
-			p2exec.P2ExecArgs{ // TODO: support environment variables
+			p2exec.P2ExecArgs{
 				NoLimits:         l.ExecNoLimit,
 				WorkDir:          l.InstallDir(),
 				EnvDirs:          []string{l.PodEnvDir, l.EnvDir()},
