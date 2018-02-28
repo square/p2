@@ -21,14 +21,14 @@ type HealthStore interface {
 
 type healthStore struct {
 	cachedHealth  map[cacheKey]*health.Result
-	healthChecker checker.ConsulHealthChecker
+	healthChecker checker.HealthChecker
 	lock          sync.RWMutex
 	logger        logging.Logger
 }
 
 var _ HealthStore = &healthStore{}
 
-func NewHealthStore(healthChecker checker.ConsulHealthChecker) HealthStore {
+func NewHealthStore(healthChecker checker.HealthChecker) HealthStore {
 	return &healthStore{
 		healthChecker: healthChecker,
 		lock:          sync.RWMutex{},

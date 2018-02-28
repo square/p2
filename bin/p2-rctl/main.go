@@ -167,7 +167,7 @@ func main() {
 		rls:               rollstore.NewConsul(client, rollLabeler, nil),
 		consuls:           consul.NewConsulStore(client),
 		labeler:           labeler,
-		hcheck:            checker.NewConsulHealthChecker(client),
+		hcheck:            checker.NewShadowTrafficHealthChecker(nil, nil, client, nil, nil, false),
 		hclient:           nil,
 		logger:            logger,
 	}
@@ -271,7 +271,7 @@ type rctlParams struct {
 	rls               RollingUpdateStore
 	labeler           labels.ApplicatorWithoutWatches
 	consuls           Store
-	hcheck            checker.ConsulHealthChecker
+	hcheck            checker.ShadowTrafficHealthChecker
 	hclient           hclient.HealthServiceClient
 	logger            logging.Logger
 }
@@ -444,6 +444,7 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 	session := r.consuls.NewUnmanagedSession(sessionID, "")
 
 	result := make(chan bool, 1)
+
 	go func() {
 		ctx, cancel := transaction.New(context.Background())
 		defer cancel()

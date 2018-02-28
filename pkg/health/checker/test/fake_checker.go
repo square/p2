@@ -1,15 +1,48 @@
 package test
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 )
 
 // TODO: replication/common_setup_test.go has some things that could be moved here
+
+type singleServiceShadowChecker struct {
+	service string
+	health  map[types.NodeName]health.Result
+}
+
+func NewSingleServiceShadow(service string, health map[types.NodeName]health.Result) checker.ShadowTrafficHealthChecker {
+	return &singleServiceShadowChecker{
+		service: service,
+		health:  health,
+	}
+}
+
+func (s singleServiceShadowChecker) WatchService(
+	ctx context.Context,
+	serviceID string,
+	resultCh chan<- map[types.NodeName]health.Result,
+	errCh chan<- error,
+	watchDelay time.Duration,
+	useHealthService bool,
+	status manifest.StatusStanza,
+) {
+	panic("WatchService not implemented")
+}
+
+func (s singleServiceShadowChecker) Service(serviceID string, useHealthService bool, status manifest.StatusStanza) (map[types.NodeName]health.Result, error) {
+	if serviceID != s.service {
+		return nil, fmt.Errorf("Wrong service %s given, I only have health for %s", serviceID, s.service)
+	}
+	return s.health, nil
+}
 
 type singleServiceChecker struct {
 	service string
@@ -17,7 +50,7 @@ type singleServiceChecker struct {
 }
 
 // NewSingleService reports a fixed health result for a single service only
-func NewSingleService(service string, health map[types.NodeName]health.Result) checker.ConsulHealthChecker {
+func NewSingleService(service string, health map[types.NodeName]health.Result) checker.HealthChecker {
 	return &singleServiceChecker{
 		service: service,
 		health:  health,
@@ -38,7 +71,13 @@ func (s singleServiceChecker) WatchPodOnNode(nodename types.NodeName, podID type
 	return resultCh, nil
 }
 
-func (s singleServiceChecker) WatchService(serviceID string, resultCh chan<- map[types.NodeName]health.Result, errCh chan<- error, quitCh <-chan struct{}, watchDelay time.Duration) {
+func (s singleServiceChecker) WatchService(
+	ctx context.Context,
+	serviceID string,
+	resultCh chan<- map[types.NodeName]health.Result,
+	errCh chan<- error,
+	watchDelay time.Duration,
+) {
 	panic("WatchService not implemented")
 
 }
@@ -58,9 +97,9 @@ type AlwaysHappyHealthChecker struct {
 	allNodes []types.NodeName
 }
 
-// creates an implementation of checker.ConsulHealthChecker that always reports
+// creates an implementation of checker.HealthChecker that always reports
 // satisfied health checks for testing purposes
-func HappyHealthChecker(nodes []types.NodeName) checker.ConsulHealthChecker {
+func HappyHealthChecker(nodes []types.NodeName) checker.HealthChecker {
 	return AlwaysHappyHealthChecker{nodes}
 }
 
@@ -101,10 +140,10 @@ func (h AlwaysHappyHealthChecker) Service(serviceID string) (map[types.NodeName]
 }
 
 func (h AlwaysHappyHealthChecker) WatchService(
+	ctx context.Context,
 	serviceID string,
 	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
-	quitCh <-chan struct{},
 	watchDelay time.Duration,
 ) {
 	allHappy := make(map[types.NodeName]health.Result)
@@ -116,7 +155,7 @@ func (h AlwaysHappyHealthChecker) WatchService(
 	}
 	for {
 		select {
-		case <-quitCh:
+		case <-ctx.Done():
 			return
 		case resultCh <- allHappy:
 		}

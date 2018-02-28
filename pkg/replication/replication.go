@@ -105,7 +105,7 @@ type replication struct {
 	labeler        Labeler
 	manifest       manifest.Manifest
 	mu             sync.RWMutex
-	health         checker.ConsulHealthChecker
+	health         checker.HealthChecker
 	threshold      health.HealthState // minimum state to treat as "healthy"
 	logger         logging.Logger
 
@@ -169,7 +169,7 @@ func newReplication(
 	labeler Labeler,
 	podLabels map[string]string,
 	manifest manifest.Manifest,
-	health checker.ConsulHealthChecker,
+	health checker.HealthChecker,
 	threshold health.HealthState,
 	logger logging.Logger,
 	rateLimiter *time.Ticker,

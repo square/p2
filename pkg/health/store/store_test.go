@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -18,10 +19,10 @@ func (hc *FakeHealthChecker) WatchPodOnNode(nodename types.NodeName, podID types
 }
 
 func (hc *FakeHealthChecker) WatchService(
+	ctx context.Context,
 	serviceID string,
 	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
-	quitCh <-chan struct{},
 	watchDelay time.Duration,
 ) {
 	panic("not implemented")

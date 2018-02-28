@@ -62,13 +62,19 @@ type Labeler interface {
 
 type ServiceWatcher interface {
 	WatchService(
+		ctx context.Context,
 		serviceID string,
 		resultCh chan<- map[types.NodeName]health.Result,
 		errCh chan<- error,
-		quitCh <-chan struct{},
 		watchDelay time.Duration,
+		useHealthService bool,
+		status manifest.StatusStanza,
 	)
-	Service(serviceID string) (map[types.NodeName]health.Result, error)
+	Service(
+		serviceID string,
+		useHealthService bool,
+		status manifest.StatusStanza,
+	) (map[types.NodeName]health.Result, error)
 }
 
 type update struct {
@@ -330,9 +336,18 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 	hQuit := make(chan struct{})
 	defer close(hQuit)
 	watchDelay := 1 * time.Second
-	go u.hcheck.WatchService(string(newFields.Manifest.ID()), hChecks, hErrs, hQuit, watchDelay)
+	config := newFields.Manifest.GetConfig()
+	useHealthService, ok := config["use_health_service"].(bool)
+	if !ok {
+		u.logger.WithFields(logrus.Fields{
+			"podID": newFields.Manifest.ID().String(),
+		}).Infoln("use_health_service config in manifest is either not set or an invalid bool type, defaulting value to false")
+	}
+	watchServiceCtx, watchServiceCancel := context.WithCancel(ctx)
+	go u.hcheck.WatchService(watchServiceCtx, string(newFields.Manifest.ID()), hChecks, hErrs, watchDelay, useHealthService, newFields.Manifest.GetStatusStanza())
+	defer watchServiceCancel()
 
-	if updateSucceeded := u.rollLoop(checkRCLocksCtx, newFields.Manifest.ID(), hChecks, hErrs); !updateSucceeded {
+	if updateSucceeded := u.rollLoop(checkRCLocksCtx, newFields.Manifest.ID(), hChecks, hErrs, useHealthService, newFields.Manifest.GetStatusStanza()); !updateSucceeded {
 		// We were asked to quit. Do so without cleaning old RC.
 		return false
 	}
@@ -492,7 +507,7 @@ func (u *update) cleanupOldRC(ctx context.Context) bool {
 }
 
 // returns true if roll succeeded, false if asked to quit.
-func (u *update) rollLoop(ctx context.Context, podID types.PodID, hChecks <-chan map[types.NodeName]health.Result, hErrs <-chan error) bool {
+func (u *update) rollLoop(ctx context.Context, podID types.PodID, hChecks <-chan map[types.NodeName]health.Result, hErrs <-chan error, useHealthService bool, manifestStatus manifest.StatusStanza) bool {
 	for {
 		// Select on just the quit channel before entering the select with both quit and hChecks. This protects against a situation where
 		// hChecks and quit are both ready, and hChecks might be chosen due to the random choice semantics of select {}. If multiple
@@ -554,7 +569,7 @@ func (u *update) rollLoop(ctx context.Context, podID types.PodID, hChecks <-chan
 
 					// determine the new value of `next`, which may have changed
 					// following the delay.
-					nextRemove, nextAdd, err = u.shouldRollAfterDelay(podID)
+					nextRemove, nextAdd, err = u.shouldRollAfterDelay(podID, useHealthService, manifestStatus)
 
 					if err != nil {
 						u.logger.NoFields().Errorln(err)
@@ -901,10 +916,10 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 	return ret, err
 }
 
-func (u *update) shouldRollAfterDelay(podID types.PodID) (int, int, error) {
+func (u *update) shouldRollAfterDelay(podID types.PodID, useHealthService bool, manifestStatus manifest.StatusStanza) (int, int, error) {
 	// Check health again following the roll delay. If things have gotten
 	// worse since we last looked, or there is an error, we break this iteration.
-	checks, err := u.hcheck.Service(podID.String())
+	checks, err := u.hcheck.Service(podID.String(), useHealthService, manifestStatus)
 	if err != nil {
 		return 0, 0, util.Errorf("Could not retrieve health following delay: %v", err)
 	}

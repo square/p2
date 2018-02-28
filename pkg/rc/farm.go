@@ -83,7 +83,7 @@ type Farm struct {
 	scheduler     Scheduler
 	labeler       Labeler
 	txner         transaction.Txner
-	healthChecker checker.ConsulHealthChecker
+	healthChecker checker.HealthChecker
 
 	// session stream for the rcs locked by this farm
 	sessions <-chan string
@@ -120,7 +120,7 @@ func NewFarm(
 	rcLocker ReplicationControllerLocker,
 	rcWatcher ReplicationControllerWatcher,
 	txner transaction.Txner,
-	healthChecker checker.ConsulHealthChecker,
+	healthChecker checker.HealthChecker,
 	scheduler Scheduler,
 	labeler Labeler,
 	sessions <-chan string,

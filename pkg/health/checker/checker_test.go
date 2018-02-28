@@ -34,11 +34,11 @@ func TestService(t *testing.T) {
 	fakeStore := fakeConsulStore{
 		results: map[string]consul.WatchResult{"node1": result1},
 	}
-	consulHC := consulHealthChecker{
+	hc := healthChecker{
 		consulStore: fakeStore,
 	}
 
-	results, err := consulHC.Service("some_service")
+	results, err := hc.Service("some_service")
 	Assert(t).IsNil(err, "Unexpected error calling Service()")
 
 	expected := health.Result{
