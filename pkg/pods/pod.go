@@ -444,6 +444,8 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 		return err
 	}
 
+	var launchablesToPostInstall []launch.Launchable
+
 	downloader := artifact.NewLocationDownloader(pod.Fetcher, verifier)
 	for launchableID, stanza := range manifest.GetLaunchableStanzas() {
 		// TODO: investigate passing in necessary fields to InstallDir()
@@ -456,6 +458,9 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 		if launchable.Installed() {
 			continue
 		}
+
+		// this is ugly, but memoize the launchables to run PostInstall() after we write out config
+		launchablesToPostInstall = append(launchablesToPostInstall, launchable)
 
 		launchableURL, verificationData, err := artifactRegistry.LocationDataForLaunchable(pod.Id, launchableID, stanza)
 		if err != nil {
@@ -470,6 +475,20 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 			return err
 		}
 
+	}
+
+	// we may need to write config files to a unique directory per pod version, depending on restart semantics. Need
+	// to think about this more.
+	// TODO: consider writing the pod wide config before the GetLaunchableStanzas() loop and then write the env dir
+	// for each launchable inside the loop. That way we don't need to loop over launchables again for PostInstall()
+	// afterward
+	err = pod.setupConfig(manifest, launchables)
+	if err != nil {
+		pod.logError(err, "Could not setup config")
+		return util.Errorf("Could not setup config: %s", err)
+	}
+
+	for _, launchable := range launchablesToPostInstall {
 		output, err := launchable.PostInstall()
 		if err != nil {
 			pod.logLaunchableError(launchable.ServiceID(), err, fmt.Sprintf("Unable to install launchable: script output:\n%s", output))
@@ -477,15 +496,6 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 			return err
 		}
 	}
-
-	// we may need to write config files to a unique directory per pod version, depending on restart semantics. Need
-	// to think about this more.
-	err = pod.setupConfig(manifest, launchables)
-	if err != nil {
-		pod.logError(err, "Could not setup config")
-		return util.Errorf("Could not setup config: %s", err)
-	}
-
 	pod.logInfo("Successfully installed")
 
 	return nil
