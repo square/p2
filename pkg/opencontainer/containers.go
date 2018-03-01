@@ -186,14 +186,17 @@ func (l *Launchable) Installed() bool {
 	return err == nil
 }
 
-// PostInstall() is a useful feature for opencontainers that need to modify
-// their config.json file at runtime, for instance to change the uid/gid
-// based on the currently running user
 func (l *Launchable) PostInstall() (string, error) {
-	// TODO: unexport this method (requires integrating BuildRunitServices into this API)
-	output, err := l.InvokeBinScript("post-install")
+	return "", nil
+}
 
-	// providing a post-activate script is optional, ignore those errors
+// preLaunch() is a useful feature for opencontainers that need to modify their
+// config.json file at runtime, for instance to change the uid/gid based on the
+// currently running user
+func (l *Launchable) preLaunch() (string, error) {
+	output, err := l.InvokeBinScript("pre-launch")
+
+	// providing a pre-launch script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
 		return output, err
 	}
@@ -281,6 +284,11 @@ func (l *Launchable) makeLast() error {
 
 // Launch allows the launchable to begin execution.
 func (l *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv runit.SV) error {
+	output, err := l.preLaunch()
+	if err != nil {
+		return util.Errorf("error running pre-launch script: %s\n%s", err, output)
+	}
+
 	// we did this when we built the runit services, but for good measure
 	// validate the config.json again
 	lspec, err := l.getSpec()
