@@ -125,18 +125,26 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 	}
 
 	lspec, err := l.getSpec()
-	if err != nil {
-		return nil, util.Errorf("%s: loading container specification: %s", l.ServiceID_, err)
-	}
-
-	uid, gid, err := user.IDs(l.RunAs)
-	if err != nil {
-		return nil, util.Errorf("%s: unknown runas user: %s", l.ServiceID_, l.RunAs)
-	}
-
-	err = l.validateSpec(lspec, uid, gid)
-	if err != nil {
+	switch {
+	case os.IsNotExist(err):
+		// if there's no config.json yet that's fine, it might appear as a
+		// part of pre-launch at which point we will validate again
+	case err != nil:
 		return nil, err
+	default:
+		if err != nil {
+			return nil, util.Errorf("%s: loading container specification: %s", l.ServiceID_, err)
+		}
+
+		uid, gid, err := user.IDs(l.RunAs)
+		if err != nil {
+			return nil, util.Errorf("%s: unknown runas user: %s", l.ServiceID_, l.RunAs)
+		}
+
+		err = l.validateSpec(lspec, uid, gid)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	runcConfig, err := GetConfig(l.OSVersionDetector)
