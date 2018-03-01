@@ -95,6 +95,10 @@ func (t *TestPod) UniqueKey() types.PodUniqueKey {
 	return ""
 }
 
+func (t *TestPod) ReadOnly() bool {
+	return false
+}
+
 type fakeHooks struct {
 	beforeInstallErr, beforeUninstallErr, afterInstallErr, afterLaunchErr, afterAuthFailErr, beforeLaunchErr error
 	ranBeforeInstall, ranBeforeUninstall, ranAfterLaunch, ranAfterInstall, ranAfterAuthFail, ranBeforeLaunch bool
