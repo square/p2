@@ -48,6 +48,8 @@ type ShadowTrafficHealthChecker interface {
 	WatchService(
 		ctx context.Context,
 		serviceID string,
+		nodeIDs []types.NodeName,
+		nodeIDsCh <-chan []types.NodeName,
 		resultCh chan<- map[types.NodeName]health.Result,
 		errCh chan<- error,
 		watchDelay time.Duration,
@@ -57,6 +59,7 @@ type ShadowTrafficHealthChecker interface {
 	)
 	Service(
 		serviceID string,
+		nodeIDs []types.NodeName,
 		useHealthService bool,
 		status manifest.StatusStanza,
 	) (map[types.NodeName]health.Result, error)
@@ -65,7 +68,6 @@ type ShadowTrafficHealthChecker interface {
 type HealthClient interface {
 	HealthCheckEndpoints(ctx context.Context, req *hclient.HealthEndpointsRequest) (map[string]health.HealthState, error)
 	HealthMonitor(ctx context.Context, req *hclient.HealthRequest, respCh chan *hclient.HealthResponse) error
-	HealthMonitorEndpoints(ctx context.Context, req *hclient.HealthEndpointsRequest, respCh chan *hclient.HealthResponse) error
 }
 
 type ResourceClient interface {
@@ -91,26 +93,38 @@ type LabelReader interface {
 }
 
 type shadowTrafficHealthChecker struct {
-	healthClient     HealthClient
-	resourceClient   ResourceClient
-	consulClient     consulutil.ConsulClient
-	kv               healthKV
-	consulStore      healthStore
-	rcStore          ReplicationControllerStore
-	labelReader      LabelReader
-	useHealthService bool
+	healthClient         HealthClient
+	resourceClient       ResourceClient
+	consulClient         consulutil.ConsulClient
+	kv                   healthKV
+	consulStore          healthStore
+	rcStore              ReplicationControllerStore
+	labelReader          LabelReader
+	useHealthService     bool
+	useOnlyHealthService bool
+	healthResults        map[string]map[types.NodeName]health.Result
 }
 
-func NewShadowTrafficHealthChecker(hClient HealthClient, resourceClient ResourceClient, cClient consulutil.ConsulClient, rcStore ReplicationControllerStore, labelReader LabelReader, useHealthService bool) ShadowTrafficHealthChecker {
+func NewShadowTrafficHealthChecker(
+	hClient HealthClient,
+	resourceClient ResourceClient,
+	cClient consulutil.ConsulClient,
+	rcStore ReplicationControllerStore,
+	labelReader LabelReader,
+	useHealthService bool,
+	useOnlyHealthService bool,
+) ShadowTrafficHealthChecker {
 	return shadowTrafficHealthChecker{
-		healthClient:     hClient,
-		resourceClient:   resourceClient,
-		consulClient:     cClient,
-		kv:               cClient.KV(),
-		consulStore:      consul.NewConsulStore(cClient),
-		rcStore:          rcStore,
-		labelReader:      labelReader,
-		useHealthService: useHealthService,
+		healthClient:         hClient,
+		resourceClient:       resourceClient,
+		consulClient:         cClient,
+		kv:                   cClient.KV(),
+		consulStore:          consul.NewConsulStore(cClient),
+		rcStore:              rcStore,
+		labelReader:          labelReader,
+		useHealthService:     useHealthService,
+		useOnlyHealthService: useOnlyHealthService,
+		healthResults:        make(map[string]map[types.NodeName]health.Result),
 	}
 }
 
@@ -242,35 +256,16 @@ func publishLatestHealth(inCh <-chan api.KVPairs, quitCh <-chan struct{}, result
 	return errCh
 }
 
-func (h shadowTrafficHealthChecker) getStatusEndpoints(
-	serviceID string,
-	status manifest.StatusStanza,
-) ([]string, error) {
-	rcIDs, err := h.resourceClient.GetRCIDsForPod(types.PodID(serviceID))
-	if err != nil {
-		return nil, err
+func nodeIDsToStatusEndpoints(nodeIds []types.NodeName, status manifest.StatusStanza) []string {
+	statusEndpoints := make([]string, len(nodeIds))
+	scheme := "https"
+	if status.HTTP {
+		scheme = "http"
 	}
-	var statusEndpoints []string
-	for _, rcID := range rcIDs {
-		rc, err := h.rcStore.Get(rcID)
-		if err != nil {
-			return nil, err
-		}
-		// get hostnames for rc
-		labeled, err := h.labelReader.GetMatches(rc.NodeSelector, labels.NODE)
-		if err != nil {
-			return nil, err
-		}
-		scheme := "https"
-		if status.HTTP {
-			scheme = "http"
-		}
-		// create status endpoints
-		for _, node := range labeled {
-			statusEndpoints = append(statusEndpoints, fmt.Sprintf("%s://%s:%d%s", scheme, node.ID, status.Port, status.GetPath()))
-		}
+	for i, nodeId := range nodeIds {
+		statusEndpoints[i] = fmt.Sprintf("%s://%s:%d%s", scheme, nodeId, status.Port, status.GetPath())
 	}
-	return statusEndpoints, nil
+	return statusEndpoints
 }
 
 // Watch the health tree and write the whole subtree on the chan passed by caller
@@ -352,9 +347,9 @@ func watchConsulHealth(
 							return
 						case errCh <- err:
 						}
-					} else {
-						out[next.Node] = consulWatchToResult(next)
+						continue
 					}
+					out[next.Node] = consulWatchToResult(next)
 				}
 				select {
 				case <-ctx.Done():
@@ -392,6 +387,8 @@ func statusURLToNodeName(s string) (types.NodeName, error) {
 func (h shadowTrafficHealthChecker) WatchService(
 	ctx context.Context,
 	serviceID string,
+	nodeIDs []types.NodeName,
+	nodeIDsCh <-chan []types.NodeName,
 	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
 	watchDelay time.Duration,
@@ -399,27 +396,31 @@ func (h shadowTrafficHealthChecker) WatchService(
 	useOnlyHealthService bool,
 	status manifest.StatusStanza,
 ) {
-	defer close(resultCh)
-
-	if h.useHealthService || useHealthService || useOnlyHealthService {
-		// get status endpoints for service
-		statusEndpoints, err := h.getStatusEndpoints(serviceID, status)
-		if err != nil {
-			select {
-			case <-ctx.Done():
-				return
-			case errCh <- err:
-			}
-		}
-		respChan := make(chan *hclient.HealthResponse, 1)
-		defer close(respChan)
+	if h.useHealthService || useHealthService || useOnlyHealthService || h.useOnlyHealthService {
+		respChan := make(chan *hclient.HealthResponse, len(nodeIDs))
 		go func() {
+			delay := time.Second * 5
+			healthResults := make(map[types.NodeName]health.Result)
+			// app is considered always healthy when status port is not set
+			// when always healthy, WatchService ONLY sends the status repeatedly
+			// of all the nodes on a timer set to delay
+			if status.Port == 0 {
+				delay = time.Second * 2
+				for _, nodeID := range nodeIDs {
+					healthResults[nodeID] = health.Result{
+						ID:      types.PodID(serviceID),
+						Node:    nodeID,
+						Service: serviceID,
+						Status:  health.Passing,
+					}
+				}
+			}
+			timer := time.NewTimer(delay)
 			for {
 				select {
 				case <-ctx.Done():
 					return
 				case resp := <-respChan:
-					out := make(map[types.NodeName]health.Result)
 					endpoint := resp.HealthRequest.Url
 					nodeID, err := statusURLToNodeName(endpoint)
 					if err != nil {
@@ -428,8 +429,9 @@ func (h shadowTrafficHealthChecker) WatchService(
 							return
 						case errCh <- err:
 						}
+						continue
 					}
-					out[nodeID] = health.Result{
+					healthResults[nodeID] = health.Result{
 						ID:      types.PodID(serviceID),
 						Node:    nodeID,
 						Service: serviceID,
@@ -438,39 +440,88 @@ func (h shadowTrafficHealthChecker) WatchService(
 					select {
 					case <-ctx.Done():
 						return
-					case resultCh <- out:
+					case resultCh <- healthResults:
+					}
+				case nodeIDs = <-nodeIDsCh:
+					for _, nodeID := range nodeIDs {
+						healthResults[nodeID] = health.Result{
+							ID:      types.PodID(serviceID),
+							Node:    nodeID,
+							Service: serviceID,
+							Status:  health.Passing,
+						}
+					}
+				case <-timer.C:
+					timer.Reset(delay)
+					// send old result since health service monitors only sends updates when there is a change but rolling updates expects health status periodically
+					select {
+					case <-ctx.Done():
+						return
+					case resultCh <- healthResults:
 					}
 				}
 			}
 		}()
 
 		go func() {
+			// app is considered always healthy when status port is not set
+			// so don't create monitors to monitor status
+			if status.Port == 0 {
+				return
+			}
 			protocol := "HTTPS"
 			if status.HTTP {
 				protocol = "HTTP"
 			}
-			healthReq := &hclient.HealthEndpointsRequest{
-				Endpoints: statusEndpoints,
-				Protocol:  protocol,
-			}
+
 			for {
-				err := h.healthClient.HealthMonitorEndpoints(ctx, healthReq, respChan)
-				if err != nil {
-					select {
-					case <-ctx.Done():
-						return
-					case errCh <- err:
-					}
+				select {
+				case <-ctx.Done():
+					return
+				default:
 				}
-				// retry the request after 1 second
-				timer := time.NewTimer(time.Second)
-				<-timer.C
+
+				statusEndpoints := nodeIDsToStatusEndpoints(nodeIDs, status)
+				monitorCtx, monitorCancel := context.WithCancel(ctx)
+				defer monitorCancel()
+				for _, endpoint := range statusEndpoints {
+					healthReq := &hclient.HealthRequest{
+						Url:      endpoint,
+						Protocol: protocol,
+					}
+					go func() {
+						for {
+							// this is a blocking call, messages will be received on the respChan in the above goroutine
+							err := h.healthClient.HealthMonitor(monitorCtx, healthReq, respChan)
+							if err != nil {
+								select {
+								case <-ctx.Done():
+									return
+								case errCh <- err:
+								}
+							}
+							// retry the request after 1 second
+							<-time.NewTimer(time.Second).C
+						}
+					}()
+				}
+
+				// refresh the monitors since the nodes can change
+				<-time.NewTimer(time.Minute * 10).C
+				monitorCancel()
 			}
 		}()
 	}
 
-	if !useOnlyHealthService {
+	if !useOnlyHealthService && !h.useOnlyHealthService {
 		watchConsulHealth(ctx, serviceID, h.kv, resultCh, errCh, watchDelay)
+	} else {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			}
+		}
 	}
 }
 
@@ -492,6 +543,7 @@ func (h healthChecker) Service(serviceID string) (map[types.NodeName]health.Resu
 // Service returns a map where values are individual results (keys are nodes)
 func (h shadowTrafficHealthChecker) Service(
 	serviceID string,
+	nodeIDs []types.NodeName,
 	useHealthService bool,
 	status manifest.StatusStanza,
 ) (map[types.NodeName]health.Result, error) {
@@ -510,12 +562,7 @@ func (h shadowTrafficHealthChecker) Service(
 		return ret, nil
 	}
 
-	// health service
-	// get status endpoints for service
-	statusEndpoints, err := h.getStatusEndpoints(serviceID, status)
-	if err != nil {
-		return nil, err
-	}
+	statusEndpoints := nodeIDsToStatusEndpoints(nodeIDs, status)
 	protocol := "HTTPS"
 	if status.HTTP {
 		protocol = "HTTP"
