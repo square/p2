@@ -44,8 +44,13 @@ task :update => :godep_check do
 end
 
 desc 'Install all built binaries'
-task :install do
-  e "go install -a -ldflags \"-X github.com/square/p2/pkg/version.VERSION=$(git describe --tags)\" ./..."
+task :install, [:bind_mount_env_vars] do |t, args|
+  build_flags = "-X github.com/square/p2/pkg/version.VERSION=$(git describe --tags)"
+  unless args[:bind_mount_env_vars].nil?
+    build_flags += " " + args[:bind_mount_env_vars]
+  end
+
+  e "go install -a -ldflags \"#{build_flags}\" ./..."
 end
 
 task :errcheck do

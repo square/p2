@@ -384,6 +384,50 @@ func verifyOpenContainerPod(errCh chan error, tempDir string, logger logging.Log
 		return
 	}
 
+	envDir := "/data/pods/hello-opencontainer/env"
+	// wait for the pod's env directory to exist
+	timeout := time.After(30 * time.Second)
+	for {
+		_, err := os.Stat(envDir)
+		if err != nil {
+			logger.WithError(err).Warnf("%s does not exist yet, waiting", envDir)
+			time.Sleep(1 * time.Second)
+		} else {
+			break
+		}
+
+		select {
+		case <-timeout:
+			errCh <- fmt.Errorf("hello-opencontainer's env directory didn't exist within timeout")
+			return
+		default:
+		}
+	}
+
+	tmpDir := "/data/pods/hello-opencontainer/tmp"
+	err = os.Mkdir(tmpDir, 0755)
+	if err != nil {
+		errCh <- fmt.Errorf("could not make tmp directory for hello-opencontainer: %s", err)
+		return
+	}
+
+	// it doesn't matter what's in this file, but it will need to match the -verifyFile argument we pass to the hello process
+	// in the opencontainer. That's defined in integration/hello/config.json.template. hello will verify that it can see this file
+	// before listening on the port we're checking in verifyHelloSuffixRunning
+	err = ioutil.WriteFile(filepath.Join(tmpDir, "this_came_from_outside_the_container.txt"), []byte("whatever data doesn't matter"), 0644)
+	if err != nil {
+		errCh <- fmt.Errorf("could not write sentinel file in hello-opencontainer's tmpdir: %s", err)
+		return
+	}
+
+	// now write the TMPDIR environment variable
+	helloTmpDirPath := filepath.Join(envDir, "HELLOTMPDIR")
+	err = ioutil.WriteFile(helloTmpDirPath, []byte(tmpDir), 0644)
+	if err != nil {
+		errCh <- fmt.Errorf("could not write HELLOTMPDIR env file for hello-opencontainer: %s", err)
+		return
+	}
+
 	err = verifyHelloRunning("opencontainer", logger, "opencontainer")
 	if err != nil {
 		errCh <- fmt.Errorf("Couldn't get hello-opencontainer running: %s", err)
@@ -906,7 +950,9 @@ func executeBootstrap(preparerManifest, consulManifest string, requireFile strin
 		}
 	}
 
-	cmd := exec.Command("rake", "install")
+	// We're setting the pods.DefaultContainerBindMountEnvVarsString variable at build time. We expect that to mean that any
+	// opencontainer launchable started in this integration test will bind in the path that is set at HELLOTMPDIR
+	cmd := exec.Command("rake", "install[-X github.com/square/p2/pkg/pods.DefaultContainerBindMountEnvVarsString=HELLOTMPDIR]")
 	cmd.Stderr = os.Stdout
 	err = cmd.Run()
 	if err != nil {
@@ -967,7 +1013,6 @@ func writeHelloManifest(dir string, manifestName string, port int, launchableTyp
 	podIDStr := "hello"
 	if launchableType == "opencontainer" {
 		podIDStr += "-opencontainer"
-		builder.SetRunAsUser("root") // mostly this just makes coordinating uid with config.json easy
 	}
 	builder.SetID(types.PodID(podIDStr))
 	builder.SetStatusPort(port)

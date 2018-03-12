@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	osuser "os/user"
 	"strconv"
 	"strings"
 
@@ -15,6 +16,14 @@ import (
 )
 
 var port = flag.String("port", "", "port that hello should listen on")
+
+// verifyFile is used for testing the bind mounting functionality of P2 for
+// opencontainers. The integration test can write a file into a directory, bind
+// mount it into the container, and configure hello to crash if it can't see
+// the file
+var verifyFile = flag.String("verifyFile", "", "file that hello should verify exists at startup prior to starting server")
+
+var verifyUser = flag.String("verifyUser", "", "instructs hello to verify that it is running as the passed user before responding to HTTP requests")
 
 func SayHello(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("%q %q", r.Method, r.URL.Path)
@@ -72,6 +81,28 @@ func main() {
 	} else {
 		*port = ":" + *port
 	}
+
+	if *verifyFile != "" {
+		_, err := os.Stat(*verifyFile)
+		switch {
+		case os.IsNotExist(err):
+			fmt.Printf("%s does not exist, was set as -verifyFile. Exiting\n", *verifyFile)
+		case err != nil:
+			fmt.Printf("could not stat %s (-verifyFile): %s\n", *verifyFile, err)
+		}
+	}
+
+	if *verifyUser != "" {
+		currentUser, err := osuser.Current()
+		if err != nil {
+			log.Fatalf("could not determine current user: %s", err)
+		}
+
+		if currentUser.Username != *verifyUser {
+			log.Fatalf("expected to be running as %s but was %s", *verifyUser, currentUser.Username)
+		}
+	}
+
 	fmt.Printf("Hello is listening at %q", port)
 	http.HandleFunc("/", SayHello)
 	http.HandleFunc("/exit/", Exit)

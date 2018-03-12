@@ -48,7 +48,7 @@ popd
 # go on the shared directory ($GOPATH/src/github.com/square/p2)
 pushd /tmp
 mkdir -p opencontainer-hello_def456/rootfs
-cp $GOPATH/src/github.com/square/p2/integration/hello/config.json opencontainer-hello_def456/
+cp $GOPATH/src/github.com/square/p2/integration/hello/config.json.template opencontainer-hello_def456/
 
 # get a suitable root filesystem for centos from docker
 sudo docker pull centos
