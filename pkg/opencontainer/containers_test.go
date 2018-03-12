@@ -107,7 +107,7 @@ func TestValidateSpecNonRoot(t *testing.T) {
 	}
 	for i, tc := range validateSpecCases {
 		specToTry := tc.specMutator(validSpec())
-		err := launchable.validateSpec(specToTry, uid, gid)
+		err := ValidateSpec(specToTry, uid, gid)
 		if err != nil && tc.shouldValidate {
 			t.Errorf("case %d: %s", i+1, err)
 		}
@@ -183,7 +183,7 @@ func TestValidateSpecRoot(t *testing.T) {
 	}
 	for i, tc := range validateSpecCases {
 		specToTry := tc.specMutator(validRootSpec())
-		err := launchable.validateSpec(specToTry, 0, 0)
+		err := ValidateSpec(specToTry, 0, 0)
 		if err != nil && tc.shouldValidate {
 			t.Errorf("case %d: %s", i+1, err)
 		}

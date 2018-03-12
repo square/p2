@@ -11,7 +11,6 @@ import (
 	"C"
 	"unsafe"
 
-	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -29,12 +28,8 @@ func sysUnRlimit() *C.struct_rlimit {
 	}
 }
 
-func changeUser(username string) error {
-	uid, gid, err := user.IDs(username)
-	if err != nil {
-		return util.Errorf("Could not retrieve uid/gid for %q: %s", username, err)
-	}
-
+// changeUser sets the uid and gid of the current process to the passed uid and gid
+func changeUser(username string, uid int, gid int) error {
 	userCstring := C.CString(username)
 	defer C.free(unsafe.Pointer(userCstring))
 
