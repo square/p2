@@ -126,6 +126,15 @@ type ConsulConfig struct {
 	WatchWaitTime time.Duration `yaml:"watch_wait_time"`
 }
 
+type OpenContainerConfig struct {
+	// ExpectAtLeastOneBindMountEnvVar configures the preparer to perform a
+	// runtime check that
+	// github.com/square/p2/pkg/pods.DefaultContainerBindMountEnvVars has at
+	// least one value set at build time. It's used to hedge against the variable
+	// name changing and breaking builds
+	ExpectAtLeastOneBindMountEnvVar bool `yaml:"expect_at_least_one_bind_mount_env_var,omitempty"`
+}
+
 type PreparerConfig struct {
 	NodeName               types.NodeName         `yaml:"node_name"`
 	ConsulAddress          string                 `yaml:"consul_address"`
@@ -150,11 +159,15 @@ type PreparerConfig struct {
 	ArtifactRegistryURL    string                 `yaml:"artifact_registry_url,omitempty"`
 	ConsulConfig           ConsulConfig           `yaml:"consul_config,omitempty"`
 
-	OSVersionFile          string                 `yaml:"os_version_file,omitempty"`
+	OSVersionFile string `yaml:"os_version_file,omitempty"`
 
 	ReadOnlyDeploys   bool          `yaml:"read_only_deploys"`
 	ReadOnlyWhitelist []types.PodID `yaml:"read_only_whitelist"`
 	ReadOnlyBlacklist []types.PodID `yaml:"read_only_blacklist"`
+
+	// OpenContainerConfig contains configuration that is specific to launchables with the "opencontainer"
+	// launchable type
+	OpenContainerConfig OpenContainerConfig `yaml:"open_container_config,omitempty"`
 
 	// The pod manifest to use for hooks. If no hooks are desired, use the
 	// NoHooksSentinelValue constant to indicate that there aren't any
@@ -533,6 +546,17 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 
 	podFactory := pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName, fetcher, preparerConfig.RequireFile, readOnlyPolicy)
 	podFactory.SetOSVersionDetector(osVersionDetector)
+
+	if preparerConfig.OpenContainerConfig.ExpectAtLeastOneBindMountEnvVar {
+		if len(pods.DefaultContainerBindMountEnvVarsString) == 0 {
+			return nil, util.Errorf("no default environment variables to source bind mounts for opencontainer launchables were added at build time " +
+				"yet the \"expect_at_least_one_bind_mount_env_var\" config option was set. Either check your build to make sure that the variable is being " +
+				"set, or if you don't expect any of these environment variables then unset \"expect_at_least_one_bind_mount_env_var\"")
+		}
+
+		pods.DefaultContainerBindMountEnvVars = strings.Split(pods.DefaultContainerBindMountEnvVarsString, ",")
+	}
+
 	return &Preparer{
 		node:                   preparerConfig.NodeName,
 		store:                  store,

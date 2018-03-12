@@ -38,6 +38,26 @@ var (
 	// NestedCgroups causes the p2-preparer to use a hierarchical cgroup naming scheme when
 	// creating new launchables.
 	NestedCgroups = param.Bool("nested_cgroups", false)
+
+	// DefaultContainerBindMountEnvVarsString is a comma-separated list of
+	// environment variables whose values contain paths to directories that
+	// should be bind mounted into any container created for this pod. It's
+	// called a "default" because it would make sense for a future feature
+	// to exist that would bind mount additional directories into the
+	// container based on the launchable's stanza, however whatever is
+	// specified here will be a default for the whole pod (and probably for
+	// the whole P2 installation)
+	//
+	// NOTE: this is defined as a variable so that it can be changed at build time with -ldflags -X
+	// TODO: this should probably go into an "open container launchable factory" or something similar, since it doesn't really
+	// apply directly to a pod, and it doesn't apply to launchables with the "hoist" launchable type either
+	DefaultContainerBindMountEnvVarsString string
+
+	// DefaultContainerBindMountEnvVars is where the string-separated
+	// values from DefaultContainerBindMOuntEnvVarsString go. It can't be
+	// set directly from a build because -X only works on variables with
+	// type string
+	DefaultContainerBindMountEnvVars []string
 )
 
 const (
@@ -831,21 +851,22 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 		return ret.If(), nil
 	} else if launchableStanza.LaunchableType == opencontainer.OpenContainerLaunchableType {
 		ret := &opencontainer.Launchable{
-			Version_:          version,
-			ID_:               launchableID,
-			ServiceID_:        serviceId,
-			RunAs:             runAsUser,
-			RootDir:           launchableRootDir,
-			P2Exec:            pod.P2Exec,
-			RestartTimeout:    restartTimeout,
-			RestartPolicy_:    launchableStanza.RestartPolicy(),
-			CgroupConfig:      launchableStanza.CgroupConfig,
-			SuppliedEnvVars:   launchableStanza.Env,
-			OSVersionDetector: pod.OSVersionDetector,
-			CgroupName:        cgroupName,
-			CgroupConfigName:  launchableID.String(),
-			PodEnvDir:         pod.EnvDir(),
-			ExecNoLimit:       true,
+			Version_:                      version,
+			ID_:                           launchableID,
+			ServiceID_:                    serviceId,
+			RunAs:                         runAsUser,
+			RootDir:                       launchableRootDir,
+			P2Exec:                        pod.P2Exec,
+			RestartTimeout:                restartTimeout,
+			RestartPolicy_:                launchableStanza.RestartPolicy(),
+			CgroupConfig:                  launchableStanza.CgroupConfig,
+			SuppliedEnvVars:               launchableStanza.Env,
+			OSVersionDetector:             pod.OSVersionDetector,
+			CgroupName:                    cgroupName,
+			CgroupConfigName:              launchableID.String(),
+			PodEnvDir:                     pod.EnvDir(),
+			ExecNoLimit:                   true,
+			ContainerBindMountPathEnvVars: DefaultContainerBindMountEnvVars,
 		}
 		ret.CgroupConfig.Name = cgroups.CgroupID(serviceId)
 		return ret, nil

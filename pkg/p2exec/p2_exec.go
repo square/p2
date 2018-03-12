@@ -24,6 +24,17 @@ type P2ExecArgs struct {
 	WorkDir          string
 	RequireFile      string
 	ClearEnv         bool
+
+	// LaunchableType defaults to "hoist", so typically it will be set if it's a container
+	LaunchableType string
+
+	// ContainerBindMountPaths only should be provided if LaunchableType is "opencontainer". It specifies paths
+	// on the host filesystem that should be bind mounted into the container being launched by p2-exec
+	ContainerBindMountPaths []string
+
+	// ContainerConfigTemplateFilename is the name of the JSON file that should serve as a template for the opencontainer
+	// that will be launched by p2-exec. It should only be set if LaunchableType is "opencontainer"
+	ContainerConfigTemplateFilename string
 }
 
 func (args P2ExecArgs) CommandLine() []string {
@@ -66,6 +77,18 @@ func (args P2ExecArgs) CommandLine() []string {
 
 	if args.PodID != nil {
 		cmd = append(cmd, "--podID", args.PodID.String())
+	}
+
+	if args.LaunchableType != "" {
+		cmd = append(cmd, "--launchable-type", args.LaunchableType)
+	}
+
+	if args.ContainerConfigTemplateFilename != "" {
+		cmd = append(cmd, "--container-config-template", args.ContainerConfigTemplateFilename)
+	}
+
+	for _, mountPath := range args.ContainerBindMountPaths {
+		cmd = append(cmd, "--container-bind-mount-path", mountPath)
 	}
 
 	if len(cmd) > 0 {
