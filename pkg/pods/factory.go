@@ -117,7 +117,7 @@ func (f *hookFactory) NewHookPod(id types.PodID) *Pod {
 	home := filepath.Join(f.hookRoot, id.String())
 
 	// Hooks can't have a UUID
-	return newPodWithHome(id, "", home, f.node, "", f.fetcher, f.osVersionDetector, true)
+	return newPodWithHome(id, "", home, f.node, "", f.fetcher, f.osVersionDetector, false)
 }
 
 func newPodWithHome(
