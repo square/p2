@@ -28,7 +28,10 @@ import (
 )
 
 // The name of the OpenContainer spec file in the container's root.
-const SpecFilename = "config.json"
+const (
+	SpecFilename                = "config.json"
+	OpenContainerLaunchableType = "opencontainer"
+)
 
 // RuncPath is the full path of the "runc" binary.
 var RuncPath = param.String("runc_path", "/usr/local/bin/runc")

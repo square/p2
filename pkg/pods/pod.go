@@ -15,6 +15,7 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/digest"
+	"github.com/square/p2/pkg/env"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
@@ -40,15 +41,7 @@ var (
 )
 
 const (
-	ConfigPathEnvVar               = "CONFIG_PATH"
-	LaunchableIDEnvVar             = "LAUNCHABLE_ID"
-	LaunchableRootEnvVar           = "LAUNCHABLE_ROOT"
-	PodIDEnvVar                    = "POD_ID"
-	PodHomeEnvVar                  = "POD_HOME"
-	PodUniqueKeyEnvVar             = "POD_UNIQUE_KEY"
-	PlatformConfigPathEnvVar       = "PLATFORM_CONFIG_PATH"
-	ResourceLimitsPathEnvVar       = "RESOURCE_LIMIT_PATH" // ResourceLimits is a superset of PlatformConfig
-	LaunchableRestartTimeoutEnvVar = "RESTART_TIMEOUT"
+	HoistLaunchableType = "hoist"
 )
 
 type Pod struct {
@@ -624,31 +617,31 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 	if err != nil {
 		return util.Errorf("Could not create the environment dir for pod %s: %s", manifest.ID(), err)
 	}
-	err = writeEnvFile(pod.EnvDir(), ConfigPathEnvVar, configPath, uid, gid)
+	err = writeEnvFile(pod.EnvDir(), env.ConfigPathEnvVar, configPath, uid, gid)
 	if err != nil {
 		return err
 	}
-	err = writeEnvFile(pod.EnvDir(), PlatformConfigPathEnvVar, platConfigPath, uid, gid)
+	err = writeEnvFile(pod.EnvDir(), env.PlatformConfigPathEnvVar, platConfigPath, uid, gid)
 	if err != nil {
 		return err
 	}
 	if _, err = os.Stat(resourceLimitPath); err == nil {
-		err = writeEnvFile(pod.EnvDir(), ResourceLimitsPathEnvVar, resourceLimitPath, uid, gid)
+		err = writeEnvFile(pod.EnvDir(), env.ResourceLimitsPathEnvVar, resourceLimitPath, uid, gid)
 		if err != nil {
 			return err
 		}
 	} else if !os.IsNotExist(err) {
 		return nil
 	}
-	err = writeEnvFile(pod.EnvDir(), PodHomeEnvVar, pod.Home(), uid, gid)
+	err = writeEnvFile(pod.EnvDir(), env.PodHomeEnvVar, pod.Home(), uid, gid)
 	if err != nil {
 		return err
 	}
-	err = writeEnvFile(pod.EnvDir(), PodIDEnvVar, pod.Id.String(), uid, gid)
+	err = writeEnvFile(pod.EnvDir(), env.PodIDEnvVar, pod.Id.String(), uid, gid)
 	if err != nil {
 		return err
 	}
-	err = writeEnvFile(pod.EnvDir(), PodUniqueKeyEnvVar, pod.uniqueKey.String(), uid, gid)
+	err = writeEnvFile(pod.EnvDir(), env.PodUniqueKeyEnvVar, pod.uniqueKey.String(), uid, gid)
 	if err != nil {
 		return err
 	}
@@ -664,15 +657,15 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 		if err != nil {
 			return util.Errorf("Could not create the environment dir for pod %s launchable %s: %s", manifest.ID(), launchable.ServiceID(), err)
 		}
-		err = writeEnvFile(launchable.EnvDir(), LaunchableIDEnvVar, launchable.ID().String(), uid, gid)
+		err = writeEnvFile(launchable.EnvDir(), env.LaunchableIDEnvVar, launchable.ID().String(), uid, gid)
 		if err != nil {
 			return err
 		}
-		err = writeEnvFile(launchable.EnvDir(), LaunchableRootEnvVar, launchable.InstallDir(), uid, gid)
+		err = writeEnvFile(launchable.EnvDir(), env.LaunchableRootEnvVar, launchable.InstallDir(), uid, gid)
 		if err != nil {
 			return err
 		}
-		err = writeEnvFile(launchable.EnvDir(), LaunchableRestartTimeoutEnvVar, fmt.Sprintf("%d", int64(launchable.GetRestartTimeout().Seconds())), uid, gid)
+		err = writeEnvFile(launchable.EnvDir(), env.LaunchableRestartTimeoutEnvVar, fmt.Sprintf("%d", int64(launchable.GetRestartTimeout().Seconds())), uid, gid)
 		if err != nil {
 			return err
 		}
@@ -793,7 +786,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 	}
 
 	cgroupName := serviceId
-	if launchableStanza.LaunchableType == "hoist" {
+	if launchableStanza.LaunchableType == HoistLaunchableType {
 		entryPointPaths := launchableStanza.EntryPoints
 		implicitEntryPoints := false
 		if len(entryPointPaths) == 0 {
@@ -836,7 +829,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 		}
 		ret.CgroupConfig.Name = cgroups.CgroupID(ret.ServiceId)
 		return ret.If(), nil
-	} else if launchableStanza.LaunchableType == "opencontainer" {
+	} else if launchableStanza.LaunchableType == opencontainer.OpenContainerLaunchableType {
 		ret := &opencontainer.Launchable{
 			Version_:          version,
 			ID_:               launchableID,
