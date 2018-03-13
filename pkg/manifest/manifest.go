@@ -82,6 +82,7 @@ type Manifest interface {
 	GetStatusLocalhostOnly() bool
 	GetStatusStanza() StatusStanza
 	GetReadOnly() bool
+	SetReadOnlyIfUnset(readonly bool)
 	Marshal() ([]byte, error)
 	SignatureData() (plaintext, signature []byte)
 
@@ -104,7 +105,7 @@ type manifest struct {
 	StatusHTTP          bool                                            `yaml:"status_http,omitempty"`
 	Status              StatusStanza                                    `yaml:"status,omitempty"`
 	ResourceLimits      ResourceLimitsStanza                            `yaml:"resource_limits,omitempty"`
-	ReadOnly            bool                                            `yaml:"readonly,omitempty"`
+	ReadOnly            *bool                                           `yaml:"readonly,omitempty"`
 	ArtifactRegistryURL string                                          `yaml:"artifact_registry,omitempty"`
 
 	// Used to track the original bytes so that we don't reorder them when
@@ -265,7 +266,7 @@ func (manifest *manifest) RunAsUser() string {
 }
 
 func (manifest *manifest) UnpackAsUser() string {
-	if manifest.ReadOnly {
+	if manifest.GetReadOnly() {
 		return "root"
 	}
 
@@ -273,7 +274,17 @@ func (manifest *manifest) UnpackAsUser() string {
 }
 
 func (manifest *manifest) GetReadOnly() bool {
-	return manifest.ReadOnly
+	if manifest.ReadOnly != nil {
+		return *manifest.ReadOnly
+	}
+
+	return false
+}
+
+func (manifest *manifest) SetReadOnlyIfUnset(readonly bool) {
+	if manifest.ReadOnly == nil {
+		manifest.ReadOnly = &readonly
+	}
 }
 
 func (mb builder) SetRunAsUser(user string) {
@@ -281,7 +292,7 @@ func (mb builder) SetRunAsUser(user string) {
 }
 
 func (mb builder) SetReadonly(readonly bool) {
-	mb.manifest.ReadOnly = readonly
+	*mb.manifest.ReadOnly = readonly
 }
 
 // FromPath constructs a Manifest from a local file. This function is a helper for

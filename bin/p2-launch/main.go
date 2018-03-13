@@ -85,7 +85,7 @@ func main() {
 
 	fetcher := uri.BasicFetcher{Client: httpClient}
 
-	podFactory := pods.NewFactory(*podRoot, types.NodeName(*nodeName), fetcher, "")
+	podFactory := pods.NewFactory(*podRoot, types.NodeName(*nodeName), fetcher, "", pods.NewReadOnlyPolicy(false, nil, nil))
 	pod := podFactory.NewLegacyPod(manifest.ID())
 
 	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(*artifactRegistryURL, fetcher, osversion.DefaultDetector))

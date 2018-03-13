@@ -149,7 +149,12 @@ type PreparerConfig struct {
 	LogBridgeBlacklist     []string               `yaml:"log_bridge_blacklist,omitempty"`
 	ArtifactRegistryURL    string                 `yaml:"artifact_registry_url,omitempty"`
 	ConsulConfig           ConsulConfig           `yaml:"consul_config,omitempty"`
+
 	OSVersionFile          string                 `yaml:"os_version_file,omitempty"`
+
+	ReadOnlyDeploys   bool          `yaml:"read_only_deploys"`
+	ReadOnlyWhitelist []types.PodID `yaml:"read_only_whitelist"`
+	ReadOnlyBlacklist []types.PodID `yaml:"read_only_blacklist"`
 
 	// The pod manifest to use for hooks. If no hooks are desired, use the
 	// NoHooksSentinelValue constant to indicate that there aren't any
@@ -518,12 +523,15 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 
 		}
 	}
+
+	readOnlyPolicy := pods.NewReadOnlyPolicy(preparerConfig.ReadOnlyDeploys, preparerConfig.ReadOnlyWhitelist, preparerConfig.ReadOnlyBlacklist)
+
 	osVersionDetector := osversion.DefaultDetector
 	if preparerConfig.OSVersionFile != "" {
 		osVersionDetector = osversion.NewDetector(preparerConfig.OSVersionFile)
 	}
 
-	podFactory := pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName, fetcher, preparerConfig.RequireFile)
+	podFactory := pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName, fetcher, preparerConfig.RequireFile, readOnlyPolicy)
 	podFactory.SetOSVersionDetector(osVersionDetector)
 	return &Preparer{
 		node:                   preparerConfig.NodeName,

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strconv"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -140,6 +141,8 @@ func (h *hookContext) runHooks(dirpath string, hType HookType, pod Pod, podManif
 		return err
 	}
 
+	podManifest.SetReadOnlyIfUnset(pod.ReadOnly())
+
 	hec := &HookExecutionEnvironment{
 		HookEnvVar:                path.Base(dirpath),
 		HookEventEnvVar:           hType.String(),
@@ -152,6 +155,7 @@ func (h *hookContext) runHooks(dirpath string, hType HookType, pod Pod, podManif
 		HookedConfigDirPathEnvVar: pod.ConfigDir(),
 		HookedSystemPodRootEnvVar: h.podRoot,
 		HookedPodUniqueKeyEnvVar:  pod.UniqueKey().String(),
+		HookedPodReadOnly:         strconv.FormatBool(podManifest.GetReadOnly()),
 	}
 	return h.runDirectory(hec, logger)
 }

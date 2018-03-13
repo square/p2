@@ -30,7 +30,8 @@ import (
 )
 
 func getTestPod() *Pod {
-	podFactory := NewFactory("/data/pods", "testNode", uri.DefaultFetcher, "")
+	readOnlyPolicy := NewReadOnlyPolicy(false, nil, nil)
+	podFactory := NewFactory("/data/pods", "testNode", uri.DefaultFetcher, "", readOnlyPolicy)
 	pod := podFactory.NewLegacyPod("hello")
 	pod.subsystemer = &FakeSubsystemer{}
 	pod.CurrentManifest()
@@ -149,7 +150,8 @@ config:
 
 	podTemp, _ := ioutil.TempDir("", "pod")
 
-	podFactory := NewFactory(podTemp, "testNode", uri.DefaultFetcher, "")
+	readOnlyPolicy := NewReadOnlyPolicy(false, nil, nil)
+	podFactory := NewFactory(podTemp, "testNode", uri.DefaultFetcher, "", readOnlyPolicy)
 	pod := podFactory.NewLegacyPod(manifest.ID())
 	pod.subsystemer = &FakeSubsystemer{}
 
@@ -222,7 +224,8 @@ func TestLogLaunchableError(t *testing.T) {
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
-	factory := NewFactory(DefaultPath, "testNode", uri.DefaultFetcher, "")
+	readOnlyPolicy := NewReadOnlyPolicy(false, nil, nil)
+	factory := NewFactory(DefaultPath, "testNode", uri.DefaultFetcher, "", readOnlyPolicy)
 	pod := factory.NewLegacyPod(testManifest.ID())
 	pod.logLaunchableError(testLaunchable.ServiceId, testErr, message)
 
@@ -241,7 +244,8 @@ func TestLogError(t *testing.T) {
 	testManifest := getTestPodManifest(t)
 	testErr := util.Errorf("Unable to do something")
 	message := "Test error occurred"
-	factory := NewFactory(DefaultPath, "testNode", uri.DefaultFetcher, "")
+	readOnlyPolicy := NewReadOnlyPolicy(false, nil, nil)
+	factory := NewFactory(DefaultPath, "testNode", uri.DefaultFetcher, "", readOnlyPolicy)
 	pod := factory.NewLegacyPod(testManifest.ID())
 	pod.logError(testErr, message)
 
@@ -257,7 +261,8 @@ func TestLogInfo(t *testing.T) {
 	Log.SetLogOut(&out)
 
 	testManifest := getTestPodManifest(t)
-	factory := NewFactory(DefaultPath, "testNode", uri.DefaultFetcher, "")
+	readOnlyPolicy := NewReadOnlyPolicy(false, nil, nil)
+	factory := NewFactory(DefaultPath, "testNode", uri.DefaultFetcher, "", readOnlyPolicy)
 	pod := factory.NewLegacyPod(testManifest.ID())
 	message := "Pod did something good"
 	pod.logInfo(message)
@@ -275,7 +280,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 
 	poddir, err := ioutil.TempDir("", "poddir")
 	Assert(t).IsNil(err, "couldn't create tempdir")
-	pod := newPodWithHome("testPod", "", poddir, "testNode", "", nil, osversion.DefaultDetector)
+	pod := newPodWithHome("testPod", "", poddir, "testNode", "", nil, osversion.DefaultDetector, false)
 
 	// set the RunAs user to the user running the test, because when we
 	// write files we need an owner.
