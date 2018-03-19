@@ -339,12 +339,6 @@ func createPodCgroup(resourceLimitsPath string, podID types.PodID, hostname type
 	if !ok {
 		return util.Errorf("Did not find any pod limits in file at: %s, instead found %+v", resourceLimitsPath, podLimits)
 	}
-	if podLimits.CPUs == 0 {
-		return util.Errorf("Expected cgroup config to contain a non-zero value for CPU. %+v", podLimits)
-	}
-	if podLimits.Memory == 0 {
-		return util.Errorf("Expected cgroup config to contain a non-zero value for CPU. %+v", podLimits)
-	}
 
 	err = cgroups.CreatePodCgroup(podID, hostname, podLimits, cgroups.DefaultSubsystemer)
 	if err != nil {
