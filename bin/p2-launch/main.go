@@ -36,6 +36,7 @@ var (
 	).Short('d').ExistingFile()
 	caFile              = kingpin.Flag("tls-ca-file", "File containing the x509 PEM-encoded CA ").ExistingFile()
 	artifactRegistryURL = kingpin.Flag("artifact-registry-url", "the artifact registry to fetch artifacts from").Short('r').URL()
+	requireFile         = kingpin.Flag("require-file", "If set, the p2-exec invocation(s) written for the pod will not execute until the file exists on the system").String()
 )
 
 func main() {
@@ -85,7 +86,7 @@ func main() {
 
 	fetcher := uri.BasicFetcher{Client: httpClient}
 
-	podFactory := pods.NewFactory(*podRoot, types.NodeName(*nodeName), fetcher, "", pods.NewReadOnlyPolicy(false, nil, nil))
+	podFactory := pods.NewFactory(*podRoot, types.NodeName(*nodeName), fetcher, *requireFile, pods.NewReadOnlyPolicy(false, nil, nil))
 	pod := podFactory.NewLegacyPod(manifest.ID())
 
 	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(*artifactRegistryURL, fetcher, osversion.DefaultDetector))
