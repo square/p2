@@ -260,20 +260,18 @@ func (h *httpApplicator) getMatches(selector labels.Selector, labelType Type, ca
 	}
 	req.Header.Add("Accept", "application/json")
 
-	resp, err := h.client.Do(req)
-	if err != nil {
-		return nil, err
+	var resp *http.Response
+	var bodyData []byte
+	for i := 0; i < 5; i++ {
+		resp, bodyData, err = h.attemptSelect(req)
+		if err == nil {
+			break
+		}
+		h.logger.WithError(err).Errorln("Retrying getMatches()")
+		time.Sleep(time.Duration(i) * 100 * time.Millisecond)
 	}
-
-	defer resp.Body.Close()
-
-	bodyData, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return []Labeled{}, err
-	}
-
-	if resp.StatusCode != 200 {
-		return nil, util.Errorf("got %d response from http label server: %s", resp.StatusCode, string(bodyData))
+	if err != nil { // last retry was a failure
+		return nil, util.Errorf("getMatches failed after retries: %s", err)
 	}
 
 	// try to unmarshal as a set of labeled objects.
@@ -311,6 +309,22 @@ func (h *httpApplicator) getMatches(selector labels.Selector, labelType Type, ca
 	}
 
 	return labeled, nil
+}
+
+func (h *httpApplicator) attemptSelect(r *http.Request) (*http.Response, []byte, error) {
+	resp, err := h.client.Do(r)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+	bodyData, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp.StatusCode != 200 {
+		return nil, nil, util.Errorf("got %d response from http label server: %s", resp.StatusCode, string(bodyData))
+	}
+	return resp, bodyData, nil
 }
 
 func (h *httpApplicator) GetMatches(selector labels.Selector, labelType Type) ([]Labeled, error) {
