@@ -297,16 +297,6 @@ func (s *ConsulStore) MutatePC(
 		return fields.PodCluster{}, util.Errorf("Could not set pod cluster at path '%s'", pcp)
 	}
 
-	err = s.setLabelsForPC(pc)
-	if err != nil {
-		// TODO: what if this delete fails?
-		deleteErr := s.Delete(pc.ID)
-		if deleteErr != nil {
-			err = util.Errorf("%s\n%s", err, deleteErr)
-		}
-		return fields.PodCluster{}, err
-	}
-
 	return pc, nil
 }
 
