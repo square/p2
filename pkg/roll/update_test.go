@@ -483,6 +483,7 @@ func updateWithHealth(t *testing.T,
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	rcs := rcstore.NewConsul(fixture.Client, applicator, 0)
 
 	oldRC, err := createRC(rcs, applicator, oldManifest, desiredOld, oldNodes, rcStrategy)
@@ -987,6 +988,8 @@ type cannedWatchServiceChecker struct {
 func (c cannedWatchServiceChecker) WatchService(
 	ctx context.Context,
 	serviceID string,
+	nodeIDs []types.NodeName,
+	nodeIDsCh <-chan []types.NodeName,
 	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
 	watchDelay time.Duration,
@@ -1008,7 +1011,12 @@ func (c cannedWatchServiceChecker) WatchService(
 	}
 }
 
-func (c cannedWatchServiceChecker) Service(serviceID string, useHealthService bool, status manifest.StatusStanza) (map[types.NodeName]health.Result, error) {
+func (c cannedWatchServiceChecker) Service(
+	serviceID string,
+	nodeIDs []types.NodeName,
+	useHealthService bool,
+	status manifest.StatusStanza,
+) (map[types.NodeName]health.Result, error) {
 	return c.serviceResult, nil
 }
 
@@ -1170,7 +1178,18 @@ func TestRollLoopNilAuditLogDetails(t *testing.T) {
 	// so that we can test that the Roll returns early and does not call
 	// auditLogStore.Create() with nil details
 	fixture := consulutil.NewFixture(t)
-	upd.labeler = &badGetLabels{upd.ID(), *labels.NewConsulApplicator(fixture.Client, 0, 0)}
+
+	applicator := &badGetLabels{upd.ID(), *labels.NewConsulApplicator(fixture.Client, 0, 0)}
+	// seed the label store with some labels so we don't trigger failsafes
+	err := applicator.SetLabel(labels.NODE, "node1", "key1", "val1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = applicator.SetLabel(labels.POD, "pod1", "key1", "val1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upd.labeler = applicator
 
 	go func() {
 		rollLoopResult <- upd.Run(ctx)
@@ -1179,7 +1198,7 @@ func TestRollLoopNilAuditLogDetails(t *testing.T) {
 
 	healths <- checks
 
-	err := transferNode("node1", manifest, upd)
+	err = transferNode("node1", manifest, upd)
 	if err != nil {
 		t.Fatal(err)
 	}

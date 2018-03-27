@@ -64,6 +64,8 @@ type ServiceWatcher interface {
 	WatchService(
 		ctx context.Context,
 		serviceID string,
+		nodeIDs []types.NodeName,
+		nodeIDsCh <-chan []types.NodeName,
 		resultCh chan<- map[types.NodeName]health.Result,
 		errCh chan<- error,
 		watchDelay time.Duration,
@@ -73,6 +75,7 @@ type ServiceWatcher interface {
 	)
 	Service(
 		serviceID string,
+		nodeIDs []types.NodeName,
 		useHealthService bool,
 		status manifest.StatusStanza,
 	) (map[types.NodeName]health.Result, error)
@@ -332,10 +335,9 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 		return
 	}
 
+	statusStanza := newFields.Manifest.GetStatusStanza()
 	hChecks := make(chan map[types.NodeName]health.Result)
 	hErrs := make(chan error)
-	hQuit := make(chan struct{})
-	defer close(hQuit)
 	watchDelay := 1 * time.Second
 	config := newFields.Manifest.GetConfig()
 	useHealthService, ok := config["use_health_service"].(bool)
@@ -350,11 +352,36 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 			"podID": newFields.Manifest.ID().String(),
 		}).Infoln("use_only_health_service config in manifest is either not set or an invalid bool type, defaulting value to false")
 	}
-	watchServiceCtx, watchServiceCancel := context.WithCancel(ctx)
-	go u.hcheck.WatchService(watchServiceCtx, string(newFields.Manifest.ID()), hChecks, hErrs, watchDelay, useHealthService, useOnlyHealthService, newFields.Manifest.GetStatusStanza())
-	defer watchServiceCancel()
+	nodeIDs, err := u.currentNodeIDs()
+	if err != nil {
+		u.logger.WithError(err).Errorln("could not get current nodeIDs for update")
+		return false
+	}
 
-	if updateSucceeded := u.rollLoop(checkRCLocksCtx, newFields.Manifest.ID(), hChecks, hErrs, useHealthService, newFields.Manifest.GetStatusStanza()); !updateSucceeded {
+	nodeIDsCh := make(chan []types.NodeName, 1)
+	watchServiceCtx, watchServiceCancel := context.WithCancel(ctx)
+	go u.hcheck.WatchService(watchServiceCtx, string(newFields.Manifest.ID()), nodeIDs, nodeIDsCh, hChecks, hErrs, watchDelay, useHealthService, useOnlyHealthService, statusStanza)
+	defer watchServiceCancel()
+	// refresh the nodes that are monitored in case they change periodically (i.e. node transfer)
+	refreshTimer := time.NewTimer(time.Minute * 5)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-refreshTimer.C:
+				refreshTimer.Reset(time.Minute * 5)
+				nodeIDs, err := u.currentNodeIDs()
+				if err != nil {
+					u.logger.WithError(err).Errorln("could not get current nodeIDs for update")
+					continue
+				}
+				nodeIDsCh <- nodeIDs
+			}
+		}
+	}()
+
+	if updateSucceeded := u.rollLoop(checkRCLocksCtx, newFields.Manifest.ID(), hChecks, hErrs, useHealthService, statusStanza); !updateSucceeded {
 		// We were asked to quit. Do so without cleaning old RC.
 		return false
 	}
@@ -469,11 +496,9 @@ func (u *update) cleanupOldRC(ctx context.Context) bool {
 			u.logger.Warnf("old RC still has %d current pods, waiting to delete", len(currentPods))
 			return util.Errorf("waiting for old RC to have 0 current pods before deleting")
 		}
-
 		return nil
 	}
 
-	u.logger.NoFields().Infoln("Cleaning up old RC")
 	if !RetryOrQuit(ctx, cleanupFunc, u.logger, "Could not delete old RC") {
 		return false
 	}
@@ -923,10 +948,33 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 	return ret, err
 }
 
+func (u *update) currentNodeIDs() ([]types.NodeName, error) {
+	oldPods, err := rc.CurrentPods(u.OldRC, u.labeler)
+	if err != nil {
+		u.logger.WithError(err).Errorln("could not get current pods for old rc")
+		return nil, err
+	}
+	newPods, err := rc.CurrentPods(u.NewRC, u.labeler)
+	if err != nil {
+		u.logger.WithError(err).Errorln("could not get current pods for new rc")
+		return nil, err
+	}
+	currentPods := append(oldPods, newPods...)
+	nodeIDs := make([]types.NodeName, len(currentPods))
+	for i, _ := range currentPods {
+		nodeIDs[i] = currentPods[i].Node
+	}
+	return nodeIDs, nil
+}
+
 func (u *update) shouldRollAfterDelay(podID types.PodID, useHealthService bool, manifestStatus manifest.StatusStanza) (int, int, error) {
 	// Check health again following the roll delay. If things have gotten
 	// worse since we last looked, or there is an error, we break this iteration.
-	checks, err := u.hcheck.Service(podID.String(), useHealthService, manifestStatus)
+	nodeIDs, err := u.currentNodeIDs()
+	if err != nil {
+		return 0, 0, util.Errorf("Could not get current nodeIDs for update: %v", err)
+	}
+	checks, err := u.hcheck.Service(podID.String(), nodeIDs, useHealthService, manifestStatus)
 	if err != nil {
 		return 0, 0, util.Errorf("Could not retrieve health following delay: %v", err)
 	}

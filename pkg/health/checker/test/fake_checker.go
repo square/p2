@@ -28,6 +28,8 @@ func NewSingleServiceShadow(service string, health map[types.NodeName]health.Res
 func (s singleServiceShadowChecker) WatchService(
 	ctx context.Context,
 	serviceID string,
+	nodeIDs []types.NodeName,
+	nodeIDsCh <-chan []types.NodeName,
 	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
 	watchDelay time.Duration,
@@ -38,7 +40,12 @@ func (s singleServiceShadowChecker) WatchService(
 	panic("WatchService not implemented")
 }
 
-func (s singleServiceShadowChecker) Service(serviceID string, useHealthService bool, status manifest.StatusStanza) (map[types.NodeName]health.Result, error) {
+func (s singleServiceShadowChecker) Service(
+	serviceID string,
+	nodeIDs []types.NodeName,
+	useHealthService bool,
+	status manifest.StatusStanza,
+) (map[types.NodeName]health.Result, error) {
 	if serviceID != s.service {
 		return nil, fmt.Errorf("Wrong service %s given, I only have health for %s", serviceID, s.service)
 	}
