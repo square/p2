@@ -668,7 +668,7 @@ func TestCountHealthyLooksAtEligibleForDynamicRCs(t *testing.T) {
 }
 
 func (u *update) uniformShouldRollAfterDelay(t *testing.T, podID types.PodID) (int, error) {
-	remove, add, err := u.shouldRollAfterDelay(podID, false, manifest.StatusStanza{})
+	remove, add, err := u.shouldRollAfterDelay(podID, manifest.StatusStanza{})
 	Assert(t).AreEqual(remove, add, "expected nodes removed and nodes added to be equal")
 	return add, err
 }
@@ -709,7 +709,7 @@ func TestShouldRollInitialMigrationFromZero(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	remove, add, err := upd.shouldRollAfterDelay(manifest.ID(), false, manifest.GetStatusStanza())
+	remove, add, err := upd.shouldRollAfterDelay(manifest.ID(), manifest.GetStatusStanza())
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
 	Assert(t).AreEqual(remove, 0, "expected to remove no nodes")
 	Assert(t).AreEqual(add, 1, "expected to add one node")
@@ -761,7 +761,7 @@ func TestShouldRollMidwayUnhealthyMigrationFromZero(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	remove, add, _ := upd.shouldRollAfterDelay(manifest.ID(), false, manifest.GetStatusStanza())
+	remove, add, _ := upd.shouldRollAfterDelay(manifest.ID(), manifest.GetStatusStanza())
 	Assert(t).AreEqual(remove, 0, "expected to remove no nodes")
 	Assert(t).AreEqual(add, 0, "expected to add no nodes")
 }
@@ -893,7 +893,7 @@ func TestShouldRollMidwayHealthyMigrationFromZero(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	remove, add, err := upd.shouldRollAfterDelay(manifest.ID(), false, manifest.GetStatusStanza())
+	remove, add, err := upd.shouldRollAfterDelay(manifest.ID(), manifest.GetStatusStanza())
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
 	Assert(t).AreEqual(remove, 0, "expected to remove no nodes")
 	Assert(t).AreEqual(add, 1, "expected to add one node")
@@ -912,7 +912,7 @@ func TestShouldRollMidwayHealthyMigrationFromZeroWhenNewSatisfies(t *testing.T) 
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	remove, add, err := upd.shouldRollAfterDelay(manifest.ID(), false, manifest.GetStatusStanza())
+	remove, add, err := upd.shouldRollAfterDelay(manifest.ID(), manifest.GetStatusStanza())
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
 	Assert(t).AreEqual(remove, 0, "expected to remove no nodes")
 	Assert(t).AreEqual(add, 1, "expected to add one node")
@@ -981,11 +981,11 @@ func assertRollLoopResult(t *testing.T, channel <-chan bool, expect bool) {
 }
 
 type cannedWatchServiceChecker struct {
-	watchServiceCh chan map[types.NodeName]health.Result
-	serviceResult  map[types.NodeName]health.Result
+	watchNodesCh  chan map[types.NodeName]health.Result
+	serviceResult map[types.NodeName]health.Result
 }
 
-func (c cannedWatchServiceChecker) WatchService(
+func (c cannedWatchServiceChecker) WatchNodes(
 	ctx context.Context,
 	serviceID string,
 	nodeIDs []types.NodeName,
@@ -1001,7 +1001,7 @@ func (c cannedWatchServiceChecker) WatchService(
 		select {
 		case <-ctx.Done():
 			return
-		case val := <-c.watchServiceCh:
+		case val := <-c.watchNodesCh:
 			select {
 			case resultCh <- val:
 			case <-ctx.Done():
@@ -1011,10 +1011,11 @@ func (c cannedWatchServiceChecker) WatchService(
 	}
 }
 
-func (c cannedWatchServiceChecker) Service(
+func (c cannedWatchServiceChecker) CheckNodes(
 	serviceID string,
 	nodeIDs []types.NodeName,
 	useHealthService bool,
+	useOnlyHealthService bool,
 	status manifest.StatusStanza,
 ) (map[types.NodeName]health.Result, error) {
 	return c.serviceResult, nil
@@ -1038,8 +1039,8 @@ func TestRollLoopTypicalCase(t *testing.T) {
 		"node3": {Status: health.Passing},
 	}
 	upd.hcheck = cannedWatchServiceChecker{
-		watchServiceCh: healths,
-		serviceResult:  checks,
+		watchNodesCh:  healths,
+		serviceResult: checks,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1161,8 +1162,8 @@ func TestRollLoopNilAuditLogDetails(t *testing.T) {
 		"node3": {Status: health.Passing},
 	}
 	upd.hcheck = cannedWatchServiceChecker{
-		watchServiceCh: healths,
-		serviceResult:  checks,
+		watchNodesCh:  healths,
+		serviceResult: checks,
 	}
 	alerter := &fakeAlerter{}
 	upd.alerter = alerter
@@ -1280,7 +1281,7 @@ func TestRollLoopMigrateFromZero(t *testing.T) {
 	rollLoopResult := make(chan bool)
 
 	go func() {
-		rollLoopResult <- upd.rollLoop(ctx, manifest.ID(), healths, nil, false, manifest.GetStatusStanza())
+		rollLoopResult <- upd.rollLoop(ctx, manifest.ID(), healths, nil, manifest.GetStatusStanza())
 		close(rollLoopResult)
 	}()
 
@@ -1346,7 +1347,7 @@ func TestRollLoopStallsIfUnhealthy(t *testing.T) {
 	rollLoopResult := make(chan bool)
 
 	go func() {
-		rollLoopResult <- upd.rollLoop(ctx, manifest.ID(), healths, nil, false, manifest.GetStatusStanza())
+		rollLoopResult <- upd.rollLoop(ctx, manifest.ID(), healths, nil, manifest.GetStatusStanza())
 		close(rollLoopResult)
 	}()
 

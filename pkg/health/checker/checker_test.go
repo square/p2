@@ -8,11 +8,16 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/hashicorp/consul/api"
+	dsfields "github.com/square/p2/pkg/ds/fields"
 	"github.com/square/p2/pkg/health"
 	hc "github.com/square/p2/pkg/health/client"
+	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/manifest"
+	rcfields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/util"
+	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 type fakeConsulStore struct {
@@ -69,6 +74,38 @@ func (f fakeHealthClient) HealthCheckEndpoints(ctx context.Context, req *hc.Heal
 	return ret, nil
 }
 
+type fakeResourceClient struct {
+	podIDToRCIDs map[types.PodID][]rcfields.ID
+	podIDToDSs   map[types.PodID][]dsfields.DaemonSet
+}
+
+func (f fakeResourceClient) RCIDsForPod(pod types.PodID) ([]rcfields.ID, error) {
+	return f.podIDToRCIDs[pod], nil
+}
+
+func (f fakeResourceClient) DaemonSetsForPod(pod types.PodID) ([]dsfields.DaemonSet, error) {
+	return f.podIDToDSs[pod], nil
+}
+
+type fakeReplicationControllerStore struct {
+	results map[rcfields.ID]rcfields.RC
+}
+
+func (f fakeReplicationControllerStore) Get(id rcfields.ID) (rcfields.RC, error) {
+	return f.results[id], nil
+}
+
+type fakeLabelReader struct {
+	results map[string][]labels.Labeled
+}
+
+func (f fakeLabelReader) GetMatches(selector klabels.Selector, labelsType labels.Type) ([]labels.Labeled, error) {
+	if labelsType != labels.NODE {
+		return []labels.Labeled{}, util.Errorf("fakeLabelReader meant for NODE labels only")
+	}
+	return f.results[selector.String()], nil
+}
+
 func TestNodeIDsToStatusEndpoints(t *testing.T) {
 	nodeIDs := []types.NodeName{"node1"}
 	statusStanza := manifest.StatusStanza{Port: 1}
@@ -112,7 +149,43 @@ func TestStatusURLToNodeName(t *testing.T) {
 	}
 }
 
-func TestShadowWatchService(t *testing.T) {
+func TestShadowWatchPodOnNode(t *testing.T) {
+	nodeID := types.NodeName("node1")
+	podID := types.PodID("podID")
+	statusStanza := manifest.StatusStanza{
+		Port: 1,
+	}
+	fakeHealthClient := fakeHealthClient{
+		HealthResponses: make(map[string]hc.HealthResponse),
+		MonitorDelay:    time.Second * 2,
+	}
+	expected := map[types.NodeName]health.HealthState{
+		nodeID: health.Passing,
+	}
+	endpoint := nodeIDToStatusEndpoint(nodeID, statusStanza)
+	fakeHealthClient.HealthResponses[endpoint] = hc.HealthResponse{
+		HealthRequest: hc.HealthRequest{
+			Url:      endpoint,
+			Protocol: "https",
+		},
+		Health: expected[nodeID],
+		Error:  nil,
+	}
+	shadowChecker := shadowTrafficHealthChecker{
+		healthClient:         fakeHealthClient,
+		useHealthService:     true,
+		useOnlyHealthService: true,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resultCh, _ := shadowChecker.WatchPodOnNode(ctx, nodeID, podID, true, true, statusStanza)
+	result := <-resultCh
+	if result.Status != expected[nodeID] {
+		t.Fatalf("Expected health.Result %s from shadowChecker WatchPodOnNode but got %s instead", expected[nodeID], result.Status)
+	}
+}
+
+func TestShadowWatchNodes(t *testing.T) {
 	nodeIDs := []types.NodeName{"node1", "node2", "node3"}
 	statusStanza := manifest.StatusStanza{Port: 1}
 	expected := make(map[types.NodeName]health.HealthState)
@@ -121,7 +194,7 @@ func TestShadowWatchService(t *testing.T) {
 	}
 
 	// MonitorDelay is set unreasonably high so that the
-	// case where old health results are sent in WatchService
+	// case where old health results are sent in WatchNodes
 	// are guaranteed to arrive first
 	fakeHealthClient := fakeHealthClient{
 		HealthResponses: make(map[string]hc.HealthResponse),
@@ -157,8 +230,8 @@ func TestShadowWatchService(t *testing.T) {
 	errCh := make(chan error)
 	watchDelay := 1 * time.Second
 
-	// start WatchService goroutine
-	go shadowChecker.WatchService(ctx, "serviceID", nodeIDs, nodeIDsCh, resultCh, errCh, watchDelay, true, true, statusStanza)
+	// start WatchNodes goroutine
+	go shadowChecker.WatchNodes(ctx, "serviceID", nodeIDs, nodeIDsCh, resultCh, errCh, watchDelay, true, true, statusStanza)
 
 	result := make(map[types.NodeName]health.Result)
 
@@ -181,12 +254,12 @@ LOOP1:
 			t.Fatalf("Expected nodeID %s to be in results but not found", nodeID)
 		}
 		if expected[nodeID] != healthResult.Status {
-			t.Fatalf("Expected hCheck status from WatchService to be %s but got %s instead", expected[nodeID], healthResult.Status)
+			t.Fatalf("Expected hCheck status from WatchNodes to be %s but got %s instead", expected[nodeID], healthResult.Status)
 		}
 	}
 
 	// regression test, after new nodeIDs are sent to
-	// shadowChecker.WatchService, we shouldn't receive all healthy results when they are not
+	// shadowChecker.WatchNodes, we shouldn't receive all healthy results when they are not
 	// refresh nodeIDs
 	nodeIDsCh <- nodeIDs
 
@@ -210,12 +283,87 @@ LOOP2:
 			t.Fatalf("Expected nodeID %s to be in results but not found", nodeID)
 		}
 		if expected[nodeID] != healthResult.Status {
-			t.Fatalf("Expected hCheck status from WatchService to be %s but got %s instead", expected[nodeID], healthResult.Status)
+			t.Fatalf("Expected hCheck status from WatchNodes to be %s but got %s instead", expected[nodeID], healthResult.Status)
 		}
 	}
 }
 
-func TestShadowService(t *testing.T) {
+func TestShadowWatchService(t *testing.T) {
+	podID := "podID"
+	nodeIDs := []types.NodeName{"node1", "node2", "node3"}
+	expected := make(map[types.NodeName]health.HealthState)
+	for _, nodeID := range nodeIDs {
+		expected[nodeID] = health.Passing
+	}
+
+	fakeHealthClient := fakeHealthClient{
+		HealthResponses: make(map[string]hc.HealthResponse),
+		MonitorDelay:    time.Second * 2,
+	}
+	status := manifest.StatusStanza{
+		Port: 1,
+	}
+	statusEndpoints := nodeIDsToStatusEndpoints(nodeIDs, status)
+	for _, endpoint := range statusEndpoints {
+		nodeID, err := statusURLToNodeName(endpoint)
+		if err != nil {
+			t.Fatalf("Error calling statusURLToNodeName: %v", err)
+		}
+		fakeHealthClient.HealthResponses[endpoint] = hc.HealthResponse{
+			HealthRequest: hc.HealthRequest{
+				Url:      endpoint,
+				Protocol: "https",
+			},
+			Health: expected[nodeID],
+			Error:  nil,
+		}
+	}
+
+	serviceNodes := func(serviceID string) ([]types.NodeName, error) {
+		return nodeIDs, nil
+	}
+	shadowChecker := shadowTrafficHealthChecker{
+		healthClient:         fakeHealthClient,
+		serviceNodes:         serviceNodes,
+		useHealthService:     true,
+		useOnlyHealthService: true,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resultCh := make(chan map[types.NodeName]health.Result)
+	errCh := make(chan error)
+	watchDelay := 1 * time.Second
+
+	go shadowChecker.WatchService(ctx, podID, resultCh, errCh, watchDelay, true, true, status)
+
+	result := make(map[types.NodeName]health.Result)
+
+LOOP1:
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case result = <-resultCh:
+			if len(result) == len(nodeIDs) {
+				break LOOP1
+			}
+		}
+	}
+
+	// get expected HealthResponses set in fakeHealthClient
+	for _, nodeID := range nodeIDs {
+		healthResult, ok := result[nodeID]
+		if !ok {
+			t.Fatalf("Expected nodeID %s to be in results but not found", nodeID)
+		}
+		if expected[nodeID] != healthResult.Status {
+			t.Fatalf("Expected hCheck status from WatchNodes to be %s but got %s instead", expected[nodeID], healthResult.Status)
+		}
+	}
+}
+
+func TestShadowCheckNodes(t *testing.T) {
 	nodeIDs := []types.NodeName{"node1"}
 	statusStanza := manifest.StatusStanza{
 		Port: 1,
@@ -249,12 +397,12 @@ func TestShadowService(t *testing.T) {
 		useHealthService:     true,
 		useOnlyHealthService: true,
 	}
-	healthResults, err := shadowChecker.Service("serviceID", nodeIDs, true, statusStanza)
+	healthResults, err := shadowChecker.CheckNodes("serviceID", nodeIDs, true, true, statusStanza)
 	if err != nil {
-		t.Fatalf("Unexpected error calling shadowChecker Service: %v", err)
+		t.Fatalf("Unexpected error calling shadowChecker CheckNodes: %v", err)
 	}
 	if len(healthResults) != len(nodeIDs) {
-		t.Fatalf("Expected length of healthResults from shadowChecker Service to be %d but got %d", len(nodeIDs), len(healthResults))
+		t.Fatalf("Expected length of healthResults from shadowChecker CheckNodes to be %d but got %d", len(nodeIDs), len(healthResults))
 	}
 
 	// get expected HealthResponses set in fakeHealthClient
@@ -264,7 +412,7 @@ func TestShadowService(t *testing.T) {
 			t.Fatalf("Expected nodeID %s to be in results but not found", nodeID)
 		}
 		if expected[nodeID] != healthResult.Status {
-			t.Fatalf("Expected hCheck status from WatchService to be %s but got %s instead", expected[nodeID], healthResult.Status)
+			t.Fatalf("Expected hCheck status from WatchNodes to be %s but got %s instead", expected[nodeID], healthResult.Status)
 		}
 	}
 }

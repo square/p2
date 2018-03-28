@@ -146,7 +146,7 @@ func setup(t *testing.T) (
 	alerter = alertingtest.NewRecorder()
 	auditLogStore = auditlogstore.NewConsulStore(fixture.Client.KV())
 
-	healthChecker := fake_checker.NewSingleService("", nil)
+	healthChecker := fake_checker.NewSingleServiceShadow("", nil)
 
 	artifactRegistry := artifact.NewRegistry(nil, nil, nil)
 
@@ -1197,7 +1197,7 @@ func TestTransferNodeHappyPath(t *testing.T) {
 	healthMap := map[types.NodeName]health.Result{
 		newTransferNode: health.Result{Status: health.Passing},
 	}
-	rc.healthChecker = fake_checker.NewSingleService("", healthMap)
+	rc.healthChecker = fake_checker.NewSingleServiceShadow("", healthMap)
 
 	rcFields, err = testIneligibleNodesCommon(applicator, rc, rcFields, alerter)
 	if err != nil {

@@ -105,7 +105,7 @@ type replication struct {
 	labeler        Labeler
 	manifest       manifest.Manifest
 	mu             sync.RWMutex
-	health         checker.HealthChecker
+	health         checker.ShadowTrafficHealthChecker
 	threshold      health.HealthState // minimum state to treat as "healthy"
 	logger         logging.Logger
 
@@ -169,7 +169,7 @@ func newReplication(
 	labeler Labeler,
 	podLabels map[string]string,
 	manifest manifest.Manifest,
-	health checker.HealthChecker,
+	health checker.ShadowTrafficHealthChecker,
 	threshold health.HealthState,
 	logger logging.Logger,
 	rateLimiter *time.Ticker,
@@ -297,7 +297,12 @@ func (r *replication) Enact() {
 
 	// Sort nodes from least healthy to most healthy to maximize overall
 	// cluster health
-	healthResults, err := r.health.Service(string(r.GetManifest().ID()))
+	config := r.GetManifest().GetConfig()
+	// defaults to false if not set
+	useHealthService, _ := config["use_health_service"].(bool)
+	useOnlyHealthService, _ := config["use_only_health_service"].(bool)
+	statusStanza := r.GetManifest().GetStatusStanza()
+	healthResults, err := r.health.Service(string(r.GetManifest().ID()), useHealthService, useOnlyHealthService, statusStanza)
 	if err != nil {
 		err = replicationError{
 			err:     err,
@@ -347,7 +352,7 @@ func (r *replication) Enact() {
 		}()
 	}
 
-	aggregateHealth := AggregateHealth(r.GetManifest().ID(), r.health, r.healthWatchDelay)
+	aggregateHealth := AggregateHealth(r.GetManifest().ID(), r.health, r.healthWatchDelay, useHealthService, useOnlyHealthService, statusStanza)
 	defer aggregateHealth.Stop()
 	// this loop multiplexes the node queue across some goroutines
 

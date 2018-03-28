@@ -10,23 +10,20 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	hclient "github.com/square/p2/pkg/health/client"
-	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/manifest"
-	rcfields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
 	"github.com/hashicorp/consul/api"
-	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
 type HealthChecker interface {
 	WatchPodOnNode(
+		ctx context.Context,
 		nodename types.NodeName,
 		podID types.PodID,
-		quitCh <-chan struct{},
 	) (chan health.Result, chan error)
 	WatchService(
 		ctx context.Context,
@@ -45,7 +42,31 @@ type HealthChecker interface {
 }
 
 type ShadowTrafficHealthChecker interface {
+	WatchPodOnNode(
+		ctx context.Context,
+		nodeID types.NodeName,
+		podID types.PodID,
+		useHealthService bool,
+		useOnlyHealthService bool,
+		status manifest.StatusStanza,
+	) (chan health.Result, chan error)
 	WatchService(
+		ctx context.Context,
+		serviceID string,
+		resultCh chan<- map[types.NodeName]health.Result,
+		errCh chan<- error,
+		watchDelay time.Duration,
+		useHealthService bool,
+		useOnlyHealthService bool,
+		status manifest.StatusStanza,
+	)
+	Service(
+		serviceID string,
+		useHealthService bool,
+		useOnlyHealthService bool,
+		status manifest.StatusStanza,
+	) (map[types.NodeName]health.Result, error)
+	WatchNodes(
 		ctx context.Context,
 		serviceID string,
 		nodeIDs []types.NodeName,
@@ -57,10 +78,11 @@ type ShadowTrafficHealthChecker interface {
 		useOnlyHealthService bool,
 		status manifest.StatusStanza,
 	)
-	Service(
+	CheckNodes(
 		serviceID string,
 		nodeIDs []types.NodeName,
 		useHealthService bool,
+		useOnlyHealthService bool,
 		status manifest.StatusStanza,
 	) (map[types.NodeName]health.Result, error)
 }
@@ -70,11 +92,8 @@ type HealthClient interface {
 	HealthMonitor(ctx context.Context, req *hclient.HealthRequest, respCh chan *hclient.HealthResponse) error
 }
 
-type ResourceClient interface {
-	GetRCIDsForPod(pod types.PodID) ([]rcfields.ID, error)
-}
-
 type healthKV interface {
+	Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
 	List(prefix string, opts *api.QueryOptions) (api.KVPairs, *api.QueryMeta, error)
 }
 
@@ -84,47 +103,31 @@ type healthStore interface {
 	GetServiceHealth(service string) (map[string]consul.WatchResult, error)
 }
 
-type ReplicationControllerStore interface {
-	Get(id rcfields.ID) (rcfields.RC, error)
-}
-
-type LabelReader interface {
-	GetMatches(klabels.Selector, labels.Type) ([]labels.Labeled, error)
-}
-
 type shadowTrafficHealthChecker struct {
 	healthClient         HealthClient
-	resourceClient       ResourceClient
 	consulClient         consulutil.ConsulClient
 	kv                   healthKV
 	consulStore          healthStore
-	rcStore              ReplicationControllerStore
-	labelReader          LabelReader
+	serviceNodes         func(serviceID string) ([]types.NodeName, error)
 	useHealthService     bool
 	useOnlyHealthService bool
-	healthResults        map[string]map[types.NodeName]health.Result
 }
 
 func NewShadowTrafficHealthChecker(
 	hClient HealthClient,
-	resourceClient ResourceClient,
 	cClient consulutil.ConsulClient,
-	rcStore ReplicationControllerStore,
-	labelReader LabelReader,
+	serviceNodes func(serviceID string) ([]types.NodeName, error),
 	useHealthService bool,
 	useOnlyHealthService bool,
 ) ShadowTrafficHealthChecker {
 	return shadowTrafficHealthChecker{
 		healthClient:         hClient,
-		resourceClient:       resourceClient,
 		consulClient:         cClient,
 		kv:                   cClient.KV(),
 		consulStore:          consul.NewConsulStore(cClient),
-		rcStore:              rcStore,
-		labelReader:          labelReader,
+		serviceNodes:         serviceNodes,
 		useHealthService:     useHealthService,
 		useOnlyHealthService: useOnlyHealthService,
-		healthResults:        make(map[string]map[types.NodeName]health.Result),
 	}
 }
 
@@ -142,40 +145,142 @@ func NewHealthChecker(cClient consulutil.ConsulClient) HealthChecker {
 	}
 }
 
+func (h shadowTrafficHealthChecker) WatchPodOnNode(
+	ctx context.Context,
+	nodeID types.NodeName,
+	podID types.PodID,
+	useHealthService bool,
+	useOnlyHealthService bool,
+	status manifest.StatusStanza,
+) (chan health.Result, chan error) {
+	resultCh := make(chan health.Result)
+	errCh := make(chan error)
+	if !useOnlyHealthService && !h.useOnlyHealthService {
+		resultCh, errCh = consulWatchPodOnNode(ctx, nodeID, podID, h.kv)
+	}
+
+	if h.useOnlyHealthService || useOnlyHealthService || h.useHealthService || useHealthService {
+		endpoint := nodeIDToStatusEndpoint(nodeID, status)
+		protocol := "HTTPS"
+		if status.HTTP {
+			protocol = "HTTP"
+		}
+		healthReq := &hclient.HealthRequest{
+			Url:      endpoint,
+			Protocol: protocol,
+		}
+		respCh := make(chan *hclient.HealthResponse, 1)
+		healthResult := health.Result{
+			ID:      podID,
+			Node:    nodeID,
+			Service: podID.String(),
+			Status:  health.Unknown,
+		}
+		oldResultDelay := time.Second * 2
+		oldResultTimer := time.NewTimer(oldResultDelay)
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case resp := <-respCh:
+					endpoint := resp.HealthRequest.Url
+					nodeID, err := statusURLToNodeName(endpoint)
+					if err != nil {
+						select {
+						case <-ctx.Done():
+							return
+						case errCh <- err:
+						}
+						continue
+					}
+					healthResult = health.Result{
+						ID:      podID,
+						Node:    nodeID,
+						Service: podID.String(),
+						Status:  resp.Health,
+					}
+					select {
+					case <-ctx.Done():
+						return
+					case resultCh <- healthResult:
+					}
+				case <-oldResultTimer.C:
+					oldResultTimer.Reset(oldResultDelay)
+					select {
+					case <-ctx.Done():
+						return
+					case resultCh <- healthResult:
+					}
+				}
+			}
+		}()
+
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				// this is a blocking call, messages will be received on the respCh in the above goroutine
+				err := h.healthClient.HealthMonitor(ctx, healthReq, respCh)
+				if err != nil {
+					select {
+					case <-ctx.Done():
+						return
+					case errCh <- err:
+					}
+				}
+				// retry the request after 1 second
+				<-time.NewTimer(time.Second).C
+			}
+		}()
+	}
+	return resultCh, errCh
+}
+
 func (h healthChecker) WatchPodOnNode(
+	ctx context.Context,
 	nodename types.NodeName,
 	podID types.PodID,
-	quitCh <-chan struct{},
+) (chan health.Result, chan error) {
+	return consulWatchPodOnNode(ctx, nodename, podID, h.kv)
+}
+
+func consulWatchPodOnNode(
+	ctx context.Context,
+	nodeID types.NodeName,
+	podID types.PodID,
+	kv healthKV,
 ) (chan health.Result, chan error) {
 	resultCh := make(chan health.Result)
 	errCh := make(chan error)
 
-	key := consul.HealthPath(podID.String(), nodename)
+	key := consul.HealthPath(podID.String(), nodeID)
 
 	wsOut := make(chan *api.KVPair) // closed by WatchSingle
 	wsQuit := make(chan struct{})
 
-	go consulutil.WatchSingle(key, h.consulClient.KV(), wsOut, wsQuit, errCh)
+	go consulutil.WatchSingle(key, kv, wsOut, wsQuit, errCh)
 
 	go func() {
 		defer close(wsQuit)
-		defer close(resultCh)
-		defer close(errCh)
 		for {
 			select {
-			case <-quitCh:
+			case <-ctx.Done():
 				return
 			case kvPair := <-wsOut:
 				if kvPair == nil {
 					unknownRes := health.Result{
 						ID:      podID,
-						Node:    nodename,
+						Node:    nodeID,
 						Service: podID.String(),
 						Status:  health.Unknown,
 					}
 					select {
 					case resultCh <- unknownRes:
-					case <-quitCh:
+					case <-ctx.Done():
 						return
 					}
 				} else {
@@ -183,13 +288,13 @@ func (h healthChecker) WatchPodOnNode(
 					if err != nil {
 						select {
 						case errCh <- err:
-						case <-quitCh:
+						case <-ctx.Done():
 							return
 						}
 					} else {
 						select {
 						case resultCh <- *res:
-						case <-quitCh:
+						case <-ctx.Done():
 							return
 						}
 					}
@@ -256,16 +361,90 @@ func publishLatestHealth(inCh <-chan api.KVPairs, quitCh <-chan struct{}, result
 	return errCh
 }
 
-func nodeIDsToStatusEndpoints(nodeIds []types.NodeName, status manifest.StatusStanza) []string {
-	statusEndpoints := make([]string, len(nodeIds))
+func nodeIDToStatusEndpoint(nodeID types.NodeName, status manifest.StatusStanza) string {
 	scheme := "https"
 	if status.HTTP {
 		scheme = "http"
 	}
-	for i, nodeId := range nodeIds {
-		statusEndpoints[i] = fmt.Sprintf("%s://%s:%d%s", scheme, nodeId, status.Port, status.GetPath())
+	return fmt.Sprintf("%s://%s:%d%s", scheme, nodeID, status.Port, status.GetPath())
+}
+
+func nodeIDsToStatusEndpoints(nodeIDs []types.NodeName, status manifest.StatusStanza) []string {
+	statusEndpoints := make([]string, len(nodeIDs))
+
+	for i, nodeID := range nodeIDs {
+		statusEndpoints[i] = nodeIDToStatusEndpoint(nodeID, status)
 	}
 	return statusEndpoints
+}
+
+func (h shadowTrafficHealthChecker) WatchService(
+	ctx context.Context,
+	serviceID string,
+	resultCh chan<- map[types.NodeName]health.Result,
+	errCh chan<- error,
+	watchDelay time.Duration,
+	useHealthService bool,
+	useOnlyHealthService bool,
+	status manifest.StatusStanza,
+) {
+	nodeIDsCh := make(chan []types.NodeName, 1)
+	nodeIDs := []types.NodeName{}
+	var err error
+	if h.useHealthService || useHealthService || h.useOnlyHealthService || useOnlyHealthService {
+
+		for {
+			nodeIDs, err = h.serviceNodes(serviceID)
+			if err != nil {
+				select {
+				case <-ctx.Done():
+					return
+				case errCh <- err:
+					// try again
+					<-time.NewTimer(time.Second * 5).C
+					continue
+				}
+			}
+			break
+		}
+		// refresh the nodes that are monitored in case they change periodically (i.e. node transfer)
+		refreshTimer := time.NewTimer(time.Minute * 5)
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-refreshTimer.C:
+					refreshTimer.Reset(time.Minute * 5)
+					nodeIDs, err := h.serviceNodes(serviceID)
+					if err != nil {
+						select {
+						case <-ctx.Done():
+							return
+						case errCh <- err:
+							continue
+						}
+					}
+					nodeIDsCh <- nodeIDs
+				}
+			}
+		}()
+	}
+
+	h.WatchNodes(ctx, serviceID, nodeIDs, nodeIDsCh, resultCh, errCh, watchDelay, useHealthService, useOnlyHealthService, status)
+}
+
+func (h shadowTrafficHealthChecker) Service(
+	serviceID string,
+	useHealthService bool,
+	useOnlyHealthService bool,
+	status manifest.StatusStanza,
+) (map[types.NodeName]health.Result, error) {
+	nodeIDs, err := h.serviceNodes(serviceID)
+	if err != nil {
+		return nil, err
+	}
+	return h.CheckNodes(serviceID, nodeIDs, useHealthService, useOnlyHealthService, status)
 }
 
 // Watch the health tree and write the whole subtree on the chan passed by caller
@@ -392,7 +571,9 @@ func healthResultsCopy(healthResults map[types.NodeName]health.Result) map[types
 	return out
 }
 
-func (h shadowTrafficHealthChecker) WatchService(
+// WatchNodes is the same as WatchService but it only looks at
+// a subset of the service (select nodes)
+func (h shadowTrafficHealthChecker) WatchNodes(
 	ctx context.Context,
 	serviceID string,
 	nodeIDs []types.NodeName,
@@ -408,7 +589,7 @@ func (h shadowTrafficHealthChecker) WatchService(
 	// when always healthy, WatchService ONLY sends the healthy status repeatedly on a timer set to delay
 	alwaysHealthy := status.Port == 0
 	if h.useHealthService || useHealthService || useOnlyHealthService || h.useOnlyHealthService {
-		respChan := make(chan *hclient.HealthResponse, len(nodeIDs))
+		respCh := make(chan *hclient.HealthResponse, len(nodeIDs))
 		go func() {
 			oldResultsDelay := time.Second * 5
 			healthResults := make(map[types.NodeName]health.Result)
@@ -431,7 +612,7 @@ func (h shadowTrafficHealthChecker) WatchService(
 				select {
 				case <-ctx.Done():
 					return
-				case resp := <-respChan:
+				case resp := <-respCh:
 					endpoint := resp.HealthRequest.Url
 					nodeID, err := statusURLToNodeName(endpoint)
 					if err != nil {
@@ -508,8 +689,8 @@ func (h shadowTrafficHealthChecker) WatchService(
 					}
 					go func() {
 						for {
-							// this is a blocking call, messages will be received on the respChan in the above goroutine
-							err := h.healthClient.HealthMonitor(monitorCtx, healthReq, respChan)
+							// this is a blocking call, messages will be received on the respCh in the above goroutine
+							err := h.healthClient.HealthMonitor(monitorCtx, healthReq, respCh)
 							if err != nil {
 								select {
 								case <-ctx.Done():
@@ -542,10 +723,10 @@ func (h shadowTrafficHealthChecker) WatchService(
 	}
 }
 
-func (h healthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
+func consulService(serviceID string, hStore healthStore) (map[types.NodeName]health.Result, error) {
 	// return map[nodenames (string)] to consul.WatchResult
 	// get health of all instances of a service with 1 query
-	kvEntries, err := h.consulStore.GetServiceHealth(serviceID)
+	kvEntries, err := hStore.GetServiceHealth(serviceID)
 	if err != nil {
 		return nil, err
 	}
@@ -557,26 +738,21 @@ func (h healthChecker) Service(serviceID string) (map[types.NodeName]health.Resu
 	return ret, nil
 }
 
-// Service returns a map where values are individual results (keys are nodes)
-func (h shadowTrafficHealthChecker) Service(
+func (h healthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
+	return consulService(serviceID, h.consulStore)
+}
+
+// CheckNodes is the same as service but only checks select nodes
+// returns a map where values are individual results (keys are nodes)
+func (h shadowTrafficHealthChecker) CheckNodes(
 	serviceID string,
 	nodeIDs []types.NodeName,
 	useHealthService bool,
+	useOnlyHealthService bool,
 	status manifest.StatusStanza,
 ) (map[types.NodeName]health.Result, error) {
-	if !h.useHealthService && !useHealthService {
-		// return map[nodenames (string)] to consul.WatchResult
-		// get health of all instances of a service with 1 query
-		kvEntries, err := h.consulStore.GetServiceHealth(serviceID)
-		if err != nil {
-			return nil, err
-		}
-		ret := make(map[types.NodeName]health.Result)
-		for _, kvEntry := range kvEntries {
-			ret[kvEntry.Node] = consulWatchToResult(kvEntry)
-		}
-
-		return ret, nil
+	if !(h.useOnlyHealthService || useOnlyHealthService || h.useHealthService || useHealthService) {
+		return consulService(serviceID, h.consulStore)
 	}
 
 	statusEndpoints := nodeIDsToStatusEndpoints(nodeIDs, status)

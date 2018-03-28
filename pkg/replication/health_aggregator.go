@@ -7,26 +7,34 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 )
 
 type podHealth struct {
 	podId   types.PodID
-	checker checker.HealthChecker
+	checker checker.ShadowTrafficHealthChecker
 	quit    chan struct{}
 
 	cond      *sync.Cond // guards curHealth
 	curHealth map[types.NodeName]health.Result
 }
 
-func AggregateHealth(id types.PodID, checker checker.HealthChecker, watchDelay time.Duration) *podHealth {
+func AggregateHealth(
+	id types.PodID,
+	checker checker.ShadowTrafficHealthChecker,
+	watchDelay time.Duration,
+	useHealthService bool,
+	useOnlyHealthService bool,
+	status manifest.StatusStanza,
+) *podHealth {
 	p := &podHealth{
 		podId:   id,
 		checker: checker,
 		cond:    sync.NewCond(&sync.Mutex{}),
 		quit:    make(chan struct{}),
 	}
-	go p.beginWatch(watchDelay)
+	go p.beginWatch(watchDelay, useHealthService, useOnlyHealthService, status)
 
 	// Wait for first update
 	p.cond.L.Lock()
@@ -38,7 +46,12 @@ func AggregateHealth(id types.PodID, checker checker.HealthChecker, watchDelay t
 	return p
 }
 
-func (p *podHealth) beginWatch(watchDelay time.Duration) {
+func (p *podHealth) beginWatch(
+	watchDelay time.Duration,
+	useHealthService bool,
+	useOnlyHealthService bool,
+	status manifest.StatusStanza,
+) {
 	// TODO: hook up error reporting
 	errCh := make(chan error)
 	go func() {
@@ -49,7 +62,7 @@ func (p *podHealth) beginWatch(watchDelay time.Duration) {
 	resultCh := make(chan map[types.NodeName]health.Result)
 	watchServiceCtx, watchServiceCancel := context.WithCancel(context.Background())
 	go func() {
-		p.checker.WatchService(watchServiceCtx, p.podId.String(), resultCh, errCh, watchDelay)
+		p.checker.WatchService(watchServiceCtx, p.podId.String(), resultCh, errCh, watchDelay, useHealthService, useOnlyHealthService, status)
 		close(errCh)
 	}()
 	defer watchServiceCancel()

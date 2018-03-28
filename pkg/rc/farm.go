@@ -13,7 +13,6 @@ import (
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/audit"
-	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	p2metrics "github.com/square/p2/pkg/metrics"
@@ -83,7 +82,7 @@ type Farm struct {
 	scheduler     Scheduler
 	labeler       Labeler
 	txner         transaction.Txner
-	healthChecker checker.HealthChecker
+	healthChecker PodOnNodeWatcher
 
 	// session stream for the rcs locked by this farm
 	sessions <-chan string
@@ -120,7 +119,7 @@ func NewFarm(
 	rcLocker ReplicationControllerLocker,
 	rcWatcher ReplicationControllerWatcher,
 	txner transaction.Txner,
-	healthChecker checker.HealthChecker,
+	healthChecker PodOnNodeWatcher,
 	scheduler Scheduler,
 	labeler Labeler,
 	sessions <-chan string,

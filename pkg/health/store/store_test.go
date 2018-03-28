@@ -14,7 +14,11 @@ type FakeHealthChecker struct {
 	ready   chan struct{}
 }
 
-func (hc *FakeHealthChecker) WatchPodOnNode(nodename types.NodeName, podID types.PodID, quitCh <-chan struct{}) (chan health.Result, chan error) {
+func (hc *FakeHealthChecker) WatchPodOnNode(
+	ctx context.Context,
+	nodename types.NodeName,
+	podID types.PodID,
+) (chan health.Result, chan error) {
 	panic("not implemented")
 }
 

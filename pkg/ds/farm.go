@@ -74,7 +74,7 @@ type Farm struct {
 	logger  logging.Logger
 	alerter alerting.Alerter
 
-	healthChecker    *checker.HealthChecker
+	healthChecker    *checker.ShadowTrafficHealthChecker
 	healthWatchDelay time.Duration
 
 	monitorHealth         bool
@@ -120,7 +120,7 @@ func NewFarm(
 	sessions <-chan string,
 	logger logging.Logger,
 	alerter alerting.Alerter,
-	healthChecker *checker.HealthChecker,
+	healthChecker *checker.ShadowTrafficHealthChecker,
 	rateLimitInterval time.Duration,
 	monitorHealth bool,
 	cachedPodMatch bool,
@@ -565,13 +565,25 @@ func (dsf *Farm) spawnDaemonSet(
 	ctx, cancel := context.WithCancel(ctx)
 
 	desiresCh := ds.WatchDesires(ctx, updatedCh, deletedCh)
-
+	config := dsFields.Manifest.GetConfig()
+	// defaults to false if not set
+	useHealthService := false
+	useOnlyHealthService := false
+	switch config["use_health_service"].(type) {
+	case bool:
+		useHealthService = config["use_health_service"].(bool)
+	}
+	switch config["use_only_health_service"].(type) {
+	case bool:
+		useOnlyHealthService = config["use_only_health_service"].(bool)
+	}
+	statusStanza := dsFields.Manifest.GetStatusStanza()
 	if dsf.monitorHealth {
 		go func() {
 			// daemon sets are deployed to many servers and deploys are very slow. This means that
 			// 1) the data size for each health response is huge which can suck up bandwidth
 			// 2) the metrics aren't going to change very frequently, so a low sample rate is acceptable
-			aggregateHealth := replication.AggregateHealth(ds.PodID(), *dsf.healthChecker, dsf.healthWatchDelay)
+			aggregateHealth := replication.AggregateHealth(ds.PodID(), *dsf.healthChecker, dsf.healthWatchDelay, useHealthService, useOnlyHealthService, statusStanza)
 			ticks := time.NewTicker(dsf.healthWatchDelay)
 
 			defer aggregateHealth.Stop()

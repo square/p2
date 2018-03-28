@@ -139,7 +139,7 @@ type daemonSet struct {
 	txner                 transaction.Txner
 	applicator            Labeler
 	watcher               LabelWatcher
-	healthChecker         *checker.HealthChecker
+	healthChecker         *checker.ShadowTrafficHealthChecker
 	healthWatchDelay      time.Duration
 	statusWritingInterval time.Duration
 
@@ -180,7 +180,7 @@ func New(
 	watcher LabelWatcher,
 	labelsAggregationRate time.Duration,
 	logger logging.Logger,
-	healthChecker *checker.HealthChecker,
+	healthChecker *checker.ShadowTrafficHealthChecker,
 	rateLimitInterval time.Duration,
 	cachedPodMatch bool,
 	healthWatchDelay time.Duration,

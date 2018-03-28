@@ -167,7 +167,7 @@ func main() {
 		rls:               rollstore.NewConsul(client, rollLabeler, nil),
 		consuls:           consul.NewConsulStore(client),
 		labeler:           labeler,
-		hcheck:            checker.NewShadowTrafficHealthChecker(nil, nil, client, nil, nil, false, false),
+		hcheck:            checker.NewShadowTrafficHealthChecker(nil, client, nil, false, false),
 		hclient:           nil,
 		logger:            logger,
 	}
