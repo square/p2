@@ -340,18 +340,9 @@ func (u *update) Run(ctx context.Context) (ret bool) {
 	hErrs := make(chan error)
 	watchDelay := 1 * time.Second
 	config := newFields.Manifest.GetConfig()
-	useHealthService, ok := config["use_health_service"].(bool)
-	if !ok {
-		u.logger.WithFields(logrus.Fields{
-			"podID": newFields.Manifest.ID().String(),
-		}).Infoln("use_health_service config in manifest is either not set or an invalid bool type, defaulting value to false")
-	}
-	useOnlyHealthService, ok := config["use_only_health_service"].(bool)
-	if !ok {
-		u.logger.WithFields(logrus.Fields{
-			"podID": newFields.Manifest.ID().String(),
-		}).Infoln("use_only_health_service config in manifest is either not set or an invalid bool type, defaulting value to false")
-	}
+	// defaults to false if not set
+	useHealthService, _ := config["use_health_service"].(bool)
+	useOnlyHealthService, _ := config["use_only_health_service"].(bool)
 	nodeIDs, err := u.currentNodeIDs()
 	if err != nil {
 		u.logger.WithError(err).Errorln("could not get current nodeIDs for update")

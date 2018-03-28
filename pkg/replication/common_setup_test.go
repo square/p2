@@ -80,9 +80,9 @@ type channelBasedHealthChecker struct {
 
 // Pass along whatever results come through c.resultsChan
 func (c channelBasedHealthChecker) WatchPodOnNode(
+	ctx context.Context,
 	nodeName types.NodeName,
 	podID types.PodID,
-	quitCh <-chan struct{},
 ) (chan health.Result, chan error) {
 	panic("not implemented")
 }

@@ -82,7 +82,6 @@ func main() {
 	rcStatusStore := rcstatus.NewConsul(statusStoreClient, consul.RCStatusNamespace)
 
 	rollStore := rollstore.NewConsul(client, labeler, nil)
-	healthChecker := checker.NewHealthChecker(client)
 	shadowTrafficHealthChecker := checker.NewShadowTrafficHealthChecker(nil, nil, client, nil, nil, false, false)
 	sched := scheduler.NewApplicatorScheduler(labeler)
 
@@ -125,7 +124,7 @@ func main() {
 		rcStore,
 		rcStore,
 		client.KV(),
-		healthChecker,
+		shadowTrafficHealthChecker,
 		sched,
 		labeler,
 		pub.Subscribe().Chan(),

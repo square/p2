@@ -16,7 +16,6 @@ import (
 	"github.com/square/p2/pkg/audit"
 	grpc_scheduler "github.com/square/p2/pkg/grpc/scheduler/client"
 	"github.com/square/p2/pkg/health"
-	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -125,6 +124,17 @@ type RCNodeTransferLocker interface {
 	LockForNodeTransfer(fields.ID, consul.Session) (consul.Unlocker, error)
 }
 
+type PodOnNodeWatcher interface {
+	WatchPodOnNode(
+		ctx context.Context,
+		nodeID types.NodeName,
+		podID types.PodID,
+		useHealthService bool,
+		useOnlyHealthService bool,
+		status manifest.StatusStanza,
+	) (chan health.Result, chan error)
+}
+
 type replicationController struct {
 	rcID fields.ID
 
@@ -140,7 +150,7 @@ type replicationController struct {
 	scheduler     Scheduler
 	podApplicator Labeler
 	alerter       alerting.Alerter
-	healthChecker checker.HealthChecker
+	healthChecker PodOnNodeWatcher
 
 	nodeTransfer nodeTransfer
 
@@ -168,7 +178,7 @@ func New(
 	podApplicator Labeler,
 	logger logging.Logger,
 	alerter alerting.Alerter,
-	healthChecker checker.HealthChecker,
+	healthChecker PodOnNodeWatcher,
 	artifactRegistry artifact.Registry,
 ) ReplicationController {
 	if alerter == nil {
@@ -1009,11 +1019,19 @@ func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC, lo
 func (rc *replicationController) watchHealth(rcFields fields.RC, logger logging.Logger) (bool, audit.RollbackReason) {
 	logger.Infof("Watching health on %s", rc.nodeTransfer.newNode)
 
-	healthQuitCh := make(chan struct{})
-	defer close(healthQuitCh)
+	ctx, cancel := context.WithCancel(context.Background())
 
-	// these channels are closed by WatchPodOnNode
-	resultCh, errCh := rc.healthChecker.WatchPodOnNode(rc.nodeTransfer.newNode, rcFields.Manifest.ID(), healthQuitCh)
+	statusStanza := rcFields.Manifest.GetStatusStanza()
+	config := rcFields.Manifest.GetConfig()
+
+	// defaults to false if not set
+	useHealthService, _ := config["use_health_service"].(bool)
+	useOnlyHealthService, _ := config["use_only_health_service"].(bool)
+
+	resultCh, errCh := rc.healthChecker.WatchPodOnNode(ctx, rc.nodeTransfer.newNode, rcFields.Manifest.ID(), useHealthService, useOnlyHealthService, statusStanza)
+	defer close(resultCh)
+	defer close(errCh)
+	defer cancel()
 
 	for {
 		select {
