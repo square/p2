@@ -25,6 +25,28 @@ func NewSingleServiceShadow(service string, health map[types.NodeName]health.Res
 	}
 }
 
+func (s singleServiceShadowChecker) WatchPodOnNode(
+	ctx context.Context,
+	nodeID types.NodeName,
+	podID types.PodID,
+	useHealthService bool,
+	useOnlyHealthService bool,
+	status manifest.StatusStanza,
+) (chan health.Result, chan error) {
+	resultCh := make(chan health.Result)
+	errCh := make(chan error)
+	result, ok := s.health[nodeID]
+	if !ok {
+		result = health.Result{Status: health.Critical}
+	}
+
+	go func() {
+		resultCh <- result
+	}()
+
+	return resultCh, errCh
+}
+
 func (s singleServiceShadowChecker) WatchService(
 	ctx context.Context,
 	serviceID string,
@@ -65,7 +87,11 @@ func NewSingleService(service string, health map[types.NodeName]health.Result) c
 	}
 }
 
-func (s singleServiceChecker) WatchPodOnNode(nodename types.NodeName, podID types.PodID, quitCh <-chan struct{}) (chan health.Result, chan error) {
+func (s singleServiceChecker) WatchPodOnNode(
+	ctx context.Context,
+	nodename types.NodeName,
+	podID types.PodID,
+) (chan health.Result, chan error) {
 	resultCh := make(chan health.Result)
 	result, ok := s.health[nodename]
 	if !ok {
@@ -112,11 +138,12 @@ func HappyHealthChecker(nodes []types.NodeName) checker.HealthChecker {
 }
 
 func (h AlwaysHappyHealthChecker) WatchPodOnNode(
+	ctx context.Context,
 	nodeName types.NodeName,
 	podID types.PodID,
-	quitCh <-chan struct{},
 ) (chan health.Result, chan error) {
 	resultCh := make(chan health.Result)
+	errCh := make(chan error)
 
 	happyResult := health.Result{
 		ID:     podID,
@@ -126,14 +153,14 @@ func (h AlwaysHappyHealthChecker) WatchPodOnNode(
 		defer close(resultCh)
 		for {
 			select {
-			case <-quitCh:
+			case <-ctx.Done():
 				return
 			case resultCh <- happyResult:
 			}
 		}
 	}()
 
-	return resultCh, nil
+	return resultCh, errCh
 }
 
 func (h AlwaysHappyHealthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
