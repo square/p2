@@ -384,6 +384,14 @@ func statusURLToNodeName(s string) (types.NodeName, error) {
 	return types.NodeName(host), nil
 }
 
+func healthResultsCopy(healthResults map[types.NodeName]health.Result) map[types.NodeName]health.Result {
+	out := make(map[types.NodeName]health.Result)
+	for nodeID, healthResult := range healthResults {
+		out[nodeID] = healthResult
+	}
+	return out
+}
+
 func (h shadowTrafficHealthChecker) WatchService(
 	ctx context.Context,
 	serviceID string,
@@ -396,16 +404,19 @@ func (h shadowTrafficHealthChecker) WatchService(
 	useOnlyHealthService bool,
 	status manifest.StatusStanza,
 ) {
+	// nodes are considered always healthy when status port is not set
+	// when always healthy, WatchService ONLY sends the healthy status repeatedly on a timer set to delay
+	alwaysHealthy := status.Port == 0
 	if h.useHealthService || useHealthService || useOnlyHealthService || h.useOnlyHealthService {
 		respChan := make(chan *hclient.HealthResponse, len(nodeIDs))
 		go func() {
-			delay := time.Second * 5
+			oldResultsDelay := time.Second * 5
 			healthResults := make(map[types.NodeName]health.Result)
-			// app is considered always healthy when status port is not set
-			// when always healthy, WatchService ONLY sends the status repeatedly
-			// of all the nodes on a timer set to delay
-			if status.Port == 0 {
-				delay = time.Second * 2
+			if alwaysHealthy {
+				// reduce the delay to send old results since
+				// when the nodes are always healthy, these
+				// are the only messages sent
+				oldResultsDelay = time.Second * 2
 				for _, nodeID := range nodeIDs {
 					healthResults[nodeID] = health.Result{
 						ID:      types.PodID(serviceID),
@@ -415,7 +426,7 @@ func (h shadowTrafficHealthChecker) WatchService(
 					}
 				}
 			}
-			timer := time.NewTimer(delay)
+			timer := time.NewTimer(oldResultsDelay)
 			for {
 				select {
 				case <-ctx.Done():
@@ -437,27 +448,33 @@ func (h shadowTrafficHealthChecker) WatchService(
 						Service: serviceID,
 						Status:  resp.Health,
 					}
+					// send a copy because does otherwise there's a race condition where the healthResults change before it's read
+					// it doesn't matter for correctness, but the go test --race will complain
+					resultsCopy := healthResultsCopy(healthResults)
 					select {
 					case <-ctx.Done():
 						return
-					case resultCh <- healthResults:
+					case resultCh <- resultsCopy:
 					}
 				case nodeIDs = <-nodeIDsCh:
-					for _, nodeID := range nodeIDs {
-						healthResults[nodeID] = health.Result{
-							ID:      types.PodID(serviceID),
-							Node:    nodeID,
-							Service: serviceID,
-							Status:  health.Passing,
+					if alwaysHealthy {
+						for _, nodeID := range nodeIDs {
+							healthResults[nodeID] = health.Result{
+								ID:      types.PodID(serviceID),
+								Node:    nodeID,
+								Service: serviceID,
+								Status:  health.Passing,
+							}
 						}
 					}
 				case <-timer.C:
-					timer.Reset(delay)
+					timer.Reset(oldResultsDelay)
 					// send old result since health service monitors only sends updates when there is a change but rolling updates expects health status periodically
+					resultsCopy := healthResultsCopy(healthResults)
 					select {
 					case <-ctx.Done():
 						return
-					case resultCh <- healthResults:
+					case resultCh <- resultsCopy:
 					}
 				}
 			}
@@ -466,7 +483,7 @@ func (h shadowTrafficHealthChecker) WatchService(
 		go func() {
 			// app is considered always healthy when status port is not set
 			// so don't create monitors to monitor status
-			if status.Port == 0 {
+			if alwaysHealthy {
 				return
 			}
 			protocol := "HTTPS"
