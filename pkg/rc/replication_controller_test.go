@@ -774,25 +774,6 @@ func TestUnscheduleMoreThan5(t *testing.T) {
 	wg.Wait()
 }
 
-func TestAlertIfNodeBecomesIneligibleIfNotDynamicStrategy(t *testing.T) {
-	rcStore, _, applicator, rc, alerter, _, _, closeFn := setup(t)
-	defer closeFn()
-
-	rcFields, err := rcStore.Get(rc.rcID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rcFields, err = testIneligibleNodesCommon(applicator, rc, rcFields, alerter)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(alerter.Alerts) != 1 {
-		t.Fatalf("the RC should have alerted since replicas desired is greater than the number of eligible nodes, but there were %d alerts", len(alerter.Alerts))
-	}
-}
-
 func TestAllocateOnIneligibleIfDynamicStrategy(t *testing.T) {
 	rcStore, _, applicator, rc, alerter, auditLogStore, _, closeFn := setup(t)
 	defer closeFn()
@@ -1033,10 +1014,6 @@ func TestRCDoesNotFixMembership(t *testing.T) {
 
 	if current[0].Node != "node1" {
 		t.Fatalf("expected the RC to still consider node1 to be current, but the single node was %s", current[0].Node)
-	}
-
-	if len(alerter.Alerts) != 1 {
-		t.Fatalf("the RC should have alerted since it has some current nodes that aren't eligible and is unable to correct this. There were %d alerts", len(alerter.Alerts))
 	}
 }
 

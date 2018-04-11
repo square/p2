@@ -736,13 +736,9 @@ func (rc *replicationController) transferNodes(rcFields fields.RC, current types
 	}
 
 	if rcFields.AllocationStrategy != fields.DynamicStrategy {
-		errMsg := fmt.Sprintf("static strategy RC has scheduled %d ineligible nodes: %s", len(ineligible), ineligible)
-		err := rc.alerter.Alert(rc.alertInfo(rcFields, errMsg), alerting.LowUrgency)
-		if err != nil {
-			rc.logger.WithError(err).Errorln("Unable to send alert")
-		}
-		// We don't return an error here because this is the current behavior for static
-		// strategy RCs: only page
+		rc.logger.Errorf("static strategy RC has scheduled %d ineligible nodes: %s", len(ineligible), ineligible)
+		// We don't return an error here because this is the current behavior for static RCs
+		// The system cannot automatically improve these situations
 		return nil
 	}
 
