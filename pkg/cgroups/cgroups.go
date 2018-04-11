@@ -49,8 +49,6 @@ func (subsys Subsystems) SetCPU(name CgroupID, cpus int) error {
 	period := 1000000 // one million microseconds
 	quota := cpus * period
 	if cpus == 0 {
-		// one hundred thousand microseconds is the default, -1 will return EINVAL
-		period = 100000
 		// setting -1 here will unrestrict the cgroup, so the period won't matter
 		quota = -1
 	}
