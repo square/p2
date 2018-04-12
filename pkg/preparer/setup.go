@@ -150,7 +150,7 @@ type PreparerConfig struct {
 	ArtifactRegistryURL    string                 `yaml:"artifact_registry_url,omitempty"`
 	ConsulConfig           ConsulConfig           `yaml:"consul_config,omitempty"`
 
-	OSVersionFile          string                 `yaml:"os_version_file,omitempty"`
+	OSVersionFile string `yaml:"os_version_file,omitempty"`
 
 	ReadOnlyDeploys   bool          `yaml:"read_only_deploys"`
 	ReadOnlyWhitelist []types.PodID `yaml:"read_only_whitelist"`
@@ -166,6 +166,12 @@ type PreparerConfig struct {
 	// Params defines a collection of miscellaneous runtime parameters defined throughout the
 	// source files.
 	Params param.Values `yaml:"params"`
+
+	// HTTPTimeout is the timeout that will be set on the preparer's HTTP
+	// client. This is pretty coarse grained at the moment, it's possibly
+	// desirable to be able to set a different HTTP timeout for different
+	// clients, e.g. consul client vs artifact downloader
+	HTTPTimeout time.Duration `yaml:"http_timeout"`
 
 	// Use a single Store so that all requests go through the same HTTP client.
 	consulClientMux sync.Mutex
@@ -315,6 +321,11 @@ func (c *PreparerConfig) getClient(
 	if err != nil {
 		return nil, err
 	}
+
+	if cxnTimeout < 30*time.Second {
+		cxnTimeout = 30 * time.Second
+	}
+
 	tlsConfig.InsecureSkipVerify = insecureSkipVerify
 	transport := &http.Transport{
 		TLSClientConfig: tlsConfig,
@@ -480,7 +491,8 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		finishExec = preparerConfig.PodProcessReporterConfig.FinishExec()
 	}
 
-	httpClient, err := preparerConfig.GetClient(30 * time.Second)
+	// TODO: probably set up a different HTTP client for artifact downloads and other operations, we might want different timeouts for each.
+	httpClient, err := preparerConfig.GetClient(preparerConfig.HTTPTimeout)
 	if err != nil {
 		return nil, err
 	}
