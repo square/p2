@@ -14,7 +14,6 @@ import (
 	"strings"
 	"unsafe"
 
-	p2_user "github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -41,15 +40,10 @@ func sysUnRlimit() *C.struct_rlimit {
 	}
 }
 
-func changeUser(username string) error {
+func changeUser(username string, uid int, gid int) error {
 	currentUser, err := user.Current()
 	if err != nil {
 		return util.Errorf("Could not determine current user: %s", err)
-	}
-
-	uid, gid, err := p2_user.IDs(username)
-	if err != nil {
-		return util.Errorf("Could not retrieve uid/gid for %q: %s", username, err)
 	}
 
 	if strconv.Itoa(uid) == currentUser.Uid && strconv.Itoa(gid) == currentUser.Gid {

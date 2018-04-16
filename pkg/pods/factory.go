@@ -28,6 +28,13 @@ func init() {
 
 var NopFinishExec = []string{"/bin/true"} // type must match preparerconfig
 
+// TODO: (mpuncel's thoughts). This factory file (and perhaps the Pod struct) could use a redesign. A Pod is useful in a variety of situations. For example,
+// hooks might use it just to extract the pod's unique name with the UniqueName() function, or get the home directory with Home(), or list the launchables
+// with Launchables(). For these purposes, the factory is very clunky and hacky to use. For example, why does a caller need to configure an osversion.Detector
+// if all it wants to do is retrieve the home directory?
+//
+// TL;DR we should probably introduce interfaces for Pod() which better separate out the different uses for the struct, and have only the configuration needed
+// to perform the desired functions.
 type Factory interface {
 	NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod, error)
 	NewLegacyPod(id types.PodID) *Pod

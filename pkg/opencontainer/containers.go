@@ -13,9 +13,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/square/p2/pkg/cgroups"
+	"github.com/square/p2/pkg/env"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/p2exec"
@@ -28,7 +30,11 @@ import (
 )
 
 // The name of the OpenContainer spec file in the container's root.
-const SpecFilename = "config.json"
+const (
+	SpecFilename                           = "config.json"
+	OpenContainerLaunchableType            = "opencontainer"
+	DefaultContainerConfigTemplateFilename = "config.json.template"
+)
 
 // RuncPath is the full path of the "runc" binary.
 var RuncPath = param.String("runc_path", "/usr/local/bin/runc")
@@ -59,6 +65,14 @@ type Launchable struct {
 	RequireFile      string // Do not run this launchable until this file exists
 
 	spec *Spec // The container's "config.json"
+
+	// ContainerBindMountPaths specify environment variables whose values contain paths that should
+	// be bind mounted into the container. Typically these environment variables will be configured by
+	// a hook. For example, a hook that makes secrets available to a pod might export a SECRETS_PATH
+	// environment variable which contains the path to a directory in which the secrets are available.
+	// We might see "SECRETS_PATH" as an entry in ContainerBindMountPathEnvVars which will cause the
+	// container to have the path at SECRETS_PATH bind mounted into the container
+	ContainerBindMountPathEnvVars []string
 }
 
 var _ launch.Launchable = &Launchable{}
@@ -141,7 +155,7 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 			return nil, util.Errorf("%s: unknown runas user: %s", l.ServiceID_, l.RunAs)
 		}
 
-		err = l.validateSpec(lspec, uid, gid)
+		err = ValidateSpec(lspec, uid, gid)
 		if err != nil {
 			return nil, err
 		}
@@ -162,6 +176,12 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 	}
 	serviceName := l.ServiceID_ + "__container"
 	runcArgs = append(runcArgs, serviceName)
+
+	bindMountPaths, err := l.bindMountPaths()
+	if err != nil {
+		return nil, util.Errorf(err.Error())
+	}
+
 	// TODO: also support adding P2-provided environment variables to the
 	// config.json file so that containerized processes can make use of
 	// them.
@@ -176,12 +196,16 @@ func (l *Launchable) Executables(serviceBuilder *runit.ServiceBuilder) ([]launch
 		Exec: append(
 			[]string{l.P2Exec},
 			p2exec.P2ExecArgs{
-				NoLimits:         l.ExecNoLimit,
-				WorkDir:          l.InstallDir(),
-				EnvDirs:          []string{l.PodEnvDir, l.EnvDir()},
-				Command:          runcArgs,
-				CgroupConfigName: l.CgroupConfigName,
-				CgroupName:       l.CgroupName,
+				NoLimits:                        l.ExecNoLimit,
+				WorkDir:                         l.InstallDir(),
+				EnvDirs:                         []string{l.PodEnvDir, l.EnvDir()},
+				Command:                         runcArgs,
+				CgroupConfigName:                l.CgroupConfigName,
+				CgroupName:                      l.CgroupName,
+				LaunchableType:                  OpenContainerLaunchableType,
+				ContainerBindMountPaths:         bindMountPaths,
+				ContainerConfigTemplateFilename: DefaultContainerConfigTemplateFilename, // TODO: support customization
+				User: l.RunAs,
 			}.CommandLine()...,
 		),
 	}}, nil
@@ -309,7 +333,7 @@ func (l *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv runit.SV) e
 		return util.Errorf("%s: unknown runas user: %s", l.ServiceID_, l.RunAs)
 	}
 
-	err = l.validateSpec(lspec, uid, gid)
+	err = ValidateSpec(lspec, uid, gid)
 	if err != nil {
 		return err
 	}
@@ -400,46 +424,56 @@ func (l *Launchable) GetRestartTimeout() time.Duration {
 	return l.RestartTimeout
 }
 
-// validateSpec enforces constraints on what container settings P2 will run
-func (l *Launchable) validateSpec(lspec *Spec, uid int, gid int) error {
-	if lspec == nil {
-		return util.Errorf("nil lspec")
+// bindMountPaths() loops over the configured ContainerBindMountPathEnvVars and
+// verifies that each environment variable has a path and that that path refers
+// to an existing directory that is in the pod's home directory.
+func (l *Launchable) bindMountPaths() ([]string, error) {
+	podHomePath := os.Getenv(env.PodHomeEnvVar)
+	if podHomePath == "" {
+		return nil, util.Errorf("%s is not set so it can't be used to validate bind mount paths", env.PodHomeEnvVar)
 	}
 
-	if lspec.Solaris != nil || lspec.Windows != nil {
-		return util.Errorf("unsupported platform, only \"linux\" is supported")
-	}
-
-	if lspec.Root == nil {
-		return util.Errorf("a root filesystem must be specified in config.json")
-	}
-	if filepath.Base(lspec.Root.Path) != lspec.Root.Path {
-		return util.Errorf("%s: invalid container root: %s", l.ServiceID_, lspec.Root.Path)
-	}
-	if !lspec.Root.Readonly {
-		return util.Errorf("root filesystem is required to be set to read only in config.json")
-	}
-
-	luser := lspec.Process.User
-	if uid != int(luser.UID) || gid != int(luser.GID) {
-		return util.Errorf("%s: cannot execute as %s(%d:%d): container expects %d:%d",
-			l.ServiceID_, l.RunAs, uid, gid, luser.UID, luser.GID)
-	}
-
-	capabilities := lspec.Process.Capabilities
-	if luser.UID != 0 && capabilities != nil {
-		if len(capabilities.Bounding) > 0 ||
-			len(capabilities.Effective) > 0 ||
-			len(capabilities.Inheritable) > 0 ||
-			len(capabilities.Permitted) > 0 ||
-			len(capabilities.Ambient) > 0 {
-			return util.Errorf("capabilities were present in config.json but are not allowed")
+	var ret []string
+	for _, envVar := range l.ContainerBindMountPathEnvVars {
+		path := os.Getenv(envVar)
+		if path == "" {
+			return nil, util.Errorf("container bind mount environment variable %s was not set", envVar)
 		}
+
+		isSubdirectory, err := isSubdirectory(podHomePath, path)
+		if err != nil {
+			return nil, err
+		}
+
+		if !isSubdirectory {
+			return nil, util.Errorf("environment variable %s contains path %s which is not under %s=%s", envVar, path, env.PodHomeEnvVar, podHomePath)
+		}
+
+		_, err = os.Stat(path)
+		switch {
+		case os.IsNotExist(err):
+			return nil, util.Errorf("environment variable %s had value %s, but that directory doesn't exist and couldn't be configured as a bind mount for the container", envVar, path)
+		case err != nil:
+			return nil, util.Errorf("could not stat %s to check suitability for bind mount (via env var %s): %s", path, envVar, err)
+		}
+
+		ret = append(ret, path)
 	}
 
-	if !lspec.Process.NoNewPrivileges {
-		return util.Errorf("noNewPrivileges must be set to true in config.json")
+	return ret, nil
+}
+
+// isSubdirectory returns true if path is underneath podHome.
+func isSubdirectory(podHome string, path string) (bool, error) {
+	rel, err := filepath.Rel(podHome, path)
+	if err != nil {
+		return false, util.Errorf("could not compute relative path from %s to %s", podHome, path)
 	}
 
-	return nil
+	parts := strings.Split(rel, string(os.PathSeparator))
+	if parts[0] == ".." {
+		return false, nil
+	}
+
+	return true, nil
 }

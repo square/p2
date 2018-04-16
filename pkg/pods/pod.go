@@ -15,6 +15,7 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/digest"
+	"github.com/square/p2/pkg/env"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
@@ -37,18 +38,30 @@ var (
 	// NestedCgroups causes the p2-preparer to use a hierarchical cgroup naming scheme when
 	// creating new launchables.
 	NestedCgroups = param.Bool("nested_cgroups", false)
+
+	// DefaultContainerBindMountEnvVarsString is a comma-separated list of
+	// environment variables whose values contain paths to directories that
+	// should be bind mounted into any container created for this pod. It's
+	// called a "default" because it would make sense for a future feature
+	// to exist that would bind mount additional directories into the
+	// container based on the launchable's stanza, however whatever is
+	// specified here will be a default for the whole pod (and probably for
+	// the whole P2 installation)
+	//
+	// NOTE: this is defined as a variable so that it can be changed at build time with -ldflags -X
+	// TODO: this should probably go into an "open container launchable factory" or something similar, since it doesn't really
+	// apply directly to a pod, and it doesn't apply to launchables with the "hoist" launchable type either
+	DefaultContainerBindMountEnvVarsString string
+
+	// DefaultContainerBindMountEnvVars is where the string-separated
+	// values from DefaultContainerBindMOuntEnvVarsString go. It can't be
+	// set directly from a build because -X only works on variables with
+	// type string
+	DefaultContainerBindMountEnvVars []string
 )
 
 const (
-	ConfigPathEnvVar               = "CONFIG_PATH"
-	LaunchableIDEnvVar             = "LAUNCHABLE_ID"
-	LaunchableRootEnvVar           = "LAUNCHABLE_ROOT"
-	PodIDEnvVar                    = "POD_ID"
-	PodHomeEnvVar                  = "POD_HOME"
-	PodUniqueKeyEnvVar             = "POD_UNIQUE_KEY"
-	PlatformConfigPathEnvVar       = "PLATFORM_CONFIG_PATH"
-	ResourceLimitsPathEnvVar       = "RESOURCE_LIMIT_PATH" // ResourceLimits is a superset of PlatformConfig
-	LaunchableRestartTimeoutEnvVar = "RESTART_TIMEOUT"
+	HoistLaunchableType = "hoist"
 )
 
 type Pod struct {
@@ -624,31 +637,31 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 	if err != nil {
 		return util.Errorf("Could not create the environment dir for pod %s: %s", manifest.ID(), err)
 	}
-	err = writeEnvFile(pod.EnvDir(), ConfigPathEnvVar, configPath, uid, gid)
+	err = writeEnvFile(pod.EnvDir(), env.ConfigPathEnvVar, configPath, uid, gid)
 	if err != nil {
 		return err
 	}
-	err = writeEnvFile(pod.EnvDir(), PlatformConfigPathEnvVar, platConfigPath, uid, gid)
+	err = writeEnvFile(pod.EnvDir(), env.PlatformConfigPathEnvVar, platConfigPath, uid, gid)
 	if err != nil {
 		return err
 	}
 	if _, err = os.Stat(resourceLimitPath); err == nil {
-		err = writeEnvFile(pod.EnvDir(), ResourceLimitsPathEnvVar, resourceLimitPath, uid, gid)
+		err = writeEnvFile(pod.EnvDir(), env.ResourceLimitsPathEnvVar, resourceLimitPath, uid, gid)
 		if err != nil {
 			return err
 		}
 	} else if !os.IsNotExist(err) {
 		return nil
 	}
-	err = writeEnvFile(pod.EnvDir(), PodHomeEnvVar, pod.Home(), uid, gid)
+	err = writeEnvFile(pod.EnvDir(), env.PodHomeEnvVar, pod.Home(), uid, gid)
 	if err != nil {
 		return err
 	}
-	err = writeEnvFile(pod.EnvDir(), PodIDEnvVar, pod.Id.String(), uid, gid)
+	err = writeEnvFile(pod.EnvDir(), env.PodIDEnvVar, pod.Id.String(), uid, gid)
 	if err != nil {
 		return err
 	}
-	err = writeEnvFile(pod.EnvDir(), PodUniqueKeyEnvVar, pod.uniqueKey.String(), uid, gid)
+	err = writeEnvFile(pod.EnvDir(), env.PodUniqueKeyEnvVar, pod.uniqueKey.String(), uid, gid)
 	if err != nil {
 		return err
 	}
@@ -664,15 +677,15 @@ func (pod *Pod) setupConfig(manifest manifest.Manifest, launchables []launch.Lau
 		if err != nil {
 			return util.Errorf("Could not create the environment dir for pod %s launchable %s: %s", manifest.ID(), launchable.ServiceID(), err)
 		}
-		err = writeEnvFile(launchable.EnvDir(), LaunchableIDEnvVar, launchable.ID().String(), uid, gid)
+		err = writeEnvFile(launchable.EnvDir(), env.LaunchableIDEnvVar, launchable.ID().String(), uid, gid)
 		if err != nil {
 			return err
 		}
-		err = writeEnvFile(launchable.EnvDir(), LaunchableRootEnvVar, launchable.InstallDir(), uid, gid)
+		err = writeEnvFile(launchable.EnvDir(), env.LaunchableRootEnvVar, launchable.InstallDir(), uid, gid)
 		if err != nil {
 			return err
 		}
-		err = writeEnvFile(launchable.EnvDir(), LaunchableRestartTimeoutEnvVar, fmt.Sprintf("%d", int64(launchable.GetRestartTimeout().Seconds())), uid, gid)
+		err = writeEnvFile(launchable.EnvDir(), env.LaunchableRestartTimeoutEnvVar, fmt.Sprintf("%d", int64(launchable.GetRestartTimeout().Seconds())), uid, gid)
 		if err != nil {
 			return err
 		}
@@ -793,7 +806,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 	}
 
 	cgroupName := serviceId
-	if launchableStanza.LaunchableType == "hoist" {
+	if launchableStanza.LaunchableType == HoistLaunchableType {
 		entryPointPaths := launchableStanza.EntryPoints
 		implicitEntryPoints := false
 		if len(entryPointPaths) == 0 {
@@ -836,23 +849,24 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 		}
 		ret.CgroupConfig.Name = cgroups.CgroupID(ret.ServiceId)
 		return ret.If(), nil
-	} else if launchableStanza.LaunchableType == "opencontainer" {
+	} else if launchableStanza.LaunchableType == opencontainer.OpenContainerLaunchableType {
 		ret := &opencontainer.Launchable{
-			Version_:          version,
-			ID_:               launchableID,
-			ServiceID_:        serviceId,
-			RunAs:             runAsUser,
-			RootDir:           launchableRootDir,
-			P2Exec:            pod.P2Exec,
-			RestartTimeout:    restartTimeout,
-			RestartPolicy_:    launchableStanza.RestartPolicy(),
-			CgroupConfig:      launchableStanza.CgroupConfig,
-			SuppliedEnvVars:   launchableStanza.Env,
-			OSVersionDetector: pod.OSVersionDetector,
-			CgroupName:        cgroupName,
-			CgroupConfigName:  launchableID.String(),
-			PodEnvDir:         pod.EnvDir(),
-			ExecNoLimit:       true,
+			Version_:                      version,
+			ID_:                           launchableID,
+			ServiceID_:                    serviceId,
+			RunAs:                         runAsUser,
+			RootDir:                       launchableRootDir,
+			P2Exec:                        pod.P2Exec,
+			RestartTimeout:                restartTimeout,
+			RestartPolicy_:                launchableStanza.RestartPolicy(),
+			CgroupConfig:                  launchableStanza.CgroupConfig,
+			SuppliedEnvVars:               launchableStanza.Env,
+			OSVersionDetector:             pod.OSVersionDetector,
+			CgroupName:                    cgroupName,
+			CgroupConfigName:              launchableID.String(),
+			PodEnvDir:                     pod.EnvDir(),
+			ExecNoLimit:                   true,
+			ContainerBindMountPathEnvVars: DefaultContainerBindMountEnvVars,
 		}
 		ret.CgroupConfig.Name = cgroups.CgroupID(serviceId)
 		return ret, nil

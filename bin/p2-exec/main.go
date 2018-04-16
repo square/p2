@@ -4,10 +4,12 @@ import (
 	// #include <sys/resource.h>
 	"C"
 
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
+	osuser "os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -16,14 +18,18 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/square/p2/pkg/cgroups"
+	"github.com/square/p2/pkg/container_exec"
+	"github.com/square/p2/pkg/env"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/version"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v2"
 )
+import "github.com/square/p2/pkg/opencontainer"
 
 var (
 	username = kingpin.Flag("user", "The user to execute as.").Short('u').String()
@@ -43,6 +49,10 @@ var (
 	workDir              = kingpin.Flag("workdir", "Set working directory.").Short('w').String()
 	umask                = kingpin.Flag("umask", "Set the process umask. Use octal notation ex. 0022").Short('m').Default(umaskDefault).String()
 	umaskDefault         = ""
+
+	launchableType          = kingpin.Flag("launchable-type", "The type of the launchable being run").Default(pods.HoistLaunchableType).Enum(pods.HoistLaunchableType, opencontainer.OpenContainerLaunchableType)
+	containerConfigTemplate = kingpin.Flag("container-config-template", "The filename of the JSON template to use to generate config.json for an opencontainer launchable. The file must exist in the specified working directory").String()
+	containerMountPaths     = kingpin.Flag("container-bind-mount-path", fmt.Sprintf("Path to a directory that should be bind mounted into a container. May be specified multiple times, unused unless launchable type is %s", opencontainer.OpenContainerLaunchableType)).Short('b').ExistingDirs()
 
 	cmd = kingpin.Arg("command", "the command to execute").Required().Strings()
 )
@@ -89,7 +99,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		if resourceLimitsConf := os.Getenv(pods.ResourceLimitsPathEnvVar); resourceLimitsConf != "" {
+		if resourceLimitsConf := os.Getenv(env.ResourceLimitsPathEnvVar); resourceLimitsConf != "" {
 			if _, err := os.Stat(resourceLimitsConf); err == nil {
 				err := createPodCgroup(resourceLimitsConf, types.PodID(*podID), types.NodeName(hostname))
 				if err != nil {
@@ -121,8 +131,23 @@ func main() {
 		}
 	}
 
-	if *username != "" {
-		err := changeUser(*username)
+	if *username == "" {
+		currentUser, err := osuser.Current()
+		if err != nil {
+			log.Fatalf("could not determine current user: %s", err)
+		}
+		*username = currentUser.Username
+	}
+
+	uid, gid, err := user.IDs(*username)
+	if err != nil {
+		log.Fatal(util.Errorf("Could not retrieve uid/gid for %q: %s", *username, err))
+	}
+
+	// If we're running a container, we want runc to perform the user
+	// switch, it needs root to set up the container
+	if *launchableType != opencontainer.OpenContainerLaunchableType {
+		err := changeUser(*username, uid, gid)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -167,6 +192,27 @@ func main() {
 	*/
 	if err := unix.Setpgid(0, 0); err != nil {
 		log.Fatal(err)
+	}
+
+	if *launchableType == opencontainer.OpenContainerLaunchableType {
+		if *containerConfigTemplate == "" {
+			log.Fatalf("container-config-template flag must be provided if the launchable type is %s", opencontainer.OpenContainerLaunchableType)
+		}
+
+		configWriter, err := container_exec.NewRuncConfigWriter(*workDir, *containerConfigTemplate, uid, gid)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = configWriter.AddBindMounts(*containerMountPaths)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = configWriter.Write()
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	err = syscall.Exec(binPath, *cmd, os.Environ())

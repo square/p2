@@ -3,9 +3,9 @@ package podprocess
 import (
 	"os"
 
+	"github.com/square/p2/pkg/env"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
@@ -58,14 +58,14 @@ func (e EnvironmentExtractor) WriteFinish(exitCode int, exitStatus int) error {
 }
 
 func (e EnvironmentExtractor) constructFinishFromEnvironment(exitCode int, exitStatus int) (FinishOutput, error) {
-	podID := os.Getenv(pods.PodIDEnvVar)
+	podID := os.Getenv(env.PodIDEnvVar)
 	if podID == "" {
-		return FinishOutput{}, util.Errorf("No %s env var set", pods.PodIDEnvVar)
+		return FinishOutput{}, util.Errorf("No %s env var set", env.PodIDEnvVar)
 	}
 
-	launchableID := os.Getenv(pods.LaunchableIDEnvVar)
+	launchableID := os.Getenv(env.LaunchableIDEnvVar)
 	if launchableID == "" {
-		return FinishOutput{}, util.Errorf("No %s env var set", pods.LaunchableIDEnvVar)
+		return FinishOutput{}, util.Errorf("No %s env var set", env.LaunchableIDEnvVar)
 	}
 
 	entryPoint := os.Getenv(launch.EntryPointEnvVar)
@@ -74,7 +74,7 @@ func (e EnvironmentExtractor) constructFinishFromEnvironment(exitCode int, exitS
 	}
 
 	// It's okay if this one is missing, most pods are "legacy" pods that have a blank unique key
-	podUniqueKey := os.Getenv(pods.PodUniqueKeyEnvVar)
+	podUniqueKey := os.Getenv(env.PodUniqueKeyEnvVar)
 
 	return FinishOutput{
 		PodID:        types.PodID(podID),

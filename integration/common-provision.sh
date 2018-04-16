@@ -63,10 +63,18 @@ popd
 # go on the shared directory (/usr/local/share/go/src/github.com/square/p2)
 pushd /tmp
 mkdir -p opencontainer-hello_def456/rootfs
-cp /usr/local/share/go/src/github.com/square/p2/integration/hello/config.json opencontainer-hello_def456/
+cp /usr/local/share/go/src/github.com/square/p2/integration/hello/config.json.template opencontainer-hello_def456/
 
 # get a suitable root filesystem for centos from docker
 sudo yum install docker -y
+
+# all of this is to just remove the --selinux-enabled=true line from $OPTIONS
+# which is unfortunate
+echo 'OPTIONS="--log-driver=journald --signature-verification=false"' > /etc/sysconfig/docker
+echo 'if [ -z "${DOCKER_CERT_PATH}" ]; then' >> /etc/sysconfig/docker
+echo 'DOCKER_CERT_PATH=/etc/docker' >> /etc/sysconfig/docker
+echo 'fi' >> /etc/sysconfig/docker
+
 sudo systemctl start docker
 sudo docker pull centos
 container_id=$(sudo docker create centos:latest)
