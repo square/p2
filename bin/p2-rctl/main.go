@@ -167,7 +167,7 @@ func main() {
 		rls:               rollstore.NewConsul(client, rollLabeler, nil),
 		consuls:           consul.NewConsulStore(client),
 		labeler:           labeler,
-		hcheck:            checker.NewShadowTrafficHealthChecker(nil, nil, client, nil, nil, false, false),
+		hcheck:            checker.NewConsulHealthChecker(client),
 		hclient:           nil,
 		logger:            logger,
 	}
@@ -271,7 +271,7 @@ type rctlParams struct {
 	rls               RollingUpdateStore
 	labeler           labels.ApplicatorWithoutWatches
 	consuls           Store
-	hcheck            checker.ShadowTrafficHealthChecker
+	hcheck            checker.HealthChecker
 	hclient           hclient.HealthServiceClient
 	logger            logging.Logger
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/square/p2/pkg/health/checker"
 	"github.com/square/p2/pkg/inspect"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/flags"
@@ -78,9 +79,9 @@ func main() {
 		}
 	}
 
-	hchecker := checker.NewHealthChecker(client)
+	hchecker := checker.NewConsulHealthChecker(client)
 	for podID := range statusMap {
-		resultMap, err := hchecker.Service(podID.String())
+		resultMap, err := hchecker.Service(podID.String(), manifest.StatusStanza{})
 		if err != nil {
 			log.Fatalf("Could not retrieve health checks for pod %s: %s", podID, err)
 		}

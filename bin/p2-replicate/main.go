@@ -50,7 +50,7 @@ func main() {
 	_, opts, labeler := flags.ParseWithConsulOptions()
 	client := consul.NewConsulClient(opts)
 	store := consul.NewConsulStore(client)
-	healthChecker := checker.NewHealthChecker(client)
+	healthChecker := checker.NewConsulHealthChecker(client)
 
 	manifest, err := manifest.FromURI(*manifestURI)
 	if err != nil {

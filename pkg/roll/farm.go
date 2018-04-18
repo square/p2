@@ -41,18 +41,18 @@ type RCScheduler interface {
 }
 
 type UpdateFactory struct {
-	Store               Store
-	Client              consulutil.ConsulClient
-	Txner               transaction.Txner
-	RCLocker            ReplicationControllerLocker
-	RCStore             ReplicationControllerStore
-	RCStatusStore       RCStatusStore
-	RollStore           RollingUpdateStore
-	HealthServiceClient hclient.HealthServiceClient
-	HealthChecker       checker.ShadowTrafficHealthChecker
-	Labeler             labeler
-	WatchDelay          time.Duration
-	Alerter             alerting.Alerter
+	Store                Store
+	Client               consulutil.ConsulClient
+	Txner                transaction.Txner
+	RCLocker             ReplicationControllerLocker
+	RCStore              ReplicationControllerStore
+	RCStatusStore        RCStatusStore
+	RollStore            RollingUpdateStore
+	HealthServiceClient  hclient.HealthServiceClient
+	HealthCheckerFactory checker.HealthCheckerFactory
+	Labeler              labeler
+	WatchDelay           time.Duration
+	Alerter              alerting.Alerter
 
 	scheduler RCScheduler
 
@@ -73,7 +73,7 @@ func NewUpdateFactory(
 	rcStore ReplicationControllerStore,
 	rcStatusStore RCStatusStore,
 	rollStore RollingUpdateStore,
-	healthChecker checker.ShadowTrafficHealthChecker,
+	healthCheckerFactory checker.HealthCheckerFactory,
 	healthServiceClient hclient.HealthServiceClient,
 	labeler labeler,
 	watchDelay time.Duration,
@@ -90,7 +90,7 @@ func NewUpdateFactory(
 		RCStore:                     rcStore,
 		RCStatusStore:               rcStatusStore,
 		RollStore:                   rollStore,
-		HealthChecker:               healthChecker,
+		HealthCheckerFactory:        healthCheckerFactory,
 		HealthServiceClient:         healthServiceClient,
 		Labeler:                     labeler,
 		WatchDelay:                  watchDelay,
@@ -111,7 +111,7 @@ func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consu
 		f.RCStatusStore,
 		f.RollStore,
 		f.Txner,
-		f.HealthChecker,
+		f.HealthCheckerFactory.New(),
 		f.HealthServiceClient,
 		f.Labeler,
 		l,

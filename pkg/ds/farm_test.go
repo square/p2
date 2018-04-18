@@ -31,10 +31,19 @@ import (
 	"github.com/hashicorp/consul/api"
 	"github.com/pborman/uuid"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
+	"github.com/square/p2/pkg/health/checker"
 	fake_checker "github.com/square/p2/pkg/health/checker/test"
 	pc_fields "github.com/square/p2/pkg/pc/fields"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
+
+type alwaysHappyHealthCheckerFactory struct {
+	allNodes []types.NodeName
+}
+
+func (a alwaysHappyHealthCheckerFactory) New() checker.HealthChecker {
+	return fake_checker.HappyHealthChecker(a.allNodes)
+}
 
 // Tests dsContends for changes to both daemon sets and nodes
 func TestContendNodes(t *testing.T) {
@@ -55,7 +64,9 @@ func TestContendNodes(t *testing.T) {
 
 	var allNodes []types.NodeName
 	allNodes = append(allNodes, "node1")
-	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+	happyHealthCheckerFactory := alwaysHappyHealthCheckerFactory{
+		allNodes: allNodes,
+	}
 
 	session := newTestSession(t, consulStore)
 	defer session.Destroy()
@@ -76,7 +87,7 @@ func TestContendNodes(t *testing.T) {
 		session:               session,
 		logger:                logger,
 		alerter:               alerting.NewNop(),
-		healthChecker:         &happyHealthChecker,
+		healthCheckerFactory:  happyHealthCheckerFactory,
 		dsRetryInterval:       testFarmRetryInterval,
 	}
 
@@ -193,7 +204,9 @@ func TestContendSelectors(t *testing.T) {
 	defer preparer.Disable()
 
 	var allNodes []types.NodeName
-	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+	happyHealthCheckerFactory := alwaysHappyHealthCheckerFactory{
+		allNodes: allNodes,
+	}
 
 	session := newTestSession(t, consulStore)
 	defer session.Destroy()
@@ -213,7 +226,7 @@ func TestContendSelectors(t *testing.T) {
 		session:               session,
 		logger:                logger,
 		alerter:               alerting.NewNop(),
-		healthChecker:         &happyHealthChecker,
+		healthCheckerFactory:  happyHealthCheckerFactory,
 		dsRetryInterval:       testFarmRetryInterval,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -373,7 +386,9 @@ func TestFarmSchedule(t *testing.T) {
 		nodeName := fmt.Sprintf("good_node%v", i)
 		allNodes = append(allNodes, types.NodeName(nodeName))
 	}
-	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+	happyHealthCheckerFactory := alwaysHappyHealthCheckerFactory{
+		allNodes: allNodes,
+	}
 
 	session := newTestSession(t, consulStore)
 	defer session.Destroy()
@@ -393,7 +408,7 @@ func TestFarmSchedule(t *testing.T) {
 		session:               session,
 		logger:                logger,
 		alerter:               alerting.NewNop(),
-		healthChecker:         &happyHealthChecker,
+		healthCheckerFactory:  happyHealthCheckerFactory,
 		dsRetryInterval:       testFarmRetryInterval,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -620,7 +635,9 @@ func TestCleanupPods(t *testing.T) {
 		nodeName := fmt.Sprintf("node%v", i)
 		allNodes = append(allNodes, types.NodeName(nodeName))
 	}
-	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+	happyHealthCheckerFactory := alwaysHappyHealthCheckerFactory{
+		allNodes: allNodes,
+	}
 
 	for i := 0; i < 10; i++ {
 		nodeName := fmt.Sprintf("node%v", i)
@@ -666,7 +683,7 @@ func TestCleanupPods(t *testing.T) {
 		session:               session,
 		logger:                logger,
 		alerter:               alerting.NewNop(),
-		healthChecker:         &happyHealthChecker,
+		healthCheckerFactory:  happyHealthCheckerFactory,
 		dsRetryInterval:       testFarmRetryInterval,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -743,7 +760,9 @@ func TestMultipleFarms(t *testing.T) {
 		nodeName := fmt.Sprintf("good_node%v", i)
 		allNodes = append(allNodes, types.NodeName(nodeName))
 	}
-	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+	happyHealthCheckerFactory := alwaysHappyHealthCheckerFactory{
+		allNodes: allNodes,
+	}
 
 	//
 	// Instantiate first farm
@@ -764,7 +783,7 @@ func TestMultipleFarms(t *testing.T) {
 		session:               session1,
 		logger:                firstLogger,
 		alerter:               alerting.NewNop(),
-		healthChecker:         &happyHealthChecker,
+		healthCheckerFactory:  happyHealthCheckerFactory,
 		dsRetryInterval:       testFarmRetryInterval,
 	}
 	ctx1, cancel1 := context.WithCancel(context.Background())
@@ -794,7 +813,7 @@ func TestMultipleFarms(t *testing.T) {
 		session:               session2,
 		logger:                secondLogger,
 		alerter:               alerting.NewNop(),
-		healthChecker:         &happyHealthChecker,
+		healthCheckerFactory:  happyHealthCheckerFactory,
 	}
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
@@ -1080,7 +1099,9 @@ func TestRelock(t *testing.T) {
 	}()
 
 	allNodes := []types.NodeName{"node1", "node2", "node3"}
-	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+	happyHealthCheckerFactory := alwaysHappyHealthCheckerFactory{
+		allNodes: allNodes,
+	}
 
 	rawStatusStore := statusstore.NewConsul(fixture.Client)
 	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_relock")
@@ -1100,9 +1121,9 @@ func TestRelock(t *testing.T) {
 			logger: logging.DefaultLogger.SubLogger(logrus.Fields{
 				"farm": logName,
 			}),
-			alerter:         alerting.NewNop(),
-			healthChecker:   &happyHealthChecker,
-			dsRetryInterval: testFarmRetryInterval,
+			alerter:              alerting.NewNop(),
+			healthCheckerFactory: happyHealthCheckerFactory,
+			dsRetryInterval:      testFarmRetryInterval,
 		}
 		farmHasQuit := make(chan struct{})
 		go func(ctx context.Context) {
@@ -1200,7 +1221,9 @@ func TestDieAndUpdate(t *testing.T) {
 	}()
 
 	allNodes := []types.NodeName{"node1", "node2", "node3"}
-	happyHealthChecker := fake_checker.HappyHealthChecker(allNodes)
+	happyHealthCheckerFactory := alwaysHappyHealthCheckerFactory{
+		allNodes: allNodes,
+	}
 
 	rawStatusStore := statusstore.NewConsul(fixture.Client)
 	statusStore := daemonsetstatus.NewConsul(rawStatusStore, "test_die_and_update")
@@ -1220,9 +1243,9 @@ func TestDieAndUpdate(t *testing.T) {
 			logger: logging.DefaultLogger.SubLogger(logrus.Fields{
 				"farm": logName,
 			}),
-			alerter:         alerting.NewNop(),
-			healthChecker:   &happyHealthChecker,
-			dsRetryInterval: testFarmRetryInterval,
+			alerter:              alerting.NewNop(),
+			healthCheckerFactory: happyHealthCheckerFactory,
+			dsRetryInterval:      testFarmRetryInterval,
 		}
 		farmHasQuit := make(chan struct{})
 		go func(ctx context.Context) {

@@ -1005,11 +1005,12 @@ func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC, lo
 func (rc *replicationController) watchHealth(rcFields fields.RC, logger logging.Logger) (bool, audit.RollbackReason) {
 	logger.Infof("Watching health on %s", rc.nodeTransfer.newNode)
 
-	healthQuitCh := make(chan struct{})
-	defer close(healthQuitCh)
-
-	// these channels are closed by WatchPodOnNode
-	resultCh, errCh := rc.healthChecker.WatchPodOnNode(rc.nodeTransfer.newNode, rcFields.Manifest.ID(), healthQuitCh)
+	ctx, cancel := context.WithCancel(context.Background())
+	statusStanza := rcFields.Manifest.GetStatusStanza()
+	resultCh, errCh := rc.healthChecker.WatchPodOnNode(ctx, rc.nodeTransfer.newNode, rcFields.Manifest.ID(), statusStanza)
+	defer close(resultCh)
+	defer close(errCh)
+	defer cancel()
 
 	for {
 		select {

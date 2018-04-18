@@ -45,6 +45,14 @@ var (
 // components.
 const RetryCount = 3
 
+type healthCheckerFactory struct {
+	consulClient consulutil.ConsulClient
+}
+
+func (h healthCheckerFactory) New() checker.HealthChecker {
+	return checker.NewConsulHealthChecker(h.consulClient)
+}
+
 // SessionName returns a node identifier for use when creating Consul sessions.
 func SessionName() string {
 	hostname, err := os.Hostname()
@@ -82,8 +90,9 @@ func main() {
 	rcStatusStore := rcstatus.NewConsul(statusStoreClient, consul.RCStatusNamespace)
 
 	rollStore := rollstore.NewConsul(client, labeler, nil)
-	healthChecker := checker.NewHealthChecker(client)
-	shadowTrafficHealthChecker := checker.NewShadowTrafficHealthChecker(nil, nil, client, nil, nil, false, false)
+	hCheckerFactory := healthCheckerFactory{
+		consulClient: client,
+	}
 	sched := scheduler.NewApplicatorScheduler(labeler)
 
 	// Start acquiring sessions
@@ -125,7 +134,7 @@ func main() {
 		rcStore,
 		rcStore,
 		client.KV(),
-		healthChecker,
+		hCheckerFactory,
 		sched,
 		labeler,
 		pub.Subscribe().Chan(),
@@ -137,10 +146,10 @@ func main() {
 	).Start(nil)
 	roll.NewFarm(
 		roll.UpdateFactory{
-			Store:         consulStore,
-			RCStore:       rcStore,
-			HealthChecker: shadowTrafficHealthChecker,
-			Labeler:       labeler,
+			Store:                consulStore,
+			RCStore:              rcStore,
+			HealthCheckerFactory: hCheckerFactory,
+			Labeler:              labeler,
 		},
 		consulStore,
 		rollStore,

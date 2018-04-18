@@ -13,45 +13,6 @@ import (
 
 // TODO: replication/common_setup_test.go has some things that could be moved here
 
-type singleServiceShadowChecker struct {
-	service string
-	health  map[types.NodeName]health.Result
-}
-
-func NewSingleServiceShadow(service string, health map[types.NodeName]health.Result) checker.ShadowTrafficHealthChecker {
-	return &singleServiceShadowChecker{
-		service: service,
-		health:  health,
-	}
-}
-
-func (s singleServiceShadowChecker) WatchService(
-	ctx context.Context,
-	serviceID string,
-	nodeIDs []types.NodeName,
-	nodeIDsCh <-chan []types.NodeName,
-	resultCh chan<- map[types.NodeName]health.Result,
-	errCh chan<- error,
-	watchDelay time.Duration,
-	useHealthService bool,
-	useOnlyHealthService bool,
-	status manifest.StatusStanza,
-) {
-	panic("WatchService not implemented")
-}
-
-func (s singleServiceShadowChecker) Service(
-	serviceID string,
-	nodeIDs []types.NodeName,
-	useHealthService bool,
-	status manifest.StatusStanza,
-) (map[types.NodeName]health.Result, error) {
-	if serviceID != s.service {
-		return nil, fmt.Errorf("Wrong service %s given, I only have health for %s", serviceID, s.service)
-	}
-	return s.health, nil
-}
-
 type singleServiceChecker struct {
 	service string
 	health  map[types.NodeName]health.Result
@@ -65,8 +26,9 @@ func NewSingleService(service string, health map[types.NodeName]health.Result) c
 	}
 }
 
-func (s singleServiceChecker) WatchPodOnNode(nodename types.NodeName, podID types.PodID, quitCh <-chan struct{}) (chan health.Result, chan error) {
+func (s singleServiceChecker) WatchPodOnNode(ctx context.Context, nodename types.NodeName, podID types.PodID, status manifest.StatusStanza) (chan health.Result, chan error) {
 	resultCh := make(chan health.Result)
+	errCh := make(chan error)
 	result, ok := s.health[nodename]
 	if !ok {
 		result = health.Result{Status: health.Critical}
@@ -76,7 +38,7 @@ func (s singleServiceChecker) WatchPodOnNode(nodename types.NodeName, podID type
 		resultCh <- result
 	}()
 
-	return resultCh, nil
+	return resultCh, errCh
 }
 
 func (s singleServiceChecker) WatchService(
@@ -85,16 +47,13 @@ func (s singleServiceChecker) WatchService(
 	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
 	watchDelay time.Duration,
+	status manifest.StatusStanza,
 ) {
 	panic("WatchService not implemented")
 
 }
 
-func (s singleServiceChecker) WatchHealth(_ chan []*health.Result, errCh chan<- error, quitCh <-chan struct{}, jitterWindow time.Duration) {
-	panic("WatchHealth not implemented")
-}
-
-func (s singleServiceChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
+func (s singleServiceChecker) Service(serviceID string, status manifest.StatusStanza) (map[types.NodeName]health.Result, error) {
 	if serviceID != s.service {
 		return nil, fmt.Errorf("Wrong service %s given, I only have health for %s", serviceID, s.service)
 	}
@@ -112,9 +71,10 @@ func HappyHealthChecker(nodes []types.NodeName) checker.HealthChecker {
 }
 
 func (h AlwaysHappyHealthChecker) WatchPodOnNode(
+	ctx context.Context,
 	nodeName types.NodeName,
 	podID types.PodID,
-	quitCh <-chan struct{},
+	status manifest.StatusStanza,
 ) (chan health.Result, chan error) {
 	resultCh := make(chan health.Result)
 
@@ -126,7 +86,7 @@ func (h AlwaysHappyHealthChecker) WatchPodOnNode(
 		defer close(resultCh)
 		for {
 			select {
-			case <-quitCh:
+			case <-ctx.Done():
 				return
 			case resultCh <- happyResult:
 			}
@@ -136,7 +96,7 @@ func (h AlwaysHappyHealthChecker) WatchPodOnNode(
 	return resultCh, nil
 }
 
-func (h AlwaysHappyHealthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
+func (h AlwaysHappyHealthChecker) Service(serviceID string, status manifest.StatusStanza) (map[types.NodeName]health.Result, error) {
 	results := make(map[types.NodeName]health.Result)
 	for _, node := range h.allNodes {
 		results[node] = health.Result{
@@ -153,6 +113,7 @@ func (h AlwaysHappyHealthChecker) WatchService(
 	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
 	watchDelay time.Duration,
+	status manifest.StatusStanza,
 ) {
 	allHappy := make(map[types.NodeName]health.Result)
 	for _, node := range h.allNodes {
@@ -168,13 +129,4 @@ func (h AlwaysHappyHealthChecker) WatchService(
 		case resultCh <- allHappy:
 		}
 	}
-}
-
-func (h AlwaysHappyHealthChecker) WatchHealth(
-	_ chan []*health.Result,
-	errCh chan<- error,
-	quitCh <-chan struct{},
-	jitterWindow time.Duration,
-) {
-	panic("not implemented")
 }

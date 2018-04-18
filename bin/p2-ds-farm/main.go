@@ -27,6 +27,14 @@ var (
 	useCachePodMatches = kingpin.Flag("use-cached-pod-matches", "If enabled, create a local cache of the pod label tree and match against that instead of querying on all pod selector queries").Bool()
 )
 
+type healthCheckerFactory struct {
+	consulClient consulutil.ConsulClient
+}
+
+func (h healthCheckerFactory) New() checker.HealthChecker {
+	return checker.NewConsulHealthChecker(h.consulClient)
+}
+
 // SessionName returns a node identifier for use when creating Consul sessions.
 func SessionName() string {
 	hostname, err := os.Hostname()
@@ -46,7 +54,9 @@ func main() {
 	logger := logging.NewLogger(logrus.Fields{})
 	dsStore := dsstore.NewConsul(client, 3, &logger)
 	consulStore := consul.NewConsulStore(client)
-	healthChecker := checker.NewHealthChecker(client)
+	hCheckerFactory := healthCheckerFactory{
+		consulClient: client,
+	}
 
 	rawStatusStore := statusstore.NewConsul(client)
 	statusStore := daemonsetstatus.NewConsul(rawStatusStore, ds_farm.DaemonSetStatusNamespace)
@@ -70,7 +80,7 @@ func main() {
 		sessions,
 		logger,
 		nil,
-		&healthChecker,
+		hCheckerFactory,
 		1*time.Second,
 		false,
 		*useCachePodMatches,

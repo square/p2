@@ -74,8 +74,8 @@ type Farm struct {
 	logger  logging.Logger
 	alerter alerting.Alerter
 
-	healthChecker    *checker.HealthChecker
-	healthWatchDelay time.Duration
+	healthCheckerFactory checker.HealthCheckerFactory
+	healthWatchDelay     time.Duration
 
 	monitorHealth         bool
 	cachedPodMatch        bool
@@ -120,7 +120,7 @@ func NewFarm(
 	sessions <-chan string,
 	logger logging.Logger,
 	alerter alerting.Alerter,
-	healthChecker *checker.HealthChecker,
+	healthCheckerFactory checker.HealthCheckerFactory,
 	rateLimitInterval time.Duration,
 	monitorHealth bool,
 	cachedPodMatch bool,
@@ -150,7 +150,7 @@ func NewFarm(
 		children:              make(map[fields.ID]*childDS),
 		logger:                logger,
 		alerter:               alerter,
-		healthChecker:         healthChecker,
+		healthCheckerFactory:  healthCheckerFactory,
 		healthWatchDelay:      healthWatchDelay,
 		rateLimitInterval:     rateLimitInterval,
 		monitorHealth:         monitorHealth,
@@ -541,6 +541,7 @@ func (dsf *Farm) spawnDaemonSet(
 	dsFields ds_fields.DaemonSet,
 	dsLogger logging.Logger,
 ) *childDS {
+	healthChecker := dsf.healthCheckerFactory.New()
 	ds := New(
 		dsFields,
 		dsf.dsStore,
@@ -550,7 +551,7 @@ func (dsf *Farm) spawnDaemonSet(
 		dsf.watcher,
 		dsf.labelsAggregationRate,
 		dsLogger,
-		dsf.healthChecker,
+		&healthChecker,
 		dsf.rateLimitInterval,
 		dsf.cachedPodMatch,
 		dsf.healthWatchDelay,
@@ -565,13 +566,12 @@ func (dsf *Farm) spawnDaemonSet(
 	ctx, cancel := context.WithCancel(ctx)
 
 	desiresCh := ds.WatchDesires(ctx, updatedCh, deletedCh)
-
 	if dsf.monitorHealth {
 		go func() {
 			// daemon sets are deployed to many servers and deploys are very slow. This means that
 			// 1) the data size for each health response is huge which can suck up bandwidth
 			// 2) the metrics aren't going to change very frequently, so a low sample rate is acceptable
-			aggregateHealth := replication.AggregateHealth(ds.PodID(), *dsf.healthChecker, dsf.healthWatchDelay)
+			aggregateHealth := replication.AggregateHealth(ds.PodID(), healthChecker, dsf.healthWatchDelay)
 			ticks := time.NewTicker(dsf.healthWatchDelay)
 
 			defer aggregateHealth.Stop()

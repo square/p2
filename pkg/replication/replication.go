@@ -297,7 +297,7 @@ func (r *replication) Enact() {
 
 	// Sort nodes from least healthy to most healthy to maximize overall
 	// cluster health
-	healthResults, err := r.health.Service(string(r.GetManifest().ID()))
+	healthResults, err := r.health.Service(string(r.GetManifest().ID()), manifest.StatusStanza{})
 	if err != nil {
 		err = replicationError{
 			err:     err,

@@ -12,6 +12,7 @@ import (
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
@@ -139,13 +140,13 @@ func watchPodClusters(client consulutil.ConsulClient, applicator labels.Applicat
 }
 
 func watchHealth(service string, client consulutil.ConsulClient) {
-	hc := checker.NewHealthChecker(client)
+	hc := checker.NewConsulHealthChecker(client)
 	healthResults := make(chan map[types.NodeName]health.Result)
 	errCh := make(chan error)
 	quitCh := make(chan struct{})
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	watchDelay := 1 * time.Second
-	go hc.WatchService(ctx, *healthService, healthResults, errCh, watchDelay)
+	go hc.WatchService(ctx, *healthService, healthResults, errCh, watchDelay, manifest.StatusStanza{})
 	defer cancelFunc()
 
 	go func() {

@@ -2,12 +2,10 @@ package checker
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
 	. "github.com/anthonybishopric/gotcha"
-	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/health"
 	hc "github.com/square/p2/pkg/health/client"
 	"github.com/square/p2/pkg/manifest"
@@ -28,7 +26,6 @@ func (f fakeConsulStore) GetServiceHealth(service string) (map[string]consul.Wat
 
 type fakeHealthClient struct {
 	HealthResponses map[string]hc.HealthResponse
-	MonitorDelay    time.Duration
 }
 
 func (f fakeHealthClient) HealthCheck(ctx context.Context, req *hc.HealthRequest) (health.HealthState, error) {
@@ -36,13 +33,12 @@ func (f fakeHealthClient) HealthCheck(ctx context.Context, req *hc.HealthRequest
 }
 
 func (f fakeHealthClient) HealthMonitor(ctx context.Context, req *hc.HealthRequest, resultCh chan *hc.HealthResponse) error {
-	timer := time.NewTimer(0)
+	timer := time.NewTimer(time.Second * 1)
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-timer.C:
-			timer.Reset(f.MonitorDelay)
 			if healthResponse, ok := f.HealthResponses[req.Url]; ok {
 				resultCh <- &healthResponse
 				continue
@@ -112,7 +108,65 @@ func TestStatusURLToNodeName(t *testing.T) {
 	}
 }
 
-func TestShadowWatchService(t *testing.T) {
+func TestWatchPodOnNode(t *testing.T) {
+	nodeID := types.NodeName("node1")
+	podID := types.PodID("pod1")
+	statusStanza := manifest.StatusStanza{Port: 1}
+	expected := health.Critical
+	fakeHealthClient := fakeHealthClient{
+		HealthResponses: make(map[string]hc.HealthResponse),
+	}
+	endpoint := nodeIDToStatusEndpoint(nodeID, statusStanza)
+	fakeHealthClient.HealthResponses[endpoint] = hc.HealthResponse{
+		HealthRequest: hc.HealthRequest{
+			Url:      endpoint,
+			Protocol: "https",
+		},
+		Health: expected,
+		Error:  nil,
+	}
+	hChecker := NewHealthChecker(fakeHealthClient, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	resultCh, _ := hChecker.WatchPodOnNode(ctx, nodeID, podID, statusStanza)
+
+LOOP1:
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatalf("WatchPodOnNode test took longer than expected to receive result")
+		case result := <-resultCh:
+			if result.Status != expected {
+				t.Fatalf("Expected health result %s in WatchPodOnNode but got %s instead", expected, result.Status)
+			}
+			break LOOP1
+		}
+	}
+
+	// test always healthy
+	statusStanza.Port = 0
+	expected = health.Passing
+	ctx, cancel = context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	resultCh, _ = hChecker.WatchPodOnNode(ctx, nodeID, podID, statusStanza)
+
+LOOP2:
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatalf("WatchPodOnNode test took longer than expected to receive result")
+		case result := <-resultCh:
+			if result.Status != expected {
+				t.Fatalf("Expected health result %s in WatchPodOnNode but got %s instead", expected, result.Status)
+			}
+			break LOOP2
+		}
+	}
+}
+
+// using fake health service
+func TestWatchService(t *testing.T) {
+	// typical test where all nodes are all critical
 	nodeIDs := []types.NodeName{"node1", "node2", "node3"}
 	statusStanza := manifest.StatusStanza{Port: 1}
 	expected := make(map[types.NodeName]health.HealthState)
@@ -120,12 +174,8 @@ func TestShadowWatchService(t *testing.T) {
 		expected[nodeID] = health.Critical
 	}
 
-	// MonitorDelay is set unreasonably high so that the
-	// case where old health results are sent in WatchService
-	// are guaranteed to arrive first
 	fakeHealthClient := fakeHealthClient{
 		HealthResponses: make(map[string]hc.HealthResponse),
-		MonitorDelay:    time.Minute * 10,
 	}
 
 	endpoints := nodeIDsToStatusEndpoints(nodeIDs, statusStanza)
@@ -144,21 +194,19 @@ func TestShadowWatchService(t *testing.T) {
 		}
 	}
 
-	shadowChecker := shadowTrafficHealthChecker{
-		healthClient:         fakeHealthClient,
-		useHealthService:     true,
-		useOnlyHealthService: true,
+	serviceNodes := func(serviceID string) ([]types.NodeName, error) {
+		return nodeIDs, nil
 	}
+	hChecker := NewHealthChecker(fakeHealthClient, serviceNodes)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
-	nodeIDsCh := make(chan []types.NodeName, 1)
 	resultCh := make(chan map[types.NodeName]health.Result)
 	errCh := make(chan error)
 	watchDelay := 1 * time.Second
 
 	// start WatchService goroutine
-	go shadowChecker.WatchService(ctx, "serviceID", nodeIDs, nodeIDsCh, resultCh, errCh, watchDelay, true, true, statusStanza)
+	go hChecker.WatchService(ctx, "serviceID", resultCh, errCh, watchDelay, statusStanza)
 
 	result := make(map[types.NodeName]health.Result)
 
@@ -168,54 +216,25 @@ LOOP1:
 		case <-ctx.Done():
 			return
 		case result = <-resultCh:
-			if len(result) == len(nodeIDs) {
-				break LOOP1
+			// get expected HealthResponses set in fakeHealthClient
+			for _, nodeID := range nodeIDs {
+				healthResult, ok := result[nodeID]
+				if !ok {
+					t.Fatalf("Expected nodeID %s to be in results but not found", nodeID)
+				}
+				if expected[nodeID] != healthResult.Status {
+					t.Fatalf("Expected hCheck status from WatchService to be %s but got %s instead", expected[nodeID], healthResult.Status)
+				}
 			}
+			break LOOP1
 		}
 	}
 
-	// get expected HealthResponses set in fakeHealthClient
-	for _, nodeID := range nodeIDs {
-		healthResult, ok := result[nodeID]
-		if !ok {
-			t.Fatalf("Expected nodeID %s to be in results but not found", nodeID)
-		}
-		if expected[nodeID] != healthResult.Status {
-			t.Fatalf("Expected hCheck status from WatchService to be %s but got %s instead", expected[nodeID], healthResult.Status)
-		}
-	}
-
-	// regression test, after new nodeIDs are sent to
-	// shadowChecker.WatchService, we shouldn't receive all healthy results when they are not
-	// refresh nodeIDs
-	nodeIDsCh <- nodeIDs
-
-	// expect HealthResponses to be the same and not all passing
-	result = make(map[types.NodeName]health.Result)
-LOOP2:
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case result = <-resultCh:
-			if len(result) == len(nodeIDs) {
-				break LOOP2
-			}
-		}
-	}
-
-	for _, nodeID := range nodeIDs {
-		healthResult, ok := result[nodeID]
-		if !ok {
-			t.Fatalf("Expected nodeID %s to be in results but not found", nodeID)
-		}
-		if expected[nodeID] != healthResult.Status {
-			t.Fatalf("Expected hCheck status from WatchService to be %s but got %s instead", expected[nodeID], healthResult.Status)
-		}
-	}
+	// test do not receive health result when
 }
 
-func TestShadowService(t *testing.T) {
+// using health service
+func TestService(t *testing.T) {
 	nodeIDs := []types.NodeName{"node1"}
 	statusStanza := manifest.StatusStanza{
 		Port: 1,
@@ -244,17 +263,16 @@ func TestShadowService(t *testing.T) {
 		}
 	}
 
-	shadowChecker := shadowTrafficHealthChecker{
-		healthClient:         fakeHealthClient,
-		useHealthService:     true,
-		useOnlyHealthService: true,
+	serviceNodes := func(serviceID string) ([]types.NodeName, error) {
+		return nodeIDs, nil
 	}
-	healthResults, err := shadowChecker.Service("serviceID", nodeIDs, true, statusStanza)
+	hChecker := NewHealthChecker(fakeHealthClient, serviceNodes)
+	healthResults, err := hChecker.Service("serviceID", statusStanza)
 	if err != nil {
-		t.Fatalf("Unexpected error calling shadowChecker Service: %v", err)
+		t.Fatalf("Unexpected error calling healthChecker Service: %v", err)
 	}
 	if len(healthResults) != len(nodeIDs) {
-		t.Fatalf("Expected length of healthResults from shadowChecker Service to be %d but got %d", len(nodeIDs), len(healthResults))
+		t.Fatalf("Expected length of healthResults from healthChecker Service to be %d but got %d", len(nodeIDs), len(healthResults))
 	}
 
 	// get expected HealthResponses set in fakeHealthClient
@@ -269,7 +287,7 @@ func TestShadowService(t *testing.T) {
 	}
 }
 
-func TestService(t *testing.T) {
+func TestConsulService(t *testing.T) {
 	result1 := consul.WatchResult{
 		Id:      "abc123",
 		Node:    "node1",
@@ -279,11 +297,11 @@ func TestService(t *testing.T) {
 	fakeStore := fakeConsulStore{
 		results: map[string]consul.WatchResult{"node1": result1},
 	}
-	hc := healthChecker{
+	hc := consulHealthChecker{
 		consulStore: fakeStore,
 	}
 
-	results, err := hc.Service("some_service")
+	results, err := hc.Service("some_service", manifest.StatusStanza{})
 	Assert(t).IsNil(err, "Unexpected error calling Service()")
 
 	expected := health.Result{
@@ -293,78 +311,4 @@ func TestService(t *testing.T) {
 		Status:  "passing",
 	}
 	Assert(t).AreEqual(results["node1"], expected, "Unexpected results calling Service()")
-}
-
-func TestPublishLatestHealth(t *testing.T) {
-	// This channel imitates the channel that consulutil.WatchPrefix would return
-	healthListChan := make(chan api.KVPairs)
-	quitCh := make(chan struct{})
-	outCh := make(chan []*health.Result, 1)
-	defer close(outCh)
-	defer close(quitCh)
-
-	errCh := publishLatestHealth(healthListChan, quitCh, outCh)
-
-	go func() {
-		err, open := <-errCh
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !open {
-			return
-		}
-	}()
-
-	oldStatus := health.HealthState("passing")
-	newStatus := health.HealthState("critical")
-	hrOld := &health.Result{
-		Status: oldStatus,
-	}
-	hrOldJSON, err := json.Marshal(hrOld)
-	if err != nil {
-		t.Fatalf("json marshal err: %v", err)
-	}
-	oldKV := &api.KVPair{Key: "health/service/node1.example.com", Value: hrOldJSON}
-
-	hrNew := &health.Result{
-		Status: newStatus,
-	}
-	hrNewJSON, err := json.Marshal(hrNew)
-	if err != nil {
-		t.Fatalf("json marshal err: %v", err)
-	}
-	newKV := &api.KVPair{Key: "health/service/node1.example.com", Value: hrNewJSON}
-
-	// Basic test that publishLatestHealth drains the channels correctly
-	// We write three times to ensure that at least one of the newKV values has flushed through the channel
-	select {
-	case healthListChan <- api.KVPairs{oldKV}:
-	case <-time.After(1 * time.Second):
-		t.Fatal("Failed to write to chan. Deadlock?")
-	}
-
-	select {
-	case healthListChan <- api.KVPairs{newKV}:
-	case <-time.After(1 * time.Second):
-		t.Fatal("Failed to write to chan. Deadlock?")
-	}
-
-	select {
-	case healthListChan <- api.KVPairs{newKV}:
-	case <-time.After(1 * time.Second):
-		t.Fatal("Failed to write to chan. Deadlock?")
-	}
-
-	select {
-	case result := <-outCh:
-		if len(result) < 1 {
-			t.Fatalf("Got wrong number of results. Expected 1, got %d", len(result))
-		}
-		if result[0].Status != newStatus {
-			t.Fatalf("expected status to match %s, was %s", newStatus, result[0].Status)
-		}
-		return
-	case <-time.After(1 * time.Second):
-		t.Fatal("oh no, timeout")
-	}
 }

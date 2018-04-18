@@ -7,6 +7,7 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
+	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 )
 
@@ -49,7 +50,7 @@ func (p *podHealth) beginWatch(watchDelay time.Duration) {
 	resultCh := make(chan map[types.NodeName]health.Result)
 	watchServiceCtx, watchServiceCancel := context.WithCancel(context.Background())
 	go func() {
-		p.checker.WatchService(watchServiceCtx, p.podId.String(), resultCh, errCh, watchDelay)
+		p.checker.WatchService(watchServiceCtx, p.podId.String(), resultCh, errCh, watchDelay, manifest.StatusStanza{})
 		close(errCh)
 	}()
 	defer watchServiceCancel()

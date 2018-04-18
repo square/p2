@@ -80,16 +80,17 @@ type channelBasedHealthChecker struct {
 
 // Pass along whatever results come through c.resultsChan
 func (c channelBasedHealthChecker) WatchPodOnNode(
+	ctx context.Context,
 	nodeName types.NodeName,
 	podID types.PodID,
-	quitCh <-chan struct{},
+	status manifest.StatusStanza,
 ) (chan health.Result, chan error) {
 	panic("not implemented")
 }
 
 // This is used by the initial health query in the replication library for
 // sorting purposes, just return all healthy
-func (c channelBasedHealthChecker) Service(serviceID string) (map[types.NodeName]health.Result, error) {
+func (c channelBasedHealthChecker) Service(serviceID string, status manifest.StatusStanza) (map[types.NodeName]health.Result, error) {
 	results := make(map[types.NodeName]health.Result)
 	for _, node := range testNodes {
 		results[node] = health.Result{
@@ -106,6 +107,7 @@ func (h channelBasedHealthChecker) WatchService(
 	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
 	watchDelay time.Duration,
+	status manifest.StatusStanza,
 ) {
 	var results map[types.NodeName]health.Result
 	select {
@@ -121,15 +123,6 @@ func (h channelBasedHealthChecker) WatchService(
 		case resultCh <- results:
 		}
 	}
-}
-
-func (h channelBasedHealthChecker) WatchHealth(
-	resultCh chan []*health.Result,
-	errCh chan<- error,
-	quitCh <-chan struct{},
-	_ time.Duration,
-) {
-	panic("not implemented")
 }
 
 // returns an implementation of checker.HealthChecker that will provide

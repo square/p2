@@ -73,17 +73,17 @@ type AuditLogStore interface {
 // farms to cooperatively schedule work.
 type Farm struct {
 	// constructor arguments for rcs created by this farm
-	store         consulStore
-	client        consulutil.ConsulClient
-	rcStatusStore rcstatus.ConsulStore
-	auditLogStore AuditLogStore
-	rcStore       ReplicationControllerStore
-	rcLocker      ReplicationControllerLocker
-	rcWatcher     ReplicationControllerWatcher
-	scheduler     Scheduler
-	labeler       Labeler
-	txner         transaction.Txner
-	healthChecker checker.HealthChecker
+	store                consulStore
+	client               consulutil.ConsulClient
+	rcStatusStore        rcstatus.ConsulStore
+	auditLogStore        AuditLogStore
+	rcStore              ReplicationControllerStore
+	rcLocker             ReplicationControllerLocker
+	rcWatcher            ReplicationControllerWatcher
+	scheduler            Scheduler
+	labeler              Labeler
+	txner                transaction.Txner
+	healthCheckerFactory checker.HealthCheckerFactory
 
 	// session stream for the rcs locked by this farm
 	sessions <-chan string
@@ -120,7 +120,7 @@ func NewFarm(
 	rcLocker ReplicationControllerLocker,
 	rcWatcher ReplicationControllerWatcher,
 	txner transaction.Txner,
-	healthChecker checker.HealthChecker,
+	healthCheckerFactory checker.HealthCheckerFactory,
 	scheduler Scheduler,
 	labeler Labeler,
 	sessions <-chan string,
@@ -135,24 +135,24 @@ func NewFarm(
 	}
 
 	return &Farm{
-		store:            store,
-		client:           client,
-		rcStatusStore:    rcStatusStore,
-		auditLogStore:    auditLogStore,
-		rcStore:          rcs,
-		rcLocker:         rcLocker,
-		rcWatcher:        rcWatcher,
-		txner:            txner,
-		healthChecker:    healthChecker,
-		scheduler:        scheduler,
-		labeler:          labeler,
-		sessions:         sessions,
-		logger:           logger,
-		children:         make(map[fields.ID]childRC),
-		alerter:          alerter,
-		rcSelector:       rcSelector,
-		rcWatchPauseTime: rcWatchPauseTime,
-		artifactRegistry: artifactRegistry,
+		store:                store,
+		client:               client,
+		rcStatusStore:        rcStatusStore,
+		auditLogStore:        auditLogStore,
+		rcStore:              rcs,
+		rcLocker:             rcLocker,
+		rcWatcher:            rcWatcher,
+		txner:                txner,
+		healthCheckerFactory: healthCheckerFactory,
+		scheduler:            scheduler,
+		labeler:              labeler,
+		sessions:             sessions,
+		logger:               logger,
+		children:             make(map[fields.ID]childRC),
+		alerter:              alerter,
+		rcSelector:           rcSelector,
+		rcWatchPauseTime:     rcWatchPauseTime,
+		artifactRegistry:     artifactRegistry,
 	}
 }
 
@@ -280,7 +280,7 @@ START_LOOP:
 					rcf.labeler,
 					rcLogger,
 					rcf.alerter,
-					rcf.healthChecker,
+					rcf.healthCheckerFactory.New(),
 					rcf.artifactRegistry,
 				)
 				childQuit := make(chan struct{})
