@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	dockerclient "github.com/docker/docker/client"
 	"github.com/hashicorp/consul/api"
 	context "golang.org/x/net/context"
 	"golang.org/x/net/http2"
@@ -150,7 +151,7 @@ type PreparerConfig struct {
 	ArtifactRegistryURL    string                 `yaml:"artifact_registry_url,omitempty"`
 	ConsulConfig           ConsulConfig           `yaml:"consul_config,omitempty"`
 
-	OSVersionFile          string                 `yaml:"os_version_file,omitempty"`
+	OSVersionFile string `yaml:"os_version_file,omitempty"`
 
 	ReadOnlyDeploys   bool          `yaml:"read_only_deploys"`
 	ReadOnlyWhitelist []types.PodID `yaml:"read_only_whitelist"`
@@ -533,6 +534,14 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 
 	podFactory := pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName, fetcher, preparerConfig.RequireFile, readOnlyPolicy)
 	podFactory.SetOSVersionDetector(osVersionDetector)
+
+	// TODO: we might want to customize our docker client
+	dockerClient, err := dockerclient.NewEnvClient()
+	if err != nil {
+		return nil, util.Errorf("could not create docker client: %s", err)
+	}
+
+	podFactory.SetDockerClient(*dockerClient)
 	return &Preparer{
 		node:                   preparerConfig.NodeName,
 		store:                  store,

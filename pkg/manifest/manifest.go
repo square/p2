@@ -511,13 +511,21 @@ func ValidManifest(m Manifest) error {
 		return fmt.Errorf("manifest must contain an 'id'")
 	}
 	for launchableID, stanza := range m.GetLaunchableStanzas() {
-		switch {
-		case stanza.LaunchableType == "":
-			return fmt.Errorf("'%s': launchable must contain a 'launchable_type'", launchableID)
-		case stanza.Location == "" && stanza.Version.ID == "":
-			return fmt.Errorf("'%s': launchable must contain a 'location' or 'version'", launchableID)
-		case stanza.Location != "" && stanza.Version.ID != "":
-			return fmt.Errorf("'%s': launchable must not contain both 'location' and 'version'", launchableID)
+		if stanza.LaunchableType == "hoist" || stanza.LaunchableType == "opencontainer" {
+			switch {
+			case stanza.LaunchableType == "":
+				return fmt.Errorf("'%s': launchable must contain a 'launchable_type'", launchableID)
+			case stanza.Location == "" && stanza.Version.ID == "":
+				return fmt.Errorf("'%s': launchable must contain a 'location' or 'version'", launchableID)
+			case stanza.Location != "" && stanza.Version.ID != "":
+				return fmt.Errorf("'%s': launchable must not contain both 'location' and 'version'", launchableID)
+			}
+		}
+
+		if stanza.LaunchableType == "docker" {
+			if stanza.Image.Name == "" {
+				return fmt.Errorf("%s: docker launchables must contain an image")
+			}
 		}
 	}
 	return nil

@@ -2,6 +2,7 @@ package pods
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/url"
@@ -15,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/digest"
+	"github.com/square/p2/pkg/docker"
 	"github.com/square/p2/pkg/hoist"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
@@ -31,6 +33,8 @@ import (
 	"github.com/square/p2/pkg/util/size"
 
 	"github.com/Sirupsen/logrus"
+	dockertypes "github.com/docker/docker/api/types"
+	dockerclient "github.com/docker/docker/client"
 )
 
 var (
@@ -83,6 +87,8 @@ type Pod struct {
 
 	// whether or not this pod should be deployed ReadOnly by default
 	readOnly bool
+
+	DockerClient *dockerclient.Client
 }
 
 type ManifestFinder interface {
@@ -466,17 +472,30 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 			continue
 		}
 
-		launchableURL, verificationData, err := artifactRegistry.LocationDataForLaunchable(pod.Id, launchableID, stanza)
-		if err != nil {
-			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
-			return err
-		}
+		// TODO: make this code better, probably abstract away launchable installation
+		// into something that understands the types
+		if launchable.Type() == "hoist" || launchable.Type() == "opencontainer" {
+			launchableURL, verificationData, err := artifactRegistry.LocationDataForLaunchable(pod.Id, launchableID, stanza)
+			if err != nil {
+				pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
+				return err
+			}
 
-		err = downloader.Download(launchableURL, verificationData, launchable.InstallDir(), manifest.UnpackAsUser())
-		if err != nil {
-			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
-			_ = os.Remove(launchable.InstallDir())
-			return err
+			err = downloader.Download(launchableURL, verificationData, launchable.InstallDir(), manifest.UnpackAsUser())
+			if err != nil {
+				pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
+				_ = os.Remove(launchable.InstallDir())
+				return err
+			}
+		} else if launchable.Type() == "docker" {
+			// TODO: auth?
+			resp, err := pod.DockerClient.ImagePull(context.TODO(), stanza.Image.Name, dockertypes.ImagePullOptions{})
+			if err != nil {
+				pod.logLaunchableError(launchable.ServiceID(), err, fmt.Sprintf("could not pull docker image: %s", err))
+				return util.Errorf("could not pull docker image: %s", err)
+			}
+			// TODO: anything we want in this response body?
+			defer resp.Close()
 		}
 
 		output, err := launchable.PostInstall()
@@ -793,7 +812,8 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 	}
 
 	cgroupName := serviceId
-	if launchableStanza.LaunchableType == "hoist" {
+	switch launchableStanza.LaunchableType {
+	case "hoist":
 		entryPointPaths := launchableStanza.EntryPoints
 		implicitEntryPoints := false
 		if len(entryPointPaths) == 0 {
@@ -836,7 +856,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 		}
 		ret.CgroupConfig.Name = cgroups.CgroupID(ret.ServiceId)
 		return ret.If(), nil
-	} else if launchableStanza.LaunchableType == "opencontainer" {
+	case "opencontainer":
 		ret := &opencontainer.Launchable{
 			Version_:          version,
 			ID_:               launchableID,
@@ -856,11 +876,30 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 		}
 		ret.CgroupConfig.Name = cgroups.CgroupID(serviceId)
 		return ret, nil
-	} else {
-		err := fmt.Errorf("launchable type '%s' is not supported", launchableStanza.LaunchableType)
-		pod.logLaunchableError(launchableID.String(), err, "Unknown launchable type")
-		return nil, err
+	case "docker":
+		podCgroupID, err := cgroups.CgroupIDForPod(pod.getSubsystemer(), pod.Id, pod.node)
+		if err != nil {
+			return nil, util.Errorf("could not get parent cgroup name for docker container: %s", err)
+		}
+
+		return &docker.Launchable{
+			LaunchableID:     launchableID,
+			RootDir:          launchableRootDir,
+			RestartTimeout:   restartTimeout,
+			ServiceID_:       serviceId,
+			DockerClient:     pod.DockerClient,
+			Image:            launchableStanza.Image.Name,
+			ParentCgroupID:   podCgroupID.String(),
+			CPUQuota:         launchableStanza.CgroupConfig.CPUs,
+			CgroupMemorySize: launchableStanza.CgroupConfig.Memory,
+			RestartPolicy_:   launchableStanza.RestartPolicy(),
+			RunAs:            runAsUser,
+		}, nil
 	}
+
+	err = fmt.Errorf("launchable type '%s' is not supported", launchableStanza.LaunchableType)
+	pod.logLaunchableError(launchableID.String(), err, "Unknown launchable type")
+	return nil, err
 }
 
 func (pod *Pod) disableAndForceHaltLaunchables(currentManifest manifest.Manifest) error {

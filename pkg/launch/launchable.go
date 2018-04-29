@@ -59,10 +59,13 @@ type LaunchableStanza struct {
 	// that should be implemented by the pod itself via bin/post-activate
 	NoHaltOnUpdate bool `yaml:"no_halt_on_update,omitempty"`
 
-	// Specifies which files or directories (relative to launchable root)
-	// should be launched under runit. Only launchables of type "hoist"
-	// make use of this field, and if empty, a default of ["bin/launch"]
-	// is used
+	// In the case of hoist launchables, specifies which files or
+	// directories (relative to launchable root) should be launched under
+	// runit. if empty, a default of ["bin/launch"] is used.
+	//
+	// In the case of docker containers, it specifies which commands
+	// should be started in the docker container. If none are specified, the
+	// docker image's ENTRYPOINT is used.
 	EntryPoints []string `yaml:"entry_points,omitempty"`
 
 	// The URL from which the launchable can be downloaded. May not be used
@@ -73,6 +76,15 @@ type LaunchableStanza struct {
 	// can be used to query a configured artifact registry which will provide the artifact
 	// URL. Version may not be used in conjunction with Location
 	Version LaunchableVersion `yaml:"version,omitempty"`
+
+	// Image: the name of the container image to run. This only applies when the launchable
+	// type is "docker"
+	Image DockerImage `yaml:"image,omitempty"`
+}
+
+// DockerImage contains launchable information specific to the "docker" launchable type.
+type DockerImage struct {
+	Name string `yaml:"name"`
 }
 
 func (l LaunchableStanza) LaunchableVersion() (LaunchableVersionID, error) {
