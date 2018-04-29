@@ -3,8 +3,7 @@
 	"GoVersion": "go1.9",
 	"GodepVersion": "v79",
 	"Packages": [
-		"github.com/square/p2/pkg/...",
-		"github.com/square/p2/bin/..."
+		"./..."
 	],
 	"Deps": [
 		{
@@ -534,6 +533,11 @@
 			"ImportPath": "github.com/opencontainers/go-digest",
 			"Comment": "v1.0.0-rc1",
 			"Rev": "279bed98673dd5bef374d3b6e4b09e2af76183bf"
+		},
+		{
+			"ImportPath": "github.com/opencontainers/runc/libcontainer/system",
+			"Comment": "v1.0.0-rc1-108-g0f764571",
+			"Rev": "0f764571384a3ff16c6fed25ace5b7c83f0f0379"
 		},
 		{
 			"ImportPath": "github.com/opencontainers/runc/libcontainer/user",
