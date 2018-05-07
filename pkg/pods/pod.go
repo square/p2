@@ -925,8 +925,8 @@ func (p *Pod) resourceLimitsConfigPath() (string, error) {
 	return resourceLimitsConfigFile, nil
 }
 
-// Runs function f and emits warnings if it hasn't completed within 1 minute, 2
-// minutes, 5 minutes, 10 minutes, and each 5 minute increment afterward. This
+// Runs function f and emits warnings if it hasn't completed within 2
+// minutes, 5 minutes, and each 5 minute increment afterward. This
 // is useful for identifying the cause of a very long install time, for
 // instance a disable or post-activate script hanging forever.
 func (p *Pod) withTimeWarnings(scriptType string, serviceID string, f func()) {
@@ -934,8 +934,7 @@ func (p *Pod) withTimeWarnings(scriptType string, serviceID string, f func()) {
 	defer close(doneCh)
 	go func() {
 		warningTimes := []time.Duration{
-			1 * time.Minute,
-			1 * time.Minute,
+			2 * time.Minute,
 			3 * time.Minute,
 			5 * time.Minute,
 		}
