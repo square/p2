@@ -85,6 +85,7 @@ type Manifest interface {
 	SetReadOnlyIfUnset(readonly bool)
 	Marshal() ([]byte, error)
 	SignatureData() (plaintext, signature []byte)
+	GetNodeRequirements() map[string]string
 
 	GetBuilder() Builder
 }
@@ -107,6 +108,7 @@ type manifest struct {
 	ResourceLimits      ResourceLimitsStanza                            `yaml:"resource_limits,omitempty"`
 	ReadOnly            *bool                                           `yaml:"readonly,omitempty"`
 	ArtifactRegistryURL string                                          `yaml:"artifact_registry,omitempty"`
+	NodeRequirements    map[string]string                               `yaml:"node_requirements,omitempty"`
 
 	// Used to track the original bytes so that we don't reorder them when
 	// doing a yaml.Unmarshal and a yaml.Marshal in succession
@@ -502,6 +504,10 @@ func (m manifest) SignatureData() (plaintext, signature []byte) {
 		return nil, nil
 	}
 	return m.plaintext, m.signature
+}
+
+func (m manifest) GetNodeRequirements() map[string]string {
+	return m.NodeRequirements
 }
 
 // ValidManifest checks the internal consistency of a manifest. Returns an error if the
