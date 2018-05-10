@@ -3,6 +3,7 @@ package docker
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -134,8 +135,13 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 	default:
 		return util.Errorf("invalid restart policy: %s", l.RestartPolicy_)
 	}
+
+	binds := []string{
+		fmt.Sprintf("/data/pods/%s:/data/pods/%s", l.RunAs, l.RunAs),
+		fmt.Sprintf("/secrets/mount/%s:/data/pods/%s/secrets", l.RunAs, l.RunAs),
+	}
 	hostConfig := &container.HostConfig{
-		Binds:       []string{}, // TODO: probably bind in TMPDIR and LOGDIR
+		Binds:       binds, // TODO: probably bind in TMPDIR and LOGDIR
 		NetworkMode: "host",
 		RestartPolicy: container.RestartPolicy{
 			Name:              restartPolicy,
