@@ -993,13 +993,15 @@ func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC, lo
 		if alertErr != nil {
 			logger.WithError(alertErr).Errorln("Unable to send alert")
 		}
-
-		rc.nodeTransferMu.Lock()
-		rc.nodeTransfer = nodeTransfer{}
-		rc.nodeTransferMu.Unlock()
 	} else {
 		logger.Infof("Node transfer was canceled: %s.", rollbackReason)
+		// We'll retry the node transfer on the next call of meetDesires using
+		// the same old and new nodes because they have been written to the
+		// status tree
 	}
+	rc.nodeTransferMu.Lock()
+	rc.nodeTransfer = nodeTransfer{}
+	rc.nodeTransferMu.Unlock()
 }
 
 func (rc *replicationController) watchHealth(rcFields fields.RC, logger logging.Logger) (bool, audit.RollbackReason) {
