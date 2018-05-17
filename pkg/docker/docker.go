@@ -4,8 +4,12 @@ package docker
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"path/filepath"
 	"time"
+
+	"gopkg.in/v1/yaml"
 
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
@@ -23,6 +27,14 @@ import (
 )
 
 var _ launch.Launchable = &Launchable{}
+
+type Mounts map[string]Mount
+
+type Mount struct {
+	Type   string `yaml:"Type"`
+	Source string `yaml:"Source"`
+	Target string `yaml:"Target"`
+}
 
 type Launchable struct {
 	// LaunchableID is the ID of the launchable within the pod manifest, not to be
@@ -121,9 +133,27 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 	}
 
 	ctx := context.TODO()
+	envVars := []string{}
+	envFiles, err := ioutil.ReadDir(l.EnvDir())
+	if err != nil {
+		return util.Errorf("could not read from %s: %v", l.EnvDir(), err)
+	}
+	for _, file := range envFiles {
+		if !file.IsDir() {
+			// read content and load into envVars
+			envFilePath := filepath.Join(l.EnvDir(), file.Name())
+			data, err := ioutil.ReadFile(envFilePath)
+			if err != nil {
+				return util.Errorf("could not read file %s: %v", envFilePath, err)
+			}
+			envVars = append(envVars, fmt.Sprintf("%s=%s", file.Name(), string(data)))
+		}
+	}
 	containerConfig := &container.Config{
-		User:  l.RunAs, // TODO: this will break most of the time since the user doesn't exist in the container
-		Image: l.Image,
+		Hostname: os.Hostname(),
+		User:     l.RunAs,
+		Env:      envVars,
+		Image:    l.Image,
 	}
 
 	restartPolicy := "always"
@@ -136,12 +166,32 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 		return util.Errorf("invalid restart policy: %s", l.RestartPolicy_)
 	}
 
-	binds := []string{
-		fmt.Sprintf("/data/pods/%s:/data/pods/%s", l.RunAs, l.RunAs),
-		fmt.Sprintf("/secrets/mount/%s:/data/pods/%s/secrets", l.RunAs, l.RunAs),
+	bindings := []string{}
+	dockerMountsDir := filepath.Join(l.RootDir, "docker_mounts.d")
+	mountFiles, err := ioutil.ReadDir(dockerMountsDir)
+	if err != nil && !os.IsNotExist(err) {
+		return util.Errorf("could not read from %s dir: %v", dockerMountsDir, err)
+	}
+	for _, file := range mountFiles {
+		mounts := Mounts{}
+		if !file.IsDir() {
+			// read content and load into bindings var
+			mountFilePath := filepath.Join(dockerMountsDir, file.Name())
+			data, err := ioutil.ReadFile(mountFilePath)
+			if err != nil {
+				return util.Errorf("could not read file %s: %v", mountFilePath, err)
+			}
+			yaml.Unmarshal(data, mounts)
+			for _, mount := range mounts {
+				if mount.Type != "bind" {
+					continue
+				}
+				bindings = append(bindings, fmt.Sprintf("%s:%s", mount.Source, mount.Target))
+			}
+		}
 	}
 	hostConfig := &container.HostConfig{
-		Binds:       binds, // TODO: probably bind in TMPDIR and LOGDIR
+		Binds:       bindings,
 		NetworkMode: "host",
 		RestartPolicy: container.RestartPolicy{
 			Name:              restartPolicy,
