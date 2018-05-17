@@ -88,7 +88,7 @@ func NewHookFactory(hookRoot string, node types.NodeName, fetcher uri.Fetcher) H
 	}
 }
 
-func computeUniqueName(id types.PodID, uniqueKey types.PodUniqueKey) string {
+func ComputeUniqueName(id types.PodID, uniqueKey types.PodUniqueKey) string {
 	name := id.String()
 	if uniqueKey != "" {
 		// If the pod was scheduled with a UUID, we want to namespace its pod home
@@ -104,7 +104,7 @@ func (f *factory) NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod
 	if uniqueKey == "" {
 		return nil, util.Errorf("uniqueKey cannot be empty")
 	}
-	home := filepath.Join(f.podRoot, computeUniqueName(id, uniqueKey))
+	home := filepath.Join(f.podRoot, ComputeUniqueName(id, uniqueKey))
 	return newPodWithHome(id, uniqueKey, home, f.node, f.requireFile, f.fetcher, f.osVersionDetector, f.readOnlyPolicy.IsReadOnly(id)), nil
 }
 
@@ -128,7 +128,7 @@ func newPodWithHome(
 	requireFile string,
 	fetcher uri.Fetcher,
 	osVersionDetector osversion.Detector,
-    readOnly bool,
+	readOnly bool,
 ) *Pod {
 	var logger logging.Logger
 	logger = Log.SubLogger(logrus.Fields{"pod": id, "uuid": uniqueKey})

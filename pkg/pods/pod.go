@@ -120,7 +120,7 @@ func (pod *Pod) ReadOnly() bool {
 // This is exported because being able to generate a unique deterministic
 // string for pods is useful in hooks for example.
 func (pod *Pod) UniqueName() string {
-	return computeUniqueName(pod.Id, pod.uniqueKey)
+	return ComputeUniqueName(pod.Id, pod.uniqueKey)
 }
 
 func (pod *Pod) UniqueKey() types.PodUniqueKey {
