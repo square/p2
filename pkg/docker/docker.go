@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"gopkg.in/v1/yaml"
+	"gopkg.in/yaml.v2"
 
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
@@ -48,6 +48,9 @@ type Launchable struct {
 
 	// RunAs is the name of the user the container should run as inside the container
 	RunAs string
+
+	// Env variables that are written to disk by P2 related to the Pod
+	PodEnvDir string
 
 	// RootDir is where P2 writes files related to this container, not to be
 	// confused with the container filesystem's location on disk which is managed
@@ -133,24 +136,25 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 	}
 
 	ctx := context.TODO()
-	envVars := []string{}
-	envFiles, err := ioutil.ReadDir(l.EnvDir())
+
+	// get pod env vars from disk
+	podEnvVars, err := loadEnvVars(l.PodEnvDir)
 	if err != nil {
-		return util.Errorf("could not read from %s: %v", l.EnvDir(), err)
+		return err
 	}
-	for _, file := range envFiles {
-		if !file.IsDir() {
-			// read content and load into envVars
-			envFilePath := filepath.Join(l.EnvDir(), file.Name())
-			data, err := ioutil.ReadFile(envFilePath)
-			if err != nil {
-				return util.Errorf("could not read file %s: %v", envFilePath, err)
-			}
-			envVars = append(envVars, fmt.Sprintf("%s=%s", file.Name(), string(data)))
-		}
+	// get launchable env vars from disk
+	launchableEnvVars, err := loadEnvVars(l.EnvDir())
+	if err != nil {
+		return err
+	}
+	envVars := append(podEnvVars, launchableEnvVars...)
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		return util.Errorf("could not get hostname: %v", hostname)
 	}
 	containerConfig := &container.Config{
-		Hostname: os.Hostname(),
+		Hostname: hostname,
 		User:     l.RunAs,
 		Env:      envVars,
 		Image:    l.Image,
@@ -181,7 +185,10 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 			if err != nil {
 				return util.Errorf("could not read file %s: %v", mountFilePath, err)
 			}
-			yaml.Unmarshal(data, mounts)
+			err = yaml.Unmarshal(data, mounts)
+			if err != nil {
+				return util.Errorf("error unmarshalling data: %v", err)
+			}
 			for _, mount := range mounts {
 				if mount.Type != "bind" {
 					continue
@@ -212,7 +219,7 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 	// this is the name we'll use to start and stop the container
 	containerName := l.ServiceID()
 
-	_, err := l.DockerClient.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, containerName)
+	_, err = l.DockerClient.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, containerName)
 	if err != nil {
 		return util.Errorf("could not create container %s: %s", containerName, err)
 	}
@@ -274,4 +281,27 @@ func (l *Launchable) Stop(_ *runit.ServiceBuilder, _ runit.SV, _ bool) error {
 
 func (*Launchable) Type() string {
 	return "docker"
+}
+
+func loadEnvVars(envDir string) ([]string, error) {
+	envVars := []string{}
+
+	envFiles, err := ioutil.ReadDir(envDir)
+	if err != nil {
+		return nil, util.Errorf("could not read from %s: %v", envDir, err)
+	}
+	for _, file := range envFiles {
+		// we do not expect nested env variables
+		if !file.IsDir() {
+			// read content and load into return var
+			envFilePath := filepath.Join(envDir, file.Name())
+			data, err := ioutil.ReadFile(envFilePath)
+			if err != nil {
+				return nil, util.Errorf("could not read file %s: %v", envFilePath, err)
+			}
+			envVars = append(envVars, fmt.Sprintf("%s=%s", file.Name(), string(data)))
+		}
+	}
+
+	return envVars, nil
 }

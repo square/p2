@@ -59,13 +59,10 @@ type LaunchableStanza struct {
 	// that should be implemented by the pod itself via bin/post-activate
 	NoHaltOnUpdate bool `yaml:"no_halt_on_update,omitempty"`
 
-	// In the case of hoist launchables, specifies which files or
-	// directories (relative to launchable root) should be launched under
-	// runit. if empty, a default of ["bin/launch"] is used.
-	//
-	// In the case of docker containers, it specifies which commands
-	// should be started in the docker container. If none are specified, the
-	// docker image's ENTRYPOINT is used.
+	// Specifies which files or directories (relative to launchable root)
+	// should be launched under runit. Only launchables of type "hoist"
+	// make use of this field, and if empty, a default of ["bin/launch"]
+	// is used
 	EntryPoints []string `yaml:"entry_points,omitempty"`
 
 	// The URL from which the launchable can be downloaded. May not be used

@@ -894,6 +894,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			CgroupMemorySize: launchableStanza.CgroupConfig.Memory,
 			RestartPolicy_:   launchableStanza.RestartPolicy(),
 			RunAs:            runAsUser,
+			PodEnvDir:        pod.EnvDir(),
 		}, nil
 	}
 
