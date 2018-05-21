@@ -49,6 +49,9 @@ type Launchable struct {
 	// RunAs is the name of the user the container should run as inside the container
 	RunAs string
 
+	// The home directory of the pod
+	PodHomeDir string
+
 	// Env variables that are written to disk by P2 related to the Pod
 	PodEnvDir string
 
@@ -171,7 +174,7 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 	}
 
 	bindings := []string{}
-	dockerMountsDir := filepath.Join(l.RootDir, "docker_mounts.d")
+	dockerMountsDir := filepath.Join(l.PodHomeDir, "docker_mounts.d")
 	mountFiles, err := ioutil.ReadDir(dockerMountsDir)
 	if err != nil && !os.IsNotExist(err) {
 		return util.Errorf("could not read from %s dir: %v", dockerMountsDir, err)

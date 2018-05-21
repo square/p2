@@ -2,6 +2,8 @@ package preparer
 
 import (
 	"crypto/tls"
+	"encoding/base64"
+	"encoding/json"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -21,6 +23,7 @@ import (
 	"golang.org/x/net/http2"
 	"gopkg.in/yaml.v2"
 
+	dockertypes "github.com/docker/docker/api/types"
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/constants"
@@ -101,6 +104,9 @@ type Preparer struct {
 
 	// The directory that will actually be executed by the HookDir
 	hooksExecDir string
+
+	// base64 encoding of docker authConfig needed for ImagePull
+	containerRegistryAuthStr string
 }
 
 type store interface {
@@ -128,28 +134,29 @@ type ConsulConfig struct {
 }
 
 type PreparerConfig struct {
-	NodeName               types.NodeName         `yaml:"node_name"`
-	ConsulAddress          string                 `yaml:"consul_address"`
-	ConsulHttps            bool                   `yaml:"consul_https,omitempty"`
-	ConsulTokenPath        string                 `yaml:"consul_token_path,omitempty"`
-	HTTP2                  bool                   `yaml:"http2,omitempty"`
-	HooksDirectory         string                 `yaml:"hooks_directory"`
-	CAFile                 string                 `yaml:"ca_file,omitempty"`
-	CertFile               string                 `yaml:"cert_file,omitempty"`
-	KeyFile                string                 `yaml:"key_file,omitempty"`
-	PodRoot                string                 `yaml:"pod_root,omitempty"`
-	RequireFile            string                 `yaml:"require_file,omitempty"`
-	StatusPort             int                    `yaml:"status_port"`
-	StatusSocket           string                 `yaml:"status_socket"`
-	Auth                   map[string]interface{} `yaml:"auth,omitempty"`
-	ArtifactAuth           map[string]interface{} `yaml:"artifact_auth,omitempty"`
-	ExtraLogDestinations   []LogDestination       `yaml:"extra_log_destinations,omitempty"`
-	LogLevel               string                 `yaml:"log_level,omitempty"`
-	MaxLaunchableDiskUsage string                 `yaml:"max_launchable_disk_usage"`
-	LogExec                []string               `yaml:"log_exec,omitempty"`
-	LogBridgeBlacklist     []string               `yaml:"log_bridge_blacklist,omitempty"`
-	ArtifactRegistryURL    string                 `yaml:"artifact_registry_url,omitempty"`
-	ConsulConfig           ConsulConfig           `yaml:"consul_config,omitempty"`
+	NodeName                     types.NodeName         `yaml:"node_name"`
+	ConsulAddress                string                 `yaml:"consul_address"`
+	ConsulHttps                  bool                   `yaml:"consul_https,omitempty"`
+	ConsulTokenPath              string                 `yaml:"consul_token_path,omitempty"`
+	HTTP2                        bool                   `yaml:"http2,omitempty"`
+	HooksDirectory               string                 `yaml:"hooks_directory"`
+	CAFile                       string                 `yaml:"ca_file,omitempty"`
+	CertFile                     string                 `yaml:"cert_file,omitempty"`
+	KeyFile                      string                 `yaml:"key_file,omitempty"`
+	PodRoot                      string                 `yaml:"pod_root,omitempty"`
+	RequireFile                  string                 `yaml:"require_file,omitempty"`
+	StatusPort                   int                    `yaml:"status_port"`
+	StatusSocket                 string                 `yaml:"status_socket"`
+	Auth                         map[string]interface{} `yaml:"auth,omitempty"`
+	ArtifactAuth                 map[string]interface{} `yaml:"artifact_auth,omitempty"`
+	ExtraLogDestinations         []LogDestination       `yaml:"extra_log_destinations,omitempty"`
+	LogLevel                     string                 `yaml:"log_level,omitempty"`
+	MaxLaunchableDiskUsage       string                 `yaml:"max_launchable_disk_usage"`
+	LogExec                      []string               `yaml:"log_exec,omitempty"`
+	LogBridgeBlacklist           []string               `yaml:"log_bridge_blacklist,omitempty"`
+	ArtifactRegistryURL          string                 `yaml:"artifact_registry_url,omitempty"`
+	ContainerRegistryJsonKeyFile string                 `yaml:"container_json_key_file,omitempty"`
+	ConsulConfig                 ConsulConfig           `yaml:"consul_config,omitempty"`
 
 	OSVersionFile string `yaml:"os_version_file,omitempty"`
 
@@ -553,29 +560,44 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		return nil, util.Errorf("could not create docker client: %s", err)
 	}
 
+	containerRegistryAuthStr := ""
+	if preparerConfig.ContainerRegistryJsonKeyFile != "" {
+		data, err := ioutil.ReadFile(preparerConfig.ContainerRegistryJsonKeyFile)
+		if err != nil {
+			return nil, util.Errorf("could not read container json key file %s: %s", preparerConfig.ContainerRegistryJsonKeyFile, err)
+		}
+		authConfig := dockertypes.AuthConfig{
+			Username: "_json_key",
+			Password: string(data),
+		}
+		encodedJSON, err := json.Marshal(authConfig)
+		containerRegistryAuthStr = base64.URLEncoding.EncodeToString(encodedJSON)
+	}
+
 	podFactory.SetDockerClient(*dockerClient)
 	return &Preparer{
-		node:                   preparerConfig.NodeName,
-		store:                  store,
-		hooks:                  hooks.NewContext(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger, auditLogger),
-		podStatusStore:         podStatusStore,
-		podStore:               podStore,
-		podRoot:                preparerConfig.PodRoot,
-		client:                 client,
-		Logger:                 logger,
-		podFactory:             podFactory,
-		authPolicy:             authPolicy,
-		maxLaunchableDiskUsage: maxLaunchableDiskUsage,
-		finishExec:             finishExec,
-		logExec:                logExec,
-		logBridgeBlacklist:     preparerConfig.LogBridgeBlacklist,
-		artifactVerifier:       artifactVerifier,
-		artifactRegistry:       artifactRegistry,
-		PodProcessReporter:     podProcessReporter,
-		hooksManifest:          hooksManifest,
-		hooksPod:               hooksPod,
-		hooksExecDir:           preparerConfig.HooksDirectory,
-		fetcher:                fetcher,
+		node:                     preparerConfig.NodeName,
+		store:                    store,
+		hooks:                    hooks.NewContext(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger, auditLogger),
+		podStatusStore:           podStatusStore,
+		podStore:                 podStore,
+		podRoot:                  preparerConfig.PodRoot,
+		client:                   client,
+		Logger:                   logger,
+		podFactory:               podFactory,
+		authPolicy:               authPolicy,
+		maxLaunchableDiskUsage:   maxLaunchableDiskUsage,
+		finishExec:               finishExec,
+		logExec:                  logExec,
+		logBridgeBlacklist:       preparerConfig.LogBridgeBlacklist,
+		artifactVerifier:         artifactVerifier,
+		artifactRegistry:         artifactRegistry,
+		containerRegistryAuthStr: containerRegistryAuthStr,
+		PodProcessReporter:       podProcessReporter,
+		hooksManifest:            hooksManifest,
+		hooksPod:                 hooksPod,
+		hooksExecDir:             preparerConfig.HooksDirectory,
+		fetcher:                  fetcher,
 	}, nil
 }
 
@@ -780,7 +802,7 @@ func (p *Preparer) InstallHooks() error {
 
 	p.Logger.Infoln("Installing hook manifest")
 	registry := p.artifactRegistryFor(p.hooksManifest)
-	err := p.hooksPod.Install(p.hooksManifest, p.artifactVerifier, registry)
+	err := p.hooksPod.Install(p.hooksManifest, p.artifactVerifier, registry, "")
 	if err != nil {
 		sub.WithError(err).Errorln("Could not install hook")
 		return err

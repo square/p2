@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -20,6 +23,8 @@ import (
 	"github.com/square/p2/pkg/version"
 
 	"github.com/Sirupsen/logrus"
+	dockertypes "github.com/docker/docker/api/types"
+	dockerclient "github.com/docker/docker/client"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -34,9 +39,10 @@ var (
 		"deploy-policy",
 		"the deploy policy specifying who may deploy each pod. Only used when --auth-type is 'user'",
 	).Short('d').ExistingFile()
-	caFile              = kingpin.Flag("tls-ca-file", "File containing the x509 PEM-encoded CA ").ExistingFile()
-	artifactRegistryURL = kingpin.Flag("artifact-registry-url", "the artifact registry to fetch artifacts from").Short('r').URL()
-	requireFile         = kingpin.Flag("require-file", "If set, the p2-exec invocation(s) written for the pod will not execute until the file exists on the system").String()
+	caFile                       = kingpin.Flag("tls-ca-file", "File containing the x509 PEM-encoded CA ").ExistingFile()
+	artifactRegistryURL          = kingpin.Flag("artifact-registry-url", "the artifact registry to fetch artifacts from").Short('r').URL()
+	requireFile                  = kingpin.Flag("require-file", "If set, the p2-exec invocation(s) written for the pod will not execute until the file exists on the system").String()
+	containerRegistryJsonKeyFile = kingpin.Flag("container-registry-json-key", "Needs to set when trying to launch a pod with docker launchables").ExistingFile()
 )
 
 func main() {
@@ -87,9 +93,27 @@ func main() {
 	fetcher := uri.BasicFetcher{Client: httpClient}
 
 	podFactory := pods.NewFactory(*podRoot, types.NodeName(*nodeName), fetcher, *requireFile, pods.NewReadOnlyPolicy(false, nil, nil))
+	dockerClient, err := dockerclient.NewEnvClient()
+	if err != nil {
+		log.Fatalf("could not create docker client: %s", err)
+	}
+	podFactory.SetDockerClient(*dockerClient)
 	pod := podFactory.NewLegacyPod(manifest.ID())
 
-	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(*artifactRegistryURL, fetcher, osversion.DefaultDetector))
+	containerRegistryAuthStr := ""
+	if *containerRegistryJsonKeyFile != "" {
+		data, err := ioutil.ReadFile(*containerRegistryJsonKeyFile)
+		if err != nil {
+			log.Fatalf("could not read container json key file %s: %s", *containerRegistryJsonKeyFile, err)
+		}
+		authConfig := dockertypes.AuthConfig{
+			Username: "_json_key",
+			Password: string(data),
+		}
+		encodedJSON, err := json.Marshal(authConfig)
+		containerRegistryAuthStr = base64.URLEncoding.EncodeToString(encodedJSON)
+	}
+	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(*artifactRegistryURL, fetcher, osversion.DefaultDetector), containerRegistryAuthStr)
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)
 	}

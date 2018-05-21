@@ -49,7 +49,7 @@ func (t *TestPod) Launch(manifest manifest.Manifest) (bool, error) {
 	return t.launchSuccess, nil
 }
 
-func (t *TestPod) Install(manifest manifest.Manifest, _ auth.ArtifactVerifier, _ artifact.Registry) error {
+func (t *TestPod) Install(manifest manifest.Manifest, _ auth.ArtifactVerifier, _ artifact.Registry, _ string) error {
 	t.installed = true
 	return t.installErr
 }

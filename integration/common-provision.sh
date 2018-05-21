@@ -69,8 +69,8 @@ cp /usr/local/share/go/src/github.com/square/p2/integration/hello/config.json op
 # https://docs.docker.com/install/linux/docker-ce/centos/#set-up-the-repository
 sudo yum install -y yum-utils device-mapper-persistent-data lvm2
 sudo yum-config-manager \
-	--add-repo \
-	https://download.docker.com/linux/centos/docker-ce.repo
+    --add-repo \
+    https://download.docker.com/linux/centos/docker-ce.repo
 sudo yum install -y docker-ce
 
 sudo systemctl start docker

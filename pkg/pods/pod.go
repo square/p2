@@ -440,7 +440,7 @@ func (pod *Pod) SetSubsystemer(s cgroups.Subsystemer) {
 // Install will ensure that executables for all required services are present on the host
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
-func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifier, artifactRegistry artifact.Registry) error {
+func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifier, artifactRegistry artifact.Registry, containerRegistryAuthStr string) error {
 	manifest.SetReadOnlyIfUnset(pod.readOnly)
 
 	podHome := pod.home
@@ -488,8 +488,7 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 				return err
 			}
 		} else if launchable.Type() == "docker" {
-			// TODO: auth?
-			resp, err := pod.DockerClient.ImagePull(context.TODO(), stanza.Image.Name, dockertypes.ImagePullOptions{})
+			resp, err := pod.DockerClient.ImagePull(context.TODO(), stanza.Image.Name, dockertypes.ImagePullOptions{RegistryAuth: containerRegistryAuthStr})
 			if err != nil {
 				pod.logLaunchableError(launchable.ServiceID(), err, fmt.Sprintf("could not pull docker image: %s", err))
 				return util.Errorf("could not pull docker image: %s", err)
@@ -895,6 +894,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			RestartPolicy_:   launchableStanza.RestartPolicy(),
 			RunAs:            runAsUser,
 			PodEnvDir:        pod.EnvDir(),
+			PodHomeDir:       pod.Home(),
 		}, nil
 	}
 
