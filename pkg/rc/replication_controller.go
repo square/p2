@@ -346,6 +346,29 @@ func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 		}
 	}
 
+	// check if a node transfer node has been removed out of band
+	status, _, err := rc.rcStatusStore.Get(rc.rcID)
+	if err != nil && !statusstore.IsNoStatus(err) {
+		rc.logger.WithError(err).Errorln("Unable to fetch RC status to check for in progress node transfer")
+		return err
+	} else if !statusstore.IsNoStatus(err) {
+		hasOldNode := false
+		for _, node := range current.Nodes() {
+			if status.NodeTransfer.OldNode == node {
+				hasOldNode = true
+				break
+			}
+		}
+		if !hasOldNode {
+			// The old ineligible node has been removed out of band. End the
+			// node transfer
+			err := rc.cancelTransfer(rcFields, current.Nodes())
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	return rc.ensureConsistency(rcFields, current.Nodes(), eligible)
 }
 
@@ -1121,6 +1144,45 @@ func (rc *replicationController) finishTransfer(rcFields fields.RC, logger loggi
 	rc.nodeTransferMu.Lock()
 	rc.nodeTransfer = nodeTransfer{}
 	rc.nodeTransferMu.Unlock()
+	return nil
+}
+
+func (rc *replicationController) cancelTransfer(rcFields fields.RC, currentNodes []types.NodeName) error {
+	rc.nodeTransferMu.Lock()
+	close(rc.nodeTransfer.quit)
+	rc.nodeTransfer = nodeTransfer{}
+	rc.nodeTransferMu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	txn, cancelFunc := rc.newAuditingTransaction(ctx, rcFields, currentNodes)
+	defer cancelFunc()
+
+	err := rc.rcStatusStore.DeleteTxn(txn.Context(), rc.rcID)
+	if err != nil {
+		return util.Errorf("could not add RC status deletion to cancel node transfer transaction: %s", err)
+	}
+
+	ok, resp, err := txn.CommitWithRetries(rc.txner)
+	switch {
+	case err != nil:
+		err := util.Errorf(
+			"RC status deletion returned err after timeout: %s",
+			err,
+		)
+		rc.logger.WithError(err).Errorln("could not delete rc status to cancel node transfer")
+		return err
+	case !ok:
+		// This doesn't make sense because there are no "check" conditions in the transaction
+		err := util.Errorf(
+			"Transaction violation trying to delete RC status: %s",
+			transaction.TxnErrorsToString(resp.Errors),
+		)
+		rc.logger.WithError(err).Errorln("could not delete rc status to cancel node transfer")
+		return err
+	}
+
 	return nil
 }
 

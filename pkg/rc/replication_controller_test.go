@@ -832,6 +832,16 @@ func TestNoOpIfNodeTransferInProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	err = applicator.SetLabel(labels.NODE, "old.123", "nodeQuality", "good")
+	Assert(t).IsNil(err, "expected no error labeling old.123")
+
+	rcFields.ReplicasDesired = 1
+
+	err = rc.meetDesires(rcFields)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	rcFields.AllocationStrategy = fields.DynamicStrategy
 
 	// Simulate node transfer in progress with non-nil node transfer
