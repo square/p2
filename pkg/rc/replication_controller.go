@@ -755,6 +755,7 @@ func (rc *replicationController) unschedule(txn *auditingTransaction, rcFields f
 func (rc *replicationController) transferNodes(rcFields fields.RC, current types.PodLocations, eligible []types.NodeName, ineligible []types.NodeName) error {
 	if rc.nodeTransfer.quit != nil {
 		// a node transfer to replace the ineligible node is already in progress
+		rc.logger.Infof("Already watching health on %s. Taking no current node transfer action.", rc.nodeTransfer.newNode)
 		return nil
 	}
 
@@ -1017,7 +1018,7 @@ func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC, lo
 			logger.WithError(alertErr).Errorln("Unable to send alert")
 		}
 	} else {
-		logger.Infof("Node transfer was canceled: %s.", rollbackReason)
+		logger.Infof("watchHealth routine ended unsuccessfully. It will be retried: %s.", rollbackReason)
 		// We'll retry the node transfer on the next call of meetDesires using
 		// the same old and new nodes because they have been written to the
 		// status tree
@@ -1045,11 +1046,15 @@ func (rc *replicationController) watchHealth(rcFields fields.RC, logger logging.
 				logger.Errorln("Node transfer health checker sent nil error")
 			}
 		case currentHealth := <-resultCh:
+			prefix := fmt.Sprintf("New transfer node %s health is %s", rc.nodeTransfer.newNode, currentHealth.Status)
 			if currentHealth.Status == health.Passing {
-				logger.Infof("New transfer node %s health now passing", rc.nodeTransfer.newNode)
+				logger.Infof("%s. Ceasing to watch health.", prefix)
 				return true, ""
+			} else {
+				logger.Infof("%s. Continuing to watch health.", prefix)
 			}
 		case <-rc.nodeTransfer.quit:
+			logger.Infoln("Node transfer quit channel was closed")
 			return false, rc.nodeTransfer.rollbackReason
 		case <-time.After(5 * time.Minute):
 			err := "watchHealth routine timed out waiting for health result"
