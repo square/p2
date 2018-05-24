@@ -134,19 +134,15 @@ func (h *HookEnv) ExitUnlessEvent(types ...HookType) HookType {
 	return HookType("") // never reached
 }
 
-func (h *HookEnv) PodUniqueKey() (types.PodUniqueKey, error) {
+func (h *HookEnv) PodUniqueKey() types.PodUniqueKey {
 	podUniqueKey := os.Getenv(HookedPodUniqueKeyEnvVar)
-	if podUniqueKey == "" {
-		return "", util.Errorf("%s environment variable is not set", HookedPodUniqueKeyEnvVar)
-	}
-	return types.PodUniqueKey(podUniqueKey), nil
+
+	// don't check for blank because it often IS blank (for "legacy" pods)
+	return types.PodUniqueKey(podUniqueKey)
 }
 
 func (h *HookEnv) PodUniqueName() (string, error) {
-	podUniqueKey, err := h.PodUniqueKey()
-	if err != nil {
-		return "", err
-	}
+	podUniqueKey := h.PodUniqueKey()
 
 	podID, err := h.PodID()
 	if err != nil {
