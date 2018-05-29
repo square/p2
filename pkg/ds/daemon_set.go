@@ -361,6 +361,7 @@ func (ds *daemonSet) WatchDesires(
 					// so that the timer would be stopped after
 					err = nil
 				case <-ctx.Done():
+					ds.logger.Warnln("goroutine exiting because ")
 					return
 				}
 			} else {
@@ -380,6 +381,7 @@ func (ds *daemonSet) WatchDesires(
 			case newDS, ok := <-updatedCh:
 				if !ok {
 					// channel closed
+					ds.logger.Warnln("goroutine exiting because updatedCh has closed")
 					return
 				}
 				if ds.ID() != newDS.ID {
@@ -462,6 +464,7 @@ func (ds *daemonSet) WatchDesires(
 
 			case deleteDS, ok := <-deletedCh:
 				if !ok {
+					ds.logger.Warnln("goroutine exiting because deletedCh has closed")
 					return
 				}
 				// Deleting a daemon sets has no effect
@@ -471,6 +474,7 @@ func (ds *daemonSet) WatchDesires(
 			case _, ok := <-nodesChangedCh:
 				if !ok {
 					// channel closed
+					ds.logger.Warnln("goroutine exiting because nodesChangedCh has closed")
 					return
 				}
 				if reportErr := ds.reportEligible(); reportErr != nil {
@@ -530,6 +534,7 @@ func (ds *daemonSet) WatchDesires(
 				nodesToAdd <- addedNodes
 
 			case <-ctx.Done():
+				ds.logger.Warnln("goroutine exiting because context was canceled")
 				return
 			}
 		}
