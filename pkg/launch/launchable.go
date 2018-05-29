@@ -73,6 +73,15 @@ type LaunchableStanza struct {
 	// can be used to query a configured artifact registry which will provide the artifact
 	// URL. Version may not be used in conjunction with Location
 	Version LaunchableVersion `yaml:"version,omitempty"`
+
+	// Image: the name of the container image to run. This only applies when the launchable
+	// type is "docker"
+	Image DockerImage `yaml:"image,omitempty"`
+}
+
+// DockerImage contains launchable information specific to the "docker" launchable type.
+type DockerImage struct {
+	Name string `yaml:"name"`
 }
 
 func (l LaunchableStanza) LaunchableVersion() (LaunchableVersionID, error) {

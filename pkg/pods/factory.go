@@ -14,6 +14,7 @@ import (
 	"github.com/square/p2/pkg/util"
 
 	"github.com/Sirupsen/logrus"
+	dockerclient "github.com/docker/docker/client"
 )
 
 const DefaultPath = "/data/pods"
@@ -32,6 +33,7 @@ type Factory interface {
 	NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod, error)
 	NewLegacyPod(id types.PodID) *Pod
 	SetOSVersionDetector(osversion.Detector)
+	SetDockerClient(dockerclient.Client)
 }
 
 type HookFactory interface {
@@ -47,6 +49,7 @@ type factory struct {
 	fetcher           uri.Fetcher
 	requireFile       string
 	osVersionDetector osversion.Detector
+	dockerClient      dockerclient.Client
 }
 
 type hookFactory struct {
@@ -73,6 +76,10 @@ func NewFactory(podRoot string, node types.NodeName, fetcher uri.Fetcher, requir
 
 func (f *factory) SetOSVersionDetector(osVersionDetector osversion.Detector) {
 	f.osVersionDetector = osVersionDetector
+}
+
+func (f *factory) SetDockerClient(dockerClient dockerclient.Client) {
+	f.dockerClient = dockerClient
 }
 
 func NewHookFactory(hookRoot string, node types.NodeName, fetcher uri.Fetcher) HookFactory {
@@ -105,21 +112,27 @@ func (f *factory) NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod
 		return nil, util.Errorf("uniqueKey cannot be empty")
 	}
 	home := filepath.Join(f.podRoot, ComputeUniqueName(id, uniqueKey))
-	return newPodWithHome(id, uniqueKey, home, f.node, f.requireFile, f.fetcher, f.osVersionDetector, f.readOnlyPolicy.IsReadOnly(id)), nil
+  return newPodWithHome(id, uniqueKey, home, f.node, f.requireFile, f.fetcher, f.osVersionDetector, f.readOnlyPolicy.IsReadOnly(id), &f.dockerClient), nil
+
 }
 
 func (f *factory) NewLegacyPod(id types.PodID) *Pod {
 	home := filepath.Join(f.podRoot, id.String())
-	return newPodWithHome(id, "", home, f.node, f.requireFile, f.fetcher, f.osVersionDetector, f.readOnlyPolicy.IsReadOnly(id))
+	return newPodWithHome(id, "", home, f.node, f.requireFile, f.fetcher, f.osVersionDetector, f.readOnlyPolicy.IsReadOnly(id), &f.dockerClient)
 }
 
 func (f *hookFactory) NewHookPod(id types.PodID) *Pod {
 	home := filepath.Join(f.hookRoot, id.String())
 
 	// Hooks can't have a UUID
-	return newPodWithHome(id, "", home, f.node, "", f.fetcher, f.osVersionDetector, false)
+	return newPodWithHome(id, "", home, f.node, "", f.fetcher, f.osVersionDetector, false, nil)
 }
 
+// TODO(mpuncel) we really need to figure out this *Pod situation. some things use it and don't want to go through the trouble of initializing a docker
+// client, but its sketchy that it could be nil somewhere unexpected.
+//
+// The functionality of a pod should be decomposed into different interfaces, one for inspecting it (e.g. for hooks to get the PodHome() or EnvDir())
+// and another for managing the lifecycle.
 func newPodWithHome(
 	id types.PodID,
 	uniqueKey types.PodUniqueKey,
@@ -129,6 +142,8 @@ func newPodWithHome(
 	fetcher uri.Fetcher,
 	osVersionDetector osversion.Detector,
 	readOnly bool,
+	dockerClient *dockerclient.Client,
+
 ) *Pod {
 	var logger logging.Logger
 	logger = Log.SubLogger(logrus.Fields{"pod": id, "uuid": uniqueKey})
@@ -153,6 +168,7 @@ func newPodWithHome(
 		RequireFile:       requireFile,
 		OSVersionDetector: osVersionDetector,
 		readOnly:          readOnly,
+		DockerClient:      dockerClient,
 	}
 }
 
@@ -182,5 +198,5 @@ func PodFromPodHomeWithReqFile(node types.NodeName, home string, requireFile str
 
 	// TODO: Shouldn't the Fetcher be configured? So one should get passed in, right?
 	// TODO (mpuncel): make the osversion detector configurable if needed
-	return newPodWithHome(manifest.ID(), uniqueKey, home, node, requireFile, nil, osversion.DefaultDetector, false), nil
+	return newPodWithHome(manifest.ID(), uniqueKey, home, node, requireFile, nil, osversion.DefaultDetector, false, nil), nil
 }

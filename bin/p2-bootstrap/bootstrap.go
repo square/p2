@@ -107,7 +107,7 @@ func main() {
 
 func installConsul(consulPod *pods.Pod, consulManifest manifest.Manifest, registryURL *url.URL) error {
 	// Inject servicebuilder?
-	err := consulPod.Install(consulManifest, auth.NopVerifier(), artifact.NewRegistry(registryURL, uri.DefaultFetcher, osversion.DefaultDetector))
+	err := consulPod.Install(consulManifest, auth.NopVerifier(), artifact.NewRegistry(registryURL, uri.DefaultFetcher, osversion.DefaultDetector), "")
 	if err != nil {
 		return util.Errorf("Can't install Consul, aborting: %s", err)
 	}
@@ -236,7 +236,7 @@ func scheduleForThisHost(manifest manifest.Manifest, alsoReality bool) error {
 func installBaseAgent(podFactory pods.Factory, agentManifest manifest.Manifest, registryURL *url.URL) error {
 	// preparer will never have a uuid (for now)
 	agentPod := podFactory.NewLegacyPod(agentManifest.ID())
-	err := agentPod.Install(agentManifest, auth.NopVerifier(), artifact.NewRegistry(registryURL, uri.DefaultFetcher, osversion.DefaultDetector))
+	err := agentPod.Install(agentManifest, auth.NopVerifier(), artifact.NewRegistry(registryURL, uri.DefaultFetcher, osversion.DefaultDetector), "")
 	if err != nil {
 		return err
 	}

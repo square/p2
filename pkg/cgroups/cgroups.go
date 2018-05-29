@@ -11,6 +11,10 @@ import (
 	"github.com/square/p2/pkg/util"
 )
 
+const (
+	CPUPeriod = 1000000 // one million microseconds
+)
+
 // maps cgroup subsystems to their respective paths
 type Subsystems struct {
 	CPU    string
@@ -46,8 +50,7 @@ func (subsys Subsystems) SetCPU(name CgroupID, cpus int) error {
 		return UnsupportedError("cpu")
 	}
 
-	period := 1000000 // one million microseconds
-	quota := cpus * period
+	quota := cpus * CPUPeriod
 	if cpus == 0 {
 		// setting -1 here will unrestrict the cgroup, so the period won't matter
 		quota = -1
@@ -60,7 +63,7 @@ func (subsys Subsystems) SetCPU(name CgroupID, cpus int) error {
 
 	_, err = util.WriteIfChanged(
 		filepath.Join(subsys.CPU, name.String(), "cpu.cfs_period_us"),
-		[]byte(strconv.Itoa(period)+"\n"),
+		[]byte(strconv.Itoa(CPUPeriod)+"\n"),
 		0,
 	)
 	if err != nil {

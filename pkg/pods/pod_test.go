@@ -280,7 +280,7 @@ func TestWriteManifestWillReturnOldManifestTempPath(t *testing.T) {
 
 	poddir, err := ioutil.TempDir("", "poddir")
 	Assert(t).IsNil(err, "couldn't create tempdir")
-	pod := newPodWithHome("testPod", "", poddir, "testNode", "", nil, osversion.DefaultDetector, false)
+	pod := newPodWithHome("testPod", "", poddir, "testNode", "", nil, osversion.DefaultDetector, false, nil)
 
 	// set the RunAs user to the user running the test, because when we
 	// write files we need an owner.
@@ -389,7 +389,7 @@ func TestInstall(t *testing.T) {
 	}
 	pod.subsystemer = &FakeSubsystemer{}
 
-	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector))
+	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector), "")
 	Assert(t).IsNil(err, "there should not have been an error when installing")
 
 	Assert(t).AreEqual(

@@ -38,6 +38,10 @@ func (b ByteCount) String() string {
 	return strings.TrimSpace(ret)
 }
 
+func (b ByteCount) Int64() int64 {
+	return int64(b)
+}
+
 // Parse a string containing a string representation of a byte count.
 func Parse(sizeStr string) (ByteCount, error) {
 	if !byteStringPattern.MatchString(sizeStr) {
