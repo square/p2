@@ -361,7 +361,7 @@ func (ds *daemonSet) WatchDesires(
 					// so that the timer would be stopped after
 					err = nil
 				case <-ctx.Done():
-					ds.logger.Warnln("goroutine exiting because ")
+					ds.logger.Warnln("goroutine exiting due to canceled context")
 					return
 				}
 			} else {

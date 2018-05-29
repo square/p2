@@ -87,7 +87,7 @@ type Farm struct {
 type childDS struct {
 	ds        DaemonSet
 	cancel    context.CancelFunc
-	updatedCh chan<- ds_fields.DaemonSet
+	updatedCh chan ds_fields.DaemonSet
 	deletedCh chan<- ds_fields.DaemonSet
 	errCh     <-chan error
 	unlocker  consul.TxnUnlocker
@@ -310,6 +310,10 @@ func (dsf *Farm) closeChild(dsID fields.ID) {
 	if child, ok := dsf.children[dsID]; ok {
 		dsf.logger.WithField("ds", dsID).Infoln("Releasing daemon set")
 		child.cancel()
+
+		// drain the updatedCh (it's buffered)
+		for range child.updatedCh {
+		}
 		close(child.updatedCh)
 		close(child.deletedCh)
 
@@ -560,7 +564,9 @@ func (dsf *Farm) spawnDaemonSet(
 		dsf.statusWritingInterval,
 	)
 
-	updatedCh := make(chan ds_fields.DaemonSet)
+	// updatedCh is buffered by 1 to protect the control loop by slow (or
+	// dead) readers
+	updatedCh := make(chan ds_fields.DaemonSet, 1)
 	deletedCh := make(chan ds_fields.DaemonSet)
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -733,6 +739,14 @@ func (dsf *Farm) lockAndSpawn(ctx context.Context, dsFields ds_fields.DaemonSet,
 
 	// If we already are running the daemon set, just pass the update. Otherwise spawn one
 	if ok {
+		// try to drain the buffered value off the updatedCh if there is one (which
+		// indicates the worker goroutine was slow to read it or is dead)
+		select {
+		case <-child.updatedCh:
+			dsf.logger.Warnln("daemon set worker missed an update, sending a newer one")
+		default:
+		}
+
 		child.updatedCh <- dsFields
 	} else {
 		dsf.children[dsFields.ID] = dsf.spawnDaemonSet(
