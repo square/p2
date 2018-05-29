@@ -2,8 +2,6 @@ package preparer
 
 import (
 	"crypto/tls"
-	"encoding/base64"
-	"encoding/json"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -23,10 +21,10 @@ import (
 	"golang.org/x/net/http2"
 	"gopkg.in/yaml.v2"
 
-	dockertypes "github.com/docker/docker/api/types"
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/constants"
+	"github.com/square/p2/pkg/docker"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/logging"
@@ -562,16 +560,10 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 
 	containerRegistryAuthStr := ""
 	if preparerConfig.ContainerRegistryJsonKeyFile != "" {
-		data, err := ioutil.ReadFile(preparerConfig.ContainerRegistryJsonKeyFile)
+		containerRegistryAuthStr, err = docker.GetContainerRegistryAuthStr(preparerConfig.ContainerRegistryJsonKeyFile)
 		if err != nil {
-			return nil, util.Errorf("could not read container json key file %s: %s", preparerConfig.ContainerRegistryJsonKeyFile, err)
+			return nil, util.Errorf("error getting container registry auth string: %s", err)
 		}
-		authConfig := dockertypes.AuthConfig{
-			Username: "_json_key",
-			Password: string(data),
-		}
-		encodedJSON, err := json.Marshal(authConfig)
-		containerRegistryAuthStr = base64.URLEncoding.EncodeToString(encodedJSON)
 	}
 
 	podFactory.SetDockerClient(*dockerClient)

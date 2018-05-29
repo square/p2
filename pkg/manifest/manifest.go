@@ -533,7 +533,7 @@ func ValidManifest(m Manifest) error {
 
 		if stanza.LaunchableType == "docker" {
 			if stanza.Image.Name == "" {
-				return fmt.Errorf("%s: docker launchables must contain an image")
+				return fmt.Errorf("'%s': docker launchables must contain an image", launchableID)
 			}
 		}
 	}

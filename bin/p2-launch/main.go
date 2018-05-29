@@ -1,9 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
-	"encoding/json"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -12,6 +9,7 @@ import (
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/constants"
+	"github.com/square/p2/pkg/docker"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
@@ -23,7 +21,6 @@ import (
 	"github.com/square/p2/pkg/version"
 
 	"github.com/Sirupsen/logrus"
-	dockertypes "github.com/docker/docker/api/types"
 	dockerclient "github.com/docker/docker/client"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -102,16 +99,10 @@ func main() {
 
 	containerRegistryAuthStr := ""
 	if *containerRegistryJsonKeyFile != "" {
-		data, err := ioutil.ReadFile(*containerRegistryJsonKeyFile)
+		containerRegistryAuthStr, err = docker.GetContainerRegistryAuthStr(*containerRegistryJsonKeyFile)
 		if err != nil {
-			log.Fatalf("could not read container json key file %s: %s", *containerRegistryJsonKeyFile, err)
+			log.Fatalf("error getting container registry auth string: %s", err)
 		}
-		authConfig := dockertypes.AuthConfig{
-			Username: "_json_key",
-			Password: string(data),
-		}
-		encodedJSON, err := json.Marshal(authConfig)
-		containerRegistryAuthStr = base64.URLEncoding.EncodeToString(encodedJSON)
 	}
 	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(*artifactRegistryURL, fetcher, osversion.DefaultDetector), containerRegistryAuthStr)
 	if err != nil {

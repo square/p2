@@ -3,6 +3,8 @@ package docker
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -18,6 +20,7 @@ import (
 	"github.com/square/p2/pkg/util/size"
 
 	"github.com/docker/docker/api/types"
+	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	dockerclient "github.com/docker/docker/client"
@@ -27,6 +30,10 @@ import (
 )
 
 var _ launch.Launchable = &Launchable{}
+
+const (
+	jsonKeyUsername = "_json_key"
+)
 
 type Mounts map[string]Mount
 
@@ -138,7 +145,7 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 		return util.Errorf("docker client was not initialized, can't launch docker launchable")
 	}
 
-	ctx := context.TODO()
+	ctx := context.Background()
 
 	// get pod env vars from disk
 	podEnvVars, err := loadEnvVars(l.PodEnvDir)
@@ -188,7 +195,7 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 			if err != nil {
 				return util.Errorf("could not read file %s: %v", mountFilePath, err)
 			}
-			err = yaml.Unmarshal(data, mounts)
+			err = yaml.Unmarshal(data, &mounts)
 			if err != nil {
 				return util.Errorf("error unmarshalling data: %v", err)
 			}
@@ -263,7 +270,6 @@ func (l *Launchable) ServiceID() string {
 }
 
 func (l *Launchable) Stop(_ *runit.ServiceBuilder, _ runit.SV, _ bool) error {
-	// TODO: not implemented
 	if l.DockerClient == nil {
 		return util.Errorf("cannot stop container: docker client is not initialized")
 	}
@@ -284,6 +290,24 @@ func (l *Launchable) Stop(_ *runit.ServiceBuilder, _ runit.SV, _ bool) error {
 
 func (*Launchable) Type() string {
 	return "docker"
+}
+
+func GetContainerRegistryAuthStr(jsonKeyFile string) (string, error) {
+	if jsonKeyFile == "" {
+		return "", util.Errorf("jsonKeyFile arg to GetContainerRegistryAuthStr is not set")
+	}
+
+	data, err := ioutil.ReadFile(jsonKeyFile)
+	if err != nil {
+		return "", util.Errorf("could not read jsonKeyFile %s: %s", jsonKeyFile, err)
+	}
+	authConfig := dockertypes.AuthConfig{
+		Username: jsonKeyUsername,
+		Password: string(data),
+	}
+	encodedJSON, err := json.Marshal(authConfig)
+	containerRegistryAuthStr := base64.URLEncoding.EncodeToString(encodedJSON)
+	return containerRegistryAuthStr, nil
 }
 
 func loadEnvVars(envDir string) ([]string, error) {
