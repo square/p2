@@ -488,13 +488,18 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 				return err
 			}
 		} else if launchable.Type() == "docker" {
-			resp, err := pod.DockerClient.ImagePull(context.TODO(), stanza.Image.Name, dockertypes.ImagePullOptions{RegistryAuth: containerRegistryAuthStr})
+			reader, err := pod.DockerClient.ImagePull(context.TODO(), stanza.Image.Name, dockertypes.ImagePullOptions{RegistryAuth: containerRegistryAuthStr})
 			if err != nil {
 				pod.logLaunchableError(launchable.ServiceID(), err, fmt.Sprintf("could not pull docker image: %s", err))
 				return util.Errorf("could not pull docker image: %s", err)
 			}
-			// TODO: anything we want in this response body?
-			defer resp.Close()
+			defer reader.Close()
+			b, err := ioutil.ReadAll(reader)
+			if err != nil {
+				pod.logLaunchableError(launchable.ServiceID(), err, "error reading docker pull output")
+			}
+			// log the output of docker pull, there could be errors here that will cause future steps to fail
+			pod.logInfo(string(b))
 		}
 
 		output, err := launchable.PostInstall()
