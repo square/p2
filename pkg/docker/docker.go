@@ -148,17 +148,10 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 
 	ctx := context.Background()
 
-	// get pod env vars from disk
-	podEnvVars, err := loadEnvVars(l.PodEnvDir)
+	envVars, err := loadEnvVars(l.PodEnvDir, l.EnvDir())
 	if err != nil {
-		return err
+		return util.Errorf("could not load environment variables for container: %s", err)
 	}
-	// get launchable env vars from disk
-	launchableEnvVars, err := loadEnvVars(l.EnvDir())
-	if err != nil {
-		return err
-	}
-	envVars := append(podEnvVars, launchableEnvVars...)
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -315,8 +308,8 @@ func GetContainerRegistryAuthStr(jsonKeyFile string) (string, error) {
 	return containerRegistryAuthStr, nil
 }
 
-func loadEnvVars(envDir string) ([]string, error) {
-	envVars := []string{}
+func loadEnvVarsFromDir(envDir string) (map[string]string, error) {
+	envVars := make(map[string]string)
 
 	envFiles, err := ioutil.ReadDir(envDir)
 	if err != nil {
@@ -331,8 +324,41 @@ func loadEnvVars(envDir string) ([]string, error) {
 			if err != nil {
 				return nil, util.Errorf("could not read file %s: %v", envFilePath, err)
 			}
-			envVars = append(envVars, fmt.Sprintf("%s=%s", file.Name(), string(data)))
+			envVars[file.Name()] = string(data)
 		}
+	}
+
+	return envVars, nil
+}
+
+// loadEnvVars loads environment variables from the pod env dir and launchable env dir. It expects
+// files to be in these directories with the file name being the key of the environment variable
+// and the contents of the files being their respective values. In the event of a key conflict
+// between the two directories, the launchable one is preferred
+func loadEnvVars(podEnvDir string, launchableEnvDir string) ([]string, error) {
+	// get pod env vars from disk
+	podEnvVars, err := loadEnvVarsFromDir(podEnvDir)
+	if err != nil {
+		return nil, err
+	}
+	// get launchable env vars from disk
+	launchableEnvVars, err := loadEnvVarsFromDir(launchableEnvDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// deduplicate env vars
+	envVarMap := make(map[string]string)
+	for k, v := range podEnvVars {
+		envVarMap[k] = v
+	}
+	for k, v := range launchableEnvVars {
+		envVarMap[k] = v
+	}
+
+	var envVars []string
+	for k, v := range envVarMap {
+		envVars = append(envVars, fmt.Sprintf("%s=%s", k, v))
 	}
 
 	return envVars, nil
