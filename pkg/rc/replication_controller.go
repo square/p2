@@ -1190,6 +1190,10 @@ func (rc *replicationController) checkMissingArtifacts(rcFields fields.RC) {
 	podID := rcFields.Manifest.ID()
 	launchableStanzas := rcFields.Manifest.GetLaunchableStanzas()
 	for launchableID, launchableStanza := range launchableStanzas {
+		if launchableStanza.LaunchableType == "docker" {
+			// don't check for missing docker images for now
+			continue
+		}
 		artifactUrl, _, err := rc.artifactRegistry.LocationDataForLaunchable(podID, launchableID, launchableStanza)
 		if err != nil {
 			rc.logger.WithError(err).Errorln("Unable to retrieve location for launchable")
