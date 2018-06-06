@@ -16,6 +16,7 @@ import (
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
+	"github.com/square/p2/pkg/user"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
 
@@ -163,9 +164,13 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 	if err != nil {
 		return util.Errorf("could not get hostname: %v", hostname)
 	}
+	dockerUser, err := dockerUser(l.RunAs)
+	if err != nil {
+		return err
+	}
 	containerConfig := &container.Config{
 		Hostname: hostname,
-		User:     l.RunAs,
+		User:     dockerUser,
 		Env:      envVars,
 		Image:    l.Image,
 	}
@@ -331,4 +336,15 @@ func loadEnvVars(envDir string) ([]string, error) {
 	}
 
 	return envVars, nil
+}
+
+// converts a username to the <uid>:<gid> format that Docker expects. This obviates the need
+// to set up username -> id mappings in a container's /etc/passwd file
+func dockerUser(username string) (string, error) {
+	uid, gid, err := user.IDs(username)
+	if err != nil {
+		return "", util.Errorf("could not compute docker formatted uid and gid for username %s: %s", username, err)
+	}
+
+	return fmt.Sprintf("%d:%d", uid, gid), nil
 }
