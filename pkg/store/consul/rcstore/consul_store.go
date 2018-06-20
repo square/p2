@@ -811,7 +811,7 @@ func (s *ConsulStore) mutateRCTxn(ctx context.Context, id fields.ID, mutator fun
 func (s *ConsulStore) MutateRC(id fields.ID, mutator func(fields.RC) (fields.RC, error)) error {
 	newKVP, err := s.mutatePair(id, mutator)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	var success bool
