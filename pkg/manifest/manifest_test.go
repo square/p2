@@ -386,3 +386,19 @@ func TestArtifactRegistryOverride(t *testing.T) {
 		t.Error("Expected registry override to occur, but didn't find one")
 	}
 }
+
+func TestSetNodeRequirements(t *testing.T) {
+	b := NewBuilder()
+	b.SetID("foo")
+	b.SetNodeRequirements(map[string]string{
+		"req1": "val1",
+	})
+	man := b.GetManifest()
+	val, ok := man.GetNodeRequirements()["req1"]
+	if !ok {
+		t.Fatal("expected a node requirement for req1")
+	}
+	if val != "val1" {
+		t.Errorf("expected node requirement req1 to have value val1 but was %sa", val)
+	}
+}
