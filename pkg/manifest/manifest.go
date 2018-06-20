@@ -42,6 +42,7 @@ type Builder interface {
 	SetStatusPort(port int)
 	SetLaunchables(launchableStanzas map[launch.LaunchableID]launch.LaunchableStanza)
 	SetResourceLimits(limits ResourceLimitsStanza)
+	SetNodeRequirements(map[string]string)
 }
 
 var _ Builder = builder{}
@@ -157,6 +158,10 @@ func (manifest *manifest) GetLaunchableStanzas() map[launch.LaunchableID]launch.
 
 func (manifest *manifest) SetLaunchables(launchableStanzas map[launch.LaunchableID]launch.LaunchableStanza) {
 	manifest.LaunchableStanzas = launchableStanzas
+}
+
+func (manifest *manifest) SetNodeRequirements(nodeRequirements map[string]string) {
+	manifest.NodeRequirements = nodeRequirements
 }
 
 func (manifest *manifest) GetResourceLimits() ResourceLimitsStanza {
