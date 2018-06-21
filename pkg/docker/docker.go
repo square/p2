@@ -24,6 +24,7 @@ import (
 	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/strslice"
 	dockerclient "github.com/docker/docker/client"
 
 	// add this import explicitly for unix
@@ -80,8 +81,14 @@ type Launchable struct {
 	// DockerClient is the client used to start and stop containers
 	DockerClient *dockerclient.Client
 
-	// EntryPoints are the commands to run in the container
-	EntryPoints []string
+	// EntryPoint is the entrypoint to run with the docker container if passed to the manifest
+	Entrypoint strslice.StrSlice
+
+	// PostStartCmd is the cmd in the container to run after the container has started
+	PostStartCmd []string
+
+	// PreStopCmd is the cmd in the container to run before the container is stopped
+	PreStopCmd []string
 
 	// ParentCgroupID is the name of the pod-wide cgroup. Docker containers will
 	// be configured with cgroups inheriting from this one.
@@ -103,7 +110,28 @@ type Launchable struct {
 }
 
 func (l *Launchable) Disable() error {
-	// TODO: implement
+	if len(l.PreStopCmd) == 0 {
+		return nil
+	}
+	ctx := context.Background()
+	// TODO: check if we need to set anything else in this
+	execConfig := dockertypes.ExecConfig{
+		User: l.RunAs,
+		Cmd:  l.PreStopCmd,
+	}
+	resp, err := l.DockerClient.ContainerExecCreate(ctx, l.containerName(), execConfig)
+	if err != nil {
+		return util.Errorf("could not create PreStop exec configuration for container %s: %s", l.containerName(), err)
+	}
+	// TODO: do we want to attach and redirect logs?
+
+	// TODO: check if we need to set anything in this
+	execStartCheck := dockertypes.ExecStartCheck{}
+	err = l.DockerClient.ContainerExecStart(ctx, resp.ID, execStartCheck)
+	if err != nil {
+		return util.Errorf("could not start PreStop exec process for container %s: %s", l.containerName(), err)
+	}
+	// TODO: check if there is anything else to do here
 	return nil
 }
 
@@ -167,6 +195,9 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 		Env:      envVars,
 		Image:    l.Image,
 	}
+	if len(l.Entrypoint) > 0 {
+		containerConfig.Entrypoint = l.Entrypoint
+	}
 
 	restartPolicy := "always"
 	switch l.RestartPolicy_ {
@@ -225,7 +256,7 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 	networkingConfig := &network.NetworkingConfig{}
 
 	// this is the name we'll use to start and stop the container
-	containerName := l.ServiceID()
+	containerName := l.containerName()
 
 	_, err = l.DockerClient.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, containerName)
 	if err != nil {
@@ -235,6 +266,26 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 	err = l.DockerClient.ContainerStart(ctx, containerName, types.ContainerStartOptions{})
 	if err != nil {
 		return util.Errorf("could not start container %s: %s", containerName, err)
+	}
+	// TODO: check if we need to set anything else in this
+	if len(l.PostStartCmd) > 0 {
+		execConfig := dockertypes.ExecConfig{
+			User: l.RunAs,
+			Cmd:  l.PostStartCmd,
+		}
+		resp, err := l.DockerClient.ContainerExecCreate(ctx, containerName, execConfig)
+		if err != nil {
+			return util.Errorf("could not create PostStart exec configuration for container %s: %s", containerName, err)
+		}
+		// TODO: do we want to attach and redirect these logs
+
+		// TODO: check if we need to set anything in this
+		execStartCheck := dockertypes.ExecStartCheck{}
+		err = l.DockerClient.ContainerExecStart(ctx, resp.ID, execStartCheck)
+		if err != nil {
+			return util.Errorf("could not start PostStart exec process for container %s: %s", containerName, err)
+		}
+		// TODO: check if there is anything else to do here
 	}
 	return nil
 }
@@ -362,6 +413,11 @@ func loadEnvVars(podEnvDir string, launchableEnvDir string) ([]string, error) {
 	}
 
 	return envVars, nil
+}
+
+// The name we will give to the container related to this launchable
+func (l *Launchable) containerName() string {
+	return l.ServiceID()
 }
 
 // converts a username to the <uid>:<gid> format that Docker expects. This obviates the need

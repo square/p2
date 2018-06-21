@@ -474,7 +474,7 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 
 		// TODO: make this code better, probably abstract away launchable installation
 		// into something that understands the types
-		if launchable.Type() == "hoist" || launchable.Type() == "opencontainer" {
+		if launchable.Type() == launch.HoistLaunchableType || launchable.Type() == launch.OpenContainerLaunchableType {
 			launchableURL, verificationData, err := artifactRegistry.LocationDataForLaunchable(pod.Id, launchableID, stanza)
 			if err != nil {
 				pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
@@ -487,7 +487,7 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 				_ = os.Remove(launchable.InstallDir())
 				return err
 			}
-		} else if launchable.Type() == "docker" {
+		} else if launchable.Type() == launch.DockerLaunchableType {
 			reader, err := pod.DockerClient.ImagePull(context.TODO(), stanza.Image.Name, dockertypes.ImagePullOptions{RegistryAuth: containerRegistryAuthStr})
 			if err != nil {
 				pod.logLaunchableError(launchable.ServiceID(), err, fmt.Sprintf("could not pull docker image: %s", err))
@@ -817,7 +817,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 
 	cgroupName := serviceId
 	switch launchableStanza.LaunchableType {
-	case "hoist":
+	case launch.HoistLaunchableType:
 		entryPointPaths := launchableStanza.EntryPoints
 		implicitEntryPoints := false
 		if len(entryPointPaths) == 0 {
@@ -860,7 +860,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 		}
 		ret.CgroupConfig.Name = cgroups.CgroupID(ret.ServiceId)
 		return ret.If(), nil
-	case "opencontainer":
+	case launch.OpenContainerLaunchableType:
 		ret := &opencontainer.Launchable{
 			Version_:          version,
 			ID_:               launchableID,
@@ -880,7 +880,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 		}
 		ret.CgroupConfig.Name = cgroups.CgroupID(serviceId)
 		return ret, nil
-	case "docker":
+	case launch.DockerLaunchableType:
 		podCgroupID, err := cgroups.CgroupIDForPod(pod.getSubsystemer(), pod.Id, pod.node)
 		if err != nil {
 			return nil, util.Errorf("could not get parent cgroup name for docker container: %s", err)
@@ -892,7 +892,10 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			RestartTimeout:   restartTimeout,
 			ServiceID_:       serviceId,
 			DockerClient:     pod.DockerClient,
-			Image:            launchableStanza.Image.Name,
+			Entrypoint:       launchableStanza.EntryPoint,
+			PostStartCmd:     launchableStanza.PostStart.Exec.Command,
+			PreStopCmd:       launchableStanza.PreStop.Exec.Command,
+			Image:            launchableStanza.LaunchableImage(),
 			ParentCgroupID:   podCgroupID.String(),
 			CPUQuota:         launchableStanza.CgroupConfig.CPUs,
 			CgroupMemorySize: launchableStanza.CgroupConfig.Memory,

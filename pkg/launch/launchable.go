@@ -8,13 +8,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types/strslice"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
 )
 
-const EntryPointEnvVar = "ENTRY_POINT"
+const (
+	EntryPointEnvVar            = "ENTRY_POINT"
+	HoistLaunchableType         = "hoist"
+	OpenContainerLaunchableType = "opencontainer"
+	DockerLaunchableType        = "docker"
+)
 
 type ArtifactName string
 
@@ -77,21 +83,55 @@ type LaunchableStanza struct {
 	// Image: the name of the container image to run. This only applies when the launchable
 	// type is "docker"
 	Image DockerImage `yaml:"image,omitempty"`
+
+	// Entrypoint: only supported for docker launchables. This values specifies an entrypoint that will override the default entrypoint defined in the image
+	EntryPoint strslice.StrSlice `yaml:"entrypoint,omitempty"`
+
+	// PostStart: only supported for docker launchables. This value specifies what command to run after the container has started. This is equivalent to the enable script for hoist launchables
+	PostStart PostStart `yaml:"postStart,omitempty"`
+
+	// PreStop: only supported for docker launchables. This value specifies what command to run before the container is stopped. This is equivalent to the disable script for hoist launchables
+	PreStop PreStop `yaml:"preStop,omitempty"`
 }
 
 // DockerImage contains launchable information specific to the "docker" launchable type.
 type DockerImage struct {
-	Name string `yaml:"name"`
+	Name   string `yaml:"name"`
+	SHA256 string `yaml:"sha256"`
+}
+
+// PostStart contains launchable information specific to the "docker" launchable type.
+type PostStart struct {
+	Exec Command `yaml:"exec"`
+}
+
+// PreStop contains launchable information specific to the "docker" launchable type.
+type PreStop struct {
+	Exec Command `yaml:"exec"`
+}
+
+// Command contains launchable information specific to the "docker" launchable type.
+type Command struct {
+	Command []string `yaml:"command"`
 }
 
 func (l LaunchableStanza) LaunchableVersion() (LaunchableVersionID, error) {
-	if l.Version.ID != "" {
-		return l.Version.ID, nil
-	}
+	if l.LaunchableType == HoistLaunchableType || l.LaunchableType == OpenContainerLaunchableType {
+		if l.Version.ID != "" {
+			return l.Version.ID, nil
+		}
 
-	return versionFromLocation(l.Location)
+		return versionFromLocation(l.Location)
+	}
+	if l.LaunchableType == DockerLaunchableType {
+		return LaunchableVersionID(l.Image.SHA256), nil
+	}
+	return "", util.Errorf("Unsupported launchable type %s", l.LaunchableType)
 }
 
+func (l LaunchableStanza) LaunchableImage() string {
+	return fmt.Sprintf("%s@sha256:%s", l.Image.Name, l.Image.SHA256)
+}
 func (l LaunchableStanza) RestartPolicy() runit.RestartPolicy {
 	if l.RestartPolicy_ == "" {
 		return runit.DefaultRestartPolicy
