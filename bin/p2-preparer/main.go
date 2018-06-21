@@ -1,19 +1,20 @@
 package main
 
 import (
-	"io/ioutil"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 
+	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/types"
+	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/version"
 	"github.com/square/p2/pkg/watch"
@@ -47,7 +48,6 @@ func main() {
 		defer statusServer.Close()
 	}
 
-	requiredPods := make(map[types.PodID]bool)
 	if preparerConfig.RequireFile != "" {
 		_, err := os.Stat(preparerConfig.RequireFile)
 		if os.IsNotExist(err) {
@@ -55,14 +55,6 @@ func main() {
 		}
 		if err != nil {
 			logger.WithError(err).Fatalln("Could not check for require file's existence")
-		}
-
-		required, err := loadTokens(preparerConfig.RequireFile)
-		if err != nil {
-			logger.WithError(err).WithField("path", preparerConfig.RequireFile).Fatalln("Could not read required file")
-		}
-		for pod := range required {
-			requiredPods[types.PodID(pod)] = true
 		}
 	}
 
@@ -97,11 +89,38 @@ func main() {
 		logger.WithError(err).Fatalf("Could not do initial build reality at launch: %s", err)
 	}
 
-	// check if any podID existing in require file(p2-may-run), if so, install them first
-	if len(requiredPods) == 0 {
-		err = prep.InstallRequiredPods(requiredPods, preparerConfig)
-		if err != nil {
-			logger.WithError(err).Fatalln("Could not install required pods")
+	whiteListPods := make(map[types.PodID]bool)
+	if preparerConfig.PodWhitelistFile != "" {
+		// Keep loopinng the white list of pods in pod whitelist file, and install the non existing pods
+		// exit while the white list is empty
+		for {
+			_, err := os.Stat(preparerConfig.PodWhitelistFile)
+			// if the whitelist file does not exist, end the loop and proceed
+			if os.IsNotExist(err) {
+				logger.WithError(err).Warningf("Pod whilelist file does not exist")
+				break
+			}
+
+			podWhitelist, err := util.LoadTokens(preparerConfig.PodWhitelistFile)
+			if err != nil {
+				logger.WithError(err).WithField("path", preparerConfig.PodWhitelistFile).Fatalln("Could not read pod whitelist file")
+			}
+
+			// if the pod white list is empty, jump out of the loop, then p2-preparer proceeds to start with full functionality
+			if len(podWhitelist) == 0 {
+				break
+			}
+
+			for pod := range podWhitelist {
+				whiteListPods[types.PodID(pod)] = true
+			}
+
+			err = prep.InstallWhiteListPods(whiteListPods, preparerConfig)
+			if err != nil {
+				logger.WithError(err).Fatalln("Could not install whitelist pods")
+			}
+
+			time.Sleep(constants.P2WhitelistCheckInterval)
 		}
 	}
 
@@ -143,13 +162,4 @@ func waitForTermination(logger logging.Logger, quitMainUpdate chan struct{}, qui
 	}
 	quitMainUpdate <- struct{}{}
 	<-quitMainUpdate // acknowledgement
-}
-
-func loadTokens(path string) ([]string, error) {
-	tokens, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	return strings.Split(string(tokens), " "), nil
 }

@@ -143,6 +143,7 @@ type PreparerConfig struct {
 	KeyFile                      string                 `yaml:"key_file,omitempty"`
 	PodRoot                      string                 `yaml:"pod_root,omitempty"`
 	RequireFile                  string                 `yaml:"require_file,omitempty"`
+	PodWhitelistFile             string                 `yaml:"pod_whitelist_file,omitempty"`
 	StatusPort                   int                    `yaml:"status_port"`
 	StatusSocket                 string                 `yaml:"status_socket"`
 	Auth                         map[string]interface{} `yaml:"auth,omitempty"`

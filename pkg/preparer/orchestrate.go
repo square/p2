@@ -9,7 +9,6 @@ import (
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/constants"
-	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -80,9 +79,10 @@ func (p podWorkerID) String() string {
 	return fmt.Sprintf("%s-%s", p.podID.String(), p.podUniqueKey)
 }
 
-func (p *Preparer) InstallRequiredPods(requiredPods map[types.PodID]bool, preparerConfig *PreparerConfig) error {
+func (p *Preparer) InstallWhiteListPods(whiteListPods map[types.PodID]bool, preparerConfig *PreparerConfig) error {
 	intentResults, _, err := p.store.ListPods(consul.INTENT_TREE, p.node)
-	var intentRequired []consul.ManifestResult
+	realityResults, _, err := p.store.ListPods(consul.REALITY_TREE, p.node)
+	var pairs []*ManifestPair
 	if err != nil {
 		p.Logger.WithError(err).Errorln("could not check intent")
 	}
@@ -90,26 +90,27 @@ func (p *Preparer) InstallRequiredPods(requiredPods map[types.PodID]bool, prepar
 	quit := make(chan struct{})
 
 	for _, intentResult := range intentResults {
-		if _, ok := requiredPods[intentResult.Manifest.ID()]; ok {
-			// check pod health here, to prevent reinstall. This is useful when
-			// the required pod is already running, and the p2-prepare restarted
-			if p.checkPodHealth(intentResult, preparerConfig) {
-				continue
+		if whiteListPods[intentResult.Manifest.ID()] {
+			manifestPair := &ManifestPair{
+				Intent:       intentResult.Manifest,
+				ID:           intentResult.Manifest.ID(),
+				PodUniqueKey: intentResult.PodUniqueKey,
 			}
-			intentRequired = append(intentRequired, intentResult)
+			// if a reality manifest already exists for the pod, add it to the manifest pair, to prevent reinstall the same SHA
+			for _, realityResult := range realityResults {
+				if realityResult.Manifest.ID() == intentResult.Manifest.ID() {
+					manifestPair.Reality = realityResult.Manifest
+					break
+				}
+			}
+			pairs = append(pairs, manifestPair)
 		}
 	}
 
-	for _, intentManifest := range intentRequired {
-		intentManifest := &ManifestPair{
-			Intent:       intentManifest.Manifest,
-			ID:           intentManifest.Manifest.ID(),
-			PodUniqueKey: intentManifest.PodUniqueKey,
-		}
-
-		go p.handleRequiredPod(intentManifest, errorChan, quit)
+	for _, pair := range pairs {
+		go p.handleWhiteListPod(pair, errorChan, quit)
 	}
-	for i := 0; i < len(intentRequired); i++ {
+	for i := 0; i < len(pairs); i++ {
 		select {
 		case <-quit:
 		case err := <-errorChan:
@@ -119,7 +120,7 @@ func (p *Preparer) InstallRequiredPods(requiredPods map[types.PodID]bool, prepar
 	return nil
 }
 
-func (p *Preparer) handleRequiredPod(intentManifest *ManifestPair, errorChan chan<- error, quit chan<- struct{}) {
+func (p *Preparer) handleWhiteListPod(intentManifest *ManifestPair, errorChan chan<- error, quit chan<- struct{}) {
 	var pod *pods.Pod
 	var err error
 	var manifestLogger logging.Logger
@@ -130,7 +131,7 @@ func (p *Preparer) handleRequiredPod(intentManifest *ManifestPair, errorChan cha
 		"sha":            sha,
 		"pod_unique_key": intentManifest.PodUniqueKey,
 	})
-	manifestLogger.NoFields().Debugln("processing required pod manifest")
+	manifestLogger.NoFields().Debugln("processing whitelist pod manifest")
 
 	if intentManifest.PodUniqueKey == "" {
 		pod = p.podFactory.NewLegacyPod(intentManifest.ID)
@@ -142,37 +143,17 @@ func (p *Preparer) handleRequiredPod(intentManifest *ManifestPair, errorChan cha
 		}
 	}
 
-	ok, err := p.preparePod(*intentManifest, pod, manifestLogger)
-	if !ok || err != nil {
+	err = p.preparePod(*intentManifest, pod, manifestLogger)
+	if err != nil {
 		errorChan <- util.Errorf("failed to install pod: %s, error: %v", intentManifest.Intent.ID(), err)
 		return
 	}
-	ok = p.resolvePair(*intentManifest, pod, manifestLogger)
+	ok := p.resolvePair(*intentManifest, pod, manifestLogger)
 	if !ok {
 		errorChan <- util.Errorf("failed to install pod: %s", intentManifest.Intent.ID())
 		return
 	}
 	quit <- struct{}{}
-}
-
-func (p *Preparer) checkPodHealth(man consul.ManifestResult, config *PreparerConfig) bool {
-	client, err := config.GetClient(time.Duration(*constants.HEALTHCHECK_TIMEOUT) * time.Second)
-	if err != nil {
-		p.Logger.WithError(err).Errorln("failed to get http client for this preparer")
-		return false
-	}
-	url := fmt.Sprintf("http://%s:%d%s", p.node, man.Manifest.GetStatusPort(), man.Manifest.GetStatusPath())
-
-	resp, err := client.Head(url)
-	if err != nil {
-		p.Logger.WithError(err).Errorln("health check failed")
-		return false
-	}
-
-	if health.HealthState(resp.Status) == health.Passing {
-		return true
-	}
-	return false
 }
 
 func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
@@ -223,8 +204,8 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 
 						// Attempt to drain the channel first. If a value is in the channel's buffer,
 						// it means that the consumer of the channel is still working on the last read.
-						//We drain the channel to make sure that the next time it reads the channel it
-						//gets the latest manifest
+						// We drain the channel to make sure that the next time it reads the channel it
+						// gets the latest manifest
 						select {
 						case oldPair := <-podChanMap[workerID]:
 							oldSHA, _ := oldPair.Intent.SHA()
@@ -239,7 +220,6 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 
 						podChanMap[workerID] <- pair
 					}
-
 				}
 			}
 		case <-quitAndAck:
@@ -318,11 +298,11 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 						break
 					}
 				}
-				ok, err := p.preparePod(nextLaunch, pod, manifestLogger)
-				if !ok || err != nil {
+				err = p.preparePod(nextLaunch, pod, manifestLogger)
+				if err != nil {
 					break
 				}
-				ok = p.resolvePair(nextLaunch, pod, manifestLogger)
+				ok := p.resolvePair(nextLaunch, pod, manifestLogger)
 				if ok {
 					nextLaunch = ManifestPair{}
 					working = false
@@ -340,7 +320,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 	}
 }
 
-func (p *Preparer) preparePod(nextLaunch ManifestPair, pod *pods.Pod, manifestLogger logging.Logger) (bool, error) {
+func (p *Preparer) preparePod(nextLaunch ManifestPair, pod *pods.Pod, manifestLogger logging.Logger) error {
 	// TODO better solution: force the preparer to have a 0s default timeout, prevent KILLs
 	if pod.Id == constants.PreparerPodID {
 		pod.DefaultTimeout = time.Duration(0)
@@ -352,7 +332,7 @@ func (p *Preparer) preparePod(nextLaunch ManifestPair, pod *pods.Pod, manifestLo
 	for _, podID := range p.logBridgeBlacklist {
 		if pod.Id.String() == podID {
 			effectiveLogBridgeExec = svlogdExec
-			return false, nil
+			break
 		}
 	}
 	pod.SetLogBridgeExec(effectiveLogBridgeExec)
@@ -389,7 +369,7 @@ func (p *Preparer) preparePod(nextLaunch ManifestPair, pod *pods.Pod, manifestLo
 			nextLaunch.Reality = nil
 		} else if err != nil {
 			manifestLogger.WithError(err).Errorln("Error getting reality manifest")
-			return false, err
+			return err
 		} else {
 			nextLaunch.Reality = reality
 		}
@@ -399,19 +379,19 @@ func (p *Preparer) preparePod(nextLaunch ManifestPair, pod *pods.Pod, manifestLo
 		switch {
 		case err != nil && !statusstore.IsNoStatus(err):
 			manifestLogger.WithError(err).Errorln("Error getting reality manifest from pod status")
-			return false, err
+			return err
 		case statusstore.IsNoStatus(err):
 			nextLaunch.Reality = nil
 		default:
 			manifest, err := manifest.FromBytes([]byte(status.Manifest))
 			if err != nil {
 				manifestLogger.WithError(err).Errorln("Error parsing reality manifest from pod status")
-				return false, err
+				return err
 			}
 			nextLaunch.Reality = manifest
 		}
 	}
-	return true, nil
+	return nil
 }
 
 // check if a manifest satisfies the authorization requirement of this preparer
