@@ -907,6 +907,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			RunAs:            runAsUser,
 			PodEnvDir:        pod.EnvDir(),
 			PodHomeDir:       pod.Home(),
+			SuppliedEnvVars:  launchableStanza.Env,
 		}, nil
 	}
 
