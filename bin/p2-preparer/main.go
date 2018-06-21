@@ -1,10 +1,8 @@
 package main
 
 import (
-	"io/ioutil"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 
@@ -13,7 +11,6 @@ import (
 
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/preparer"
-	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/version"
 	"github.com/square/p2/pkg/watch"
@@ -47,7 +44,6 @@ func main() {
 		defer statusServer.Close()
 	}
 
-	requiredPods := make(map[types.PodID]bool)
 	if preparerConfig.RequireFile != "" {
 		_, err := os.Stat(preparerConfig.RequireFile)
 		if os.IsNotExist(err) {
@@ -55,14 +51,6 @@ func main() {
 		}
 		if err != nil {
 			logger.WithError(err).Fatalln("Could not check for require file's existence")
-		}
-
-		required, err := loadTokens(preparerConfig.RequireFile)
-		if err != nil {
-			logger.WithError(err).Fatalln("Could not read required file")
-		}
-		for pod := range required {
-			requiredPods[types.PodID(pod)] = true
 		}
 	}
 
@@ -95,13 +83,6 @@ func main() {
 	err = prep.BuildRealityAtLaunch()
 	if err != nil {
 		logger.WithError(err).Fatalf("Could not do initial build reality at launch: %s", err)
-	}
-
-	if requiredPods != nil {
-		err = prep.InstallRequiredPods(requiredPods, preparerConfig)
-		if err != nil {
-			logger.WithError(err).Fatalln("Could not do initial required pods")
-		}
 	}
 
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
@@ -142,13 +123,4 @@ func waitForTermination(logger logging.Logger, quitMainUpdate chan struct{}, qui
 	}
 	quitMainUpdate <- struct{}{}
 	<-quitMainUpdate // acknowledgement
-}
-
-func loadTokens(path string) ([]string, error) {
-	tokens, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	return strings.Split(string(tokens), " "), nil
 }
