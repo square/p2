@@ -9,6 +9,7 @@ import (
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/constants"
+	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
@@ -20,6 +21,7 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
+	"github.com/square/p2/pkg/watch"
 )
 
 // The Pod ID of the preparer.
@@ -77,6 +79,90 @@ func (p podWorkerID) String() string {
 	}
 
 	return fmt.Sprintf("%s-%s", p.podID.String(), p.podUniqueKey)
+}
+
+func (p *Preparer) InstallRequiredPods(requiredPods map[types.PodID]bool, preparerConfig *PreparerConfig) error {
+	intentResults, _, err := p.store.ListPods(consul.INTENT_TREE, p.node)
+	var intentRequired []consul.ManifestResult
+	if err != nil {
+		p.Logger.WithError(err).Errorln("could not check intent")
+	}
+	errorChan := make(chan error)
+	quit := make(chan struct{})
+
+	for _, intentResult := range intentResults {
+		if _, ok := requiredPods[intentResult.Manifest.ID()]; ok {
+			// check pod health here, to prevent reinstall. This is useful when
+			// the required pod is already running, and the p2-prepare restarted
+			if p.checkPodHealth(intentResult, preparerConfig) {
+				continue
+			}
+			intentRequired = append(intentRequired, intentResult)
+		}
+	}
+
+	for _, intentManifest := range intentRequired {
+		if _, ok := requiredPods[intentManifest.Manifest.ID()]; ok {
+			intentManifest := &ManifestPair{
+				Intent:       intentManifest.Manifest,
+				ID:           intentManifest.Manifest.ID(),
+				PodUniqueKey: intentManifest.PodUniqueKey,
+			}
+
+			go p.handleRequiredPod(intentManifest, errorChan, quit)
+		}
+	}
+	for i := 0; i < len(intentRequired); i++ {
+		select {
+		case <-quit:
+		case err := <-errorChan:
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *Preparer) handleRequiredPod(intentManifest *ManifestPair, errorChan chan<- error, quit chan<- struct{}) {
+	var pod *pods.Pod
+	var manifestLogger logging.Logger
+	manifestLogger = p.Logger.SubLogger(logrus.Fields{
+		"pod":            intentManifest.ID,
+		"sha":            intentManifest.Intent.SHA(),
+		"pod_unique_key": intentManifest.PodUniqueKey,
+	})
+	manifestLogger.NoFields().Debugln("processing required pod manifest")
+
+	ok, err := p.preparePod(*intentManifest, pod, manifestLogger)
+	if !ok || err != nil {
+		errorChan <- util.Errorf("failed to install pod: %s, error: %v", intentManifest.Intent.ID(), err)
+		return
+	}
+	ok = p.resolvePair(*intentManifest, pod, manifestLogger)
+	if !ok {
+		errorChan <- util.Errorf("failed to install pod: %s", intentManifest.Intent.ID())
+		return
+	}
+	quit <- struct{}{}
+}
+
+func (p *Preparer) checkPodHealth(man consul.ManifestResult, config *PreparerConfig) bool {
+	client, err := config.GetClient(time.Duration(*watch.HEALTHCHECK_TIMEOUT) * time.Second)
+	if err != nil {
+		p.Logger.WithError(err).Errorln("failed to get http client for this preparer")
+		return false
+	}
+	url := fmt.Sprintf("http://%s:%d%s", p.node, man.Manifest.GetStatusPort(), man.Manifest.GetStatusPath())
+
+	resp, err := client.Head(url)
+	if err != nil {
+		p.Logger.WithError(err).Errorln("health check failed")
+		return false
+	}
+
+	if health.HealthState(resp.Status) == health.Passing {
+		return true
+	}
+	return false
 }
 
 func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
@@ -212,93 +298,14 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 		case <-time.After(backoffTime):
 			if working {
 				var pod *pods.Pod
-				var err error
-				if nextLaunch.PodUniqueKey == "" {
-					pod = p.podFactory.NewLegacyPod(nextLaunch.ID)
-				} else {
-					pod, err = p.podFactory.NewUUIDPod(nextLaunch.ID, nextLaunch.PodUniqueKey)
-					if err != nil {
-						manifestLogger.WithError(err).Errorln("Could not initialize pod")
-						break
-					}
+				ok, err := p.preparePod(nextLaunch, pod, manifestLogger)
+				if !ok || err != nil {
+					break
 				}
-
-				// TODO better solution: force the preparer to have a 0s default timeout, prevent KILLs
-				if pod.Id == constants.PreparerPodID {
-					pod.DefaultTimeout = time.Duration(0)
-				}
-
-				effectiveLogBridgeExec := p.logExec
-				// pods that are in the blacklist for this preparer shall not use the
-				// preparer's log exec. Instead, they will use the default svlogd logexec.
-				for _, podID := range p.logBridgeBlacklist {
-					if pod.Id.String() == podID {
-						effectiveLogBridgeExec = svlogdExec
-						break
-					}
-				}
-				pod.SetLogBridgeExec(effectiveLogBridgeExec)
-				pod.SetFinishExec(p.finishExec)
-
-				// podChan is being fed values gathered from a consul.Watch() in
-				// WatchForPodManifestsForNode(). If the watch returns a new pair of
-				// intent/reality values before the previous change has finished
-				// processing in resolvePair(), the reality value will be stale. This
-				// leads to a bug where the preparer will appear to update a package
-				// and when that is finished, "update" it again.
-				//
-				// Example ordering of bad events:
-				// 1) update to /intent for pod A comes in, /reality is read and
-				// resolvePair() handles it
-				// 2) before resolvePair() finishes, another /intent update comes in,
-				// and /reality is read but hasn't been changed. This update cannot
-				// be processed until the previous resolvePair() call finishes, and
-				// updates /reality. Now the reality value used here is stale. We
-				// want to refresh our /reality read so we don't restart the pod if
-				// intent didn't change between updates.
-				//
-				// The correct solution probably involves watching reality and intent
-				// and feeding updated pairs to a control loop.
-				//
-				// This is a quick fix to ensure that the reality value being used is
-				// up-to-date. The de-bouncing logic in this method should ensure that the
-				// intent value is fresh (to the extent that Consul is timely). Fetching
-				// the reality value again ensures its freshness too.
-				if nextLaunch.PodUniqueKey == "" {
-					// legacy pod, get reality manifest from reality tree
-					reality, _, err := p.store.Pod(consul.REALITY_TREE, p.node, nextLaunch.ID)
-					if err == pods.NoCurrentManifest {
-						nextLaunch.Reality = nil
-					} else if err != nil {
-						manifestLogger.WithError(err).Errorln("Error getting reality manifest")
-						break
-					} else {
-						nextLaunch.Reality = reality
-					}
-				} else {
-					// uuid pod, get reality manifest from pod status
-					status, _, err := p.podStatusStore.Get(nextLaunch.PodUniqueKey)
-					switch {
-					case err != nil && !statusstore.IsNoStatus(err):
-						manifestLogger.WithError(err).Errorln("Error getting reality manifest from pod status")
-						break
-					case statusstore.IsNoStatus(err):
-						nextLaunch.Reality = nil
-					default:
-						manifest, err := manifest.FromBytes([]byte(status.Manifest))
-						if err != nil {
-							manifestLogger.WithError(err).Errorln("Error parsing reality manifest from pod status")
-							break
-						}
-						nextLaunch.Reality = manifest
-					}
-				}
-
-				ok := p.resolvePair(nextLaunch, pod, manifestLogger)
+				ok = p.resolvePair(nextLaunch, pod, manifestLogger)
 				if ok {
 					nextLaunch = ManifestPair{}
 					working = false
-
 					// Reset the backoff time
 					backoffTime = minimumBackoffTime
 				} else {
@@ -311,6 +318,90 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 			}
 		}
 	}
+}
+
+func (p *Preparer) preparePod(nextLaunch ManifestPair, pod *pods.Pod, manifestLogger logging.Logger) (bool, error) {
+	var err error
+	if nextLaunch.PodUniqueKey == "" {
+		pod = p.podFactory.NewLegacyPod(nextLaunch.ID)
+	} else {
+		pod, err = p.podFactory.NewUUIDPod(nextLaunch.ID, nextLaunch.PodUniqueKey)
+		if err != nil {
+			manifestLogger.WithError(err).Errorln("Could not initialize pod")
+			return false, err
+		}
+	}
+	// TODO better solution: force the preparer to have a 0s default timeout, prevent KILLs
+	if pod.Id == constants.PreparerPodID {
+		pod.DefaultTimeout = time.Duration(0)
+	}
+
+	effectiveLogBridgeExec := p.logExec
+	// pods that are in the blacklist for this preparer shall not use the
+	// preparer's log exec. Instead, they will use the default svlogd logexec.
+	for _, podID := range p.logBridgeBlacklist {
+		if pod.Id.String() == podID {
+			effectiveLogBridgeExec = svlogdExec
+			return false, nil
+		}
+	}
+	pod.SetLogBridgeExec(effectiveLogBridgeExec)
+	pod.SetFinishExec(p.finishExec)
+
+	// podChan is being fed values gathered from a consul.Watch() in
+	// WatchForPodManifestsForNode(). If the watch returns a new pair of
+	// intent/reality values before the previous change has finished
+	// processing in resolvePair(), the reality value will be stale. This
+	// leads to a bug where the preparer will appear to update a package
+	// and when that is finished, "update" it again.
+	//
+	// Example ordering of bad events:
+	// 1) update to /intent for pod A comes in, /reality is read and
+	// resolvePair() handles it
+	// 2) before resolvePair() finishes, another /intent update comes in,
+	// and /reality is read but hasn't been changed. This update cannot
+	// be processed until the previous resolvePair() call finishes, and
+	// updates /reality. Now the reality value used here is stale. We
+	// want to refresh our /reality read so we don't restart the pod if
+	// intent didn't change between updates.
+	//
+	// The correct solution probably involves watching reality and intent
+	// and feeding updated pairs to a control loop.
+	//
+	// This is a quick fix to ensure that the reality value being used is
+	// up-to-date. The de-bouncing logic in this method should ensure that the
+	// intent value is fresh (to the extent that Consul is timely). Fetching
+	// the reality value again ensures its freshness too.
+	if nextLaunch.PodUniqueKey == "" {
+		// legacy pod, get reality manifest from reality tree
+		reality, _, err := p.store.Pod(consul.REALITY_TREE, p.node, nextLaunch.ID)
+		if err == pods.NoCurrentManifest {
+			nextLaunch.Reality = nil
+		} else if err != nil {
+			manifestLogger.WithError(err).Errorln("Error getting reality manifest")
+			return false, err
+		} else {
+			nextLaunch.Reality = reality
+		}
+	} else {
+		// uuid pod, get reality manifest from pod status
+		status, _, err := p.podStatusStore.Get(nextLaunch.PodUniqueKey)
+		switch {
+		case err != nil && !statusstore.IsNoStatus(err):
+			manifestLogger.WithError(err).Errorln("Error getting reality manifest from pod status")
+			return false, err
+		case statusstore.IsNoStatus(err):
+			nextLaunch.Reality = nil
+		default:
+			manifest, err := manifest.FromBytes([]byte(status.Manifest))
+			if err != nil {
+				manifestLogger.WithError(err).Errorln("Error parsing reality manifest from pod status")
+				return false, err
+			}
+			nextLaunch.Reality = manifest
+		}
+	}
+	return true, nil
 }
 
 // check if a manifest satisfies the authorization requirement of this preparer
