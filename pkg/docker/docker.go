@@ -100,6 +100,10 @@ type Launchable struct {
 	// Typically it will indicate that docker should always restart the container
 	// for long-running services (e.g. servers)
 	RestartPolicy_ runit.RestartPolicy
+
+	// SuppliedEnvVars is a map of environment variables passed in the
+	// launchable stanza
+	SuppliedEnvVars map[string]string
 }
 
 func (l *Launchable) Disable() error {
@@ -112,8 +116,7 @@ func (l *Launchable) EnvDir() string {
 }
 
 func (l *Launchable) EnvVars() map[string]string {
-	// TODO: implement
-	return nil
+	return l.SuppliedEnvVars
 }
 
 func (l *Launchable) Executables(_ *runit.ServiceBuilder) ([]launch.Executable, error) {
