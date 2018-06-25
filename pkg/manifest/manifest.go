@@ -525,8 +525,7 @@ func ValidManifest(m Manifest) error {
 		if stanza.LaunchableType == "" {
 			return fmt.Errorf("'%s': launchable must contain a 'launchable_type'", launchableID)
 		}
-
-		if stanza.LaunchableType == "hoist" || stanza.LaunchableType == "opencontainer" {
+		if stanza.LaunchableType == launch.HoistLaunchableType || stanza.LaunchableType == launch.OpenContainerLaunchableType {
 			switch {
 			case stanza.Location == "" && stanza.Version.ID == "":
 				return fmt.Errorf("'%s': launchable must contain a 'location' or 'version'", launchableID)
@@ -536,9 +535,12 @@ func ValidManifest(m Manifest) error {
 			continue
 		}
 
-		if stanza.LaunchableType == "docker" {
+		if stanza.LaunchableType == launch.DockerLaunchableType {
 			if stanza.Image.Name == "" {
 				return fmt.Errorf("'%s': docker launchables must contain an image", launchableID)
+			}
+			if stanza.Image.SHA256 == "" {
+				return fmt.Errorf("'%s': docker launchables must contain a sha256", launchableID)
 			}
 		}
 	}
