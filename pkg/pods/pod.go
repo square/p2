@@ -2,7 +2,6 @@ package pods
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io/ioutil"
 	"net/url"
@@ -31,6 +30,7 @@ import (
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/util/size"
+	"golang.org/x/net/context"
 
 	"github.com/Sirupsen/logrus"
 	dockertypes "github.com/docker/docker/api/types"
@@ -421,6 +421,11 @@ func (pod *Pod) Uninstall() error {
 		return err
 	}
 
+	err = docker.PruneResources(pod.DockerClient)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -488,18 +493,17 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 				return err
 			}
 		} else if launchable.Type() == launch.DockerLaunchableType {
-			reader, err := pod.DockerClient.ImagePull(context.TODO(), stanza.Image.Name, dockertypes.ImagePullOptions{RegistryAuth: containerRegistryAuthStr})
+			reader, err := pod.DockerClient.ImagePull(context.TODO(), stanza.LaunchableImage(), dockertypes.ImagePullOptions{RegistryAuth: containerRegistryAuthStr})
 			if err != nil {
 				pod.logLaunchableError(launchable.ServiceID(), err, fmt.Sprintf("could not pull docker image: %s", err))
 				return util.Errorf("could not pull docker image: %s", err)
 			}
 			defer reader.Close()
-			b, err := ioutil.ReadAll(reader)
+			// we need to read all output in order to block until image pull is complete
+			_, err = ioutil.ReadAll(reader)
 			if err != nil {
 				pod.logLaunchableError(launchable.ServiceID(), err, "error reading docker pull output")
 			}
-			// log the output of docker pull, there could be errors here that will cause future steps to fail
-			pod.logInfo(string(b))
 		}
 
 		output, err := launchable.PostInstall()

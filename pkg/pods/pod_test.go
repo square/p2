@@ -27,6 +27,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	. "github.com/anthonybishopric/gotcha"
+	dockerclient "github.com/docker/docker/client"
 )
 
 func getTestPod() *Pod {
@@ -415,11 +416,16 @@ func TestUninstall(t *testing.T) {
 
 	testPodDir, err := ioutil.TempDir("", "testPodDir")
 	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
+	dockerClient, err := dockerclient.NewEnvClient()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
 	pod := Pod{
 		Id:             "testPod",
 		home:           testPodDir,
 		ServiceBuilder: serviceBuilder,
 		logger:         logging.DefaultLogger,
+		DockerClient:   dockerClient,
 	}
 	pod.subsystemer = &FakeSubsystemer{}
 	manifest := getTestPodManifest(t)
