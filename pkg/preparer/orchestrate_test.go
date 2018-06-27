@@ -9,7 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"strings"
+
+	"path/filepath"
+
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/constants"
@@ -17,12 +22,15 @@ import (
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/store/consul/statusstore"
+	"github.com/square/p2/pkg/store/consul/statusstore/podstatus"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/clearsign"
 	"golang.org/x/crypto/openpgp/packet"
+	context "golang.org/x/net/context"
 )
 
 type TestPod struct {
@@ -174,17 +182,37 @@ func testSignedManifest(t *testing.T, modify func(manifest.Builder, *openpgp.Ent
 type FakeStore struct {
 	currentManifest      manifest.Manifest
 	currentManifestError error
+	wipedReality         bool
 }
 
-func (f *FakeStore) ListPods(consul.PodPrefix, types.NodeName) ([]consul.ManifestResult, time.Duration, error) {
+type FakeStatusStore struct {
+}
+
+func (f *FakeStatusStore) Get(types.PodUniqueKey) (podstatus.PodStatus, *api.QueryMeta, error) {
+	return podstatus.PodStatus{}, nil, statusstore.NoStatusError{}
+}
+
+func (f *FakeStatusStore) MutateStatus(context.Context, types.PodUniqueKey, func(podstatus.PodStatus) (podstatus.PodStatus, error)) error {
+	return nil
+}
+
+func (f *FakeStore) ListPods(prefix consul.PodPrefix, node types.NodeName) ([]consul.ManifestResult, time.Duration, error) {
 	if f.currentManifest == nil {
 		return nil, 0, nil
 	}
 	if f.currentManifestError != nil {
 		return nil, 0, f.currentManifestError
 	}
+	if f.wipedReality && prefix == consul.REALITY_TREE {
+		return nil, 0, nil
+	}
+	uuid := types.PodUniqueKey("1")
+	manifest := &consul.ManifestResult{
+		Manifest:     f.currentManifest,
+		PodUniqueKey: uuid,
+	}
 	return []consul.ManifestResult{
-		{Manifest: f.currentManifest},
+		*manifest,
 	}, 0, nil
 }
 
@@ -218,7 +246,83 @@ func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks, string) {
 	hooks := &fakeHooks{}
 	p.hooks = hooks
 	p.store = f
+	p.podStatusStore = &FakeStatusStore{}
 	return p, hooks, podRoot
+}
+
+func TestPrepareSkipInstallIfPodWhiteListFileNotExist(t *testing.T) {
+	p, _, _ := testPreparer(t, &FakeStore{})
+	_, filename, _, _ := runtime.Caller(0)
+	testPath := filepath.Join(filepath.Dir(filename), "pod_whitelist_dummy")
+	cfg := &PreparerConfig{
+		PodWhitelistFile: testPath,
+	}
+	whitelistPods, err := p.CheckPodWhitelist(cfg)
+	Assert(t).IsTrue(len(whitelistPods) == 0, "With no existence of pod whitelist file, the list should be empty")
+	Assert(t).IsNil(err, "Should not have erred when pod whitelist file does not exists")
+}
+
+func TestPrepareCheckWhiteListFileIfConfigured(t *testing.T) {
+	p, _, _ := testPreparer(t, &FakeStore{})
+	_, filename, _, _ := runtime.Caller(0)
+	testPath := filepath.Join(filepath.Dir(filename), "pod_whitelist")
+
+	file, _ := os.Create(testPath)
+	defer file.Close()
+
+	file.Write([]byte("slug"))
+
+	cfg := &PreparerConfig{
+		PodWhitelistFile: testPath,
+	}
+	defer os.Remove(testPath)
+	go func(cfg *PreparerConfig) {
+		whitelistPods, err := p.CheckPodWhitelist(cfg)
+		Assert(t).IsTrue(len(whitelistPods) == 1, "Successfully read the pods from whitelist file")
+		Assert(t).IsNil(err, "Successfully exited the infinite for loop of checking pod whitelist, when the file is deleted")
+	}(cfg)
+
+	time.Sleep(time.Second)
+}
+
+func TestPrepareInstallWhiteListPodsInTheIntentSkipInstall(t *testing.T) {
+	whiteListPods := make(map[types.PodID]bool)
+	whiteListPods["hello"] = true
+
+	store := &FakeStore{
+		currentManifest: testManifest(t),
+		wipedReality:    true,
+	}
+
+	p, _, fakePodRoot := testPreparer(t, store)
+	defer p.Close()
+	defer os.RemoveAll(fakePodRoot)
+
+	// error out the podID to be installed here, the further installation is not included here, tested by other tests already.
+	// We are verifying the podID to be installed
+	err := p.installWhiteListPods(whiteListPods)
+	s := strings.Split(err.Error(), " ")
+	podID := s[len(s)-1]
+	Assert(t).AreEqual(podID, "hello", "The podID to install should be the one in intent")
+}
+
+func TestPrepareWillNotInstallWhiteListPodsNotInTheIntentSkipInstall(t *testing.T) {
+	whiteListPods := make(map[types.PodID]bool)
+	whiteListPods["test"] = true
+
+	store := &FakeStore{
+		currentManifest: testManifest(t),
+		wipedReality:    true,
+	}
+
+	p, _, fakePodRoot := testPreparer(t, store)
+	defer p.Close()
+	defer os.RemoveAll(fakePodRoot)
+
+	// error out the podID to be installed here, we are stipping installation by returning an err, if err is not nil,
+	// means there is no pod to install, which is expected
+	err := p.installWhiteListPods(whiteListPods)
+	Assert(t).IsTrue(err == nil, "InstallAndLaunchPod not executed")
 }
 
 func TestPreparerLaunchesNewPodsThatArentInstalledYet(t *testing.T) {
