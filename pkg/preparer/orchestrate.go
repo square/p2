@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"os"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
@@ -79,16 +81,57 @@ func (p podWorkerID) String() string {
 	return fmt.Sprintf("%s-%s", p.podID.String(), p.podUniqueKey)
 }
 
-func (p *Preparer) InstallWhiteListPods(whiteListPods map[types.PodID]bool, preparerConfig *PreparerConfig) error {
+func (p *Preparer) CheckPodWhitelist(preparerConfig *PreparerConfig) (map[types.PodID]bool, error) {
+	whiteListPods := make(map[types.PodID]bool)
+	if preparerConfig.PodWhitelistFile != "" {
+		// Keep loopinng the white list of pods in pod whitelist file, and install the non existing pods
+		// exit while the white list is empty
+		for {
+			_, err := os.Stat(preparerConfig.PodWhitelistFile)
+			// if the whitelist file does not exist, end the loop and proceed
+			if os.IsNotExist(err) {
+				p.Logger.WithError(err).Warningf("Pod whilelist file does not exist")
+				break
+			}
+
+			podWhitelist, err := util.LoadTokens(preparerConfig.PodWhitelistFile)
+			if err != nil {
+				return nil, err
+			}
+
+			// if the pod white list is empty, jump out of the loop, then p2-preparer proceeds to start with full functionality
+			if len(podWhitelist) == 0 {
+				break
+			}
+
+			for _, pod := range podWhitelist {
+				whiteListPods[types.PodID(pod)] = true
+			}
+			p.Logger.WithField("path", preparerConfig.PodWhitelistFile).Printf("Whitelist pods: %+v", whiteListPods)
+			err = p.installWhiteListPods(whiteListPods)
+			if err != nil {
+				return whiteListPods, err
+			}
+			p.Logger.Println("All pods in whitelist, have been successfully installed, empty or remove the pod whitelist file to proceed.")
+			time.Sleep(constants.P2WhitelistCheckInterval)
+		}
+	}
+	return whiteListPods, nil
+}
+
+func (p *Preparer) installWhiteListPods(whiteListPods map[types.PodID]bool) error {
 	intentResults, _, err := p.store.ListPods(consul.INTENT_TREE, p.node)
-	realityResults, _, err := p.store.ListPods(consul.REALITY_TREE, p.node)
-	var pairs []*ManifestPair
 	if err != nil {
 		p.Logger.WithError(err).Errorln("could not check intent")
 	}
+	realityResults, _, err := p.store.ListPods(consul.REALITY_TREE, p.node)
+	if err != nil {
+		p.Logger.WithError(err).Errorln("could not check reality")
+	}
+
+	var pairs []*ManifestPair
 	errorChan := make(chan error)
 	quit := make(chan struct{})
-
 	for _, intentResult := range intentResults {
 		if whiteListPods[intentResult.Manifest.ID()] {
 			manifestPair := &ManifestPair{
@@ -106,11 +149,11 @@ func (p *Preparer) InstallWhiteListPods(whiteListPods map[types.PodID]bool, prep
 			pairs = append(pairs, manifestPair)
 		}
 	}
-
+	p.Logger.WithField("whitelistPodToInstall", pairs).Println("Pods to be installed")
 	for _, pair := range pairs {
 		go p.handleWhiteListPod(pair, errorChan, quit)
 	}
-	for i := 0; i < len(pairs); i++ {
+	for range pairs {
 		select {
 		case <-quit:
 		case err := <-errorChan:
@@ -120,39 +163,40 @@ func (p *Preparer) InstallWhiteListPods(whiteListPods map[types.PodID]bool, prep
 	return nil
 }
 
-func (p *Preparer) handleWhiteListPod(intentManifest *ManifestPair, errorChan chan<- error, quit chan<- struct{}) {
+func (p *Preparer) handleWhiteListPod(pair *ManifestPair, errorChan chan<- error, quit chan<- struct{}) {
 	var pod *pods.Pod
 	var err error
 	var manifestLogger logging.Logger
-	sha, _ := intentManifest.Intent.SHA()
+	sha, _ := pair.Intent.SHA()
 
 	manifestLogger = p.Logger.SubLogger(logrus.Fields{
-		"pod":            intentManifest.ID,
+		"pod":            pair.ID,
 		"sha":            sha,
-		"pod_unique_key": intentManifest.PodUniqueKey,
+		"pod_unique_key": pair.PodUniqueKey,
 	})
 	manifestLogger.NoFields().Debugln("processing whitelist pod manifest")
 
-	if intentManifest.PodUniqueKey == "" {
-		pod = p.podFactory.NewLegacyPod(intentManifest.ID)
+	if pair.PodUniqueKey == "" {
+		pod = p.podFactory.NewLegacyPod(pair.ID)
 	} else {
-		pod, err = p.podFactory.NewUUIDPod(intentManifest.ID, intentManifest.PodUniqueKey)
+		pod, err = p.podFactory.NewUUIDPod(pair.ID, pair.PodUniqueKey)
 		if err != nil {
 			manifestLogger.WithError(err).Errorln("Could not initialize pod")
-			errorChan <- util.Errorf("failed to initialize pod: %s, error: %v", intentManifest.Intent.ID(), err)
+			errorChan <- util.Errorf("failed to initialize pod: %s, error: %v", pair.Intent.ID(), err)
 		}
 	}
-
-	err = p.preparePod(*intentManifest, pod, manifestLogger)
+	p.Logger.WithField("podManifest", pair).Println("Start installing whitelist pod")
+	err = p.preparePod(pair, pod, manifestLogger)
 	if err != nil {
-		errorChan <- util.Errorf("failed to install pod: %s, error: %v", intentManifest.Intent.ID(), err)
+		errorChan <- util.Errorf("failed to install pod: %s, error: %v", pair.Intent.ID(), err)
 		return
 	}
-	ok := p.resolvePair(*intentManifest, pod, manifestLogger)
+	ok := p.resolvePair(*pair, pod, manifestLogger)
 	if !ok {
-		errorChan <- util.Errorf("failed to install pod: %s", intentManifest.Intent.ID())
+		errorChan <- util.Errorf("failed to install pod: %s", pair.Intent.ID())
 		return
 	}
+	p.Logger.WithField("podManifest", pair).Println("Finished installation of the whitelist pod")
 	quit <- struct{}{}
 }
 
@@ -298,7 +342,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 						break
 					}
 				}
-				err = p.preparePod(nextLaunch, pod, manifestLogger)
+				err = p.preparePod(&nextLaunch, pod, manifestLogger)
 				if err != nil {
 					break
 				}
@@ -320,7 +364,7 @@ func (p *Preparer) handlePods(podChan <-chan ManifestPair, quit <-chan struct{})
 	}
 }
 
-func (p *Preparer) preparePod(nextLaunch ManifestPair, pod *pods.Pod, manifestLogger logging.Logger) error {
+func (p *Preparer) preparePod(nextLaunch *ManifestPair, pod *pods.Pod, manifestLogger logging.Logger) error {
 	// TODO better solution: force the preparer to have a 0s default timeout, prevent KILLs
 	if pod.Id == constants.PreparerPodID {
 		pod.DefaultTimeout = time.Duration(0)

@@ -5,16 +5,12 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/Sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/preparer"
-	"github.com/square/p2/pkg/types"
-	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/version"
 	"github.com/square/p2/pkg/watch"
@@ -89,39 +85,9 @@ func main() {
 		logger.WithError(err).Fatalf("Could not do initial build reality at launch: %s", err)
 	}
 
-	whiteListPods := make(map[types.PodID]bool)
-	if preparerConfig.PodWhitelistFile != "" {
-		// Keep loopinng the white list of pods in pod whitelist file, and install the non existing pods
-		// exit while the white list is empty
-		for {
-			_, err := os.Stat(preparerConfig.PodWhitelistFile)
-			// if the whitelist file does not exist, end the loop and proceed
-			if os.IsNotExist(err) {
-				logger.WithError(err).Warningf("Pod whilelist file does not exist")
-				break
-			}
-
-			podWhitelist, err := util.LoadTokens(preparerConfig.PodWhitelistFile)
-			if err != nil {
-				logger.WithError(err).WithField("path", preparerConfig.PodWhitelistFile).Fatalln("Could not read pod whitelist file")
-			}
-
-			// if the pod white list is empty, jump out of the loop, then p2-preparer proceeds to start with full functionality
-			if len(podWhitelist) == 0 {
-				break
-			}
-
-			for pod := range podWhitelist {
-				whiteListPods[types.PodID(pod)] = true
-			}
-
-			err = prep.InstallWhiteListPods(whiteListPods, preparerConfig)
-			if err != nil {
-				logger.WithError(err).Fatalln("Could not install whitelist pods")
-			}
-
-			time.Sleep(constants.P2WhitelistCheckInterval)
-		}
+	podWhiteList, err := prep.CheckPodWhitelist(preparerConfig)
+	if err != nil {
+		logger.WithError(err).Fatalf("Error occurs when checking pod whitelist %+v", podWhiteList)
 	}
 
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
