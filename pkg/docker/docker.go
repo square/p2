@@ -114,22 +114,35 @@ func (l *Launchable) Disable() error {
 		return nil
 	}
 	ctx := context.Background()
+	containerName := l.containerName()
 	// TODO: check if we need to set anything else in this
 	execConfig := dockertypes.ExecConfig{
-		User: l.RunAs,
-		Cmd:  l.PreStopCmd,
+		User:         l.RunAs,
+		Cmd:          l.PreStopCmd,
+		AttachStdout: true,
 	}
-	resp, err := l.DockerClient.ContainerExecCreate(ctx, l.containerName(), execConfig)
+	resp, err := l.DockerClient.ContainerExecCreate(ctx, containerName, execConfig)
 	if err != nil {
-		return util.Errorf("could not create PreStop exec configuration for container %s: %s", l.containerName(), err)
+		return util.Errorf("could not create PreStop exec configuration for container %s: %s", containerName, err)
 	}
-	// TODO: do we want to attach and redirect logs?
 
 	// TODO: check if we need to set anything in this
 	execStartCheck := dockertypes.ExecStartCheck{}
-	err = l.DockerClient.ContainerExecStart(ctx, resp.ID, execStartCheck)
+	hijackedResp, err := l.DockerClient.ContainerExecAttach(ctx, resp.ID, execStartCheck)
 	if err != nil {
-		return util.Errorf("could not start PreStop exec process for container %s: %s", l.containerName(), err)
+		return util.Errorf("could not start PreStop exec process for container %s: %s", containerName, err)
+	}
+	defer hijackedResp.Close()
+	out, err := ioutil.ReadAll(hijackedResp.Reader)
+	if err != nil {
+		return util.Errorf("error reading output of PreStop exec process for container %s: %s", containerName, err)
+	}
+	containerExecInspect, err := l.DockerClient.ContainerExecInspect(ctx, resp.ID)
+	if err != nil {
+		return util.Errorf("error inspecting PreStop exec process for container %s: %s", containerName, err)
+	}
+	if containerExecInspect.ExitCode != 0 {
+		return launch.DisableError{Inner: util.Errorf("%s", out)}
 	}
 	// TODO: check if there is anything else to do here
 	return nil
@@ -270,20 +283,32 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 	// TODO: check if we need to set anything else in this
 	if len(l.PostStartCmd) > 0 {
 		execConfig := dockertypes.ExecConfig{
-			User: l.RunAs,
-			Cmd:  l.PostStartCmd,
+			User:         l.RunAs,
+			Cmd:          l.PostStartCmd,
+			AttachStdout: true,
 		}
 		resp, err := l.DockerClient.ContainerExecCreate(ctx, containerName, execConfig)
 		if err != nil {
 			return util.Errorf("could not create PostStart exec configuration for container %s: %s", containerName, err)
 		}
-		// TODO: do we want to attach and redirect these logs
 
 		// TODO: check if we need to set anything in this
 		execStartCheck := dockertypes.ExecStartCheck{}
-		err = l.DockerClient.ContainerExecStart(ctx, resp.ID, execStartCheck)
+		hijackedResp, err := l.DockerClient.ContainerExecAttach(ctx, resp.ID, execStartCheck)
 		if err != nil {
 			return util.Errorf("could not start PostStart exec process for container %s: %s", containerName, err)
+		}
+		defer hijackedResp.Close()
+		out, err := ioutil.ReadAll(hijackedResp.Reader)
+		if err != nil {
+			return util.Errorf("error reading output of PostStart exec process for container %s: %s", containerName, err)
+		}
+		containerExecInspect, err := l.DockerClient.ContainerExecInspect(ctx, resp.ID)
+		if err != nil {
+			return util.Errorf("error inspecting PostStart exec process for container %s: %s", containerName, err)
+		}
+		if containerExecInspect.ExitCode != 0 {
+			return launch.EnableError{Inner: util.Errorf("%s", out)}
 		}
 		// TODO: check if there is anything else to do here
 	}
