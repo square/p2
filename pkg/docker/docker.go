@@ -13,6 +13,7 @@ import (
 
 	"gopkg.in/yaml.v2"
 
+	"github.com/docker/docker/api/types/filters"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
@@ -362,6 +363,11 @@ func (l *Launchable) Stop(_ *runit.ServiceBuilder, _ runit.SV, _ bool) error {
 	return nil
 }
 
+// The name we will give to the container related to this launchable
+func (l *Launchable) containerName() string {
+	return l.ServiceID()
+}
+
 func (*Launchable) Type() string {
 	return "docker"
 }
@@ -382,6 +388,30 @@ func GetContainerRegistryAuthStr(jsonKeyFile string) (string, error) {
 	encodedJSON, err := json.Marshal(authConfig)
 	containerRegistryAuthStr := base64.URLEncoding.EncodeToString(encodedJSON)
 	return containerRegistryAuthStr, nil
+}
+
+func PruneResources(client *dockerclient.Client) error {
+	// TODO: do we care about the prune reports?
+	// TODO: do we want to filter what to prune?
+	ctx := context.Background()
+	pruneFilters := filters.NewArgs()
+	_, err := client.ContainersPrune(ctx, pruneFilters)
+	if err != nil {
+		return util.Errorf("error pruning containers: %s", err)
+	}
+	_, err = client.ImagesPrune(ctx, pruneFilters)
+	if err != nil {
+		return util.Errorf("error pruning images: %s", err)
+	}
+	_, err = client.NetworksPrune(ctx, pruneFilters)
+	if err != nil {
+		return util.Errorf("error pruning networks: %s", err)
+	}
+	_, err = client.VolumesPrune(ctx, pruneFilters)
+	if err != nil {
+		return util.Errorf("error pruning volumes: %s", err)
+	}
+	return nil
 }
 
 func loadEnvVarsFromDir(envDir string) (map[string]string, error) {
@@ -438,11 +468,6 @@ func loadEnvVars(podEnvDir string, launchableEnvDir string) ([]string, error) {
 	}
 
 	return envVars, nil
-}
-
-// The name we will give to the container related to this launchable
-func (l *Launchable) containerName() string {
-	return l.ServiceID()
 }
 
 // converts a username to the <uid>:<gid> format that Docker expects. This obviates the need
