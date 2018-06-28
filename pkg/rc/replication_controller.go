@@ -71,7 +71,7 @@ type Scheduler interface {
 	// schedule on than EligibleNodes() returns. It will return the newly
 	// allocated nodes which will also appear in subsequent EligibleNodes()
 	// calls
-	AllocateNodes(manifest manifest.Manifest, nodeSelector klabels.Selector, allocationCount int) ([]types.NodeName, error)
+	AllocateNodes(manifest manifest.Manifest, nodeSelector klabels.Selector, allocationCount int, force bool) ([]types.NodeName, error)
 
 	// DeallocateNodes() indicates to the scheduler that the RC has unscheduled
 	// the pod from these nodes, meaning the scheduler can free the
@@ -832,7 +832,7 @@ func (rc *replicationController) updateAllocations(rcFields fields.RC, ineligibl
 	}
 
 	if newNode == "" {
-		newNodes, err := rc.scheduler.AllocateNodes(rcFields.Manifest, rcFields.NodeSelector, nodesRequested)
+		newNodes, err := rc.scheduler.AllocateNodes(rcFields.Manifest, rcFields.NodeSelector, nodesRequested, true)
 		if err != nil || len(newNodes) < 1 {
 			errMsg := fmt.Sprintf("Unable to allocate nodes over grpc: %s", err)
 			rc.logger.WithError(err).Errorf("could not allocate node to replace %s", oldNode)

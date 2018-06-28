@@ -83,7 +83,7 @@ func (s testScheduler) EligibleNodes(manifest manifest.Manifest, nodeSelector kl
 	return as.EligibleNodes(manifest, nodeSelector)
 }
 
-func (s testScheduler) AllocateNodes(manifest manifest.Manifest, nodeSelector klabels.Selector, allocationCount int) ([]types.NodeName, error) {
+func (s testScheduler) AllocateNodes(manifest manifest.Manifest, nodeSelector klabels.Selector, allocationCount int, force bool) ([]types.NodeName, error) {
 	if s.shouldErr {
 		return nil, util.Errorf("Intentional error allocating nodes.")
 	}
@@ -1739,7 +1739,7 @@ func (f *failingAllocator) EligibleNodes(manifest.Manifest, klabels.Selector) ([
 	return f.eligibleNodes, nil
 }
 
-func (f *failingAllocator) AllocateNodes(manifest.Manifest, klabels.Selector, int) ([]types.NodeName, error) {
+func (f *failingAllocator) AllocateNodes(manifest.Manifest, klabels.Selector, int, bool) ([]types.NodeName, error) {
 	return nil, util.Errorf("AllocateNodes shouldn't have been called")
 }
 func (f *failingAllocator) DeallocateNodes(klabels.Selector, []types.NodeName) error {
