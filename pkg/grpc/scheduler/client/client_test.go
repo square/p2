@@ -145,7 +145,7 @@ func TestAllocateNodesHappy(t *testing.T) {
 	}
 
 	selector := klabels.Everything().Add("foo", klabels.EqualsOperator, []string{"bar"})
-	nodes, err := client.AllocateNodes(testManifest(), selector, 2)
+	nodes, err := client.AllocateNodes(testManifest(), selector, 2, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestAllocatedNodesServerError(t *testing.T) {
 		schedulerClient: inner,
 	}
 
-	_, err := client.AllocateNodes(testManifest(), klabels.Everything().Add("foo", klabels.EqualsOperator, []string{"bar"}), 3)
+	_, err := client.AllocateNodes(testManifest(), klabels.Everything().Add("foo", klabels.EqualsOperator, []string{"bar"}), 3, false)
 	if err == nil {
 		t.Fatal("expected an error when the server fails")
 	}
@@ -246,7 +246,7 @@ func TestDeallocateNodesServerError(t *testing.T) {
 		schedulerClient: inner,
 	}
 
-	_, err := client.AllocateNodes(testManifest(), klabels.Everything().Add("foo", klabels.EqualsOperator, []string{"bar"}), 3)
+	_, err := client.AllocateNodes(testManifest(), klabels.Everything().Add("foo", klabels.EqualsOperator, []string{"bar"}), 3, false)
 	if err == nil {
 		t.Fatal("expected an error when the server fails")
 	}

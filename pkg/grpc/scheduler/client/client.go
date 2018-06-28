@@ -45,7 +45,7 @@ func (c *Client) EligibleNodes(man manifest.Manifest, sel klabels.Selector) ([]t
 	return ret, nil
 }
 
-func (c *Client) AllocateNodes(man manifest.Manifest, nodeSelector klabels.Selector, nodesRequested int) ([]types.NodeName, error) {
+func (c *Client) AllocateNodes(man manifest.Manifest, nodeSelector klabels.Selector, nodesRequested int, force bool) ([]types.NodeName, error) {
 	manifestStr, err := man.Marshal()
 	if err != nil {
 		return nil, util.Errorf("could not marshal manifest for AllocateNodes gRPC request: %s", err)
@@ -54,6 +54,7 @@ func (c *Client) AllocateNodes(man manifest.Manifest, nodeSelector klabels.Selec
 		Manifest:       string(manifestStr),
 		NodeSelector:   nodeSelector.String(),
 		NodesRequested: int64(nodesRequested),
+		Force:          force,
 	}
 
 	resp, err := c.schedulerClient.AllocateNodes(context.Background(), req)
