@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -44,6 +43,9 @@ const (
 	http2MaxFrameLen = 16384 // 16KB frame
 	// http://http2.github.io/http2-spec/#SettingValues
 	http2InitHeaderTableSize = 4096
+	// http2IOBufSize specifies the buffer size for sending frames.
+	defaultWriteBufSize = 32 * 1024
+	defaultReadBufSize  = 32 * 1024
 	// baseContentType is the base content-type for gRPC.  This is a valid
 	// content-type on it's own, but can also include a content-subtype such as
 	// "proto" as a suffix after "+" or ";".  See
@@ -137,9 +139,6 @@ func isReservedHeader(hdr string) bool {
 		"grpc-status",
 		"grpc-timeout",
 		"grpc-status-details-bin",
-		// Intentionally exclude grpc-previous-rpc-attempts and
-		// grpc-retry-pushback-ms, which are "reserved", but their API
-		// intentionally works via metadata.
 		"te":
 		return true
 	default:
@@ -147,8 +146,8 @@ func isReservedHeader(hdr string) bool {
 	}
 }
 
-// isWhitelistedHeader checks whether hdr should be propagated into metadata
-// visible to users, even though it is classified as "reserved", above.
+// isWhitelistedHeader checks whether hdr should be propagated
+// into metadata visible to users.
 func isWhitelistedHeader(hdr string) bool {
 	switch hdr {
 	case ":authority", "user-agent":
@@ -546,9 +545,6 @@ func (w *bufWriter) Write(b []byte) (n int, err error) {
 	if w.err != nil {
 		return 0, w.err
 	}
-	if w.batchSize == 0 { // Buffer has been disabled.
-		return w.conn.Write(b)
-	}
 	for len(b) > 0 {
 		nn := copy(w.buf[w.offset:], b)
 		b = b[nn:]
@@ -582,13 +578,7 @@ type framer struct {
 }
 
 func newFramer(conn net.Conn, writeBufferSize, readBufferSize int) *framer {
-	if writeBufferSize < 0 {
-		writeBufferSize = 0
-	}
-	var r io.Reader = conn
-	if readBufferSize > 0 {
-		r = bufio.NewReaderSize(r, readBufferSize)
-	}
+	r := bufio.NewReaderSize(conn, readBufferSize)
 	w := newBufWriter(conn, writeBufferSize)
 	f := &framer{
 		writer: w,

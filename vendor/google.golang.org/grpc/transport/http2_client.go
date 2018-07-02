@@ -22,7 +22,6 @@ import (
 	"io"
 	"math"
 	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -197,8 +196,14 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr TargetInfo, opts Conne
 		icwz = opts.InitialConnWindowSize
 		dynamicWindow = false
 	}
-	writeBufSize := opts.WriteBufferSize
-	readBufSize := opts.ReadBufferSize
+	writeBufSize := defaultWriteBufSize
+	if opts.WriteBufferSize > 0 {
+		writeBufSize = opts.WriteBufferSize
+	}
+	readBufSize := defaultReadBufSize
+	if opts.ReadBufferSize > 0 {
+		readBufSize = opts.ReadBufferSize
+	}
 	t := &http2Client{
 		ctx:                   ctx,
 		ctxDone:               ctx.Done(), // Cache Done chan.
@@ -374,9 +379,6 @@ func (t *http2Client) createHeaderFields(ctx context.Context, callHdr *CallHdr) 
 	headerFields = append(headerFields, hpack.HeaderField{Name: "content-type", Value: contentType(callHdr.ContentSubtype)})
 	headerFields = append(headerFields, hpack.HeaderField{Name: "user-agent", Value: t.userAgent})
 	headerFields = append(headerFields, hpack.HeaderField{Name: "te", Value: "trailers"})
-	if callHdr.PreviousAttempts > 0 {
-		headerFields = append(headerFields, hpack.HeaderField{Name: "grpc-previous-rpc-attempts", Value: strconv.Itoa(callHdr.PreviousAttempts)})
-	}
 
 	if callHdr.SendCompress != "" {
 		headerFields = append(headerFields, hpack.HeaderField{Name: "grpc-encoding", Value: callHdr.SendCompress})
@@ -631,7 +633,7 @@ func (t *http2Client) CloseStream(s *Stream, err error) {
 		rst = true
 		rstCode = http2.ErrCodeCancel
 	}
-	t.closeStream(s, err, rst, rstCode, status.Convert(err), nil, false)
+	t.closeStream(s, err, rst, rstCode, nil, nil, false)
 }
 
 func (t *http2Client) closeStream(s *Stream, err error, rst bool, rstCode http2.ErrCode, st *status.Status, mdata map[string][]string, eosReceived bool) {
@@ -655,7 +657,6 @@ func (t *http2Client) closeStream(s *Stream, err error, rst bool, rstCode http2.
 	close(s.done)
 	// If headerChan isn't closed, then close it.
 	if atomic.SwapUint32(&s.headerDone, 1) == 0 {
-		s.noHeaders = true
 		close(s.headerChan)
 	}
 	cleanup := &cleanupStream{
@@ -714,7 +715,7 @@ func (t *http2Client) Close() error {
 	}
 	// Notify all active streams.
 	for _, s := range streams {
-		t.closeStream(s, ErrConnClosing, false, http2.ErrCodeNo, status.New(codes.Unavailable, ErrConnClosing.Desc), nil, false)
+		t.closeStream(s, ErrConnClosing, false, http2.ErrCodeNo, nil, nil, false)
 	}
 	if t.statsHandler != nil {
 		connEnd := &stats.ConnEnd{
@@ -1059,7 +1060,7 @@ func (t *http2Client) operateHeaders(frame *http2.MetaHeadersFrame) {
 	atomic.StoreUint32(&s.bytesReceived, 1)
 	var state decodeState
 	if err := state.decodeResponseHeader(frame); err != nil {
-		t.closeStream(s, err, true, http2.ErrCodeProtocol, status.New(codes.Internal, err.Error()), nil, false)
+		t.closeStream(s, err, true, http2.ErrCodeProtocol, nil, nil, false)
 		// Something wrong. Stops reading even when there is remaining.
 		return
 	}
@@ -1095,8 +1096,6 @@ func (t *http2Client) operateHeaders(frame *http2.MetaHeadersFrame) {
 			if len(state.mdata) > 0 {
 				s.header = state.mdata
 			}
-		} else {
-			s.noHeaders = true
 		}
 		close(s.headerChan)
 	}
@@ -1147,9 +1146,7 @@ func (t *http2Client) reader() {
 				t.mu.Unlock()
 				if s != nil {
 					// use error detail to provide better err message
-					code := http2ErrConvTab[se.Code]
-					msg := t.framer.fr.ErrorDetail().Error()
-					t.closeStream(s, streamError(code, msg), true, http2.ErrCodeProtocol, status.New(code, msg), nil, false)
+					t.closeStream(s, streamErrorf(http2ErrConvTab[se.Code], "%v", t.framer.fr.ErrorDetail()), true, http2.ErrCodeProtocol, nil, nil, false)
 				}
 				continue
 			} else {
@@ -1260,13 +1257,11 @@ func (t *http2Client) ChannelzMetric() *channelz.SocketInternalMetric {
 		LastMessageSentTimestamp:        t.lastMsgSent,
 		LastMessageReceivedTimestamp:    t.lastMsgRecv,
 		LocalFlowControlWindow:          int64(t.fc.getSize()),
-		SocketOptions:                   channelz.GetSocketOption(t.conn),
-		LocalAddr:                       t.localAddr,
-		RemoteAddr:                      t.remoteAddr,
+		//socket options
+		LocalAddr:  t.localAddr,
+		RemoteAddr: t.remoteAddr,
+		// Security
 		// RemoteName :
-	}
-	if au, ok := t.authInfo.(credentials.ChannelzSecurityInfo); ok {
-		s.Security = au.GetSecurityValue()
 	}
 	t.czmu.RUnlock()
 	s.RemoteFlowControlWindow = t.getOutFlowWindow()
