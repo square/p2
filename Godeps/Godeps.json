@@ -633,43 +633,43 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
-			"Rev": "e514e69ffb8bc3c76a71ae40de0118d794855992"
+			"Rev": "ed29d75add3d7c4bf7ca65aac0c6df3d1420216f"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context/ctxhttp",
-			"Rev": "e514e69ffb8bc3c76a71ae40de0118d794855992"
+			"Rev": "ed29d75add3d7c4bf7ca65aac0c6df3d1420216f"
 		},
 		{
 			"ImportPath": "golang.org/x/net/http/httpguts",
-			"Rev": "e514e69ffb8bc3c76a71ae40de0118d794855992"
+			"Rev": "ed29d75add3d7c4bf7ca65aac0c6df3d1420216f"
 		},
 		{
 			"ImportPath": "golang.org/x/net/http2",
-			"Rev": "e514e69ffb8bc3c76a71ae40de0118d794855992"
+			"Rev": "ed29d75add3d7c4bf7ca65aac0c6df3d1420216f"
 		},
 		{
 			"ImportPath": "golang.org/x/net/http2/hpack",
-			"Rev": "e514e69ffb8bc3c76a71ae40de0118d794855992"
+			"Rev": "ed29d75add3d7c4bf7ca65aac0c6df3d1420216f"
 		},
 		{
 			"ImportPath": "golang.org/x/net/idna",
-			"Rev": "e514e69ffb8bc3c76a71ae40de0118d794855992"
+			"Rev": "ed29d75add3d7c4bf7ca65aac0c6df3d1420216f"
 		},
 		{
 			"ImportPath": "golang.org/x/net/internal/socks",
-			"Rev": "e514e69ffb8bc3c76a71ae40de0118d794855992"
+			"Rev": "ed29d75add3d7c4bf7ca65aac0c6df3d1420216f"
 		},
 		{
 			"ImportPath": "golang.org/x/net/internal/timeseries",
-			"Rev": "e514e69ffb8bc3c76a71ae40de0118d794855992"
+			"Rev": "ed29d75add3d7c4bf7ca65aac0c6df3d1420216f"
 		},
 		{
 			"ImportPath": "golang.org/x/net/proxy",
-			"Rev": "e514e69ffb8bc3c76a71ae40de0118d794855992"
+			"Rev": "ed29d75add3d7c4bf7ca65aac0c6df3d1420216f"
 		},
 		{
 			"ImportPath": "golang.org/x/net/trace",
-			"Rev": "e514e69ffb8bc3c76a71ae40de0118d794855992"
+			"Rev": "ed29d75add3d7c4bf7ca65aac0c6df3d1420216f"
 		},
 		{
 			"ImportPath": "golang.org/x/sys/unix",
