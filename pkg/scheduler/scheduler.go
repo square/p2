@@ -36,7 +36,7 @@ func (sel *ApplicatorScheduler) EligibleNodes(_ manifest.Manifest, selector klab
 	return result, nil
 }
 
-func (sel *ApplicatorScheduler) AllocateNodes(manifest.Manifest, klabels.Selector, int) ([]types.NodeName, error) {
+func (sel *ApplicatorScheduler) AllocateNodes(manifest.Manifest, klabels.Selector, int, bool) ([]types.NodeName, error) {
 	return nil, util.Errorf("AllocateNodes() not yet implemented")
 }
 
