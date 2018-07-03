@@ -130,8 +130,14 @@ type http2Server struct {
 // newHTTP2Server constructs a ServerTransport based on HTTP2. ConnectionError is
 // returned if something goes wrong.
 func newHTTP2Server(conn net.Conn, config *ServerConfig) (_ ServerTransport, err error) {
-	writeBufSize := config.WriteBufferSize
-	readBufSize := config.ReadBufferSize
+	writeBufSize := defaultWriteBufSize
+	if config.WriteBufferSize > 0 {
+		writeBufSize = config.WriteBufferSize
+	}
+	readBufSize := defaultReadBufSize
+	if config.ReadBufferSize > 0 {
+		readBufSize = config.ReadBufferSize
+	}
 	framer := newFramer(conn, writeBufSize, readBufSize)
 	// Send initial settings as connection preface to client.
 	var isettings []http2.Setting
@@ -1085,13 +1091,11 @@ func (t *http2Server) ChannelzMetric() *channelz.SocketInternalMetric {
 		LastMessageSentTimestamp:         t.lastMsgSent,
 		LastMessageReceivedTimestamp:     t.lastMsgRecv,
 		LocalFlowControlWindow:           int64(t.fc.getSize()),
-		SocketOptions:                    channelz.GetSocketOption(t.conn),
-		LocalAddr:                        t.localAddr,
-		RemoteAddr:                       t.remoteAddr,
+		//socket options
+		LocalAddr:  t.localAddr,
+		RemoteAddr: t.remoteAddr,
+		// Security
 		// RemoteName :
-	}
-	if au, ok := t.authInfo.(credentials.ChannelzSecurityInfo); ok {
-		s.Security = au.GetSecurityValue()
 	}
 	t.czmu.RUnlock()
 	s.RemoteFlowControlWindow = t.getOutFlowWindow()
