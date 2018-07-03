@@ -49,7 +49,7 @@ type ReplicationControllerStore interface {
 }
 
 type ReplicationControllerLocker interface {
-	RCNodeTransferLocker
+	RCMutationLocker
 	LockForOwnership(rcID fields.ID, session consul.Session) (consul.Unlocker, error)
 }
 
