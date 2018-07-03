@@ -346,6 +346,29 @@ func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 		}
 	}
 
+	// check if a node transfer node has been removed out of band
+	status, _, err := rc.rcStatusStore.Get(rc.rcID)
+	if err != nil && !statusstore.IsNoStatus(err) {
+		rc.logger.WithError(err).Errorln("Unable to fetch RC status to check for in progress node transfer")
+		return err
+	} else if !statusstore.IsNoStatus(err) {
+		hasOldNode := false
+		for _, node := range current.Nodes() {
+			if status.NodeTransfer.OldNode == node {
+				hasOldNode = true
+				break
+			}
+		}
+		if !hasOldNode {
+			// The old ineligible node has been removed out of band. End the
+			// node transfer
+			err := rc.cancelTransfer(rcFields, current.Nodes())
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	return rc.ensureConsistency(rcFields, current.Nodes(), eligible)
 }
 
@@ -732,6 +755,7 @@ func (rc *replicationController) unschedule(txn *auditingTransaction, rcFields f
 func (rc *replicationController) transferNodes(rcFields fields.RC, current types.PodLocations, eligible []types.NodeName, ineligible []types.NodeName) error {
 	if rc.nodeTransfer.quit != nil {
 		// a node transfer to replace the ineligible node is already in progress
+		rc.logger.Infof("Already watching health on %s. Taking no current node transfer action.", rc.nodeTransfer.newNode)
 		return nil
 	}
 
@@ -994,7 +1018,7 @@ func (rc *replicationController) doBackgroundNodeTransfer(rcFields fields.RC, lo
 			logger.WithError(alertErr).Errorln("Unable to send alert")
 		}
 	} else {
-		logger.Infof("Node transfer was canceled: %s.", rollbackReason)
+		logger.Infof("watchHealth routine ended unsuccessfully. It will be retried: %s.", rollbackReason)
 		// We'll retry the node transfer on the next call of meetDesires using
 		// the same old and new nodes because they have been written to the
 		// status tree
@@ -1022,11 +1046,15 @@ func (rc *replicationController) watchHealth(rcFields fields.RC, logger logging.
 				logger.Errorln("Node transfer health checker sent nil error")
 			}
 		case currentHealth := <-resultCh:
+			prefix := fmt.Sprintf("New transfer node %s health is %s", rc.nodeTransfer.newNode, currentHealth.Status)
 			if currentHealth.Status == health.Passing {
-				logger.Infof("New transfer node %s health now passing", rc.nodeTransfer.newNode)
+				logger.Infof("%s. Ceasing to watch health.", prefix)
 				return true, ""
+			} else {
+				logger.Infof("%s. Continuing to watch health.", prefix)
 			}
 		case <-rc.nodeTransfer.quit:
+			logger.Infoln("Node transfer quit channel was closed")
 			return false, rc.nodeTransfer.rollbackReason
 		case <-time.After(5 * time.Minute):
 			err := "watchHealth routine timed out waiting for health result"
@@ -1121,6 +1149,45 @@ func (rc *replicationController) finishTransfer(rcFields fields.RC, logger loggi
 	rc.nodeTransferMu.Lock()
 	rc.nodeTransfer = nodeTransfer{}
 	rc.nodeTransferMu.Unlock()
+	return nil
+}
+
+func (rc *replicationController) cancelTransfer(rcFields fields.RC, currentNodes []types.NodeName) error {
+	rc.nodeTransferMu.Lock()
+	close(rc.nodeTransfer.quit)
+	rc.nodeTransfer = nodeTransfer{}
+	rc.nodeTransferMu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	txn, cancelFunc := rc.newAuditingTransaction(ctx, rcFields, currentNodes)
+	defer cancelFunc()
+
+	err := rc.rcStatusStore.DeleteTxn(txn.Context(), rc.rcID)
+	if err != nil {
+		return util.Errorf("could not add RC status deletion to cancel node transfer transaction: %s", err)
+	}
+
+	ok, resp, err := txn.CommitWithRetries(rc.txner)
+	switch {
+	case err != nil:
+		err := util.Errorf(
+			"RC status deletion returned err after timeout: %s",
+			err,
+		)
+		rc.logger.WithError(err).Errorln("could not delete rc status to cancel node transfer")
+		return err
+	case !ok:
+		// This doesn't make sense because there are no "check" conditions in the transaction
+		err := util.Errorf(
+			"Transaction violation trying to delete RC status: %s",
+			transaction.TxnErrorsToString(resp.Errors),
+		)
+		rc.logger.WithError(err).Errorln("could not delete rc status to cancel node transfer")
+		return err
+	}
+
 	return nil
 }
 
