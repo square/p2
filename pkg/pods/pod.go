@@ -421,9 +421,21 @@ func (pod *Pod) Uninstall() error {
 		return err
 	}
 
+	// only do this step if this pod has a docker launchable
+	dockerLaunchableFound := false
+	for _, launchableStanza := range currentManifest.GetLaunchableStanzas() {
+		if launchableStanza.LaunchableType == launch.DockerLaunchableType {
+			dockerLaunchableFound = true
+			break
+		}
+	}
+	if !dockerLaunchableFound {
+		return nil
+	}
 	err = docker.PruneResources(pod.DockerClient)
 	if err != nil {
-		return err
+		// do not return err if this fails, pruning resources is not critical to uninstalling
+		pod.logError(err, "Error attempting to prune docker resources")
 	}
 
 	return nil
