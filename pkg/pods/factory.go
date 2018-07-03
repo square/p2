@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Sirupsen/logrus"
+	dockerclient "github.com/docker/docker/client"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/p2exec"
@@ -12,9 +14,6 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
-
-	"github.com/Sirupsen/logrus"
-	dockerclient "github.com/docker/docker/client"
 )
 
 const DefaultPath = "/data/pods"
@@ -112,7 +111,7 @@ func (f *factory) NewUUIDPod(id types.PodID, uniqueKey types.PodUniqueKey) (*Pod
 		return nil, util.Errorf("uniqueKey cannot be empty")
 	}
 	home := filepath.Join(f.podRoot, ComputeUniqueName(id, uniqueKey))
-  return newPodWithHome(id, uniqueKey, home, f.node, f.requireFile, f.fetcher, f.osVersionDetector, f.readOnlyPolicy.IsReadOnly(id), &f.dockerClient), nil
+	return newPodWithHome(id, uniqueKey, home, f.node, f.requireFile, f.fetcher, f.osVersionDetector, f.readOnlyPolicy.IsReadOnly(id), &f.dockerClient), nil
 
 }
 

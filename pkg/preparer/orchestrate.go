@@ -3,9 +3,8 @@ package preparer
 import (
 	"context"
 	"fmt"
-	"time"
-
 	"os"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/square/p2/pkg/artifact"
@@ -81,10 +80,10 @@ func (p podWorkerID) String() string {
 	return fmt.Sprintf("%s-%s", p.podID.String(), p.podUniqueKey)
 }
 
-func (p *Preparer) CheckPodWhitelist(preparerConfig *PreparerConfig) (map[types.PodID]bool, error) {
+func (p *Preparer) ProceedPodWhitelist(preparerConfig *PreparerConfig) (map[types.PodID]bool, error) {
 	whiteListPods := make(map[types.PodID]bool)
 	if preparerConfig.PodWhitelistFile != "" {
-		// Keep loopinng the white list of pods in pod whitelist file, and install the non existing pods
+		// Keep looping the white list of pods in pod whitelist file, and install the non existing pods
 		// exit while the white list is empty
 		for {
 			_, err := os.Stat(preparerConfig.PodWhitelistFile)
@@ -193,7 +192,10 @@ func (p *Preparer) handleWhiteListPod(pair *ManifestPair, errorChan chan<- error
 	}
 	ok := p.resolvePair(*pair, pod, manifestLogger)
 	if !ok {
-		errorChan <- util.Errorf("failed to install pod: %s", pair.Intent.ID())
+		errorChan <- util.PodIntallationError{
+			Inner: util.Errorf("failed to install pod: %s", pair.Intent.ID()),
+			PodID: pair.Intent.ID(),
+		}
 		return
 	}
 	p.Logger.WithField("podManifest", pair).Println("Finished installation of the whitelist pod")
