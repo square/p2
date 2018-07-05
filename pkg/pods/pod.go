@@ -421,6 +421,10 @@ func (pod *Pod) Uninstall() error {
 		return err
 	}
 
+	if currentManifest == nil {
+		return nil
+	}
+
 	// only do this step if this pod has a docker launchable
 	dockerLaunchableFound := false
 	for _, launchableStanza := range currentManifest.GetLaunchableStanzas() {
