@@ -280,28 +280,28 @@
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
-			"Comment": "v1.1.0-13-g9eb2c01",
-			"Rev": "9eb2c01ac278a5d89ce4b2be68fe4500955d8179"
+			"Comment": "v1.0.0",
+			"Rev": "925541529c1fa6821df4e44ce2723319eb2be768"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes",
-			"Comment": "v1.1.0-13-g9eb2c01",
-			"Rev": "9eb2c01ac278a5d89ce4b2be68fe4500955d8179"
+			"Comment": "v1.0.0",
+			"Rev": "925541529c1fa6821df4e44ce2723319eb2be768"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes/any",
-			"Comment": "v1.1.0-13-g9eb2c01",
-			"Rev": "9eb2c01ac278a5d89ce4b2be68fe4500955d8179"
+			"Comment": "v1.0.0",
+			"Rev": "925541529c1fa6821df4e44ce2723319eb2be768"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes/duration",
-			"Comment": "v1.1.0-13-g9eb2c01",
-			"Rev": "9eb2c01ac278a5d89ce4b2be68fe4500955d8179"
+			"Comment": "v1.0.0",
+			"Rev": "925541529c1fa6821df4e44ce2723319eb2be768"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/ptypes/timestamp",
-			"Comment": "v1.1.0-13-g9eb2c01",
-			"Rev": "9eb2c01ac278a5d89ce4b2be68fe4500955d8179"
+			"Comment": "v1.0.0",
+			"Rev": "925541529c1fa6821df4e44ce2723319eb2be768"
 		},
 		{
 			"ImportPath": "github.com/gorilla/context",
@@ -705,7 +705,7 @@
 		},
 		{
 			"ImportPath": "google.golang.org/genproto/googleapis/rpc/status",
-			"Rev": "ff3583edef7de132f219f0efc00e097cabcc0ec0"
+			"Rev": "1e559d0a00eef8a9a43151db4665280bd8dd5886"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc",
