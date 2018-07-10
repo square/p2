@@ -435,24 +435,6 @@ func createRC(
 	return created, rcs.SetDesiredReplicas(created.ID, desired)
 }
 
-type fakeScheduler struct {
-	eligibleNodes []types.NodeName
-}
-
-func newFakeSchedulerWithNodes(eligibleNodes map[types.NodeName]bool) fakeScheduler {
-	var eligibleNodeSlice []types.NodeName
-	for node, _ := range eligibleNodes {
-		eligibleNodeSlice = append(eligibleNodeSlice, node)
-	}
-	return fakeScheduler{
-		eligibleNodeSlice,
-	}
-}
-
-func (f fakeScheduler) EligibleNodes(_ manifest.Manifest, selector klabels.Selector) ([]types.NodeName, error) {
-	return f.eligibleNodes, nil
-}
-
 func updateWithHealth(t *testing.T,
 	desiredOld, desiredNew int,
 	oldNodes, newNodes map[types.NodeName]bool,
@@ -489,8 +471,6 @@ func updateWithHealth(t *testing.T,
 
 	newRC, err := createRC(rcs, applicator, newManifest, desiredNew, newNodes, rcStrategy)
 	Assert(t).IsNil(err, "expected no error setting up new RC")
-
-	fakeScheduler := newFakeSchedulerWithNodes(eligibleNodes)
 
 	auditLogStore := auditlogstore.NewConsulStore(fixture.Client.KV())
 
@@ -533,7 +513,6 @@ func updateWithHealth(t *testing.T,
 		labeler:                     applicator,
 		logger:                      logger,
 		Update:                      ru,
-		scheduler:                   fakeScheduler,
 		auditLogStore:               auditLogStore,
 		shouldCreateAuditLogRecords: true,
 		rollStore:                   rollStore,
@@ -643,26 +622,6 @@ func TestCountHealthNonCurrent(t *testing.T) {
 		Unknown: 3,
 	}
 	Assert(t).AreEqual(counts, expected, "incorrect health counts")
-}
-
-func TestCountHealthyLooksAtEligibleForDynamicRCs(t *testing.T) {
-	upd, _, _, _, f := updateWithHealth(t, 2, 0, map[types.NodeName]bool{"node1": true, "node2": true}, nil, map[types.NodeName]bool{"node1": true}, nil, rc_fields.DynamicStrategy)
-	defer f()
-	checks := map[types.NodeName]health.Result{
-		"node1": {Status: health.Critical},
-		"node2": {Status: health.Passing},
-	}
-	counts, err := upd.countHealthy(upd.OldRC, checks)
-	Assert(t).IsNil(err, "expected no error counting health")
-	expected := rcNodeCounts{
-		Desired:    2,
-		Current:    2,
-		Ineligible: 1,
-		Healthy:    0, // reduced because only one node is eligible
-		Real:       1, // reduced because only one node is eligible
-		Unhealthy:  1,
-	}
-	Assert(t).AreEqual(expected, counts, "incorrect health counts")
 }
 
 func (u *update) uniformShouldRollAfterDelay(t *testing.T, podID types.PodID) (int, error) {
