@@ -304,7 +304,6 @@ func TestLockRCs(t *testing.T) {
 		session,
 		0,
 		nil,
-		nil,
 		false,
 		auditlogstore.ConsulStore{},
 	).(*update)

@@ -470,7 +470,6 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 			session,
 			watchDelay,
 			alerting.NewNop(),
-			nil,   // note: this will cause a panic if one of the RCs is dynamic
 			false, // no audit logging
 			auditlogstore.ConsulStore{}, // no audit logging
 		).Run(ctx)
