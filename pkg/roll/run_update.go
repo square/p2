@@ -20,7 +20,6 @@ import (
 	"github.com/square/p2/pkg/store/consul/auditlogstore"
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/rcstore"
-	"github.com/square/p2/pkg/store/consul/statusstore"
 	"github.com/square/p2/pkg/store/consul/statusstore/rcstatus"
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
@@ -800,48 +799,11 @@ func (u *update) validateNewRCCounts(newRC rcf.RC) error {
 		return err
 	}
 
-	if len(currentPods) == newRC.ReplicasDesired {
-		return nil
+	if len(currentPods) != newRC.ReplicasDesired {
+		return util.Errorf("RC %s currently has %d replicas but wants %d - waiting until it matches to enable.", u.NewRC, len(currentPods), newRC.ReplicasDesired)
 	}
 
-	// Special case: if current pods == replicaCount + 1, we should check if this is only the case because
-	// a node transfer is happening
-	if len(currentPods) == newRC.ReplicasDesired+1 {
-		rcStatus, _, err := u.rcStatusStore.Get(u.NewRC)
-		switch {
-		case statusstore.IsNoStatus(err):
-			return util.Errorf("RC %s currently has %d replicas but wants %d (and has no node transfer) - waiting until it matches to enable.", u.NewRC, len(currentPods), newRC.ReplicasDesired)
-		case err != nil:
-			return util.Errorf("could not check RC status: %s", err)
-		}
-
-		// If a node transfer is in progress, and the
-		// current pods we counted include both the old
-		// node and the new node of the node transfer,
-		// then the RC effectively has one node less
-		// than CurrentPods() shows
-		if rcStatus.NodeTransfer == nil {
-			// release the RU and let another farm try later
-			return util.Errorf("RC %s currently has %d replicas but wants %d (and has no node transfer) - waiting until it matches to enable.", u.NewRC, len(currentPods), newRC.ReplicasDesired)
-		}
-
-		oldNodeIncluded := false
-		newNodeIncluded := false
-		for _, node := range currentPods.Nodes() {
-			if node == rcStatus.NodeTransfer.NewNode {
-				newNodeIncluded = true
-			}
-			if node == rcStatus.NodeTransfer.OldNode {
-				oldNodeIncluded = true
-			}
-		}
-
-		if oldNodeIncluded || newNodeIncluded {
-			return nil
-		}
-	}
-
-	return util.Errorf("RC %s currently has %d replicas but wants %d - waiting until it matches to enable.", u.NewRC, len(currentPods), newRC.ReplicasDesired)
+	return nil
 }
 
 // rcNodeCounts represents a snapshot of an RC with details about how many pods
