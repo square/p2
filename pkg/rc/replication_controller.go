@@ -791,7 +791,7 @@ func (rc *replicationController) retryAllocate(rcFields fields.RC, attempts int)
 		time.Sleep(backoff)
 		nodes, err := rc.scheduler.AllocateNodes(rcFields.Manifest, rcFields.NodeSelector, 1, true)
 		if err != nil {
-			rc.logger.WithError(err).Errorln("node transfer allocate attempt %d failed", i+1)
+			rc.logger.WithError(err).Errorf("node transfer allocate attempt %d failed", i+1)
 			continue
 		} else if len(nodes) < 1 {
 			rc.logger.Errorln("node transfer allocate attempt %d allocated no nodes", i+1)
@@ -811,7 +811,7 @@ func (rc *replicationController) retryDeallocate(rcFields fields.RC, ineligible 
 		time.Sleep(backoff)
 		err := rc.scheduler.DeallocateNodes(rcFields.NodeSelector, []types.NodeName{ineligible})
 		if err != nil {
-			rc.logger.WithError(err).Errorln("node transfer deallocate attempt %d failed", i+1)
+			rc.logger.WithError(err).Errorf("node transfer deallocate attempt %d failed", i+1)
 			continue
 		}
 		return nil
