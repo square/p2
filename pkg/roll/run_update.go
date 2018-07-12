@@ -106,11 +106,6 @@ type update struct {
 	// unrecoverable problem occurs
 	alerter alerting.Alerter
 
-	// scheduler is used to determine which nodes are eligible for a given RC
-	// which factors into some of the computations that are performed during
-	// a rolling update
-	scheduler RCScheduler
-
 	// If set, will create an audit log record when a rolling upate is completed (and thus deleted)
 	// to signify that the rolling update was successful
 	shouldCreateAuditLogRecords bool
@@ -121,8 +116,8 @@ type RCStatusStore interface {
 	Get(rcID rcf.ID) (rcstatus.Status, *api.QueryMeta, error)
 }
 
-// Create a new Update. The consul.Store, rcstore.Store, labels.Applicator and
-// scheduler.Scheduler arguments should be the same as those of the RCs themselves. The
+// Create a new Update. The consul.Store, rcstore.Store, and labels.Applicator
+// arguments should be the same as those of the RCs themselves. The
 // session must be valid for the lifetime of the Update; maintaining this is the
 // responsibility of the caller.
 func NewUpdate(
@@ -141,7 +136,6 @@ func NewUpdate(
 	session consul.Session,
 	watchDelay time.Duration,
 	alerter alerting.Alerter,
-	scheduler RCScheduler,
 	shouldCreateAuditLogRecords bool,
 	auditLogStore auditlogstore.ConsulStore,
 ) Update {
@@ -164,7 +158,6 @@ func NewUpdate(
 		watchDelay:                  watchDelay,
 		alerter:                     alerter,
 		consulClient:                consulClient,
-		scheduler:                   scheduler,
 		auditLogStore:               auditLogStore,
 		shouldCreateAuditLogRecords: shouldCreateAuditLogRecords,
 	}
@@ -811,13 +804,12 @@ func (u *update) validateNewRCCounts(newRC rcf.RC) error {
 // purposes, but the "Healthy" count is used to determine how many nodes the
 // rolling update can proceed with on each iteration
 type rcNodeCounts struct {
-	Desired    int // the number of nodes the RC wants to be on
-	Current    int // the number of nodes the RC has scheduled itself on
-	Ineligible int // the number of nodes the RC has scheduled itself on that are no longer eligible. These nodes will not be considered for the "Real" or "Healthy" counts
-	Real       int // the number of current and non-ineligible nodes that have finished scheduling
-	Healthy    int // the number of real nodes that are healthy
-	Unhealthy  int // the number of real nodes that are unhealthy
-	Unknown    int // the number of real nodes that are of unknown health
+	Desired   int // the number of nodes the RC wants to be on
+	Current   int // the number of nodes the RC has scheduled itself on
+	Real      int // the number of current and non-ineligible nodes that have finished scheduling
+	Healthy   int // the number of real nodes that are healthy
+	Unhealthy int // the number of real nodes that are unhealthy
+	Unknown   int // the number of real nodes that are of unknown health
 }
 
 func (r rcNodeCounts) ToString() string {
@@ -849,32 +841,7 @@ func (u *update) countHealthy(id rcf.ID, checks map[types.NodeName]health.Result
 		ret.Unknown = ret.Desired - ret.Current
 	}
 
-	var eligibleNodes []types.NodeName
-	if rcFields.AllocationStrategy == rcf.DynamicStrategy {
-		eligibleNodes, err = u.scheduler.EligibleNodes(rcFields.Manifest, rcFields.NodeSelector)
-		if err != nil {
-			return ret, util.Errorf("could not enumerate eligible nodes for %s: %s", rcFields.ID, err)
-		}
-	}
-
 	for _, pod := range currentPods {
-		if rcFields.AllocationStrategy == rcf.DynamicStrategy {
-			// don't count this pod if it's ineligible on a dynamic RC, it will be undergoing a node transfer soon and therefore might be unscheduled
-			// beneath the rolling update
-			nodeEligible := false
-			for _, eligibleNode := range eligibleNodes {
-				if eligibleNode == pod.Node {
-					nodeEligible = true
-					break
-				}
-			}
-			if !nodeEligible {
-				ret.Ineligible++
-				// Don't count this node toward the Real or Healthy counts, continue on to the next one
-				continue
-			}
-		}
-
 		node := pod.Node
 		// TODO: is reality checking an rc-layer concern?
 		realManifest, _, err := u.consuls.Pod(consul.REALITY_TREE, node, rcFields.Manifest.ID())
