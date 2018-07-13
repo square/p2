@@ -1125,7 +1125,7 @@ func TestNodeTransferNoopIfLockHeld(t *testing.T) {
 	}
 	rc.healthChecker = fake_checker.NewSingleService("some_pod", healthMap)
 
-	ok, err := rc.attemptNodeTransfer(rcFields, current, "node2", 1)
+	ok, err := rc.attemptNodeTransfer(rcFields, current, []types.NodeName{"node2"}, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1199,7 +1199,7 @@ func TestNodeTransferNoopIfPodsUnhealthy(t *testing.T) {
 	}
 	rc.healthChecker = fake_checker.NewSingleService("some_pod", healthMap)
 
-	ok, err := rc.attemptNodeTransfer(rcFields, current, "node2", 1)
+	ok, err := rc.attemptNodeTransfer(rcFields, current, []types.NodeName{"node2"}, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1343,7 +1343,7 @@ func TestNodeTransferAlertsIfAllocationsFail(t *testing.T) {
 	}
 	rc.healthChecker = fake_checker.NewSingleService("some_pod", healthMap)
 
-	_, err = rc.attemptNodeTransfer(rcFields, current, "node2", 1)
+	_, err = rc.attemptNodeTransfer(rcFields, current, []types.NodeName{"node2"}, 1)
 	if err == nil {
 		t.Fatal("expected allocation error")
 	}
