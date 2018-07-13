@@ -711,11 +711,10 @@ func (rc *replicationController) isTransferMinHealthMet(rcFields fields.RC, curr
 		return false, util.Errorf("could not get %s health: %s", service, err)
 	}
 	hlth, ok := healths[ineligible]
-	if !ok {
-		return false, util.Errorf("no health result returned for ineligible %s", ineligible)
-	} else if hlth.Status != health.Passing {
-		// A transfer off an unhealthy node will not reduce the health of a
-		// cluster
+	if !ok || hlth.Status != health.Passing {
+		// If no health result was returned, the preparer may be down on the
+		// node. We should perform a transfer. A transfer off an unhealthy node
+		// will not reduce the health of a cluster
 		return true, nil
 	}
 	for _, pod := range current {
