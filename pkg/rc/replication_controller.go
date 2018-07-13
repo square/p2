@@ -267,7 +267,7 @@ func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 	ineligible := rc.checkForIneligible(current, eligible)
 	if len(ineligible) > 0 && rcFields.AllocationStrategy == fields.DynamicStrategy {
 		rc.logger.Infof("ineligible nodes: %s found", ineligible)
-		ok, err := rc.attemptNodeTransfer(rcFields, current, ineligible[0], MaxAllocateAttempts)
+		ok, err := rc.attemptNodeTransfer(rcFields, current, ineligible, MaxAllocateAttempts)
 		if err != nil {
 			return err
 		} else if !ok {
@@ -654,38 +654,23 @@ func (rc *replicationController) unschedule(txn *auditingTransaction, rcFields f
 // and add a pod on a new node if the following conditions are met:
 //   1) The ineligible pod is unhealthy OR all of the RC's pods are healthy
 //   2) The RC can acquire a mutation lock on its ID
+//   3) OR the RC is disabled, only on ineligible nodes, and has fewer desired
+//      replicas than current (described more in canNodeTransfer())
 // If the conditions are not met, the function will be called again on the next
 // call of meetDesires() should a node still be ineligible. It returns true
 // when a node transfer occurs
-func (rc *replicationController) attemptNodeTransfer(rcFields fields.RC, current types.PodLocations, ineligible types.NodeName, allocAttempts int) (bool, error) {
-	ok, err := rc.isTransferMinHealthMet(rcFields, current, ineligible)
+func (rc *replicationController) attemptNodeTransfer(rcFields fields.RC, current types.PodLocations, ineligibles []types.NodeName, allocAttempts int) (bool, error) {
+	ok, unlocker, err := rc.canNodeTransfer(rcFields, current, ineligibles)
 	if err != nil {
-		rc.logger.WithError(err).Errorln("skipping node transfer; error checking health")
 		return false, err
 	} else if !ok {
-		rc.logger.Infoln("skipping node transfer; node transfer health requirement not met")
 		return false, nil
 	}
-
-	_, session, err := consul.SessionContext(context.Background(), rc.consulClient, fmt.Sprintf("rc-node-transfer-%s", rc.rcID))
-	if err != nil {
-		rc.logger.WithError(err).Errorln("could not create a session to acquire rc lock")
-		return false, err
+	if unlocker != nil {
+		defer unlocker.Unlock()
 	}
-	// Node transfers do not mutate the RC's state, but we attempt to acquire
-	// the lock to ensure that we do not perform a transfer during a rolling
-	// update. This avoids races between the two's health checks and scheduling
-	unlocker, err := rc.rcLocker.LockForMutation(rc.rcID, session)
-	switch {
-	case consul.IsAlreadyLocked(err):
-		rc.logger.Infoln("skipping node transfer; rc mutation lock is already held")
-		return false, nil
-	case err != nil:
-		rc.logger.WithError(err).Errorln("could not acquire rc mutatation lock for node transfer")
-		return false, err
-	}
-	defer unlocker.Unlock()
 
+	ineligible := ineligibles[0]
 	err = rc.swapNodes(rcFields, current, ineligible, allocAttempts)
 	if err != nil {
 		rc.logger.WithError(err).Errorln("could not swap nodes")
@@ -698,6 +683,52 @@ func (rc *replicationController) attemptNodeTransfer(rcFields fields.RC, current
 
 	rc.logger.Infof("transferred off %s", ineligible)
 	return true, nil
+}
+
+func (rc *replicationController) canNodeTransfer(rcFields fields.RC, current types.PodLocations, ineligibles []types.NodeName) (bool, consul.Unlocker, error) {
+	currentSet := types.NewNodeSet(current.Nodes()...)
+	ineligibleSet := types.NewNodeSet(ineligibles...)
+	if rcFields.Disabled &&
+		currentSet.Equal(ineligibleSet) &&
+		rcFields.ReplicasDesired < len(current) {
+		// If the RC is disabled, all of its nodes are inelgible, and its
+		// desired replica count is less than its current replica count,
+		// then it is likely the old RC in an RU. In that case, the new RC
+		// will not be able to schedule on the ineligible nodes, so we should
+		// perform a node transfer. The RU would not have decremented this RC's
+		// replicas desired unless its min health was met, so we can safely
+		// perform the swap.
+		return true, nil, nil
+	}
+	ineligible := ineligibles[0]
+	ok, err := rc.isTransferMinHealthMet(rcFields, current, ineligible)
+	if err != nil {
+		rc.logger.WithError(err).Errorln("skipping node transfer; error checking health")
+		return false, nil, err
+	} else if !ok {
+		rc.logger.Infoln("skipping node transfer; node transfer health requirement not met")
+		return false, nil, nil
+	}
+
+	_, session, err := consul.SessionContext(context.Background(), rc.consulClient, fmt.Sprintf("rc-node-transfer-%s", rc.rcID))
+	if err != nil {
+		rc.logger.WithError(err).Errorln("could not create a session to acquire rc lock")
+		return false, nil, err
+	}
+	// Node transfers do not mutate the RC's state, but we attempt to acquire
+	// the lock to ensure that we do not perform a transfer during a rolling
+	// update. This avoids races between the two's health checks and scheduling
+	unlocker, err := rc.rcLocker.LockForMutation(rc.rcID, session)
+	switch {
+	case consul.IsAlreadyLocked(err):
+		rc.logger.Infoln("skipping node transfer; rc mutation lock is already held")
+		return false, nil, nil
+	case err != nil:
+		rc.logger.WithError(err).Errorln("could not acquire rc mutatation lock for node transfer")
+		return false, nil, err
+	}
+
+	return true, unlocker, nil
 }
 
 // isTransferMinHealthMet returns true if either the ineligible node is unhealthy
