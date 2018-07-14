@@ -101,7 +101,7 @@ func main() {
 
 	requireFile, err := createRequireFile(tempdir)
 	if err != nil {
-		log.Fatalln("Could not create temp require file, bailing: %s", err)
+		log.Fatalf("Could not create temp require file, bailing: %s", err)
 	}
 
 	userHookManifest, err := userCreationHookManifest(tempdir, noAddUser)

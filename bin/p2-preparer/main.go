@@ -85,6 +85,11 @@ func main() {
 		logger.WithError(err).Fatalf("Could not do initial build reality at launch: %s", err)
 	}
 
+	podWhiteList, err := prep.ProceedPodWhitelist(preparerConfig)
+	if err != nil {
+		logger.WithError(err).Fatalf("Error occurs when checking pod whitelist %+v", podWhiteList)
+	}
+
 	go prep.WatchForPodManifestsForNode(quitMainUpdate)
 
 	if prep.PodProcessReporter != nil {

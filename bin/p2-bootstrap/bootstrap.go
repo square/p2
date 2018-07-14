@@ -44,7 +44,7 @@ func main() {
 	nodeName := types.NodeName(hostname)
 	agentManifest, err := manifest.FromPath(*agentManifestPath)
 	if err != nil {
-		log.Fatalln("Could not get agent manifest: %s", err)
+		log.Fatalf("Could not get agent manifest: %s", err)
 	}
 	log.Println("Installing and launching consul")
 
