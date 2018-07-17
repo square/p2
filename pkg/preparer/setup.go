@@ -2,6 +2,7 @@ package preparer
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -15,7 +16,9 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	dockerapi "github.com/docker/docker/api"
 	dockerclient "github.com/docker/docker/client"
+	"github.com/docker/go-connections/tlsconfig"
 	"github.com/hashicorp/consul/api"
 	context "golang.org/x/net/context"
 	"golang.org/x/net/http2"
@@ -154,6 +157,7 @@ type PreparerConfig struct {
 	LogExec                      []string               `yaml:"log_exec,omitempty"`
 	LogBridgeBlacklist           []string               `yaml:"log_bridge_blacklist,omitempty"`
 	ArtifactRegistryURL          string                 `yaml:"artifact_registry_url,omitempty"`
+	DockerHost                   string                 `yaml:"docker_host,omitempty"`
 	ContainerRegistryJsonKeyFile string                 `yaml:"container_json_key_file,omitempty"`
 	ConsulConfig                 ConsulConfig           `yaml:"consul_config,omitempty"`
 
@@ -553,10 +557,58 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 	podFactory := pods.NewFactory(preparerConfig.PodRoot, preparerConfig.NodeName, fetcher, preparerConfig.RequireFile, readOnlyPolicy)
 	podFactory.SetOSVersionDetector(osVersionDetector)
 
-	// TODO: we might want to customize our docker client
-	dockerClient, err := dockerclient.NewEnvClient()
-	if err != nil {
-		return nil, util.Errorf("could not create docker client: %s", err)
+	// setup docker client
+	// check if we need to use tls
+	var dockerClient *dockerclient.Client
+	dockerTLSVerify := false
+	dockerDaemonFilepath := "/etc/docker/daemon.json"
+	if _, err := os.Stat(dockerDaemonFilepath); err == nil {
+		data, err := ioutil.ReadFile(dockerDaemonFilepath)
+		if err != nil {
+			return nil, util.Errorf("could not read file docker daemon.json: %s", err)
+		}
+		var objmap map[string]interface{}
+		err = json.Unmarshal(data, &objmap)
+		if err != nil {
+			return nil, util.Errorf("could not unmarshal docker daemon.json: %s", err)
+		}
+		if v, ok := objmap["tlsverify"]; ok {
+			if b, ok := v.(bool); ok && b {
+				dockerTLSVerify = true
+			}
+		}
+	}
+
+	if !dockerTLSVerify {
+		dockerClient, err = dockerclient.NewEnvClient()
+	} else {
+		options := tlsconfig.Options{
+			CAFile:             preparerConfig.CAFile,
+			CertFile:           preparerConfig.CertFile,
+			KeyFile:            preparerConfig.KeyFile,
+			InsecureSkipVerify: false,
+		}
+		tlsc, err := tlsconfig.Client(options)
+		if err != nil {
+			return nil, util.Errorf("could not setup tlsconfig for docker client: %s", err)
+		}
+		dockerHTTPClient := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: tlsc,
+			},
+		}
+		dockerHost := preparerConfig.DockerHost
+		if dockerHost == "" {
+			dockerHost = dockerclient.DefaultDockerHost
+		}
+		version := os.Getenv("DOCKER_API_VERSION")
+		if version == "" {
+			version = dockerapi.DefaultVersion
+		}
+		dockerClient, err = dockerclient.NewClient(dockerHost, version, dockerHTTPClient, nil)
+		if err != nil {
+			return nil, util.Errorf("could not create docker client: %s", err)
+		}
 	}
 
 	containerRegistryAuthStr := ""
