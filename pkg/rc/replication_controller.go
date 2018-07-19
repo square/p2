@@ -686,6 +686,13 @@ func (rc *replicationController) attemptNodeTransfer(rcFields fields.RC, current
 }
 
 func (rc *replicationController) canNodeTransfer(rcFields fields.RC, current types.PodLocations, ineligibles []types.NodeName) (bool, consul.Unlocker, error) {
+	needLock := true
+	// The maximum number of nodes that can be unhealthy BEFORE a node
+	// transfer begins unless the ineligible node is unhealthy. A node transfer
+	// off a healthy node will reduce the health of the cluster by 1 during the
+	// time it takes for a new replica to be installed and launched
+	maxUnhealthy := 0
+
 	currentSet := types.NewNodeSet(current.Nodes()...)
 	ineligibleSet := types.NewNodeSet(ineligibles...)
 	if rcFields.Disabled &&
@@ -697,17 +704,23 @@ func (rc *replicationController) canNodeTransfer(rcFields fields.RC, current typ
 		// will not be able to schedule on the ineligible nodes, so we should
 		// perform a node transfer. The RU would not have decremented this RC's
 		// replicas desired unless its min health was met, so we can safely
-		// perform the swap.
-		return true, nil, nil
+		// perform the swap, but only as many swaps as the RU has "allowed" by
+		// decreasing ReplicasDesired
+		needLock = false
+		maxUnhealthy = len(current) - rcFields.ReplicasDesired - 1
 	}
 	ineligible := ineligibles[0]
-	ok, err := rc.isTransferMinHealthMet(rcFields, current, ineligible)
+	ok, err := rc.isTransferMinHealthMet(rcFields, current, ineligible, maxUnhealthy)
 	if err != nil {
 		rc.logger.WithError(err).Errorln("skipping node transfer; error checking health")
 		return false, nil, err
 	} else if !ok {
 		rc.logger.Infoln("skipping node transfer; node transfer health requirement not met")
 		return false, nil, nil
+	}
+
+	if !needLock {
+		return true, nil, nil
 	}
 
 	_, session, err := consul.SessionContext(context.Background(), rc.consulClient, fmt.Sprintf("rc-node-transfer-%s", rc.rcID))
@@ -735,7 +748,7 @@ func (rc *replicationController) canNodeTransfer(rcFields fields.RC, current typ
 // (in which case a node transfer would not reduce the cluster's health) or if
 // all of the RC's current pods are healthy (in which case the cluster can
 // tolerate one pod down)
-func (rc *replicationController) isTransferMinHealthMet(rcFields fields.RC, current types.PodLocations, ineligible types.NodeName) (bool, error) {
+func (rc *replicationController) isTransferMinHealthMet(rcFields fields.RC, current types.PodLocations, ineligible types.NodeName, maxUnhealthy int) (bool, error) {
 	service := rcFields.Manifest.ID().String()
 	healths, err := rc.healthChecker.Service(service)
 	if err != nil {
@@ -748,15 +761,14 @@ func (rc *replicationController) isTransferMinHealthMet(rcFields fields.RC, curr
 		// will not reduce the health of a cluster
 		return true, nil
 	}
+	unhealthy := 0
 	for _, pod := range current {
 		hlth, ok := healths[pod.Node]
-		if !ok {
-			return false, util.Errorf("no health result returned for %s", pod.Node)
-		} else if hlth.Status != health.Passing {
-			return false, nil
+		if !ok || hlth.Status != health.Passing {
+			unhealthy += 1
 		}
 	}
-	return true, nil
+	return unhealthy <= maxUnhealthy, nil
 }
 
 // swapNodes allocates a node, deallocates the inelgible node, and
