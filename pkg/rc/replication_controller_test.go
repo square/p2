@@ -1204,7 +1204,7 @@ func TestNodeTransferNoopIfPodsUnhealthy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ok {
-		t.Fatal("expected node transfer to skip when locked")
+		t.Fatal("expected node transfer to skip")
 	}
 
 	// Confirm that the RC is scheduled on the same nodes
@@ -1361,5 +1361,62 @@ func TestNodeTransferAlertsIfAllocationsFail(t *testing.T) {
 	expected := types.NewNodeSet(current.Nodes()...)
 	if !actual.Equal(expected) {
 		t.Fatalf("expected current nodes to be %v, was %v", expected, actual)
+	}
+}
+
+func TestNodeTransferMindsReplicasDesiredDuringRollingUpdate(t *testing.T) {
+	_, _, applicator, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+
+	rcFields := fields.RC{
+		ID:                 rc.rcID,
+		ReplicasDesired:    3,
+		Manifest:           testManifest(),
+		Disabled:           false,
+		NodeSelector:       klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"}),
+		AllocationStrategy: fields.DynamicStrategy,
+	}
+
+	err := nodeTransferSetup(applicator, rc, rcFields)
+	current, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rcFields = fields.RC{
+		ID:                 rc.rcID,
+		ReplicasDesired:    2,
+		Manifest:           testManifest(),
+		Disabled:           true,
+		NodeSelector:       klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"}),
+		AllocationStrategy: fields.DynamicStrategy,
+	}
+
+	// make a node show up as critical
+	healthMap := map[types.NodeName]health.Result{
+		"node0": health.Result{Status: health.Passing},
+		"node1": health.Result{Status: health.Critical},
+		"node2": health.Result{Status: health.Passing},
+	}
+	rc.healthChecker = fake_checker.NewSingleService("some_pod", healthMap)
+
+	ok, _, err := rc.canNodeTransfer(rcFields, current, []types.NodeName{"node2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("expected node transfer to be disallowed")
+	}
+
+	// now make all nodes healthy
+	healthMap["node1"] = health.Result{Status: health.Passing}
+	rc.healthChecker = fake_checker.NewSingleService("some_pod", healthMap)
+
+	ok, _, err = rc.canNodeTransfer(rcFields, current, []types.NodeName{"node2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected node transfer to be permitted")
 	}
 }
