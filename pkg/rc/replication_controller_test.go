@@ -81,7 +81,7 @@ func (s testScheduler) EligibleNodes(manifest manifest.Manifest, nodeSelector kl
 }
 
 func (s testScheduler) AllocateNodes(manifest manifest.Manifest, nodeSelector klabels.Selector, allocationCount int, force bool) ([]types.NodeName, error) {
-	if s.shouldErr {
+	if s.allocateShouldErr {
 		return nil, util.Errorf("Intentional error allocating nodes.")
 	}
 
@@ -93,12 +93,16 @@ func (s testScheduler) AllocateNodes(manifest manifest.Manifest, nodeSelector kl
 }
 
 func (s testScheduler) DeallocateNodes(nodeSelector klabels.Selector, nodes []types.NodeName) error {
+	if s.deallocateShouldErr {
+		return util.Errorf("Intentional deallocate error")
+	}
 	return nil
 }
 
 type testScheduler struct {
-	applicator testApplicator
-	shouldErr  bool
+	applicator          testApplicator
+	allocateShouldErr   bool
+	deallocateShouldErr bool
 }
 
 func setup(t *testing.T) (
@@ -156,7 +160,7 @@ func setup(t *testing.T) (
 		auditLogStore,
 		fixture.Client.KV(),
 		rcStore,
-		testScheduler{applicator, false},
+		testScheduler{applicator, false, false},
 		applicator,
 		logging.DefaultLogger,
 		alerter,
@@ -1317,10 +1321,57 @@ func TestNodeTransferWhenIneligibleNodeUnhealthy(t *testing.T) {
 	}
 }
 
-func TestNodeTransferAlertsIfAllocationsFail(t *testing.T) {
+func TestNodeTransferDoesNotAlertIfAllocateFails(t *testing.T) {
 	_, _, applicator, rc, alerter, _, _, closeFn := setup(t)
 	defer closeFn()
-	rc.scheduler = testScheduler{applicator, true}
+	rc.scheduler = testScheduler{applicator, true, false}
+
+	rcFields := fields.RC{
+		ID:                 rc.rcID,
+		ReplicasDesired:    3,
+		Manifest:           testManifest(),
+		Disabled:           false,
+		NodeSelector:       klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"}),
+		AllocationStrategy: fields.DynamicStrategy,
+	}
+
+	err := nodeTransferSetup(applicator, rc, rcFields)
+	current, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	healthMap := make(map[types.NodeName]health.Result, len(current))
+	for _, node := range current.Nodes() {
+		healthMap[node] = health.Result{Status: health.Passing}
+	}
+	rc.healthChecker = fake_checker.NewSingleService("some_pod", healthMap)
+
+	_, err = rc.attemptNodeTransfer(rcFields, current, []types.NodeName{"node2"}, 1)
+	if err == nil {
+		t.Fatal("expected allocation error")
+	}
+
+	if len(alerter.Alerts) != 0 {
+		t.Fatalf("expected 0 alerts on allocate failure, but there were %d alerts", len(alerter.Alerts))
+	}
+
+	// Confirm that the RC is scheduled on the same nodes
+	newCurrent, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := types.NewNodeSet(newCurrent.Nodes()...)
+	expected := types.NewNodeSet(current.Nodes()...)
+	if !actual.Equal(expected) {
+		t.Fatalf("expected current nodes to be %v, was %v", expected, actual)
+	}
+}
+
+func TestNodeTransferAlertsIfDeallocateFails(t *testing.T) {
+	_, _, applicator, rc, alerter, _, _, closeFn := setup(t)
+	defer closeFn()
+	rc.scheduler = testScheduler{applicator, false, true}
 
 	rcFields := fields.RC{
 		ID:                 rc.rcID,
@@ -1349,7 +1400,7 @@ func TestNodeTransferAlertsIfAllocationsFail(t *testing.T) {
 	}
 
 	if len(alerter.Alerts) != 1 {
-		t.Fatalf("expected an alert on allocation failure, but there were %d alerts", len(alerter.Alerts))
+		t.Fatalf("expected 1 alert on deallocate failure, but there were %d alerts", len(alerter.Alerts))
 	}
 
 	// Confirm that the RC is scheduled on the same nodes
@@ -1361,5 +1412,9 @@ func TestNodeTransferAlertsIfAllocationsFail(t *testing.T) {
 	expected := types.NewNodeSet(current.Nodes()...)
 	if !actual.Equal(expected) {
 		t.Fatalf("expected current nodes to be %v, was %v", expected, actual)
+	}
+	_, err = rc.attemptNodeTransfer(rcFields, current, []types.NodeName{"node2"}, 1)
+	if err == nil {
+		t.Fatal("expected allocation error")
 	}
 }
