@@ -674,9 +674,11 @@ func (rc *replicationController) attemptNodeTransfer(rcFields fields.RC, current
 	err = rc.swapNodes(rcFields, current, ineligible, allocAttempts)
 	if err != nil {
 		rc.logger.WithError(err).Errorln("could not swap nodes")
-		alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, err.Error()), alerting.LowUrgency)
-		if alertErr != nil {
-			rc.logger.WithError(alertErr).Errorln("unable to send alert")
+		if _, ok := err.(*incorrectAllocationError); ok {
+			alertErr := rc.alerter.Alert(rc.alertInfo(rcFields, err.Error()), alerting.LowUrgency)
+			if alertErr != nil {
+				rc.logger.WithError(alertErr).Errorln("unable to send alert")
+			}
 		}
 		return false, err
 	}
@@ -759,6 +761,26 @@ func (rc *replicationController) isTransferMinHealthMet(rcFields fields.RC, curr
 	return true, nil
 }
 
+type incorrectAllocationError struct {
+	err             error
+	needsDeallocate types.NodeName
+	needsAllocate   types.NodeName
+}
+
+func (e *incorrectAllocationError) Error() string {
+	// If the deallocation or scheduling transaction fail, the new node will be
+	// allocated but unused. We'll include that in the message so an operator
+	// can deallocate
+	msg := fmt.Sprintf("%s: allocations incorrect: deallocate %s", e.err, e.needsDeallocate)
+	if e.needsAllocate != "" {
+		// If the scheduling transaction fails, the ineligible node will be
+		// deallocated but still scheduled on. We'll include that in the message
+		// so an operator can reallocate
+		msg = fmt.Sprintf("%s, allocate %s", msg, e.needsAllocate)
+	}
+	return msg
+}
+
 // swapNodes allocates a node, deallocates the inelgible node, and
 // transactionally schedules on the new node and unschedules from the old
 func (rc *replicationController) swapNodes(rcFields fields.RC, current types.PodLocations, ineligible types.NodeName, allocAttempts int) error {
@@ -766,18 +788,18 @@ func (rc *replicationController) swapNodes(rcFields fields.RC, current types.Pod
 	if err != nil {
 		return err
 	}
-	// If the deallocation or scheduling transaction fail, the new node will be
-	// allocated but unused. We'll include that in the error if there is one
-	badAllocationsMsg := fmt.Sprintf("allocations incorrect: deallocate %s", newNode)
 
 	err = rc.retryDeallocate(rcFields, ineligible, allocAttempts)
 	if err != nil {
-		return util.Errorf("%s. %s", err, badAllocationsMsg)
+		return &incorrectAllocationError{
+			err:             err,
+			needsDeallocate: newNode,
+		}
 	}
-	// If the scheduling transaction fails, the ineligible node will be
-	// deallocated but still scheduled on. We'll include that in the error if
-	// there is one
-	badAllocationsMsg = fmt.Sprintf("%s, allocate %s", badAllocationsMsg, ineligible)
+	allocErr := incorrectAllocationError{
+		needsDeallocate: newNode,
+		needsAllocate:   ineligible,
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -787,27 +809,26 @@ func (rc *replicationController) swapNodes(rcFields fields.RC, current types.Pod
 
 	err = rc.unschedule(txn, rcFields, ineligible)
 	if err != nil {
-		return err
+		allocErr.err = err
+		return &allocErr
 	}
 	err = rc.schedule(txn, rcFields, newNode)
 	if err != nil {
-		return err
+		allocErr.err = err
+		return &allocErr
 	}
 
 	ok, resp, err := txn.CommitWithRetries(rc.txner)
 	if err != nil {
-		return util.Errorf(
-			"schedule and unschedule transaction could not complete within timeout: %s. %s",
-			err,
-			badAllocationsMsg,
-		)
+		allocErr.err = util.Errorf("schedule and unschedule transaction could not complete within timeout: %s", err)
+		return &allocErr
 	} else if !ok {
 		// This doesn't make sense because there are no "check" conditions in the transaction
-		return util.Errorf(
-			"transaction violation trying to swap nodes: %s, %s",
+		allocErr.err = util.Errorf(
+			"transaction violation trying to swap nodes: %s",
 			transaction.TxnErrorsToString(resp.Errors),
-			badAllocationsMsg,
 		)
+		return &allocErr
 	}
 
 	return nil
