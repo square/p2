@@ -2,7 +2,6 @@ package cgroups
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -108,7 +107,7 @@ func (subsys Subsystems) SetMemory(name CgroupID, bytes int) error {
 
 	// the hard memory limit must be set BEFORE the mem+swap limit
 	// so we must clear the swap limit at the start
-	err = ioutil.WriteFile(filepath.Join(subsys.Memory, name.String(), "memory.memsw.limit_in_bytes"), []byte("-1\n"), 0600)
+	_, err = util.WriteIfChanged(filepath.Join(subsys.Memory, name.String(), "memory.memsw.limit_in_bytes"), []byte("-1\n"), 0600)
 	if err != nil {
 		return err
 	}
