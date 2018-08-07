@@ -108,6 +108,8 @@ type Preparer struct {
 
 	// base64 encoding of docker authConfig needed for ImagePull
 	containerRegistryAuthStr string
+
+	dockerImageDirectoryWhitelist []string
 }
 
 type store interface {
@@ -159,7 +161,9 @@ type PreparerConfig struct {
 	ArtifactRegistryURL          string                 `yaml:"artifact_registry_url,omitempty"`
 	DockerHost                   string                 `yaml:"docker_host,omitempty"`
 	ContainerRegistryJsonKeyFile string                 `yaml:"container_json_key_file,omitempty"`
-	ConsulConfig                 ConsulConfig           `yaml:"consul_config,omitempty"`
+	// Directories that are allowed to be launched by this preparer
+	DockerImageDirectoryWhitelist []string     `yaml:"docker_image_directory_whitelist,omitempty"`
+	ConsulConfig                  ConsulConfig `yaml:"consul_config,omitempty"`
 
 	OSVersionFile string `yaml:"os_version_file,omitempty"`
 
@@ -621,28 +625,29 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 
 	podFactory.SetDockerClient(*dockerClient)
 	return &Preparer{
-		node:                     preparerConfig.NodeName,
-		store:                    store,
-		hooks:                    hooks.NewContext(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger, auditLogger),
-		podStatusStore:           podStatusStore,
-		podStore:                 podStore,
-		podRoot:                  preparerConfig.PodRoot,
-		client:                   client,
-		Logger:                   logger,
-		podFactory:               podFactory,
-		authPolicy:               authPolicy,
-		maxLaunchableDiskUsage:   maxLaunchableDiskUsage,
-		finishExec:               finishExec,
-		logExec:                  logExec,
-		logBridgeBlacklist:       preparerConfig.LogBridgeBlacklist,
-		artifactVerifier:         artifactVerifier,
-		artifactRegistry:         artifactRegistry,
-		containerRegistryAuthStr: containerRegistryAuthStr,
-		PodProcessReporter:       podProcessReporter,
-		hooksManifest:            hooksManifest,
-		hooksPod:                 hooksPod,
-		hooksExecDir:             preparerConfig.HooksDirectory,
-		fetcher:                  fetcher,
+		node:                          preparerConfig.NodeName,
+		store:                         store,
+		hooks:                         hooks.NewContext(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger, auditLogger),
+		podStatusStore:                podStatusStore,
+		podStore:                      podStore,
+		podRoot:                       preparerConfig.PodRoot,
+		client:                        client,
+		Logger:                        logger,
+		podFactory:                    podFactory,
+		authPolicy:                    authPolicy,
+		maxLaunchableDiskUsage:        maxLaunchableDiskUsage,
+		finishExec:                    finishExec,
+		logExec:                       logExec,
+		logBridgeBlacklist:            preparerConfig.LogBridgeBlacklist,
+		artifactVerifier:              artifactVerifier,
+		artifactRegistry:              artifactRegistry,
+		containerRegistryAuthStr:      containerRegistryAuthStr,
+		dockerImageDirectoryWhitelist: preparerConfig.DockerImageDirectoryWhitelist,
+		PodProcessReporter:            podProcessReporter,
+		hooksManifest:                 hooksManifest,
+		hooksPod:                      hooksPod,
+		hooksExecDir:                  preparerConfig.HooksDirectory,
+		fetcher:                       fetcher,
 	}, nil
 }
 
@@ -847,7 +852,7 @@ func (p *Preparer) InstallHooks() error {
 
 	p.Logger.Infoln("Installing hook manifest")
 	registry := p.artifactRegistryFor(p.hooksManifest)
-	err := p.hooksPod.Install(p.hooksManifest, p.artifactVerifier, registry, "")
+	err := p.hooksPod.Install(p.hooksManifest, p.artifactVerifier, registry, p.containerRegistryAuthStr, p.dockerImageDirectoryWhitelist)
 	if err != nil {
 		sub.WithError(err).Errorln("Could not install hook")
 		return err

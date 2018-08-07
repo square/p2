@@ -35,7 +35,7 @@ var svlogdExec = []string{"svlogd", "-tt", "./main"}
 type Pod interface {
 	hooks.Pod
 	Launch(manifest.Manifest) (bool, error)
-	Install(manifest.Manifest, auth.ArtifactVerifier, artifact.Registry, string) error
+	Install(manifest.Manifest, auth.ArtifactVerifier, artifact.Registry, string, []string) error
 	Uninstall() error
 	Verify(manifest.Manifest, auth.Policy) error
 	Halt(man manifest.Manifest, force bool) (bool, error)
@@ -528,7 +528,7 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 	logger.NoFields().Infoln("Installing pod and launchables")
 
 	registry := p.artifactRegistryFor(pair.Intent)
-	err := pod.Install(pair.Intent, p.artifactVerifier, registry, p.containerRegistryAuthStr)
+	err := pod.Install(pair.Intent, p.artifactVerifier, registry, p.containerRegistryAuthStr, p.dockerImageDirectoryWhitelist)
 	if err != nil {
 		// install failed, abort and retry
 		logger.WithError(err).Errorln("Install failed")

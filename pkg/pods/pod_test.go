@@ -376,7 +376,7 @@ func TestInstall(t *testing.T) {
 	builder.SetID("hello")
 	builder.SetLaunchables(launchables)
 	builder.SetRunAsUser(currentUser.Username)
-	manifest := builder.GetManifest()
+	man := builder.GetManifest()
 
 	testPodDir, err := ioutil.TempDir("", "testPodDir")
 	Assert(t).IsNil(err, "Got an unexpected error creating a temp directory")
@@ -390,7 +390,7 @@ func TestInstall(t *testing.T) {
 	}
 	pod.subsystemer = &FakeSubsystemer{}
 
-	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector), "")
+	err = pod.Install(man, auth.NopVerifier(), artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector), "", []string{})
 	Assert(t).IsNil(err, "there should not have been an error when installing")
 
 	Assert(t).AreEqual(
@@ -407,6 +407,33 @@ func TestInstall(t *testing.T) {
 	if info, err := os.Stat(helloLaunch); err != nil || info.IsDir() {
 		t.Fatalf("Expected %s to be a the launch script for hello", helloLaunch)
 	}
+
+	// test docker image directory whitelist
+	launchables = map[launch.LaunchableID]launch.LaunchableStanza{
+		"dockerlaunchable": {
+			LaunchableType: "docker",
+			Image: launch.DockerImage{
+				Name:   "registry/project/foo",
+				SHA256: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+			},
+		},
+	}
+	builder = manifest.NewBuilder()
+	builder.SetID("dockerlaunchable")
+	builder.SetLaunchables(launchables)
+	builder.SetRunAsUser(currentUser.Username)
+	man = builder.GetManifest()
+	pod = Pod{
+		Id:          "testPod",
+		home:        testPodDir,
+		logger:      Log.SubLogger(logrus.Fields{"pod": "testPod"}),
+		Fetcher:     fetcher,
+		subsystemer: &FakeSubsystemer{},
+	}
+	err = pod.Install(man, auth.NopVerifier(), artifact.NewRegistry(nil, uri.DefaultFetcher, osversion.DefaultDetector), "", []string{"bar"})
+	Assert(t).IsNotNil(err, "expected error when installing")
+	expected := "cannot launch docker image, directory foo is not whitelisted"
+	Assert(t).IsTrue(strings.Contains(err.Error(), expected), fmt.Sprintf("expected error to be like'%s' but got '%s' instead", expected, err.Error()))
 }
 
 func TestUninstall(t *testing.T) {
