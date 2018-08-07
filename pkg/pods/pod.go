@@ -461,7 +461,7 @@ func (pod *Pod) SetSubsystemer(s cgroups.Subsystemer) {
 // Install will ensure that executables for all required services are present on the host
 // machine and are set up to run. In the case of Hoist artifacts (which is the only format
 // supported currently, this will set up runit services.).
-func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifier, artifactRegistry artifact.Registry, containerRegistryAuthStr string) error {
+func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifier, artifactRegistry artifact.Registry, containerRegistryAuthStr string, dockerImageDirectoryWhitelist []string) error {
 	manifest.SetReadOnlyIfUnset(pod.readOnly)
 
 	podHome := pod.home
@@ -509,7 +509,29 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 				return err
 			}
 		} else if launchable.Type() == launch.DockerLaunchableType {
-			reader, err := pod.DockerClient.ImagePull(context.TODO(), stanza.LaunchableImage(), dockertypes.ImagePullOptions{RegistryAuth: containerRegistryAuthStr})
+			imageDirectory, err := stanza.ImageDirectory()
+			if err != nil {
+				pod.logLaunchableError(launchable.ServiceID(), err, fmt.Sprintf("could not get docker image directory: %s", err))
+				return util.Errorf("could not get docker image directory: %s", err)
+			}
+			isDirectoryWhitelisted := false
+			for _, v := range dockerImageDirectoryWhitelist {
+				if v == imageDirectory {
+					isDirectoryWhitelisted = true
+					break
+				}
+			}
+			if !isDirectoryWhitelisted {
+				err := util.Errorf("cannot launch docker image, directory %s is not whitelisted", imageDirectory)
+				pod.logLaunchableError(launchable.ServiceID(), err, fmt.Sprintf("%s", err))
+				return err
+			}
+			launchableImage, err := stanza.LaunchableImage()
+			if err != nil {
+				pod.logLaunchableError(launchable.ServiceID(), err, fmt.Sprintf("could not get docker launchable image: %s", err))
+				return util.Errorf("could not get docker launchable image: %s", err)
+			}
+			reader, err := pod.DockerClient.ImagePull(context.TODO(), launchableImage, dockertypes.ImagePullOptions{RegistryAuth: containerRegistryAuthStr})
 			if err != nil {
 				pod.logLaunchableError(launchable.ServiceID(), err, fmt.Sprintf("could not pull docker image: %s", err))
 				return util.Errorf("could not pull docker image: %s", err)
@@ -906,6 +928,10 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			return nil, util.Errorf("could not get parent cgroup name for docker container: %s", err)
 		}
 
+		launchableImage, err := launchableStanza.LaunchableImage()
+		if err != nil {
+			return nil, util.Errorf("could not get docker launchable image: %s", err)
+		}
 		return &docker.Launchable{
 			LaunchableID:     launchableID,
 			RootDir:          launchableRootDir,
@@ -915,7 +941,7 @@ func (pod *Pod) getLaunchable(launchableID launch.LaunchableID, launchableStanza
 			Entrypoint:       launchableStanza.EntryPoint,
 			PostStartCmd:     launchableStanza.PostStart.Exec.Command,
 			PreStopCmd:       launchableStanza.PreStop.Exec.Command,
-			Image:            launchableStanza.LaunchableImage(),
+			Image:            launchableImage,
 			ParentCgroupID:   podCgroupID.String(),
 			CPUQuota:         launchableStanza.CgroupConfig.CPUs,
 			CgroupMemorySize: launchableStanza.CgroupConfig.Memory,

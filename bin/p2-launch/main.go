@@ -36,10 +36,11 @@ var (
 		"deploy-policy",
 		"the deploy policy specifying who may deploy each pod. Only used when --auth-type is 'user'",
 	).Short('d').ExistingFile()
-	caFile                       = kingpin.Flag("tls-ca-file", "File containing the x509 PEM-encoded CA ").ExistingFile()
-	artifactRegistryURL          = kingpin.Flag("artifact-registry-url", "the artifact registry to fetch artifacts from").Short('r').URL()
-	requireFile                  = kingpin.Flag("require-file", "If set, the p2-exec invocation(s) written for the pod will not execute until the file exists on the system").String()
-	containerRegistryJsonKeyFile = kingpin.Flag("container-registry-json-key", "Needs to set when trying to launch a pod with docker launchables").ExistingFile()
+	caFile                        = kingpin.Flag("tls-ca-file", "File containing the x509 PEM-encoded CA ").ExistingFile()
+	artifactRegistryURL           = kingpin.Flag("artifact-registry-url", "the artifact registry to fetch artifacts from").Short('r').URL()
+	requireFile                   = kingpin.Flag("require-file", "If set, the p2-exec invocation(s) written for the pod will not execute until the file exists on the system").String()
+	containerRegistryJsonKeyFile  = kingpin.Flag("container-registry-json-key", "Need to set when trying to launch a pod with docker launchables").ExistingFile()
+	dockerImageDirectoryWhitelist = kingpin.Flag("docker-image-directory-whitelist", "Need to set when trying to launch a pod with docker launchables").Strings()
 )
 
 func main() {
@@ -104,7 +105,7 @@ func main() {
 			log.Fatalf("error getting container registry auth string: %s", err)
 		}
 	}
-	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(*artifactRegistryURL, fetcher, osversion.DefaultDetector), containerRegistryAuthStr)
+	err = pod.Install(manifest, auth.NopVerifier(), artifact.NewRegistry(*artifactRegistryURL, fetcher, osversion.DefaultDetector), containerRegistryAuthStr, *dockerImageDirectoryWhitelist)
 	if err != nil {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)
 	}

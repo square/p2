@@ -129,9 +129,20 @@ func (l LaunchableStanza) LaunchableVersion() (LaunchableVersionID, error) {
 	return "", util.Errorf("Unsupported launchable type %s", l.LaunchableType)
 }
 
-func (l LaunchableStanza) LaunchableImage() string {
-	return fmt.Sprintf("%s@sha256:%s", l.Image.Name, l.Image.SHA256)
+func (l LaunchableStanza) ImageDirectory() (string, error) {
+	if l.LaunchableType == DockerLaunchableType {
+		return strings.Split(l.Image.Name, "/")[2], nil
+	}
+	return "", util.Errorf("Unsupported launchable type %s", l.LaunchableType)
 }
+
+func (l LaunchableStanza) LaunchableImage() (string, error) {
+	if l.LaunchableType == DockerLaunchableType {
+		return fmt.Sprintf("%s@sha256:%s", l.Image.Name, l.Image.SHA256), nil
+	}
+	return "", util.Errorf("Unsupported launchable type %s", l.LaunchableType)
+}
+
 func (l LaunchableStanza) RestartPolicy() runit.RestartPolicy {
 	if l.RestartPolicy_ == "" {
 		return runit.DefaultRestartPolicy
