@@ -188,6 +188,9 @@ type PreparerConfig struct {
 	// clients, e.g. consul client vs artifact downloader
 	HTTPTimeout time.Duration `yaml:"http_timeout"`
 
+	// IdleConnTimeout will be set on the preparer's HTTP client transport.
+	IdleConnTimeout time.Duration `yaml:"idle_conn_timeout"`
+
 	// Use a single Store so that all requests go through the same HTTP client.
 	consulClientMux sync.Mutex
 	consulClient    consulutil.ConsulClient
@@ -341,6 +344,12 @@ func (c *PreparerConfig) getClient(
 		cxnTimeout = 30 * time.Second
 	}
 
+	idleConnTimeout := c.IdleConnTimeout
+	if idleConnTimeout == time.Duration(0*time.Second) {
+		// Not set in manifest
+		idleConnTimeout = time.Duration(90 * time.Second)
+	}
+
 	tlsConfig.InsecureSkipVerify = insecureSkipVerify
 	transport := &http.Transport{
 		TLSClientConfig: tlsConfig,
@@ -349,6 +358,7 @@ func (c *PreparerConfig) getClient(
 			Timeout:   cxnTimeout,
 			KeepAlive: cxnTimeout,
 		}).Dial,
+		IdleConnTimeout: idleConnTimeout,
 	}
 	if c.HTTP2 {
 		if err = http2.ConfigureTransport(transport); err != nil {
