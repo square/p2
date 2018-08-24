@@ -46,6 +46,7 @@ import (
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/util"
 	netutil "github.com/square/p2/pkg/util/net"
+	"github.com/square/p2/pkg/util/net/socket"
 	"github.com/square/p2/pkg/util/param"
 	"github.com/square/p2/pkg/util/size"
 )
@@ -161,6 +162,15 @@ type PreparerConfig struct {
 	ArtifactRegistryURL          string                 `yaml:"artifact_registry_url,omitempty"`
 	DockerHost                   string                 `yaml:"docker_host,omitempty"`
 	ContainerRegistryJsonKeyFile string                 `yaml:"container_json_key_file,omitempty"`
+
+	// UnixSocketPathEnvVar is a path to a unix socket that, when set, will be
+	// dialed by the http client used for Consul communication
+	UnixSocketPathEnvVar string `yaml:"unix_socket_path_env_var,omitempty"`
+	// ConsulHost will be set as the http.Request.Host for all Consul
+	// requests when the preparer is configured to dial a unix socket for
+	// communication with Consul
+	ConsulHost string `yaml:"consul_host_header,omitempty"`
+
 	// Directories that are allowed to be launched by this preparer
 	DockerImageDirectoryWhitelist []string     `yaml:"docker_image_directory_whitelist,omitempty"`
 	ConsulConfig                  ConsulConfig `yaml:"consul_config,omitempty"`
@@ -304,7 +314,13 @@ func (c *PreparerConfig) getOpts() (consul.Options, error) {
 		return consul.Options{}, err
 	}
 
-	if c.ConsulHttps {
+	if c.UnixSocketPathEnvVar != "" {
+		socketPath, err := socket.Path(c.UnixSocketPathEnvVar)
+		if err != nil {
+			return consul.Options{}, err
+		}
+		client = socket.NewHTTPClient(socketPath, c.ConsulHost)
+	} else if c.ConsulHttps {
 		client, err = c.GetClient(30 * time.Second) // 30 seconds is the net/http default
 		if err != nil {
 			return consul.Options{}, err
