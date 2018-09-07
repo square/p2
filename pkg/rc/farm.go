@@ -103,6 +103,7 @@ type Farm struct {
 	rcWatchPauseTime time.Duration
 
 	artifactRegistry artifact.Registry
+	sdChecker        ServiceDiscoveryChecker
 }
 
 type childRC struct {
@@ -129,6 +130,7 @@ func NewFarm(
 	alerter alerting.Alerter,
 	rcWatchPauseTime time.Duration,
 	artifactRegistry artifact.Registry,
+	sdChecker ServiceDiscoveryChecker,
 ) *Farm {
 	if alerter == nil {
 		alerter = alerting.NewNop()
@@ -153,6 +155,7 @@ func NewFarm(
 		rcSelector:       rcSelector,
 		rcWatchPauseTime: rcWatchPauseTime,
 		artifactRegistry: artifactRegistry,
+		sdChecker:        sdChecker,
 	}
 }
 
@@ -282,6 +285,7 @@ START_LOOP:
 					rcf.alerter,
 					rcf.healthChecker,
 					rcf.artifactRegistry,
+					rcf.sdChecker,
 				)
 				childQuit := make(chan struct{})
 				rcf.children[rcKey.ID] = childRC{

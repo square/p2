@@ -134,6 +134,7 @@ func main() {
 		alerter,
 		1*time.Second,
 		artifactRegistry,
+		nil,
 	).Start(nil)
 	roll.NewFarm(
 		roll.UpdateFactory{
