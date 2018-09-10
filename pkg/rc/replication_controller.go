@@ -81,6 +81,13 @@ type Scheduler interface {
 var _ Scheduler = &scheduler.ApplicatorScheduler{}
 var _ Scheduler = &grpc_scheduler.Client{}
 
+type ServiceDiscoveryChecker interface {
+	// IsSyncedWithCluster can be called by the RC when it needs to know that
+	// the service discovery system is up to date with P2's latest cluster
+	// state
+	IsSyncedWithCluster(rcID fields.ID) (bool, error)
+}
+
 // These methods are the same as the methods of the same name in consul.Store.
 // Replication controllers have no need of any methods other than these.
 type consulStore interface {
@@ -124,6 +131,7 @@ type replicationController struct {
 	alerter          alerting.Alerter
 	healthChecker    checker.HealthChecker
 	artifactRegistry artifact.Registry
+	sdChecker        ServiceDiscoveryChecker
 }
 
 type ReplicationControllerWatcher interface {
@@ -145,6 +153,7 @@ func New(
 	alerter alerting.Alerter,
 	healthChecker checker.HealthChecker,
 	artifactRegistry artifact.Registry,
+	sdChecker ServiceDiscoveryChecker,
 ) ReplicationController {
 	if alerter == nil {
 		alerter = alerting.NewNop()
@@ -166,6 +175,7 @@ func New(
 		alerter:          alerter,
 		healthChecker:    healthChecker,
 		artifactRegistry: artifactRegistry,
+		sdChecker:        sdChecker,
 	}
 }
 
@@ -653,8 +663,9 @@ func (rc *replicationController) unschedule(txn *auditingTransaction, rcFields f
 // attemptNodeTransfer will transactionally remove a pod on an ineligible node
 // and add a pod on a new node if the following conditions are met:
 //   1) The ineligible pod is unhealthy OR all of the RC's pods are healthy
-//   2) The RC can acquire a mutation lock on its ID
-//   3) OR the RC is disabled, only on ineligible nodes, and has fewer desired
+//   2) The service discovery system is synced with the pod cluster
+//   3) The RC can acquire a mutation lock on its ID
+//   4) OR the RC is disabled, only on ineligible nodes, and has fewer desired
 //      replicas than current (described more in canNodeTransfer())
 // If the conditions are not met, the function will be called again on the next
 // call of meetDesires() should a node still be ineligible. It returns true
@@ -688,6 +699,15 @@ func (rc *replicationController) attemptNodeTransfer(rcFields fields.RC, current
 }
 
 func (rc *replicationController) canNodeTransfer(rcFields fields.RC, current types.PodLocations, ineligibles []types.NodeName) (bool, consul.Unlocker, error) {
+	ok, err := rc.sdChecker.IsSyncedWithCluster(rcFields.ID)
+	if err != nil {
+		rc.logger.WithError(err).Errorln("skipping node transfer; error checking service discovery system")
+		return false, nil, err
+	} else if !ok {
+		rc.logger.Infoln("skipping node transfer; service discovery system not synced")
+		return false, nil, nil
+	}
+
 	currentSet := types.NewNodeSet(current.Nodes()...)
 	ineligibleSet := types.NewNodeSet(ineligibles...)
 	if rcFields.Disabled &&
@@ -703,7 +723,7 @@ func (rc *replicationController) canNodeTransfer(rcFields fields.RC, current typ
 		return true, nil, nil
 	}
 	ineligible := ineligibles[0]
-	ok, err := rc.isTransferMinHealthMet(rcFields, current, ineligible)
+	ok, err = rc.isTransferMinHealthMet(rcFields, current, ineligible)
 	if err != nil {
 		rc.logger.WithError(err).Errorln("skipping node transfer; error checking health")
 		return false, nil, err

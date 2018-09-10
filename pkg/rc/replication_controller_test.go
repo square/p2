@@ -105,6 +105,14 @@ type testScheduler struct {
 	deallocateShouldErr bool
 }
 
+type fakeServiceDiscoveryChecker struct {
+	isSynced bool
+}
+
+func (s fakeServiceDiscoveryChecker) IsSyncedWithCluster(rcID fields.ID) (bool, error) {
+	return s.isSynced, nil
+}
+
 func setup(t *testing.T) (
 	rcStore testRCStore,
 	consulStore testConsulStore,
@@ -151,6 +159,8 @@ func setup(t *testing.T) (
 
 	artifactRegistry := artifact.NewRegistry(nil, nil, nil)
 
+	sdChecker := fakeServiceDiscoveryChecker{true}
+
 	rc = New(
 		rcData.ID,
 		consulStore,
@@ -166,6 +176,7 @@ func setup(t *testing.T) (
 		alerter,
 		healthChecker,
 		artifactRegistry,
+		sdChecker,
 	).(*replicationController)
 
 	return
@@ -1208,7 +1219,7 @@ func TestNodeTransferNoopIfPodsUnhealthy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ok {
-		t.Fatal("expected node transfer to skip when locked")
+		t.Fatal("expected node transfer to skip when eligible node unhealthy")
 	}
 
 	// Confirm that the RC is scheduled on the same nodes
@@ -1416,5 +1427,54 @@ func TestNodeTransferAlertsIfDeallocateFails(t *testing.T) {
 	_, err = rc.attemptNodeTransfer(rcFields, current, []types.NodeName{"node2"}, 1)
 	if err == nil {
 		t.Fatal("expected allocation error")
+	}
+}
+
+func TestNodeTransferNoopIfServiceDiscoveryNotSynced(t *testing.T) {
+	_, _, applicator, rc, _, _, _, closeFn := setup(t)
+	defer closeFn()
+
+	// Make the service discovery checker return not synced
+	rc.sdChecker = fakeServiceDiscoveryChecker{false}
+
+	rcFields := fields.RC{
+		ID:                 rc.rcID,
+		ReplicasDesired:    3,
+		Manifest:           testManifest(),
+		Disabled:           false,
+		NodeSelector:       klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"}),
+		AllocationStrategy: fields.DynamicStrategy,
+	}
+
+	err := nodeTransferSetup(applicator, rc, rcFields)
+	current, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark all current nodes as healthy
+	healthMap := make(map[types.NodeName]health.Result, len(current))
+	for _, node := range current.Nodes() {
+		healthMap[node] = health.Result{Status: health.Passing}
+	}
+	rc.healthChecker = fake_checker.NewSingleService("some_pod", healthMap)
+
+	ok, err := rc.attemptNodeTransfer(rcFields, current, []types.NodeName{"node2"}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("expected node transfer to skip when service discovery not synced")
+	}
+
+	// Confirm that the RC is scheduled on the same nodes
+	newCurrent, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := types.NewNodeSet(newCurrent.Nodes()...)
+	expected := types.NewNodeSet(current.Nodes()...)
+	if !actual.Equal(expected) {
+		t.Fatalf("expected current nodes to be %v, was %v", expected, actual)
 	}
 }
