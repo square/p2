@@ -97,11 +97,11 @@ func testManifest() manifest.Manifest {
 }
 
 func TestHookRunWithTimeout(t *testing.T) {
-	timeout := 1 * time.Millisecond
-	sleep := "1" // 1 second sleep to be executed by the script
+	timeout := 1 * time.Second
+	sleep := "5" // Wait longer than hook timeout to trigger failure
 
 	// build an executable file to feed to Hook
-	contents := []byte("#!/bin/bash\nsleep " + sleep)
+	contents := []byte("#!/usr/bin/env sh\nsleep " + sleep)
 
 	tmpFile, err := tempFileWithContents("test-hook-run-with-timeout.", contents)
 	if err != nil {
