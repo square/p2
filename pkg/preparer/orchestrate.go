@@ -43,7 +43,7 @@ type Pod interface {
 }
 
 type Hooks interface {
-	RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest manifest.Manifest) error
+	RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest manifest.Manifest, hooksRequired []string) error
 	Close() error
 }
 
@@ -285,12 +285,20 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	}
 }
 
-func (p *Preparer) tryRunHooks(hookType hooks.HookType, pod hooks.Pod, manifest manifest.Manifest, logger logging.Logger) {
-	err := p.hooks.RunHookType(hookType, pod, manifest)
+func (p *Preparer) tryRunHooks(
+	hookType hooks.HookType,
+	pod hooks.Pod,
+	manifest manifest.Manifest,
+	logger logging.Logger,
+) bool {
+	err := p.hooks.RunHookType(hookType, pod, manifest, p.hooksRequired)
 	if err != nil {
 		logger.WithErrorAndFields(err, logrus.Fields{
 			"hooks": hookType}).Warnln("Could not run hooks")
+		return false
 	}
+
+	return true
 }
 
 // no return value, no output channels. This should do everything it needs to do
@@ -523,7 +531,9 @@ func (p *Preparer) artifactRegistryFor(manifest manifest.Manifest) artifact.Regi
 }
 
 func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger logging.Logger) bool {
-	p.tryRunHooks(hooks.BeforeInstall, pod, pair.Intent, logger)
+	if !p.tryRunHooks(hooks.BeforeInstall, pod, pair.Intent, logger) {
+		return false
+	}
 
 	logger.NoFields().Infoln("Installing pod and launchables")
 
@@ -543,7 +553,9 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 		return false
 	}
 
-	p.tryRunHooks(hooks.AfterInstall, pod, pair.Intent, logger)
+	if !p.tryRunHooks(hooks.AfterInstall, pod, pair.Intent, logger) {
+		return false
+	}
 
 	if pair.Reality != nil {
 		// installAndLaunchPod implies that something was in intent, so let
@@ -560,7 +572,9 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 		}
 	}
 
-	p.tryRunHooks(hooks.BeforeLaunch, pod, pair.Intent, logger)
+	if !p.tryRunHooks(hooks.BeforeLaunch, pod, pair.Intent, logger) {
+		return false
+	}
 
 	logger.NoFields().Infoln("Setting up new runit services and running the enable hook")
 
@@ -588,7 +602,9 @@ func (p *Preparer) installAndLaunchPod(pair ManifestPair, pod Pod, logger loggin
 			}
 		}
 
-		p.tryRunHooks(hooks.AfterLaunch, pod, pair.Intent, logger)
+		if !p.tryRunHooks(hooks.AfterLaunch, pod, pair.Intent, logger) {
+			return false
+		}
 
 		pod.Prune(p.maxLaunchableDiskUsage, pair.Intent) // errors are logged internally
 	}

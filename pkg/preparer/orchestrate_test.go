@@ -110,7 +110,12 @@ type fakeHooks struct {
 	ranBeforeInstall, ranBeforeUninstall, ranAfterLaunch, ranAfterInstall, ranAfterAuthFail, ranBeforeLaunch bool
 }
 
-func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest manifest.Manifest) error {
+func (f *fakeHooks) RunHookType(
+	hookType hooks.HookType,
+	pod hooks.Pod,
+	manifest manifest.Manifest,
+	_ []string,
+) error {
 	switch hookType {
 	case hooks.BeforeInstall:
 		f.ranBeforeInstall = true
@@ -134,6 +139,8 @@ func (f *fakeHooks) RunHookType(hookType hooks.HookType, pod hooks.Pod, manifest
 	return util.Errorf("Invalid hook type configured in test: %s", hookType)
 }
 func (f *fakeHooks) Close() error { return nil }
+
+var hooksManifestDefault = "no_hooks"
 
 func testManifest(t *testing.T) manifest.Manifest {
 	manifestPath := util.From(runtime.Caller(0)).ExpandPath("test_manifest.yaml")
@@ -229,7 +236,7 @@ func (f *FakeStore) DeletePod(consul.PodPrefix, types.NodeName, types.PodID) (ti
 func (f *FakeStore) WatchPods(consul.PodPrefix, types.NodeName, <-chan struct{}, chan<- error, chan<- []consul.ManifestResult) {
 }
 
-func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks, string) {
+func testPreparer(t *testing.T, f *FakeStore, hooksManifest string) (*Preparer, *fakeHooks, string) {
 	podRoot, _ := ioutil.TempDir("", "pod_root")
 	cfg := &PreparerConfig{
 		NodeName:       "hostname",
@@ -237,7 +244,7 @@ func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks, string) {
 		HooksDirectory: util.From(runtime.Caller(0)).ExpandPath("test_hooks"),
 		PodRoot:        podRoot,
 		Auth:           map[string]interface{}{"type": "none"},
-		HooksManifest:  "no_hooks",
+		HooksManifest:  hooksManifest,
 	}
 	p, err := New(cfg, logging.DefaultLogger)
 	Assert(t).IsNil(err, "Test setup error: should not have erred when trying to load a fake preparer")
@@ -249,7 +256,7 @@ func testPreparer(t *testing.T, f *FakeStore) (*Preparer, *fakeHooks, string) {
 }
 
 func TestPrepareSkipIfPodWhiteListFileNotExist(t *testing.T) {
-	p, _, _ := testPreparer(t, &FakeStore{})
+	p, _, _ := testPreparer(t, &FakeStore{}, hooksManifestDefault)
 	_, filename, _, _ := runtime.Caller(0)
 	testPath := filepath.Join(filepath.Dir(filename), "pod_whitelist_dummy")
 	cfg := &PreparerConfig{
@@ -261,7 +268,7 @@ func TestPrepareSkipIfPodWhiteListFileNotExist(t *testing.T) {
 }
 
 func TestPrepareProceedWhiteListFileIfConfigured(t *testing.T) {
-	p, _, _ := testPreparer(t, &FakeStore{})
+	p, _, _ := testPreparer(t, &FakeStore{}, hooksManifestDefault)
 	_, filename, _, _ := runtime.Caller(0)
 	testPath := filepath.Join(filepath.Dir(filename), "pod_whitelist")
 
@@ -292,7 +299,7 @@ func TestPrepareWillNotInstallWhiteListPodsNotInTheIntent(t *testing.T) {
 		wipedReality:    true,
 	}
 
-	p, _, fakePodRoot := testPreparer(t, store)
+	p, _, fakePodRoot := testPreparer(t, store, hooksManifestDefault)
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 
@@ -309,7 +316,7 @@ func TestPrepareInstallWhiteListPodsInTheIntentSkipInstall(t *testing.T) {
 		currentManifest: testManifest(t),
 		wipedReality:    true,
 	}
-	p, _, fakePodRoot := testPreparer(t, store)
+	p, _, fakePodRoot := testPreparer(t, store, hooksManifestDefault)
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	// error out the podID to be installed here, the further installation is not included here, tested by other tests already.
@@ -330,7 +337,7 @@ func TestPreparerLaunchesNewPodsThatArentInstalledYet(t *testing.T) {
 		Intent: newManifest,
 	}
 
-	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{}, hooksManifestDefault)
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	success := p.resolvePair(newPair, testPod, logging.DefaultLogger)
@@ -359,7 +366,7 @@ func TestPreparerLaunchesPodsThatHaveDifferentSHAs(t *testing.T) {
 		Intent:  newManifest,
 	}
 
-	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{}, hooksManifestDefault)
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	success := p.resolvePair(newPair, testPod, logging.DefaultLogger)
@@ -384,7 +391,7 @@ func TestPreparerFailsIfInstallFails(t *testing.T) {
 		Intent: newManifest,
 	}
 
-	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{}, hooksManifestDefault)
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	success := p.resolvePair(newPair, testPod, logging.DefaultLogger)
@@ -410,7 +417,7 @@ func TestPreparerWillLaunchPreparerAsRoot(t *testing.T) {
 		currentManifest: illegalManifest,
 	}
 
-	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{}, hooksManifestDefault)
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 
@@ -435,7 +442,7 @@ func TestPreparerWillNotInstallOrLaunchIfSHAIsTheSame(t *testing.T) {
 		currentManifest: testManifest,
 	}
 
-	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{}, hooksManifestDefault)
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	success := p.resolvePair(newPair, testPod, logging.DefaultLogger)
@@ -457,7 +464,7 @@ func TestPreparerWillRemoveIfManifestDisappears(t *testing.T) {
 		currentManifest: testManifest,
 	}
 
-	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{})
+	p, hooks, fakePodRoot := testPreparer(t, &FakeStore{}, hooksManifestDefault)
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	success := p.resolvePair(newPair, testPod, logging.DefaultLogger)
@@ -472,7 +479,7 @@ func TestPreparerWillRemoveIfManifestDisappears(t *testing.T) {
 func TestPreparerWillRequireSignatureWithKeyring(t *testing.T) {
 	manifest := testManifest(t)
 
-	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	p, _, fakePodRoot := testPreparer(t, &FakeStore{}, hooksManifestDefault)
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{}
@@ -486,7 +493,7 @@ func TestPreparerWillRequireSignatureWithKeyring(t *testing.T) {
 func TestPreparerWillAcceptSignatureFromKeyring(t *testing.T) {
 	manifest, fakeSigner := testSignedManifest(t, nil)
 
-	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	p, _, fakePodRoot := testPreparer(t, &FakeStore{}, hooksManifestDefault)
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{Keyring: openpgp.EntityList{fakeSigner}}
@@ -502,7 +509,7 @@ func TestPreparerWillAcceptSignatureForPreparerWithoutAuthorizedDeployers(t *tes
 		b.SetID(constants.PreparerPodID)
 	})
 
-	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	p, _, fakePodRoot := testPreparer(t, &FakeStore{}, hooksManifestDefault)
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{Keyring: openpgp.EntityList{fakeSigner}}
@@ -518,7 +525,7 @@ func TestPreparerWillRejectUnauthorizedSignatureForPreparer(t *testing.T) {
 		b.SetID(constants.PreparerPodID)
 	})
 
-	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	p, _, fakePodRoot := testPreparer(t, &FakeStore{}, hooksManifestDefault)
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{
@@ -539,7 +546,7 @@ func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 		sig = fmt.Sprintf("%X", e.PrimaryKey.Fingerprint)
 	})
 
-	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	p, _, fakePodRoot := testPreparer(t, &FakeStore{}, hooksManifestDefault)
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	p.authPolicy = auth.FixedKeyringPolicy{
@@ -555,7 +562,7 @@ func TestPreparerWillAcceptAuthorizedSignatureForPreparer(t *testing.T) {
 
 func TestPreparerWillAcceptSignatureWhenKeyringIsNil(t *testing.T) {
 	manifest := testManifest(t)
-	p, _, fakePodRoot := testPreparer(t, &FakeStore{})
+	p, _, fakePodRoot := testPreparer(t, &FakeStore{}, hooksManifestDefault)
 	defer p.Close()
 	defer os.RemoveAll(fakePodRoot)
 	// Use default p.authPolicy when no keyfile path is given
@@ -564,4 +571,18 @@ func TestPreparerWillAcceptSignatureWhenKeyringIsNil(t *testing.T) {
 		p.authorize(manifest, logging.DefaultLogger),
 		"expected the preparer to verify the signature when no keyring given",
 	)
+}
+
+func TestPrepareHooksFailureRequired(t *testing.T) {
+	store := &FakeStore{currentManifest: testManifest(t)}
+	p, fakeHooks, _ := testPreparer(t, store, hooksManifestDefault)
+	fakeHooks.beforeInstallErr = fmt.Errorf("before install erred")
+	p.tryRunHooks(
+		hooks.HookType("before_install"),
+		p.hooksPod,
+		store.currentManifest,
+		logging.DefaultLogger,
+	)
+
+	Assert(t).IsTrue(fakeHooks.ranBeforeInstall, "before install should have ran")
 }
