@@ -18,6 +18,8 @@ import (
 
 const podId = "TestPod"
 
+var hooksRequiredEmpty []string
+
 func TestExecutableHooksAreRun(t *testing.T) {
 	tempDir, err := ioutil.TempDir("", "hook")
 	Assert(t).IsNil(err, "the error should have been nil")
@@ -35,7 +37,7 @@ func TestExecutableHooksAreRun(t *testing.T) {
 	hooks := NewContext(tempDir, pods.DefaultPath, &logging.DefaultLogger, NewFileAuditLogger(&logging.DefaultLogger))
 	pod, err := pods.PodFromPodHome("testNode", podDir)
 	Assert(t).IsNil(err, "the error should have been nil")
-	hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger)
+	hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger, hooksRequiredEmpty)
 
 	contents, err := ioutil.ReadFile(path.Join(tempDir, "output"))
 	Assert(t).IsNil(err, "the error should have been nil")
@@ -61,7 +63,7 @@ func TestNonExecutableHooksAreNotRun(t *testing.T) {
 	hooks := NewContext(tempDir, pods.DefaultPath, &logging.DefaultLogger, NewFileAuditLogger(&logging.DefaultLogger))
 	pod, err := pods.PodFromPodHome("testNode", podDir)
 	Assert(t).IsNil(err, "the error should have been nil")
-	hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger)
+	hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger, hooksRequiredEmpty)
 
 	if _, err := os.Stat(path.Join(tempDir, "failed")); err == nil {
 		t.Fatal("`failed` file exists; non-executable hook ran but should not have run")
@@ -85,7 +87,7 @@ func TestDirectoriesDoNotBreakEverything(t *testing.T) {
 	pod, err := pods.PodFromPodHome("testNode", podDir)
 	Assert(t).IsNil(err, "the error should have been nil")
 	hooks := NewContext(tempDir, pods.DefaultPath, &logging.DefaultLogger, NewFileAuditLogger(&logging.DefaultLogger))
-	err = hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger)
+	err = hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger, hooksRequiredEmpty)
 
 	Assert(t).IsNil(err, "Got an error when running a directory inside the hooks directory")
 }
@@ -93,6 +95,15 @@ func TestDirectoriesDoNotBreakEverything(t *testing.T) {
 func testManifest() manifest.Manifest {
 	builder := manifest.NewBuilder()
 	builder.SetID(podId)
+	return builder.GetManifest()
+}
+
+func testReqHooksManifest() manifest.Manifest {
+	builder := manifest.NewBuilder()
+	builder.SetID(podId)
+	reqHooks := []string{"basename_req-hook", "basename_req-hook2"}
+	config := map[interface{}]interface{}{"required_hooks": reqHooks}
+	builder.SetConfig(config)
 	return builder.GetManifest()
 }
 
@@ -142,7 +153,7 @@ func TestHookAuditLogging(t *testing.T) {
 	hooks := NewContext(tempDir, pods.DefaultPath, &logging.DefaultLogger, NewFileAuditLogger(&auditLoggerLogger))
 	pod, err := pods.PodFromPodHome("testNode", podDir)
 	Assert(t).IsNil(err, "the error should have been nil")
-	hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger)
+	hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger, hooksRequiredEmpty)
 
 	Assert(t).IsTrue(len(buf.Bytes()) > 0, "Expected buf to capture audit logs.")
 
@@ -150,6 +161,54 @@ func TestHookAuditLogging(t *testing.T) {
 	Assert(t).IsNil(err, "the error should have been nil")
 
 	Assert(t).AreEqual(string(contents), "TestPod\n", "hook should output pod ID into output file")
+}
+
+func TestRequiredHooksAreFatal(t *testing.T) {
+	tempDir, err := ioutil.TempDir("", "hook")
+	Assert(t).IsNil(err, "the error should have been nil")
+	defer os.RemoveAll(tempDir)
+
+	podDir, err := ioutil.TempDir("", "pod")
+	defer os.RemoveAll(podDir)
+	Assert(t).IsNil(err, "the error should have been nil")
+
+	hooksRequired := []string{"basename_req-hook"}
+
+	ioutil.WriteFile(path.Join(tempDir, "basename_req-hook"), []byte("#!/usr/bin/env sh\nexit 1"), 0755)
+
+	// So PodFromPodHome doesn't bail out, write a minimal current_manifest.yaml
+	ioutil.WriteFile(path.Join(podDir, "current_manifest.yaml"), []byte("id: reqhooks"), 0755)
+
+	hooks := NewContext(tempDir, pods.DefaultPath, &logging.DefaultLogger, NewFileAuditLogger(&logging.DefaultLogger))
+	pod, err := pods.PodFromPodHome("testNode", podDir)
+	Assert(t).IsNil(err, "the error should have been nil")
+	err = hooks.runHooks(tempDir, AfterInstall, pod, testReqHooksManifest(), logging.DefaultLogger, hooksRequired)
+
+	Assert(t).IsNotNil(err, "An error should have been returned from runHooks")
+}
+
+func TestOptHooksAreNotFatal(t *testing.T) {
+	tempDir, err := ioutil.TempDir("", "hook")
+	Assert(t).IsNil(err, "the error should have been nil")
+	defer os.RemoveAll(tempDir)
+
+	podDir, err := ioutil.TempDir("", "pod")
+	defer os.RemoveAll(podDir)
+	Assert(t).IsNil(err, "the error should have been nil")
+
+	hooksRequired := []string{"basename_req-hook"}
+
+	ioutil.WriteFile(path.Join(tempDir, "basename_opt-hook"), []byte("#!/usr/bin/env sh\nexit 1"), 0755)
+
+	// So PodFromPodHome doesn't bail out, write a minimal current_manifest.yaml
+	ioutil.WriteFile(path.Join(podDir, "current_manifest.yaml"), []byte("id: opt_hook"), 0755)
+
+	hooks := NewContext(tempDir, pods.DefaultPath, &logging.DefaultLogger, NewFileAuditLogger(&logging.DefaultLogger))
+	pod, err := pods.PodFromPodHome("testNode", podDir)
+	Assert(t).IsNil(err, "the error should have been nil")
+	err = hooks.runHooks(tempDir, AfterInstall, pod, testManifest(), logging.DefaultLogger, hooksRequired)
+
+	Assert(t).IsNil(err, "No error should have been returned")
 }
 
 // tempFileWithContents creates a tempfile (0744), fills it with contents and returns the path to it

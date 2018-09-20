@@ -71,8 +71,10 @@ func main() {
 		}
 	}
 
+	hooksRequired := []string{}
+
 	log.Printf("About to run %s hooks for pod %s\n", hookType, pod.Home())
-	err = dir.RunHookType(hookType, pod, podManifest)
+	err = dir.RunHookType(hookType, pod, podManifest, hooksRequired)
 	if err != nil {
 		log.Fatalln(err)
 	}
