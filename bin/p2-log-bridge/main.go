@@ -27,6 +27,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := discardSTDOUTAndSTDERR(); err != nil {
+		logging.DefaultLogger.WithError(err).Error("fatal error discarding STDOUT and STDERR")
+		os.Exit(1)
+	}
+
 	var wg sync.WaitGroup
 	loggerCmd := exec.Command(*durableLogger)
 	durablePipe, err := loggerCmd.StdinPipe()
@@ -79,6 +84,27 @@ func setSTDINToBlock() error {
 	_, _, errno = unix.Syscall(unix.SYS_FCNTL, 0, unix.F_SETFL, oldflags&^unix.O_NONBLOCK)
 	if errno != 0 {
 		return fmt.Errorf("unix.FCNTL F_SETFL errno: %d", errno)
+	}
+	return nil
+}
+
+// Environments that use systemd-journald may be affected by a bug in which
+// logbridge write()s will fail with EPIPE if systemd-journald restarts. To
+// avoid this, we can update the STDOUT and STDERR file descriptors to point at
+// /dev/null.
+func discardSTDOUTAndSTDERR() error {
+	dn, err := os.Open(os.DevNull)
+	if err != nil {
+		return fmt.Errorf("could not open %s: %s", os.DevNull, err)
+	}
+	dnFd := int(dn.Fd())
+	outFd := int(os.Stdout.Fd())
+	if err := unix.Dup2(dnFd, outFd); err != nil {
+		return fmt.Errorf("could not copy %s to file descriptor %d: %s", os.DevNull, outFd, err)
+	}
+	errFd := int(os.Stderr.Fd())
+	if err := unix.Dup2(dnFd, errFd); err != nil {
+		return fmt.Errorf("could not copy %s to file descriptor %d: %s", os.DevNull, errFd, err)
 	}
 	return nil
 }
