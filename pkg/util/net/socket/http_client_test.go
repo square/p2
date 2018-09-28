@@ -47,7 +47,7 @@ func TestClient(t *testing.T) {
 
 	socketPath := filepath.Join(tempDir, "test_http.sock")
 
-	client := NewHTTPClient(socketPath, "consul-production")
+	client := NewHTTPClient(socketPath, "consul-production", nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 

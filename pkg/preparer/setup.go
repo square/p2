@@ -170,6 +170,10 @@ type PreparerConfig struct {
 	// requests when the preparer is configured to dial a unix socket for
 	// communication with Consul
 	ConsulHost string `yaml:"consul_host_header,omitempty"`
+	// AdditionalConsulHeaders will all be set as headers for Consul requests
+	// when the preparer is configured to dial a unix socket for Consul
+	// communication
+	AdditionalConsulHeaders map[string]string `yaml:"additional_consul_headers"`
 
 	// Directories that are allowed to be launched by this preparer
 	DockerImageDirectoryWhitelist []string     `yaml:"docker_image_directory_whitelist,omitempty"`
@@ -319,7 +323,7 @@ func (c *PreparerConfig) getOpts() (consul.Options, error) {
 		if err != nil {
 			return consul.Options{}, err
 		}
-		client = socket.NewHTTPClient(socketPath, c.ConsulHost)
+		client = socket.NewHTTPClient(socketPath, c.ConsulHost, c.AdditionalConsulHeaders)
 	} else if c.ConsulHttps {
 		client, err = c.GetClient(30 * time.Second) // 30 seconds is the net/http default
 		if err != nil {
