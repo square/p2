@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/util"
+	netutil "github.com/square/p2/pkg/util/net"
 )
 
 // UnixSocketTransport provides an http.RoundTripper that wraps around another
@@ -40,9 +41,9 @@ func (t UnixSocketTransport) RoundTrip(r *http.Request) (*http.Response, error) 
 
 // NewHTTPClient returns an *http.Client which will send all HTTP requests to the unix socket at socketPath,
 // and will encode the proper request metadata to make all requests route to Consul
-func NewHTTPClient(socketPath, consulHost string) *http.Client {
+func NewHTTPClient(socketPath, consulHost string, extras map[string]string) *http.Client {
 	return &http.Client{
-		Transport: NewTransport(socketPath, consulHost),
+		Transport: NewTransport(socketPath, consulHost, extras),
 		// 6 minutes is slightly higher than the wait time we use on consul watches of
 		// 5 minutes. We expect that a response might not come back for up to 5
 		// minutes, but we shouldn't wait much longer than that
@@ -50,8 +51,8 @@ func NewHTTPClient(socketPath, consulHost string) *http.Client {
 	}
 }
 
-func NewTransport(socketPath, consulHost string) http.RoundTripper {
-	return UnixSocketTransport{
+func NewTransport(socketPath, consulHost string, extras map[string]string) http.RoundTripper {
+	return netutil.GetTransport(extras, UnixSocketTransport{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network string, addr string) (net.Conn, error) {
 				return net.DialUnix("unix", nil, &net.UnixAddr{
@@ -61,7 +62,7 @@ func NewTransport(socketPath, consulHost string) http.RoundTripper {
 			},
 		},
 		ConsulHost: consulHost,
-	}
+	})
 }
 
 func Path(pathEnvVar string) (string, error) {
