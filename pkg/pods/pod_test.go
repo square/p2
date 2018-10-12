@@ -27,7 +27,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	. "github.com/anthonybishopric/gotcha"
-	dockerclient "github.com/docker/docker/client"
+	dockerclient "github.com/moby/moby/client"
 )
 
 func getTestPod() *Pod {

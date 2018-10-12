@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/strslice"
+	"github.com/moby/moby/api/types/strslice"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/util"

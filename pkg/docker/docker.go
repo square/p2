@@ -13,7 +13,7 @@ import (
 
 	"gopkg.in/yaml.v2"
 
-	"github.com/docker/docker/api/types/filters"
+	"github.com/moby/moby/api/types/filters"
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
 	"github.com/square/p2/pkg/runit"
@@ -21,12 +21,12 @@ import (
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/size"
 
-	"github.com/docker/docker/api/types"
-	dockertypes "github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/strslice"
-	dockerclient "github.com/docker/docker/client"
+	"github.com/moby/moby/api/types"
+	dockertypes "github.com/moby/moby/api/types"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/strslice"
+	dockerclient "github.com/moby/moby/client"
 
 	// add this import explicitly for unix
 	_ "github.com/opencontainers/runc/libcontainer/system"

@@ -33,8 +33,8 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/Sirupsen/logrus"
-	dockertypes "github.com/docker/docker/api/types"
-	dockerclient "github.com/docker/docker/client"
+	dockertypes "github.com/moby/moby/api/types"
+	dockerclient "github.com/moby/moby/client"
 )
 
 var (
