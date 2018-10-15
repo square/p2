@@ -16,8 +16,8 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	dockerapi "github.com/moby/moby/api"
-	dockerclient "github.com/moby/moby/client"
+	dockerapi "github.com/docker/docker/api"
+	dockerclient "github.com/docker/docker/client"
 	"github.com/docker/go-connections/tlsconfig"
 	"github.com/hashicorp/consul/api"
 	context "golang.org/x/net/context"

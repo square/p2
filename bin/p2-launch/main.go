@@ -21,7 +21,7 @@ import (
 	"github.com/square/p2/pkg/version"
 
 	"github.com/Sirupsen/logrus"
-	dockerclient "github.com/moby/moby/client"
+	dockerclient "github.com/docker/docker/client"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 

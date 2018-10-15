@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	dockerclient "github.com/moby/moby/client"
+	dockerclient "github.com/docker/docker/client"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/p2exec"
