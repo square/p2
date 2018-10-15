@@ -551,6 +551,41 @@
 			"Rev": "eecf4c70c626c7cfbb95c90195bc34d386c74ac6"
 		},
 		{
+			"ImportPath": "github.com/moby/moby/api",
+			"Comment": "v17.05.0-ce",
+			"Rev": "89658bed64c2a8fe05a978e5b87dbec409d57a0f"
+		},
+		{
+			"ImportPath": "github.com/moby/moby/api/types",
+			"Comment": "v17.05.0-ce",
+			"Rev": "89658bed64c2a8fe05a978e5b87dbec409d57a0f"
+		},
+		{
+			"ImportPath": "github.com/moby/moby/api/types/container",
+			"Comment": "v17.05.0-ce",
+			"Rev": "89658bed64c2a8fe05a978e5b87dbec409d57a0f"
+		},
+		{
+			"ImportPath": "github.com/moby/moby/api/types/filters",
+			"Comment": "v17.05.0-ce",
+			"Rev": "89658bed64c2a8fe05a978e5b87dbec409d57a0f"
+		},
+		{
+			"ImportPath": "github.com/moby/moby/api/types/network",
+			"Comment": "v17.05.0-ce",
+			"Rev": "89658bed64c2a8fe05a978e5b87dbec409d57a0f"
+		},
+		{
+			"ImportPath": "github.com/moby/moby/api/types/strslice",
+			"Comment": "v17.05.0-ce",
+			"Rev": "89658bed64c2a8fe05a978e5b87dbec409d57a0f"
+		},
+		{
+			"ImportPath": "github.com/moby/moby/client",
+			"Comment": "v17.05.0-ce",
+			"Rev": "89658bed64c2a8fe05a978e5b87dbec409d57a0f"
+		},
+		{
 			"ImportPath": "github.com/opencontainers/go-digest",
 			"Comment": "v1.0.0-rc1",
 			"Rev": "279bed98673dd5bef374d3b6e4b09e2af76183bf"
