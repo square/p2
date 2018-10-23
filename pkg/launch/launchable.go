@@ -49,6 +49,7 @@ type LaunchableStanza struct {
 	RestartTimeout          string            `yaml:"restart_timeout,omitempty"`
 	CgroupConfig            cgroups.Config    `yaml:"cgroup,omitempty"`
 	Env                     map[string]string `yaml:"env,omitempty"`
+	RunAs                   string            `yaml:"run_as,omitempty"`
 
 	// Indicates whether the processes started for the launchable should be
 	// restarted when they terminate.  When unspecified, the default is

@@ -483,7 +483,7 @@ func (pod *Pod) Install(manifest manifest.Manifest, verifier auth.ArtifactVerifi
 	downloader := artifact.NewLocationDownloader(pod.Fetcher, verifier)
 	for launchableID, stanza := range manifest.GetLaunchableStanzas() {
 		// TODO: investigate passing in necessary fields to InstallDir()
-		launchable, err := pod.getLaunchable(launchableID, stanza, manifest.RunAsUser(), manifest.UnpackAsUser())
+		launchable, err := pod.getLaunchable(launchableID, stanza, launchableRunAsUser(stanza, manifest), manifest.UnpackAsUser())
 		if err != nil {
 			pod.logLaunchableError(launchable.ServiceID(), err, "Unable to install launchable")
 			return err
@@ -570,7 +570,7 @@ func (pod *Pod) Verify(manifest manifest.Manifest, authPolicy auth.Policy) error
 		if stanza.DigestLocation == "" {
 			continue
 		}
-		launchable, err := pod.getLaunchable(launchableID, stanza, manifest.RunAsUser(), manifest.UnpackAsUser())
+		launchable, err := pod.getLaunchable(launchableID, stanza, launchableRunAsUser(stanza, manifest), manifest.UnpackAsUser())
 		if err != nil {
 			return err
 		}
@@ -783,7 +783,7 @@ func (pod *Pod) Launchables(manifest manifest.Manifest) ([]launch.Launchable, er
 	launchables := make([]launch.Launchable, 0, len(launchableStanzas))
 
 	for launchableID, launchableStanza := range launchableStanzas {
-		launchable, err := pod.getLaunchable(launchableID, launchableStanza, manifest.RunAsUser(), manifest.UnpackAsUser())
+		launchable, err := pod.getLaunchable(launchableID, launchableStanza, launchableRunAsUser(launchableStanza, manifest), manifest.UnpackAsUser())
 		if err != nil {
 			return nil, err
 		}
@@ -1056,4 +1056,11 @@ func (p *Pod) withTimeWarnings(scriptType string, serviceID string, f func()) {
 	}()
 
 	f()
+}
+
+func launchableRunAsUser(stanza launch.LaunchableStanza, manifest manifest.Manifest) string {
+	if stanza.RunAs != "" {
+		return stanza.RunAs
+	}
+	return manifest.RunAsUser()
 }
