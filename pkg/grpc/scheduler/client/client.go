@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"time"
 
 	scheduler_protos "github.com/square/p2/pkg/grpc/scheduler/protos"
 	"github.com/square/p2/pkg/manifest"
@@ -11,13 +12,20 @@ import (
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
+const DefaultTimeout = 5 * time.Second
+
 type Client struct {
 	schedulerClient scheduler_protos.P2SchedulerClient
+	timeout         time.Duration
 }
 
-func NewClient(conn *grpc.ClientConn) Client {
+func NewClient(conn *grpc.ClientConn, timeout time.Duration) Client {
+	if timeout == 0 {
+		timeout = DefaultTimeout
+	}
 	return Client{
 		schedulerClient: scheduler_protos.NewP2SchedulerClient(conn),
+		timeout:         timeout,
 	}
 }
 
@@ -32,7 +40,9 @@ func (c *Client) EligibleNodes(man manifest.Manifest, sel klabels.Selector) ([]t
 		NodeSelector: sel.String(),
 	}
 
-	resp, err := c.schedulerClient.EligibleNodes(context.Background(), req)
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+	resp, err := c.schedulerClient.EligibleNodes(ctx, req)
 	if err != nil {
 		return nil, util.Errorf("EligibleNodes gRPC call failed: %s", err)
 	}
@@ -57,7 +67,9 @@ func (c *Client) AllocateNodes(man manifest.Manifest, nodeSelector klabels.Selec
 		Force:          force,
 	}
 
-	resp, err := c.schedulerClient.AllocateNodes(context.Background(), req)
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+	resp, err := c.schedulerClient.AllocateNodes(ctx, req)
 	if err != nil {
 		return nil, util.Errorf("AllocateNodes gRPC call failed: %s", err)
 	}
