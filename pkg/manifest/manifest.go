@@ -68,6 +68,8 @@ type Manifest interface {
 	Write(out io.Writer) error
 	ConfigFileName() (string, error)
 	WriteConfig(out io.Writer) error
+	MergedConfig(with map[interface{}]interface{}) (map[interface{}]interface{}, error)
+	WriteMergedConfig(out io.Writer, mergeWith map[interface{}]interface{}) error
 	PlatformConfigFileName() (string, error)
 	WritePlatformConfig(out io.Writer) error
 	WriteResourceLimitsConfig(out io.Writer) error
@@ -399,13 +401,58 @@ func (manifest *manifest) Marshal() ([]byte, error) {
 }
 
 func (manifest *manifest) WriteConfig(out io.Writer) error {
-	bytes, err := yaml.Marshal(manifest.Config)
+	return writeConfig(manifest.ID(), manifest.Config, out)
+}
+
+// MergedConfig merges this manifest's config with the given map, returning a new config map.
+// The config of the manifest is not modified.
+func (manifest *manifest) MergedConfig(with map[interface{}]interface{}) (map[interface{}]interface{}, error) {
+	merged := manifest.GetConfig()
+
+	// Tried just marshalling the second config, then unmarshalling it into the same map.
+	// However, that doesn't preserve inner maps correctly.
+	mergeInto(merged, with)
+
+	return merged, nil
+}
+
+// mutates base.
+func mergeInto(base, overlay map[interface{}]interface{}) {
+	for k, v := range overlay {
+		if rightMap, rightIsMap := v.(map[interface{}]interface{}); rightIsMap {
+			if leftMap, leftIsMap := base[k].(map[interface{}]interface{}); leftMap != nil && leftIsMap {
+				// Both are maps; merge them.
+				mergeInto(leftMap, rightMap)
+			} else {
+				// right is map and left is non-map: overwrite left with right.
+				// OR right is map and left is nonexistent: use right.
+				base[k] = v
+			}
+		} else {
+			// Right isn't map. Overwrite left with right.
+			// Note that if left is map and right isn't,
+			// the (left) map gets overwritten with the (right) non-map.
+			base[k] = v
+		}
+	}
+}
+
+func (manifest *manifest) WriteMergedConfig(out io.Writer, mergeWith map[interface{}]interface{}) error {
+	merged, err := manifest.MergedConfig(mergeWith)
 	if err != nil {
-		return util.Errorf("Could not write config for %s: %s", manifest.ID(), err)
+		return util.Errorf("Couldn't merge config for %s: %s", manifest.ID(), err)
+	}
+	return writeConfig(manifest.ID(), merged, out)
+}
+
+func writeConfig(id types.PodID, config map[interface{}]interface{}, out io.Writer) error {
+	bytes, err := yaml.Marshal(config)
+	if err != nil {
+		return util.Errorf("Could not write config for %s: %s", id, err)
 	}
 	_, err = out.Write(bytes)
 	if err != nil {
-		return util.Errorf("Could not write config for %s: %s", manifest.ID(), err)
+		return util.Errorf("Could not write config for %s: %s", id, err)
 	}
 	return nil
 }

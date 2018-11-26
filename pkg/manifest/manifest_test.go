@@ -343,6 +343,36 @@ func TestGetConfigReturnsCopy(t *testing.T) {
 	Assert(t).IsNil(config2["foo"], "config2 should have been unaffected by a change to config1")
 }
 
+func TestMerge(t *testing.T) {
+	builder := NewBuilder()
+	builder.SetConfig(map[interface{}]interface{}{
+		"left_only": "ll",
+		"both":      "bl",
+		"deep": map[interface{}]interface{}{
+			"deep_left_only": "dll",
+			"deep_both":      "dbl",
+		},
+	})
+	manifest := builder.GetManifest()
+	merged, err := manifest.MergedConfig(map[interface{}]interface{}{
+		"right_only": "rr",
+		"both":       "br",
+		"deep": map[interface{}]interface{}{
+			"deep_right_only": "drr",
+			"deep_both":       "dbr",
+		},
+	})
+	Assert(t).IsNil(err, "Should not error when merging")
+	Assert(t).AreEqual(merged["left_only"], "ll", "Merge must preserve top-level left-only element")
+	Assert(t).AreEqual(merged["right_only"], "rr", "Merge must preserve top-level right-only element")
+	Assert(t).AreEqual(merged["both"], "br", "Merge must use right for element in both top-levels")
+	deep, ok := merged["deep"].(map[interface{}]interface{})
+	Assert(t).IsTrue(ok, "Merge must preserve mappiness of inner maps")
+	Assert(t).AreEqual(deep["deep_left_only"], "dll", "Merge must preserve inner left-only element")
+	Assert(t).AreEqual(deep["deep_right_only"], "drr", "Merge must preserve inner right-only element")
+	Assert(t).AreEqual(deep["deep_both"], "dbr", "Merge must use right for element in both inner maps")
+}
+
 type CantMarshal struct{}
 
 var _ yaml.Marshaler = CantMarshal{}
