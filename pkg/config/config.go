@@ -52,6 +52,18 @@ func (c *Config) ReadString(key string) (string, error) {
 	return strVal, nil
 }
 
+func (c *Config) ReadBool(key string) (bool, error) {
+	readVal := c.Read(key)
+	if readVal == nil {
+		return false, nil
+	}
+	boolVal, ok := readVal.(bool)
+	if !ok {
+		return false, fmt.Errorf("%s is not a bool value", key)
+	}
+	return boolVal, nil
+}
+
 func (c *Config) Read(key string) interface{} {
 	return c.unpacked[key]
 }
