@@ -59,7 +59,7 @@ func TestReadBool(t *testing.T) {
 	v, err = conf.ReadBool("default")
 	// Expected error, defaulting to false
 	if err == nil {
-		panic(err.Error())
+		panic("Failed to raise error when reading invalid bool")
 	}
 	Assert(t).AreEqual(v, false, "Mismatch")
 
