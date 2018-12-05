@@ -52,6 +52,10 @@ status:
 `
 }
 
+func testRequiredHooksList() []string {
+	return []string{"req-hook", "some-other-req-hook"}
+}
+
 func testPodOldStatus() string {
 	return `id: thepod
 launchables:
