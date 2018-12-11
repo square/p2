@@ -40,6 +40,31 @@ func TestReadStringSlice(t *testing.T) {
 	Assert(t).AreEqual("c", s[2], "Third entry c")
 }
 
+func TestReadBool(t *testing.T) {
+	conf, err := readTestFile().ReadMap("bool")
+	Assert(t).IsNil(err, "bool should be a map")
+
+	v, err := conf.ReadBool("t")
+	if err != nil {
+		panic(err.Error())
+	}
+	Assert(t).AreEqual(v, true, "Mismatch")
+
+	v, err = conf.ReadBool("f")
+	if err != nil {
+		panic(err.Error())
+	}
+	Assert(t).AreEqual(v, false, "Mismatch")
+
+	v, err = conf.ReadBool("default")
+	// Expected error, defaulting to false
+	if err == nil {
+		panic("Failed to raise error when reading invalid bool")
+	}
+	Assert(t).AreEqual(v, false, "Mismatch")
+
+}
+
 func TestConfigCanBeReadFromEnvironment(t *testing.T) {
 	prev := os.Getenv("CONFIG_PATH")
 	os.Setenv("CONFIG_PATH", testFilePath())

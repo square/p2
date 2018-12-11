@@ -6,3 +6,8 @@ slice:
   - a
   - b
   - c
+bool:
+  t: true
+  f: false
+  default: default
+

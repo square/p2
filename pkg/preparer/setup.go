@@ -107,6 +107,9 @@ type Preparer struct {
 	// The directory that will actually be executed by the HookDir
 	hooksExecDir string
 
+	// List of required hooks
+	hooksRequired []string
+
 	// base64 encoding of docker authConfig needed for ImagePull
 	containerRegistryAuthStr string
 
@@ -188,6 +191,9 @@ type PreparerConfig struct {
 	// The pod manifest to use for hooks. If no hooks are desired, use the
 	// NoHooksSentinelValue constant to indicate that there aren't any
 	HooksManifest string `yaml:"hooks_manifest,omitempty"`
+
+	// List of required hooks. Otherwise a deploy should retry.
+	HooksRequired []string `yaml:"hooks_required"`
 
 	// Configures reporting the exit status of processes started by a pod to Consul
 	PodProcessReporterConfig podprocess.ReporterConfig `yaml:"process_result_reporter_config"`
@@ -677,6 +683,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		hooksManifest:                 hooksManifest,
 		hooksPod:                      hooksPod,
 		hooksExecDir:                  preparerConfig.HooksDirectory,
+		hooksRequired:                 preparerConfig.HooksRequired,
 		fetcher:                       fetcher,
 	}, nil
 }
