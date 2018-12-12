@@ -211,6 +211,8 @@ type PreparerConfig struct {
 	// IdleConnTimeout will be set on the preparer's HTTP client transport.
 	IdleConnTimeout time.Duration `yaml:"idle_conn_timeout"`
 
+	podHome string `yaml:"pod_home"`
+
 	// Use a single Store so that all requests go through the same HTTP client.
 	consulClientMux sync.Mutex
 	consulClient    consulutil.ConsulClient
@@ -472,17 +474,6 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		return nil, err
 	}
 
-	client, err := preparerConfig.GetConsulClient()
-	if err != nil {
-		return nil, err
-	}
-
-	statusStore := statusstore.NewConsul(client)
-	podStatusStore := podstatus.NewConsul(statusStore, consul.PreparerPodStatusNamespace)
-	podStore := podstore.NewConsul(client.KV())
-
-	store := consul.NewConsulStore(client)
-
 	maxLaunchableDiskUsage := launch.DefaultAllowableDiskUsage
 	if preparerConfig.MaxLaunchableDiskUsage != "" {
 		maxLaunchableDiskUsage, err = size.Parse(preparerConfig.MaxLaunchableDiskUsage)
@@ -525,21 +516,6 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		logExec = preparerConfig.LogExec
 	} else {
 		logExec = runit.DefaultLogExec()
-	}
-
-	finishExec := pods.NopFinishExec
-	var podProcessReporter *podprocess.Reporter
-	if preparerConfig.PodProcessReporterConfig.FullyConfigured() {
-		podProcessReporterLogger := logger.SubLogger(logrus.Fields{
-			"component": "PodProcessReporter",
-		})
-
-		podProcessReporter, err = podprocess.New(preparerConfig.PodProcessReporterConfig, podProcessReporterLogger, podStatusStore, client)
-		if err != nil {
-			return nil, err
-		}
-
-		finishExec = preparerConfig.PodProcessReporterConfig.FinishExec()
 	}
 
 	// TODO: probably set up a different HTTP client for artifact downloads and other operations, we might want different timeouts for each.
@@ -585,6 +561,99 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 			}
 
 		}
+	}
+
+	containerRegistryAuthStr := ""
+	if preparerConfig.ContainerRegistryJsonKeyFile != "" {
+		containerRegistryAuthStr, err = docker.GetContainerRegistryAuthStr(preparerConfig.ContainerRegistryJsonKeyFile)
+		if err != nil {
+			return nil, util.Errorf("error getting container registry auth string: %s", err)
+		}
+	}
+
+	// Install hooks
+	if hooksManifest == nil {
+		logger.Infoln("No hooks configured, skipping hook installation")
+	} else {
+		sub := logger.SubLogger(logrus.Fields{
+			"pod": hooksManifest.ID(),
+		})
+
+		logger.Infoln("Installing hook manifest")
+		err := hooksPod.Install(hooksManifest, artifactVerifier, artifactRegistry, containerRegistryAuthStr, preparerConfig.DockerImageDirectoryWhitelist)
+		if err != nil {
+			sub.WithError(err).Errorln("Could not install hook")
+			return nil, err
+		}
+
+		_, err = hooksPod.WriteCurrentManifest(hooksManifest)
+		if err != nil {
+			sub.WithError(err).Errorln("Could not write current manifest")
+			return nil, err
+		}
+		// Now that the pod is installed, link it up to the exec dir.
+		err = hooks.InstallHookScripts(preparerConfig.HooksDirectory, hooksPod, hooksManifest, sub)
+		if err != nil {
+			sub.WithError(err).Errorln("Could not write hook link")
+			return nil, err
+		}
+		sub.NoFields().Infoln("Updated hook")
+		hooksPod.Prune(maxLaunchableDiskUsage, hooksManifest)
+	}
+
+	hooksContext := hooks.NewContext(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger, auditLogger)
+
+	// Run PreparerInit hooks
+	if hooksManifest != nil {
+		if preparerConfig.podHome == "" {
+			preparerConfig.podHome = path.Join(pods.DefaultPath, string(constants.PreparerPodID))
+		}
+		manifestPath := path.Join(preparerConfig.podHome, "current_manifest.yaml")
+		_, err := os.Stat(manifestPath)
+		switch {
+		case err != nil && !os.IsNotExist(err):
+			return nil, err
+		case err == nil:
+			preparerManifest, err := manifest.FromPath(manifestPath)
+			if err != nil {
+				return nil, err
+			}
+			preparerPod, err := pods.PodFromPodHome(preparerConfig.NodeName, preparerConfig.podHome)
+			if err != nil {
+				return nil, err
+			}
+			hooksRequired := []string{}
+			err = hooksContext.RunHookType(hooks.PreparerInit, preparerPod, preparerManifest, hooksRequired)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	client, err := preparerConfig.GetConsulClient()
+	if err != nil {
+		return nil, err
+	}
+
+	statusStore := statusstore.NewConsul(client)
+	podStatusStore := podstatus.NewConsul(statusStore, consul.PreparerPodStatusNamespace)
+	podStore := podstore.NewConsul(client.KV())
+
+	store := consul.NewConsulStore(client)
+
+	finishExec := pods.NopFinishExec
+	var podProcessReporter *podprocess.Reporter
+	if preparerConfig.PodProcessReporterConfig.FullyConfigured() {
+		podProcessReporterLogger := logger.SubLogger(logrus.Fields{
+			"component": "PodProcessReporter",
+		})
+
+		podProcessReporter, err = podprocess.New(preparerConfig.PodProcessReporterConfig, podProcessReporterLogger, podStatusStore, client)
+		if err != nil {
+			return nil, err
+		}
+
+		finishExec = preparerConfig.PodProcessReporterConfig.FinishExec()
 	}
 
 	readOnlyPolicy := pods.NewReadOnlyPolicy(preparerConfig.ReadOnlyDeploys, preparerConfig.ReadOnlyWhitelist, preparerConfig.ReadOnlyBlacklist)
@@ -651,19 +720,11 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		}
 	}
 
-	containerRegistryAuthStr := ""
-	if preparerConfig.ContainerRegistryJsonKeyFile != "" {
-		containerRegistryAuthStr, err = docker.GetContainerRegistryAuthStr(preparerConfig.ContainerRegistryJsonKeyFile)
-		if err != nil {
-			return nil, util.Errorf("error getting container registry auth string: %s", err)
-		}
-	}
-
 	podFactory.SetDockerClient(*dockerClient)
 	return &Preparer{
 		node:                          preparerConfig.NodeName,
 		store:                         store,
-		hooks:                         hooks.NewContext(preparerConfig.HooksDirectory, preparerConfig.PodRoot, &logger, auditLogger),
+		hooks:                         hooksContext,
 		podStatusStore:                podStatusStore,
 		podStore:                      podStore,
 		podRoot:                       preparerConfig.PodRoot,

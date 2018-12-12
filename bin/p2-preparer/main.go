@@ -74,12 +74,6 @@ func main() {
 	quitMainUpdate := make(chan struct{})
 	var quitChans []chan struct{}
 
-	// Install the latest hooks before any pods are processed
-	err = prep.InstallHooks()
-	if err != nil {
-		logger.WithError(err).Fatalln("Could not do initial hook installation")
-	}
-
 	err = prep.BuildRealityAtLaunch()
 	if err != nil {
 		logger.WithError(err).Fatalf("Could not do initial build reality at launch: %s", err)
