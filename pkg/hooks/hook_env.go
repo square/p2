@@ -118,7 +118,11 @@ func (h *HookEnv) ConfigDirPath() string {
 }
 
 func (h *HookEnv) ExitUnlessEvent(types ...HookType) HookType {
-	t, _ := h.Event()
+	t, err := h.Event()
+	if err != nil {
+		fmt.Printf("Got error: %v", err)
+		os.Exit(1)
+	}
 	for _, target := range types {
 		if t == target {
 			return t

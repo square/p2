@@ -16,6 +16,8 @@ func (hookType HookType) String() string {
 }
 
 var (
+	// PreparerInit hooks run during the initialization of the preparer
+	PreparerInit = HookType("preparer_init")
 	// BeforeInstall hooks run before the artifact is downloaded and extracted
 	BeforeInstall = HookType("before_install")
 	// AfterInstall hooks run after we have installed but before we have disabled the old version
@@ -32,6 +34,8 @@ var (
 
 func AsHookType(value string) (HookType, error) {
 	switch value {
+	case PreparerInit.String():
+		return PreparerInit, nil
 	case BeforeInstall.String():
 		return BeforeInstall, nil
 	case AfterInstall.String():
