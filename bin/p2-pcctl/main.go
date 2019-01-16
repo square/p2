@@ -126,7 +126,7 @@ func main() {
 		podID := types.PodID(*createPodID)
 		selector := defaultSelector(az, cn, podID)
 		strategy := rc_fields.Strategy(*createStrategy)
-		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, strategy)
+		pccontrol := control.NewPodCluster(az, cn, podID, pcstore, selector, strategy, 0)
 
 		annotations := *createAnnotations
 		var parsedAnnotations map[string]interface{}
@@ -155,7 +155,7 @@ func main() {
 			pccontrol = control.NewPodClusterFromID(pcID, pcstore)
 		} else if az != "" && cn != "" && podID != "" {
 			selector := defaultSelector(az, cn, podID)
-			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, "")
+			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, "", 0)
 		} else {
 			log.Fatalf("Expected one of: pcID or (pod,az,name)")
 		}
@@ -181,7 +181,7 @@ func main() {
 			pccontrol = control.NewPodClusterFromID(pcID, pcstore)
 		} else if az != "" && cn != "" && podID != "" {
 			selector := defaultSelector(az, cn, podID)
-			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, "")
+			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, "", 0)
 		} else {
 			log.Fatalf("Expected one of: pcID or (pod,az,name)")
 		}
@@ -204,7 +204,7 @@ func main() {
 			pccontrol = control.NewPodClusterFromID(pcID, pcstore)
 		} else if az != "" && cn != "" && podID != "" {
 			selector := defaultSelector(az, cn, podID)
-			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, "")
+			pccontrol = control.NewPodCluster(az, cn, podID, pcstore, selector, "", 0)
 		} else {
 			log.Fatalf("Expected one of: pcID or (pod,az,name)")
 		}

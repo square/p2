@@ -15,6 +15,7 @@ type ID string
 type AvailabilityZone string
 type ClusterName string
 type Annotations map[string]interface{}
+type MinHealthPercentage int
 
 // label keys used by pod selector
 const (
@@ -65,7 +66,7 @@ type PodCluster struct {
 	Annotations Annotations
 
 	// Minimum health percentage that this pod cluster should have
-	MinHealthPercentage int
+	MinHealthPercentage MinHealthPercentage
 }
 
 func (pc *PodCluster) Equals(other *PodCluster) bool {
@@ -98,14 +99,14 @@ func (pc *PodCluster) Equals(other *PodCluster) bool {
 // implement it ourselves. RawPodCluster mimics PodCluster but has a string
 // type for PodSelector instead of labels.Selector
 type RawPodCluster struct {
-	ID                  ID                 `json:"id"`
-	PodID               types.PodID        `json:"pod_id"`
-	AvailabilityZone    AvailabilityZone   `json:"availability_zone"`
-	Name                ClusterName        `json:"name"`
-	PodSelector         string             `json:"pod_selector"`
-	Annotations         Annotations        `json:"annotations"`
-	AllocationStrategy  rc_fields.Strategy `json:"allocation_strategy"`
-	MinHealthPercentage int                `json:"min_health_percentage"`
+	ID                  ID                  `json:"id"`
+	PodID               types.PodID         `json:"pod_id"`
+	AvailabilityZone    AvailabilityZone    `json:"availability_zone"`
+	Name                ClusterName         `json:"name"`
+	PodSelector         string              `json:"pod_selector"`
+	Annotations         Annotations         `json:"annotations"`
+	AllocationStrategy  rc_fields.Strategy  `json:"allocation_strategy"`
+	MinHealthPercentage MinHealthPercentage `json:"min_health_percentage"`
 }
 
 // MarshalJSON implements the json.Marshaler interface for serializing the

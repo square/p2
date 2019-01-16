@@ -27,6 +27,7 @@ type PodClusterStore interface {
 		podSelector labels.Selector,
 		annotations fields.Annotations,
 		allocationStrategy rc_fields.Strategy,
+		minHealthPercentage fields.MinHealthPercentage,
 		session pcstore.Session,
 	) (fields.PodCluster, error)
 	MutatePC(
@@ -40,11 +41,12 @@ type PodCluster struct {
 
 	ID fields.ID
 
-	az       fields.AvailabilityZone
-	cn       fields.ClusterName
-	podID    types.PodID
-	selector labels.Selector
-	strategy rc_fields.Strategy
+	az                  fields.AvailabilityZone
+	cn                  fields.ClusterName
+	podID               types.PodID
+	selector            labels.Selector
+	strategy            rc_fields.Strategy
+	minHealthPercentage fields.MinHealthPercentage
 }
 
 func NewPodCluster(
@@ -54,6 +56,7 @@ func NewPodCluster(
 	pcstore PodClusterStore,
 	selector labels.Selector,
 	strategy rc_fields.Strategy,
+	minHealthPercentage fields.MinHealthPercentage,
 ) *PodCluster {
 
 	pc := &PodCluster{}
@@ -63,7 +66,7 @@ func NewPodCluster(
 	pc.pcStore = pcstore
 	pc.selector = selector
 	pc.strategy = strategy
-
+	pc.minHealthPercentage = minHealthPercentage
 	return pc
 }
 
@@ -105,7 +108,7 @@ func (pccontrol *PodCluster) Delete() (errors []error) {
 }
 
 func (pccontrol *PodCluster) Create(annotations fields.Annotations, session pcstore.Session) (fields.PodCluster, error) {
-	return pccontrol.pcStore.Create(pccontrol.podID, pccontrol.az, pccontrol.cn, pccontrol.selector, annotations, pccontrol.strategy, session)
+	return pccontrol.pcStore.Create(pccontrol.podID, pccontrol.az, pccontrol.cn, pccontrol.selector, annotations, pccontrol.strategy, pccontrol.minHealthPercentage, session)
 }
 
 func (pccontrol *PodCluster) Get() (fields.PodCluster, error) {

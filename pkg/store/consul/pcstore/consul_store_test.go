@@ -128,7 +128,7 @@ func createPodCluster(store *ConsulStore, t *testing.T) fields.PodCluster {
 	strategy := rc_fields.StaticStrategy
 
 	session := consultest.NewSession()
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, strategy, session)
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, strategy, 0, session)
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -184,7 +184,7 @@ func TestLabelsOnCreate(t *testing.T) {
 		"foo": "bar",
 	})
 
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.StaticStrategy, consultest.NewSession())
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.StaticStrategy, 0, consultest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -219,7 +219,7 @@ func TestGet(t *testing.T) {
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.StaticStrategy, consultest.NewSession())
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.StaticStrategy, 0, consultest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -293,7 +293,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.StaticStrategy, consultest.NewSession())
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.StaticStrategy, 0, consultest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -340,13 +340,13 @@ func TestList(t *testing.T) {
 	})
 
 	// Create a pod cluster
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.StaticStrategy, consultest.NewSession())
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.StaticStrategy, 0, consultest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
 
 	// Create another one
-	pc2, err := store.Create(podID+"2", az, clusterName, selector, annotations, rc_fields.StaticStrategy, consultest.NewSession())
+	pc2, err := store.Create(podID+"2", az, clusterName, selector, annotations, rc_fields.StaticStrategy, 0, consultest.NewSession())
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -392,12 +392,12 @@ func TestWatch(t *testing.T) {
 
 	var watched WatchedPodClusters
 	session := consultest.NewSession()
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.StaticStrategy, session)
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.StaticStrategy, 0, session)
 	if err != nil {
 		t.Fatalf("Unable to create first pod cluster: %s", err)
 	}
 
-	pc2, err := store.Create(podID, "us-east", clusterName, selector, annotations, rc_fields.StaticStrategy, session)
+	pc2, err := store.Create(podID, "us-east", clusterName, selector, annotations, rc_fields.StaticStrategy, 0, session)
 	if err != nil {
 		t.Fatalf("Unable to create second pod cluster: %s", err)
 	}
@@ -449,7 +449,7 @@ func TestWatchPodCluster(t *testing.T) {
 	})
 
 	session := consultest.NewSession()
-	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.StaticStrategy, session)
+	pc, err := store.Create(podID, az, clusterName, selector, annotations, rc_fields.StaticStrategy, 0, session)
 	if err != nil {
 		t.Fatalf("Unable to create pod cluster: %s", err)
 	}
@@ -974,6 +974,7 @@ func TestWatchAndSync(t *testing.T) {
 		example.PodSelector,
 		example.Annotations,
 		rc_fields.StaticStrategy,
+		0,
 		consultest.NewSession(),
 	)
 	if err != nil {
@@ -987,6 +988,7 @@ func TestWatchAndSync(t *testing.T) {
 		example.PodSelector,
 		example.Annotations,
 		rc_fields.StaticStrategy,
+		0,
 		consultest.NewSession(),
 	)
 	if err != nil {
@@ -1049,6 +1051,7 @@ func TestWatchAndSyncWithDelete(t *testing.T) {
 		example.PodSelector,
 		example.Annotations,
 		rc_fields.StaticStrategy,
+		0,
 		consultest.NewSession(),
 	)
 	if err != nil {
