@@ -34,17 +34,19 @@ func (p *FakePCStore) Create(
 	podSelector klabels.Selector,
 	annotations fields.Annotations,
 	strategy rc_fields.Strategy,
+	minHealthPercentage fields.MinHealthPercentage,
 	_ pcstore.Session,
 ) (fields.PodCluster, error) {
 	id := fields.ID(uuid.New())
 	pc := fields.PodCluster{
-		ID:                 id,
-		PodID:              podID,
-		AvailabilityZone:   availabilityZone,
-		Name:               clusterName,
-		PodSelector:        podSelector,
-		Annotations:        annotations,
-		AllocationStrategy: strategy,
+		ID:                  id,
+		PodID:               podID,
+		AvailabilityZone:    availabilityZone,
+		Name:                clusterName,
+		PodSelector:         podSelector,
+		Annotations:         annotations,
+		AllocationStrategy:  strategy,
+		MinHealthPercentage: minHealthPercentage,
 	}
 
 	p.podClusters[id] = pc
