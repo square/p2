@@ -124,6 +124,7 @@ func (s *ConsulStore) Create(
 	podSelector klabels.Selector,
 	annotations fields.Annotations,
 	allocationStrategy rc_fields.Strategy,
+	minHealthPercentage fields.MinHealthPercentage,
 	session Session,
 ) (fields.PodCluster, error) {
 	id := fields.ID(uuid.New())
@@ -143,13 +144,14 @@ func (s *ConsulStore) Create(
 	}
 
 	pc := fields.PodCluster{
-		ID:                 id,
-		PodID:              podID,
-		AvailabilityZone:   availabilityZone,
-		Name:               clusterName,
-		PodSelector:        podSelector,
-		Annotations:        annotations,
-		AllocationStrategy: allocationStrategy,
+		ID:                  id,
+		PodID:               podID,
+		AvailabilityZone:    availabilityZone,
+		Name:                clusterName,
+		PodSelector:         podSelector,
+		Annotations:         annotations,
+		AllocationStrategy:  allocationStrategy,
+		MinHealthPercentage: minHealthPercentage,
 	}
 
 	key, err := pcPath(id)
