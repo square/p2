@@ -25,7 +25,7 @@ func TestCreate(t *testing.T) {
 	pcstore := pcstoretest.NewFake()
 	strategy := rc_fields.StaticStrategy
 
-	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector, strategy)
+	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector, strategy, 0)
 
 	annotations := map[string]string{
 		"load_balancer_info": "totally",
@@ -87,7 +87,7 @@ func TestUpdateAnnotations(t *testing.T) {
 	pcstore := pcstoretest.NewFake()
 	strategy := rc_fields.StaticStrategy
 
-	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector, strategy)
+	pcController := NewPodCluster(testAZ, testCN, testPodID, pcstore, selector, strategy, 0)
 
 	var annotations = map[string]string{
 		"load_balancer_info": "totally",
@@ -154,7 +154,7 @@ func TestPodClusterFromID(t *testing.T) {
 	fakePCStore := pcstoretest.NewFake()
 
 	strategy := rc_fields.StaticStrategy
-	pcControllerFromLabels := NewPodCluster(testAZ, testCN, testPodID, fakePCStore, selector, strategy)
+	pcControllerFromLabels := NewPodCluster(testAZ, testCN, testPodID, fakePCStore, selector, strategy, 0)
 	pc, err := pcControllerFromLabels.Create(fields.Annotations{}, session)
 	if err != nil {
 		t.Fatal(err)
