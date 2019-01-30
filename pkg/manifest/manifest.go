@@ -110,6 +110,7 @@ type manifest struct {
 	ReadOnly            *bool                                           `yaml:"readonly,omitempty"`
 	ArtifactRegistryURL string                                          `yaml:"artifact_registry,omitempty"`
 	NodeRequirements    map[string]string                               `yaml:"node_requirements,omitempty"`
+	MinHealthPercentage int                                             `yaml:"min_health_percentage"`
 
 	// Used to track the original bytes so that we don't reorder them when
 	// doing a yaml.Unmarshal and a yaml.Marshal in succession
@@ -150,6 +151,10 @@ func (manifest *manifest) GetArtifactRegistry(fetcher uri.Fetcher) artifact.Regi
 	}
 
 	return nil
+}
+
+func (manifest *manifest) GetMinHealthPercentage() int {
+	return manifest.MinHealthPercentage
 }
 
 func (manifest *manifest) GetLaunchableStanzas() map[launch.LaunchableID]launch.LaunchableStanza {
