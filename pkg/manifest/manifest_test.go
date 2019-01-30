@@ -49,7 +49,6 @@ config:
   ENVIRONMENT: staging
 status:
   port: 8000
-min_health_percentage: 0
 `
 }
 
@@ -161,7 +160,7 @@ func TestPodManifestCanReportItsSHA(t *testing.T) {
 	Assert(t).IsNil(err, "should not have erred when building manifest")
 	val, err := manifest.SHA()
 	Assert(t).IsNil(err, "should not have erred when getting SHA")
-	expected := "e234d497fb448a05a9a89cf01be63bc274ce35e66b348a2dc7a42463ecae0666"
+	expected := "f7fdad6e2362c9345a83196701dafb989fa8229b8d671642976cb35b5166c6f0"
 	if val != expected {
 		t.Errorf("Expected manifest sha to be %s but was %s. If this was expected, change the assertion value", expected, val)
 	}

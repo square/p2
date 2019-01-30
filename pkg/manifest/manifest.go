@@ -110,7 +110,7 @@ type manifest struct {
 	ReadOnly            *bool                                           `yaml:"readonly,omitempty"`
 	ArtifactRegistryURL string                                          `yaml:"artifact_registry,omitempty"`
 	NodeRequirements    map[string]string                               `yaml:"node_requirements,omitempty"`
-	MinHealthPercentage int                                             `yaml:"min_health_percentage"`
+	MinHealthPercentage int                                             `yaml:"min_health_percentage,omitempty"`
 
 	// Used to track the original bytes so that we don't reorder them when
 	// doing a yaml.Unmarshal and a yaml.Marshal in succession
