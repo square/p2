@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/square/p2/pkg/cgroups"
 	"github.com/square/p2/pkg/launch"
@@ -404,5 +405,16 @@ func TestSetNodeRequirements(t *testing.T) {
 	}
 	if val != "val1" {
 		t.Errorf("expected node requirement req1 to have value val1 but was %sa", val)
+	}
+}
+
+func TestSetTerminationGracePeriod(t *testing.T) {
+	b := NewBuilder()
+	b.SetID("foo")
+	b.SetTerminationGracePeriod(30)
+	man := b.GetManifest()
+	duration := man.GetTerminationGracePeriod()
+	if duration != time.Minute*30 {
+		t.Errorf("expected termination grace period to be equal to 30 minutes, but was %v", duration)
 	}
 }

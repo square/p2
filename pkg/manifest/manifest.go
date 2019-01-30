@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"time"
 
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/cgroups"
@@ -43,6 +44,7 @@ type Builder interface {
 	SetLaunchables(launchableStanzas map[launch.LaunchableID]launch.LaunchableStanza)
 	SetResourceLimits(limits ResourceLimitsStanza)
 	SetNodeRequirements(map[string]string)
+	SetTerminationGracePeriod(minutes int)
 }
 
 var _ Builder = builder{}
@@ -87,6 +89,7 @@ type Manifest interface {
 	Marshal() ([]byte, error)
 	SignatureData() (plaintext, signature []byte)
 	GetNodeRequirements() map[string]string
+	GetTerminationGracePeriod() time.Duration
 
 	GetBuilder() Builder
 }
@@ -99,17 +102,18 @@ type ResourceLimitsStanza struct {
 }
 
 type manifest struct {
-	Id                  types.PodID                                     `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
-	RunAs               string                                          `yaml:"run_as,omitempty"`
-	LaunchableStanzas   map[launch.LaunchableID]launch.LaunchableStanza `yaml:"launchables"`
-	Config              map[interface{}]interface{}                     `yaml:"config"`
-	StatusPort          int                                             `yaml:"status_port,omitempty"`
-	StatusHTTP          bool                                            `yaml:"status_http,omitempty"`
-	Status              StatusStanza                                    `yaml:"status,omitempty"`
-	ResourceLimits      ResourceLimitsStanza                            `yaml:"resource_limits,omitempty"`
-	ReadOnly            *bool                                           `yaml:"readonly,omitempty"`
-	ArtifactRegistryURL string                                          `yaml:"artifact_registry,omitempty"`
-	NodeRequirements    map[string]string                               `yaml:"node_requirements,omitempty"`
+	Id                     types.PodID                                     `yaml:"id"` // public for yaml marshaling access. Use ID() instead.
+	RunAs                  string                                          `yaml:"run_as,omitempty"`
+	LaunchableStanzas      map[launch.LaunchableID]launch.LaunchableStanza `yaml:"launchables"`
+	Config                 map[interface{}]interface{}                     `yaml:"config"`
+	StatusPort             int                                             `yaml:"status_port,omitempty"`
+	StatusHTTP             bool                                            `yaml:"status_http,omitempty"`
+	Status                 StatusStanza                                    `yaml:"status,omitempty"`
+	ResourceLimits         ResourceLimitsStanza                            `yaml:"resource_limits,omitempty"`
+	ReadOnly               *bool                                           `yaml:"readonly,omitempty"`
+	ArtifactRegistryURL    string                                          `yaml:"artifact_registry,omitempty"`
+	NodeRequirements       map[string]string                               `yaml:"node_requirements,omitempty"`
+	TerminationGracePeriod int                                             `yaml:"termination_grace_period"`
 
 	// Used to track the original bytes so that we don't reorder them when
 	// doing a yaml.Unmarshal and a yaml.Marshal in succession
@@ -162,6 +166,10 @@ func (manifest *manifest) SetLaunchables(launchableStanzas map[launch.Launchable
 
 func (manifest *manifest) SetNodeRequirements(nodeRequirements map[string]string) {
 	manifest.NodeRequirements = nodeRequirements
+}
+
+func (manifest *manifest) SetTerminationGracePeriod(minutes int) {
+	manifest.TerminationGracePeriod = minutes
 }
 
 func (manifest *manifest) GetResourceLimits() ResourceLimitsStanza {
@@ -513,6 +521,10 @@ func (m manifest) SignatureData() (plaintext, signature []byte) {
 
 func (m manifest) GetNodeRequirements() map[string]string {
 	return m.NodeRequirements
+}
+
+func (m manifest) GetTerminationGracePeriod() time.Duration {
+	return time.Minute * time.Duration(m.TerminationGracePeriod)
 }
 
 // ValidManifest checks the internal consistency of a manifest. Returns an error if the
