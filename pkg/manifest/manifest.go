@@ -77,6 +77,7 @@ type Manifest interface {
 	GetConfig() map[interface{}]interface{}
 	SHA() (string, error)
 	GetArtifactRegistry(uri.Fetcher) artifact.Registry
+	GetMinHealthPercentage() int
 	GetStatusHTTP() bool
 	GetStatusPath() string
 	GetStatusPort() int
