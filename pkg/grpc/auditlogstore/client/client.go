@@ -21,7 +21,7 @@ func New(conn *grpc.ClientConn) Client {
 }
 
 func (c Client) List(ctx context.Context) (map[audit.ID]audit.AuditLog, error) {
-	resp, err := c.client.List(ctx, new(auditlogstore_protos.ListRequest))
+	resp, err := c.client.List(ctx, new(auditlogstore_protos.ListRequest), grpc.MaxCallRecvMsgSize(1024*1024*1024*10))
 	if err != nil {
 		return nil, err
 	}
