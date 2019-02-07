@@ -38,6 +38,7 @@ func New(auditLogStore AuditLogStore, logger logging.Logger, txner transaction.T
 	}
 }
 
+// Note this function only returns at most 65 of the records. We may want to create a ListN function in the future.
 func (s store) List(_ grpccontext.Context, _ *audit_log_protos.ListRequest) (*audit_log_protos.ListResponse, error) {
 	records, err := s.auditLogStore.List()
 	if err != nil {
@@ -45,9 +46,16 @@ func (s store) List(_ grpccontext.Context, _ *audit_log_protos.ListRequest) (*au
 	}
 
 	ret := make(map[string]*audit_log_protos.AuditLog)
+	// we want to limit the records we send over grpc to 65 because p2-audit-log only processes 64 records at a time. p2-audit-log also logs if the count is > 64 to warn if we are logging records faster than we can process them
+	// Also if the size of the tree grows greater than 1024 * 1024 * 4 (https://github.com/grpc/grpc-go/blob/master/clientconn.go#L98) then we won't be able to send the records to p2-audit-log for processing and this tree will grow without bound at a fast rate.
+	count := 0
 	for id, al := range records {
+		if count > 64 {
+			break
+		}
 		protoRecord := rawAuditLogToProtoAuditLog(al)
 		ret[id.String()] = &protoRecord
+		count += 1
 	}
 	return &audit_log_protos.ListResponse{
 		AuditLogs: ret,
