@@ -276,7 +276,7 @@ func (rc *replicationController) meetDesires(rcFields fields.RC) error {
 
 	ineligible := rc.checkForIneligible(current, eligible)
 	if len(ineligible) > 0 && rcFields.AllocationStrategy == fields.DynamicStrategy {
-		rc.logger.Infof("ineligible nodes: %s found", ineligible)
+		rc.logger.Infof("ineligible nodes: %s found, %v rcID", ineligible, rc.rcID)
 		ok, err := rc.attemptNodeTransfer(rcFields, current, ineligible, MaxAllocateAttempts)
 		if err != nil {
 			return err
@@ -672,13 +672,22 @@ func (rc *replicationController) unschedule(txn *auditingTransaction, rcFields f
 // when a node transfer occurs
 func (rc *replicationController) attemptNodeTransfer(rcFields fields.RC, current types.PodLocations, ineligibles []types.NodeName, allocAttempts int) (bool, error) {
 	ok, unlocker, err := rc.canNodeTransfer(rcFields, current, ineligibles)
+	if unlocker != nil {
+		defer func() {
+			err = unlocker.Unlock()
+			if err != nil {
+				rc.logger.WithError(err).Errorf("failed to unlock session: %s", rc.rcID)
+			}
+			err = unlocker.DestroySession()
+			if err != nil {
+				rc.logger.WithError(err).Errorf("failed to destroy session: %s", rc.rcID)
+			}
+		}()
+	}
 	if err != nil {
 		return false, err
 	} else if !ok {
 		return false, nil
-	}
-	if unlocker != nil {
-		defer unlocker.Unlock()
 	}
 
 	ineligible := ineligibles[0]
@@ -701,7 +710,7 @@ func (rc *replicationController) attemptNodeTransfer(rcFields fields.RC, current
 func (rc *replicationController) canNodeTransfer(rcFields fields.RC, current types.PodLocations, ineligibles []types.NodeName) (bool, consul.Unlocker, error) {
 	ok, err := rc.sdChecker.IsSyncedWithCluster(rcFields.ID)
 	if err != nil {
-		rc.logger.WithError(err).Errorln("skipping node transfer; error checking service discovery system")
+		rc.logger.WithError(err).Errorf("skipping node transfer; error checking service discovery system session %v", rc.rcID)
 		return false, nil, err
 	} else if !ok {
 		rc.logger.Infoln("skipping node transfer; service discovery system not synced")
@@ -741,6 +750,9 @@ func (rc *replicationController) canNodeTransfer(rcFields fields.RC, current typ
 	// the lock to ensure that we do not perform a transfer during a rolling
 	// update. This avoids races between the two's health checks and scheduling
 	unlocker, err := rc.rcLocker.LockForMutation(rc.rcID, session)
+	if err != nil {
+		defer session.Destroy()
+	}
 	switch {
 	case consul.IsAlreadyLocked(err):
 		rc.logger.Infoln("skipping node transfer; rc mutation lock is already held")

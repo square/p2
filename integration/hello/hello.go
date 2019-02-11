@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v2"
 )
 
 var port = flag.String("port", "", "port that hello should listen on")
@@ -72,7 +72,7 @@ func main() {
 	} else {
 		*port = ":" + *port
 	}
-	fmt.Printf("Hello is listening at %q", port)
+	fmt.Printf("Hello is listening at %q", *port)
 	http.HandleFunc("/", SayHello)
 	http.HandleFunc("/exit/", Exit)
 	s := &http.Server{

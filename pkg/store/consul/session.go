@@ -212,6 +212,10 @@ func (u unlocker) Key() string {
 	return u.key
 }
 
+func (u unlocker) DestroySession() error {
+	return u.session.Destroy()
+}
+
 func (s session) continuallyRenew() {
 	defer close(s.renewalErrCh)
 	for {
@@ -236,6 +240,7 @@ func (s session) continuallyRenew() {
 type Unlocker interface {
 	Unlock() error
 	Key() string
+	DestroySession() error
 }
 
 type unlocker struct {

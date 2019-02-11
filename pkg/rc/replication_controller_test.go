@@ -1114,32 +1114,45 @@ func TestNodeTransferNoopIfLockHeld(t *testing.T) {
 		AllocationStrategy: fields.DynamicStrategy,
 	}
 
-	err := nodeTransferSetup(applicator, rc, rcFields)
-	current, err := rc.CurrentPods()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// however, acquire the lock first to prevent a node transfer from happening
+	// Acquire the lock first to prevent a node transfer from happening prematurely
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ctx, session, err := consul.SessionContext(ctx, rc.consulClient, "test-no-node-transfer-when-lock-held")
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	unlocker, err := rc.rcLocker.LockForMutation(rc.rcID, session)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log("we got the lock")
+	t.Logf("got lock for session: %v", rc.rcID)
 
+	// Prove we have only 1 session active
+	sessions, _, err := rc.consulClient.Session().List(nil)
+	var sessionNames []string
+	for _, s := range sessions {
+		sessionNames = append(sessionNames, s.Name)
+	}
+	t.Logf("current sessions: %v", sessionNames)
+	if len(sessions) != 1 {
+		t.Fatalf("expected only our blocking session, have %d: %v", len(sessions), sessionNames)
+	}
+
+	// Setup for making a node transfer happen
+	current, err := rc.CurrentPods()
+	if err != nil {
+		t.Fatal(err)
+	}
 	healthMap := make(map[types.NodeName]health.Result, len(current))
 	for _, node := range current.Nodes() {
 		healthMap[node] = health.Result{Status: health.Passing}
 	}
 	rc.healthChecker = fake_checker.NewSingleService("some_pod", healthMap)
+	err = nodeTransferSetup(applicator, rc, rcFields)
+	// Have to refetch `current` after setting up for a node transfer
+	current, err = rc.CurrentPods()
 
+	// Attempt the node transfer
 	ok, err := rc.attemptNodeTransfer(rcFields, current, []types.NodeName{"node2"}, 1)
 	if err != nil {
 		t.Fatal(err)
@@ -1159,17 +1172,33 @@ func TestNodeTransferNoopIfLockHeld(t *testing.T) {
 		t.Fatalf("expected current nodes to be %v, was %v", expected, actual)
 	}
 
-	// now release the lock and see if a node transfer occurs
+	// Verify only our test session exists
+	sessions, _, err = rc.consulClient.Session().List(nil)
+	sessionNames = sessionNames[:0]
+	for _, s := range sessions {
+		sessionNames = append(sessionNames, s.Name)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected only our blocking session, have %d: %v", len(sessions), sessionNames)
+	}
+
+	// Now release the lock
 	err = unlocker.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
+	err = unlocker.DestroySession()
+	if err != nil {
+		t.Fatal(err)
+	}
 
+	// Kick off the node transfer
 	err = rc.meetDesires(rcFields)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// Verify the node transfer happened
 	current, err = rc.CurrentPods()
 	if err != nil {
 		t.Fatal(err)
@@ -1184,6 +1213,16 @@ func TestNodeTransferNoopIfLockHeld(t *testing.T) {
 	}
 	if !newNodeFound {
 		t.Fatalf("expected to find new transfer node, got %v", current.Nodes())
+	}
+
+	// Verify all sessions are cleaned up
+	sessions, _, err = rc.consulClient.Session().List(nil)
+	if len(sessions) != 0 {
+		sessionNames = sessionNames[:0]
+		for _, s := range sessions {
+			sessionNames = append(sessionNames, s.Name)
+		}
+		t.Fatalf("expected no sessions, have %v", sessionNames)
 	}
 }
 
