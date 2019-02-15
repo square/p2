@@ -62,6 +62,10 @@ func (u *fakeUnlocker) Key() string {
 	return u.key
 }
 
+func (u fakeUnlocker) DestroySession() error {
+	return u.session.Destroy()
+}
+
 func (f *fakeSession) Lock(key string) (consul.Unlocker, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

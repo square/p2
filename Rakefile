@@ -27,7 +27,7 @@ end
 
 desc 'Test all projects (short only)'
 task :test => [:build] do
-  e "go test -ldflags -s -short -timeout 20s ./..."
+  e "go test -ldflags -s -short -timeout 30s ./..."
 end
 
 desc 'Test all projects'
