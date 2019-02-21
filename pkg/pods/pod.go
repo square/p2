@@ -53,6 +53,7 @@ const (
 	PlatformConfigPathEnvVar       = "PLATFORM_CONFIG_PATH"
 	ResourceLimitsPathEnvVar       = "RESOURCE_LIMIT_PATH" // ResourceLimits is a superset of PlatformConfig
 	LaunchableRestartTimeoutEnvVar = "RESTART_TIMEOUT"
+	TerminationGracePeriod         = 1 * time.Hour
 )
 
 type Pod struct {
@@ -153,7 +154,7 @@ func (pod *Pod) Halt(manifest manifest.Manifest, force bool) (bool, error) {
 		disableFunc := func() {
 			err = launchable.Disable()
 		}
-		pod.withTimeWarnings("disable", launchable.ServiceID(), disableFunc)
+		pod.runWithTerminationGracePeriod("disable", launchable.ServiceID(), disableFunc)
 		if err != nil {
 			// do not set success to false on a disable error
 			pod.logLaunchableWarning(launchable.ServiceID(), err, "Could not disable launchable")
@@ -969,7 +970,7 @@ func (pod *Pod) disableAndForceHaltLaunchables(currentManifest manifest.Manifest
 		disableFunc := func() {
 			err = launchable.Disable()
 		}
-		pod.withTimeWarnings("disable", launchable.ServiceID(), disableFunc)
+		pod.runWithTerminationGracePeriod("disable", launchable.ServiceID(), disableFunc)
 		if err != nil {
 			pod.logLaunchableWarning(launchable.ServiceID(), err, "Could not disable launchable during uninstallation")
 		}
@@ -1043,6 +1044,7 @@ func (p *Pod) withTimeWarnings(scriptType string, serviceID string, f func()) {
 			}
 
 			totalTime += warnAfter
+			iteration++
 
 			select {
 			case <-doneCh:
@@ -1056,4 +1058,33 @@ func (p *Pod) withTimeWarnings(scriptType string, serviceID string, f func()) {
 	}()
 
 	f()
+}
+
+func (p *Pod) runWithTerminationGracePeriod(scriptType string, serviceID string, f func()) {
+	doneCh := make(chan struct{})
+	go func() {
+		f()
+		close(doneCh)
+	}()
+
+	manifest, err := p.CurrentManifest()
+	if err != nil {
+		p.logger.WithError(err).Errorln("This pod does not have a manifest, cannot determine its config file")
+	}
+	gracePeriod := TerminationGracePeriod
+	if manifest.GetTerminationGracePeriod() != 0 {
+		gracePeriod = manifest.GetTerminationGracePeriod()
+	}
+	p.logger.WithField("grace termination period", gracePeriod).Warnf("The grace termination period is %v", gracePeriod)
+
+	select {
+	case <-doneCh:
+		return
+	case <-time.After(gracePeriod):
+		p.logger.WithFields(logrus.Fields{
+			"launchable": serviceID,
+		}).Warnf("The %s script for %s has been running for %s, exceeded the termination grace period, and has been terminated",
+			scriptType, serviceID, gracePeriod)
+	}
+	return
 }
