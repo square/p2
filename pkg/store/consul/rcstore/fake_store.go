@@ -13,6 +13,7 @@ import (
 	pc_fields "github.com/square/p2/pkg/pc/fields"
 	"github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul"
+	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 )
 
@@ -229,6 +230,15 @@ func (s *fakeStore) Delete(id fields.ID, force bool) error {
 
 func (s *fakeStore) DeleteTxn(ctx context.Context, id fields.ID, force bool) error {
 	return util.Errorf("DeleteTxn not implemented in fake RC store. Use a real consul store (e.g. via consulutil) if this functionality is needed")
+}
+
+// undefined
+func (s *fakeStore) FindWhereLabeled(
+	podID types.PodID,
+	availabilityZone pc_fields.AvailabilityZone,
+	clusterName pc_fields.ClusterName,
+) ([]fields.RC, error) {
+	return []fields.RC{}, nil
 }
 
 func (s *fakeStore) Watch(rc *fields.RC, mu *sync.Mutex, quit <-chan struct{}) (<-chan struct{}, <-chan error) {
