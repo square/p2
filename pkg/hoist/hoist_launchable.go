@@ -168,7 +168,7 @@ func (hl *Launchable) Launch(serviceBuilder *runit.ServiceBuilder, sv runit.SV) 
 
 func (hl *Launchable) PostActivate() (string, error) {
 	// TODO: unexport this method (requires integrating BuildRunitServices into this API)
-	output, err := hl.InvokeBinScriptWithContext(context.Background(), "post-activate")
+	output, err := hl.InvokeBinScript("post-activate")
 
 	// providing a post-activate script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
@@ -198,7 +198,7 @@ func (hl *Launchable) enable() (string, error) {
 		return "", nil
 	}
 
-	output, err := hl.InvokeBinScriptWithContext(context.Background(), "enable")
+	output, err := hl.InvokeBinScript("enable")
 
 	// providing an enable script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {

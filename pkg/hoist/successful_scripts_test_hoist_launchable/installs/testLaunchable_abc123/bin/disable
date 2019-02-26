@@ -1,2 +1,4 @@
 #!/bin/bash
+echo "sleeping for 2 second to test termination grace period"
+sleep 0.005
 echo "disable invoked"

@@ -15,7 +15,7 @@ import (
 	. "github.com/anthonybishopric/gotcha"
 )
 
-var terminationGracePeriod = 1 * time.Hour
+var terminationGracePeriod = 1 * time.Minute
 
 func TestInstallDir(t *testing.T) {
 	tempDir := os.TempDir()
@@ -272,6 +272,15 @@ func TestNonexistentDisable(t *testing.T) {
 	expectedDisableOutput := ""
 
 	Assert(t).AreEqual(disableOutput, expectedDisableOutput, "Did not get expected output from test disable script")
+}
+
+func TestDisableWithLimitedTerminationGracePeriod(t *testing.T) {
+	// This test's behavior is not dependent on whether the pod is a legacy or uuid pod
+	hl, sb := FakeHoistLaunchableForDirLegacyPod("successful_scripts_test_hoist_launchable")
+	defer CleanupFakeLaunchable(hl, sb)
+
+	_, err := hl.disable(1 * time.Millisecond)
+	Assert(t).IsNotNil(err, "Expected disable to fail for this test, as the termination grace period is met")
 }
 
 func TestEnable(t *testing.T) {
