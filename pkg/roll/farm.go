@@ -43,7 +43,7 @@ type UpdateFactory struct {
 	RCStatusStore       RCStatusStore
 	RollStore           RollingUpdateStore
 	HealthServiceClient hclient.HealthServiceClient
-	HealthChecker       checker.ShadowTrafficHealthChecker
+	HealthChecker       checker.HealthChecker
 	Labeler             labeler
 	WatchDelay          time.Duration
 	Alerter             alerting.Alerter
@@ -65,7 +65,7 @@ func NewUpdateFactory(
 	rcStore ReplicationControllerStore,
 	rcStatusStore RCStatusStore,
 	rollStore RollingUpdateStore,
-	healthChecker checker.ShadowTrafficHealthChecker,
+	healthChecker checker.HealthChecker,
 	healthServiceClient hclient.HealthServiceClient,
 	labeler labeler,
 	watchDelay time.Duration,

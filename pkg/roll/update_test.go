@@ -509,7 +509,7 @@ func updateWithHealth(t *testing.T,
 		consulClient:                fixture.Client,
 		rcStore:                     rcs,
 		rcLocker:                    rcs,
-		hcheck:                      checkertest.NewSingleServiceShadow(podID, checks),
+		hcheck:                      checkertest.NewSingleService(podID, checks),
 		labeler:                     applicator,
 		logger:                      logger,
 		Update:                      ru,
@@ -625,7 +625,7 @@ func TestCountHealthNonCurrent(t *testing.T) {
 }
 
 func (u *update) uniformShouldRollAfterDelay(t *testing.T, podID types.PodID) (int, error) {
-	remove, add, err := u.shouldRollAfterDelay(podID, false, manifest.StatusStanza{})
+	remove, add, err := u.shouldRollAfterDelay(podID)
 	Assert(t).AreEqual(remove, add, "expected nodes removed and nodes added to be equal")
 	return add, err
 }
@@ -666,7 +666,7 @@ func TestShouldRollInitialMigrationFromZero(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	remove, add, err := upd.shouldRollAfterDelay(manifest.ID(), false, manifest.GetStatusStanza())
+	remove, add, err := upd.shouldRollAfterDelay(manifest.ID())
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
 	Assert(t).AreEqual(remove, 0, "expected to remove no nodes")
 	Assert(t).AreEqual(add, 1, "expected to add one node")
@@ -718,7 +718,7 @@ func TestShouldRollMidwayUnhealthyMigrationFromZero(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	remove, add, _ := upd.shouldRollAfterDelay(manifest.ID(), false, manifest.GetStatusStanza())
+	remove, add, _ := upd.shouldRollAfterDelay(manifest.ID())
 	Assert(t).AreEqual(remove, 0, "expected to remove no nodes")
 	Assert(t).AreEqual(add, 0, "expected to add no nodes")
 }
@@ -850,7 +850,7 @@ func TestShouldRollMidwayHealthyMigrationFromZero(t *testing.T) {
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	remove, add, err := upd.shouldRollAfterDelay(manifest.ID(), false, manifest.GetStatusStanza())
+	remove, add, err := upd.shouldRollAfterDelay(manifest.ID())
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
 	Assert(t).AreEqual(remove, 0, "expected to remove no nodes")
 	Assert(t).AreEqual(add, 1, "expected to add one node")
@@ -869,7 +869,7 @@ func TestShouldRollMidwayHealthyMigrationFromZeroWhenNewSatisfies(t *testing.T) 
 	upd.DesiredReplicas = 3
 	upd.MinimumReplicas = 2
 
-	remove, add, err := upd.shouldRollAfterDelay(manifest.ID(), false, manifest.GetStatusStanza())
+	remove, add, err := upd.shouldRollAfterDelay(manifest.ID())
 	Assert(t).IsNil(err, "expected no error determining nodes to roll")
 	Assert(t).AreEqual(remove, 0, "expected to remove no nodes")
 	Assert(t).AreEqual(add, 1, "expected to add one node")
@@ -945,14 +945,9 @@ type cannedWatchServiceChecker struct {
 func (c cannedWatchServiceChecker) WatchService(
 	ctx context.Context,
 	serviceID string,
-	nodeIDs []types.NodeName,
-	nodeIDsCh <-chan []types.NodeName,
 	resultCh chan<- map[types.NodeName]health.Result,
 	errCh chan<- error,
 	watchDelay time.Duration,
-	useHealthService bool,
-	useOnlyHealthService bool,
-	status manifest.StatusStanza,
 ) {
 	for {
 		select {
@@ -970,9 +965,6 @@ func (c cannedWatchServiceChecker) WatchService(
 
 func (c cannedWatchServiceChecker) Service(
 	serviceID string,
-	nodeIDs []types.NodeName,
-	useHealthService bool,
-	status manifest.StatusStanza,
 ) (map[types.NodeName]health.Result, error) {
 	return c.serviceResult, nil
 }
@@ -1237,7 +1229,7 @@ func TestRollLoopMigrateFromZero(t *testing.T) {
 	rollLoopResult := make(chan bool)
 
 	go func() {
-		rollLoopResult <- upd.rollLoop(ctx, manifest.ID(), healths, nil, false, manifest.GetStatusStanza())
+		rollLoopResult <- upd.rollLoop(ctx, manifest.ID(), healths, nil)
 		close(rollLoopResult)
 	}()
 
@@ -1303,7 +1295,7 @@ func TestRollLoopStallsIfUnhealthy(t *testing.T) {
 	rollLoopResult := make(chan bool)
 
 	go func() {
-		rollLoopResult <- upd.rollLoop(ctx, manifest.ID(), healths, nil, false, manifest.GetStatusStanza())
+		rollLoopResult <- upd.rollLoop(ctx, manifest.ID(), healths, nil)
 		close(rollLoopResult)
 	}()
 
