@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/cgroups"
@@ -100,7 +102,7 @@ func (hl *Launchable) IsOneoff() bool {
 	return hl.IsUUIDPod
 }
 
-func (hl *Launchable) Disable() error {
+func (hl *Launchable) Disable(gracePeriod time.Duration) error {
 	if hl.IsOneoff() {
 		// oneoff pods have nothing to disable/enable, they only run once and there's
 		// no server component
@@ -110,7 +112,7 @@ func (hl *Launchable) Disable() error {
 	// the error return from os/exec.Run is almost always meaningless
 	// ("exit status 1")
 	// since the output is more useful to the user, that's what we'll preserve
-	out, err := hl.disable()
+	out, err := hl.disable(gracePeriod)
 	if err != nil {
 		return launch.DisableError{Inner: util.Errorf("%s", out)}
 	}
@@ -176,8 +178,10 @@ func (hl *Launchable) PostActivate() (string, error) {
 	return output, nil
 }
 
-func (hl *Launchable) disable() (string, error) {
-	output, err := hl.InvokeBinScript("disable")
+func (hl *Launchable) disable(gracePeriod time.Duration) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), gracePeriod)
+	defer cancel()
+	output, err := hl.InvokeBinScriptWithContext(ctx, "disable")
 
 	// providing a disable script is optional, ignore those errors
 	if err != nil && !os.IsNotExist(err) {
@@ -204,7 +208,15 @@ func (hl *Launchable) enable() (string, error) {
 	return output, nil
 }
 
+func (hl *Launchable) InvokeBinScriptWithContext(ctx context.Context, script string) (string, error) {
+	return hl.invokeBinScript(ctx, script)
+}
+
 func (hl *Launchable) InvokeBinScript(script string) (string, error) {
+	return hl.invokeBinScript(context.Background(), script)
+}
+
+func (hl *Launchable) invokeBinScript(ctx context.Context, script string) (string, error) {
 	cmdPath := filepath.Join(hl.InstallDir(), "bin", script)
 	_, err := os.Stat(cmdPath)
 	if err != nil {
@@ -225,7 +237,7 @@ func (hl *Launchable) InvokeBinScript(script string) (string, error) {
 		RequireFile:      hl.RequireFile,
 		ClearEnv:         true,
 	}
-	cmd := exec.Command(hl.P2Exec, p2ExecArgs.CommandLine()...)
+	cmd := exec.CommandContext(ctx, hl.P2Exec, p2ExecArgs.CommandLine()...)
 	buffer := bytes.Buffer{}
 	cmd.Stdout = &buffer
 	cmd.Stderr = &buffer

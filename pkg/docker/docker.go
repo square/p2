@@ -114,9 +114,28 @@ type Launchable struct {
 	SuppliedEnvVars map[string]string
 }
 
-func (l *Launchable) Disable() error {
+func (l *Launchable) Disable(gracePeriod time.Duration) error {
+	doneCh := make(chan struct{})
+	errorCh := make(chan error)
+	go func() {
+		l.disable(errorCh)
+		close(doneCh)
+	}()
+
+	select {
+	case <-doneCh:
+	case err := <-errorCh:
+		return err
+	case <-time.After(gracePeriod):
+		return util.Errorf("The disable script for container %s has been running for %s, exceeded the termination grace period",
+			l.LaunchableID, gracePeriod)
+	}
+	return nil
+}
+
+func (l *Launchable) disable(errorChan chan<- error) {
 	if len(l.PreStopCmd) == 0 {
-		return nil
+		return
 	}
 	ctx := context.Background()
 	containerName := l.containerName()
@@ -128,29 +147,34 @@ func (l *Launchable) Disable() error {
 	}
 	resp, err := l.DockerClient.ContainerExecCreate(ctx, containerName, execConfig)
 	if err != nil {
-		return util.Errorf("could not create PreStop exec configuration for container %s: %s", containerName, err)
+		errorChan <- util.Errorf("could not create PreStop exec configuration for container %s: %s", containerName, err)
+		return
 	}
 
 	// TODO: check if we need to set anything in this
 	execConfig = dockertypes.ExecConfig{}
 	hijackedResp, err := l.DockerClient.ContainerExecAttach(ctx, resp.ID, execConfig)
 	if err != nil {
-		return util.Errorf("could not start PreStop exec process for container %s: %s", containerName, err)
+		errorChan <- util.Errorf("could not start PreStop exec process for container %s: %s", containerName, err)
+		return
 	}
 	defer hijackedResp.Close()
 	out, err := ioutil.ReadAll(hijackedResp.Reader)
 	if err != nil {
-		return util.Errorf("error reading output of PreStop exec process for container %s: %s", containerName, err)
+		errorChan <- util.Errorf("error reading output of PreStop exec process for container %s: %s", containerName, err)
+		return
 	}
 	containerExecInspect, err := l.DockerClient.ContainerExecInspect(ctx, resp.ID)
 	if err != nil {
-		return util.Errorf("error inspecting PreStop exec process for container %s: %s", containerName, err)
+		errorChan <- util.Errorf("error inspecting PreStop exec process for container %s: %s", containerName, err)
+		return
 	}
 	if containerExecInspect.ExitCode != 0 {
-		return launch.DisableError{Inner: util.Errorf("%s", out)}
+		errorChan <- launch.DisableError{Inner: util.Errorf("%s", out)}
+		return
 	}
 	// TODO: check if there is anything else to do here
-	return nil
+	return
 }
 
 func (l *Launchable) EnvDir() string {

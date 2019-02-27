@@ -368,7 +368,7 @@ func (l *Launchable) stop(serviceBuilder *runit.ServiceBuilder, sv runit.SV) err
 	return nil
 }
 
-func (l *Launchable) Disable() error {
+func (l *Launchable) Disable(gracePeriod time.Duration) error {
 	// "disable" script not supported for containers
 	return nil
 }
