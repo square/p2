@@ -3,15 +3,11 @@ package checker
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"net"
-	"net/url"
 	"time"
 
 	"github.com/square/p2/pkg/health"
 	hclient "github.com/square/p2/pkg/health/client"
 	"github.com/square/p2/pkg/labels"
-	"github.com/square/p2/pkg/manifest"
 	rcfields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/consulutil"
@@ -199,18 +195,6 @@ func publishLatestHealth(inCh <-chan api.KVPairs, quitCh <-chan struct{}, result
 	return errCh
 }
 
-func nodeIDsToStatusEndpoints(nodeIds []types.NodeName, status manifest.StatusStanza) []string {
-	statusEndpoints := make([]string, len(nodeIds))
-	scheme := "https"
-	if status.HTTP {
-		scheme = "http"
-	}
-	for i, nodeId := range nodeIds {
-		statusEndpoints[i] = fmt.Sprintf("%s://%s:%d%s", scheme, nodeId, status.Port, status.GetPath())
-	}
-	return statusEndpoints
-}
-
 // Watch the health tree and write the whole subtree on the chan passed by caller
 // the result channel argument _must be buffered_
 // Any errors are passed, best effort, over errCh
@@ -313,18 +297,6 @@ func (h healthChecker) WatchService(
 ) {
 	defer close(resultCh)
 	watchConsulHealth(ctx, serviceID, h.kv, resultCh, errCh, watchDelay)
-}
-
-func statusURLToNodeName(s string) (types.NodeName, error) {
-	u, err := url.Parse(s)
-	if err != nil {
-		return "", util.Errorf("error parsing url '%s'", s)
-	}
-	host, _, err := net.SplitHostPort(u.Host)
-	if err != nil {
-		return "", util.Errorf("error parsing host:port '%s'", u.Host)
-	}
-	return types.NodeName(host), nil
 }
 
 func healthResultsCopy(healthResults map[types.NodeName]health.Result) map[types.NodeName]health.Result {
