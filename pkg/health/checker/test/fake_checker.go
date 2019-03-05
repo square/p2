@@ -7,51 +7,10 @@ import (
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 )
 
 // TODO: replication/common_setup_test.go has some things that could be moved here
-
-type singleServiceShadowChecker struct {
-	service string
-	health  map[types.NodeName]health.Result
-}
-
-func NewSingleServiceShadow(service string, health map[types.NodeName]health.Result) checker.ShadowTrafficHealthChecker {
-	return &singleServiceShadowChecker{
-		service: service,
-		health:  health,
-	}
-}
-
-func (s singleServiceShadowChecker) WatchService(
-	ctx context.Context,
-	serviceID string,
-	nodeIDs []types.NodeName,
-	nodeIDsCh <-chan []types.NodeName,
-	resultCh chan<- map[types.NodeName]health.Result,
-	errCh chan<- error,
-	watchDelay time.Duration,
-	useHealthService bool,
-	useOnlyHealthService bool,
-	status manifest.StatusStanza,
-) {
-	panic("WatchService not implemented")
-}
-
-func (s singleServiceShadowChecker) Service(
-	serviceID string,
-	nodeIDs []types.NodeName,
-	useHealthService bool,
-	status manifest.StatusStanza,
-) (map[types.NodeName]health.Result, error) {
-	if serviceID != s.service {
-		return nil, fmt.Errorf("Wrong service %s given, I only have health for %s", serviceID, s.service)
-	}
-	return s.health, nil
-}
-
 type singleServiceChecker struct {
 	service string
 	health  map[types.NodeName]health.Result

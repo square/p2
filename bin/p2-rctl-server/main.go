@@ -83,7 +83,6 @@ func main() {
 
 	rollStore := rollstore.NewConsul(client, labeler, nil)
 	healthChecker := checker.NewHealthChecker(client)
-	shadowTrafficHealthChecker := checker.NewShadowTrafficHealthChecker(nil, nil, client, nil, nil, false, false)
 	sched := scheduler.NewApplicatorScheduler(labeler)
 
 	// Start acquiring sessions
@@ -140,7 +139,7 @@ func main() {
 		roll.UpdateFactory{
 			Store:         consulStore,
 			RCStore:       rcStore,
-			HealthChecker: shadowTrafficHealthChecker,
+			HealthChecker: healthChecker,
 			Labeler:       labeler,
 		},
 		consulStore,
