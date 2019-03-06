@@ -10,7 +10,6 @@ import (
 	"github.com/hashicorp/consul/api"
 	"github.com/square/p2/pkg/health"
 	hc "github.com/square/p2/pkg/health/client"
-	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/types"
 )
@@ -67,49 +66,6 @@ func (f fakeHealthClient) HealthCheckEndpoints(ctx context.Context, req *hc.Heal
 		}
 	}
 	return ret, nil
-}
-
-func TestNodeIDsToStatusEndpoints(t *testing.T) {
-	nodeIDs := []types.NodeName{"node1"}
-	statusStanza := manifest.StatusStanza{Port: 1}
-	expected := []string{
-		"https://node1:1/_status",
-	}
-	statusEndpoints := nodeIDsToStatusEndpoints(nodeIDs, statusStanza)
-	if len(statusEndpoints) != len(nodeIDs) {
-		t.Fatalf("Expected length of output of nodeIDsToStatusEndpoints to equal length of input nodeIDs. Expected %d but got %d", len(nodeIDs), len(statusEndpoints))
-	}
-	if statusEndpoints[0] != expected[0] {
-		t.Fatalf("Expected statusEndpoint to be %s but got %s", expected[0], statusEndpoints[0])
-	}
-
-	statusStanza = manifest.StatusStanza{
-		HTTP: true,
-		Path: "path",
-		Port: 1,
-	}
-	expected = []string{
-		"http://node1:1/path",
-	}
-	statusEndpoints = nodeIDsToStatusEndpoints(nodeIDs, statusStanza)
-	if statusEndpoints[0] != expected[0] {
-		t.Fatalf("Expected statusEndpoint to be %s but got %s", expected[0], statusEndpoints[0])
-	}
-}
-
-func TestStatusURLToNodeName(t *testing.T) {
-	nodeIDs := []types.NodeName{"node1"}
-	statusStanza := manifest.StatusStanza{
-		Port: 1,
-	}
-	statusEndpoints := nodeIDsToStatusEndpoints(nodeIDs, statusStanza)
-	nodeID, err := statusURLToNodeName(statusEndpoints[0])
-	if err != nil {
-		t.Fatalf("Unexpected error in statusURLToNodeName: %v", err)
-	}
-	if nodeID != nodeIDs[0] {
-		t.Fatalf("Expected nodeID to be %s but got %s", nodeIDs[0], nodeID)
-	}
 }
 
 func TestService(t *testing.T) {
