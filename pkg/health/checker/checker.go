@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/square/p2/pkg/health"
-	hclient "github.com/square/p2/pkg/health/client"
 	"github.com/square/p2/pkg/labels"
 	rcfields "github.com/square/p2/pkg/rc/fields"
 	"github.com/square/p2/pkg/store/consul"
@@ -38,11 +37,6 @@ type HealthChecker interface {
 		jitterWindow time.Duration,
 	)
 	Service(serviceID string) (map[types.NodeName]health.Result, error)
-}
-
-type HealthClient interface {
-	HealthCheckEndpoints(ctx context.Context, req *hclient.HealthEndpointsRequest) (map[string]health.HealthState, error)
-	HealthMonitor(ctx context.Context, req *hclient.HealthRequest, respCh chan *hclient.HealthResponse) error
 }
 
 type ResourceClient interface {
