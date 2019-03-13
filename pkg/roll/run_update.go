@@ -9,7 +9,6 @@ import (
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/health"
-	hclient "github.com/square/p2/pkg/health/client"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/pods"
@@ -82,7 +81,6 @@ type update struct {
 	rollStore     RollingUpdateStore
 	rcLocker      ReplicationControllerLocker
 	hcheck        ServiceWatcher
-	hclient       hclient.HealthServiceClient
 	labeler       Labeler
 	txner         transaction.Txner
 
@@ -122,7 +120,6 @@ func NewUpdate(
 	rollStore RollingUpdateStore,
 	txner transaction.Txner,
 	hcheck ServiceWatcher,
-	hclient hclient.HealthServiceClient,
 	labeler Labeler,
 	logger logging.Logger,
 	session consul.Session,
@@ -144,7 +141,6 @@ func NewUpdate(
 		rollStore:                   rollStore,
 		txner:                       txner,
 		hcheck:                      hcheck,
-		hclient:                     hclient,
 		labeler:                     labeler,
 		logger:                      logger,
 		watchDelay:                  watchDelay,
