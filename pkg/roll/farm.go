@@ -9,7 +9,6 @@ import (
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/audit"
 	"github.com/square/p2/pkg/health/checker"
-	hclient "github.com/square/p2/pkg/health/client"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
 	p2metrics "github.com/square/p2/pkg/metrics"
@@ -35,18 +34,17 @@ type Factory interface {
 }
 
 type UpdateFactory struct {
-	Store               Store
-	Client              consulutil.ConsulClient
-	Txner               transaction.Txner
-	RCLocker            ReplicationControllerLocker
-	RCStore             ReplicationControllerStore
-	RCStatusStore       RCStatusStore
-	RollStore           RollingUpdateStore
-	HealthServiceClient hclient.HealthServiceClient
-	HealthChecker       checker.HealthChecker
-	Labeler             labeler
-	WatchDelay          time.Duration
-	Alerter             alerting.Alerter
+	Store         Store
+	Client        consulutil.ConsulClient
+	Txner         transaction.Txner
+	RCLocker      ReplicationControllerLocker
+	RCStore       ReplicationControllerStore
+	RCStatusStore RCStatusStore
+	RollStore     RollingUpdateStore
+	HealthChecker checker.HealthChecker
+	Labeler       labeler
+	WatchDelay    time.Duration
+	Alerter       alerting.Alerter
 
 	ShouldCreateAuditLogRecords bool
 	AuditLogStore               auditlogstore.ConsulStore
@@ -66,7 +64,6 @@ func NewUpdateFactory(
 	rcStatusStore RCStatusStore,
 	rollStore RollingUpdateStore,
 	healthChecker checker.HealthChecker,
-	healthServiceClient hclient.HealthServiceClient,
 	labeler labeler,
 	watchDelay time.Duration,
 	alerter alerting.Alerter,
@@ -82,7 +79,6 @@ func NewUpdateFactory(
 		RCStatusStore:               rcStatusStore,
 		RollStore:                   rollStore,
 		HealthChecker:               healthChecker,
-		HealthServiceClient:         healthServiceClient,
 		Labeler:                     labeler,
 		WatchDelay:                  watchDelay,
 		Alerter:                     alerter,
@@ -102,7 +98,6 @@ func (f UpdateFactory) New(u roll_fields.Update, l logging.Logger, session consu
 		f.RollStore,
 		f.Txner,
 		f.HealthChecker,
-		f.HealthServiceClient,
 		f.Labeler,
 		l,
 		session,

@@ -299,7 +299,6 @@ func TestLockRCs(t *testing.T) {
 		fixture.Client.KV(),
 		nil,
 		nil,
-		nil,
 		logging.DefaultLogger,
 		session,
 		0,
