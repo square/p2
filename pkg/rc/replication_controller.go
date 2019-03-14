@@ -816,10 +816,13 @@ func (e *incorrectAllocationError) Error() string {
 // swapNodes allocates a node, deallocates the inelgible node, and
 // transactionally schedules on the new node and unschedules from the old
 func (rc *replicationController) swapNodes(rcFields fields.RC, current types.PodLocations, ineligible types.NodeName, allocAttempts int) error {
-	newNode, err := rc.retryAllocate(rcFields, allocAttempts)
+	nodes, err := rc.scheduler.AllocateNodes(rcFields.Manifest, rcFields.NodeSelector, 1, true)
 	if err != nil {
-		return err
+		return util.Errorf("node transfer Allocate failed: %s", err)
+	} else if len(nodes) < 1 {
+		return util.Errorf("node transfer Allocate allocated no nodes: %s", err)
 	}
+	newNode := nodes[0]
 
 	err = rc.retryDeallocate(rcFields, ineligible, allocAttempts)
 	if err != nil {
@@ -864,26 +867,6 @@ func (rc *replicationController) swapNodes(rcFields fields.RC, current types.Pod
 	}
 
 	return nil
-}
-
-func (rc *replicationController) retryAllocate(rcFields fields.RC, attempts int) (types.NodeName, error) {
-	for i := 0; i < attempts; i++ {
-		backoff := time.Duration(math.Pow(float64(i), 2)) * time.Second
-		if backoff > 1*time.Minute {
-			backoff = 1 * time.Minute
-		}
-		time.Sleep(backoff)
-		nodes, err := rc.scheduler.AllocateNodes(rcFields.Manifest, rcFields.NodeSelector, 1, true)
-		if err != nil {
-			rc.logger.WithError(err).Errorf("node transfer allocate attempt %d failed", i+1)
-			continue
-		} else if len(nodes) < 1 {
-			rc.logger.Errorln("node transfer allocate attempt %d allocated no nodes", i+1)
-			continue
-		}
-		return nodes[0], nil
-	}
-	return "", util.Errorf("allocate failed all %d attempts", attempts)
 }
 
 func (rc *replicationController) retryDeallocate(rcFields fields.RC, ineligible types.NodeName, attempts int) error {
