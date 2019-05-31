@@ -335,7 +335,7 @@ func (ds *daemonSet) WatchDesires(
 
 		// Schedule all the pods when we first start watching
 		if !ds.IsDisabled() {
-			ds.logger.NoFields().Infof("Received new daemon set: %s", ds.ID)
+			ds.logger.NoFields().Infof("Received new daemon set: %s", ds.ID())
 			eligibleNodes, err = ds.EligibleNodes()
 			if err != nil {
 				err = util.Errorf("Unable to compute eligible nodes: %v", err)
