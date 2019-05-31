@@ -1,0 +1,256 @@
+# github.com/DataDog/datadog-go v0.0.0-20160822161430-909c02b65dd8
+github.com/DataDog/datadog-go/statsd
+# github.com/Microsoft/go-winio v0.0.0-20170113001240-307e919c6636
+github.com/Microsoft/go-winio
+# github.com/Sirupsen/logrus v0.11.0
+github.com/Sirupsen/logrus
+# github.com/alecthomas/template v0.0.0-20150530000104-b867cc6ab45c
+github.com/alecthomas/template
+github.com/alecthomas/template/parse
+# github.com/alecthomas/units v0.0.0-20150109002421-6b4e7dc5e314
+github.com/alecthomas/units
+# github.com/anthonybishopric/gotcha v0.0.0-20141021013529-584121597f0f
+github.com/anthonybishopric/gotcha
+# github.com/armon/circbuf v0.0.0-20150827004946-bbbad097214e
+github.com/armon/circbuf
+# github.com/armon/go-metrics v0.0.0-20160717043458-3df31a1ada83
+github.com/armon/go-metrics
+github.com/armon/go-metrics/circonus
+github.com/armon/go-metrics/datadog
+# github.com/armon/go-radix v0.0.0-20160115234725-4239b77079c7
+github.com/armon/go-radix
+# github.com/bgentry/speakeasy v0.0.0-20160520232610-e1439544d8ec
+github.com/bgentry/speakeasy
+# github.com/boltdb/bolt v1.2.1
+github.com/boltdb/bolt
+# github.com/circonus-labs/circonus-gometrics v0.0.0-20160722172710-a7c30e0dcc6e
+github.com/circonus-labs/circonus-gometrics
+github.com/circonus-labs/circonus-gometrics/api
+github.com/circonus-labs/circonus-gometrics/checkmgr
+# github.com/circonus-labs/circonusllhist v0.0.0-20160526043813-d724266ae527
+github.com/circonus-labs/circonusllhist
+# github.com/davecgh/go-spew v1.1.0
+github.com/davecgh/go-spew/spew
+# github.com/docker/distribution v0.0.0-20170127234254-fb0bebc4b64e
+github.com/docker/distribution/reference
+github.com/docker/distribution/digestset
+# github.com/docker/docker v0.0.0-20170504205632-89658bed64c2
+github.com/docker/docker/client
+github.com/docker/docker/api/types
+github.com/docker/docker/api/types/container
+github.com/docker/docker/api/types/filters
+github.com/docker/docker/api/types/network
+github.com/docker/docker/api/types/strslice
+github.com/docker/docker/api
+github.com/docker/docker/api/types/events
+github.com/docker/docker/api/types/image
+github.com/docker/docker/api/types/registry
+github.com/docker/docker/api/types/swarm
+github.com/docker/docker/api/types/time
+github.com/docker/docker/api/types/versions
+github.com/docker/docker/api/types/volume
+github.com/docker/docker/pkg/tlsconfig
+github.com/docker/docker/api/types/mount
+github.com/docker/docker/api/types/blkiodev
+github.com/docker/docker/pkg/ioutils
+github.com/docker/docker/pkg/system
+github.com/docker/docker/pkg/longpath
+github.com/docker/docker/opts
+github.com/docker/docker/pkg/archive
+github.com/docker/docker/pkg/fileutils
+github.com/docker/docker/pkg/homedir
+github.com/docker/docker/pkg/stdcopy
+github.com/docker/docker/pkg/idtools
+github.com/docker/docker/pkg/pools
+github.com/docker/docker/pkg/promise
+# github.com/docker/go-connections v0.0.0-20170101210128-eb315e364153
+github.com/docker/go-connections/tlsconfig
+github.com/docker/go-connections/sockets
+github.com/docker/go-connections/nat
+# github.com/docker/go-units v0.0.0-20160802145505-eb879ae3e2b8
+github.com/docker/go-units
+# github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7
+github.com/docker/libtrust
+# github.com/elazarl/go-bindata-assetfs v0.0.0-20160803192304-e1a2a7ec64b0
+github.com/elazarl/go-bindata-assetfs
+# github.com/fsouza/go-dockerclient v0.0.0-20160809012447-a53ba79627e8
+github.com/fsouza/go-dockerclient
+# github.com/golang/protobuf v1.2.0
+github.com/golang/protobuf/proto
+github.com/golang/protobuf/ptypes
+github.com/golang/protobuf/ptypes/any
+github.com/golang/protobuf/ptypes/duration
+github.com/golang/protobuf/ptypes/timestamp
+# github.com/gorilla/context v0.0.0-20160226214623-1ea25387ff6f
+github.com/gorilla/context
+# github.com/gorilla/mux v0.0.0-20160317213430-0eeaf8392f5b
+github.com/gorilla/mux
+# github.com/hashicorp/consul v0.7.0
+github.com/hashicorp/consul/api
+github.com/hashicorp/consul/command/agent
+github.com/hashicorp/consul/consul
+github.com/hashicorp/consul/testutil
+github.com/hashicorp/consul/consul/state
+github.com/hashicorp/consul/consul/structs
+github.com/hashicorp/consul/lib
+github.com/hashicorp/consul/tlsutil
+github.com/hashicorp/consul/types
+github.com/hashicorp/consul/watch
+github.com/hashicorp/consul/acl
+github.com/hashicorp/consul/consul/agent
+github.com/hashicorp/consul/consul/servers
+github.com/hashicorp/consul/consul/prepared_query
+# github.com/hashicorp/errwrap v0.0.0-20141028054710-7554cd9344ce
+github.com/hashicorp/errwrap
+# github.com/hashicorp/go-checkpoint v0.0.0-20151022181514-e4b2dc34c0f6
+github.com/hashicorp/go-checkpoint
+# github.com/hashicorp/go-cleanhttp v0.0.0-20160407174126-ad28ea4487f0
+github.com/hashicorp/go-cleanhttp
+# github.com/hashicorp/go-immutable-radix v0.0.0-20160609020529-afc5a0dbb18a
+github.com/hashicorp/go-immutable-radix
+# github.com/hashicorp/go-memdb v0.0.0-20160301230142-98f52f52d7a4
+github.com/hashicorp/go-memdb
+# github.com/hashicorp/go-msgpack v0.0.0-20150518234257-fa3f63826f7c
+github.com/hashicorp/go-msgpack/codec
+# github.com/hashicorp/go-multierror v0.0.0-20150916205742-d30f09973e19
+github.com/hashicorp/go-multierror
+# github.com/hashicorp/go-reap v0.0.0-20160113172555-2d85522212dc
+github.com/hashicorp/go-reap
+# github.com/hashicorp/go-retryablehttp v0.0.0-20160718233441-886ce0458bc8
+github.com/hashicorp/go-retryablehttp
+# github.com/hashicorp/go-syslog v0.0.0-20150218181946-42a2b573b664
+github.com/hashicorp/go-syslog
+# github.com/hashicorp/go-uuid v0.0.0-20160717022140-64130c7a86d7
+github.com/hashicorp/go-uuid
+# github.com/hashicorp/golang-lru v0.0.0-20160207214719-a0d98a5f2880
+github.com/hashicorp/golang-lru
+github.com/hashicorp/golang-lru/simplelru
+# github.com/hashicorp/hcl v0.0.0-20160711231752-d8c773c4cba1
+github.com/hashicorp/hcl
+github.com/hashicorp/hcl/hcl/ast
+github.com/hashicorp/hcl/hcl/parser
+github.com/hashicorp/hcl/hcl/token
+github.com/hashicorp/hcl/json/parser
+github.com/hashicorp/hcl/hcl/scanner
+github.com/hashicorp/hcl/hcl/strconv
+github.com/hashicorp/hcl/json/scanner
+github.com/hashicorp/hcl/json/token
+# github.com/hashicorp/hil v0.0.0-20160711231837-1e86c6b523c5
+github.com/hashicorp/hil
+github.com/hashicorp/hil/ast
+# github.com/hashicorp/logutils v0.0.0-20150609070431-0dc08b1671f3
+github.com/hashicorp/logutils
+# github.com/hashicorp/memberlist v0.0.0-20160812182757-0c5ba075f852
+github.com/hashicorp/memberlist
+# github.com/hashicorp/net-rpc-msgpackrpc v0.0.0-20151116020338-a14192a58a69
+github.com/hashicorp/net-rpc-msgpackrpc
+# github.com/hashicorp/raft v0.0.0-20160801212718-c69c15dd73b6
+github.com/hashicorp/raft
+# github.com/hashicorp/raft-boltdb v0.0.0-20150201200839-d1e82c1ec3f1
+github.com/hashicorp/raft-boltdb
+# github.com/hashicorp/scada-client v0.0.0-20160601224023-6e896784f66f
+github.com/hashicorp/scada-client/scada
+github.com/hashicorp/scada-client
+# github.com/hashicorp/serf v0.0.0-20160809014204-114430d82108
+github.com/hashicorp/serf/coordinate
+github.com/hashicorp/serf/serf
+# github.com/hashicorp/yamux v0.0.0-20160720233140-d1caa6c97c9f
+github.com/hashicorp/yamux
+# github.com/mattn/go-isatty v0.0.0-20160806122752-66b8e73f3f5c
+github.com/mattn/go-isatty
+# github.com/mattn/go-sqlite3 v0.0.0-20161028142218-86681de00ade
+github.com/mattn/go-sqlite3
+# github.com/miekg/dns v0.0.0-20160726032027-db96a2b759cd
+github.com/miekg/dns
+# github.com/mitchellh/cli v0.0.0-20160323170700-168daae10d6f
+github.com/mitchellh/cli
+# github.com/mitchellh/copystructure v0.0.0-20160804032330-cdac8253d00f
+github.com/mitchellh/copystructure
+# github.com/mitchellh/mapstructure v0.0.0-20160808181253-ca63d7c062ee
+github.com/mitchellh/mapstructure
+# github.com/mitchellh/reflectwalk v0.0.0-20150527153153-eecf4c70c626
+github.com/mitchellh/reflectwalk
+# github.com/opencontainers/go-digest v1.0.0-rc1
+github.com/opencontainers/go-digest
+# github.com/opencontainers/runc v0.0.0-20160809122204-0f764571384a
+github.com/opencontainers/runc/libcontainer/system
+github.com/opencontainers/runc/libcontainer/user
+# github.com/pborman/uuid v0.0.0-20160209185913-a97ce2ca70fa
+github.com/pborman/uuid
+# github.com/pkg/errors v0.0.0-20161029093637-248dadf4e906
+github.com/pkg/errors
+# github.com/rcrowley/go-metrics v0.0.0-20161128210544-1f30fe9094a5
+github.com/rcrowley/go-metrics
+github.com/rcrowley/go-metrics/exp
+# golang.org/x/crypto v0.0.0-20170107180030-c3b1d0d6d869
+golang.org/x/crypto/ssh
+golang.org/x/crypto/openpgp
+golang.org/x/crypto/openpgp/armor
+golang.org/x/crypto/openpgp/errors
+golang.org/x/crypto/openpgp/packet
+golang.org/x/crypto/openpgp/clearsign
+golang.org/x/crypto/curve25519
+golang.org/x/crypto/ed25519
+golang.org/x/crypto/openpgp/s2k
+golang.org/x/crypto/cast5
+golang.org/x/crypto/openpgp/elgamal
+golang.org/x/crypto/ed25519/internal/edwards25519
+# golang.org/x/net v0.0.0-20181011144130-49bb7cea24b1
+golang.org/x/net/context
+golang.org/x/net/http2
+golang.org/x/net/trace
+golang.org/x/net/context/ctxhttp
+golang.org/x/net/http/httpguts
+golang.org/x/net/http2/hpack
+golang.org/x/net/idna
+golang.org/x/net/internal/timeseries
+golang.org/x/net/proxy
+golang.org/x/net/internal/socks
+# golang.org/x/sys v0.0.0-20180830151530-49385e6e1522
+golang.org/x/sys/unix
+golang.org/x/sys/windows
+# golang.org/x/text v0.3.0
+golang.org/x/text/secure/bidirule
+golang.org/x/text/unicode/bidi
+golang.org/x/text/unicode/norm
+golang.org/x/text/transform
+# golang.org/x/time v0.0.0-20161028155119-f51c12702a4d
+golang.org/x/time/rate
+# google.golang.org/genproto v0.0.0-20180817151627-c66870c02cf8
+google.golang.org/genproto/googleapis/rpc/status
+# google.golang.org/grpc v1.15.0
+google.golang.org/grpc
+google.golang.org/grpc/credentials
+google.golang.org/grpc/codes
+google.golang.org/grpc/metadata
+google.golang.org/grpc/balancer
+google.golang.org/grpc/balancer/roundrobin
+google.golang.org/grpc/connectivity
+google.golang.org/grpc/encoding
+google.golang.org/grpc/encoding/proto
+google.golang.org/grpc/grpclog
+google.golang.org/grpc/internal
+google.golang.org/grpc/internal/backoff
+google.golang.org/grpc/internal/channelz
+google.golang.org/grpc/internal/envconfig
+google.golang.org/grpc/internal/grpcrand
+google.golang.org/grpc/internal/transport
+google.golang.org/grpc/keepalive
+google.golang.org/grpc/naming
+google.golang.org/grpc/peer
+google.golang.org/grpc/resolver
+google.golang.org/grpc/resolver/dns
+google.golang.org/grpc/resolver/passthrough
+google.golang.org/grpc/stats
+google.golang.org/grpc/status
+google.golang.org/grpc/tap
+google.golang.org/grpc/balancer/base
+# gopkg.in/alecthomas/kingpin.v2 v2.2.3
+gopkg.in/alecthomas/kingpin.v2
+# gopkg.in/yaml.v2 v2.0.0-20160928153709-a5b47d31c556
+gopkg.in/yaml.v2
+# k8s.io/kubernetes v1.2.0-alpha.4
+k8s.io/kubernetes/pkg/labels
+k8s.io/kubernetes/pkg/util/sets
+k8s.io/kubernetes/pkg/util/validation
+k8s.io/kubernetes/pkg/util/errors
