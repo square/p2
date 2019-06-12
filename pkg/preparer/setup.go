@@ -868,7 +868,7 @@ func (p *Preparer) BuildRealityAtLaunch() error {
 	// get set of pods in reality
 	realityResults, _, err := p.store.ListPods(consul.REALITY_TREE, p.node)
 	if err != nil {
-		sub.WithError(err).Errorln("Could not check reality: %s", err)
+		sub.WithError(err).Errorf("Could not check reality: %v", err)
 		return err
 	}
 	realityMap := map[string]bool{}
@@ -878,7 +878,7 @@ func (p *Preparer) BuildRealityAtLaunch() error {
 	// get set of pods in intent
 	intentResults, _, err := p.store.ListPods(consul.INTENT_TREE, p.node)
 	if err != nil {
-		sub.WithError(err).Errorln("Could not check intent: %s", err)
+		sub.WithError(err).Errorf("Could not check intent: %v", err)
 		return err
 	}
 	intentMap := map[string]bool{}
@@ -888,7 +888,7 @@ func (p *Preparer) BuildRealityAtLaunch() error {
 	// get set of pods installed on machine
 	manifestFilePaths, err := filepath.Glob(filepath.Join(p.podRoot, "*/current_manifest.yaml"))
 	if err != nil {
-		sub.WithError(err).Errorln("Could not check filepaths of pods installed on disk: %s", err)
+		sub.WithError(err).Errorf("Could not check filepaths of pods installed on disk: %v", err)
 		return err
 	}
 	for _, fp := range manifestFilePaths {
@@ -903,7 +903,7 @@ func (p *Preparer) BuildRealityAtLaunch() error {
 				defer cancelFunc()
 				err := p.podStore.WriteRealityIndex(ctx, uniqueKey, p.node)
 				if err != nil {
-					sub.WithError(err).Errorln("Could not add 'write uuid index to reality store' to transaction: %s", err)
+					sub.WithError(err).Errorf("Could not add 'write uuid index to reality store' to transaction: %v", err)
 					return err
 				}
 				ok, resp, err := transaction.Commit(ctx, p.client.KV())
@@ -917,19 +917,19 @@ func (p *Preparer) BuildRealityAtLaunch() error {
 					return err
 				}
 			} else if err != nil {
-				sub.WithError(err).Errorln("Unexpected error reading pod: %s", err)
+				sub.WithError(err).Errorf("Unexpected error reading pod: %v", err)
 				return err
 			}
 		} else if _, ok := intentMap[home]; !ok {
 			if _, ok := realityMap[home]; !ok {
 				diskManifest, err := manifest.FromPath(fp)
 				if err != nil {
-					sub.WithError(err).Errorln("Could not read manifest from path: %s", err)
+					sub.WithError(err).Errorf("Could not read manifest from path: %v", err)
 					return err
 				}
 				_, err = p.store.SetPod(consul.REALITY_TREE, p.node, diskManifest)
 				if err != nil {
-					sub.WithError(err).Errorln("Could not set pod in reality tree: %s", err)
+					sub.WithError(err).Errorf("Could not set pod in reality tree: %v", err)
 					return err
 				}
 			}

@@ -710,7 +710,7 @@ func (s *ConsulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 				}).Debugf("Starting pod selector watch for %v", change.current.ID)
 				podWatch, err = s.watcher.WatchMatches(change.current.PodSelector, labels.POD, s.labelAggregationRate, podWatchQuit)
 				if err != nil {
-					s.logger.WithError(err).Errorln("Unable to start pod selector watch for %v", change.current.ID)
+					s.logger.WithError(err).Errorf("Unable to start pod selector watch for %v", change.current.ID)
 				} else {
 					watching = true
 				}
@@ -737,7 +737,7 @@ func (s *ConsulStore) handlePCUpdates(concrete ConcreteSyncer, changes chan podC
 					podWatch, err = s.watcher.WatchMatches(change.current.PodSelector, labels.POD, s.labelAggregationRate, podWatchQuit)
 					if err != nil {
 						// TODO: retry this. Today it's not an issue because the applicator we're using doesn't actually error
-						s.logger.WithError(err).Errorln("Unable to alter pod selector watch for %v", change.current.ID)
+						s.logger.WithError(err).Errorf("Unable to alter pod selector watch for %v", change.current.ID)
 					}
 				}
 			}

@@ -149,7 +149,7 @@ func (manifest *manifest) GetArtifactRegistry(fetcher uri.Fetcher) artifact.Regi
 	if manifest.ArtifactRegistryURL != "" {
 		url, err := url.Parse(manifest.ArtifactRegistryURL)
 		if err != nil {
-			logging.DefaultLogger.WithError(err).Errorln("Unable to parse artifact registry URL for pod %s", manifest.ID())
+			logging.DefaultLogger.WithError(err).Errorf("Unable to parse artifact registry URL for pod %s", manifest.ID())
 			return nil // This shouldn't block installation, we expect the client to fallback to some default
 		}
 		return artifact.NewRegistry(url, fetcher, nil)
