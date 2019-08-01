@@ -75,6 +75,8 @@ github.com/docker/libtrust
 github.com/elazarl/go-bindata-assetfs
 # github.com/fsouza/go-dockerclient v0.0.0-20160809012447-a53ba79627e8
 github.com/fsouza/go-dockerclient
+# github.com/gofrs/uuid v3.2.0+incompatible
+github.com/gofrs/uuid
 # github.com/golang/protobuf v1.2.0
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/ptypes
@@ -175,8 +177,6 @@ github.com/opencontainers/go-digest
 # github.com/opencontainers/runc v0.0.0-20160809122204-0f764571384a
 github.com/opencontainers/runc/libcontainer/system
 github.com/opencontainers/runc/libcontainer/user
-# github.com/pborman/uuid v0.0.0-20160209185913-a97ce2ca70fa
-github.com/pborman/uuid
 # github.com/pkg/errors v0.0.0-20161029093637-248dadf4e906
 github.com/pkg/errors
 # github.com/rcrowley/go-metrics v0.0.0-20161128210544-1f30fe9094a5

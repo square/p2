@@ -15,7 +15,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/store/consul/transaction"
 
-	"github.com/pborman/uuid"
+	"github.com/gofrs/uuid"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -427,7 +427,7 @@ func TestLockForNodeTransfer(t *testing.T) {
 	applicator := labels.NewConsulApplicator(fixture.Client, 0, 0)
 	rcStore := NewConsul(fixture.Client, applicator, 0)
 
-	rcID := rcfields.ID(uuid.New())
+	rcID := rcfields.ID(uuid.Must(uuid.NewV4()).String())
 	unlocker, err := rcStore.LockForNodeTransfer(rcID, session1)
 	if err != nil {
 		t.Fatal(err)

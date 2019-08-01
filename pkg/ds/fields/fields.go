@@ -6,7 +6,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/labels"
 
-	"github.com/pborman/uuid"
+	"github.com/gofrs/uuid"
 	"github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
@@ -20,11 +20,10 @@ func (id ID) String() string {
 }
 
 func ToDaemonSetID(id string) (ID, error) {
-	if uuid.Parse(id) != nil {
-		return ID(id), nil
+	if _, err := uuid.FromString(id); err != nil {
+		return "", util.Errorf("%v", err)
 	}
-
-	return "", util.Errorf("%s does not parse as a UUID", id)
+	return ID(id), nil
 }
 
 // Cluster name is where the DaemonSet lives on

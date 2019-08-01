@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/pborman/uuid"
+	"github.com/gofrs/uuid"
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/ds/fields"
@@ -89,7 +89,7 @@ func (s *ConsulStore) innerCreate(
 	podID types.PodID,
 	timeout time.Duration,
 ) (fields.DaemonSet, error) {
-	id := fields.ID(uuid.New())
+	id := fields.ID(uuid.Must(uuid.NewV4()).String())
 	dsPath, err := s.dsPath(id)
 	if err != nil {
 		return fields.DaemonSet{}, util.Errorf("Error getting daemon set path: %v", err)

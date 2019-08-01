@@ -24,7 +24,7 @@ import (
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
-	"github.com/pborman/uuid"
+	"github.com/gofrs/uuid"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	fake_checker "github.com/square/p2/pkg/health/checker/test"
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -739,7 +739,7 @@ func TestWriteNewestStatus(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		ds.DaemonSet.ID = ds_fields.ID(uuid.New())
+		ds.DaemonSet.ID = ds_fields.ID(uuid.Must(uuid.NewV4()).String())
 
 		ds.setDSReplication(nil)
 		if testCase.nodeCompletedCount >= 0 {

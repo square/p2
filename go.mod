@@ -26,6 +26,7 @@ require (
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/elazarl/go-bindata-assetfs v0.0.0-20160803192304-e1a2a7ec64b0 // indirect
 	github.com/fsouza/go-dockerclient v0.0.0-20160809012447-a53ba79627e8 // indirect
+	github.com/gofrs/uuid v3.2.0+incompatible
 	github.com/golang/protobuf v1.2.0
 	github.com/gorilla/context v0.0.0-20160226214623-1ea25387ff6f // indirect
 	github.com/gorilla/mux v0.0.0-20160317213430-0eeaf8392f5b
@@ -63,7 +64,6 @@ require (
 	github.com/mitchellh/reflectwalk v0.0.0-20150527153153-eecf4c70c626 // indirect
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
 	github.com/opencontainers/runc v0.0.0-20160809122204-0f764571384a
-	github.com/pborman/uuid v0.0.0-20160209185913-a97ce2ca70fa
 	github.com/pkg/errors v0.0.0-20161029093637-248dadf4e906 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20161128210544-1f30fe9094a5
 	github.com/sergi/go-diff v1.0.0 // indirect

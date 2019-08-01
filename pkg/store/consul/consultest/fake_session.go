@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/pborman/uuid"
+	"github.com/gofrs/uuid"
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/util"
 )
@@ -35,7 +35,7 @@ func newFakeSession(globalLocks map[string]bool, lockMutex *sync.Mutex, renewalE
 		mu:           lockMutex,
 		renewalErrCh: renewalErrCh,
 		locksHeld:    make(map[string]bool),
-		session:      uuid.New(),
+		session:      uuid.Must(uuid.NewV4()).String(),
 	}
 }
 

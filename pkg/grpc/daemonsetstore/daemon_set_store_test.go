@@ -17,7 +17,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/types"
 
-	"github.com/pborman/uuid"
+	"github.com/gofrs/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	klabels "k8s.io/kubernetes/pkg/labels"
@@ -138,7 +138,7 @@ func TestDisableDaemonSetNotFound(t *testing.T) {
 	server := NewServer(dsStore)
 
 	_, err := server.DisableDaemonSet(context.Background(), &daemonsetstore_protos.DisableDaemonSetRequest{
-		DaemonSetId: uuid.New(),
+		DaemonSetId: uuid.Must(uuid.NewV4()).String(),
 	})
 	if err == nil {
 		t.Fatal("should have gotten an error passing a malformed daemon set ID to disable")
