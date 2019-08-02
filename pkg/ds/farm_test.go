@@ -29,7 +29,7 @@ import (
 
 	. "github.com/anthonybishopric/gotcha"
 	"github.com/hashicorp/consul/api"
-	"github.com/pborman/uuid"
+	"github.com/gofrs/uuid"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	fake_checker "github.com/square/p2/pkg/health/checker/test"
 	pc_fields "github.com/square/p2/pkg/pc/fields"
@@ -1511,7 +1511,7 @@ type sessionStore interface {
 }
 
 func newTestSession(t *testing.T, consulStore sessionStore) consul.Session {
-	session, errCh, err := consulStore.NewSession(fmt.Sprintf("test-%s", uuid.New()), nil)
+	session, errCh, err := consulStore.NewSession(fmt.Sprintf("test-%s", uuid.Must(uuid.NewV4()).String()), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

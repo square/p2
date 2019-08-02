@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	. "github.com/anthonybishopric/gotcha"
-	"github.com/pborman/uuid"
+	"github.com/gofrs/uuid"
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/cgroups"
@@ -114,7 +114,7 @@ func TestBuildRealityAtLaunch(t *testing.T) {
 	}
 	defer from.Close()
 
-	uuidStr := uuid.New()
+	uuidStr := uuid.Must(uuid.NewV4()).String()
 	apps := []string{podID, podID + "-" + uuidStr}
 	for _, app := range apps {
 		err := os.MkdirAll(filepath.Join(podRoot, app), 0755)

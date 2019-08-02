@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/pborman/uuid"
+	"github.com/gofrs/uuid"
 	klabels "k8s.io/kubernetes/pkg/labels"
 
 	"github.com/square/p2/pkg/labels"
@@ -180,7 +180,7 @@ func (s *ConsulStore) CreateTxn(
 
 // these parts of Create may require a retry
 func (s *ConsulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set, allocationStrategy fields.Strategy) (fields.RC, error) {
-	id := fields.ID(uuid.New())
+	id := fields.ID(uuid.Must(uuid.NewV4()).String())
 	rcp, err := s.rcPath(id)
 	if err != nil {
 		return fields.RC{}, err
@@ -220,7 +220,7 @@ func (s *ConsulStore) innerCreate(manifest manifest.Manifest, nodeSelector klabe
 
 // TODO: replace innerCreate() with this function
 func (s *ConsulStore) innerCreateTxn(ctx context.Context, manifest manifest.Manifest, nodeSelector klabels.Selector, podLabels klabels.Set, allocationStrategy fields.Strategy) (fields.RC, error) {
-	id := fields.ID(uuid.New())
+	id := fields.ID(uuid.Must(uuid.NewV4()).String())
 	rcp, err := s.rcPath(id)
 	if err != nil {
 		return fields.RC{}, err

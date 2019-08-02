@@ -12,7 +12,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/transaction"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/pborman/uuid"
+	"github.com/gofrs/uuid"
 )
 
 // fakeTxner just records the operations it gets
@@ -75,7 +75,7 @@ func TestCreate(t *testing.T) {
 func TestDelete(t *testing.T) {
 	ctx, cancelFunc := transaction.New(context.Background())
 	defer cancelFunc()
-	id := audit.ID(uuid.New())
+	id := audit.ID(uuid.Must(uuid.NewV4()).String())
 	err := ConsulStore{}.Delete(ctx, id)
 	if err != nil {
 		t.Fatal(err)

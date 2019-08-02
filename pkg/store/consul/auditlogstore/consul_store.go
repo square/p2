@@ -11,8 +11,8 @@ import (
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/util"
 
+	"github.com/gofrs/uuid"
 	"github.com/hashicorp/consul/api"
-	"github.com/pborman/uuid"
 )
 
 const auditLogTree string = "audit_logs"
@@ -54,7 +54,7 @@ func (ConsulStore) Create(
 
 	return transaction.Add(ctx, api.KVTxnOp{
 		Verb:  string(api.KVSet),
-		Key:   computeKey(audit.ID(uuid.New())),
+		Key:   computeKey(audit.ID(uuid.Must(uuid.NewV4()).String())),
 		Value: auditLogBytes,
 	})
 }
@@ -62,7 +62,7 @@ func (ConsulStore) Delete(
 	ctx context.Context,
 	id audit.ID,
 ) error {
-	if uuid.Parse(id.String()) == nil {
+	if _, err := uuid.FromString(id.String()); err != nil {
 		return util.Errorf("%s is not a valid audit log ID", id)
 	}
 
@@ -119,7 +119,7 @@ func idFromKey(key string) (audit.ID, error) {
 		return "", util.Errorf("%s did not match expected key format", key)
 	}
 
-	if uuid.Parse(parts[1]) == nil {
+	if _, err := uuid.FromString(parts[1]); err != nil {
 		return "", util.Errorf("%s from audit log key %s did not parse as a UUID", parts[1], key)
 	}
 

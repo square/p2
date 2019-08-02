@@ -10,7 +10,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/pcstore"
 	"github.com/square/p2/pkg/types"
 
-	"github.com/pborman/uuid"
+	"github.com/gofrs/uuid"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 
@@ -37,7 +37,7 @@ func (p *FakePCStore) Create(
 	minHealthPercentage fields.MinHealthPercentage,
 	_ pcstore.Session,
 ) (fields.PodCluster, error) {
-	id := fields.ID(uuid.New())
+	id := fields.ID(uuid.Must(uuid.NewV4()).String())
 	pc := fields.PodCluster{
 		ID:                  id,
 		PodID:               podID,

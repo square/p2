@@ -6,7 +6,7 @@ package types
 import (
 	"errors"
 
-	"github.com/pborman/uuid"
+	"github.com/gofrs/uuid"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
@@ -14,10 +14,12 @@ const (
 	PodUUIDLength int = 36
 )
 
-func HomeToPodUUID(home string) uuid.UUID {
-	var podUUID uuid.UUID
+func HomeToPodUUID(home string) *uuid.UUID {
+	var podUUID *uuid.UUID
 	if len(home) > PodUUIDLength {
-		podUUID = uuid.Parse(home[len(home)-PodUUIDLength:])
+		if u, err := uuid.FromString(home[len(home)-PodUUIDLength:]); err == nil {
+			podUUID = &u
+		}
 	}
 	return podUUID
 }
@@ -41,18 +43,18 @@ type PodUniqueKey string              // empty for legacy pods, uuid otherwise
 func (p PodUniqueKey) String() string { return string(p) }
 
 func NewPodUUID() PodUniqueKey {
-	return PodUniqueKey(uuid.New())
+	return PodUniqueKey(uuid.Must(uuid.NewV4()).String())
 }
 
 var InvalidUUID = errors.New("does not parse as a uuid")
 
 // Turns a string into a PodUniqueKey iff the string properly parses as a UUID
 func ToPodUniqueKey(podUniqueKeyStr string) (PodUniqueKey, error) {
-	if uuid.Parse(podUniqueKeyStr) != nil {
-		return PodUniqueKey(podUniqueKeyStr), nil
+	if _, err := uuid.FromString(podUniqueKeyStr); err != nil {
+		return "", InvalidUUID
 	}
 
-	return "", InvalidUUID
+	return PodUniqueKey(podUniqueKeyStr), nil
 }
 
 func (n NodeName) String() string {

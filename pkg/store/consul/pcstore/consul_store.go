@@ -9,7 +9,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/hashicorp/consul/api"
-	"github.com/pborman/uuid"
+	"github.com/gofrs/uuid"
 	"github.com/rcrowley/go-metrics"
 	klabels "k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/util/sets"
@@ -127,7 +127,7 @@ func (s *ConsulStore) Create(
 	minHealthPercentage fields.MinHealthPercentage,
 	session Session,
 ) (fields.PodCluster, error) {
-	id := fields.ID(uuid.New())
+	id := fields.ID(uuid.Must(uuid.NewV4()).String())
 
 	unlocker, err := s.lockForCreation(podID, availabilityZone, clusterName, session)
 	if err != nil {
