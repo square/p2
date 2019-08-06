@@ -32,9 +32,9 @@ import (
 	"github.com/square/p2/pkg/util/size"
 	"golang.org/x/net/context"
 
-	"github.com/Sirupsen/logrus"
 	dockertypes "github.com/docker/docker/api/types"
 	dockerclient "github.com/docker/docker/client"
+	"github.com/sirupsen/logrus"
 )
 
 var (

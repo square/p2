@@ -11,7 +11,7 @@ import (
 
 	"github.com/square/p2/pkg/util"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/labels"
 	"github.com/square/p2/pkg/logging"
@@ -28,8 +28,8 @@ import (
 	"github.com/square/p2/pkg/types"
 
 	. "github.com/anthonybishopric/gotcha"
-	"github.com/hashicorp/consul/api"
 	"github.com/gofrs/uuid"
+	"github.com/hashicorp/consul/api"
 	ds_fields "github.com/square/p2/pkg/ds/fields"
 	fake_checker "github.com/square/p2/pkg/health/checker/test"
 	pc_fields "github.com/square/p2/pkg/pc/fields"

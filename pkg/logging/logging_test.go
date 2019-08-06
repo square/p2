@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/sirupsen/logrus"
 )
 
 func TestLoggingCanMergeFields(t *testing.T) {

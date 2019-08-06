@@ -7,10 +7,10 @@ import (
 	"path"
 	"time"
 
-	"github.com/Sirupsen/logrus"
-	"github.com/hashicorp/consul/api"
 	"github.com/gofrs/uuid"
+	"github.com/hashicorp/consul/api"
 	"github.com/rcrowley/go-metrics"
+	"github.com/sirupsen/logrus"
 	klabels "k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/util/sets"
 

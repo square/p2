@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/rcrowley/go-metrics"
+	"github.com/sirupsen/logrus"
 
 	"github.com/square/p2/pkg/alerting"
 	"github.com/square/p2/pkg/ds/fields"

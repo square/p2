@@ -22,7 +22,7 @@ import (
 	"github.com/square/p2/pkg/util"
 	context "golang.org/x/net/context"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const (

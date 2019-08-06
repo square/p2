@@ -20,8 +20,8 @@ import (
 	netutil "github.com/square/p2/pkg/util/net"
 	"github.com/square/p2/pkg/version"
 
-	"github.com/Sirupsen/logrus"
 	dockerclient "github.com/docker/docker/client"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 

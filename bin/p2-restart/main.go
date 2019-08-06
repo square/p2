@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/runit"
 	"github.com/square/p2/pkg/types"

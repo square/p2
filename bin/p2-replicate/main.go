@@ -8,7 +8,7 @@ import (
 	"os/user"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/square/p2/pkg/health"

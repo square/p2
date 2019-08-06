@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"
 )

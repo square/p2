@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-cleanhttp"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 	klabels "k8s.io/kubernetes/pkg/labels"
 
@@ -466,7 +466,7 @@ func (r rctlParams) RollingUpdate(oldID, newID string, want, need int) {
 			session,
 			watchDelay,
 			alerting.NewNop(),
-			false, // no audit logging
+			false,                       // no audit logging
 			auditlogstore.ConsulStore{}, // no audit logging
 		).Run(ctx)
 		close(result)

@@ -23,9 +23,9 @@ import (
 	"github.com/square/p2/pkg/store/consul/transaction"
 	"github.com/square/p2/pkg/util"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/hashicorp/consul/api"
 	"github.com/rcrowley/go-metrics"
+	"github.com/sirupsen/logrus"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )
 

@@ -3,9 +3,11 @@ module github.com/square/p2
 go 1.12
 
 require (
+	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
+	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/DataDog/datadog-go v0.0.0-20160822161430-909c02b65dd8 // indirect
 	github.com/Microsoft/go-winio v0.0.0-20170113001240-307e919c6636 // indirect
-	github.com/Sirupsen/logrus v0.11.0
+	github.com/Sirupsen/logrus v0.11.0 // indirect
 	github.com/alecthomas/assert v0.0.0-20170929043011-405dbfeb8e38 // indirect
 	github.com/alecthomas/colour v0.0.0-20160524082231-60882d9e2721 // indirect
 	github.com/alecthomas/repr v0.0.0-20181024024818-d37bc2a10ba1 // indirect
@@ -19,15 +21,25 @@ require (
 	github.com/boltdb/bolt v1.2.1 // indirect
 	github.com/circonus-labs/circonus-gometrics v0.0.0-20160722172710-a7c30e0dcc6e // indirect
 	github.com/circonus-labs/circonusllhist v0.0.0-20160526043813-d724266ae527 // indirect
-	github.com/docker/distribution v0.0.0-20170127234254-fb0bebc4b64e // indirect
-	github.com/docker/docker v0.0.0-20170504205632-89658bed64c2
-	github.com/docker/go-connections v0.0.0-20170101210128-eb315e364153
-	github.com/docker/go-units v0.0.0-20160802145505-eb879ae3e2b8 // indirect
+	github.com/containerd/continuity v0.0.0-20190426062206-aaeac12a7ffc // indirect
+	github.com/coreos/etcd v3.3.13+incompatible // indirect
+	github.com/coreos/go-semver v0.3.0 // indirect
+	github.com/deckarep/golang-set v1.7.1 // indirect
+	github.com/docker/distribution v2.7.1+incompatible // indirect
+	github.com/docker/docker v0.7.3-0.20190312165151-258edd715d46
+	github.com/docker/go-connections v0.4.0
+	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
+	github.com/docker/go-units v0.3.3 // indirect
+	github.com/docker/libkv v0.2.1 // indirect
+	github.com/docker/libnetwork v0.8.0-dev.2.0.20190726170434-09cdcc8c0eab // indirect
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/elazarl/go-bindata-assetfs v0.0.0-20160803192304-e1a2a7ec64b0 // indirect
 	github.com/fsouza/go-dockerclient v0.0.0-20160809012447-a53ba79627e8 // indirect
+	github.com/godbus/dbus v4.1.0+incompatible // indirect
 	github.com/gofrs/uuid v3.2.0+incompatible
+	github.com/gogo/protobuf v1.2.1 // indirect
 	github.com/golang/protobuf v1.2.0
+	github.com/google/go-cmp v0.3.0 // indirect
 	github.com/gorilla/context v0.0.0-20160226214623-1ea25387ff6f // indirect
 	github.com/gorilla/mux v0.0.0-20160317213430-0eeaf8392f5b
 	github.com/hashicorp/consul v0.7.0
@@ -54,6 +66,8 @@ require (
 	github.com/hashicorp/serf v0.0.0-20160809014204-114430d82108 // indirect
 	github.com/hashicorp/uuid v0.0.0-20160311170451-ebb0a03e909c // indirect
 	github.com/hashicorp/yamux v0.0.0-20160720233140-d1caa6c97c9f // indirect
+	github.com/ishidawataru/sctp v0.0.0-20190723014705-7c296d48a2b5 // indirect
+	github.com/json-iterator/go v1.1.7 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/mattn/go-isatty v0.0.0-20160806122752-66b8e73f3f5c // indirect
 	github.com/mattn/go-sqlite3 v0.0.0-20161028142218-86681de00ade
@@ -62,21 +76,28 @@ require (
 	github.com/mitchellh/copystructure v0.0.0-20160804032330-cdac8253d00f // indirect
 	github.com/mitchellh/mapstructure v0.0.0-20160808181253-ca63d7c062ee // indirect
 	github.com/mitchellh/reflectwalk v0.0.0-20150527153153-eecf4c70c626 // indirect
+	github.com/modern-go/reflect2 v1.0.1 // indirect
+	github.com/morikuni/aec v0.0.0-20170113033406-39771216ff4c // indirect
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
+	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/opencontainers/runc v0.0.0-20160809122204-0f764571384a
 	github.com/pkg/errors v0.0.0-20161029093637-248dadf4e906 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20161128210544-1f30fe9094a5
+	github.com/samuel/go-zookeeper v0.0.0-20190801204459-3c104360edc8 // indirect
 	github.com/sergi/go-diff v1.0.0 // indirect
-	github.com/stretchr/testify v1.3.0 // indirect
+	github.com/sirupsen/logrus v1.4.2
+	github.com/vishvananda/netlink v1.0.0 // indirect
+	github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f // indirect
 	golang.org/x/crypto v0.0.0-20170107180030-c3b1d0d6d869
 	golang.org/x/net v0.0.0-20181011144130-49bb7cea24b1
-	golang.org/x/sys v0.0.0-20180830151530-49385e6e1522
+	golang.org/x/sys v0.0.0-20190422165155-953cdadca894
 	golang.org/x/time v0.0.0-20161028155119-f51c12702a4d
 	google.golang.org/grpc v1.15.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.3
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	gopkg.in/vmihailenco/msgpack.v2 v2.9.1 // indirect
 	gopkg.in/yaml.v2 v2.0.0-20160928153709-a5b47d31c556
+	gotest.tools v2.2.0+incompatible // indirect
 	k8s.io/kubernetes v1.2.0-alpha.4
 	labix.org/v2/mgo v0.0.0-20140701140051-000000000287 // indirect
 	launchpad.net/gocheck v0.0.0-20140225173054-000000000087 // indirect
