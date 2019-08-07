@@ -4,7 +4,7 @@ import (
 	"os"
 	"sync/atomic"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 var counter uint64

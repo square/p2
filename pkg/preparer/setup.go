@@ -15,11 +15,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sirupsen/logrus"
-	dockerapi "github.com/docker/docker/api"
 	dockerclient "github.com/docker/docker/client"
 	"github.com/docker/go-connections/tlsconfig"
 	"github.com/hashicorp/consul/api"
+	"github.com/sirupsen/logrus"
 	context "golang.org/x/net/context"
 	"golang.org/x/net/http2"
 	"gopkg.in/yaml.v2"
@@ -712,7 +711,7 @@ func New(preparerConfig *PreparerConfig, logger logging.Logger) (*Preparer, erro
 		}
 		version := os.Getenv("DOCKER_API_VERSION")
 		if version == "" {
-			version = dockerapi.DefaultVersion
+			version = "1.29"
 		}
 		dockerClient, err = dockerclient.NewClient(dockerHost, version, dockerHTTPClient, nil)
 		if err != nil {

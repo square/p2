@@ -24,8 +24,8 @@ import (
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/util"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/hashicorp/consul/api"
+	"github.com/sirupsen/logrus"
 )
 
 type Store interface {

@@ -11,7 +11,7 @@ import (
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/square/p2/pkg/cli"
 	"github.com/square/p2/pkg/ds"
 	ds_fields "github.com/square/p2/pkg/ds/fields"

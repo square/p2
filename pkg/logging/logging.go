@@ -1,4 +1,4 @@
-// The logging package is a wrapper around github.com/Sirupsen/logrus that provides some
+// The logging package is a wrapper around github.com/sirupsen/logrus that provides some
 // convenience methods and improved error reporting.
 package logging
 
@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 
 	"github.com/square/p2/pkg/util"
 )

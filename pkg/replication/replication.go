@@ -22,7 +22,7 @@ import (
 	"github.com/square/p2/pkg/util"
 	"github.com/square/p2/pkg/util/param"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 type Labeler interface {
@@ -183,22 +183,22 @@ func newReplication(
 	nodeQueue chan types.NodeName,
 ) *replication {
 	return &replication{
-		active:                 active,
-		nodes:                  nodes,
-		store:                  store,
-		txner:                  txner,
-		labeler:                labeler,
-		podLabels:              podLabels,
-		manifest:               manifest,
-		health:                 health,
-		threshold:              threshold,
-		logger:                 logger,
-		rateLimiter:            rateLimiter,
-		errCh:                  errCh,
-		healthWatchDelay:       healthWatchDelay,
-		replicationCancelledCh: replicationCancelledCh,
-		replicationDoneCh:      replicationDoneCh,
-		quitCh:                 quitCh,
+		active:                    active,
+		nodes:                     nodes,
+		store:                     store,
+		txner:                     txner,
+		labeler:                   labeler,
+		podLabels:                 podLabels,
+		manifest:                  manifest,
+		health:                    health,
+		threshold:                 threshold,
+		logger:                    logger,
+		rateLimiter:               rateLimiter,
+		errCh:                     errCh,
+		healthWatchDelay:          healthWatchDelay,
+		replicationCancelledCh:    replicationCancelledCh,
+		replicationDoneCh:         replicationDoneCh,
+		quitCh:                    quitCh,
 		concurrentRealityRequests: concurrentRealityRequests,
 		timeout:                   timeout,
 		nodeQueue:                 nodeQueue,

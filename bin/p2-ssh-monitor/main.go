@@ -9,7 +9,7 @@ import (
 	"github.com/square/p2/pkg/config"
 	"github.com/square/p2/pkg/logging"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 )
 

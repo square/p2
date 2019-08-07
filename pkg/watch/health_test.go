@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/Sirupsen/logrus"
 	. "github.com/anthonybishopric/gotcha"
+	"github.com/sirupsen/logrus"
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/manifest"

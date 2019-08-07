@@ -25,9 +25,9 @@ import (
 	"github.com/square/p2/pkg/util"
 	"gopkg.in/yaml.v2"
 
-	"github.com/Sirupsen/logrus"
 	. "github.com/anthonybishopric/gotcha"
 	dockerclient "github.com/docker/docker/client"
+	"github.com/sirupsen/logrus"
 )
 
 func getTestPod() *Pod {

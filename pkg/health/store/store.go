@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 
 	"github.com/square/p2/pkg/health"
 	"github.com/square/p2/pkg/health/checker"

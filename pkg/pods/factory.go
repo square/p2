@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	dockerclient "github.com/docker/docker/client"
+	"github.com/sirupsen/logrus"
 	"github.com/square/p2/pkg/logging"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/p2exec"

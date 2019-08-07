@@ -16,7 +16,7 @@ import (
 	"github.com/square/p2/pkg/store/consul/consulutil"
 	"github.com/square/p2/pkg/types"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 var testNodes = []types.NodeName{"node1", "node2"}

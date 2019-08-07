@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/constants"
 	"github.com/square/p2/pkg/p2start"

@@ -46,7 +46,7 @@ import (
 	"github.com/square/p2/pkg/util/size"
 	"gopkg.in/yaml.v2"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	klabels "k8s.io/kubernetes/pkg/labels"
 )

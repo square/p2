@@ -14,7 +14,7 @@ import (
 	"github.com/square/p2/pkg/store/consul"
 	"github.com/square/p2/pkg/store/consul/flags"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v2"

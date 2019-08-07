@@ -152,8 +152,8 @@ func (l *Launchable) disable(errorChan chan<- error) {
 	}
 
 	// TODO: check if we need to set anything in this
-	execConfig = dockertypes.ExecConfig{}
-	hijackedResp, err := l.DockerClient.ContainerExecAttach(ctx, resp.ID, execConfig)
+	execStartCheck := dockertypes.ExecStartCheck{}
+	hijackedResp, err := l.DockerClient.ContainerExecAttach(ctx, resp.ID, execStartCheck)
 	if err != nil {
 		errorChan <- util.Errorf("could not start PreStop exec process for container %s: %s", containerName, err)
 		return
@@ -321,8 +321,8 @@ func (l *Launchable) Launch(_ *runit.ServiceBuilder, _ runit.SV) error {
 		}
 
 		// TODO: check if we need to set anything in this
-		execConfig = dockertypes.ExecConfig{}
-		hijackedResp, err := l.DockerClient.ContainerExecAttach(ctx, resp.ID, execConfig)
+		execStartCheck := dockertypes.ExecStartCheck{}
+		hijackedResp, err := l.DockerClient.ContainerExecAttach(ctx, resp.ID, execStartCheck)
 		if err != nil {
 			return util.Errorf("could not start PostStart exec process for container %s: %s", containerName, err)
 		}
