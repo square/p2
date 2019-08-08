@@ -2,7 +2,7 @@ require "json"
 
 def e(cmd)
   puts cmd
-  system(cmd) || raise("Error running `#{cmd}`")
+  system({"GO111MODULE" => "on"}, cmd) || raise("Error running `#{cmd}`")
 end
 
 def target(expand="")
@@ -10,14 +10,9 @@ def target(expand="")
   File.expand_path(expand, File.join(root, 'target'))
 end
 
-task :godep_check do
-  system("which godep") || abort("You do not have godep installed. Run `go get github.com/tools/godep` and ensure that it's on your PATH")
-end
-
-desc 'Get deps for all projects.'
-task :deps => :godep_check do
-  e "go get -v -t ./..."
-  e "godep save ./..."
+desc 'Vendor dependencies for all projects.'
+task :deps do
+  e "go mod vendor"
 end
 
 desc 'Build all projects'
@@ -38,9 +33,9 @@ task :test_all => [:build] do
 end
 
 desc 'Update all dependencies'
-task :update => :godep_check do
+task :update  do
   e "go get -u -t -v ./..."
-  e "godep update -r .../..."
+  e "go mod vendor"
 end
 
 desc 'Install all built binaries'
