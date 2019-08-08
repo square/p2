@@ -13,7 +13,6 @@ before_install:
 
 install:
   - gem install rake
-  - go get github.com/tools/godep
   - go get github.com/kisielk/errcheck
   - rake install
   - wget https://releases.hashicorp.com/consul/0.7.1/consul_0.7.1_linux_amd64.zip
