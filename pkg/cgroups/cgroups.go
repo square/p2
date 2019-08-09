@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	CPUPeriod = 1000000 // one million microseconds
+	CPUPeriod = 100000 // one hundred thousand microseconds
 )
 
 // maps cgroup subsystems to their respective paths
