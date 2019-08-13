@@ -10,7 +10,7 @@ import (
 )
 
 type P2BalancerErrorMessage string
-type JobID string
+type PodTransferID string
 
 const (
 	// P2BalancerInProgressEvent denotes the start of a P2 Balancer pod move
@@ -26,10 +26,10 @@ const (
 )
 
 type CommonP2BalancerDetails struct {
-	// JobID is a uuid that will be the same for all audit log records
-	// associated with the same pod move. It can be used to match up
-	// "in progress" events with "failure" or "completion" events
-	JobID JobID `json:"job_id"`
+	// PodTransferID is a uuid that will be the same for all audit log records
+	// associated with the same pod transfer. It can be used to match up
+	// "start" events with "failure" or "completion" events
+	PodTransferID PodTransferID `json:"pod_transfer_id"`
 
 	// PodID denotes the pod ID of the pod cluster that the RC belongs to
 	PodID types.PodID `json:"pod_id"`
@@ -65,7 +65,7 @@ type P2BalancerFailureDetails struct {
 }
 
 func NewP2BalancerInProgressDetails(
-	jobID JobID,
+	podTransferID PodTransferID,
 	podID types.PodID,
 	availabilityZone pcfields.AvailabilityZone,
 	clusterName pcfields.ClusterName,
@@ -74,7 +74,7 @@ func NewP2BalancerInProgressDetails(
 ) (json.RawMessage, error) {
 	details := P2BalancerInProgressDetails{
 		CommonP2BalancerDetails: commonP2BalancerDetails(
-			jobID,
+			podTransferID,
 			podID,
 			availabilityZone,
 			clusterName,
@@ -92,7 +92,7 @@ func NewP2BalancerInProgressDetails(
 }
 
 func NewP2BalancerCompletionDetails(
-	jobID JobID,
+	podTransferID PodTransferID,
 	podID types.PodID,
 	availabilityZone pcfields.AvailabilityZone,
 	clusterName pcfields.ClusterName,
@@ -101,7 +101,7 @@ func NewP2BalancerCompletionDetails(
 ) (json.RawMessage, error) {
 	details := P2BalancerCompletionDetails{
 		CommonP2BalancerDetails: commonP2BalancerDetails(
-			jobID,
+			podTransferID,
 			podID,
 			availabilityZone,
 			clusterName,
@@ -119,7 +119,7 @@ func NewP2BalancerCompletionDetails(
 }
 
 func NewP2BalancerFailureDetails(
-	jobID JobID,
+	podTransferID PodTransferID,
 	podID types.PodID,
 	availabilityZone pcfields.AvailabilityZone,
 	clusterName pcfields.ClusterName,
@@ -129,7 +129,7 @@ func NewP2BalancerFailureDetails(
 ) (json.RawMessage, error) {
 	details := P2BalancerFailureDetails{
 		CommonP2BalancerDetails: commonP2BalancerDetails(
-			jobID,
+			podTransferID,
 			podID,
 			availabilityZone,
 			clusterName,
@@ -148,7 +148,7 @@ func NewP2BalancerFailureDetails(
 }
 
 func commonP2BalancerDetails(
-	jobID JobID,
+	podTransferID PodTransferID,
 	podID types.PodID,
 	availabilityZone pcfields.AvailabilityZone,
 	clusterName pcfields.ClusterName,
@@ -156,7 +156,7 @@ func commonP2BalancerDetails(
 	newNode types.NodeName,
 ) CommonP2BalancerDetails {
 	return CommonP2BalancerDetails{
-		JobID:            jobID,
+		PodTransferID:    podTransferID,
 		PodID:            podID,
 		AvailabilityZone: availabilityZone,
 		ClusterName:      clusterName,

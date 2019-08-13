@@ -9,7 +9,7 @@ import (
 )
 
 func TestP2BalancerInProgressDetails(t *testing.T) {
-	jobID := JobID("some_job_id")
+	podTransferID := PodTransferID("some_pod_transfer_id")
 	podID := types.PodID("some_pod_id")
 	az := pcfields.AvailabilityZone("some_az")
 	cn := pcfields.ClusterName("some_cn")
@@ -17,7 +17,7 @@ func TestP2BalancerInProgressDetails(t *testing.T) {
 	newNode := types.NodeName("node_with_capacity")
 
 	jsonMessage, err := NewP2BalancerInProgressDetails(
-		jobID,
+		podTransferID,
 		podID,
 		az,
 		cn,
@@ -34,8 +34,8 @@ func TestP2BalancerInProgressDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if details.JobID != jobID {
-		t.Errorf("expected Job ID to be %q but was %q", jobID, details.JobID)
+	if details.PodTransferID != podTransferID {
+		t.Errorf("expected Pod Transfer ID to be %q but was %q", podTransferID, details.PodTransferID)
 	}
 	if details.PodID != podID {
 		t.Errorf("expected pod ID to be %q but was %q", podID, details.PodID)
@@ -55,7 +55,7 @@ func TestP2BalancerInProgressDetails(t *testing.T) {
 }
 
 func TestP2BalancerCompletionDetails(t *testing.T) {
-	jobID := JobID("some_job_id")
+	podTransferID := PodTransferID("some_pod_transfer_id")
 	podID := types.PodID("some_pod_id")
 	az := pcfields.AvailabilityZone("some_az")
 	cn := pcfields.ClusterName("some_cn")
@@ -63,7 +63,7 @@ func TestP2BalancerCompletionDetails(t *testing.T) {
 	newNode := types.NodeName("node_with_capacity")
 
 	jsonMessage, err := NewP2BalancerCompletionDetails(
-		jobID,
+		podTransferID,
 		podID,
 		az,
 		cn,
@@ -80,8 +80,8 @@ func TestP2BalancerCompletionDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if details.JobID != jobID {
-		t.Errorf("expected Job ID to be %q but was %q", jobID, details.JobID)
+	if details.PodTransferID != podTransferID {
+		t.Errorf("expected Pod Transfer ID to be %q but was %q", podTransferID, details.PodTransferID)
 	}
 	if details.PodID != podID {
 		t.Errorf("expected pod ID to be %q but was %q", podID, details.PodID)
@@ -101,7 +101,7 @@ func TestP2BalancerCompletionDetails(t *testing.T) {
 }
 
 func TestP2BalancerFailureDetails(t *testing.T) {
-	jobID := JobID("some_job_id")
+	podTransferID := PodTransferID("some_pod_transfer_id")
 	podID := types.PodID("some_pod_id")
 	az := pcfields.AvailabilityZone("some_az")
 	cn := pcfields.ClusterName("some_cn")
@@ -110,7 +110,7 @@ func TestP2BalancerFailureDetails(t *testing.T) {
 	errorMessage := P2BalancerErrorMessage("some_error_message")
 
 	jsonMessage, err := NewP2BalancerFailureDetails(
-		jobID,
+		podTransferID,
 		podID,
 		az,
 		cn,
@@ -128,8 +128,8 @@ func TestP2BalancerFailureDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if details.JobID != jobID {
-		t.Errorf("expected Job ID to be %q but was %q", jobID, details.JobID)
+	if details.PodTransferID != podTransferID {
+		t.Errorf("expected Pod Transfer ID to be %q but was %q", podTransferID, details.PodTransferID)
 	}
 	if details.PodID != podID {
 		t.Errorf("expected pod ID to be %q but was %q", podID, details.PodID)
