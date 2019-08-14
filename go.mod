@@ -3,6 +3,7 @@ module github.com/square/p2
 go 1.12
 
 require (
+	cloud.google.com/go v0.43.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
 	github.com/DataDog/datadog-go v0.0.0-20160822161430-909c02b65dd8 // indirect
 	github.com/Microsoft/go-winio v0.0.0-20170113001240-307e919c6636 // indirect
@@ -29,8 +30,9 @@ require (
 	github.com/fsouza/go-dockerclient v0.0.0-20160809012447-a53ba79627e8 // indirect
 	github.com/gofrs/uuid v3.2.0+incompatible
 	github.com/gogo/protobuf v1.2.1 // indirect
-	github.com/golang/protobuf v1.2.0
-	github.com/google/go-cmp v0.3.0 // indirect
+	github.com/golang/protobuf v1.3.2
+	github.com/google/go-cmp v0.3.1 // indirect
+	github.com/google/pprof v0.0.0-20190723021845-34ac40c74b70 // indirect
 	github.com/gorilla/context v0.0.0-20160226214623-1ea25387ff6f // indirect
 	github.com/gorilla/mux v0.0.0-20160317213430-0eeaf8392f5b
 	github.com/hashicorp/consul v0.7.0
@@ -45,7 +47,7 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.0.0-20160718233441-886ce0458bc8 // indirect
 	github.com/hashicorp/go-syslog v0.0.0-20150218181946-42a2b573b664 // indirect
 	github.com/hashicorp/go-uuid v0.0.0-20160717022140-64130c7a86d7 // indirect
-	github.com/hashicorp/golang-lru v0.0.0-20160207214719-a0d98a5f2880 // indirect
+	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/hashicorp/hcl v0.0.0-20160711231752-d8c773c4cba1 // indirect
 	github.com/hashicorp/hil v0.0.0-20160711231837-1e86c6b523c5 // indirect
 	github.com/hashicorp/logutils v0.0.0-20150609070431-0dc08b1671f3 // indirect
@@ -57,7 +59,7 @@ require (
 	github.com/hashicorp/serf v0.0.0-20160809014204-114430d82108 // indirect
 	github.com/hashicorp/uuid v0.0.0-20160311170451-ebb0a03e909c // indirect
 	github.com/hashicorp/yamux v0.0.0-20160720233140-d1caa6c97c9f // indirect
-	github.com/kr/pretty v0.1.0 // indirect
+	github.com/kr/pty v1.1.8 // indirect
 	github.com/mattn/go-isatty v0.0.0-20160806122752-66b8e73f3f5c // indirect
 	github.com/mattn/go-sqlite3 v0.0.0-20161028142218-86681de00ade
 	github.com/miekg/dns v0.0.0-20160726032027-db96a2b759cd // indirect
@@ -76,16 +78,19 @@ require (
 	github.com/stretchr/testify v1.3.0 // indirect
 	github.com/vishvananda/netlink v1.0.0 // indirect
 	github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f // indirect
-	golang.org/x/crypto v0.0.0-20170107180030-c3b1d0d6d869
-	golang.org/x/net v0.0.0-20181011144130-49bb7cea24b1
-	golang.org/x/sys v0.0.0-20190422165155-953cdadca894
-	golang.org/x/time v0.0.0-20161028155119-f51c12702a4d
-	google.golang.org/grpc v1.15.0
+	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4
+	golang.org/x/mobile v0.0.0-20190806162312-597adff16ade // indirect
+	golang.org/x/net v0.0.0-20190724013045-ca1201d0de80
+	golang.org/x/sys v0.0.0-20190804053845-51ab0e2deafa
+	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
+	golang.org/x/tools v0.0.0-20190808195139-e713427fea3f // indirect
+	google.golang.org/genproto v0.0.0-20190801165951-fa694d86fc64 // indirect
+	google.golang.org/grpc v1.22.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.3
-	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	gopkg.in/vmihailenco/msgpack.v2 v2.9.1 // indirect
 	gopkg.in/yaml.v2 v2.0.0-20160928153709-a5b47d31c556
 	gotest.tools v2.2.0+incompatible // indirect
+	honnef.co/go/tools v0.0.1-2019.2.2 // indirect
 	k8s.io/kubernetes v1.2.0-alpha.4
 	labix.org/v2/mgo v0.0.0-20140701140051-000000000287 // indirect
 	launchpad.net/gocheck v0.0.0-20140225173054-000000000087 // indirect

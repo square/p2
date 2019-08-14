@@ -3,9 +3,11 @@
 // license that can be found in the LICENSE file.
 
 // This code was translated into a form compatible with 6a from the public
-// domain sources in SUPERCOP: http://bench.cr.yp.to/supercop.html
+// domain sources in SUPERCOP: https://bench.cr.yp.to/supercop.html
 
 // +build amd64,!gccgo,!appengine
+
+#include "const_amd64.h"
 
 // func square(out, in *[5]uint64)
 TEXT ·square(SB),7,$0-16
@@ -84,19 +86,19 @@ TEXT ·square(SB),7,$0-16
 	MULQ 32(SI)
 	ADDQ AX,R13
 	ADCQ DX,R14
-	MOVQ ·REDMASK51(SB),SI
-	SHLQ $13,R8:CX
+	MOVQ $REDMASK51,SI
+	SHLQ $13,CX,R8
 	ANDQ SI,CX
-	SHLQ $13,R10:R9
+	SHLQ $13,R9,R10
 	ANDQ SI,R9
 	ADDQ R8,R9
-	SHLQ $13,R12:R11
+	SHLQ $13,R11,R12
 	ANDQ SI,R11
 	ADDQ R10,R11
-	SHLQ $13,R14:R13
+	SHLQ $13,R13,R14
 	ANDQ SI,R13
 	ADDQ R12,R13
-	SHLQ $13,BX:R15
+	SHLQ $13,R15,BX
 	ANDQ SI,R15
 	ADDQ R14,R15
 	IMUL3Q $19,BX,DX
