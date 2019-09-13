@@ -42,7 +42,7 @@ func (l *downloader) Download(location *url.URL, verificationData auth.Verificat
 	if err != nil {
 		return err
 	}
-	defer os.Remove(artifactFile.Name())
+	// defer os.Remove(artifactFile.Name())
 	defer artifactFile.Close()
 
 	remoteData, err := l.fetcher.Open(location)
