@@ -189,11 +189,27 @@ func (pod *Pod) Launch(manifest manifest.Manifest) (bool, error) {
 		return false, err
 	}
 
+	err = pod.PostActivate(launchables)
+	if err != nil {
+		return false, err
+	}
+
+	err = pod.BuildRunitServices(launchables, manifest)
+	if err != nil {
+		pod.logger.WithError(err).Errorln("unable to write servicebuilder files for pod")
+		return false, err
+	}
+	success := pod.StartLaunchables(launchables)
+	return success, nil
+}
+
+// runs post-activate for listed launchables
+func (pod *Pod) PostActivate(launchables []launch.Launchable) error {
 	for _, launchable := range launchables {
 		err := launchable.MakeCurrent()
 		if err != nil {
 			// being unable to flip a symlink is a catastrophic error
-			return false, err
+			return err
 		}
 
 		var out string
@@ -211,16 +227,13 @@ func (pod *Pod) Launch(manifest manifest.Manifest) (bool, error) {
 			}
 		}
 	}
+	return nil
+}
 
-	err = pod.buildRunitServices(launchables, manifest)
-	if err != nil {
-		pod.logger.WithError(err).Errorln("unable to write servicebuilder files for pod")
-		return false, err
-	}
-
+func (pod *Pod) StartLaunchables(launchables []launch.Launchable) bool {
 	success := true
 	for _, launchable := range launchables {
-		err = launchable.Launch(pod.ServiceBuilder, pod.SV) // TODO: make these configurable
+		err := launchable.Launch(pod.ServiceBuilder, pod.SV) // TODO: make these configurable
 		switch err.(type) {
 		case nil:
 			// noop
@@ -233,14 +246,12 @@ func (pod *Pod) Launch(manifest manifest.Manifest) (bool, error) {
 			success = false
 		}
 	}
-
 	if success {
 		pod.logInfo("Successfully launched")
 	} else {
 		pod.logInfo("Launched pod but one or more services failed to start")
 	}
-
-	return success, nil
+	return success
 }
 
 func (pod *Pod) Prune(max size.ByteCount, manifest manifest.Manifest) {
@@ -279,7 +290,7 @@ func (pod *Pod) Services(manifest manifest.Manifest) ([]runit.Service, error) {
 
 // Write servicebuilder *.yaml file and run servicebuilder, which will register runit services for this
 // pod.
-func (pod *Pod) buildRunitServices(launchables []launch.Launchable, newManifest manifest.Manifest) error {
+func (pod *Pod) BuildRunitServices(launchables []launch.Launchable, newManifest manifest.Manifest) error {
 	// if the service is new, building the runit services also starts them
 	sbTemplate := make(map[string]runit.ServiceTemplate)
 	for _, launchable := range launchables {

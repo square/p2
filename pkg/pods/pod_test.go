@@ -331,7 +331,7 @@ func TestBuildRunitServices(t *testing.T) {
 
 	testManifest := manifest.NewBuilder()
 	testLaunchable := hl.If()
-	pod.buildRunitServices([]launch.Launchable{testLaunchable}, testManifest.GetManifest())
+	pod.BuildRunitServices([]launch.Launchable{testLaunchable}, testManifest.GetManifest())
 
 	bytes, err := ioutil.ReadFile(outFilePath)
 	if err != nil {
