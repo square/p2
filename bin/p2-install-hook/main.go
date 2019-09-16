@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -11,7 +12,7 @@ import (
 	"github.com/square/p2/pkg/auth"
 	"github.com/square/p2/pkg/hooks"
 	"github.com/square/p2/pkg/logging"
-	"github.com/square/p2/pkg/manifest"
+	p2manifest "github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
 	"github.com/square/p2/pkg/types"
@@ -20,12 +21,13 @@ import (
 )
 
 var (
-	manifestURI = kingpin.Arg("manifest", "a path or url to a pod manifest that will be installed and launched immediately.").URL()
-	registryURI = kingpin.Arg("registry", "A URL to the registry to download artifacts from").URL()
-	nodeName    = kingpin.Flag("node-name", "the name of this node (default: hostname)").String()
-	podRoot     = kingpin.Flag("pod-root", "the root of the pods directory").Default(pods.DefaultPath).String()
-	hookRoot    = kingpin.Flag("hook-root", "the root of the hook scripts directory").Default(hooks.DefaultPath).String()
-	hookType    = kingpin.Flag("hook-type", "the type of the hook (if unspecified, defaults to global)").String()
+	manifestURI        = kingpin.Arg("manifest", "a path or url to a pod manifest that will be installed and launched immediately").URL()
+	registryURI        = kingpin.Arg("registry", "a URL to the registry to download artifacts from").URL()
+	isPreparerManifest = kingpin.Arg("isPreparerManifest", "to install hooks from a P2-Preparer manifest").Bool()
+	nodeName           = kingpin.Flag("node-name", "the name of this node (default: hostname)").String()
+	podRoot            = kingpin.Flag("pod-root", "the root of the pods directory").Default(pods.DefaultPath).String()
+	hookRoot           = kingpin.Flag("hook-root", "the root of the hook scripts directory").Default(hooks.DefaultPath).String()
+	hookType           = kingpin.Flag("hook-type", "the type of the hook (if unspecified, defaults to global)").String()
 )
 
 func main() {
@@ -40,9 +42,19 @@ func main() {
 		*nodeName = hostname
 	}
 
-	manifest, err := manifest.FromURI(*manifestURI)
+	manifest, err := p2manifest.FromURI(*manifestURI)
 	if err != nil {
 		log.Fatalf("%s", err)
+	}
+
+	if *isPreparerManifest {
+		config := manifest.GetConfig()
+		hooksManifest, ok := config["hooks_manifest"]
+		if ok {
+			manifest = hooksManifest.(p2manifest.Manifest)
+		} else {
+			fmt.Printf("Error to read hooks manifest from P2-Preparer manifest: %v", manifest)
+		}
 	}
 
 	// TODO: Configure fetcher?
