@@ -41,6 +41,9 @@ var (
 	requireFile                   = kingpin.Flag("require-file", "If set, the p2-exec invocation(s) written for the pod will not execute until the file exists on the system").String()
 	containerRegistryJsonKeyFile  = kingpin.Flag("container-registry-json-key", "Need to set when trying to launch a pod with docker launchables").ExistingFile()
 	dockerImageDirectoryWhitelist = kingpin.Flag("docker-image-directory-whitelist", "Need to set when trying to launch a pod with docker launchables").Strings()
+
+	// options for p2-one-shot, which is meant to make bare metal machines do not rely on p2-preparer to install apps
+	noStart = kingpin.Flag("no-start", "skip post active and start pods after installation").Bool()
 )
 
 func main() {
@@ -110,12 +113,32 @@ func main() {
 		log.Fatalf("Could not install manifest %s: %s", manifest.ID(), err)
 	}
 
-	success, err := pod.Launch(manifest)
-	if err != nil {
-		log.Fatalf("Could not launch manifest %s: %s", manifest.ID(), err)
-	}
-	if !success {
-		log.Fatalln("Unsuccessful launch of one or more things in the manifest")
+	if *noStart {
+		// p2-one-shot puts launchables into OS images but not start them
+		// here we skip post activating and starting the pod, did all other stuffs like creating current symlink, and service builder files
+		launchables, err := pod.Launchables(manifest)
+		if err != nil {
+			log.Fatalf("Could not fetch launchables from the menifest %s: %s", manifest.ID(), err)
+		}
+		for _, launchable := range launchables {
+			err := launchable.MakeCurrent()
+			if err != nil {
+				log.Fatalf("Failed to create current symlink for pod %s: %s", manifest.ID(), err)
+			}
+		}
+		err = pod.BuildRunitServices(launchables, manifest)
+		if err != nil {
+			log.Fatalf("unable to write servicebuilder files for pod %s: %s", manifest.ID(), err)
+		}
+		log.Printf("Successfully installed pod %s, created current symlink, and servicebuilder files, skipping launch", manifest.ID())
+	} else {
+		success, err := pod.Launch(manifest)
+		if err != nil {
+			log.Fatalf("Could not launch manifest %s: %s", manifest.ID(), err)
+		}
+		if !success {
+			log.Fatalf("Unsuccessful launch of one or more things in the manifest %s", manifest.ID())
+		}
 	}
 }
 
