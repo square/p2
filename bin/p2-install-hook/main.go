@@ -1,12 +1,12 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 
 	"gopkg.in/alecthomas/kingpin.v2"
+	"gopkg.in/yaml.v2"
 
 	"github.com/square/p2/pkg/artifact"
 	"github.com/square/p2/pkg/auth"
@@ -15,6 +15,7 @@ import (
 	p2manifest "github.com/square/p2/pkg/manifest"
 	"github.com/square/p2/pkg/osversion"
 	"github.com/square/p2/pkg/pods"
+	"github.com/square/p2/pkg/preparer"
 	"github.com/square/p2/pkg/types"
 	"github.com/square/p2/pkg/uri"
 	"github.com/square/p2/pkg/version"
@@ -23,7 +24,7 @@ import (
 var (
 	manifestURI        = kingpin.Arg("manifest", "a path or url to a pod manifest that will be installed and launched immediately").URL()
 	registryURI        = kingpin.Arg("registry", "a URL to the registry to download artifacts from").URL()
-	isPreparerManifest = kingpin.Arg("isPreparerManifest", "to install hooks from a P2-Preparer manifest").Bool()
+	isPreparerManifest = kingpin.Flag("is-preparer-manifest", "to install hooks from a P2-Preparer manifest").Bool()
 	nodeName           = kingpin.Flag("node-name", "the name of this node (default: hostname)").String()
 	podRoot            = kingpin.Flag("pod-root", "the root of the pods directory").Default(pods.DefaultPath).String()
 	hookRoot           = kingpin.Flag("hook-root", "the root of the hook scripts directory").Default(hooks.DefaultPath).String()
@@ -37,7 +38,7 @@ func main() {
 	if *nodeName == "" {
 		hostname, err := os.Hostname()
 		if err != nil {
-			log.Fatalf("error getting node name: %v", err)
+			log.Fatalf("Error getting node name: %v", err)
 		}
 		*nodeName = hostname
 	}
@@ -48,12 +49,19 @@ func main() {
 	}
 
 	if *isPreparerManifest {
-		config := manifest.GetConfig()
-		hooksManifest, ok := config["hooks_manifest"]
-		if ok {
-			manifest = hooksManifest.(p2manifest.Manifest)
-		} else {
-			fmt.Printf("Error to read hooks manifest from P2-Preparer manifest: %v", manifest)
+		preparerConfigBytes, err := yaml.Marshal(manifest.GetConfig())
+		if err != nil {
+			log.Printf("Unable to marshal preparer config: %v", err)
+		}
+
+		preparerConfig, err := preparer.UnmarshalConfig(preparerConfigBytes)
+		if err != nil {
+			log.Printf("Could not properly unmarshal p2-preparer config from YAML: %v", err)
+		}
+
+		manifest, err = p2manifest.FromBytes([]byte(preparerConfig.HooksManifest))
+		if err != nil {
+			log.Fatalf("Error to read hooks manifest from P2-Preparer manifest: %v", manifest)
 		}
 	}
 
