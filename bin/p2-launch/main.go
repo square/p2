@@ -115,7 +115,7 @@ func main() {
 
 	if *noStart {
 		// p2-one-shot puts launchables into OS images but not start them
-		// here we skip post activating and starting the pod, did all other stuffs like creating current symlink, and service builder files
+		// here we added launchable current symlinks, skip post activating and starting the pod
 		launchables, err := pod.Launchables(manifest)
 		if err != nil {
 			log.Fatalf("Could not fetch launchables from the menifest %s: %s", manifest.ID(), err)
@@ -126,11 +126,7 @@ func main() {
 				log.Fatalf("Failed to create current symlink for pod %s: %s", manifest.ID(), err)
 			}
 		}
-		err = pod.BuildRunitServices(launchables, manifest)
-		if err != nil {
-			log.Fatalf("unable to write servicebuilder files for pod %s: %s", manifest.ID(), err)
-		}
-		log.Printf("Successfully installed pod %s, created current symlink, and servicebuilder files, skipping launch", manifest.ID())
+		log.Printf("Successfully installed pod %s, created current symlink, skipping launch", manifest.ID())
 	} else {
 		success, err := pod.Launch(manifest)
 		if err != nil {
