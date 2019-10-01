@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	CPUPeriod = 100000 // one hundred thousand microseconds
+	CPUPeriod = 1000000 // one hundred thousand microseconds
 )
 
 // maps cgroup subsystems to their respective paths
@@ -49,15 +49,21 @@ func (subsys Subsystems) SetCPU(name CgroupID, cpus int) error {
 		return UnsupportedError("cpu")
 	}
 
-	quota := cpus * CPUPeriod
-	if cpus == 0 {
-		// setting -1 here will unrestrict the cgroup, so the period won't matter
-		quota = -1
-	}
-
 	err := os.MkdirAll(filepath.Join(subsys.CPU, name.String()), 0755)
 	if err != nil && !os.IsExist(err) {
 		return err
+	}
+
+	// setting the quota to unrestricted first to avoid invalid change of cpu_period
+	quota := -1
+	_, err = util.WriteIfChanged(
+		filepath.Join(subsys.CPU, name.String(), "cpu.cfs_quota_us"),
+		[]byte(strconv.Itoa(quota)+"\n"),
+		0,
+	)
+
+	if cpus != 0 {
+		quota = cpus * CPUPeriod
 	}
 
 	_, err = util.WriteIfChanged(
