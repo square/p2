@@ -341,7 +341,17 @@ func (s ConsulStore) CreateRollingUpdateFromOneExistingRCWithID(
 
 	err = s.checkForConflictingUpdates(rcIDs)
 	if err != nil {
-		return roll_fields.Update{}, err
+		conflictingErr, ok := err.(ConflictingRUError)
+		if !ok {
+			return roll_fields.Update{}, err
+		}
+		// There is an unknown reason where sometimes an RU still exists when it
+		//   shouldn't. This deletes the dangling RU which is what we've been
+		//   doing manually
+		err = s.Delete(ctx, conflictingErr.ConflictingID)
+		if err != nil {
+			return roll_fields.Update{}, err
+		}
 	}
 
 	rc, err := s.rcstore.CreateTxn(ctx, newRCManifest, newRCNodeSelector, availabilityZone, clusterName, newRCPodLabels, newRCLabels, newAllocationStrategy)
