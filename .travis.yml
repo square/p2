@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - 1.12
+  - "1.12"
 
 env:
   - RACE=-race
@@ -9,6 +9,7 @@ env:
 
 before_install:
   - cat /etc/issue
+  - ls -l /etc/*release
   - apt-get purge runit
   - sudo apt-get autoremove
   - sudo apt-get update -qq
