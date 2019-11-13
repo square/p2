@@ -9,6 +9,7 @@ env:
 
 before_install:
   - sudo cat /etc/issue
+  - sudo cat /etc/lsb-release
   - sudo apt-get purge runit
   - sudo apt-get autoremove
   - sudo apt-get update -qq
