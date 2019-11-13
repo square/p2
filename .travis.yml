@@ -10,8 +10,6 @@ env:
   - RACE=
 
 before_install:
-  - sudo cat /etc/issue
-  - sudo cat /etc/lsb-release
   - sudo apt-get update -qq
   - sudo apt-get install -y runit
 
