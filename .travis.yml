@@ -8,15 +8,18 @@ env:
   - RACE=
 
 before_install:
+  - cat /etc/issue
+  - apt-get purge runit
+  - sudo apt-get autoremove
   - sudo apt-get update -qq
-  - sudo apt-get install -y runit
+  - sudo apt-get install -y runit runit-systemd
 
 install:
   - gem install rake
   - go get github.com/kisielk/errcheck
   - rake install
-  - wget https://releases.hashicorp.com/consul/0.7.1/consul_0.7.1_linux_amd64.zip
-  - unzip consul_0.7.1_linux_amd64.zip
+  - wget https://releases.hashicorp.com/consul/0.9.4/consul_0.9.4_linux_amd64.zip
+  - unzip consul_0.9.4_linux_amd64.zip
   - sudo mv consul /usr/bin/
 
 script:
