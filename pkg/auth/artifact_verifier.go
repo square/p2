@@ -74,15 +74,22 @@ func NewCompositeVerifier(keyringPath string, fetcher uri.Fetcher, logger *loggi
 
 // Attempt manifest verification. If it fails, fallback to the build verifier.
 func (b *CompositeVerifier) VerifyHoistArtifact(localCopy *os.File, verificationData VerificationData) error {
+	var errstrings []string
 	err := b.manVerifier.VerifyHoistArtifact(localCopy, verificationData)
-	if err != nil {
+	errstrings = append(errstrings, err.Error())
+	if len(errstrings) > 0 {
 		_, err = localCopy.Seek(0, os.SEEK_SET)
 		if err != nil {
 			return util.Errorf("Could not rewind localCopy %v back to start of file: %v", localCopy.Name(), err)
 		}
 		err = b.buildVerifier.VerifyHoistArtifact(localCopy, verificationData)
+		errstrings = append(errstrings, err.Error())
 	}
-	return err
+
+	if len(errstrings) > 0 {
+		return util.Errorf("Could not verify hoist artifact: %v", errstrings)
+	}
+	return nil
 }
 
 // BuildManifestVerifier ensures that the given LaunchableStanza's location
