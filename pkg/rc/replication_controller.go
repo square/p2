@@ -333,7 +333,7 @@ func (rc *replicationController) addPods(rcFields fields.RC, current types.PodLo
 
 		// since significant time may have passed since these values were instantiated,
 		// get updated values each iteration, and leverage those
-		tmpEligible, err := rc.eligibleNodes(rcFields)
+		tmpEligible, _ := rc.eligibleNodes(rcFields)
 		// TODO: check err
 		tmpPossible := types.NewNodeSet(tmpEligible...).Difference(types.NewNodeSet(currentNodes...))
 		tmpPossibleSorted := tmpPossible.ListNodes()
@@ -360,7 +360,7 @@ func (rc *replicationController) addPods(rcFields fields.RC, current types.PodLo
 		}
 		scheduleOn := possibleSorted[i]
 
-		err = rc.schedule(txn, rcFields, scheduleOn)
+		err := rc.schedule(txn, rcFields, scheduleOn)
 		if err != nil {
 			return err
 		}
