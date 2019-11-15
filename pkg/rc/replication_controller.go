@@ -333,8 +333,10 @@ func (rc *replicationController) addPods(rcFields fields.RC, current types.PodLo
 
 		// since significant time may have passed since these values were instantiated,
 		// get updated values each iteration, and leverage those
-		tmpEligible, _ := rc.eligibleNodes(rcFields)
-		// TODO: check err
+		tmpEligible, terr := rc.eligibleNodes(rcFields)
+		if terr != nil {
+			return terr
+		}
 		tmpPossible := types.NewNodeSet(tmpEligible...).Difference(types.NewNodeSet(currentNodes...))
 		tmpPossibleSorted := tmpPossible.ListNodes()
 		if len(tmpPossibleSorted) < i+1 {
