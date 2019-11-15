@@ -362,7 +362,7 @@ func (rc *replicationController) addPods(rcFields fields.RC, current types.PodLo
 		}
 		scheduleOn := possibleSorted[i]
 
-		err := rc.schedule(txn, rcFields, scheduleOn)
+		err = rc.schedule(txn, rcFields, scheduleOn)
 		if err != nil {
 			return err
 		}
