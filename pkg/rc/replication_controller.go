@@ -333,13 +333,13 @@ func (rc *replicationController) addPods(rcFields fields.RC, current types.PodLo
 
 		// since significant time may have passed since these values were instantiated,
 		// get updated values each iteration, and leverage those
-		tmpEligible, terr := rc.eligibleNodes(rcFields)
-		if terr != nil {
-			return terr
+		eligible, err := rc.eligibleNodes(rcFields)
+		if err != nil {
+			return err
 		}
-		tmpPossible := types.NewNodeSet(tmpEligible...).Difference(types.NewNodeSet(currentNodes...))
-		tmpPossibleSorted := tmpPossible.ListNodes()
-		if len(tmpPossibleSorted) < i+1 {
+		possible = types.NewNodeSet(eligible...).Difference(types.NewNodeSet(currentNodes...))
+		possibleSorted = possible.ListNodes()
+		if len(possibleSorted) < i+1 {
 			errMsg := fmt.Sprintf(
 				"Not enough nodes to meet desire: %d replicas desired, %d currentNodes, %d eligible. Scheduled on %d nodes instead.",
 				rcFields.ReplicasDesired, len(currentNodes), len(eligible), i,
