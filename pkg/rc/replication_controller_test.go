@@ -867,6 +867,7 @@ func TestAddPods(t *testing.T) {
 		ID:              rc.rcID,
 		ReplicasDesired: 5,
 		Manifest:        testManifest(),
+		NodeSelector:    klabels.Everything().Add("nodeQuality", klabels.EqualsOperator, []string{"good"}),
 	}
 
 	// empty
