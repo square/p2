@@ -83,7 +83,11 @@ func (b *CompositeVerifier) VerifyHoistArtifact(localCopy *os.File, verification
 			return util.Errorf("Could not rewind localCopy %v back to start of file: %v", localCopy.Name(), err)
 		}
 		err = b.buildVerifier.VerifyHoistArtifact(localCopy, verificationData)
-		errstrings = append(errstrings, err.Error())
+		if err != nil {
+			errstrings = append(errstrings, err.Error())
+		} else {
+			return nil
+		}
 	}
 
 	if len(errstrings) > 0 {
