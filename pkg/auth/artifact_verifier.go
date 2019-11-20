@@ -85,7 +85,7 @@ func (b *CompositeVerifier) VerifyHoistArtifact(localCopy *os.File, verification
 		err = b.buildVerifier.VerifyHoistArtifact(localCopy, verificationData)
 		if err != nil {
 			errstrings = append(errstrings, err.Error())
-			return util.Errorf("Could not verify hoist artifact: %v", errstrings)
+			return util.Errorf("Failed to verify hoist artifact: %v", errstrings)
 		}
 	}
 	return nil
