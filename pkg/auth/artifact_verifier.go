@@ -76,13 +76,19 @@ func NewCompositeVerifier(keyringPath string, fetcher uri.Fetcher, logger *loggi
 func (b *CompositeVerifier) VerifyHoistArtifact(localCopy *os.File, verificationData VerificationData) error {
 	err := b.manVerifier.VerifyHoistArtifact(localCopy, verificationData)
 	if err != nil {
+		var errstrings []string
+		errstrings = append(errstrings, err.Error())
 		_, err = localCopy.Seek(0, os.SEEK_SET)
 		if err != nil {
 			return util.Errorf("Could not rewind localCopy %v back to start of file: %v", localCopy.Name(), err)
 		}
 		err = b.buildVerifier.VerifyHoistArtifact(localCopy, verificationData)
+		if err != nil {
+			errstrings = append(errstrings, err.Error())
+			return util.Errorf("Failed to verify hoist artifact: %v", errstrings)
+		}
 	}
-	return err
+	return nil
 }
 
 // BuildManifestVerifier ensures that the given LaunchableStanza's location
