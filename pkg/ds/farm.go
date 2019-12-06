@@ -580,17 +580,10 @@ func (dsf *Farm) spawnDaemonSet(
 			for {
 				select {
 				case <-ctx.Done():
-					for _, name := range ds.MetricNames("healthy") {
-						p2metrics.Registry.Unregister(name)
-					}
-					for _, name := range ds.MetricNames("critical") {
-						p2metrics.Registry.Unregister(name)
-					}
-					for _, name := range ds.MetricNames("unknown") {
-						p2metrics.Registry.Unregister(name)
-					}
-					for _, name := range ds.MetricNames("warning") {
-						p2metrics.Registry.Unregister(name)
+					for _, suffix := range []string{"healthy", "critical", "unknown", "warning"} {
+						for _, name := range ds.MetricNames(suffix) {
+							p2metrics.Registry.Unregister(name)
+						}
 					}
 					return
 				case <-ticks.C:
@@ -600,29 +593,19 @@ func (dsf *Farm) spawnDaemonSet(
 						continue
 					}
 
-					numHealthy := aggregateHealth.NumHealthyOf(eligible)
-					numUnhealthy := aggregateHealth.NumUnhealthyOf(eligible)
-					numUnknownHealth := aggregateHealth.NumUnknownHealthOf(eligible)
-					numWarningHealth := aggregateHealth.NumWarningHealthOf(eligible)
-
-					for _, name := range ds.MetricNames("healthy") {
-						gauge := metrics.GetOrRegisterGauge(name, p2metrics.Registry)
-						gauge.Update(int64(numHealthy))
-					}
-
-					for _, name := range ds.MetricNames("critical") {
-						gauge := metrics.GetOrRegisterGauge(name, p2metrics.Registry)
-						gauge.Update(int64(numUnhealthy))
-					}
-
-					for _, name := range ds.MetricNames("unknown") {
-						gauge := metrics.GetOrRegisterGauge(name, p2metrics.Registry)
-						gauge.Update(int64(numUnknownHealth))
-					}
-
-					for _, name := range ds.MetricNames("warning") {
-						gauge := metrics.GetOrRegisterGauge(name, p2metrics.Registry)
-						gauge.Update(int64(numWarningHealth))
+					for _, metric := range []struct {
+						suffix string
+						val    int
+					}{
+						{"healthy", aggregateHealth.NumHealthyOf(eligible)},
+						{"critical", aggregateHealth.NumUnhealthyOf(eligible)},
+						{"unknown", aggregateHealth.NumUnknownHealthOf(eligible)},
+						{"warning", aggregateHealth.NumWarningHealthOf(eligible)},
+					} {
+						for _, name := range ds.MetricNames(metric.suffix) {
+							gauge := metrics.GetOrRegisterGauge(name, p2metrics.Registry)
+							gauge.Update(int64(metric.val))
+						}
 					}
 				}
 			}
