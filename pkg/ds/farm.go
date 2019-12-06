@@ -580,6 +580,18 @@ func (dsf *Farm) spawnDaemonSet(
 			for {
 				select {
 				case <-ctx.Done():
+					for _, name := range ds.MetricNames("healthy") {
+						p2metrics.Registry.Unregister(name)
+					}
+					for _, name := range ds.MetricNames("critical") {
+						p2metrics.Registry.Unregister(name)
+					}
+					for _, name := range ds.MetricNames("unknown") {
+						p2metrics.Registry.Unregister(name)
+					}
+					for _, name := range ds.MetricNames("warning") {
+						p2metrics.Registry.Unregister(name)
+					}
 					return
 				case <-ticks.C:
 					eligible, err := ds.EligibleNodes()
