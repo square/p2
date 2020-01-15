@@ -330,6 +330,15 @@ func (rc *replicationController) addPods(rcFields fields.RC, current types.PodLo
 			cancelFunc()
 			txn, cancelFunc = rc.newAuditingTransaction(context.Background(), rcFields, txn.Nodes())
 		}
+
+		// since significant time may have passed since these values were instantiated,
+		// get updated values each iteration, and leverage those
+		eligible, err := rc.eligibleNodes(rcFields)
+		if err != nil {
+			return err
+		}
+		possible = types.NewNodeSet(eligible...).Difference(types.NewNodeSet(currentNodes...))
+		possibleSorted = possible.ListNodes()
 		if len(possibleSorted) < i+1 {
 			errMsg := fmt.Sprintf(
 				"Not enough nodes to meet desire: %d replicas desired, %d currentNodes, %d eligible. Scheduled on %d nodes instead.",
@@ -353,7 +362,7 @@ func (rc *replicationController) addPods(rcFields fields.RC, current types.PodLo
 		}
 		scheduleOn := possibleSorted[i]
 
-		err := rc.schedule(txn, rcFields, scheduleOn)
+		err = rc.schedule(txn, rcFields, scheduleOn)
 		if err != nil {
 			return err
 		}
