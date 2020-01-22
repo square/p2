@@ -15,6 +15,7 @@ var DefaultP2Exec = "/usr/local/bin/p2-exec"
 type P2ExecArgs struct {
 	User             string
 	EnvDirs          []string
+	Envs             []string
 	ExtraEnv         map[string]string
 	NoLimits         bool
 	PodID            *types.PodID
@@ -38,6 +39,10 @@ func (args P2ExecArgs) CommandLine() []string {
 
 	for _, envDir := range args.EnvDirs {
 		cmd = append(cmd, "-e", envDir)
+	}
+
+	for _, env := range args.Envs {
+		cmd = append(cmd, "env", env)
 	}
 
 	for envVarKey, envVarValue := range args.ExtraEnv {
