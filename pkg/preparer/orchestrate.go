@@ -209,10 +209,7 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 	quitChan := make(chan struct{})
 	errChan := make(chan error)
 
-	// buffer this with 1 manifest so that we can make sure that the
-	// consumer is always reading the latest manifest. Before writing to
-	// this channel, we will attempt to drain it first
-	podChan := make(chan []consul.ManifestResult, 1)
+	podChan := make(chan []consul.ManifestResult)
 
 	go p.store.WatchPods(consul.INTENT_TREE, p.node, quitChan, errChan, podChan)
 
@@ -242,8 +239,10 @@ func (p *Preparer) WatchForPodManifestsForNode(quitAndAck chan struct{}) {
 							podUniqueKey: pair.PodUniqueKey,
 						}
 						if _, ok := podChanMap[workerID]; !ok {
-							// spin goroutine for this pod
-							podChanMap[workerID] = make(chan ManifestPair)
+							// buffer this with 1 manifest so that we can make sure that the
+							// consumer is always reading the latest manifest. Before writing to
+							// this channel, we will attempt to drain it first
+							podChanMap[workerID] = make(chan ManifestPair, 1)
 							quitChanMap[workerID] = make(chan struct{})
 							go p.handlePods(podChanMap[workerID], quitChanMap[workerID])
 						}
