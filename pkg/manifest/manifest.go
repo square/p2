@@ -353,6 +353,18 @@ func FromReader(reader io.Reader) (Manifest, error) {
 // manifest can be a raw YAML document or a PGP clearsigned YAML document. If signed, the
 // signature components will be stored inside the Manifest instance.
 func FromBytes(bytes []byte) (Manifest, error) {
+	manifest, err := FromBytesNoValidation(bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ValidManifest(manifest); err != nil {
+		return nil, util.Errorf("invalid manifest: %s", err)
+	}
+	return manifest, nil
+}
+
+func FromBytesNoValidation(bytes []byte) (Manifest, error) {
 	manifest := &manifest{}
 
 	// Preserve the raw manifest so that manifest.Bytes() returns bytes in
@@ -378,9 +390,6 @@ func FromBytes(bytes []byte) (Manifest, error) {
 
 	if err := yaml.Unmarshal(bytes, manifest); err != nil {
 		return nil, util.Errorf("Could not read pod manifest: %s", err)
-	}
-	if err := ValidManifest(manifest); err != nil {
-		return nil, util.Errorf("invalid manifest: %s", err)
 	}
 	return manifest, nil
 }
